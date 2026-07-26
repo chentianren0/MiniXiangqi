@@ -38,10 +38,40 @@ The board is the primary content during play. Its interaction design must cover:
 
 - Board orientation and color choice.
 - Selection, legal destinations, the last move, check, and game result states.
-- Move input, cancellation, undo, and AI-thinking states.
+- Move input, cancellation, repeated undo, and AI-thinking states.
 - Clear prevention or explanation of unavailable actions.
 - Replay controls and navigation through a history game.
 - Help that explains both game concepts and interface behavior in context.
+
+### Turn status
+
+A persistent status element near the board clearly communicates the side to move, whether that side is the human or computer in human-versus-computer play, and whether board input is currently accepted. It is driven by committed game and engine state, and a resolved Random side choice is visible to the player. The board does not accept a human move while the computer is thinking.
+
+Turn ownership and input availability must not be communicated by color alone. Exact copy, symbols, progress treatment, placement, and VoiceOver announcement behavior require further interaction design.
+
+### Replacing an unfinished game
+
+The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, the side to move, and the move count.
+
+Starting a new game while another is active uses one fixed confirmation for every old-mode and new-mode combination:
+
+- Title: **End Unfinished Game?**
+- Message: **Starting a new game will end the game shown above and save it to History.**
+- Actions: **Cancel** and **End & Start New Game**.
+
+The sheet shows the existing game's metadata. Its wording does not interpolate mode-specific combinations and does not use an ambiguous phrase such as “current play.” Confirming records the old game as ended early without a competitive result, then starts the requested game atomically.
+
+### Undo and result confirmation
+
+- Free Play removes one move per Undo action and can repeat back to the initial position.
+- In human-versus-computer play, Undo while the computer is thinking cancels the search and removes the human move that triggered it.
+- After the computer has replied, one Undo action removes the computer reply and the preceding human move, returning to the previous human decision point. The action can be repeated by complete decision cycles.
+- If a human move itself reaches a natural terminal state, Undo removes that human move while the result presentation remains unconfirmed.
+- If the computer moved first, its opening move alone cannot be undone.
+- Redo is not available. A new move after Undo permanently replaces the discarded continuation.
+- A natural result remains undoable while its result presentation awaits confirmation. Undo dismisses that presentation and resumes the game.
+- After result confirmation, resignation confirmation, or **End & Start New Game**, the History record is immutable and cannot be undone.
+- Undo is disabled at the earliest valid boundary and while a prior Undo transition is still being applied.
 
 ## Motion and visual effects
 
@@ -79,10 +109,9 @@ The interface must be designed for localization. User-facing text must not be em
 
 - Define the navigation presentation on each device class and window size.
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
-- Define board orientation behavior for human-versus-computer and local human-versus-human games.
+- Define board orientation behavior for human-versus-computer and Free Play games.
 - Define move-entry gestures and the exact selection and legal-move feedback.
-- Define the undo interaction, confirmation behavior, and AI-cancellation feedback.
-- Define the active-game replacement and end-game flows.
+- Define the exact turn-status copy, symbols, progress treatment, placement, and VoiceOver announcement behavior.
 - Define history replay controls and the import, export, and delete flows.
 - Define the scope, placement, and teaching sequence of help content.
 - Define the motion language, timings, interruption rules, and reduced-motion alternatives.

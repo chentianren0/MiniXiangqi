@@ -24,18 +24,20 @@ This document is for product designers, engineers, testers, and reviewers who ne
 ## Target-MVP play modes
 
 - Human versus computer.
-- Two people playing locally on the same device.
-- In human-versus-computer games, the player can choose a color.
+- **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
+- In human-versus-computer games, Settings offers **Red**, **Black**, and **Random** for the human player's side. A Random choice is resolved when the game is created and the result is shown in the game metadata.
 - The computer opponent has configurable difficulty levels.
 - A chess clock is not part of the target MVP.
-- One-step undo is part of the target MVP.
+- Repeated undo is part of the target MVP. Redo is not.
+- Resign is available only in human-versus-computer games. After confirmation, resignation records a loss for the human player.
 
 ## Games and history
 
 - There can be only one active game.
 - The active game is saved automatically and can be resumed after the application exits and reopens.
 - Before starting another game, the user must end the active game.
-- An ended game becomes a history game.
+- Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
+- A naturally completed or otherwise confirmed ended game becomes an immutable history game.
 - History games can be replayed, deleted, and exported.
 - Importing compatible game records is part of the target MVP.
 - Starting a new game from a selected historical position is not part of the target MVP.
@@ -62,11 +64,8 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the exact color-selection options and default for human-versus-computer games.
 - Define the number, names, and user-facing meaning of AI difficulty levels.
-- Define the exact undo behavior for each play mode, including undo while the AI is thinking.
-- Define how an active game is ended or replaced and which confirmations are required.
-- Define which game results and termination reasons appear in history.
+- Define the default side choice for new human-versus-computer installations.
 - Define import and export product behavior, including whether imported games are always historical.
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.

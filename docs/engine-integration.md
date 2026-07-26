@@ -62,6 +62,16 @@ User-facing levels use localized names rather than an unverified Mini Xiangqi El
 - Missing, corrupted, incompatible, or rejected evaluation assets must produce a contained error or an explicitly approved fallback; they must not terminate the app.
 - Third-party notices and corresponding-source obligations must be prepared before a build containing the engine or network is distributed through TestFlight.
 
+## Accepted research-stage resource decisions
+
+These decisions apply to current local research. They do not approve the current network as the final TestFlight or other distribution asset.
+
+- `minixiangqi-12c45d5da817.nnue` is selected and currently used for research.
+- The currently inspected file is 4,333,499 bytes with SHA-256 `12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce`. Its structural loading with the current local `minixiangqi` engine has been verified.
+- The file's known trainer string is not sufficient provenance or licensing evidence. Origin, training revision, redistribution license, and the final packaged asset remain release gates.
+- The shared multiplatform app target enables `com.apple.developer.kernel.increased-memory-limit` and `com.apple.developer.kernel.extended-virtual-addressing`. Their intended benefit is on iOS and iPadOS; macOS behavior must not depend on them. The app must still work when an increased memory limit is unavailable.
+- Extended virtual addressing is not treated as additional physical memory or permission to consume all available memory. Hash and other engine allocations remain explicitly bounded and subject to device measurement.
+
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
@@ -73,5 +83,5 @@ User-facing levels use localized names rather than an unverified Mini Xiangqi El
 - Approve named AI levels and calibrated node/time profiles.
 - Decide whether the MVP uses built-in Mini Xiangqi, an AXF child, or a focused fork variant.
 - Approve the minimized soldier and chase fixtures that would justify a fork patch.
-- Establish the NNUE provenance, license, packaging name, compatibility checks, and fallback policy.
+- Establish the research NNUE's provenance and license or select a replacement, then approve the distribution asset's packaging name, compatibility checks, and fallback policy.
 - Define the pinned-manifest format shared between the app and Fairy-Stockfish repositories.
