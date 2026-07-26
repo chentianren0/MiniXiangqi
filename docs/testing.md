@@ -63,6 +63,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify initialization, capability checks, option application, legal proposed moves, cancellation, teardown, and stale-result rejection.
 - Test missing, corrupted, incompatible, and incorrectly named engine or NNUE assets.
 - Verify the configured NNUE fingerprint and positive load signal before search; a filename alone is not sufficient.
+- Verify every level applies the accepted shared search profile and differs only in `go movetime`.
+- Verify the applied `Threads` value equals the active processor count reported by the device at engine initialization.
+- Compare candidate shared Hash settings with paired games that reverse colors and control openings and thinking time. Use game results as the primary playing-strength evidence; treat nodes per second, depth, and hash utilization only as diagnostics.
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure latency, memory, energy, and thermal behavior on representative supported devices before fixing AI profiles.
 - Verify that the app remains functional when increased memory is unavailable and treats `os_proc_available_memory()` as changing advisory information rather than a target to consume.
