@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi app engineers, engine integrators, build engineers, and reviewers. It is owned by the Xcode app repository and defines how the app may package, call, constrain, and validate an external Fairy-Stockfish engine. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Draft app-side engine proposal.** The adapter, packaging, AI profiles, and exact runtime rules authority remain under discussion. Nothing in this document is normative until its status or an individual section is explicitly marked accepted. Items under **Need to discuss** are non-normative.
+> **Status: Draft app-side engine proposal.** The adapter, packaging, exact AI level names and timings, shared Hash size, and runtime rules authority remain under discussion. Sections explicitly labeled accepted are normative; other material remains a proposal. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -37,15 +37,19 @@ The concrete Swift/C/C++ or Objective-C++ interface has not been selected.
 
 ## AI difficulty profiles
 
-User-facing levels use localized names rather than an unverified Mini Xiangqi Elo claim. A versioned internal profile may combine:
+### Accepted search-profile policy
 
-- Fairy-Stockfish `Skill Level`;
-- a node budget;
-- a wall-time cap;
-- thread and hash limits;
-- engine, variant, and evaluation identifiers.
+- User-facing levels use localized names rather than an unverified Mini Xiangqi Elo claim.
+- All levels share the same strongest accepted engine configuration and differ only in their maximum thinking time, sent through `go movetime`.
+- The shared configuration uses `Skill Level = 20`, `UCI_LimitStrength = false`, `MultiPV = 1`, `Ponder = false`, and NNUE evaluation.
+- Search has no node or depth limit. The time boundary controls when each level must return its move.
+- `Threads` is initialized from `ProcessInfo.processInfo.activeProcessorCount`, so the engine uses the active processor count reported by the current device rather than a hard-coded count.
+- One bounded Hash value is shared by every level. The final value remains unresolved pending game-strength and device-resource comparison of the accepted candidates.
+- Engine, variant, NNUE, and option identifiers are versioned with the internal profile so a saved diagnostic record can identify the configuration that produced a move.
 
-`UCI_Elo` is calibrated from chess results and must not be displayed as Mini Xiangqi Elo without independent calibration. Exact level names and profile values require measurement on the supported devices after the variant and evaluation network are fixed.
+Search speed statistics such as nodes per second, depth, and hash utilization are diagnostic signals, not substitutes for measured playing strength. Candidate shared configurations are selected primarily through game results under controlled paired comparisons, then checked against memory, energy, thermal, and response-time requirements on supported devices.
+
+`UCI_Elo` is calibrated from chess results and must not be displayed as Mini Xiangqi Elo without independent Mini Xiangqi calibration. The number and names of levels and each level's exact `movetime` remain unresolved until the target variant, network, and representative-device measurements are stable.
 
 ## Variant and chase behavior
 
@@ -86,7 +90,8 @@ These decisions apply to current local research. They do not approve the current
 - If adjudication is outside the engine, decide how search receives equivalent repetition and chase semantics so it does not prefer a line the product later rules as losing.
 - Select the Swift-to-engine bridge and Apple-platform packaging format.
 - Define backgrounding, suspension, teardown, and memory-pressure behavior.
-- Approve named AI levels and calibrated node/time profiles.
+- Approve the AI level names and each level's exact `movetime`.
+- Select the shared Hash value after controlled game-strength comparison and supported-device memory, energy, and thermal measurement.
 - Approve the minimized soldier and chase fixtures that would justify a fork patch.
 - Decide the custom variant's final identifier, bundled configuration filename, network alias strategy, and focused fork patch boundary.
 - Establish the research NNUE's provenance and license or select a replacement, then approve the distribution asset's packaging name, compatibility checks, and fallback policy.
