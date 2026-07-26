@@ -44,7 +44,15 @@ The serialization format is not yet selected. Callers must not decode or modify 
 
 There is at most one active game. Completed games are immutable history records: replay is read-only, and editing their move line is not supported. A history record may be explicitly deleted.
 
-Undo changes the active game's main line and is saved immediately. The exact unit and depth of undo, whether redo exists, and the transition between a terminal active game and immutable history still need product decisions.
+Undo changes the active game's retained main line and is saved immediately. The archive does not preserve discarded moves, an undo count, hidden branches, or redo state.
+
+- Free Play removes one ply per Undo action and supports repeated Undo to the initial position.
+- Human-versus-computer Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed computer reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
+- If a human move itself produces an unconfirmed natural terminal state, Undo removes that human move.
+- An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result moves it to immutable History.
+- Confirmed resignation records a human loss and moves the game to immutable History.
+- Replacing an unfinished game records the old game in immutable History with an ended-early reason and no competitive result.
+- A new move after Undo permanently replaces the discarded continuation.
 
 ## Import and export
 
@@ -76,10 +84,8 @@ The app does not use CloudKit, remote synchronization, or network backup. Its da
 > The following questions are non-normative and are not implementation requirements.
 
 - Which portable format and file extension should version 1 use?
-- Which outcome and end-reason values are required, including user-ended unfinished games?
+- Define stable serialized identifiers for the accepted natural, resignation, and ended-early outcomes, plus any additional end reasons the archive requires.
 - Which provenance fields should distinguish locally played, imported, and future derived games?
 - How should duplicate identities and repeated imports be handled?
-- When exactly does a terminal game become immutable, and is undo available before that transition?
-- Does one-step undo remove one ply or one complete human/computer turn in each play mode, and is redo available?
 - Should import accept only completed history games, or also an active-game record?
 - What compatibility promise should later app versions make for older exported archives?

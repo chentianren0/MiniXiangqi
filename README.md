@@ -4,9 +4,9 @@ Mini Xiangqi is a native, fully offline Mini Xiangqi game for iOS, iPadOS, and m
 
 ## Target MVP
 
-- Human versus on-device computer play, with color choice and configurable difficulty.
-- Local human-versus-human play on one device.
-- One-step undo during an active game.
+- Human versus on-device computer play, with Red, Black, or Random side choice and configurable difficulty.
+- Free Play, where one person controls both Red and Black.
+- Repeated undo during an active game, without redo.
 - One automatically saved active game at a time.
 - Local history with replay, deletion, and export, plus compatible game-record import.
 - `Play`, `History`, and `Settings` as the top-level destinations.

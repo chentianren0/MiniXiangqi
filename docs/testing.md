@@ -48,7 +48,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 - Test the single-active-game invariant and atomic active-game replacement.
 - Save each durable transition, recreate the container, and verify exact resume state.
-- Test history sorting, replay, deletion, undo persistence, and completed-record immutability.
+- Test repeated Free Play undo by ply and repeated human-versus-computer undo by decision cycle, including cancellation while the computer is thinking.
+- Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation.
+- Test history sorting, replay, deletion, ended-early records, confirmed resignation, and completed-record immutability.
 - Test every released SwiftData schema migration and archive-format migration from file-backed fixtures.
 - Round-trip exported files across iOS, iPadOS, and macOS.
 - Reject oversized, malformed, unsupported, inconsistent, and partially valid imports without partial persistence, and test repeated imports against the accepted duplicate policy.
@@ -57,8 +59,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 - Verify initialization, capability checks, option application, legal proposed moves, cancellation, teardown, and stale-result rejection.
 - Test missing, corrupted, incompatible, and incorrectly named engine or NNUE assets.
+- Verify the configured NNUE fingerprint and positive load signal before search; a filename alone is not sufficient.
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure latency, memory, energy, and thermal behavior on representative supported devices before fixing AI profiles.
+- Verify that the app remains functional when increased memory is unavailable and treats `os_proc_available_memory()` as changing advisory information rather than a target to consume.
 
 ### UI, accessibility, sound, and haptics
 
