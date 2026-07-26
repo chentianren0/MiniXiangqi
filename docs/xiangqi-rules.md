@@ -2,7 +2,7 @@
 
 This document is for product reviewers, rules reviewers, engineers, and testers who need one contract for legal Mini Xiangqi play and user-visible game results. It owns the adopted interpretation of Mini Xiangqi rules and the identifiers that connect prose to executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, UI presentation, implementation progress, or work tracking.
 
-> **Status: Partially accepted rules contract.** The normative source and the ordinary board, movement, and stalemate rules below are accepted. Repetition, perpetual-check, perpetual-chase, notation, and executable fixtures remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
+> **Status: Partially accepted rules contract.** The normative source, ordinary board and movement rules, absence of a move-count draw, threefold-repetition threshold, and high-level perpetual-check and perpetual-chase outcomes below are accepted. Exact edge-case definitions, notation, executable fixtures, and the runtime rules authority remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
 
 ## Normative source
 
@@ -44,17 +44,20 @@ The exact starting-position encoding, coordinate system, and notation must be fr
 
 The complete result taxonomy, including user-ended games and imported records, is defined jointly with [Game data](game-data.md) after the unresolved rule outcomes below are accepted.
 
-## Repetition, perpetual check, and perpetual chase
+## Move-count, repetition, perpetual check, and perpetual chase
 
-The selected public source describes these principles:
+- Mini Xiangqi has no automatic move-count draw. A Fairy-Stockfish variant used by the app must explicitly disable the inherited move-count rule with `nMoveRule = 0`.
+- The repetition threshold is three occurrences of the same position.
+- A neutral threefold repetition is a draw.
+- A unilateral perpetual-check violation is a loss for the checking side.
+- A unilateral perpetual chase of the same unprotected target is a loss for the chasing side.
+- Kings and soldiers are excluded as perpetual-chase targets.
+- When one side perpetually checks and the other perpetually chases, the checking side is the side required to stop and loses if the violation is completed.
+- When both sides commit the same class of perpetual violation, the result is a draw.
 
-- A player who persists in perpetual check may be required to stop or lose.
-- A player who persistently chases one unprotected piece may be required to stop or lose.
-- Generals and soldiers are excluded as perpetual-chase targets.
-- When one side checks and the other chases, the checking side must stop.
-- Repetition without a violation, or the same simultaneous violation by both sides, may be a draw.
+The target engine behavior follows the selected PyChess Mini Xiangqi rules and uses Fairy-Stockfish's AXF chasing adjudication as its implementation direction. AXF does not replace the selected public source as the user-visible rules authority.
 
-These statements do not yet define a deterministic executable adjudicator. Exact history length, protection tests, interruption rules, simultaneous violations, and mandatory-versus-claimable results require approved examples.
+These accepted outcomes still require minimized executable fixtures. Exact position-identity fields, protection tests, interruption rules, discovered and pinned attacks, mixed or mutual sequences, and the point at which a violation becomes terminal remain unresolved until those fixtures are approved.
 
 ## Conformance fixtures
 
@@ -74,11 +77,9 @@ Fixtures and this document must be reviewed together. A fixture is not accepted 
 > The following questions are non-normative and are not implementation requirements.
 
 - Freeze the exact starting FEN, side to move, coordinates, and canonical move notation.
-- Decide whether any move-count rule applies; the selected public page does not specify one.
-- Define the repetition threshold and whether a neutral repetition is automatic, claimable, or optional.
 - Define exactly what makes a chased piece protected or unprotected.
 - Define how interrupted, discovered, pinned, mutual, and mixed check/chase sequences are adjudicated.
-- Decide how the source wording “can be ruled” becomes deterministic offline behavior.
+- Define the exact deterministic history boundary at which each accepted repetition or perpetual-violation outcome is committed offline.
 - Approve minimized long-check and long-chase fixtures before selecting the runtime rules authority.
 - If AXF is selected and approved fixtures expose a mismatch, decide whether configuration is sufficient or a Fairy-Stockfish fork change is required for soldier sideways movement and chase-target exclusion.
 - Decide whether the app, Fairy-Stockfish, or another component executes the authoritative offline adjudication.

@@ -42,6 +42,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 - Run approved conformance fixtures for movement, king safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase.
 - Verify every ply's legal set, resulting position, check state, and final result where applicable.
+- Verify that the target custom variant has no move-count draw and that neutral threefold repetition is a draw.
+- Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and king and soldier chase-target exclusion.
+- Run the same accepted history fixtures against the app-visible adjudicator and the engine search configuration; reject a configuration that gives the engine conflicting terminal semantics.
 - Add a minimized failing fixture before changing an accepted rule interpretation.
 
 ### Game data
