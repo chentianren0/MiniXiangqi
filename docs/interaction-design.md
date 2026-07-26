@@ -36,12 +36,34 @@ Liquid Glass is a required part of the visual and interaction direction.
 
 The board is the primary content during play. Its interaction design must cover:
 
-- Board orientation and color choice.
+- Color choice and the accepted board-orientation behavior below.
 - Selection, legal destinations, the last move, check, and game result states.
 - Move input, cancellation, repeated undo, and AI-thinking states.
 - Clear prevention or explanation of unavailable actions.
 - Replay controls and navigation through a history game.
 - Help that explains both game concepts and interface behavior in context.
+
+### Board orientation
+
+- In human-versus-computer play, the human player's side is displayed at the bottom. Choosing Black flips the board automatically; choosing Random first resolves the human side and then applies the corresponding orientation.
+- In Free Play, Red is at the bottom by default. A visible **Flip Board** control allows the player to change orientation at any time.
+- Human-versus-computer history replay defaults to the original human player's perspective. Free Play and imported history default to Red at the bottom. History replay provides the same visible orientation control.
+- Flipping the board changes presentation only. It does not change the side to move, game state, move history, or stored coordinates.
+- Piece text and symbols remain upright and readable in either orientation.
+- Board flipping uses a visible control rather than a hidden rotation gesture. The control has a localized accessibility label and an equivalent keyboard command where keyboard input is supported.
+
+### Move input
+
+- Tap-to-move and drag-to-move are both supported and commit through the same legal-move boundary.
+- Tapping a movable piece controlled by the human selects it and reveals all of its legal destinations.
+- Tapping a legal destination commits the move immediately. Ordinary legal moves do not require confirmation.
+- Tapping another movable piece controlled by the human switches the selection directly.
+- Tapping the selected piece again, or tapping outside the board, cancels the selection.
+- Tapping an illegal board square does not move the piece or cancel the current selection. It provides brief, non-blocking feedback.
+- Dragging a movable piece beyond the gesture threshold selects it and reveals its legal destinations. Dropping on a legal destination commits the move; dropping elsewhere returns the piece to its origin.
+- iPhone and iPad use touch interaction. Mac supports the equivalent click-to-move and pointer-drag behavior.
+- Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.
+- When input is unavailable, including while the computer is thinking or after a result is confirmed, the board rejects the interaction before visually moving a piece.
 
 ### Turn status
 
@@ -77,6 +99,22 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 
 Animation, motion, and visual effects are part of the intended experience. They must communicate state changes and preserve the user’s understanding of the position. Reduced-motion preferences and interruption behavior must be designed alongside the default experience.
 
+The first implementation uses a restrained, tactile motion language:
+
+- Selecting a piece uses a brief, approximately 120–160 ms lift, scale, and shadow transition without continuous movement.
+- Empty legal destinations use a small dot; capturable destinations use a ring around the target piece. The two states differ by shape and do not rely on color alone.
+- During a drag, the piece follows the pointer or touch, its origin retains a subtle marker, and a nearby legal target strengthens its feedback.
+- An ordinary move travels smoothly to its destination in approximately 180–240 ms.
+- A capture coordinates a brief scale-and-fade removal with the moving piece's arrival and targets an overall duration of approximately 250 ms.
+- An invalid drop returns the piece smoothly to its origin and gives the attempted destination brief feedback without an alert or forceful shake.
+- A computer move uses the same move language and leaves persistent origin and destination markers so the player can identify the completed move.
+- Check uses a persistent, non-color-only king-square treatment plus one brief pulse. It does not flash continuously.
+- Undo visually reverses the affected move or decision cycle and restores a captured piece when needed. Board input and another Undo remain unavailable until the transition completes.
+- Board flipping uses an approximately 300–400 ms coordinated re-layout while piece text and symbols remain upright.
+- With Reduce Motion, lifts, springs, pulses, and long-distance travel are removed in favor of a brief crossfade or immediate state update.
+
+The exact durations, easing curves, scale, shadow, opacity, and feedback strength are first-version values subject to adjustment after testing on physical iPhone, iPad, and Mac hardware. Liquid Glass belongs primarily to functional layers around the board; board-state markers must remain direct and readable rather than becoming translucent decoration.
+
 ## Sound and haptics
 
 Sound and haptics are part of the intended experience. They must reinforce meaningful actions and game events, remain optional where platform conventions expect user control, and avoid being the only way information is conveyed.
@@ -109,12 +147,11 @@ The interface must be designed for localization. User-facing text must not be em
 
 - Define the navigation presentation on each device class and window size.
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
-- Define board orientation behavior for human-versus-computer and Free Play games.
-- Define move-entry gestures and the exact selection and legal-move feedback.
+- Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
 - Define the exact turn-status copy, symbols, progress treatment, placement, and VoiceOver announcement behavior.
 - Define history replay controls and the import, export, and delete flows.
 - Define the scope, placement, and teaching sequence of help content.
-- Define the motion language, timings, interruption rules, and reduced-motion alternatives.
+- Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define sound events, sound design, volume or mute controls, and platform differences.
 - Define haptic events and behavior on devices without haptic support.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.

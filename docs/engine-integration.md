@@ -49,10 +49,16 @@ User-facing levels use localized names rather than an unverified Mini Xiangqi El
 
 ## Variant and chase behavior
 
-- Built-in `minixiangqi` is a baseline for adapter, movement, and search integration.
-- A configuration-only AXF child is an experimental candidate for long-check and long-chase fixtures.
-- The app-side contract requires Mini Xiangqi soldiers to move sideways from the start while remaining excluded as chase targets under the selected public rules.
-- If approved fixtures show that no pinned engine configuration satisfies that observable behavior, the Fairy-Stockfish repository must own the source analysis, patch design, and fork-specific tests. This document records only the app-facing requirement and the pinned artifact it consumes.
+### Accepted target rule-integration decisions
+
+- Built-in `minixiangqi` is limited to research, adapter, ordinary-movement, and search-integration baselines. It is not the final target-MVP rule configuration.
+- The target uses a pinned custom variant derived from `minixiangqi` with AXF chasing adjudication.
+- The custom variant disables the inherited move-count rule with `nMoveRule = 0`, uses `nFoldRule = 3`, and preserves illegal-perpetual-check adjudication.
+- The target behavior follows the selected PyChess Mini Xiangqi rules: neutral threefold repetition is a draw; a unilateral perpetual checker or chaser loses; a mutual same-class violation draws; checking takes precedence over chasing; and kings and soldiers are excluded as chase targets.
+- Mini Xiangqi soldiers move sideways from the start while remaining excluded as chase targets.
+- If the pinned AXF configuration cannot satisfy the soldier exclusion or another approved observable fixture, the Fairy-Stockfish repository owns the required source change and fork-specific tests. The app repository records the required behavior and the pinned artifact it consumes.
+
+The exact authoritative runtime rules component and adapter handoff remain unresolved. Whichever component commits the result, engine search and app-visible adjudication must be validated against the same approved history fixtures.
 
 ## Packaging and NNUE
 
@@ -81,7 +87,7 @@ These decisions apply to current local research. They do not approve the current
 - Select the Swift-to-engine bridge and Apple-platform packaging format.
 - Define backgrounding, suspension, teardown, and memory-pressure behavior.
 - Approve named AI levels and calibrated node/time profiles.
-- Decide whether the MVP uses built-in Mini Xiangqi, an AXF child, or a focused fork variant.
 - Approve the minimized soldier and chase fixtures that would justify a fork patch.
+- Decide the custom variant's final identifier, bundled configuration filename, network alias strategy, and focused fork patch boundary.
 - Establish the research NNUE's provenance and license or select a replacement, then approve the distribution asset's packaging name, compatibility checks, and fallback policy.
 - Define the pinned-manifest format shared between the app and Fairy-Stockfish repositories.
