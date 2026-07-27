@@ -39,8 +39,12 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A naturally completed or otherwise confirmed ended game becomes an immutable history game.
 - In both human-versus-computer play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
-- History games can be replayed manually or with user-started autoplay, deleted, and exported.
-- Importing compatible game records is part of the target MVP.
+- A History record's game content cannot be edited. The complete record can still be deleted individually.
+- History lists the most recently recorded or imported games first. Each entry identifies at least its date, mode, result or end reason, and move count; human-versus-computer entries also identify the human side, and imported entries are visibly marked.
+- History games can be replayed manually or with user-started autoplay and exported one game per file.
+- Import accepts one compatible game file at a time and creates an immutable History record without replacing or otherwise changing the active game.
+- Importing an exact duplicate does not create another record and offers access to the existing record. A file with the same stable identity but different game content is rejected as a conflict.
+- Bulk deletion, History search, filters, and tags are not part of the target MVP.
 - Starting a new game from a selected historical position is not part of the target MVP.
 
 ## Product navigation
@@ -60,6 +64,8 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 - Chess clocks.
 - Multiple main windows.
 - Starting a new game from a selected historical position.
+- Editing History game content.
+- Bulk History deletion, search, filters, and tags.
 
 ## Need to discuss
 
@@ -67,6 +73,5 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 - Define the number, names, and user-facing meaning of AI difficulty levels.
 - Define the default side choice for new human-versus-computer installations.
-- Define import and export product behavior, including whether imported games are always historical.
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.
