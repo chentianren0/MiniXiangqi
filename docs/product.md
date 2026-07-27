@@ -71,6 +71,17 @@ The primary destinations are:
 - **History**
 - **Settings**
 
+Settings holds the persistent user preferences the target MVP accepts:
+
+- the default first-mover choice for human-versus-AI setup;
+- the default AI level;
+- **Confirm Before Deleting**, enabled by default;
+- a sound toggle and a separate haptics toggle, the latter offered only where the hardware supports haptics;
+- **Western piece labels**, off by default, which shows English piece initials on the board instead of Chinese characters;
+- the interface language, where the platform does not already provide that control.
+
+Settings holds preferences only. It never contains game data, and changing a default never alters an active game.
+
 Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 ## Target-MVP exclusions

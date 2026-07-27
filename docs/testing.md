@@ -125,6 +125,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test keyboard and pointer behavior where supported.
 - Test Increase Contrast, Differentiate Without Color, Reduce Motion, and Reduce Transparency.
 - Verify that sound, haptics, color, motion, and visual effects are never the sole carrier of required information.
+- Verify the accepted piece characters render from the system Chinese font at every weight used, with no fallback to another family and no per-character size compensation, on each supported platform.
+- Verify that Red and Black remain distinguishable without color, both with Chinese characters and with Western piece labels enabled.
+- Verify the sound, haptics, and Western-piece-label settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
+- Verify that Western piece labels change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical with the setting on or off.
 - Verify unavailable hardware and muted-audio behavior.
 
 ## Build and internal-distribution gates

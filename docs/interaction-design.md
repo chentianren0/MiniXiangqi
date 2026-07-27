@@ -35,6 +35,26 @@ Each platform uses its own current native visual system rather than an imitation
 - Visual effects must not make controls, state, focus, or text harder to perceive.
 - The board, pieces, and game-state markers form one shared visual identity across platforms; only the surrounding functional chrome is platform-specific.
 
+## Piece representation
+
+Xiangqi pieces are Chinese characters, and this is a teaching application, so the board presents the real characters rather than a translated substitute.
+
+- The accepted piece characters pair a distinct Red and Black form for every piece type, so the two sides are distinguishable by glyph alone and never by colour alone:
+
+  | Piece | Red | Black |
+  |---|---|---|
+  | General | 帅 | 将 |
+  | Chariot | 俥 | 车 |
+  | Horse | 傌 | 马 |
+  | Cannon | 炮 | 砲 |
+  | Soldier | 兵 | 卒 |
+
+  Mini Xiangqi has no advisors or elephants, so no characters are defined for them.
+- Piece characters are game content, not interface text: they are identical in every supported language and are never translated on the board.
+- Every one of these characters is present in the system Chinese font on Apple platforms and shares a uniform advance width, so pieces render at one consistent size without per-character adjustment. Implementations must still confirm that heavier weights resolve within the same family rather than falling back to another face.
+- A **Western piece labels** setting replaces the characters with the conventional English initials — `K` general, `R` chariot, `H` horse, `C` cannon, `P` soldier — for readers who do not yet know the characters. It is off by default in every language, changes presentation only, and never alters game content, archives, or notation. With it enabled, Red and Black must remain distinguishable by a means other than colour.
+- English piece names are General, Chariot, Horse, Cannon, and Soldier. They appear in help, accessibility announcements, and any descriptive text, never as board labels unless the Western-labels setting is enabled.
+
 ## Board and game interaction
 
 The board is the primary content during play. Its interaction design must cover:
@@ -259,7 +279,9 @@ The exact durations, easing curves, scale, shadow, opacity, and feedback strengt
 
 ## Sound and haptics
 
-Sound and haptics are part of the intended experience. They must reinforce meaningful actions and game events, remain optional where platform conventions expect user control, and avoid being the only way information is conveyed.
+Sound and haptics are part of the intended experience. They must reinforce meaningful actions and game events and must never be the only way information is conveyed.
+
+Both are user-controllable through separate Settings toggles, per the Settings scope in [product.md](product.md). Haptics are available only where the hardware provides them; on a device without them the toggle is unavailable rather than silently ineffective, and no substitute effect is invented.
 
 ## Accessibility
 
@@ -274,7 +296,11 @@ The interaction design must consider:
 
 ## Localization
 
+The supported languages are Simplified Chinese and English. Simplified Chinese is the source language: the accepted user-facing copy in this document is normative, and its English counterparts are translations of it.
+
 The interface must be designed for localization. User-facing text must not be embedded in visual assets, and layouts must tolerate different text lengths. Terminology for Xiangqi pieces, rules, results, and controls must be consistent within each supported language.
+
+Piece characters are game content and are excluded from localization, as defined under Piece representation. Their English names localize wherever they appear as text.
 
 ## Platform adaptation
 
@@ -290,17 +316,17 @@ The interface must be designed for localization. User-facing text must not be em
 > The items below are questions, not requirements or implementation authorization.
 
 - Define the navigation presentation on each device class and window size.
-- Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
+- Define the visual system for the board, coordinates, colors, typography, themes, and the piece disc treatment carrying the accepted characters.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
 - Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
-- Define sound events, sound design, volume or mute controls, and platform differences.
-- Define haptic events and behavior on devices without haptic support.
+- Define the sound events, sound design, and platform differences behind the accepted sound toggle.
+- Define the haptic events behind the accepted haptics toggle.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
-- Define supported languages, Xiangqi terminology, and localization review.
+- Define the English Xiangqi terminology beyond the accepted piece names, and the localization review process.
 - Define how Liquid Glass behaves with contrast, Reduce Transparency, and different platform appearances.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
