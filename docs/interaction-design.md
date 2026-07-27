@@ -43,11 +43,41 @@ The board is the primary content during play. Its interaction design must cover:
 - Replay controls and navigation through a history game.
 - Help that explains both game concepts and interface behavior in context.
 
+### Starting and configuring a game
+
+- With no active game, selecting **Human versus AI** or **Free Play** opens that mode's pre-start state on the board page.
+- With an unfinished active game, selecting either new mode immediately presents the one replacement confirmation described below. The confirmation shows the old game's metadata before the user leaves the Play start state.
+- Confirming the replacement ends the old game immediately and records it in History as ended early, then opens the selected mode's pre-start state.
+- Cancelling the replacement leaves the old active game unchanged and does not enter the selected mode.
+
+The human-versus-AI pre-start state is not an active game:
+
+- It shows the initial board as a noninteractive preview and does not show a side-to-move status.
+- A **本局设置** control group offers **我先手**, **AI 先手**, and **随机**, plus **AI 等级**.
+- The controls are initialized afresh from the persistent Settings defaults whenever the page is entered.
+- Their values exist only as an in-memory draft. They are not autosaved, do not change the Settings defaults, and are discarded as soon as the user leaves the page.
+- **随机** remains unresolved and previews Red at the bottom. Successful game creation flips the board only if Random resolves to **AI 先手**.
+- **快速**, **标准**, and **深思** identify maximum AI thinking times of approximately 1, 3, and 5 seconds per move. **标准** is the default on a new installation.
+- **开始对局** creates no active game unless the required AI resources are available and the game can be persisted successfully. A Random first-mover choice is resolved only as part of successful game creation; if the resolved first mover is AI, search then begins.
+- While creation is in progress, **开始对局** cannot be invoked again. Leaving invalidates the attempt, creates no game, and prevents a late completion from committing after the draft is discarded.
+- Failed AI availability or active-game persistence keeps the page and draft available for retry, shows the applicable error, and re-enables **开始对局**. Leaving still discards the draft.
+
+The Free Play pre-start state is also not an active game:
+
+- It shows the same noninteractive initial-board preview with Red at the bottom and no side-to-move status.
+- It explains **你将控制红黑双方，红方先行。**
+- It shows **开始对局** without a **本局设置** group, side selector, AI controls, or pre-start board-flip control.
+- **开始对局** commits the active Free Play game, makes the board interactive, and then shows the Red side-to-move status.
+- While creation is in progress, **开始对局** cannot be invoked again. Leaving invalidates the attempt and prevents a late completion from creating a game.
+- A creation failure retains the pre-start page, presents an error, and re-enables **开始对局**. It creates no new Free Play game or further persistent change; an older game already ended by confirmation remains in History.
+
+Settings has a **人机对弈默认设置** group with **默认先后手** and **默认 AI 等级**. Its footer explains that these values initialize future human-versus-AI setup and do not change an active game. A new installation selects **我先手** and **标准**.
+
 ### Board orientation
 
-- In human-versus-computer play, the human player's side is displayed at the bottom. Choosing Black flips the board automatically; choosing Random first resolves the human side and then applies the corresponding orientation.
-- In Free Play, Red is at the bottom by default. A visible **Flip Board** control allows the player to change orientation at any time.
-- Human-versus-computer history replay defaults to the original human player's perspective. Free Play and imported history default to Red at the bottom. History replay provides the same visible orientation control.
+- In human-versus-AI play, the human player's side is displayed at the bottom. Choosing **我先手** previews and resolves Red; choosing **AI 先手** previews and resolves Black; choosing **随机** resolves the human side only when the game is created and then applies the corresponding orientation.
+- In Free Play, Red is at the bottom by default. Once the game starts, a visible **Flip Board** control allows the player to change orientation at any time.
+- Human-versus-AI history replay defaults to the original human player's perspective. Free Play and imported history default to Red at the bottom. History replay provides the same visible orientation control.
 - Flipping the board changes presentation only. It does not change the side to move, game state, move history, or stored coordinates.
 - Piece text and symbols remain upright and readable in either orientation.
 - Board flipping uses a visible control rather than a hidden rotation gesture. The control has a localized accessibility label and an equivalent keyboard command where keyboard input is supported.
@@ -63,32 +93,32 @@ The board is the primary content during play. Its interaction design must cover:
 - Dragging a movable piece beyond the gesture threshold selects it and reveals its legal destinations. Dropping on a legal destination commits the move; dropping elsewhere returns the piece to its origin.
 - iPhone and iPad use touch interaction. Mac supports the equivalent click-to-move and pointer-drag behavior.
 - Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.
-- When input is unavailable, including while the computer is thinking or after a result is confirmed, the board rejects the interaction before visually moving a piece.
+- When input is unavailable, including while the AI is thinking or after a result is confirmed, the board rejects the interaction before visually moving a piece.
 
 ### Turn status
 
 A persistent status element near the board is one coherent description of the current play state:
 
 - Its primary line always identifies the side to move, using the localized equivalent of **轮到红方** or **轮到黑方**.
-- In human-versus-computer play, a secondary label identifies that side's controller as **你** or **电脑**. Computer thinking is shown as activity attached to the computer's turn; it does not replace or compete with the side-to-move line.
-- Free Play omits a human/computer controller label because the same person controls both sides.
+- In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line.
+- Free Play omits a human/AI controller label because the same person controls both sides.
 - The design does not add a separate, unrelated instruction such as “please move” or “your turn.”
-- Board input is accepted only when the committed game state permits the user to move. It is disabled while the computer is thinking.
-- History replay uses a separate move-progress and playback state rather than describing the position as a human or computer turn.
+- Board input is accepted only when the committed game state permits the user to move. It is disabled while the AI is thinking.
+- History replay uses a separate move-progress and playback state rather than describing the position as a human or AI turn.
 
 Turn ownership, activity, and input availability must not be communicated by color alone. The element is driven by committed game and engine state, and a resolved Random side choice is visible in game metadata.
 
-### Insufficient memory for computer play
+### Insufficient memory for AI play
 
-- Before an AI engine is initialized, the app calculates the accepted Hash budget. A budget below 256 MiB does not start the computer opponent.
+- Before an AI engine is initialized, the app calculates the accepted Hash budget. A budget below 256 MiB does not start the AI opponent.
 - The app presents a notice with:
-  - Title: **无法启动电脑对手**
+  - Title: **无法启动 AI 对手**
   - Message: **当前可用内存不足。请尝试关闭一些其他 App，然后重试。**
   - Actions: **取消** and **重试**.
-- **取消** dismisses the notice without changing or ending the active game.
+- **取消** dismisses the notice without creating or changing an active game. In pre-start setup, the in-memory draft remains while the user stays on that page.
 - Retrying obtains a fresh `os_proc_available_memory()` value and recalculates the budget; the prior value is not cached.
 - This low-memory path does not substitute a smaller Hash or perform a special automatic cleanup pass to manufacture the minimum budget.
-- Any active game remains saved and unchanged while the computer opponent is unavailable.
+- Any active game being resumed remains saved and unchanged while the AI opponent is unavailable.
 - The notice may suggest closing other apps, but it does not promise that iOS will terminate them or that a retry will succeed.
 
 The notice's exact presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
@@ -97,30 +127,32 @@ The notice's exact presentation, repeated-failure behavior, and accessibility an
 
 The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, the side to move, and the move count.
 
-Starting a new game while another is active uses one fixed confirmation for every old-mode and new-mode combination:
+Selecting **Human versus AI** or **Free Play** while another game is active immediately uses one fixed confirmation for every old-mode and new-mode combination:
 
-- Title: **End Unfinished Game?**
-- Message: **Starting a new game will end the game shown above and save it to History.**
-- Actions: **Cancel** and **End & Start New Game**.
+- Title: **结束未完成的对局？**
+- Message: **继续后，上方显示的对局将提前结束并保存到历史。**
+- Actions: **取消** and **结束并继续**.
 
-The sheet shows the existing game's metadata. Its wording does not interpolate mode-specific combinations and does not use an ambiguous phrase such as “current play.” Confirming records the old game as ended early without a competitive result, then starts the requested game atomically.
+The sheet shows the existing game's metadata. Its wording does not interpolate mode-specific combinations and does not use an ambiguous phrase such as “current play.” Confirming atomically records the old game as ended early without a competitive result and clears it as the active game, then opens the selected mode's pre-start state. If the user later leaves either pre-start state, the old game remains ended and no active game is created.
+
+An active game whose natural result card is awaiting confirmation is not eligible for this replacement flow. The mode entries remain unavailable until the user chooses **悔棋** or **结束对局** on that card.
 
 ### Undo and result confirmation
 
 - Free Play removes one move per Undo action and can repeat back to the initial position.
-- In human-versus-computer play, Undo while the computer is thinking cancels the search and removes the human move that triggered it.
-- After the computer has replied, one Undo action removes the computer reply and the preceding human move, returning to the previous human decision point. The action can be repeated by complete decision cycles.
+- In human-versus-AI play, Undo while the AI is thinking cancels the search and removes the human move that triggered it.
+- After the AI has replied, one Undo action removes the AI reply and the preceding human move, returning to the previous human decision point. The action can be repeated by complete decision cycles.
 - If a human move itself reaches a natural terminal state, Undo removes that human move while the result presentation remains unconfirmed.
-- If the computer moved first, its opening move alone cannot be undone.
+- If the AI moved first, its opening move alone cannot be undone.
 - Redo is not available. A new move after Undo permanently replaces the discarded continuation.
 - A natural result remains undoable while its result presentation awaits confirmation. Undo dismisses that presentation and resumes the game.
-- After result confirmation, resignation confirmation, or **End & Start New Game**, the History record is immutable and cannot be undone.
+- After result confirmation, resignation confirmation, or **结束并继续**, the History record is immutable and cannot be undone.
 - Undo is disabled at the earliest valid boundary and while a prior Undo transition is still being applied.
 
 ### Natural result presentation
 
 - When a natural terminal result is reached, the final board remains fully visible and a non-dismissible result card appears near it.
-- The card title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-computer play may also show relevant player metadata without replacing the result.
+- The card title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-AI play may also show relevant player metadata without replacing the result.
 - Before confirmation, the actions are **悔棋** and **结束对局**. Undo follows the mode-specific behavior above, dismisses the result card, and resumes the active game.
 - The result card cannot be dismissed by tapping outside it. Resignation remains a separate confirmed action rather than being folded into the natural-result card.
 - After **结束对局**, the final board remains visible, the record becomes immutable History, and the card changes to **已记录到历史**.
@@ -129,7 +161,7 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 
 ### Claimable threefold repetition
 
-- In both human-versus-computer play and Free Play, a neutral threefold repetition does not automatically end the game.
+- In both human-versus-AI play and Free Play, a neutral threefold repetition does not automatically end the game.
 - When the draw first becomes available, the notice says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
 - **以和棋结束** confirms an immutable draw record in History.
 - After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice.
@@ -149,7 +181,7 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 ### History library
 
 - Pinned records appear before unpinned records. Each group orders the most recently recorded or imported first.
-- Each entry shows its date, mode, result or end reason, and move count. Human-versus-computer entries also show the human side; imported records have a visible imported marker.
+- Each entry shows its date, mode, result or end reason, and move count. Human-versus-AI entries also show the human side; imported records have a visible imported marker.
 - Selecting an entry opens its read-only replay.
 - Record content is read-only. Pinning changes only local library organization.
 - A partial right-to-left swipe reveals icon-and-text actions on the trailing side. From left to right, they are blue **共享** and red **删除**, with Delete nearest the trailing edge.
@@ -183,7 +215,7 @@ The first implementation uses a restrained, tactile motion language:
 - An ordinary move travels smoothly to its destination in approximately 180–240 ms.
 - A capture coordinates a brief scale-and-fade removal with the moving piece's arrival and targets an overall duration of approximately 250 ms.
 - An invalid drop returns the piece smoothly to its origin and gives the attempted destination brief feedback without an alert or forceful shake.
-- A computer move uses the same move language and leaves persistent origin and destination markers so the player can identify the completed move.
+- An AI move uses the same move language and leaves persistent origin and destination markers so the player can identify the completed move.
 - Check uses a persistent, non-color-only king-square treatment plus one brief pulse. It does not flash continuously.
 - Undo visually reverses the affected move or decision cycle and restores a captured piece when needed. Board input and another Undo remain unavailable until the transition completes.
 - Board flipping uses an approximately 300–400 ms coordinated re-layout while piece text and symbols remain upright.
@@ -224,7 +256,7 @@ The interface must be designed for localization. User-facing text must not be em
 - Define the navigation presentation on each device class and window size.
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
-- Define turn-status placement, symbols, exact computer-activity treatment, transient announcements, and VoiceOver behavior.
+- Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define the scope, placement, and teaching sequence of help content.

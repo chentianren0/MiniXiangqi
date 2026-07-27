@@ -36,9 +36,24 @@ The serialization format is not yet selected. Callers must not decode or modify 
 - Save explicitly after every accepted move, undo, game completion, import, deletion, and other durable state change.
 - Treat SwiftData autosave as a secondary safeguard, not the commit mechanism.
 - A committed move is the recovery boundary after app exit or interruption.
-- Starting a new game while one is active first ends the old game and places it in history.
-- Ending the old game, creating the new game, and changing `GameLibrary.activeGame` form one atomic replacement operation.
-- A failed replacement leaves the previously committed active game intact.
+
+### Accepted mode-selection replacement behavior
+
+- Replacement accepts only an unfinished, nonterminal active game. An active game with an unconfirmed natural result must be undone or confirmed through the result flow rather than recorded as ended early.
+- For either Human versus AI or Free Play, confirming replacement places the old game in History and clears `GameLibrary.activeGame` in one atomic operation.
+- The selected mode's pre-start state begins only after that commit succeeds. Creating the later game is a separate operation triggered by **开始对局**.
+- A failed replacement operation leaves the previously committed active game intact and does not continue to the selected mode.
+
+### Accepted pre-start state behavior
+
+- Neither mode's pre-start state is written to SwiftData or a game archive. Neither creates a `StoredGame` or changes `GameLibrary.activeGame`.
+- Leaving either pre-start state discards it. If it was entered after ending an older game, that older game remains immutable History and is not restored.
+- Human-versus-AI Settings defaults and the per-game setup draft are separate state. Entering setup creates a fresh in-memory draft from the current Settings defaults; reopening after leaving creates another fresh draft from the then-current defaults.
+- A Random first-mover choice remains unresolved in the draft. Only successful **开始对局** creation commits the resolved human side, AI level identifier, and exact thinking-time value as durable active-game configuration.
+- AI availability or active-game persistence failure creates no active game and changes no persistent game-library state. The unresolved draft may remain only while the setup page remains open.
+- Free Play has no configurable draft fields. Its in-memory pre-start state retains only the pending mode until **开始对局** commits the new active game.
+- A failed creation in either mode leaves no active game, retains the corresponding in-memory pre-start state for retry, and changes no persistent game-library state.
+- Each creation attempt is single-flight and bound to the identity or revision of the pre-start session that initiated it. Duplicate Start actions are ignored or disabled, and leaving invalidates the session so a late result cannot commit a game.
 
 ## Active games, history, and undo
 
@@ -47,7 +62,7 @@ There is at most one active game. Completed games have immutable game content: r
 Undo changes the active game's retained main line and is saved immediately. The archive does not preserve discarded moves, an undo count, hidden branches, or redo state.
 
 - Free Play removes one ply per Undo action and supports repeated Undo to the initial position.
-- Human-versus-computer Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed computer reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
+- Human-versus-AI Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed AI reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
 - If a human move itself produces an unconfirmed natural terminal state, Undo removes that human move.
 - An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result moves it to immutable History.
 - A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; only claiming the draw commits an immutable draw record.
