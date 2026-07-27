@@ -39,7 +39,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 Xiangqi pieces are Chinese characters, and this is a teaching application, so the board presents the real characters rather than a translated substitute.
 
-- The accepted piece characters pair a distinct Red and Black form for every piece type, so the two sides are distinguishable by glyph alone and never by colour alone:
+- The accepted piece characters give every piece type a distinct Red and Black form, so the sides are distinguishable by glyph and never by colour alone:
 
   | Piece | Red | Black |
   |---|---|---|
@@ -50,9 +50,11 @@ Xiangqi pieces are Chinese characters, and this is a teaching application, so th
   | Soldier | 兵 | 卒 |
 
   Mini Xiangqi has no advisors or elephants, so no characters are defined for them.
+- Four pairs differ in whole shape. The cannon pair differs only in its radical, 火 against 石, so it is the weakest of the five at board size and the piece treatment must carry additional non-colour distinction for it. 砲 is chosen over the equally attested 包 because it is the classical counterpart to 炮 and is the form the normative source itself uses in prose, though that source's summary table gives 包.
 - Piece characters are game content, not interface text: they are identical in every supported language and are never translated on the board.
-- Every one of these characters is present in the system Chinese font on Apple platforms and shares a uniform advance width, so pieces render at one consistent size without per-character adjustment. Implementations must still confirm that heavier weights resolve within the same family rather than falling back to another face.
-- A **Western piece labels** setting replaces the characters with the conventional English initials — `K` general, `R` chariot, `H` horse, `C` cannon, `P` soldier — for readers who do not yet know the characters. It is off by default in every language, changes presentation only, and never alters game content, archives, or notation. With it enabled, Red and Black must remain distinguishable by a means other than colour.
+- On macOS every one of these characters resolves through the system font to a single Chinese family, at the matching weight from regular through heavy, with a uniform advance width — so pieces render at one consistent size without per-character adjustment. The equivalent confirmation on iOS and iPadOS is a required device check.
+- A **Western piece labels** setting replaces the characters with the conventional English initials — `K` general, `R` chariot, `H` horse, `C` cannon, `P` soldier — for readers who do not yet know the characters. It is off by default in every language, changes presentation only, and never alters game content, archives, or notation. These initials follow the established English Xiangqi convention and deliberately differ from the FEN piece letters frozen in [xiangqi-rules.md](xiangqi-rules.md), where the horse is `n`; a reader comparing the board with an exported archive will see `H` against `n`.
+- With Western labels enabled both sides show the same letter, so the glyph no longer distinguishes them and the piece treatment becomes the only non-colour carrier of side. That treatment is therefore load-bearing rather than decorative, and its design must satisfy this requirement.
 - English piece names are General, Chariot, Horse, Cannon, and Soldier. They appear in help, accessibility announcements, and any descriptive text, never as board labels unless the Western-labels setting is enabled.
 
 ## Board and game interaction
@@ -326,7 +328,9 @@ Piece characters are game content and are excluded from localization, as defined
 - Define the sound events, sound design, and platform differences behind the accepted sound toggle.
 - Define the haptic events behind the accepted haptics toggle.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
+- Approve the English counterparts of every accepted Chinese string in this document. The accepted copy is Chinese and exact; no English equivalent has been approved, so an English build is not yet fully specified.
 - Define the English Xiangqi terminology beyond the accepted piece names, and the localization review process.
+- Define the piece disc treatment that carries side distinction when Western piece labels are enabled.
 - Define how Liquid Glass behaves with contrast, Reduce Transparency, and different platform appearances.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
