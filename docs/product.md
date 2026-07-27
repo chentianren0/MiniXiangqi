@@ -78,7 +78,7 @@ Settings holds the persistent user preferences the target MVP accepts:
 - **Confirm Before Deleting**, enabled by default;
 - a sound toggle and a separate haptics toggle, the latter offered only where the hardware supports haptics;
 - **Western piece labels**, off by default, which shows English piece initials on the board instead of Chinese characters;
-- the piece style, chosen among the accepted styles, defaulting to the traditional one.
+- the **piece style**, chosen among the three accepted styles defined in `interaction-design.md`, defaulting to the traditional one.
 
 Settings stores no game data, and changing a default never alters an active game.
 
