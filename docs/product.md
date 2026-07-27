@@ -38,7 +38,8 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - Before starting another game, the user must end the active game.
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A naturally completed or otherwise confirmed ended game becomes an immutable history game.
-- History games can be replayed, deleted, and exported.
+- In both human-versus-computer play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
+- History games can be replayed manually or with user-started autoplay, deleted, and exported.
 - Importing compatible game records is part of the target MVP.
 - Starting a new game from a selected historical position is not part of the target MVP.
 

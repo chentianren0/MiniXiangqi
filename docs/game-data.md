@@ -50,6 +50,7 @@ Undo changes the active game's retained main line and is saved immediately. The 
 - Human-versus-computer Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed computer reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
 - If a human move itself produces an unconfirmed natural terminal state, Undo removes that human move.
 - An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result moves it to immutable History.
+- A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; only claiming the draw commits an immutable draw record.
 - Confirmed resignation records a human loss and moves the game to immutable History.
 - Replacing an unfinished game records the old game in immutable History with an ended-early reason and no competitive result.
 - A new move after Undo permanently replaces the discarded continuation.
