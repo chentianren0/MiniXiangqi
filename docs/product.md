@@ -71,6 +71,16 @@ The primary destinations are:
 - **History**
 - **Settings**
 
+Settings holds the persistent user preferences the target MVP accepts:
+
+- the default first-mover choice for human-versus-AI setup;
+- the default AI level;
+- **Confirm Before Deleting**, enabled by default;
+- a sound toggle and a separate haptics toggle, the latter offered only where the hardware supports haptics;
+- **Western piece labels**, off by default, which shows English piece initials on the board instead of Chinese characters.
+
+Settings stores no game data, and changing a default never alters an active game.
+
 Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 ## Target-MVP exclusions
@@ -91,4 +101,5 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it. It may later serve the education purpose by letting a teacher set up a position.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.
+- Decide whether the app needs its own interface-language control on any platform, given that Apple platforms already provide a per-app language setting.
 - Define the exact Windows internal-distribution mechanism, packaging format, and minimum tested Windows configuration before Windows implementation begins.

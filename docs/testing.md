@@ -125,6 +125,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test keyboard and pointer behavior where supported.
 - Test Increase Contrast, Differentiate Without Color, Reduce Motion, and Reduce Transparency.
 - Verify that sound, haptics, color, motion, and visual effects are never the sole carrier of required information.
+- Verify the accepted piece characters all resolve to the same Chinese font family as one another at every weight used, with matching advance widths and no per-character size compensation, on each supported platform.
+- Verify that Red and Black remain distinguishable without color, both with Chinese characters and with Western piece labels enabled.
+- Verify the sound, haptics, and Western-piece-label settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
+- Verify that Western piece labels change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical with the setting on or off.
 - Verify unavailable hardware and muted-audio behavior.
 
 ## Build and internal-distribution gates
@@ -146,7 +150,7 @@ An internal distribution candidate — TestFlight on Apple platforms, or the int
 - Pin the Windows toolchain and record verified Windows build/test commands.
 - Define the GitHub Actions workflows, their pinned inputs, and which artifacts they retain.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
-- Define localization languages and the localization review process.
+- Define the localization review process and how approved English copy is validated against the accepted Chinese source copy.
 - Define which critical flows require UI automation versus structured manual review.
 - Define how the accepted import validation time budget is measured and enforced on each platform.
 - Define which evidence must be retained for an internal distribution candidate.
