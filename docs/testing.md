@@ -1,19 +1,21 @@
 # Testing
 
-This document is for engineers, reviewers, and internal TestFlight release testers who need to know which evidence is required for a Mini Xiangqi change or build. It owns durable validation categories, fixture expectations, and release gates. It does not record individual run results, implementation progress, temporary experiments, or work status; those belong in CI artifacts and GitHub Issues.
+This document is for engineers, reviewers, and internal release testers who need to know which evidence is required for a Mini Xiangqi change or build. It owns durable validation categories, fixture expectations, and release gates. It does not record individual run results, implementation progress, temporary experiments, or work status; those belong in CI artifacts and GitHub Issues.
 
-> **Status: Draft validation proposal.** Nothing in this document is normative until its status or an individual section is explicitly marked accepted. Add exact commands and thresholds only after they have been verified with the required Xcode and representative devices. Items under **Need to discuss** are non-normative.
+> **Status: Draft validation proposal.** Nothing in this document is normative until its status or an individual section is explicitly marked accepted. Add exact commands and thresholds only after they have been verified with the required toolchains and representative devices. Items under **Need to discuss** are non-normative.
 
 ## Required toolchain
+
+### Apple targets
 
 - Xcode 27 beta at `/Applications/Xcode-beta.app`.
 - Developer directory: `/Applications/Xcode-beta.app/Contents/Developer`.
 - Expected build: `27A5228h`.
 - Swift 6.
 - iOS, iPadOS, and macOS 26.5 targets.
-- Apple-silicon macOS; `x86_64` is not supported.
+- Apple-silicon macOS; `x86_64` is not supported on macOS.
 
-Every validation session begins by checking:
+Every Apple validation session begins by checking:
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
@@ -21,6 +23,12 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 ```
 
 Do not change global `xcode-select`, and do not silently validate with another Xcode.
+
+### Shared core and Windows targets
+
+- The shared core builds and its tests run on every development platform without a frontend.
+- The Windows toolchain — Visual Studio version, Windows App SDK version, .NET version, and the core's Windows compiler — is unpinned draft state and must be pinned and verified before Windows validation claims are made.
+- GitHub Actions CI is the recommended place for long or multi-platform builds and test runs, with pinned inputs; CI results supplement, and do not replace, the release gates below.
 
 ## Validation principles
 
@@ -31,6 +39,13 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Keep raw logs, measurements, and historical run results outside this document.
 
 ## Change-to-validation expectations
+
+### Shared core
+
+- Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and, once the Windows toolchain is pinned, on Windows.
+- Store changes verify the transactional invariants: single active game, atomic archive-and-clear, no partial import, and deletion rollback.
+- Archive changes verify cross-platform round-trips and version dispatch, including rejection of unsupported versions.
+- C-interface changes verify both platform bindings against the documented threading and error contract.
 
 ### Product and interaction
 
@@ -72,14 +87,14 @@ Do not change global `xcode-select`, and do not silently validate with another X
 ### Game data
 
 - Test the single-active-game invariant, automatic state-derived classification, atomic old-game archive-and-clear operation, and separate later game creation from both pre-start states.
-- Verify that neither pre-start state creates SwiftData model or archive data, changes `activeGame`, or survives leaving or app termination.
-- Save each durable transition, recreate the container, and verify exact resume state.
+- Verify that neither pre-start state creates store or archive data, changes the active-game reference, or survives leaving or app termination.
+- Save each durable transition, reopen the store, and verify exact resume state.
 - Test repeated Free Play undo by ply and repeated human-versus-AI undo by decision cycle, including cancellation while the AI is thinking.
 - Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation or successful **保存并继续**.
 - Test persistence and relaunch of an active game whose current history makes a neutral repetition draw claimable, plus the transition from claimable active game to immutable draw record.
 - Test pin-state and delete-confirmation preference persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
-- Test every released SwiftData schema migration and archive-format migration from file-backed fixtures.
-- Round-trip exported files across iOS, iPadOS, and macOS.
+- Test every released database schema migration and archive-format migration from file-backed fixtures.
+- Round-trip exported files across iOS, iPadOS, macOS, and Windows.
 - Verify that one-file, one-game import always creates immutable History and never creates or replaces the active game.
 - Return the existing record for the same stable identity and game content. Reject the same identity with different content, plus oversized, malformed, unsupported, inconsistent, and partially valid imports, without partial persistence.
 
@@ -92,7 +107,8 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify every level applies the accepted shared search profile and differs only in `go movetime`.
 - Verify the applied `Threads` value equals the active processor count reported by the device at engine initialization.
 - Test the accepted Hash budget at and around the 4 GiB cap, 50%-of-physical-memory boundary, 20%-or-128-MiB reserve boundary, 64 MiB rounding boundary, and 256 MiB minimum.
-- Record and verify the actual UCI Hash value applied on each representative device. Test `os_proc_available_memory() == 0`, a rounded budget below 256 MiB, exactly 256 MiB, allocation failure, and operation without the increased-memory entitlement.
+- Record and verify the actual UCI Hash value applied on each representative device. Test a zero probe value, a rounded budget below 256 MiB, exactly 256 MiB, allocation failure, and operation without the increased-memory entitlement.
+- Verify each platform's memory probe: `os_proc_available_memory()` on iOS and iPadOS, and the selected system-availability probes on macOS and Windows.
 - Below the minimum, verify that the engine is not initialized, no smaller Hash or special automatic cleanup is attempted, and Retry uses a fresh available-memory value.
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure whole-game playing behavior, latency, memory, energy, and thermal behavior of the accepted 1-, 3-, and 5-second profiles on representative supported devices. Any retuning is an explicit later product decision rather than an automatic response to diagnostic NPS or depth.
@@ -106,24 +122,26 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify that sound, haptics, color, motion, and visual effects are never the sole carrier of required information.
 - Verify unavailable hardware and muted-audio behavior.
 
-## Build and TestFlight gates
+## Build and internal-distribution gates
 
-An internal TestFlight candidate requires:
+An internal distribution candidate — TestFlight on Apple platforms, or the internal Windows package — requires:
 
-- successful builds for the supported iOS/iPadOS and macOS configurations;
-- passing targeted unit, integration, persistence, import/export, rules, engine, and critical UI tests;
+- successful builds for every supported configuration on the distributed platform;
+- passing shared-core tests plus targeted unit, integration, persistence, import/export, rules, engine, and critical UI tests;
 - no unresolved data-loss, illegal-move, rules-result, engine-termination, or migration failure;
-- verified GPLv3 and third-party source, license, and asset provenance for packaged dependencies;
-- manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each supported platform.
+- verified GPLv3 and third-party source and license inputs, and the bundled network's verified pinned hash per the accepted NNUE handling policy;
+- manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each distributed platform.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
 - Verify and record the exact simulator and macOS build/test commands.
-- Select the supported simulator, physical-device, and macOS validation matrix.
+- Select the supported simulator, physical-device, macOS, and Windows validation matrix.
+- Pin the Windows toolchain and record verified Windows build/test commands.
+- Define the GitHub Actions workflows, their pinned inputs, and which artifacts they retain.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
 - Define localization languages and the localization review process.
 - Define which critical flows require UI automation versus structured manual review.
 - Define import size, nesting, move-count, and processing-time limits.
-- Define which evidence must be retained for an internal TestFlight candidate.
+- Define which evidence must be retained for an internal distribution candidate.
