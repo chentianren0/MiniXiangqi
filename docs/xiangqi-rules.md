@@ -48,7 +48,7 @@ The complete result taxonomy, including user-ended games and imported records, i
 
 - Mini Xiangqi has no automatic move-count draw. A Fairy-Stockfish variant used by the app must explicitly disable the inherited move-count rule with `nMoveRule = 0`.
 - The repetition threshold is three occurrences of the same position.
-- On the third neutral occurrence, the position becomes eligible to be ruled a draw. In both human-versus-computer play and Free Play, this eligibility does not automatically commit a terminal result: the user may continue or claim the draw.
+- On the third neutral occurrence, the position becomes eligible to be ruled a draw. In both human-versus-AI play and Free Play, this eligibility does not automatically commit a terminal result: the user may continue or claim the draw.
 - A unilateral perpetual-check violation is a loss for the checking side.
 - A unilateral perpetual chase of the same unprotected target is a loss for the chasing side.
 - Kings and soldiers are excluded as perpetual-chase targets.

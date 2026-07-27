@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi app engineers, engine integrators, build engineers, and reviewers. It is owned by the Xcode app repository and defines how the app may package, call, constrain, and validate an external Fairy-Stockfish engine. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Draft app-side engine proposal.** The adapter, packaging, exact AI level names and timings, memory-pressure lifecycle, and runtime rules authority remain under discussion. Sections explicitly labeled accepted are normative; other material remains a proposal. Items under **Need to discuss** are non-normative.
+> **Status: Draft app-side engine proposal.** The adapter, packaging, memory-pressure lifecycle, and runtime rules authority remain under discussion. Sections explicitly labeled accepted are normative; other material remains a proposal. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -43,6 +43,11 @@ The concrete Swift/C/C++ or Objective-C++ interface has not been selected.
 - All levels share the same strongest accepted engine configuration and differ only in their maximum thinking time, sent through `go movetime`.
 - The shared configuration uses `Skill Level = 20`, `UCI_LimitStrength = false`, `MultiPV = 1`, `Ponder = false`, and NNUE evaluation.
 - Search has no node or depth limit. The time boundary controls when each level must return its move.
+- The three accepted user-facing Chinese levels are:
+  - **快速**: `go movetime 1000`.
+  - **标准**: `go movetime 3000`; this is the new-install default.
+  - **深思**: `go movetime 5000`.
+- The selected level identifier and exact `movetime` are frozen with a created game. Setup changes never alter the persistent Settings default, and an active game's level cannot be changed.
 - `Threads` is initialized from `ProcessInfo.processInfo.activeProcessorCount`, so the engine uses the active processor count reported by the current device rather than a hard-coded count.
 - Every level shares one adaptive Hash allocation policy. The target cap is 4 GiB, represented as 4096 MiB at the UCI boundary; the applied value may be lower when the safety budget requires it.
 - When calculating the allocation, let `available` be a fresh value from `os_proc_available_memory()`. Reserve the greater of 20% of `available` or 128 MiB, define usable available memory as `max(0, available - reserve)`, then take the byte budget as the minimum of 4 GiB, 50% of `ProcessInfo.processInfo.physicalMemory`, and that usable amount.
@@ -53,7 +58,7 @@ The concrete Swift/C/C++ or Objective-C++ interface has not been selected.
 
 Search speed statistics such as nodes per second, depth, and hash utilization are diagnostic signals, not substitutes for measured playing strength. The accepted 4 GiB cap and adaptive safety budget must still be checked against memory, energy, thermal, and response-time requirements on supported devices.
 
-`UCI_Elo` is calibrated from chess results and must not be displayed as Mini Xiangqi Elo without independent Mini Xiangqi calibration. The number and names of levels and each level's exact `movetime` remain unresolved until the target variant, network, and representative-device measurements are stable.
+`UCI_Elo` is calibrated from chess results and must not be displayed as Mini Xiangqi Elo without independent Mini Xiangqi calibration. The accepted levels are relative app profiles rather than calibrated Mini Xiangqi ratings. Whole-game results, response time, energy, and thermal measurements may justify a later explicit product revision, but diagnostic NPS or depth alone does not silently retune them.
 
 ## Variant and chase behavior
 
@@ -96,8 +101,8 @@ These decisions apply to current local research. They do not approve the current
 - If adjudication is outside the engine, decide how search receives equivalent repetition and chase semantics so it does not prefer a line the product later rules as losing.
 - Select the Swift-to-engine bridge and Apple-platform packaging format.
 - Define backgrounding, suspension, teardown, and memory-pressure behavior.
+- Define the exact ordering and cleanup contract between pre-start engine preparation, Random resolution, active-game persistence, and initial search.
 - Define user-visible recovery if the Hash allocation itself fails despite a calculated budget of at least 256 MiB.
-- Approve the AI level names and each level's exact `movetime`.
 - Approve the minimized soldier and chase fixtures that would justify a fork patch.
 - Decide the custom variant's final identifier, bundled configuration filename, network alias strategy, and focused fork patch boundary.
 - Establish the research NNUE's provenance and license or select a replacement, then approve the distribution asset's packaging name, compatibility checks, and fallback policy.

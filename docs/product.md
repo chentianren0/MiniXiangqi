@@ -23,25 +23,32 @@ This document is for product designers, engineers, testers, and reviewers who ne
 
 ## Target-MVP play modes
 
-- Human versus computer.
+- Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
-- In human-versus-computer games, Settings offers **Red**, **Black**, and **Random** for the human player's side. A Random choice is resolved when the game is created and the result is shown in the game metadata.
-- The computer opponent has configurable difficulty levels.
+- Human-versus-AI setup offers **我先手** (I Move First), **AI 先手** (AI Moves First), and **随机** (Random). Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
+- On a new installation, the Settings default is **我先手**. The user may change the persistent default to **AI 先手** or **随机**.
+- Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
+- The AI offers three difficulty levels that differ only in maximum thinking time: **快速** at 1 second per move, **标准** at 3 seconds per move, and **深思** at 5 seconds per move. **标准** is the new-install default.
 - A chess clock is not part of the target MVP.
 - Repeated undo is part of the target MVP. Redo is not.
-- Resign is available only in human-versus-computer games. After confirmation, resignation records a loss for the human player.
+- Resign is available only in human-versus-AI games. After confirmation, resignation records a loss for the human player.
 
 ## Games and history
 
 - There can be only one active game.
 - The active game is saved automatically and can be resumed after the application exits and reopens.
 - Before starting another game, the user must end the active game.
+- Selecting Human versus AI or Free Play while a game is active immediately presents one confirmation with the old game's metadata.
+- Confirming immediately records the old game in History as ended early. The selected mode then enters its transient pre-start state with no active game.
+- Human versus AI shows its per-game choices. Free Play shows that one person controls both sides and that Red moves first, without adding configurable setup fields.
+- Only **开始对局** creates the selected game. Leaving either pre-start state creates no game and does not restore an old game that the user already confirmed ending.
+- A natural result awaiting confirmation cannot be replaced as ended early. The user must first choose **悔棋** or **结束对局** on the result card.
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A naturally completed or otherwise confirmed ended game becomes an immutable history game.
-- In both human-versus-computer play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
+- In both human-versus-AI play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
 - A History record's game content cannot be edited. Pinning is mutable library organization rather than an edit to the game, and the complete record can be deleted individually.
 - Pinned History records appear first. Within the pinned and unpinned groups, the most recently recorded or imported games appear first.
-- Each History entry identifies at least its date, mode, result or end reason, and move count; human-versus-computer entries also identify the human side, and imported entries are visibly marked.
+- Each History entry identifies at least its date, mode, result or end reason, and move count; human-versus-AI entries also identify the human side, and imported entries are visibly marked.
 - The History list provides Pin or Unpin, Share, and Delete. Share exports one game file.
 - History games can be replayed manually or with user-started autoplay.
 - **Confirm Before Deleting** is enabled by default in Settings and may be disabled by the user. A completed deletion is permanent: the target MVP has neither deletion Undo nor Recently Deleted.
@@ -75,7 +82,5 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the number, names, and user-facing meaning of AI difficulty levels.
-- Define the default side choice for new human-versus-computer installations.
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.

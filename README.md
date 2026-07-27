@@ -4,7 +4,7 @@ Mini Xiangqi is a native, fully offline Mini Xiangqi game for iOS, iPadOS, and m
 
 ## Target MVP
 
-- Human versus on-device computer play, with Red, Black, or Random side choice and configurable difficulty.
+- Human versus on-device AI play, with the user, the AI, or a Random choice determining who moves first, plus three difficulty levels.
 - Free Play, where one person controls both Red and Black.
 - Repeated undo during an active game, without redo.
 - One automatically saved active game at a time.
