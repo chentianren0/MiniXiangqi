@@ -41,6 +41,8 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the natural-result card before and after confirmation, including **悔棋**, **结束对局**, **回放**, **完成**, outside-dismissal rejection, and the absence of a Play Again action.
 - Verify the threefold notice, **继续对局**, **以和棋结束**, and retained non-blocking **可判和** affordance in both play modes.
 - Verify manual replay navigation and autoplay at 0.5×, 1×, and 2×, including animation completion, manual-navigation pause, board-flip pause, background pause, end-of-game stop, and Reduce Motion behavior.
+- Verify newest-first History ordering, accepted row metadata, read-only record content, individual deletion, one-game import/export, duplicate navigation, conflict rejection, and the absence of bulk deletion, search, filters, tags, and editing.
+- Verify that an insufficient AI Hash budget presents the accepted close-other-apps notice, preserves the active game, and allows a fresh retry without automatic cleanup or a smaller Hash.
 
 ### Rules
 
@@ -62,7 +64,8 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test history sorting, replay, deletion, ended-early records, confirmed resignation, and completed-record immutability.
 - Test every released SwiftData schema migration and archive-format migration from file-backed fixtures.
 - Round-trip exported files across iOS, iPadOS, and macOS.
-- Reject oversized, malformed, unsupported, inconsistent, and partially valid imports without partial persistence, and test repeated imports against the accepted duplicate policy.
+- Verify that one-file, one-game import always creates immutable History and never creates or replaces the active game.
+- Return the existing record for the same stable identity and game content. Reject the same identity with different content, plus oversized, malformed, unsupported, inconsistent, and partially valid imports, without partial persistence.
 
 ### Engine integration
 
@@ -71,8 +74,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the configured NNUE fingerprint and positive load signal before search; a filename alone is not sufficient.
 - Verify every level applies the accepted shared search profile and differs only in `go movetime`.
 - Verify the applied `Threads` value equals the active processor count reported by the device at engine initialization.
-- Test the accepted Hash budget at and around the 4 GiB cap, 50%-of-physical-memory boundary, 20%-or-1-GiB reserve boundary, and 64 MiB rounding boundary.
-- Record and verify the actual UCI Hash value applied on each representative device. Once the low-memory fallback is approved, test `os_proc_available_memory() == 0`, a budget below 64 MiB, allocation failure, and operation without the increased-memory entitlement.
+- Test the accepted Hash budget at and around the 4 GiB cap, 50%-of-physical-memory boundary, 20%-or-128-MiB reserve boundary, 64 MiB rounding boundary, and 256 MiB minimum.
+- Record and verify the actual UCI Hash value applied on each representative device. Test `os_proc_available_memory() == 0`, a rounded budget below 256 MiB, exactly 256 MiB, allocation failure, and operation without the increased-memory entitlement.
+- Below the minimum, verify that the engine is not initialized, no smaller Hash or special automatic cleanup is attempted, and Retry uses a fresh available-memory value.
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure latency, memory, energy, and thermal behavior of the accepted resource policy on representative supported devices before fixing exact AI `movetime` profiles.
 - Verify that the app remains functional when increased memory is unavailable and treats `os_proc_available_memory()` as changing advisory information rather than a target to consume.

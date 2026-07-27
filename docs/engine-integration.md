@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi app engineers, engine integrators, build engineers, and reviewers. It is owned by the Xcode app repository and defines how the app may package, call, constrain, and validate an external Fairy-Stockfish engine. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Draft app-side engine proposal.** The adapter, packaging, exact AI level names and timings, low-memory Hash fallback, and runtime rules authority remain under discussion. Sections explicitly labeled accepted are normative; other material remains a proposal. Items under **Need to discuss** are non-normative.
+> **Status: Draft app-side engine proposal.** The adapter, packaging, exact AI level names and timings, memory-pressure lifecycle, and runtime rules authority remain under discussion. Sections explicitly labeled accepted are normative; other material remains a proposal. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -45,9 +45,10 @@ The concrete Swift/C/C++ or Objective-C++ interface has not been selected.
 - Search has no node or depth limit. The time boundary controls when each level must return its move.
 - `Threads` is initialized from `ProcessInfo.processInfo.activeProcessorCount`, so the engine uses the active processor count reported by the current device rather than a hard-coded count.
 - Every level shares one adaptive Hash allocation policy. The target cap is 4 GiB, represented as 4096 MiB at the UCI boundary; the applied value may be lower when the safety budget requires it.
-- When calculating the allocation, let `available` be `os_proc_available_memory()`. Reserve the greater of 20% of `available` or 1 GiB, define usable available memory as `max(0, available - reserve)`, then take the byte budget as the minimum of 4 GiB, 50% of `ProcessInfo.processInfo.physicalMemory`, and that usable amount.
-- When the normal-case byte budget is at least 64 MiB, convert it to MiB and round down to a 64 MiB multiple before applying the UCI `Hash` option. UCI Hash remains an integer count of MiB; rounding to whole GiB would discard too much usable capacity.
-- `os_proc_available_memory()` is advisory and may return zero. No Hash value is specified yet when it is zero or the calculated budget is below 64 MiB; that safe fallback remains unresolved.
+- When calculating the allocation, let `available` be a fresh value from `os_proc_available_memory()`. Reserve the greater of 20% of `available` or 128 MiB, define usable available memory as `max(0, available - reserve)`, then take the byte budget as the minimum of 4 GiB, 50% of `ProcessInfo.processInfo.physicalMemory`, and that usable amount.
+- Convert the byte budget to MiB and round down to a 64 MiB multiple. UCI Hash remains an integer count of MiB; rounding to whole GiB would discard too much usable capacity.
+- The minimum accepted Hash is 256 MiB. If the rounded budget is below 256 MiB, including when `os_proc_available_memory()` returns zero, the adapter does not initialize the AI engine and reports insufficient memory.
+- The insufficient-memory path asks the user to close other apps and retry. Each retry obtains a fresh available-memory value and recalculates the budget. It does not use a smaller Hash or perform a special automatic cleanup pass as an alternative.
 - Engine, variant, NNUE, and option identifiers are versioned with the internal profile so a saved diagnostic record can identify the configuration that produced a move.
 
 Search speed statistics such as nodes per second, depth, and hash utilization are diagnostic signals, not substitutes for measured playing strength. The accepted 4 GiB cap and adaptive safety budget must still be checked against memory, energy, thermal, and response-time requirements on supported devices.
@@ -95,8 +96,8 @@ These decisions apply to current local research. They do not approve the current
 - If adjudication is outside the engine, decide how search receives equivalent repetition and chase semantics so it does not prefer a line the product later rules as losing.
 - Select the Swift-to-engine bridge and Apple-platform packaging format.
 - Define backgrounding, suspension, teardown, and memory-pressure behavior.
+- Define user-visible recovery if the Hash allocation itself fails despite a calculated budget of at least 256 MiB.
 - Approve the AI level names and each level's exact `movetime`.
-- Define the safe Hash fallback when `os_proc_available_memory()` returns zero or the rounded budget is below 64 MiB, including whether engine initialization should fail or use a conservative minimum.
 - Approve the minimized soldier and chase fixtures that would justify a fork patch.
 - Decide the custom variant's final identifier, bundled configuration filename, network alias strategy, and focused fork patch boundary.
 - Establish the research NNUE's provenance and license or select a replacement, then approve the distribution asset's packaging name, compatibility checks, and fallback policy.

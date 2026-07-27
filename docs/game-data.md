@@ -59,6 +59,16 @@ Undo changes the active game's retained main line and is saved immediately. The 
 
 The MVP supports both export and import. Export produces a portable, versioned game archive rather than a copy of the SwiftData database. Import is a repository operation and must never partially commit a game.
 
+### Accepted MVP record behavior
+
+- One exported file contains one immutable History game.
+- Import processes one game file at a time. A successful import creates an immutable History record and never creates or replaces the active game.
+- Imported and locally recorded History games have read-only game content. Deleting a complete record remains supported as a distinct repository operation.
+- History sorts by a local History-added time, with the most recently completed or imported first. The original game dates remain separate metadata.
+- History retains queryable summaries for the accepted list metadata: date, mode, result or end reason, move count, human side when applicable, and imported provenance.
+- If a validated import has the same stable identity and the same game content as an existing record, the repository returns that existing record instead of inserting a duplicate.
+- If a validated import has the same stable identity but different game content, the repository rejects the file as an identity conflict without changing persistent state.
+
 Imported files are untrusted input. Before saving, the importer must:
 
 - enforce file-size and structural limits;
@@ -87,6 +97,5 @@ The app does not use CloudKit, remote synchronization, or network backup. Its da
 - Which portable format and file extension should version 1 use?
 - Define stable serialized identifiers for the accepted natural, resignation, and ended-early outcomes, plus any additional end reasons the archive requires.
 - Which provenance fields should distinguish locally played, imported, and future derived games?
-- How should duplicate identities and repeated imports be handled?
-- Should import accept only completed history games, or also an active-game record?
+- Define canonical game-content equivalence for duplicate detection, including which volatile archive fields do not affect equality.
 - What compatibility promise should later app versions make for older exported archives?

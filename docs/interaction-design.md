@@ -78,6 +78,17 @@ A persistent status element near the board is one coherent description of the cu
 
 Turn ownership, activity, and input availability must not be communicated by color alone. The element is driven by committed game and engine state, and a resolved Random side choice is visible in game metadata.
 
+### Insufficient memory for computer play
+
+- Before an AI engine is initialized, the app calculates the accepted Hash budget. A budget below 256 MiB does not start the computer opponent.
+- The app presents a notice asking the user to close other apps and retry.
+- Retrying obtains a fresh `os_proc_available_memory()` value and recalculates the budget; the prior value is not cached.
+- This low-memory path does not substitute a smaller Hash or perform a special automatic cleanup pass to manufacture the minimum budget.
+- Any active game remains saved and unchanged while the computer opponent is unavailable.
+- The notice may suggest closing other apps, but it does not promise that iOS will terminate them or that a retry will succeed.
+
+The notice's exact copy, actions, presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
+
 ### Replacing an unfinished game
 
 The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, the side to move, and the move count.
@@ -130,6 +141,19 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 - Autoplay starts only after a user action and waits for each move animation to finish before advancing.
 - Autoplay offers session-only speeds of 0.5×, 1×, and 2×. Manual move navigation, flipping the board, or the app moving to the background pauses playback. Playback stops at the final position.
 - With Reduce Motion, replay uses the accepted crossfade or immediate board update while preserving the same order and playback controls.
+
+### History library
+
+- History records are listed with the most recently recorded or imported first.
+- Each entry shows its date, mode, result or end reason, and move count. Human-versus-computer entries also show the human side; imported records have a visible imported marker.
+- Selecting an entry opens its read-only replay.
+- Record content is read-only, but a complete record can be deleted individually after confirmation.
+- Export operates on one selected History record and produces one game file.
+- Import selects one game file at a time. A valid import creates an immutable History record and leaves the active game unchanged.
+- An exact duplicate does not create a second record and offers a way to view the existing record. A stable-identity conflict with different game content is rejected with an explanation.
+- Bulk deletion, search, filters, tags, and editing a History game are absent from the target MVP.
+
+The exact list layout, date and move-count formatting, row actions, confirmation copy, file-picker presentation, success feedback, and recoverable error flows remain to be designed.
 
 ## Motion and visual effects
 
@@ -185,7 +209,8 @@ The interface must be designed for localization. User-facing text must not be em
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
 - Define turn-status placement, symbols, exact computer-activity treatment, transient announcements, and VoiceOver behavior.
-- Define the History list and the detailed import, export, and delete confirmations and error flows.
+- Define the exact History-list layout and the detailed import, export, duplicate, conflict, and delete confirmations and error flows.
+- Define the insufficient-memory notice copy, actions, presentation, repeated-failure behavior, and accessibility announcement.
 - Define the scope, placement, and teaching sequence of help content.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define sound events, sound design, volume or mute controls, and platform differences.
