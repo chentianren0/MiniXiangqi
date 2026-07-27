@@ -372,25 +372,31 @@ Piece characters are game content and are excluded from localization, as defined
 ### Orientation
 
 - **iPhone runs in portrait only.** Apple's guidance permits an experience that runs in a single orientation, and relies on people simply trying both and settling on the one that works; the app therefore never asks the user to rotate the device and shows no message about orientation.
-- **iPad supports every orientation**, because iPadOS expects an app to adapt to rotation and to multitasking sizes, and a rotation-locked iPad app behaves poorly in Split View and Stage Manager.
+- **iPad supports every orientation**, because iPadOS expects an app to adapt to rotation and to being windowed at arbitrary sizes, and an app that declines rotation opts out of that behaviour.
 - macOS has no orientation; the window's proportions select the layout in the same way a device orientation does.
+- Locking iPhone to portrait has a cost worth naming: a user whose device is fixed in a mount, or whose grip or dexterity favours landscape, cannot compensate by rotating. The square board makes portrait the orientation that serves the game best, and the accessibility obligation is met through the input alternatives already accepted rather than through rotation.
+- Windows devices that rotate follow the same width-driven layout rules; the platform's orientation behaviour is settled when the Windows frontend is designed.
 
 ### Layout shapes
 
 Two arrangements cover every device and window size, chosen by available width rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
 
-- **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them at the largest size the width allows.
-- **Side by side**, used by iPad landscape, wide iPad multitasking sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the move list, game metadata, and controls that do not need to sit under the thumb.
+- **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them.
+- **Side by side**, used by iPad landscape, wide iPad window sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the turn status, the move list, game metadata, and controls that do not need to sit under the thumb.
 
-The board is always square, and it is sized so that one point of the grid is never smaller than the platform's minimum touch target. On the narrowest supported iPhone the stacked layout still leaves the grid comfortably above that minimum, so the board is never the element that shrinks: when space is short, the surrounding chrome yields first.
+The board is square and is sized to the largest square fitting **both** the available width and the height left after the surrounding chrome, so it never overflows a short window. Within that, a point of the grid is never smaller than 44 points on iOS and iPadOS, which is the platform's default control size, nor smaller than 28 points on macOS, where a pointer rather than a finger selects it.
 
-Navigation uses one adaptive container across the three Apple platforms, presenting as a tab bar on iPhone and as a sidebar on iPad and Mac, rather than a separate navigation structure per device.
+When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
+
+One exception: a pre-start board is a noninteractive preview with no touch targets, so it carries no size floor and yields space to the setup controls whenever they need it. The floor exists to protect interaction, and a preview has none to protect.
+
+Navigation uses one adaptive container, presenting as a tab bar at narrow widths and as a sidebar at wide ones. It follows the same width-driven rule as the layout shapes rather than device identity, so an iPad in a narrow window gets the same navigation as an iPhone.
 
 ### The move list during play
 
 - Where the side-by-side layout applies, the move list is permanently visible in the panel.
-- In the stacked layout it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
-- Replay presents the move list as already accepted, in whichever arrangement the current layout provides.
+- In the stacked layout during ordinary play it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
+- Replay is the exception: its accepted behaviour requires the move list to highlight the current move and to allow jumping to a selected one, so replay in the stacked layout shows the move list rather than hiding it, and the surrounding chrome is what tightens to make room.
 
 ### Captured pieces
 
@@ -398,8 +404,8 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 ## Platform adaptation
 
-- iOS should support touch-first play and compact layouts.
-- iPadOS should use the available space without requiring a separate product model.
+- iOS should support touch-first play, in the layout shapes accepted above.
+- iPadOS should use the available space without requiring a separate product model, through those same shapes.
 - macOS should support pointer and keyboard conventions while retaining the same game behavior.
 - Windows should follow WinUI 3 and Fluent conventions: pointer and keyboard first, native navigation patterns, context menus, and standard window behavior, with touch equivalents on touch-capable devices.
 - Where a platform lacks an interaction idiom used elsewhere — for example, list swipe actions on Windows — the same operations must be exposed through that platform's conventional equivalents, such as context menus, hover controls, and keyboard commands, without changing product capabilities.
@@ -409,8 +415,10 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the exact width at which the layout changes between stacked and side by side, the minimum macOS window size, and how the on-demand move list is presented in the stacked layout.
-- Define what the side-by-side panel contains beyond the move list, game metadata, and controls, and what the stacked layout does with the controls that panel would otherwise hold.
+- Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout.
+- Fix the minimum window size for macOS and for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
+- Resolve how the non-dismissible result card, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the card requires the board to stay visible and the chrome has its own floor.
+- Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, and its own board surface — within the constraints the accepted styles impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
 - Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
@@ -418,7 +426,7 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Decide whether file numbers may be hidden, and define the visual system for them and for typography.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
-- Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
+- Define the turn status's exact AI activity treatment, transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
