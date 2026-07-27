@@ -1,6 +1,6 @@
 # Interaction Design
 
-This document is for product designers, UI engineers, accessibility reviewers, artists, audio designers, and testers who shape or evaluate the Mini Xiangqi experience. It owns UI and UX behavior, navigation, Liquid Glass usage, board presentation, help, animation and motion, visual effects, sound, haptics, accessibility, localization, and platform adaptation. It does not own product feature scope, Xiangqi rules, persistence formats, engine behavior, implementation progress, or scheduling.
+This document is for product designers, UI engineers, accessibility reviewers, artists, audio designers, and testers who shape or evaluate the Mini Xiangqi experience. It owns UI and UX behavior, navigation, platform visual language, board presentation, help, animation and motion, visual effects, sound, haptics, accessibility, localization, and platform adaptation. It does not own product feature scope, Xiangqi rules, persistence formats, engine behavior, implementation progress, or scheduling.
 
 > **Status: Living target-MVP interaction contract**
 >
@@ -22,7 +22,7 @@ The primary destinations are:
 - **History** for reviewing and managing history records.
 - **Settings** for user preferences.
 
-The navigation presentation must adapt appropriately to iPhone, iPad, and Mac. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
+The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
 ## Platform visual language
 
@@ -119,10 +119,10 @@ Turn ownership, activity, and input availability must not be communicated by col
   - Message: **当前可用内存不足。请尝试关闭一些其他 App，然后重试。**
   - Actions: **取消** and **重试**.
 - **取消** dismisses the notice without creating or changing an active game. In pre-start setup, the in-memory draft remains while the user stays on that page.
-- Retrying obtains a fresh `os_proc_available_memory()` value and recalculates the budget; the prior value is not cached.
+- Retrying obtains a fresh value from the platform memory probe and recalculates the budget; the prior value is not cached.
 - This low-memory path does not substitute a smaller Hash or perform a special automatic cleanup pass to manufacture the minimum budget.
 - Any active game being resumed remains saved and unchanged while the AI opponent is unavailable.
-- The notice may suggest closing other apps, but it does not promise that iOS will terminate them or that a retry will succeed.
+- The notice may suggest closing other apps, but it does not promise that the operating system will terminate them or that a retry will succeed.
 
 The notice's exact presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
 

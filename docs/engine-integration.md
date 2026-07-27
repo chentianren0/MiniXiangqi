@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi engineers, engine integrators, build engineers, and reviewers. It defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine, and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, and NNUE handling policy below are accepted. The concrete interface, packaging mechanics, and memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
+> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, NNUE handling policy, and Apple memory entitlements below are accepted. The concrete interface, packaging mechanics, and memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -65,7 +65,7 @@ Search speed statistics such as nodes per second, depth, and hash utilization ar
 
 ### Accepted target rule-integration decisions
 
-- Built-in `minixiangqi` is limited to research, adapter, ordinary-movement, and search-integration baselines. It is not the final target-MVP rule configuration.
+- Built-in `minixiangqi` is limited to research, search-facade, ordinary-movement, and search-integration baselines. It is not the final target-MVP rule configuration.
 - The target uses a pinned custom variant derived from `minixiangqi` with AXF chasing adjudication.
 - The custom variant disables the inherited move-count rule with `nMoveRule = 0`, uses `nFoldRule = 3`, and preserves illegal-perpetual-check adjudication.
 - The target behavior follows the selected PyChess Mini Xiangqi rules: neutral threefold repetition is a draw; a unilateral perpetual checker or chaser loses; a mutual same-class violation draws; checking takes precedence over chasing; and kings and soldiers are excluded as chase targets.

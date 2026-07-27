@@ -2,7 +2,7 @@
 
 This document is for engineers and reviewers working on Mini Xiangqi. It defines the system's stable boundaries: the shared core, the native frontends, dependency direction, state ownership, concurrency, and error propagation. It does not define Xiangqi rules, detailed UI/UX, persistence schemas, engine search policy, implementation progress, or work tracking.
 
-> **Status: Accepted direction, draft details.** The shared-core-plus-native-frontends structure, the core's responsibilities, the C boundary, and the dependency direction below are accepted. Exact interfaces, threading details, and the repository restructuring steps remain draft until reviewed. Items under **Need to discuss** are non-normative.
+> **Status: Accepted direction, draft details.** The shared-core-plus-native-frontends structure, the core's responsibilities, the C boundary, the dependency direction, the error-handling contract, and the build and CI policy below are accepted. Exact interfaces, threading details, and the repository restructuring steps remain draft until reviewed. Items under **Need to discuss** are non-normative.
 
 ## Goals and constraints
 
