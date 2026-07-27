@@ -67,9 +67,16 @@ The board is the primary content during play. Its interaction design must cover:
 
 ### Turn status
 
-A persistent status element near the board clearly communicates the side to move, whether that side is the human or computer in human-versus-computer play, and whether board input is currently accepted. It is driven by committed game and engine state, and a resolved Random side choice is visible to the player. The board does not accept a human move while the computer is thinking.
+A persistent status element near the board is one coherent description of the current play state:
 
-Turn ownership and input availability must not be communicated by color alone. Exact copy, symbols, progress treatment, placement, and VoiceOver announcement behavior require further interaction design.
+- Its primary line always identifies the side to move, using the localized equivalent of **轮到红方** or **轮到黑方**.
+- In human-versus-computer play, a secondary label identifies that side's controller as **你** or **电脑**. Computer thinking is shown as activity attached to the computer's turn; it does not replace or compete with the side-to-move line.
+- Free Play omits a human/computer controller label because the same person controls both sides.
+- The design does not add a separate, unrelated instruction such as “please move” or “your turn.”
+- Board input is accepted only when the committed game state permits the user to move. It is disabled while the computer is thinking.
+- History replay uses a separate move-progress and playback state rather than describing the position as a human or computer turn.
+
+Turn ownership, activity, and input availability must not be communicated by color alone. The element is driven by committed game and engine state, and a resolved Random side choice is visible in game metadata.
 
 ### Replacing an unfinished game
 
@@ -94,6 +101,35 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 - A natural result remains undoable while its result presentation awaits confirmation. Undo dismisses that presentation and resumes the game.
 - After result confirmation, resignation confirmation, or **End & Start New Game**, the History record is immutable and cannot be undone.
 - Undo is disabled at the earliest valid boundary and while a prior Undo transition is still being applied.
+
+### Natural result presentation
+
+- When a natural terminal result is reached, the final board remains fully visible and a non-dismissible result card appears near it.
+- The card title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-computer play may also show relevant player metadata without replacing the result.
+- Before confirmation, the actions are **悔棋** and **结束对局**. Undo follows the mode-specific behavior above, dismisses the result card, and resumes the active game.
+- The result card cannot be dismissed by tapping outside it. Resignation remains a separate confirmed action rather than being folded into the natural-result card.
+- After **结束对局**, the final board remains visible, the record becomes immutable History, and the card changes to **已记录到历史**.
+- The recorded state offers **回放**, which opens the newly created History record from its initial position, and **完成**, which returns to the Play start state.
+- The target MVP does not add a Play Again action to this card.
+
+### Claimable threefold repetition
+
+- In both human-versus-computer play and Free Play, a neutral threefold repetition does not automatically end the game.
+- When the draw first becomes available, the notice says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
+- **以和棋结束** confirms an immutable draw record in History.
+- After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice.
+
+### History replay
+
+- Replay entered from History or from the just-recorded result begins at the game's initial position.
+- The board is read-only. Replay does not offer move input, Undo, or starting a new game from the displayed position.
+- Controls provide jump to beginning, one move back, play or pause, one move forward, and jump to end.
+- The move list highlights the currently displayed move and allows the user to jump to a selected move.
+- The accepted history orientation and visible Flip Board control remain available.
+- Delete and export are available through the replay toolbar or an equivalent More menu; their destructive confirmations and error flows remain to be designed.
+- Autoplay starts only after a user action and waits for each move animation to finish before advancing.
+- Autoplay offers session-only speeds of 0.5×, 1×, and 2×. Manual move navigation, flipping the board, or the app moving to the background pauses playback. Playback stops at the final position.
+- With Reduce Motion, replay uses the accepted crossfade or immediate board update while preserving the same order and playback controls.
 
 ## Motion and visual effects
 
@@ -148,8 +184,8 @@ The interface must be designed for localization. User-facing text must not be em
 - Define the navigation presentation on each device class and window size.
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
-- Define the exact turn-status copy, symbols, progress treatment, placement, and VoiceOver announcement behavior.
-- Define history replay controls and the import, export, and delete flows.
+- Define turn-status placement, symbols, exact computer-activity treatment, transient announcements, and VoiceOver behavior.
+- Define the History list and the detailed import, export, and delete confirmations and error flows.
 - Define the scope, placement, and teaching sequence of help content.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define sound events, sound design, volume or mute controls, and platform differences.
