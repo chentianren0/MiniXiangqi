@@ -39,9 +39,12 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A naturally completed or otherwise confirmed ended game becomes an immutable history game.
 - In both human-versus-computer play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
-- A History record's game content cannot be edited. The complete record can still be deleted individually.
-- History lists the most recently recorded or imported games first. Each entry identifies at least its date, mode, result or end reason, and move count; human-versus-computer entries also identify the human side, and imported entries are visibly marked.
-- History games can be replayed manually or with user-started autoplay and exported one game per file.
+- A History record's game content cannot be edited. Pinning is mutable library organization rather than an edit to the game, and the complete record can be deleted individually.
+- Pinned History records appear first. Within the pinned and unpinned groups, the most recently recorded or imported games appear first.
+- Each History entry identifies at least its date, mode, result or end reason, and move count; human-versus-computer entries also identify the human side, and imported entries are visibly marked.
+- The History list provides Pin or Unpin, Share, and Delete. Share exports one game file.
+- History games can be replayed manually or with user-started autoplay.
+- **Confirm Before Deleting** is enabled by default in Settings and may be disabled by the user. A completed deletion is permanent: the target MVP has neither deletion Undo nor Recently Deleted.
 - Import accepts one compatible game file at a time and creates an immutable History record without replacing or otherwise changing the active game.
 - Importing an exact duplicate does not create another record and offers access to the existing record. A file with the same stable identity but different game content is rejected as a conflict.
 - Bulk deletion, History search, filters, and tags are not part of the target MVP.
@@ -66,6 +69,7 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 - Starting a new game from a selected historical position.
 - Editing History game content.
 - Bulk History deletion, search, filters, and tags.
+- History folders, Move, deletion Undo, and Recently Deleted.
 
 ## Need to discuss
 
