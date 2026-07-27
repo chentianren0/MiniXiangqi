@@ -54,8 +54,26 @@ Xiangqi pieces are Chinese characters, and this is a teaching application, so th
 - Piece characters are game content, not interface text: they are identical in every supported language and are never translated on the board.
 - On macOS every one of these characters resolves through the system font to a single Chinese family, at the matching weight from regular through heavy, with a uniform advance width — so pieces render at one consistent size without per-character adjustment. The equivalent confirmation on iOS and iPadOS is a required device check.
 - A **Western piece labels** setting replaces the characters with the conventional English initials — `K` general, `R` chariot, `H` horse, `C` cannon, `P` soldier — for readers who do not yet know the characters. It is off by default in every language, changes presentation only, and never alters game content, archives, or notation. These initials follow the established English Xiangqi convention and deliberately differ from the FEN piece letters frozen in [xiangqi-rules.md](xiangqi-rules.md), where the horse is `n`; a reader comparing the board with an exported archive will see `H` against `n`.
-- With Western labels enabled both sides show the same letter, so the glyph no longer distinguishes them and the piece treatment becomes the only non-colour carrier of side. That treatment is therefore load-bearing rather than decorative, and its design must satisfy this requirement.
+- With Western labels enabled both sides show the same letter, so the glyph no longer distinguishes them and the piece style becomes the only non-colour carrier of side. Every accepted style must therefore satisfy the requirement below on its own, without help from the characters.
 - English piece names are General, Chariot, Horse, Cannon, and Soldier. They appear in help, accessibility announcements, and any descriptive text, never as board labels unless the Western-labels setting is enabled.
+
+### Piece styles
+
+The user chooses among three accepted piece styles, since a learner and an experienced player want different things from the same board. The style is a Settings preference, changes presentation only, and never affects game content, archives, or notation. Every piece is drawn as a disc bearing a text glyph; no style uses an image, a rasterized glyph, or a per-piece asset.
+
+- **传统** — the default. Both sides use the same warm light disc face, as a physical set does, with the characters themselves in the Red and Black role colours. One side additionally carries a heavier ring, so a second non-colour channel is always present. A soft resting shadow seats the disc on the board.
+- **现代** — each disc is filled with a single strong colour, Red or Black, with a white ring inset within the disc and the character in white. It is flat, with no resting shadow.
+- **高对比** — Red is a filled disc with the character reversed out of it; Black is an outlined disc on a neutral face with a heavier ring. Structure and luminance carry the side as strongly as possible, for low-vision use. It is flat, so edges stay crisp.
+
+Each style therefore defines its own resting shadow, and there is no separate shadow setting. A resting shadow is presentation only: no style may rely on it to satisfy a contrast requirement, every requirement below must hold with the shadow removed, and resting shadows are reduced under Increase Contrast.
+
+The lift shadow is different in kind and belongs to the motion language rather than to a style. A piece raised by selection or drag casts a larger, softer shadow in every style, because it communicates that the piece is held; it is never suppressed by a style choice, and Reduce Motion substitutes an immediate change for the animated lift rather than removing the state.
+
+Every style must satisfy these, verifiable rather than aesthetic:
+
+- The two sides remain distinguishable when hue is removed. Where a style distinguishes the sides mainly by disc fill — 现代 above all — the two fills must reach at least 3:1 contrast against each other, which a deep red against a near-black does not; that style therefore needs a lighter red than a traditional set would use.
+- The glyph reaches at least 4.5:1 against its own disc face, and the disc reaches at least 3:1 against the board surface.
+- The style holds up in light and dark appearance, under Increase Contrast, and with Western piece labels enabled, which is the case where the characters stop helping.
 
 ## Board and game interaction
 
@@ -273,7 +291,7 @@ The first implementation uses a restrained, tactile motion language:
 - An invalid drop returns the piece smoothly to its origin and gives the attempted destination brief feedback without an alert or forceful shake.
 - An AI move uses the same move language and leaves persistent origin and destination markers so the player can identify the completed move.
 - Check uses a persistent, non-color-only king-square treatment plus one brief pulse. It does not flash continuously.
-- Undo visually reverses the affected move or decision cycle and restores a captured piece when needed. Board input and another Undo remain unavailable until the transition completes.
+- Undo visually reverses the affected move or decision cycle and restores a captured piece when needed. Board input and another Undo remain unavailable until the transition completes. This wait is deliberate rather than an oversight: it guarantees that two mutations never overlap and that a half-applied position is never visible. Allowing a new action to interrupt a running transition was considered and not adopted, so Undo transitions must stay short enough that repeating them does not feel slow.
 - Board flipping uses an approximately 300–400 ms coordinated re-layout while piece text and symbols remain upright.
 - With Reduce Motion, lifts, springs, pulses, and long-distance travel are removed in favor of a brief crossfade or immediate state update.
 
@@ -284,6 +302,8 @@ The exact durations, easing curves, scale, shadow, opacity, and feedback strengt
 Sound and haptics are part of the intended experience. They must reinforce meaningful actions and game events and must never be the only way information is conveyed.
 
 Both are user-controllable through separate Settings toggles, per the Settings scope in [product.md](product.md). Haptics are available only where the hardware provides them; on a device without them the toggle is unavailable rather than silently ineffective, and no substitute effect is invented.
+
+Haptic strength follows the meaning of the event, not its frequency. In particular, tapping an illegal square is a normal part of learning how the pieces move rather than a failure, so it receives at most the lightest available tick and never the system warning pattern. The warning pattern is reserved for genuine failures such as an action that could not be saved, and overusing it would both punish the learner and dilute its meaning.
 
 ## Accessibility
 
