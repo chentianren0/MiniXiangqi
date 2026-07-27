@@ -10,7 +10,8 @@ This document is for product designers, UI engineers, accessibility reviewers, a
 
 - Make the board and current game state immediately understandable.
 - Keep primary play actions easy to reach without obscuring the board.
-- Provide a coherent experience across iOS, iPadOS, and macOS while respecting each platform’s interaction conventions.
+- Provide a coherent experience across iOS, iPadOS, macOS, and Windows while respecting each platform’s interaction conventions.
+- Support learning through play: the interface should make legal moves, rules consequences, and results easy to understand for someone still learning Mini Xiangqi.
 - Treat accessibility as part of the design, not as a later visual adjustment.
 
 ## Navigation
@@ -23,14 +24,16 @@ The primary destinations are:
 
 The navigation presentation must adapt appropriately to iPhone, iPad, and Mac. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
-## Liquid Glass
+## Platform visual language
 
-Liquid Glass is a required part of the visual and interaction direction.
+Each platform uses its own current native visual system rather than an imitation of another platform's.
 
-- Use Liquid Glass for functional interface layers such as navigation, controls, toolbars, and contextual actions.
-- Preserve board readability and interaction clarity when glass surfaces overlap or surround game content.
+- On Apple platforms, Liquid Glass is a required part of the visual and interaction direction. Use it for functional interface layers such as navigation, controls, toolbars, and contextual actions.
+- On Windows, the WinUI 3 Fluent design system fills the same role: system materials, controls, and navigation patterns rather than recreated Apple styling.
+- Preserve board readability and interaction clarity when translucent or material surfaces overlap or surround game content.
 - Prefer platform-native behavior and adaptation over fixed imitations of one platform’s layout.
 - Visual effects must not make controls, state, focus, or text harder to perceive.
+- The board, pieces, and game-state markers form one shared visual identity across platforms; only the surrounding functional chrome is platform-specific.
 
 ## Board and game interaction
 
@@ -91,7 +94,7 @@ Settings has a **人机对弈默认设置** group with **默认先后手** and *
 - Tapping the selected piece again, or tapping outside the board, cancels the selection.
 - Tapping an illegal board square does not move the piece or cancel the current selection. It provides brief, non-blocking feedback.
 - Dragging a movable piece beyond the gesture threshold selects it and reveals its legal destinations. Dropping on a legal destination commits the move; dropping elsewhere returns the piece to its origin.
-- iPhone and iPad use touch interaction. Mac supports the equivalent click-to-move and pointer-drag behavior.
+- iPhone and iPad use touch interaction. Mac and Windows support the equivalent click-to-move and pointer-drag behavior, and Windows touch devices support the touch interaction.
 - Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.
 - When input is unavailable, including while the AI is thinking or after a result is confirmed, the board rejects the interaction before visually moving a piece.
 
@@ -215,10 +218,21 @@ The requested destination remains temporary only while this confirmation or retr
 - Import selects one game file at a time. A valid import creates an immutable History record and leaves the active game unchanged.
 - An exact duplicate does not create a second record and offers a way to view the existing record. A stable-identity conflict with different game content is rejected with an explanation.
 - Bulk deletion, search, filters, tags, and editing a History game are absent from the target MVP.
-- Trackpad swipes use the same leading and trailing behavior where supported. Pointer context menus, keyboard commands, and VoiceOver custom actions expose equivalent Pin or Unpin, Share, and Delete operations without adding permanent row buttons.
+- Trackpad swipes use the same leading and trailing behavior where supported. Pointer context menus, keyboard commands, and screen-reader custom actions — VoiceOver on Apple platforms, Narrator on Windows — expose equivalent Pin or Unpin, Share, and Delete operations without adding permanent row buttons. On Windows, the context menu is the primary path to these actions.
 - Action meaning is carried by icon and text as well as color.
 
 The exact list layout, date and move-count formatting, file-picker presentation, import feedback, conflict feedback, and recoverable error copy remain to be designed.
+
+## Help
+
+Help is the target MVP's education surface and is deliberately small:
+
+- Help is a read-only Mini Xiangqi rules reference covering the board, the pieces and their movement, check and checkmate, stalemate, repetition and the claimable draw, perpetual check, and perpetual chase, plus a short explanation of the app's own controls.
+- Help is reachable from Settings and from the game screen without abandoning or pausing state: opening help never modifies the active game, and returning restores the exact prior context.
+- Help content is static reference material. It does not analyze the current position, suggest moves, or offer interactive lessons or drills.
+- Help text follows the same localization requirements as the rest of the interface.
+
+The exact entry points, content organization, and illustrations remain to be designed.
 
 ## Motion and visual effects
 
@@ -264,6 +278,8 @@ The interface must be designed for localization. User-facing text must not be em
 - iOS should support touch-first play and compact layouts.
 - iPadOS should use the available space without requiring a separate product model.
 - macOS should support pointer and keyboard conventions while retaining the same game behavior.
+- Windows should follow WinUI 3 and Fluent conventions: pointer and keyboard first, native navigation patterns, context menus, and standard window behavior, with touch equivalents on touch-capable devices.
+- Where a platform lacks an interaction idiom used elsewhere — for example, list swipe actions on Windows — the same operations must be exposed through that platform's conventional equivalents, such as context menus, hover controls, and keyboard commands, without changing product capabilities.
 - The application does not support multiple main windows.
 
 ## Need to discuss
@@ -276,11 +292,12 @@ The interface must be designed for localization. User-facing text must not be em
 - Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
-- Define the scope, placement, and teaching sequence of help content.
+- Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define sound events, sound design, volume or mute controls, and platform differences.
 - Define haptic events and behavior on devices without haptic support.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Define supported languages, Xiangqi terminology, and localization review.
 - Define how Liquid Glass behaves with contrast, Reduce Transparency, and different platform appearances.
+- Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.

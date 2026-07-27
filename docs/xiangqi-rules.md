@@ -2,7 +2,7 @@
 
 This document is for product reviewers, rules reviewers, engineers, and testers who need one contract for legal Mini Xiangqi play and user-visible game results. It owns the adopted interpretation of Mini Xiangqi rules and the identifiers that connect prose to executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, UI presentation, implementation progress, or work tracking.
 
-> **Status: Partially accepted rules contract.** The normative source, ordinary board and movement rules, absence of a move-count draw, threefold-repetition threshold, and high-level perpetual-check and perpetual-chase outcomes below are accepted. Exact edge-case definitions, notation, executable fixtures, and the runtime rules authority remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
+> **Status: Partially accepted rules contract.** The normative source, ordinary board and movement rules, absence of a move-count draw, threefold-repetition threshold, high-level perpetual-check and perpetual-chase outcomes, and the runtime rules authority below are accepted. Exact edge-case definitions, notation, and executable fixtures remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
 
 ## Normative source
 
@@ -59,6 +59,10 @@ The target engine behavior follows the selected PyChess Mini Xiangqi rules and u
 
 These accepted outcomes still require minimized executable fixtures. Exact position-identity fields, protection tests, interruption rules, discovered and pinned attacks, mixed or mutual sequences, and the point at which a violation becomes terminal remain unresolved until those fixtures are approved.
 
+## Runtime rules authority
+
+The shared core's rules facade, defined in [architecture.md](architecture.md), executes the authoritative offline adjudication on every platform: legal moves, check state, results, repetition, claim eligibility, and perpetual violations. The facade is deterministic over position and history and is gated by the approved conformance fixtures. It is built on the pinned Fairy-Stockfish fork library, but the fixtures — not engine agreement — are its authority: when an approved fixture exposes an engine mismatch, the fork receives a focused change. Search scores and search-only results never commit a user-visible outcome.
+
 ## Conformance fixtures
 
 Every accepted fixture should have a stable identifier and include:
@@ -80,6 +84,5 @@ Fixtures and this document must be reviewed together. A fixture is not accepted 
 - Define exactly what makes a chased piece protected or unprotected.
 - Define how interrupted, discovered, pinned, mutual, and mixed check/chase sequences are adjudicated.
 - Define the exact deterministic history boundary at which neutral repetition becomes claimable and each perpetual violation becomes terminal offline.
-- Approve minimized long-check and long-chase fixtures before selecting the runtime rules authority.
-- If AXF is selected and approved fixtures expose a mismatch, decide whether configuration is sufficient or a Fairy-Stockfish fork change is required for soldier sideways movement and chase-target exclusion.
-- Decide whether the app, Fairy-Stockfish, or another component executes the authoritative offline adjudication.
+- Approve minimized long-check and long-chase fixtures before implementation relies on the rules facade's chase adjudication.
+- If approved fixtures expose an AXF mismatch, decide whether configuration is sufficient or a Fairy-Stockfish fork change is required for soldier sideways movement and chase-target exclusion.

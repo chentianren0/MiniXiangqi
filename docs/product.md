@@ -9,8 +9,9 @@ This document is for product designers, engineers, testers, and reviewers who ne
 ## Product identity and distribution
 
 - The product name is **Mini Xiangqi**.
-- The application is licensed under GPLv3.
-- Distribution is limited to internal TestFlight testing for the target MVP. It is not a public release.
+- The product exists for Mini Xiangqi education inside a small internal group. Education in the target MVP means learning through play: complete games against the AI or in Free Play, supported by in-app help that explains the pieces, rules, and results. Structured lessons, practice drills, and AI hints are not part of the target MVP.
+- The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
+- Distribution is internal only: TestFlight internal testing on Apple platforms and direct internal installation on Windows. There is no public App Store, Microsoft Store, or other public release plan.
 - The application is fully offline and must not require an Internet connection.
 
 ## Target platforms
@@ -18,7 +19,10 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - iOS 26.5 or later.
 - iPadOS 26.5 or later.
 - macOS 26.5 or later.
-- macOS targets Apple silicon. `x86_64` is not supported.
+- macOS targets Apple silicon. `x86_64` is not supported on macOS.
+- Windows 11, and Windows 10 version 1809 or later, on `x64` and `ARM64`.
+- Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
+- Apple platforms are implemented and distributed first; Windows follows on the same shared core and product contract.
 - The application has one main window; multiple main windows are not supported.
 
 ## Target-MVP play modes
@@ -32,6 +36,7 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - A chess clock is not part of the target MVP.
 - Repeated undo is part of the target MVP. Redo is not.
 - Resign is available only in human-versus-AI games. After confirmation, resignation records a loss for the human player.
+- In-app help provides a Mini Xiangqi rules reference covering the board, pieces, movement, and game results. Help is read-only reference content; it does not analyze the current game or suggest moves.
 
 ## Games and history
 
@@ -74,6 +79,7 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 - Public distribution.
 - Chess clocks.
 - Multiple main windows.
+- Structured lessons, practice drills, and AI hints.
 - Starting a new game from a selected historical position.
 - Editing History game content.
 - Bulk History deletion, search, filters, and tags.
@@ -83,6 +89,6 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it.
+- Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it. It may later serve the education purpose by letting a teacher set up a position.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.
-- Reconsider the target-platform scope before implementation architecture is finalized. One possible direction is to expand the current Apple-only target to Apple platforms plus Windows, use a native frontend on each platform, and share only code that is appropriate to share. This is an open question and does not change the current target-platform contract.
+- Define the exact Windows internal-distribution mechanism, packaging format, and minimum tested Windows configuration before Windows implementation begins.

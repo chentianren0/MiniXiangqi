@@ -1,25 +1,24 @@
 # Game Data
 
-This document is for engineers and reviewers responsible for persistence, game-history compatibility, and file interchange in the Mini Xiangqi app. It is owned by the Mini Xiangqi app repository and defines a draft local-data contract. It does not define Xiangqi rules, screen flows, engine internals, implementation progress, or issue tracking.
+This document is for engineers and reviewers responsible for persistence, game-history compatibility, and file interchange in Mini Xiangqi. It defines the local-data contract: the library store, the versioned game archive, saving, import, export, and migration. It does not define Xiangqi rules, screen flows, engine internals, implementation progress, or issue tracking.
 
-> **Status: Draft data proposal.** This records the current SwiftData recommendation, not an implemented or approved schema. Nothing in this document is normative until its status or an individual section is explicitly marked accepted. Items under **Need to discuss** are non-normative.
+> **Status: Partially accepted data contract.** The core-owned SQLite storage direction, the save-before-mode behavior, the pre-start behavior, and the MVP record behavior below are accepted. The concrete schema, archive serialization format, and identifiers remain draft. Items under **Need to discuss** are non-normative.
 
 ## Storage model
 
-SwiftData is the recommended local persistence framework. Persistent models remain behind a repository boundary; the running game uses pure Swift value types.
+The shared core owns persistence through an embedded SQLite library store, behind the repository boundary defined in [architecture.md](architecture.md). One implementation carries the transactional invariants — the single active game, atomic archive-and-clear, import validation, and duplicate detection — identically on Apple platforms and Windows, and one test suite validates them. Frontends never touch the database directly; the running game uses plain value types in each frontend language.
 
-The conceptual model has:
+SwiftData was considered for the Apple app. It was not selected because the store's correctness-critical invariants would then be implemented twice, and the design already keeps persistent models behind a repository boundary rather than binding them to SwiftUI, which removes SwiftData's main practical advantage.
 
-- one logical `GameLibrary`, with an optional reference to the single active game;
-- one `StoredGame` per active or History game;
-- queryable summary fields on `StoredGame`, such as stable identity, dates, play mode, participants, result summary, imported provenance, and pinned state;
-- a versioned archive encoded as `Data` containing the complete replayable game record.
-
-The repository enforces the single-library and single-active-game invariants even if the storage framework cannot express them as database constraints.
+- The frontend supplies the store's location at startup: the app's Application Support directory on Apple platforms and the app's local application-data directory on Windows.
+- The pinned SQLite version ships inside the core on every platform; the core does not depend on a system-provided SQLite.
+- The conceptual model has one logical `GameLibrary` with an optional reference to the single active game, and one `StoredGame` per active or History game.
+- `StoredGame` carries queryable summary fields — stable identity, dates, play mode, participants, result summary, imported provenance, and pinned state — plus a versioned archive blob containing the complete replayable game record.
+- The core enforces the single-library and single-active-game invariants even where the schema cannot express them as constraints.
 
 ## Versioned game archive
 
-The archive is independent of the SwiftData schema. It should contain enough information to reproduce and validate a game, including:
+The archive is independent of the database schema and is also the export/import interchange format, so it must be portable across platforms and app versions. It contains enough information to reproduce and validate a game, including:
 
 - archive format version;
 - game identity and creation metadata;
@@ -29,19 +28,18 @@ The archive is independent of the SwiftData schema. It should contain enough inf
 - configuration needed to interpret the players and game;
 - terminal information when the game is completed.
 
-The serialization format is not yet selected. Callers must not decode or modify the archive outside the data boundary.
+The serialization format is not yet selected. Callers must not decode or modify the archive outside the core's codec.
 
 ## Saving and starting another mode
 
-- Save explicitly after every accepted move, undo, game completion, import, deletion, and other durable state change.
-- Treat SwiftData autosave as a secondary safeguard, not the commit mechanism.
+- The core commits explicitly after every accepted move, undo, game completion, import, deletion, and other durable state change. There is no deferred or framework-managed autosave; the explicit transaction is the commit mechanism.
 - A committed move is the recovery boundary after app exit or interruption.
 
 ### Accepted save-before-mode behavior
 
 - The same operation accepts any active game, including an ordinary ongoing game, a claimable but unclaimed neutral repetition, or an unconfirmed natural terminal result.
-- The requested Human-versus-AI or Free Play destination is transient in-memory state and is not part of the game archive or SwiftData model.
-- **保存并继续** places the active game in History and clears `GameLibrary.activeGame` in one atomic operation.
+- The requested Human-versus-AI or Free Play destination is transient in-memory state and is not part of the game archive or the store.
+- **保存并继续** places the active game in History and clears the library's active-game reference in one atomic transaction.
 - The operation derives the saved classification from the committed game state:
   - an ordinary ongoing game is recorded with an ended-early reason and no competitive result;
   - a claimable neutral repetition that has not been claimed remains an ongoing game and is therefore recorded as ended early, not as a draw;
@@ -51,7 +49,7 @@ The serialization format is not yet selected. Callers must not decode or modify 
 
 ### Accepted pre-start state behavior
 
-- Neither mode's pre-start state is written to SwiftData or a game archive. Neither creates a `StoredGame` or changes `GameLibrary.activeGame`.
+- Neither mode's pre-start state is written to the store or a game archive. Neither creates a `StoredGame` or changes the active-game reference.
 - Leaving either pre-start state discards it. If it was entered after archiving an older game, that older game remains immutable History and is not restored.
 - Human-versus-AI Settings defaults and the per-game setup draft are separate state. Entering setup creates a fresh in-memory draft from the current Settings defaults; reopening after leaving creates another fresh draft from the then-current defaults.
 - A Random first-mover choice remains unresolved in the draft. Only successful **开始对局** creation commits the resolved human side, AI level identifier, and exact thinking-time value as durable active-game configuration.
@@ -77,26 +75,26 @@ Undo changes the active game's retained main line and is saved immediately. The 
 
 ## Import and export
 
-The MVP supports both export and import. Export produces a portable, versioned game archive rather than a copy of the SwiftData database. Import is a repository operation and must never partially commit a game.
+The MVP supports both export and import. Export produces a portable, versioned game archive rather than a copy of the database. Import is a core operation and must never partially commit a game. Exported files must round-trip across all supported platforms.
 
 ### Accepted MVP record behavior
 
 - One exported file contains one immutable History game.
 - Import processes one game file at a time. A successful import creates an immutable History record and never creates or replaces the active game.
-- Imported and locally recorded History games have read-only game content. Pin or Unpin and permanent deletion remain distinct repository operations.
+- Imported and locally recorded History games have read-only game content. Pin or Unpin and permanent deletion remain distinct core operations.
 - History sorts pinned records before unpinned records. Each group sorts by a local History-added time, with the most recently completed or imported first. The original game dates remain separate metadata.
 - History retains queryable summaries for the accepted list metadata: date, mode, result or end reason, move count, human side when applicable, and imported provenance.
-- If a validated import has the same stable identity and the same game content as an existing record, the repository returns that existing record instead of inserting a duplicate.
-- If a validated import has the same stable identity but different game content, the repository rejects the file as an identity conflict without changing persistent state.
+- If a validated import has the same stable identity and the same game content as an existing record, the core returns that existing record instead of inserting a duplicate.
+- If a validated import has the same stable identity but different game content, the core rejects the file as an identity conflict without changing persistent state.
 
-The **Confirm Before Deleting** preference is local app state, defaults to enabled, and is not part of immutable game content. Once the accepted UI policy authorizes deletion, the repository removes the whole History record. The app has no deletion Undo, soft-deleted record, or Recently Deleted collection. A failed deletion leaves the existing record intact.
+The **Confirm Before Deleting** preference is local app state, defaults to enabled, and is not part of immutable game content. Once the accepted UI policy authorizes deletion, the core removes the whole History record. The app has no deletion Undo, soft-deleted record, or Recently Deleted collection. A failed deletion leaves the existing record intact.
 
 Imported files are untrusted input. Before saving, the importer must:
 
 - enforce file-size and structural limits;
 - reject unsupported versions and malformed fields;
 - decode without executing embedded content or resolving network references;
-- validate the initial position, ordered moves, and terminal claim through the selected rules boundary;
+- validate the initial position, ordered moves, and terminal claim through the rules facade;
 - reject inconsistent or incomplete records with a user-facing error;
 - create no persistent objects until validation succeeds.
 
@@ -104,13 +102,13 @@ Imported games are local data. Importing must not contact a server.
 
 ## Migration
 
-The app should define a SwiftData `VersionedSchema` and migration plan from the first TestFlight data model. SwiftData schema versions cover local database evolution.
+The core owns database schema versioning and migrates the store forward from every schema shipped in an internal build.
 
 Archive versions form a separate compatibility contract. Import and export code must use explicit archive-version dispatch and preserve the ability to reject versions it cannot safely interpret. A database migration must not silently change the meaning of an existing archive.
 
 ## Local-only boundary
 
-The app does not use CloudKit, remote synchronization, or network backup. Its data model must not assume multiple-device or concurrent writers. Normal operating-system device backups are outside the app's synchronization design.
+The app does not use cloud synchronization, remote storage, or network backup on any platform. Its data model must not assume multiple devices or concurrent writers. Normal operating-system device backups are outside the app's synchronization design.
 
 ## Need to discuss
 
@@ -122,3 +120,6 @@ The app does not use CloudKit, remote synchronization, or network backup. Its da
 - Decide which local library metadata, including pin state, belongs in exported archives and canonical duplicate comparison.
 - Define canonical game-content equivalence for duplicate detection, including which volatile archive fields do not affect equality.
 - What compatibility promise should later app versions make for older exported archives?
+- Define the concrete SQLite schema, the pinned SQLite version and update policy, and the store's concurrency limits.
+- Decide how frontends learn about library changes: operation return values only, or a change-notification mechanism.
+- Define where Settings preferences live on each platform: the shared store or each platform's native preference system.

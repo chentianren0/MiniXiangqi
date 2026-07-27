@@ -12,7 +12,14 @@ This document is for coding agents working inside the `MiniXiangqi` app reposito
 - Before every remote write, verify through the project-scoped configuration that the active identity is `ppppvz` and the destination is a `ppppvz` repository.
 - Do not write to an external upstream repository or create external issues, pull requests, discussions, reviews, or comments without the user's explicit authorization.
 
+## Platform scope
+
+- The product targets iOS, iPadOS, macOS, and Windows through one shared C++ core with a native frontend per platform, as defined in `docs/architecture.md`.
+- Apple platforms are implemented first. The Windows toolchain is not yet pinned; do not invent one silently.
+
 ## Apple toolchain
+
+For Apple builds and tests:
 
 - Use Xcode 27 beta at `/Applications/Xcode-beta.app`.
 - Set `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` or invoke tools through that developer directory explicitly.
@@ -38,18 +45,19 @@ Do not delete ignored build products, `.DS_Store`, or Xcode user data as inciden
 - Do not infer accepted product or architecture decisions from the generated `Item`, `ContentView`, or `ModelContainer` scaffold.
 - Preserve the fully offline boundary. Networking, accounts, cloud sync, analytics, remote content, or new network-related capabilities require explicit product and architecture discussion.
 - Preserve the single-main-window boundary unless the user explicitly changes it.
-- Do not assume whether the app or Fairy-Stockfish is the final runtime rules authority until that decision is accepted in the relevant contracts.
+- The shared core's rules facade is the accepted runtime rules authority; frontends must not reimplement rules, result classification, or library invariants, and search output never commits a user-visible result.
+- Never commit NNUE network bytes to this repository. Internal builds bundle the pinned network from outside version control per `docs/engine-integration.md`.
 
 ## Canonical documentation
 
 Read the relevant contract before changing behavior:
 
 - product scope and lifecycle policies: `docs/product.md`;
-- UI, UX, visual, motion, sound, touch, localization, and accessibility: `docs/interaction-design.md`;
+- UI, UX, visual, motion, sound, touch, help, localization, and accessibility: `docs/interaction-design.md`;
 - legal moves and user-visible game results: `docs/xiangqi-rules.md` and approved fixtures;
-- dependency direction, state ownership, concurrency, and lifecycle: `docs/architecture.md`;
-- SwiftData, autosave, history, migrations, import, and export: `docs/game-data.md`;
-- the Xcode app's Fairy-Stockfish adapter and packaging boundary: `docs/engine-integration.md`;
+- the shared core, frontends, dependency direction, state ownership, concurrency, and lifecycle: `docs/architecture.md`;
+- the library store, game archive, saving, history, migrations, import, and export: `docs/game-data.md`;
+- the search facade, AI profiles, packaging, and NNUE policy: `docs/engine-integration.md`;
 - required validation: `docs/testing.md`.
 
 Document status controls authority:
@@ -69,8 +77,8 @@ Document status controls authority:
 
 ## Validation
 
-- Verify the required Xcode version before other validation.
-- Run the smallest focused tests that cover the changed contract, followed by the relevant iOS/iPadOS and macOS build or test checks.
+- For Apple work, verify the required Xcode version before other validation.
+- Run the smallest focused tests that cover the changed contract, followed by the relevant platform build or test checks.
 - UI changes require affected-form-factor and accessibility inspection.
 - Game-data changes require persistence, relaunch, migration, deletion, malformed-import, and import/export round-trip tests.
 - Rules or engine changes require conformance, illegal-move rejection, cancellation, and stale-result validation.
