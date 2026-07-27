@@ -2,7 +2,7 @@
 
 This document is for product reviewers, rules reviewers, engineers, and testers who need one contract for legal Mini Xiangqi play and user-visible game results. It owns the adopted interpretation of Mini Xiangqi rules and the identifiers that connect prose to executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, UI presentation, implementation progress, or work tracking.
 
-> **Status: Partially accepted rules contract.** The normative source, ordinary board and movement rules, absence of a move-count draw, threefold-repetition threshold, high-level perpetual-check and perpetual-chase outcomes, and the runtime rules authority below are accepted. Exact edge-case definitions, notation, and executable fixtures remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
+> **Status: Partially accepted rules contract.** The normative source, ordinary board and movement rules, the starting position, coordinate, and notation contract, absence of a move-count draw, the repetition and violation adjudication points, high-level perpetual-check and perpetual-chase outcomes, the runtime rules authority, and the first approved fixture set in [`fixtures/rules/`](../fixtures/rules/) are accepted. The exact definitions of protection, interruption, and discovered and pinned attacks, and the fixtures for those and for the accepted mutual and mixed outcomes, remain unresolved. Items under **Need to discuss** are non-normative and do not authorize implementation.
 
 ## Normative source
 
@@ -16,6 +16,8 @@ A dated copy is retained outside this repository as workspace-only research evid
 - Workspace file: `/Users/tianren/coding/minixiangqi/discussion-drafts/evidence/pychess-minixiangqi-rules-2026-07-26.html`
 - SHA-256: `a79b663618033c2a8e4db897b51499d6409ade0543520ee950c9c768eae92077`
 
+The snapshot's starting-position diagram is an external image that is not embedded in the retained file, and its text does not name the first mover. Those two facts are supplied by the source's own implementation, verified in the workspace reference checkout of `pychess-variants` at commit `961fd6dd60ce76d3baced1a77df49ca58edcb315` (`client/variants.ts:1434` for the starting FEN, `client/variants.ts:1439` for Red moving first), which matches the built-in Fairy-Stockfish `minixiangqi` variant byte for byte.
+
 The public source and the accepted conformance fixtures are evidence for this contract. Neither a Fairy-Stockfish search score nor an engine-specific optional result silently changes user-visible rules.
 
 ## Board and pieces
@@ -26,7 +28,14 @@ The public source and the accepted conformance fixtures are evidence for this co
 - Each side has a king, chariots, horses, cannons, and soldiers.
 - Each king remains inside its 3-by-3 palace.
 
-The exact starting-position encoding, coordinate system, and notation must be frozen with the first approved fixtures.
+## Starting position, coordinates, and notation
+
+- The starting position is FEN `rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1`. This string is byte-identical in the selected public source's implementation and in the built-in Fairy-Stockfish `minixiangqi` variant.
+- Squares are named `a1` through `g7`: files `a` to `g` from Red's left, ranks `1` to `7` from Red's back rank. A FEN piece-placement field lists rank 7 first and rank 1 last.
+- `w` is Red: uppercase pieces, moves first, king starting on `d1`, palace `c1`–`e3`. `b` is Black: lowercase pieces, king starting on `d7`, palace `c5`–`e7`.
+- The canonical machine notation for a move is the origin square followed by the destination square, for example `b1b4`. No move suffix exists: Mini Xiangqi has no promotion, castling, en passant, drop, or gating. This notation is canonical for fixtures, game archives, and the shared core interface. Any friendlier user-visible move notation is a later interaction-design decision and is presentation only.
+- A position record is a 6-field FEN. The third and fourth fields are always `-`. The fifth field counts plies since the last capture and drives no rule; a soldier move does not reset it. The sixth field is the fullmove number, starting at 1 and incrementing after each Black move.
+- Two position records denote the same position exactly when piece placement and side to move are equal; the two counters are ignored.
 
 ## Movement
 
@@ -42,13 +51,15 @@ The exact starting-position encoding, coordinate system, and notation must be fr
 - A position with no legal move is a loss for the player who cannot move.
 - Check, legal check evasion, and checkmate must follow the movement and king-safety rules above.
 
-The complete result taxonomy, including user-ended games and imported records, is defined jointly with [Game data](game-data.md) after the unresolved rule outcomes below are accepted.
+The complete result taxonomy, including user-ended games and imported records, is defined jointly with [Game data](game-data.md); the fixture result identifiers below seed the rule-derived part of that taxonomy.
 
 ## Move-count, repetition, perpetual check, and perpetual chase
 
 - Mini Xiangqi has no automatic move-count draw. A Fairy-Stockfish variant used by the app must explicitly disable the inherited move-count rule with `nMoveRule = 0`.
-- The repetition threshold is three occurrences of the same position.
+- The repetition threshold is three occurrences of the same position, counting the first time the position stands on the board. The repeated position need not be the game's initial position.
+- Repetition and violation state derive from the game's complete move history. A bare position carries no prior occurrences.
 - On the third neutral occurrence, the position becomes eligible to be ruled a draw. In both human-versus-AI play and Free Play, this eligibility does not automatically commit a terminal result: the user may continue or claim the draw.
+- A unilateral perpetual violation becomes terminal automatically when a position first stands on the board for the third time with the violation sustained across its occurrences: the rules facade reports the loss for the violating side as a natural result, presented through the standard result flow. Only neutral repetition is claim-gated.
 - A unilateral perpetual-check violation is a loss for the checking side.
 - A unilateral perpetual chase of the same unprotected target is a loss for the chasing side.
 - Kings and soldiers are excluded as perpetual-chase targets.
@@ -57,7 +68,7 @@ The complete result taxonomy, including user-ended games and imported records, i
 
 The target engine behavior follows the selected PyChess Mini Xiangqi rules and uses Fairy-Stockfish's AXF chasing adjudication as its implementation direction. AXF does not replace the selected public source as the user-visible rules authority.
 
-These accepted outcomes still require minimized executable fixtures. Exact position-identity fields, protection tests, interruption rules, discovered and pinned attacks, mixed or mutual sequences, and the point at which a violation becomes terminal remain unresolved until those fixtures are approved.
+The first minimized fixture set below pins these outcomes in their simplest forms, position identity, and the third-occurrence adjudication point. Exact protection tests beyond the simplest defended-target case, interruption rules, discovered and pinned attacks, and mixed or mutual sequences remain unresolved until their fixtures are approved.
 
 ## Runtime rules authority
 
@@ -65,24 +76,33 @@ The shared core's rules facade, defined in [architecture.md](architecture.md), e
 
 ## Conformance fixtures
 
-Every accepted fixture should have a stable identifier and include:
+The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the `mx-<area>-NNN` identifier scheme, and the immutability rules. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, and `perpetual-chase`, and they name results by rule outcome — the violating side loses — never by the side to move at detection.
 
-- an initial position;
-- complete move history;
-- the expected legal moves or rejected move;
-- the expected resulting position and check state;
-- the expected game result, when any;
-- a concise rule rationale.
+The first approved set contains sixteen fixtures:
 
-Fixtures and this document must be reviewed together. A fixture is not accepted merely because PyChess or Fairy-Stockfish currently produces the same result.
+- `mx-move-001` — the complete 19-move legal set in the starting position;
+- `mx-move-002` — horse blocking on the occupied first step;
+- `mx-move-003` — cannon slides and the exactly-one-screen capture requirement;
+- `mx-move-004` — soldier forward and sideways moves and captures, and the rejected backward move;
+- `mx-move-005` — king palace confinement and single-step movement;
+- `mx-move-006` — a check position whose legal set is exactly its evasions;
+- `mx-end-001` — checkmate as a loss for the side to move;
+- `mx-end-002` — stalemate as a loss for the side to move;
+- `mx-end-003` — rejection of moves that would leave the kings facing on an empty file;
+- `mx-rep-001` — neutral threefold repetition claimable exactly at the third occurrence and not earlier;
+- `mx-chk-001` and `mx-chk-002` — unilateral perpetual check as a loss for the checking side at the third occurrence, pinned for both side-to-move parities;
+- `mx-chs-001` and `mx-chs-004` — unilateral perpetual chase of an unprotected cannon or horse as a loss for the chasing side at the third occurrence, including a repeated position that is not the setup position;
+- `mx-chs-002` — the same chase against a protected target is no violation and yields a neutral claimable repetition;
+- `mx-chs-003` — perpetual pursuit of a soldier is excluded from the chase rule and yields a neutral claimable repetition.
+
+Two accepted outcomes have no fixture in this set: a mutual perpetual-check draw and a mixed sequence exercising check-over-chase precedence. Neither yielded a minimal construction on the 7-by-7 board, and the mixed case appears to require a discovered-chase component that is outside this set's scope. Both outcomes remain accepted at the rule level, and their fixtures belong to the deferred edge-case tranche.
+
+Fixtures and this document must be reviewed together. A fixture is not accepted merely because PyChess or Fairy-Stockfish currently produces the same result. Engine conformance to the approved fixtures, including the accepted limits of AXF chase configuration, is owned by [Engine integration](engine-integration.md); engine observations never alter the fixtures' authority.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Freeze the exact starting FEN, side to move, coordinates, and canonical move notation.
-- Define exactly what makes a chased piece protected or unprotected.
-- Define how interrupted, discovered, pinned, mutual, and mixed check/chase sequences are adjudicated.
-- Define the exact deterministic history boundary at which neutral repetition becomes claimable and each perpetual violation becomes terminal offline.
-- Approve minimized long-check and long-chase fixtures before implementation relies on the rules facade's chase adjudication.
-- If approved fixtures expose an AXF mismatch, decide whether configuration is sufficient or a Fairy-Stockfish fork change is required for soldier sideways movement and chase-target exclusion.
+- Define exactly what makes a chased piece protected or unprotected beyond the simplest defended-target case pinned by `mx-chs-002`.
+- Define how interrupted, discovered, pinned, mutual, and mixed check/chase sequences are adjudicated, including how a violation's target and pattern must persist across the three occurrences.
+- Approve the deferred edge-case fixture tranche — protection variants, interruption, discovered and pinned attacks, mutual perpetual check, and check-over-chase precedence — before the rules facade's chase adjudication is relied on beyond the first approved set.

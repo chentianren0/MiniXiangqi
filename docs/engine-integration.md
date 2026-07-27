@@ -70,7 +70,8 @@ Search speed statistics such as nodes per second, depth, and hash utilization ar
 - The custom variant disables the inherited move-count rule with `nMoveRule = 0`, uses `nFoldRule = 3`, and preserves illegal-perpetual-check adjudication.
 - The target behavior follows the selected PyChess Mini Xiangqi rules: neutral threefold repetition is a draw; a unilateral perpetual checker or chaser loses; a mutual same-class violation draws; checking takes precedence over chasing; and kings and soldiers are excluded as chase targets.
 - Mini Xiangqi soldiers move sideways from the start while remaining excluded as chase targets.
-- If the pinned AXF configuration cannot satisfy the soldier exclusion or another approved observable fixture, the Fairy-Stockfish repository owns the required source change and fork-specific tests. The app repository records the required behavior and the pinned artifact it consumes.
+- AXF configuration alone does not satisfy the approved soldier-exclusion fixture `fixtures/rules/mx-chs-003`: the engine classifies every sideways-capable Mini Xiangqi soldier as a chase target, so the target variant requires a focused source change in the Fairy-Stockfish fork. The Fairy-Stockfish repository owns that change and its fork-specific tests; this repository records the required behavior and the pinned artifact it consumes.
+- Built-in `minixiangqi`, which has no chasing rule, does not satisfy the unilateral-chase fixtures `mx-chs-001` and `mx-chs-004`. That is the accepted baseline limitation motivating the AXF-derived target, not a defect to fix.
 
 Engine search may evaluate a neutral threefold repetition as draw-valued, but that evaluation does not automatically commit the app-visible game or History record. The rules facade must expose claim eligibility to the accepted product flow.
 
@@ -109,7 +110,7 @@ The core's rules facade is the authoritative runtime rules component, as accepte
 - Define the exact ordering and cleanup contract between pre-start engine preparation, Random resolution, active-game persistence, and initial search.
 - Define user-visible recovery if the Hash allocation itself fails despite a calculated budget of at least 256 MiB.
 - Select the exact Windows memory-probe API and verify the probe behavior on macOS.
-- Approve the minimized soldier and chase fixtures that would justify a fork patch.
 - Decide the custom variant's final identifier, bundled configuration filename, network alias strategy, and focused fork patch boundary.
+- Validate the complete approved fixture set, including `mx-chs-003`, against the fork build that implements soldier chase-target exclusion.
 - Approve the bundled network's packaging name, load-verification checks, and fallback policy for each platform's build.
 - Define the pinned-manifest format shared between the app and Fairy-Stockfish repositories.
