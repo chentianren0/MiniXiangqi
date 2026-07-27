@@ -56,6 +56,7 @@ Read the relevant contract before changing behavior:
 - UI, UX, visual, motion, sound, touch, help, localization, and accessibility: `docs/interaction-design.md`;
 - legal moves and user-visible game results: `docs/xiangqi-rules.md` and approved fixtures;
 - the shared core, frontends, dependency direction, state ownership, concurrency, and lifecycle: `docs/architecture.md`;
+- the core's C surface — modules, functions, error taxonomy, and threading rules: `docs/core-interface.md`;
 - the library store, game archive, saving, history, migrations, import, and export: `docs/game-data.md`;
 - the search facade, AI profiles, packaging, and NNUE policy: `docs/engine-integration.md`;
 - required validation: `docs/testing.md`.

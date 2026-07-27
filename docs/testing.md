@@ -45,7 +45,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and, once the Windows toolchain is pinned, on Windows.
 - Store changes verify the transactional invariants: single active game, atomic archive-and-clear, no partial import, and deletion rollback.
 - Archive changes verify cross-platform round-trips and version dispatch, including rejection of unsupported versions.
-- C-interface changes verify both platform bindings against the documented threading and error contract.
+- C-interface changes verify both platform bindings against the threading and error contract in `docs/core-interface.md`.
 
 ### Product and interaction
 
@@ -96,6 +96,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test pin-state and delete-confirmation preference persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
 - Test every released database schema migration and archive-format migration from file-backed fixtures.
 - Round-trip exported files across iOS, iPadOS, macOS, and Windows.
+- Verify the same game's canonical content bytes and content hash are byte-identical across platforms, and that export, import, and re-export reproduce identical canonical content.
+- Verify the store's schema-enforced invariants directly: History content immutability outside pin state, the single active game, archive-and-clear ordering, and the result vocabulary constraints.
+- Test a failed per-move commit: the move does not occur, the game remains at the pre-move committed state, and the accepted brief save-failure feedback appears.
+- Test every import limit boundary and each rejection class, including the distinct created-by-a-newer-version message for unsupported archive versions.
 - Verify that one-file, one-game import always creates immutable History and never creates or replaces the active game.
 - Return the existing record for the same stable identity and game content. Reject the same identity with different content, plus oversized, malformed, unsupported, inconsistent, and partially valid imports, without partial persistence.
 

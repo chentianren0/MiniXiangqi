@@ -93,6 +93,7 @@ Settings has a **人机对弈默认设置** group with **默认先后手** and *
 - Tapping another movable piece controlled by the human switches the selection directly.
 - Tapping the selected piece again, or tapping outside the board, cancels the selection.
 - Tapping an illegal board square does not move the piece or cancel the current selection. It provides brief, non-blocking feedback.
+- A legal move whose immediate save fails does not happen: the board and game remain exactly at the pre-move state, brief non-blocking feedback distinct from illegal-move feedback indicates the move could not be saved, and the user may simply try the move again. There is no modal dialog and no accepted-but-unsaved move. The exact wording and visual treatment of this feedback are part of the open visual-system work.
 - Dragging a movable piece beyond the gesture threshold selects it and reveals its legal destinations. Dropping on a legal destination commits the move; dropping elsewhere returns the piece to its origin.
 - iPhone and iPad use touch interaction. Mac and Windows support the equivalent click-to-move and pointer-drag behavior, and Windows touch devices support the touch interaction.
 - Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.

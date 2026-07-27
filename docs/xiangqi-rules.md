@@ -64,11 +64,15 @@ The complete result taxonomy, including user-ended games and imported records, i
 - A unilateral perpetual chase of the same unprotected target is a loss for the chasing side.
 - Kings and soldiers are excluded as perpetual-chase targets.
 - When one side perpetually checks and the other perpetually chases, the checking side is the side required to stop and loses if the violation is completed.
-- When both sides commit the same class of perpetual violation, the result is a draw.
+- When both sides commit the same class of perpetual violation, the result is a draw. Its reserved reason identifiers are `mutual-perpetual-check` and `mutual-perpetual-chase`, so the outcome is serializable distinctly from a claimed repetition draw; the exact adjudication of mutual sequences and their fixtures remain in the deferred edge-case tranche.
 
 The target engine behavior follows the selected PyChess Mini Xiangqi rules and uses Fairy-Stockfish's AXF chasing adjudication as its implementation direction. AXF does not replace the selected public source as the user-visible rules authority.
 
 The first minimized fixture set below pins these outcomes in their simplest forms, position identity, and the third-occurrence adjudication point. Exact protection tests beyond the simplest defended-target case, interruption rules, discovered and pinned attacks, and mixed or mutual sequences remain unresolved until their fixtures are approved.
+
+## Rules interpretation version
+
+The accepted rules interpretation carries an integer version, `rules_version`, owned by this document. It is `1` as of the starting-position, notation, and first-fixture freeze. It increments only when an accepted interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` (`minixiangqi`) and this version, per [game-data.md](game-data.md).
 
 ## Runtime rules authority
 
@@ -76,7 +80,7 @@ The shared core's rules facade, defined in [architecture.md](architecture.md), e
 
 ## Conformance fixtures
 
-The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the `mx-<area>-NNN` identifier scheme, and the immutability rules. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, and `perpetual-chase`, and they name results by rule outcome — the violating side loses — never by the side to move at detection.
+The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the `mx-<area>-NNN` identifier scheme, and the immutability rules. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, and `perpetual-chase`, and they name results by rule outcome — the violating side loses — never by the side to move at detection. The reason identifiers `mutual-perpetual-check` and `mutual-perpetual-chase` are reserved for the deferred mutual-violation fixtures.
 
 The first approved set contains sixteen fixtures:
 

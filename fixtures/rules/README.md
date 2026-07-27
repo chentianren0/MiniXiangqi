@@ -30,7 +30,7 @@ Every fixture has:
   - `legal_moves` — when non-null, the exact complete legal-move set.
   - `rejected_moves` — when non-null, moves that must be illegal in this position; the `rationale` states why.
   - `applied` — when non-null, a list of single-move probes, each with `move`, `result_fen`, and `in_check`: applying the move must produce exactly that FEN and check state.
-  - `game_state` — the normative state from `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, or `draw`. For `ongoing`, `reason` is `null`; otherwise `reason` is one of `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, or `perpetual-chase`, with `at_occurrence` for repetition-based outcomes. Results are named by rule outcome, never by the side to move at detection.
+  - `game_state` — the normative state from `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, or `draw`. For `ongoing`, `reason` is `null`; otherwise `reason` is one of `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, or `perpetual-chase`, with `at_occurrence` for repetition-based outcomes. The reasons `mutual-perpetual-check` and `mutual-perpetual-chase` are reserved for the deferred mutual-violation fixtures. Results are named by rule outcome, never by the side to move at detection.
 - `boundary` — when non-null, a `prefix_len` one repetition cycle earlier at which the outcome must not yet exist, pinning that the outcome attaches exactly at the asserted occurrence, plus a human-readable `expect` note stating what holds at that prefix.
 - `rationale` — the rule the fixture pins, in one or two sentences.
 
