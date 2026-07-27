@@ -46,9 +46,9 @@ The board is the primary content during play. Its interaction design must cover:
 ### Starting and configuring a game
 
 - With no active game, selecting **Human versus AI** or **Free Play** opens that mode's pre-start state on the board page.
-- With an unfinished active game, selecting either new mode immediately presents the one replacement confirmation described below. The confirmation shows the old game's metadata before the user leaves the Play start state.
-- Confirming the replacement ends the old game immediately and records it in History as ended early, then opens the selected mode's pre-start state.
-- Cancelling the replacement leaves the old active game unchanged and does not enter the selected mode.
+- With any active game, selecting either new mode immediately presents the one save-and-continue confirmation described below. This includes an ongoing game, a claimable but unclaimed neutral repetition, and an unconfirmed natural terminal result.
+- Cancelling leaves the active game unchanged and does not enter the selected mode.
+- **保存并继续** first archives the active game according to its factual current state, then opens the selected mode's pre-start state. It does not create the new game.
 
 The human-versus-AI pre-start state is not an active game:
 
@@ -69,7 +69,7 @@ The Free Play pre-start state is also not an active game:
 - It shows **开始对局** without a **本局设置** group, side selector, AI controls, or pre-start board-flip control.
 - **开始对局** commits the active Free Play game, makes the board interactive, and then shows the Red side-to-move status.
 - While creation is in progress, **开始对局** cannot be invoked again. Leaving invalidates the attempt and prevents a late completion from creating a game.
-- A creation failure retains the pre-start page, presents an error, and re-enables **开始对局**. It creates no new Free Play game or further persistent change; an older game already ended by confirmation remains in History.
+- A creation failure retains the pre-start page, presents an error, and re-enables **开始对局**. It creates no new Free Play game or further persistent change; an older game already archived through **保存并继续** remains in History.
 
 Settings has a **人机对弈默认设置** group with **默认先后手** and **默认 AI 等级**. Its footer explains that these values initialize future human-versus-AI setup and do not change an active game. A new installation selects **我先手** and **标准**.
 
@@ -123,19 +123,36 @@ Turn ownership, activity, and input availability must not be communicated by col
 
 The notice's exact presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
 
-### Replacing an unfinished game
+### Saving the active game before choosing a new mode
 
-The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, the side to move, and the move count.
+The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, and the move count. It shows the side to move for an ongoing game, the result and reason for a terminal game, and claim availability when applicable.
 
-Selecting **Human versus AI** or **Free Play** while another game is active immediately uses one fixed confirmation for every old-mode and new-mode combination:
+Both mode entries remain interactive whenever an active game exists. Selecting **Human versus AI** or **Free Play** temporarily remembers that destination in memory and immediately uses one fixed confirmation for every old-mode, new-mode, and active-game-state combination:
 
-- Title: **结束未完成的对局？**
-- Message: **继续后，上方显示的对局将提前结束并保存到历史。**
-- Actions: **取消** and **结束并继续**.
+- Title: **开始新对局？**
+- Metadata header: **当前对局**
+- Message: **这盘对局将按当前状态保存到历史。**
+- Actions: **取消** and **保存并继续**.
 
-The sheet shows the existing game's metadata. Its wording does not interpolate mode-specific combinations and does not use an ambiguous phrase such as “current play.” Confirming atomically records the old game as ended early without a competitive result and clears it as the active game, then opens the selected mode's pre-start state. If the user later leaves either pre-start state, the old game remains ended and no active game is created.
+Only the metadata changes; the title, message, and actions do not interpolate mode-specific or state-specific wording. Example metadata lines include **人机对弈 · 你执红**, **自由对弈**, **进行中 · 轮到黑方 · 42 步**, **红方获胜 · 将死 · 42 步**, and **进行中 · 可判和 · 42 步**. The metadata reports facts and does not ask the user to classify the result.
 
-An active game whose natural result card is awaiting confirmation is not eligible for this replacement flow. The mode entries remain unavailable until the user chooses **悔棋** or **结束对局** on that card.
+**保存并继续** applies the classification automatically:
+
+- An ordinary ongoing game is archived as ended early without a competitive result.
+- A neutral threefold repetition that is only claimable and has not been claimed is still ongoing, so it is archived as ended early rather than as a draw.
+- An unconfirmed natural terminal game keeps its actual winner or draw and its exact termination reason.
+
+The confirmation does not add **悔棋** or **判和** actions. **取消** discards the temporarily selected destination and leaves the active game completely unchanged; the user can resume it and use the board's normal Undo or draw-claim controls.
+
+Archiving and clearing the active game must commit atomically before navigation. On success, the selected mode's pre-start state opens, and no new game exists until **开始对局** succeeds. If the user leaves that pre-start state, the archived game remains in History and no active game is created.
+
+If persistence fails, the old active game remains unchanged, the selected pre-start state does not open, and no new game is created. The exceptional error uses:
+
+- Title: **无法保存对局**
+- Message: **当前对局仍然保留。请重试。**
+- Actions: **取消** and **重试**.
+
+The requested destination remains temporary only while this confirmation or retry flow exists. Cancelling the error discards it; retrying repeats the same atomic archive operation.
 
 ### Undo and result confirmation
 
@@ -146,7 +163,7 @@ An active game whose natural result card is awaiting confirmation is not eligibl
 - If the AI moved first, its opening move alone cannot be undone.
 - Redo is not available. A new move after Undo permanently replaces the discarded continuation.
 - A natural result remains undoable while its result presentation awaits confirmation. Undo dismisses that presentation and resumes the game.
-- After result confirmation, resignation confirmation, or **结束并继续**, the History record is immutable and cannot be undone.
+- After result confirmation, resignation confirmation, or **保存并继续**, the History record is immutable and cannot be undone.
 - Undo is disabled at the earliest valid boundary and while a prior Undo transition is still being applied.
 
 ### Natural result presentation
