@@ -51,6 +51,13 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 - Review affected product and interaction contracts.
 - Exercise the complete affected user flow on the smallest relevant iPhone layout, an iPad layout, and a supported macOS window size.
+- Verify iPhone stays in portrait when rotated and shows no orientation prompt, while iPad adapts to every orientation and to full-screen and windowed sizes including the system tiling configurations.
+- Verify both the layout shape and the navigation presentation are selected by available width rather than device identity, so a resized macOS window and a windowed iPad reach the same arrangement at the same width, and that one navigation container serves all three platforms.
+- Verify the board fits both the available width and the remaining height at every supported size, never overflowing a short window.
+- Verify a grid point stays at or above 44 points on iOS and iPadOS and 28 points on macOS, that chrome tightens before the board does, and that each platform's minimum window size prevents either from falling below its floor.
+- Verify the pre-start preview shrinks as needed so the setup controls always fit, including when a creation-failure error is shown.
+- Verify no captured-piece display appears in either layout shape.
+- Verify the move list is permanently visible in the side-by-side layout and reachable on demand in the stacked layout, without either the board or the controls losing space by default.
 - Inspect light and dark appearances, text expansion, interruption, error, and destructive-action states.
 - Verify that a new installation defaults to **我先手** and **标准**, while Settings can persist **AI 先手**, **随机**, and any accepted AI level as later setup defaults.
 - Verify that entering human-versus-AI setup creates a fresh in-memory draft, per-game changes never update Settings, leaving discards the draft, and reopening reloads current Settings defaults.

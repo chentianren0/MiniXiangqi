@@ -24,6 +24,8 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
 - Apple platforms are implemented and distributed first; Windows follows on the same shared core and product contract.
 - The application has one main window; multiple main windows are not supported.
+- iPhone runs in portrait orientation only. iPad supports every orientation, as iPadOS multitasking expects.
+- Captured pieces are not displayed during play. Each side starts with twelve pieces, so the board itself shows what remains.
 
 ## Target-MVP play modes
 
