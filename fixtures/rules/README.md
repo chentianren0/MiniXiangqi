@@ -21,7 +21,7 @@ An accepted fixture's `id`, position, moves, and assertions are immutable in mea
 Every fixture has:
 
 - `id`, `title`, `area` — identity as above.
-- `variant` — the ruleset identity the position is defined against; always `minixiangqi`.
+- `variant` — the ruleset identity the position is defined against; always `minixiangqi`. This names the Mini Xiangqi ruleset of the rules contract, not an engine variant to select: the engine configuration that must satisfy these fixtures, including its chase adjudication, is defined in [docs/engine-integration.md](../../docs/engine-integration.md), and the built-in engine variant of the same name does not satisfy every fixture.
 - `start_fen` — a 6-field FEN per the frozen encoding in the rules contract.
 - `moves` — the complete move history from `start_fen`, in canonical coordinate notation (`<from><to>`, e.g. `b1b4`); possibly empty. Every move must be legal at its turn.
 - `assertions` — the normative expectations at the position reached after `moves`:
@@ -29,9 +29,9 @@ Every fixture has:
   - `result_fen` — the exact expected 6-field FEN.
   - `legal_moves` — when non-null, the exact complete legal-move set.
   - `rejected_moves` — when non-null, moves that must be illegal in this position; the `rationale` states why.
-  - `applied` — when non-null, single-move probes: applying the named move must produce the given FEN and check state.
-  - `game_state` — the normative state from `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, or `draw`, with a `reason` from `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, or `perpetual-chase`, and `at_occurrence` for repetition-based outcomes. Results are named by rule outcome, never by the side to move at detection.
-- `boundary` — when non-null, a `prefix_len` one repetition cycle earlier at which the outcome must not yet exist, pinning that the outcome attaches exactly at the asserted occurrence.
+  - `applied` — when non-null, a list of single-move probes, each with `move`, `result_fen`, and `in_check`: applying the move must produce exactly that FEN and check state.
+  - `game_state` — the normative state from `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, or `draw`. For `ongoing`, `reason` is `null`; otherwise `reason` is one of `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, or `perpetual-chase`, with `at_occurrence` for repetition-based outcomes. Results are named by rule outcome, never by the side to move at detection.
+- `boundary` — when non-null, a `prefix_len` one repetition cycle earlier at which the outcome must not yet exist, pinning that the outcome attaches exactly at the asserted occurrence, plus a human-readable `expect` note stating what holds at that prefix.
 - `rationale` — the rule the fixture pins, in one or two sentences.
 
 ## Consumption

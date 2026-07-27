@@ -18,9 +18,11 @@
       "d4d6"
     ],
     "rejected_moves": [
-      "d4e4",
-      "d4c4",
       "d4a4",
+      "d4b4",
+      "d4c4",
+      "d4e4",
+      "d4f4",
       "d4g4"
     ],
     "applied": null,

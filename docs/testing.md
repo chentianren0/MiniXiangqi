@@ -80,6 +80,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify every ply's legal set, resulting position, check state, and final result where applicable.
 - Verify that the target custom variant has no move-count draw and recognizes the neutral draw outcome on the third occurrence for search.
 - Verify that the app-visible rules boundary exposes claim eligibility on that occurrence, continuing keeps the game active, and only an explicit claim commits the draw.
+- Verify that a unilateral perpetual violation becomes terminal automatically at the third sustained occurrence, is attributed to the violating side, and is presented through the standard natural-result flow rather than a claim.
 - Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and king and soldier chase-target exclusion.
 - Run the same accepted history fixtures against the app-visible adjudicator and the engine search configuration. The engine may use a terminal or draw-valued representation for search while the app exposes a claim, but position identity, repetition occurrence, and draw classification must agree, and an engine search result must not auto-commit the app-visible draw.
 - Add a minimized failing fixture before changing an accepted rule interpretation.
