@@ -1,0 +1,21 @@
+{
+  "id": "mx-end-001",
+  "title": "Checkmate: side to move has no legal move and is in check",
+  "area": "end",
+  "variant": "minixiangqi",
+  "start_fen": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "checkmate"
+    }
+  },
+  "boundary": null,
+  "rationale": "Rook a7 checks along rank 7; rook b6 covers d6; c7 and e7 remain attacked by the a7 rook. Black has no legal move while in check: checkmate, loss for the side to move."
+}

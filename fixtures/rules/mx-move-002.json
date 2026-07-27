@@ -1,0 +1,37 @@
+{
+  "id": "mx-move-002",
+  "title": "Horse blocked by an occupied first orthogonal step",
+  "area": "move",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1",
+    "legal_moves": [
+      "d1c1",
+      "d1d2",
+      "d1e1",
+      "d4b3",
+      "d4b5",
+      "d4c2",
+      "d4e2",
+      "d4f3",
+      "d4f5",
+      "d5c5",
+      "d5d6",
+      "d5e5"
+    ],
+    "rejected_moves": [
+      "d4c6",
+      "d4e6"
+    ],
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Horse on d4 with own soldier on d5: the two moves whose first orthogonal step is d5 (d4c6, d4e6) are rejected; the six moves over the empty legs c4, d3, e4 are legal."
+}

@@ -1,0 +1,28 @@
+{
+  "id": "mx-move-006",
+  "title": "In check: the legal set is exactly the evasions",
+  "area": "move",
+  "variant": "minixiangqi",
+  "start_fen": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1",
+    "legal_moves": [
+      "a4d4",
+      "d1c1",
+      "d1e1"
+    ],
+    "rejected_moves": [
+      "d1d2",
+      "a4a5"
+    ],
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Black rook d5 checks the white king d1 along the d-file. Legal replies are exactly the two off-file king steps and the rook interposition a4d4; d1d2 stays on the checked file and any non-addressing rook move (a4a5) is rejected."
+}

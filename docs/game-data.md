@@ -119,6 +119,7 @@ The app does not use cloud synchronization, remote storage, or network backup on
 - Which provenance fields should distinguish locally played, imported, and future derived games?
 - Decide which local library metadata, including pin state, belongs in exported archives and canonical duplicate comparison.
 - Define canonical game-content equivalence for duplicate detection, including which volatile archive fields do not affect equality.
+- Define import validation of an archive's initial position and moves against the frozen encoding in [xiangqi-rules.md](xiangqi-rules.md), including whether structurally well-formed but illegal setups, such as facing kings, are rejected at import.
 - What compatibility promise should later app versions make for older exported archives?
 - Define the concrete SQLite schema, the pinned SQLite version and update policy, and the store's concurrency limits.
 - Decide how frontends learn about library changes: operation return values only, or a change-notification mechanism.
