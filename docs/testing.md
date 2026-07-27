@@ -44,7 +44,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify pinned-first and newest-within-group History ordering, accepted row metadata, read-only game content, one-game import/export, duplicate navigation, conflict rejection, and the absence of Move, folders, bulk deletion, search, filters, tags, and game editing.
 - Verify partial and complete leading and trailing swipes, action order, icon-and-text labels, Share and Delete colors, immediate Pin or Unpin, full-swipe Delete, and pointer, keyboard, and VoiceOver equivalents.
 - Verify **删除前确认** defaults on and governs both the visible Delete action and complete swipe. Test the accepted confirmation copy, Cancel, confirmed deletion, immediate deletion when disabled, persistence failure, and the absence of deletion Undo or Recently Deleted.
-- Verify that an insufficient AI Hash budget presents the accepted close-other-apps notice, preserves the active game, and allows a fresh retry without automatic cleanup or a smaller Hash.
+- Verify the accepted insufficient-memory title, message, Cancel, and Retry actions. Cancel preserves the active game; Retry obtains a fresh budget without automatic cleanup or a smaller Hash.
 
 ### Rules
 

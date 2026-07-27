@@ -81,13 +81,17 @@ Turn ownership, activity, and input availability must not be communicated by col
 ### Insufficient memory for computer play
 
 - Before an AI engine is initialized, the app calculates the accepted Hash budget. A budget below 256 MiB does not start the computer opponent.
-- The app presents a notice asking the user to close other apps and retry.
+- The app presents a notice with:
+  - Title: **无法启动电脑对手**
+  - Message: **当前可用内存不足。请尝试关闭一些其他 App，然后重试。**
+  - Actions: **取消** and **重试**.
+- **取消** dismisses the notice without changing or ending the active game.
 - Retrying obtains a fresh `os_proc_available_memory()` value and recalculates the budget; the prior value is not cached.
 - This low-memory path does not substitute a smaller Hash or perform a special automatic cleanup pass to manufacture the minimum budget.
 - Any active game remains saved and unchanged while the computer opponent is unavailable.
 - The notice may suggest closing other apps, but it does not promise that iOS will terminate them or that a retry will succeed.
 
-The notice's exact copy, actions, presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
+The notice's exact presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
 
 ### Replacing an unfinished game
 
@@ -222,7 +226,7 @@ The interface must be designed for localization. User-facing text must not be em
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
 - Define turn-status placement, symbols, exact computer-activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
-- Define the insufficient-memory notice copy, actions, presentation, repeated-failure behavior, and accessibility announcement.
+- Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define the scope, placement, and teaching sequence of help content.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define sound events, sound design, volume or mute controls, and platform differences.
