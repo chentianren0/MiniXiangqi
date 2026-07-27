@@ -39,7 +39,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 Xiangqi pieces are Chinese characters, and this is a teaching application, so the board presents the real characters rather than a translated substitute.
 
-- The accepted piece characters give every piece type a distinct Red and Black form, so the sides are distinguishable by glyph and never by colour alone:
+- The accepted piece characters give every piece type a distinct Red and Black form, so wherever the characters are shown the sides are distinguishable by glyph rather than by colour alone:
 
   | Piece | Red | Black |
   |---|---|---|
@@ -50,20 +50,21 @@ Xiangqi pieces are Chinese characters, and this is a teaching application, so th
   | Soldier | 兵 | 卒 |
 
   Mini Xiangqi has no advisors or elephants, so no characters are defined for them.
-- Four pairs differ in whole shape. The cannon pair differs only in its radical, 火 against 石, so it is the weakest of the five at board size and the piece style must carry additional non-colour distinction for it. 砲 is chosen over the equally attested 包 because it is the classical counterpart to 炮 and is the form the normative source itself uses in prose, though that source's summary table gives 包.
+- With Chinese characters selected, four pairs differ in whole shape. The cannon pair differs only in its radical, 火 against 石, so it is the weakest of the five at board size and the piece style must carry additional non-colour distinction for it. 砲 is chosen over the equally attested 包 because it is the classical counterpart to 炮 and is the form the normative source itself uses in prose, though that source's summary table gives 包.
 - Piece characters are game content, not interface text: they are identical in every supported language and are never translated on the board.
 - On macOS every one of these characters resolves through the system font to a single Chinese family, at the matching weight from regular through heavy, with a uniform advance width — so pieces render at one consistent size without per-character adjustment. The equivalent confirmation on iOS and iPadOS is a required device check.
-- A **Western piece labels** setting replaces the characters with the conventional English initials — `K` general, `R` chariot, `H` horse, `C` cannon, `P` soldier — for readers who do not yet know the characters. It is off by default in every language, changes presentation only, and never alters game content, archives, or notation. These initials follow the established English Xiangqi convention and deliberately differ from the FEN piece letters frozen in [xiangqi-rules.md](xiangqi-rules.md), where the horse is `n`; a reader comparing the board with an exported archive will see `H` against `n`.
-- With Western labels enabled both sides show the same letter, so the glyph no longer distinguishes them and the piece style becomes the only non-colour carrier of side. Every accepted style must therefore satisfy the requirement below on its own, without help from the characters.
-- English piece names are General, Chariot, Horse, Cannon, and Soldier. They appear in help, accessibility announcements, and any descriptive text, never as board labels unless the Western-labels setting is enabled.
+- When the icon symbol set is selected, both sides show the same symbol, so the symbol no longer distinguishes them and the piece style becomes the only non-colour carrier of side. Every accepted style must therefore satisfy the requirement below on its own, without help from the symbols.
+- English piece names are General, Chariot, Horse, Cannon, and Soldier. They appear in help, accessibility announcements, and any descriptive text, never as board labels.
 
 ### Piece styles
 
-The user chooses among three accepted piece styles, since a learner and an experienced player want different things from the same board. The style is a Settings preference, changes presentation only, and never affects game content, archives, or notation. Every piece is drawn as a disc bearing a text glyph; no style uses an image, a rasterized glyph, or a per-piece asset.
+The user chooses among three accepted piece styles, since a learner and an experienced player want different things from the same board. A style is a Settings preference and changes presentation only, never game content, archives, or the canonical notation.
 
-- **传统** — the default. Both sides use the same warm light disc face, as a physical set does, with the characters themselves in the Red and Black role colours. The Black disc additionally carries a heavier ring, so a second non-colour channel is always present. A soft resting shadow seats the disc on the board.
-- **现代** — each disc is filled with a single strong colour, Red or Black, with a white ring inset within the disc and the character in white. It is flat, with no resting shadow.
-- **高对比** — Red is a filled disc with the character reversed out of it; Black is an outlined disc on a neutral face with a heavier ring. Structure and luminance carry the side as strongly as possible, for low-vision use. It is flat, so edges stay crisp.
+A style covers the disc, its resting shadow, and **the board surface beneath it**, so each is one coherent look rather than pieces borrowed onto an unrelated board. What is drawn *on* the disc is the separate piece-symbols choice below, and every symbol set must work with every style.
+
+- **传统** — the default. Both sides use the same warm light disc face, as a physical set does, with the symbols themselves in the Red and Black role colours. The Black disc additionally carries a heavier ring, so a second non-colour channel is always present. A soft resting shadow seats the disc on a warm low-chroma board surface.
+- **现代** — each disc is filled with a single strong colour, Red or Black, with a white ring inset within the disc and the symbol in white. It is flat, with no resting shadow, on a clean neutral board surface.
+- **高对比** — Red is a filled disc with the symbol reversed out of it; Black is an outlined disc on a neutral face with a heavier ring. Structure and luminance carry the side as strongly as possible, for low-vision use. It is flat, so edges stay crisp, on a board surface tuned for maximum separation from both discs.
 
 Each style therefore defines its own resting shadow, and there is no separate shadow setting. A resting shadow is presentation only: no style may rely on it to satisfy a contrast requirement, every requirement below must hold with the shadow removed, and resting shadows are reduced under Increase Contrast.
 
@@ -71,17 +72,51 @@ The lift shadow is different in kind and belongs to the motion language rather t
 
 Every style must satisfy these, verifiable rather than aesthetic. They must hold **jointly**, not one at a time.
 
-- **The sides stay distinguishable when hue is removed.** Each style names the channel that carries the side once the characters no longer do, which is the case whenever Western piece labels are enabled, and that channel is structural or luminance-based rather than hue-based:
+- **The sides stay distinguishable when hue is removed.** Each style names the channel that carries the side once the symbols no longer do, which is the case whenever icon symbols are selected, and that channel is structural or luminance-based rather than hue-based:
   - by disc fill, in 现代 — the two fills reach at least 3:1 against each other;
   - by ring weight, in 传统 — the heavier ring is at least twice the width of the lighter, and each ring reaches at least 3:1 against its own disc face;
   - by construction, in 高对比 — filled against outlined is itself structural and needs no further threshold.
-- **The glyph reaches at least 4.5:1 against its own disc face.**
-- **The disc's boundary — its ring or edge stroke — reaches at least 3:1 against the board's base surface**, measured against that base surface rather than against a grid line, and at a point away from any board marking. The requirement is on the boundary rather than on the fill: a light disc on a light board is a legitimate traditional look, and what separates it is its edge.
-- All of the above hold with resting shadows removed, in light and dark appearance, under Increase Contrast, and with Western piece labels enabled.
+- **The symbol reaches at least 4.5:1 against its own disc face**, whether it is a character or an icon.
+- **The disc's boundary — its ring or edge stroke — reaches at least 3:1 against the style's own board surface**, measured against that base surface rather than against a grid line, and at a point away from any board marking. The requirement is on the boundary rather than on the fill: a light disc on a light board is a legitimate traditional look, and what separates it is its edge.
+- All of the above hold with resting shadows removed, in light and dark appearance, under Increase Contrast, and with either symbol set selected.
 
-These requirements constrain each other, and 现代 is the tight case: a white glyph needs a fill dark enough to reach 4.5:1, while the two fills must still differ by 3:1. Together those bound the Red fill within a narrow luminance band and force the Black fill very dark, so the Red must be somewhat lighter than the deep red of a physical set. Because the style's white inset ring, not its fill, is what separates the piece from the board, the style stays valid on a dark board as well as a light one.
+These requirements constrain each other, and 现代 is the tight case: a white symbol needs a fill dark enough to reach 4.5:1, while the two fills must still differ by 3:1. Together those bound the Red fill within a narrow luminance band and force the Black fill very dark, so the Red must be somewhat lighter than the deep red of a physical set. Because the style's white inset ring, not its fill, is what separates the piece from the board, the style stays valid on a dark board as well as a light one.
 
-The exact colour values, ring weights, and board surface these are measured against are part of the open visual-system work; this section fixes the constraints they must satisfy, not the values.
+The exact colour values, ring weights, and board surfaces are part of the open visual-system work; this section fixes the constraints they must satisfy, not the values.
+
+### Piece symbols
+
+What appears on the disc is chosen separately from the style, because the two are independent: a learner may want icons on the traditional board, or characters on the modern one. The symbols choice is a Settings preference, changes presentation only, and composes with every style.
+
+- **汉字** — the default. The accepted Red and Black characters above.
+- **图标** — a pictorial symbol per piece type, for readers who do not know the characters.
+
+Icons replace the Latin-initial labels considered earlier. Initials are an arbitrary mapping that must itself be learned, they derive from chess pieces that do not move the same way, and they no longer match the app's own move notation now that it is traditional; a drawn horse explains itself.
+
+- Both sides show the **same** icon for a piece type, so an icon never carries the side. Side distinction rests entirely on the piece style, exactly as it must whenever the symbols stop differing, and every style already carries that requirement.
+- Icons are drawn to match the discs, grid, and markers rather than imported from an unrelated visual language. Established international Xiangqi symbol sets, several of which are freely licensed, are the reference for what reads well; adopting one directly is the fallback if a custom set cannot meet the readability requirement.
+- Every icon is distinguishable from every other at the smallest supported board size. Chariot against cannon is the demanding pair, since both are long-range pieces with similar conventional forms, and the set is not acceptable until those two are unmistakable.
+- Icons are game presentation, not interface text: they do not change with the interface language.
+
+## Board geometry and notation
+
+Mini Xiangqi is played on the intersections of a line grid, so a 7-by-7 board is 7-by-7 **points**: a 6-by-6 grid of cells with 49 intersections, the outer points sitting on the border lines. The board is never drawn as a checkerboard of squares, which would be wrong to anyone who knows the game and would teach a beginner the wrong mental model.
+
+- Each palace is a 3-by-3 block of points. Its two diagonals are drawn corner point to corner point across that block, crossing at the palace centre, at the same stroke weight as the grid so the palace reads as part of the board rather than as decoration.
+- There is no river: the grid is unbroken from rank 1 to rank 7. This is a distinguishing feature of the variant and is not replaced by a decorative band. Help calls it out.
+- Starting points are not marked. On a 7-point board the traditional soldier and cannon ticks would sit adjacent to almost every intersection and compete with the legal-move and last-move markers, which carry live information, and the fixed starting position is visible at the start of every game anyway.
+- The grid is square, and the board reserves a half-cell margin beyond the outer points so that edge discs are never clipped. Coordinates sit outside that margin.
+
+### User-visible notation
+
+The board edges and the move list use traditional Xiangqi notation, which is what Xiangqi instruction actually uses; a learner should be able to carry what they read here into any Xiangqi book, video, or lesson. This is presentation only: the canonical coordinate notation frozen in [xiangqi-rules.md](xiangqi-rules.md) remains what archives, fixtures, and the core interface store and exchange.
+
+- Files are numbered from each player's own right, so the two sides number them in opposite directions. Red writes its numbers as Chinese numerals and Black as Arabic numerals, and that applies to every number in a move, not only to the file.
+- A move names the piece, its file, a direction, and a value. The directions are 进 forward, 退 back, and 平 across. The piece is named by its own side's character form from the table above.
+- For the chariot, cannon, soldier, and general, 进 and 退 are followed by the number of ranks moved, and 平 is followed by the destination file. For the horse, whose move is not along a line, the value after 进 or 退 is the destination file.
+- When two pieces of the same type stand on one file, the move opens with 前 or 后 **before** the piece name and omits the file entirely — 前炮退二, not 炮前退二. 后 names the piece nearer its own side and 前 the one nearer the opponent, a sense that is relative to the moving side and therefore unaffected by which way the board is facing.
+- File numbers are shown in the outer margin. Ranks carry no labels, as they do not on a Xiangqi board. Because the two sides number the files oppositely, the margin follows the board's orientation so that the numbering beside a player is always that player's own.
+- A user who selects icon symbols still reads a character-based move list, since traditional notation names pieces by their characters. Whether that user is offered anything further is an open question below.
 
 ## Board and game interaction
 
@@ -346,8 +381,12 @@ Piece characters are game content and are excluded from localization, as defined
 > The items below are questions, not requirements or implementation authorization.
 
 - Define the navigation presentation on each device class and window size.
-- Define the visual system for the board, coordinates, colors, typography, and themes.
-- Fix each piece style's concrete values — role colours and disc fills, ring weights, and the board base surface its boundary contrast is measured against — within the constraints the accepted styles impose.
+- Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, and its own board surface — within the constraints the accepted styles impose.
+- Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
+- Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
+- Decide what a user reading icon symbols is offered for the move list, which remains character-based, and approve the table of positions and expected move strings that serves as the notation's test oracle.
+- Decide whether file numbers may be hidden, and define the visual system for them and for typography.
+- Define board themes beyond the three accepted piece styles, if any are wanted.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
 - Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
@@ -359,7 +398,7 @@ Piece characters are game content and are excluded from localization, as defined
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Approve the English counterparts of every accepted Chinese string in this document. The accepted copy is Chinese and exact; no English equivalent has been approved, so an English build is not yet fully specified.
 - Define the English Xiangqi terminology beyond the accepted piece names, and the localization review process.
-- Decide whether the piece-style names are user-facing interface strings or internal design names, and approve their wording if they are user-facing.
+- Decide whether the piece-style and piece-symbol names are user-facing interface strings or internal design names, and approve their wording if they are user-facing.
 - Define how Liquid Glass behaves with contrast, Reduce Transparency, and different platform appearances.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
