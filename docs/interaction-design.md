@@ -367,6 +367,35 @@ The interface must be designed for localization. User-facing text must not be em
 
 Piece characters are game content and are excluded from localization, as defined under Piece representation. Their English names localize wherever they appear as text.
 
+## Orientation and layout
+
+### Orientation
+
+- **iPhone runs in portrait only.** Apple's guidance permits an experience that runs in a single orientation, and relies on people simply trying both and settling on the one that works; the app therefore never asks the user to rotate the device and shows no message about orientation.
+- **iPad supports every orientation**, because iPadOS expects an app to adapt to rotation and to multitasking sizes, and a rotation-locked iPad app behaves poorly in Split View and Stage Manager.
+- macOS has no orientation; the window's proportions select the layout in the same way a device orientation does.
+
+### Layout shapes
+
+Two arrangements cover every device and window size, chosen by available width rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
+
+- **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them at the largest size the width allows.
+- **Side by side**, used by iPad landscape, wide iPad multitasking sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the move list, game metadata, and controls that do not need to sit under the thumb.
+
+The board is always square, and it is sized so that one point of the grid is never smaller than the platform's minimum touch target. On the narrowest supported iPhone the stacked layout still leaves the grid comfortably above that minimum, so the board is never the element that shrinks: when space is short, the surrounding chrome yields first.
+
+Navigation uses one adaptive container across the three Apple platforms, presenting as a tab bar on iPhone and as a sidebar on iPad and Mac, rather than a separate navigation structure per device.
+
+### The move list during play
+
+- Where the side-by-side layout applies, the move list is permanently visible in the panel.
+- In the stacked layout it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
+- Replay presents the move list as already accepted, in whichever arrangement the current layout provides.
+
+### Captured pieces
+
+Captured pieces are not displayed. Each side begins with twelve pieces, so what remains on the board is directly countable at a glance and a separate captured display would restate visible information while competing with the board for space.
+
 ## Platform adaptation
 
 - iOS should support touch-first play and compact layouts.
@@ -380,7 +409,8 @@ Piece characters are game content and are excluded from localization, as defined
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the navigation presentation on each device class and window size.
+- Define the exact width at which the layout changes between stacked and side by side, the minimum macOS window size, and how the on-demand move list is presented in the stacked layout.
+- Define what the side-by-side panel contains beyond the move list, game metadata, and controls, and what the stacked layout does with the controls that panel would otherwise hold.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, and its own board surface — within the constraints the accepted styles impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
 - Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
