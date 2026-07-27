@@ -93,6 +93,9 @@ Settings has a **人机对弈默认设置** group with **默认先后手** and *
 - Tapping another movable piece controlled by the human switches the selection directly.
 - Tapping the selected piece again, or tapping outside the board, cancels the selection.
 - Tapping an illegal board square does not move the piece or cancel the current selection. It provides brief, non-blocking feedback.
+- A legal move or an Undo whose immediate save fails does not happen: the board and game remain exactly at the pre-action state, brief non-blocking feedback distinct from illegal-move feedback indicates the change could not be saved, and the user may simply try again. There is no modal dialog and no accepted-but-unsaved change.
+- When the failed save is the AI's reply, the game remains at the last committed position with the AI still to move, and the app requests a new AI move rather than asking the user to retry a move that is not theirs.
+- A failed draw claim, resignation, or result confirmation uses the accepted **无法保存对局** retry presentation and leaves the game active and unchanged.
 - Dragging a movable piece beyond the gesture threshold selects it and reveals its legal destinations. Dropping on a legal destination commits the move; dropping elsewhere returns the piece to its origin.
 - iPhone and iPad use touch interaction. Mac and Windows support the equivalent click-to-move and pointer-drag behavior, and Windows touch devices support the touch interaction.
 - Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.
@@ -288,7 +291,7 @@ The interface must be designed for localization. User-facing text must not be em
 
 - Define the navigation presentation on each device class and window size.
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
-- Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
+- Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
 - Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.

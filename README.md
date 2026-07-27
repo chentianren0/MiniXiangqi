@@ -44,6 +44,7 @@ Open `MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/te
 - [Interaction design](docs/interaction-design.md) — UI, UX, platform visual language, board presentation, motion, sound, touch, help, localization, and accessibility.
 - [Mini Xiangqi rules](docs/xiangqi-rules.md) — normative rules source, adopted rules, runtime rules authority, and fixture requirements; the approved executable fixtures live in [fixtures/rules](fixtures/rules/).
 - [Architecture](docs/architecture.md) — the shared core, native frontends, dependency direction, concurrency, and lifecycle.
+- [Core C interface](docs/core-interface.md) — the core's C surface: modules, functions, error taxonomy, threading contract, and versioning.
 - [Game data](docs/game-data.md) — the library store, versioned game archive, saving, history, migrations, import, and export.
 - [Engine integration](docs/engine-integration.md) — the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
 - [Testing](docs/testing.md) — durable validation requirements and release gates.

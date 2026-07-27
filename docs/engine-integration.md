@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi engineers, engine integrators, build engineers, and reviewers. It defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine, and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, NNUE handling policy, and Apple memory entitlements below are accepted. The concrete interface, packaging mechanics, and memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
+> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, failure-containment decisions, NNUE handling policy, and Apple memory entitlements below are accepted, and the concrete search-facade C surface is the accepted contract in [core-interface.md](core-interface.md). Packaging mechanics and the memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -25,7 +25,12 @@ The facade must provide:
 - a proposed move result or typed failure;
 - rejection of a result that is cancelled, stale, malformed, or illegal under the rules facade.
 
-The engine runs in-process inside the core, behind the core's C interface; frontends never speak UCI or reach the engine directly.
+The engine runs in-process inside the core, behind the core's C interface; frontends never speak UCI or reach the engine directly. The concrete search-facade functions, request/result types, cancellation and stale-rejection mechanics, and threading rules are the accepted contract in [core-interface.md](core-interface.md).
+
+### Accepted failure-containment decisions
+
+- The unmodified engine terminates the process when transposition-table allocation fails, and on Windows when freeing large-page memory fails inside the same Hash path; the accepted error contract forbids any exit crossing the core boundary. Recoverable Hash allocation and release are therefore a required focused change in the Fairy-Stockfish fork, alongside the soldier chase-target exclusion; the C interface reserves a typed error for it that is unreachable until that change lands.
+- The engine's NNUE load state is observable before any search, so the core preflights the configured network itself and the engine's own fatal load-verification path is never reached. NNUE verification requires no fork change.
 
 ## Search lifecycle
 
@@ -48,6 +53,7 @@ The engine runs in-process inside the core, behind the core's C interface; front
   - **标准**: `go movetime 3000`; this is the new-install default.
   - **深思**: `go movetime 5000`.
 - The selected level identifier and exact `movetime` are frozen with a created game. Setup changes never alter the persistent Settings default, and an active game's level cannot be changed.
+- The serialized level identifiers are `fast`, `standard`, and `deep`, per the archive vocabulary in [game-data.md](game-data.md).
 - `Threads` is initialized from the active processor count the platform reports at engine initialization — `ProcessInfo.processInfo.activeProcessorCount` on Apple platforms and the Windows equivalent — rather than a hard-coded count.
 - Every level shares one adaptive Hash allocation policy. The target cap is 4 GiB, represented as 4096 MiB at the UCI boundary; the applied value may be lower when the safety budget requires it.
 - The frontend supplies a fresh available-memory value from a platform memory probe at each calculation. On iOS and iPadOS the probe is `os_proc_available_memory()`, which reflects the process's remaining limit. On macOS and Windows, where no comparable per-process limit applies, the probe reports the system's available physical memory.
@@ -55,6 +61,7 @@ The engine runs in-process inside the core, behind the core's C interface; front
 - Convert the byte budget to MiB and round down to a 64 MiB multiple. UCI Hash remains an integer count of MiB; rounding to whole GiB would discard too much usable capacity.
 - The minimum accepted Hash is 256 MiB. If the rounded budget is below 256 MiB, including when the probe reports zero, the facade does not initialize the AI engine and reports insufficient memory.
 - The insufficient-memory path asks the user to close other apps and retry. Each retry obtains a fresh available-memory value and recalculates the budget. It does not use a smaller Hash or perform a special automatic cleanup pass as an alternative.
+- The budget is recalculated from a fresh probe, and the engine re-prepared with the resulting values, at each human-versus-AI game creation; a later game in the same launch never silently reuses an earlier game's memory decision.
 - Engine, variant, NNUE, and option identifiers are versioned with the internal profile so a saved diagnostic record can identify the configuration that produced a move.
 
 Search speed statistics such as nodes per second, depth, and hash utilization are diagnostic signals, not substitutes for measured playing strength. The accepted 4 GiB cap and adaptive safety budget must still be checked against memory, energy, thermal, and response-time requirements on supported devices.
@@ -105,7 +112,6 @@ The core's rules facade is the authoritative runtime rules component, as accepte
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Define the search facade's exact C-interface functions and the legal-move/result handoff with the rules facade.
 - Define backgrounding, suspension, teardown, and memory-pressure behavior on each platform.
 - Define the exact ordering and cleanup contract between pre-start engine preparation, Random resolution, active-game persistence, and initial search.
 - Define user-visible recovery if the Hash allocation itself fails despite a calculated budget of at least 256 MiB.
