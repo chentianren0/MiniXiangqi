@@ -11,7 +11,7 @@ SwiftData is the recommended local persistence framework. Persistent models rema
 The conceptual model has:
 
 - one logical `GameLibrary`, with an optional reference to the single active game;
-- one `StoredGame` per active or completed game;
+- one `StoredGame` per active or History game;
 - queryable summary fields on `StoredGame`, such as stable identity, dates, play mode, participants, result summary, imported provenance, and pinned state;
 - a versioned archive encoded as `Data` containing the complete replayable game record.
 
@@ -31,23 +31,28 @@ The archive is independent of the SwiftData schema. It should contain enough inf
 
 The serialization format is not yet selected. Callers must not decode or modify the archive outside the data boundary.
 
-## Saving and replacement
+## Saving and starting another mode
 
 - Save explicitly after every accepted move, undo, game completion, import, deletion, and other durable state change.
 - Treat SwiftData autosave as a secondary safeguard, not the commit mechanism.
 - A committed move is the recovery boundary after app exit or interruption.
 
-### Accepted mode-selection replacement behavior
+### Accepted save-before-mode behavior
 
-- Replacement accepts only an unfinished, nonterminal active game. An active game with an unconfirmed natural result must be undone or confirmed through the result flow rather than recorded as ended early.
-- For either Human versus AI or Free Play, confirming replacement places the old game in History and clears `GameLibrary.activeGame` in one atomic operation.
+- The same operation accepts any active game, including an ordinary ongoing game, a claimable but unclaimed neutral repetition, or an unconfirmed natural terminal result.
+- The requested Human-versus-AI or Free Play destination is transient in-memory state and is not part of the game archive or SwiftData model.
+- **保存并继续** places the active game in History and clears `GameLibrary.activeGame` in one atomic operation.
+- The operation derives the saved classification from the committed game state:
+  - an ordinary ongoing game is recorded with an ended-early reason and no competitive result;
+  - a claimable neutral repetition that has not been claimed remains an ongoing game and is therefore recorded as ended early, not as a draw;
+  - an unconfirmed natural terminal state retains its actual result and exact termination reason.
 - The selected mode's pre-start state begins only after that commit succeeds. Creating the later game is a separate operation triggered by **开始对局**.
-- A failed replacement operation leaves the previously committed active game intact and does not continue to the selected mode.
+- A failed archive operation leaves the previously committed active game intact, creates no new game, and does not continue to the selected mode. The requested destination may remain only as transient retry state and is discarded when the flow is cancelled.
 
 ### Accepted pre-start state behavior
 
 - Neither mode's pre-start state is written to SwiftData or a game archive. Neither creates a `StoredGame` or changes `GameLibrary.activeGame`.
-- Leaving either pre-start state discards it. If it was entered after ending an older game, that older game remains immutable History and is not restored.
+- Leaving either pre-start state discards it. If it was entered after archiving an older game, that older game remains immutable History and is not restored.
 - Human-versus-AI Settings defaults and the per-game setup draft are separate state. Entering setup creates a fresh in-memory draft from the current Settings defaults; reopening after leaving creates another fresh draft from the then-current defaults.
 - A Random first-mover choice remains unresolved in the draft. Only successful **开始对局** creation commits the resolved human side, AI level identifier, and exact thinking-time value as durable active-game configuration.
 - AI availability or active-game persistence failure creates no active game and changes no persistent game-library state. The unresolved draft may remain only while the setup page remains open.
@@ -57,17 +62,17 @@ The serialization format is not yet selected. Callers must not decode or modify 
 
 ## Active games, history, and undo
 
-There is at most one active game. Completed games have immutable game content: replay is read-only, and editing their move line is not supported. Pinning or unpinning changes only mutable library metadata. A history record may be explicitly and permanently deleted.
+There is at most one active game. History games have immutable game content: replay is read-only, and editing their move line is not supported. Pinning or unpinning changes only mutable library metadata. A history record may be explicitly and permanently deleted.
 
 Undo changes the active game's retained main line and is saved immediately. The archive does not preserve discarded moves, an undo count, hidden branches, or redo state.
 
 - Free Play removes one ply per Undo action and supports repeated Undo to the initial position.
 - Human-versus-AI Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed AI reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
 - If a human move itself produces an unconfirmed natural terminal state, Undo removes that human move.
-- An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result moves it to immutable History.
-- A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; only claiming the draw commits an immutable draw record.
+- An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result, or successfully using **保存并继续** to enter another mode, moves it to immutable History with its actual result and termination reason.
+- A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; claiming the draw commits an immutable draw record, while **保存并继续** without claiming records an ended-early game with no competitive result.
 - Confirmed resignation records a human loss and moves the game to immutable History.
-- Replacing an unfinished game records the old game in immutable History with an ended-early reason and no competitive result.
+- Saving an ordinary ongoing game before entering another mode records it in immutable History with an ended-early reason and no competitive result.
 - A new move after Undo permanently replaces the discarded continuation.
 
 ## Import and export

@@ -40,12 +40,14 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify that a new installation defaults to **我先手** and **标准**, while Settings can persist **AI 先手**, **随机**, and any accepted AI level as later setup defaults.
 - Verify that entering human-versus-AI setup creates a fresh in-memory draft, per-game changes never update Settings, leaving discards the draft, and reopening reloads current Settings defaults.
 - Verify that the setup board is a noninteractive preview, no active game or resolved Random side exists before **开始对局**, and the created game freezes the resolved side, level identifier, and exact `movetime`. Random previews Red at the bottom and flips only after successful creation resolves to **AI 先手**.
-- With an active game, verify that tapping either **Human versus AI** or **Free Play** immediately presents the replacement confirmation with old-game metadata. Cancel preserves the active game; confirmation atomically records it as ended early before continuing.
-- Verify the exact replacement copy: **结束未完成的对局？**, **继续后，上方显示的对局将提前结束并保存到历史。**, **取消**, and **结束并继续**.
-- Verify that a natural result awaiting confirmation cannot enter replacement; the user must first select **悔棋** or **结束对局**.
+- With any active game, verify that tapping either **Human versus AI** or **Free Play** remains available and immediately presents the same save-and-continue confirmation with factual old-game metadata. Cover every old-mode and new-mode combination, an ordinary ongoing game, a claimable but unclaimed neutral repetition, and an unconfirmed natural terminal result.
+- Verify the exact fixed copy: **开始新对局？**, metadata header **当前对局**, **这盘对局将按当前状态保存到历史。**, **取消**, and **保存并继续**. Verify that only metadata changes and that no separate Undo or draw-claim action appears in this confirmation.
+- Verify factual metadata for mode, human side when applicable, ongoing side to move or terminal result and reason, claim availability, and move count.
+- Verify automatic classification: an ordinary ongoing game is saved as ended early without a competitive result; an unclaimed claimable repetition is also saved as ended early rather than as a draw; and an unconfirmed natural terminal game retains its actual result and exact termination reason.
+- Verify that Cancel discards the temporarily selected destination, preserves the active game exactly, and leaves its normal Undo or draw-claim controls available.
 - Verify that both modes open a pre-start state and create no active game before **开始对局**. Free Play uses a noninteractive, Red-bottom preview with no turn status, shows **你将控制红黑双方，红方先行。**, and presents no configurable setup fields.
-- After confirmed replacement, verify that leaving either pre-start state creates no game and the old game remains immutable History.
-- Verify that a failed archive-and-clear replacement preserves the old active game and never enters a pre-start state.
+- After successful **保存并继续**, verify that leaving either pre-start state creates no game and the old game remains immutable History.
+- Verify that a failed archive-and-clear operation presents **无法保存对局**, **当前对局仍然保留。请重试。**, **取消**, and **重试**; preserves the old active game; creates no new game; and never enters a pre-start state. Verify Retry repeats the atomic operation and Cancel discards the temporary destination.
 - Verify that insufficient AI resources, AI unavailability, and active-game persistence failures create no game or persistent game-library change. The pre-start state remains retryable, and a human-versus-AI Random choice remains unresolved.
 - Test double **开始对局**, leaving while creation is in progress, and late completion for both modes. Only one current setup-session request may commit; leaving invalidates it and creates no game.
 - Verify the turn-status matrix for Red and Black, human and AI ownership, AI thinking, Free Play, unavailable input, and replay progress.
@@ -69,11 +71,11 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 ### Game data
 
-- Test the single-active-game invariant, atomic old-game end-and-clear operation, and separate later game creation from both pre-start states.
+- Test the single-active-game invariant, automatic state-derived classification, atomic old-game archive-and-clear operation, and separate later game creation from both pre-start states.
 - Verify that neither pre-start state creates SwiftData model or archive data, changes `activeGame`, or survives leaving or app termination.
 - Save each durable transition, recreate the container, and verify exact resume state.
 - Test repeated Free Play undo by ply and repeated human-versus-AI undo by decision cycle, including cancellation while the AI is thinking.
-- Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation.
+- Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation or successful **保存并继续**.
 - Test persistence and relaunch of an active game whose current history makes a neutral repetition draw claimable, plus the transition from claimable active game to immutable draw record.
 - Test pin-state and delete-confirmation preference persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
 - Test every released SwiftData schema migration and archive-format migration from file-backed fixtures.
