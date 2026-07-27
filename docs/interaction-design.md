@@ -137,23 +137,35 @@ The sheet shows the existing game's metadata. Its wording does not interpolate m
 - Controls provide jump to beginning, one move back, play or pause, one move forward, and jump to end.
 - The move list highlights the currently displayed move and allows the user to jump to a selected move.
 - The accepted history orientation and visible Flip Board control remain available.
-- Delete and export are available through the replay toolbar or an equivalent More menu; their destructive confirmations and error flows remain to be designed.
+- Pin, Share, and Delete are managed from the History list rather than from replay.
 - Autoplay starts only after a user action and waits for each move animation to finish before advancing.
 - Autoplay offers session-only speeds of 0.5×, 1×, and 2×. Manual move navigation, flipping the board, or the app moving to the background pauses playback. Playback stops at the final position.
 - With Reduce Motion, replay uses the accepted crossfade or immediate board update while preserving the same order and playback controls.
 
 ### History library
 
-- History records are listed with the most recently recorded or imported first.
+- Pinned records appear before unpinned records. Each group orders the most recently recorded or imported first.
 - Each entry shows its date, mode, result or end reason, and move count. Human-versus-computer entries also show the human side; imported records have a visible imported marker.
 - Selecting an entry opens its read-only replay.
-- Record content is read-only, but a complete record can be deleted individually after confirmation.
-- Export operates on one selected History record and produces one game file.
+- Record content is read-only. Pinning changes only local library organization.
+- A partial right-to-left swipe reveals icon-and-text actions on the trailing side. From left to right, they are blue **共享** and red **删除**, with Delete nearest the trailing edge.
+- A complete right-to-left swipe invokes Delete.
+- A left-to-right swipe reveals **置顶** or **取消置顶**. A complete swipe invokes that reversible action immediately.
+- History has no Move action because the target MVP has no folders or tags.
+- **共享** exports the selected History record as one game file.
+- **删除前确认** is a Settings toggle and is enabled by default. When enabled, either the visible Delete action or a complete swipe presents:
+  - Title: **删除这盘棋？**
+  - Message: **删除后无法恢复。**
+  - Actions: **取消** and **删除**.
+- The record remains in the list until the user confirms. When **删除前确认** is disabled, either deletion gesture permanently deletes immediately.
+- There is no deletion Undo and no Recently Deleted collection. If persistence fails, the record remains and the app presents an error.
 - Import selects one game file at a time. A valid import creates an immutable History record and leaves the active game unchanged.
 - An exact duplicate does not create a second record and offers a way to view the existing record. A stable-identity conflict with different game content is rejected with an explanation.
 - Bulk deletion, search, filters, tags, and editing a History game are absent from the target MVP.
+- Trackpad swipes use the same leading and trailing behavior where supported. Pointer context menus, keyboard commands, and VoiceOver custom actions expose equivalent Pin or Unpin, Share, and Delete operations without adding permanent row buttons.
+- Action meaning is carried by icon and text as well as color.
 
-The exact list layout, date and move-count formatting, row actions, confirmation copy, file-picker presentation, success feedback, and recoverable error flows remain to be designed.
+The exact list layout, date and move-count formatting, file-picker presentation, import feedback, conflict feedback, and recoverable error copy remain to be designed.
 
 ## Motion and visual effects
 
@@ -209,7 +221,7 @@ The interface must be designed for localization. User-facing text must not be em
 - Define the visual system for the board, pieces, coordinates, colors, typography, and themes.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, and unavailable input.
 - Define turn-status placement, symbols, exact computer-activity treatment, transient announcements, and VoiceOver behavior.
-- Define the exact History-list layout and the detailed import, export, duplicate, conflict, and delete confirmations and error flows.
+- Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice copy, actions, presentation, repeated-failure behavior, and accessibility announcement.
 - Define the scope, placement, and teaching sequence of help content.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.

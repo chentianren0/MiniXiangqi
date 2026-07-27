@@ -41,7 +41,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the natural-result card before and after confirmation, including **悔棋**, **结束对局**, **回放**, **完成**, outside-dismissal rejection, and the absence of a Play Again action.
 - Verify the threefold notice, **继续对局**, **以和棋结束**, and retained non-blocking **可判和** affordance in both play modes.
 - Verify manual replay navigation and autoplay at 0.5×, 1×, and 2×, including animation completion, manual-navigation pause, board-flip pause, background pause, end-of-game stop, and Reduce Motion behavior.
-- Verify newest-first History ordering, accepted row metadata, read-only record content, individual deletion, one-game import/export, duplicate navigation, conflict rejection, and the absence of bulk deletion, search, filters, tags, and editing.
+- Verify pinned-first and newest-within-group History ordering, accepted row metadata, read-only game content, one-game import/export, duplicate navigation, conflict rejection, and the absence of Move, folders, bulk deletion, search, filters, tags, and game editing.
+- Verify partial and complete leading and trailing swipes, action order, icon-and-text labels, Share and Delete colors, immediate Pin or Unpin, full-swipe Delete, and pointer, keyboard, and VoiceOver equivalents.
+- Verify **删除前确认** defaults on and governs both the visible Delete action and complete swipe. Test the accepted confirmation copy, Cancel, confirmed deletion, immediate deletion when disabled, persistence failure, and the absence of deletion Undo or Recently Deleted.
 - Verify that an insufficient AI Hash budget presents the accepted close-other-apps notice, preserves the active game, and allows a fresh retry without automatic cleanup or a smaller Hash.
 
 ### Rules
@@ -61,7 +63,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test repeated Free Play undo by ply and repeated human-versus-computer undo by decision cycle, including cancellation while the computer is thinking.
 - Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation.
 - Test persistence and relaunch of an active game whose current history makes a neutral repetition draw claimable, plus the transition from claimable active game to immutable draw record.
-- Test history sorting, replay, deletion, ended-early records, confirmed resignation, and completed-record immutability.
+- Test pin-state and delete-confirmation preference persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
 - Test every released SwiftData schema migration and archive-format migration from file-backed fixtures.
 - Round-trip exported files across iOS, iPadOS, and macOS.
 - Verify that one-file, one-game import always creates immutable History and never creates or replaces the active game.
