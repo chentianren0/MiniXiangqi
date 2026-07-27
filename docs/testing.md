@@ -126,14 +126,16 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test Increase Contrast, Differentiate Without Color, Reduce Motion, and Reduce Transparency.
 - Verify that sound, haptics, color, motion, and visual effects are never the sole carrier of required information.
 - Verify the accepted piece characters all resolve to the same Chinese font family as one another at every weight used, with matching advance widths and no per-character size compensation, on each supported platform.
-- Verify that Red and Black remain distinguishable without color in every accepted piece style, both with Chinese characters and with Western piece labels enabled, in light and dark appearance and under Increase Contrast.
+- Verify that Red and Black remain distinguishable without color in every accepted piece style, with each symbol set, in light and dark appearance and under Increase Contrast.
+- Verify every icon is unmistakable from every other at the smallest supported board size, with particular attention to chariot against cannon.
 - Measure each style's three contrast requirements against their stated minimums — glyph against its disc face, disc boundary against the board base surface, and the side-carrying channel — in normal viewing and again with resting shadows removed, confirming no style depends on a shadow.
 - Verify a held piece still reads as raised under Reduce Motion, and that no piece style suppresses the lift.
 - Verify the capture ring stays distinguishable from any ring belonging to the selected piece style.
 - Verify the illegal-square haptic uses the lightest selection-weight feedback, is distinguishable from the save-failure warning, and that Undo transitions complete within their accepted durations.
 - Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
 - Verify the sound, haptics, and Western-piece-label settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
-- Verify that Western piece labels change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical with the setting on or off.
+- Verify that the piece-style, piece-symbols, and user-visible-notation choices change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical whichever is selected.
+- Verify traditional notation against known positions: file numbering runs from each side's own right, 进 and 退 carry rank counts for linear pieces and a destination file for the horse, and 前 and 后 are used when two same-type pieces share a file.
 - Verify unavailable hardware and muted-audio behavior.
 
 ## Build and internal-distribution gates
