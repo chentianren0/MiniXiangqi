@@ -39,7 +39,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 Xiangqi pieces are Chinese characters, and this is a teaching application, so the board presents the real characters rather than a translated substitute.
 
-- The accepted piece characters give every piece type a distinct Red and Black form, so the sides are distinguishable by glyph and never by colour alone:
+- The accepted piece characters give every piece type a distinct Red and Black form, so wherever the characters are shown the sides are distinguishable by glyph rather than by colour alone:
 
   | Piece | Red | Black |
   |---|---|---|
@@ -50,7 +50,7 @@ Xiangqi pieces are Chinese characters, and this is a teaching application, so th
   | Soldier | 兵 | 卒 |
 
   Mini Xiangqi has no advisors or elephants, so no characters are defined for them.
-- Four pairs differ in whole shape. The cannon pair differs only in its radical, 火 against 石, so it is the weakest of the five at board size and the piece style must carry additional non-colour distinction for it. 砲 is chosen over the equally attested 包 because it is the classical counterpart to 炮 and is the form the normative source itself uses in prose, though that source's summary table gives 包.
+- With Chinese characters selected, four pairs differ in whole shape. The cannon pair differs only in its radical, 火 against 石, so it is the weakest of the five at board size and the piece style must carry additional non-colour distinction for it. 砲 is chosen over the equally attested 包 because it is the classical counterpart to 炮 and is the form the normative source itself uses in prose, though that source's summary table gives 包.
 - Piece characters are game content, not interface text: they are identical in every supported language and are never translated on the board.
 - On macOS every one of these characters resolves through the system font to a single Chinese family, at the matching weight from regular through heavy, with a uniform advance width — so pieces render at one consistent size without per-character adjustment. The equivalent confirmation on iOS and iPadOS is a required device check.
 - When the icon symbol set is selected, both sides show the same symbol, so the symbol no longer distinguishes them and the piece style becomes the only non-colour carrier of side. Every accepted style must therefore satisfy the requirement below on its own, without help from the symbols.
@@ -111,11 +111,12 @@ Mini Xiangqi is played on the intersections of a line grid, so a 7-by-7 board is
 
 The board edges and the move list use traditional Xiangqi notation, which is what Xiangqi instruction actually uses; a learner should be able to carry what they read here into any Xiangqi book, video, or lesson. This is presentation only: the canonical coordinate notation frozen in [xiangqi-rules.md](xiangqi-rules.md) remains what archives, fixtures, and the core interface store and exchange.
 
-- Files are numbered from each player's own right, so the two sides number them in opposite directions. Red uses Chinese numerals; Black uses Arabic numerals.
-- A move names the piece, its file, a direction, and a value. The directions are 进 forward, 退 back, and 平 across.
+- Files are numbered from each player's own right, so the two sides number them in opposite directions. Red writes its numbers as Chinese numerals and Black as Arabic numerals, and that applies to every number in a move, not only to the file.
+- A move names the piece, its file, a direction, and a value. The directions are 进 forward, 退 back, and 平 across. The piece is named by its own side's character form from the table above.
 - For the chariot, cannon, soldier, and general, 进 and 退 are followed by the number of ranks moved, and 平 is followed by the destination file. For the horse, whose move is not along a line, the value after 进 or 退 is the destination file.
-- When two pieces of the same type stand on one file, 前 and 后 replace the origin file number.
-- Coordinates are shown by default in the outer margin, following the board's orientation so a label always sits beside the line it names.
+- When two pieces of the same type stand on one file, the move opens with 前 or 后 **before** the piece name and omits the file entirely — 前炮退二, not 炮前退二. 后 names the piece nearer its own side and 前 the one nearer the opponent, a sense that is relative to the moving side and therefore unaffected by which way the board is facing.
+- File numbers are shown in the outer margin. Ranks carry no labels, as they do not on a Xiangqi board. Because the two sides number the files oppositely, the margin follows the board's orientation so that the numbering beside a player is always that player's own.
+- A user who selects icon symbols still reads a character-based move list, since traditional notation names pieces by their characters. Whether that user is offered anything further is an open question below.
 
 ## Board and game interaction
 
@@ -380,10 +381,12 @@ Piece characters are game content and are excluded from localization, as defined
 > The items below are questions, not requirements or implementation authorization.
 
 - Define the navigation presentation on each device class and window size.
-- Define the visual system for coordinates and typography.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, and its own board surface — within the constraints the accepted styles impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
-- Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, and whether the move list also shows the canonical coordinate form.
+- Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
+- Decide what a user reading icon symbols is offered for the move list, which remains character-based, and approve the table of positions and expected move strings that serves as the notation's test oracle.
+- Decide whether file numbers may be hidden, and define the visual system for them and for typography.
+- Define board themes beyond the three accepted piece styles, if any are wanted.
 - Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
 - Define turn-status placement, symbols, exact AI activity treatment, transient announcements, and VoiceOver behavior.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.

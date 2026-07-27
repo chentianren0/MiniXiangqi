@@ -128,14 +128,16 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the accepted piece characters all resolve to the same Chinese font family as one another at every weight used, with matching advance widths and no per-character size compensation, on each supported platform.
 - Verify that Red and Black remain distinguishable without color in every accepted piece style, with each symbol set, in light and dark appearance and under Increase Contrast.
 - Verify every icon is unmistakable from every other at the smallest supported board size, with particular attention to chariot against cannon.
-- Measure each style's three contrast requirements against their stated minimums — glyph against its disc face, disc boundary against the board base surface, and the side-carrying channel — in normal viewing and again with resting shadows removed, confirming no style depends on a shadow.
+- Measure each style's three contrast requirements against their stated minimums — symbol against its disc face, disc boundary against that style's own board surface, and the side-carrying channel — in normal viewing and again with resting shadows removed, confirming no style depends on a shadow.
 - Verify a held piece still reads as raised under Reduce Motion, and that no piece style suppresses the lift.
 - Verify the capture ring stays distinguishable from any ring belonging to the selected piece style.
 - Verify the illegal-square haptic uses the lightest selection-weight feedback, is distinguishable from the save-failure warning, and that Undo transitions complete within their accepted durations.
 - Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
-- Verify the sound, haptics, and Western-piece-label settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
+- Verify the sound, haptics, and piece-symbols settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
+- Verify the board is drawn as intersections with the outer points on the border lines, the palace diagonals meet at the palace centre at grid stroke weight, the grid is unbroken across the middle of the board, no starting points are marked, and edge discs are never clipped.
+- Verify every board marker — legal-move dot, capture ring, last-move markers, and check treatment — stays legible against each style's own board surface.
 - Verify that the piece-style, piece-symbols, and user-visible-notation choices change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical whichever is selected.
-- Verify traditional notation against known positions: file numbering runs from each side's own right, 进 and 退 carry rank counts for linear pieces and a destination file for the horse, and 前 and 后 are used when two same-type pieces share a file.
+- Verify traditional notation against an approved table of positions and their expected move strings, covering: file numbering from each side's own right; each side's own numerals used for every number; 进 and 退 carrying a rank count for the chariot, cannon, soldier, and general but a destination file for the horse; 平 carrying a destination file; and 前 or 后 leading the move, before the piece name and without a file, when two same-type pieces share a file. That table is the oracle and must be approved alongside the notation itself, since the fixtures record only canonical coordinates.
 - Verify unavailable hardware and muted-audio behavior.
 
 ## Build and internal-distribution gates
