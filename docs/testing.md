@@ -148,5 +148,5 @@ An internal distribution candidate — TestFlight on Apple platforms, or the int
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
 - Define localization languages and the localization review process.
 - Define which critical flows require UI automation versus structured manual review.
-- Define import size, nesting, move-count, and processing-time limits.
+- Define how the accepted import validation time budget is measured and enforced on each platform.
 - Define which evidence must be retained for an internal distribution candidate.

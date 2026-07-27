@@ -15,7 +15,7 @@ This document is for engineers and reviewers implementing or consuming the share
 
 ## Modules and functions
 
-Six groups, 52 functions.
+Six groups, 53 functions.
 
 ### Common prelude
 
@@ -42,7 +42,12 @@ MxqStatus mxq_core_shutdown(MxqCore *core, MxqError *err);    /* deterministic t
 
 ### Rules facade — `mxq_game_` (sessions) and `mxq_rules_` (session-free)
 
-A session composes the rules facade with the game's frozen configuration (`MxqPlayMode`, resolved `human_color`, `ai_level`, exact `ai_movetime_ms`), because undo, resign, and search eligibility are mode- and controller-aware. Sessions are **store-attached** when created or resumed (`mxq_game_create`, `mxq_game_resume_active`) and **detached read-only** when opened for replay or import preview (`mxq_store_history_open`, `mxq_game_open_archive`). A mutation on a store-attached session commits inside the call before returning; there is no separate save operation.
+A session composes the rules facade with the game's frozen configuration — `MxqPlayMode`, resolved `human_side`, `first_mover_choice`, `ai_level`, exact `ai_movetime_ms` (the enums `MxqPlayMode`, `MxqColor`, `MxqAiLevel`, and the first-mover choice correspond one-to-one to the serialized vocabulary in [game-data.md](game-data.md)) — because undo, resign, search eligibility, and the archive all depend on it. Sessions are **store-attached** when created or resumed (`mxq_game_create`, `mxq_game_resume_active`) and **detached read-only** when opened for replay or import preview (`mxq_store_history_open`, `mxq_game_open_archive`).
+
+Attached sessions distinguish two mutation classes:
+
+- **Ordinary mutations** — `mxq_game_apply_move`, `mxq_game_undo` — update the active game and commit the updated state inside the call before returning. There is no separate save operation.
+- **Terminal commits** — `mxq_game_claim_draw`, `mxq_game_resign`, `mxq_game_confirm_result` — end the game: each performs one atomic transaction that commits the outcome, inserts the immutable History record, and clears the active-game reference, returning the new record id. Claim commits the draw with reason `threefold-repetition` and is legal only in the claimable state; resign commits the loss for the human side with reason `resignation` and is legal only in human-versus-AI play; confirm-result commits an unconfirmed natural terminal state as its actual result. After a terminal commit the session is archived — further mutations return `MXQ_ERR_STATE_SESSION_ARCHIVED` — and the caller still releases the handle. `mxq_store_archive_and_clear` is the fourth, state-derived archiving path for save-before-mode, and the only one that may record `ended-early`.
 
 ```c
 /* lifecycle */
@@ -67,12 +72,16 @@ MxqStatus mxq_game_move_history(const MxqGame *game, MxqMove *out, size_t cap,
 MxqStatus mxq_game_position_at(const MxqGame *game, uint32_t ply,
                                MxqPosition *out, MxqError *err);   /* replay scrubbing */
 
-/* mutations — on an attached session each commits before returning */
+/* ordinary mutations — each commits the updated active game before returning */
 MxqStatus mxq_game_apply_move(MxqGame *game, const char *move,
                               MxqPosition *out_after, MxqGameStatus *out_status, MxqError *err);
 MxqStatus mxq_game_undo(MxqGame *game, uint32_t *out_plies_removed, MxqError *err);
-MxqStatus mxq_game_claim_draw(MxqGame *game, MxqError *err);
-MxqStatus mxq_game_resign(MxqGame *game, MxqError *err);
+                              /* out_plies_removed is 1 or 2 per the decision-cycle rule */
+
+/* terminal commits — one atomic transaction: outcome + History record + cleared active reference */
+MxqStatus mxq_game_claim_draw(MxqGame *game, uint64_t *out_record_id, MxqError *err);
+MxqStatus mxq_game_resign(MxqGame *game, uint64_t *out_record_id, MxqError *err);
+MxqStatus mxq_game_confirm_result(MxqGame *game, uint64_t *out_record_id, MxqError *err);
 
 /* session-free rules facade — the fixture-harness and import-validation surface */
 MxqStatus mxq_rules_start_fen(char *out, size_t cap, size_t *out_len, MxqError *err);
@@ -132,8 +141,8 @@ MxqStatus mxq_archive_probe(MxqCore *core, const uint8_t *bytes, size_t len,
 MxqStatus mxq_archive_validate(MxqCore *core, const uint8_t *bytes, size_t len,
                                MxqArchiveInfo *out, MxqError *err);  /* full rules replay */
 MxqStatus mxq_archive_encode(MxqCore *core, const MxqGame *game,
-                             MxqEndReason ended_early_reason,
                              MxqBlob **out_blob, MxqError *err);
+                             /* classification derives from committed state, never from the caller */
 MxqStatus mxq_archive_supported_versions(uint32_t *out_min_readable,
                                          uint32_t *out_current, MxqError *err);
 ```
@@ -195,9 +204,10 @@ MxqStatus mxq_store_import(MxqCore *core, const uint8_t *bytes, size_t len,
 Rules for the taxonomy:
 
 - Malformed versus illegal is always distinguished: a string that is not `^[a-g][1-7][a-g][1-7]$` is malformed (a caller bug from the UI, expected data from an import); a well-formed move that is not legal is the ordinary illegal-move outcome with its accepted brief feedback.
+- In version 1, `mxq_rules_validate_fen` applies the frozen structural encoding only; the illegal-position code is reserved for the future setup-legality predicate that [game-data.md](game-data.md) leaves open, and fixture positions are validated structurally plus by replay.
 - Programming errors — the argument domain except buffer-too-small, plus not/already-initialized and read-only-session violations — assert in debug builds, return their code in release builds, and never change state. Everything else is ordinary control flow and must leave the last committed state intact.
 - `MxqError` detail strings are short English diagnostics, never localized copy, never private game data; the raw subsystem code (SQLite result, FEN validation cause) rides along for diagnostics only and is never branched on.
-- Accepted user-visible flows map by domain: any store-domain failure from `mxq_store_archive_and_clear` drives the accepted 无法保存对局 retry flow; `MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY` drives the accepted low-memory retry flow with a fresh probe per retry; a store-domain failure from `mxq_game_apply_move` leaves the game exactly at the pre-move state and drives the accepted brief per-move save-failure notice in [interaction-design.md](interaction-design.md); import failures map onto the import pipeline's user-visible classes.
+- Accepted user-visible flows map by domain: any store-domain failure from `mxq_store_archive_and_clear` **or a terminal commit** drives the accepted 无法保存对局 retry flow, with the game remaining active and unchanged; `MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY` drives the accepted low-memory retry flow with a fresh probe per retry; a store-domain failure from `mxq_game_apply_move` or `mxq_game_undo` leaves the game exactly at the pre-mutation state and drives the accepted brief save-failure feedback in [interaction-design.md](interaction-design.md) — when the failed commit is an AI reply, the frontend requests a new search from the unchanged position instead; import failures map onto the import pipeline's user-visible classes, and the import time budget exhausts as a resource-domain limit.
 
 ## Threading contract
 
@@ -205,18 +215,22 @@ The core creates exactly one internal thread — the engine thread, sole caller 
 
 | Group | Callable from | Blocking |
 |---|---|---|
-| status/blob helpers, `mxq_core_version`, `mxq_engine_plan`, `mxq_rules_start_fen` | any thread, including callbacks | no |
+| status/blob helpers, `mxq_core_version`, `mxq_engine_plan`, `mxq_rules_start_fen`, `mxq_archive_supported_versions` | any thread, including callbacks | no |
 | `mxq_core_init`, `mxq_core_shutdown` | UI or setup thread; never a callback | yes |
 | `mxq_core_cancel_all` | any thread except a callback | until the engine quiesces |
+| session lifecycle (`mxq_game_create`, `mxq_game_resume_active`, `mxq_game_open_archive`) | any non-UI thread except a callback | yes — store or decode work |
+| `mxq_game_release` | session owner | no |
 | session queries | session owner | no |
-| session mutations (attached) | session owner, off the UI thread | yes — commits inside the call |
+| session mutations and terminal commits (attached) | session owner, off the UI thread | yes — commits inside the call |
 | session mutations (detached) | session owner | no |
 | `mxq_rules_*` evaluation | any thread except a callback | no |
-| `mxq_engine_prepare` / `teardown` | any thread except a callback, off the UI thread | yes |
-| `mxq_search_start` / `cancel` / `cancel_all` / `poll` | any thread except a callback | no |
+| `mxq_engine_prepare` / `mxq_engine_teardown` | any non-UI thread except a callback; work executes marshalled on the engine thread | yes |
+| `mxq_engine_query`, `mxq_search_start` / `cancel` / `cancel_all` / `poll` | any thread except a callback | no |
 | `mxq_search_wait` | any non-UI thread except a callback | bounded by timeout |
-| `mxq_archive_*` | any thread except a callback | CPU-bound; keep off the UI thread |
+| `mxq_archive_probe` / `validate` / `encode` | any thread except a callback | CPU-bound; keep off the UI thread |
 | `mxq_store_*` | any thread except a callback, off the UI thread | yes |
+
+Every function that takes an `MxqGame *` — including `mxq_search_start`, `mxq_archive_encode`, and `mxq_store_archive_and_clear` — counts as being inside that session for the single-owner rule and must be driven from the session's owning context; the table's thread class then applies within that ownership.
 
 - **Sessions are single-owner.** A session may move between threads but only one thread may be inside it at a time; a detected race returns `MXQ_ERR_ARG_CONCURRENT_USE` rather than silently serializing, because with one main window and one active game a concurrent session call is a frontend bug and picking an order would hide it. Distinct sessions are independent.
 - **The search callback must copy and return.** It runs on the engine thread; inside it, only the status/blob helpers are legal — anything else returns `MXQ_ERR_ARG_REENTRANT` — and it must not block, because the engine thread is the resource it would deadlock. Its whole job is to hand the result to the frontend's dispatcher, which the architecture contract already requires before any UI mutation.

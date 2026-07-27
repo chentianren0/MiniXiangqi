@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi engineers, engine integrators, build engineers, and reviewers. It defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine, and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, NNUE handling policy, and Apple memory entitlements below are accepted. The concrete interface, packaging mechanics, and memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
+> **Status: Partially accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, failure-containment decisions, NNUE handling policy, and Apple memory entitlements below are accepted, and the concrete search-facade C surface is the accepted contract in [core-interface.md](core-interface.md). Packaging mechanics and the memory-pressure lifecycle remain draft. Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -29,7 +29,7 @@ The engine runs in-process inside the core, behind the core's C interface; front
 
 ### Accepted failure-containment decisions
 
-- The unmodified engine terminates the process when transposition-table allocation fails, and the accepted error contract forbids any exit crossing the core boundary. Recoverable Hash-allocation failure is therefore a required focused change in the Fairy-Stockfish fork, alongside the soldier chase-target exclusion; the C interface reserves a typed error for it that is unreachable until that change lands.
+- The unmodified engine terminates the process when transposition-table allocation fails, and on Windows when freeing large-page memory fails inside the same Hash path; the accepted error contract forbids any exit crossing the core boundary. Recoverable Hash allocation and release are therefore a required focused change in the Fairy-Stockfish fork, alongside the soldier chase-target exclusion; the C interface reserves a typed error for it that is unreachable until that change lands.
 - The engine's NNUE load state is observable before any search, so the core preflights the configured network itself and the engine's own fatal load-verification path is never reached. NNUE verification requires no fork change.
 
 ## Search lifecycle
