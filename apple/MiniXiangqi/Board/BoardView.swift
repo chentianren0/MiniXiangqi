@@ -46,12 +46,59 @@ struct BoardView: View {
         }
         .frame(width: geometry.coreSide, height: geometry.coreSide)
         .background(style.boardSurface)
-        .contentShape(Rectangle())
-        .gesture(SpatialTapGesture(coordinateSpace: .local).onEnded { value in
-            if let square = geometry.square(at: value.location, flipped: flipped) {
-                onTap(square)
+        .overlay(points)
+    }
+
+    /// One element per point, over the drawn board.
+    ///
+    /// The board is drawn as a single canvas, which is right — it is one
+    /// picture, not forty-nine views — but a picture has no points a pointer
+    /// can hit or a screen reader can name. This grid supplies both: it is what
+    /// makes a tap land on a point rather than at a coordinate, and what lets
+    /// someone who cannot see the board hear where the pieces are.
+    ///
+    /// Each element is placed at the same centre the canvas draws that point
+    /// at, from the same function, rather than laid out by a stack that happens
+    /// to divide the board evenly. A stack invites a stray inset — an earlier
+    /// version had one, and it silently shifted every point by a fraction of a
+    /// cell while remaining perfectly self-consistent, so clicking by name
+    /// still worked and no test could see it. Sharing the geometry makes the
+    /// two impossible to disagree.
+    private var points: some View {
+        ZStack {
+            ForEach(0..<(Square.count * Square.count), id: \.self) { index in
+                let square = Square(file: index % Square.count,
+                                    rank: index / Square.count)
+                let centre = point(square)
+                Color.clear
+                    .frame(width: p, height: p)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap(square) }
+                    .accessibilityElement()
+                    .accessibilityIdentifier("point-\(square.name)")
+                    .accessibilityLabel(describe(square))
+                    .accessibilityAddTraits(.isButton)
+                    .position(x: centre.x, y: centre.y)
             }
-        })
+        }
+        .frame(width: geometry.coreSide, height: geometry.coreSide)
+    }
+
+    /// What a screen reader says about a point: its name, what stands there,
+    /// and any state that is on it.
+    private func describe(_ square: Square) -> String {
+        var parts = [square.name]
+        if let piece = placement[square] {
+            parts.append(piece.side == .red ? "红" : "黑")
+            parts.append(piece.kind.character(for: piece.side))
+        } else {
+            parts.append("空")
+        }
+        if square == selected { parts.append("已选择") }
+        if captures.contains(square) { parts.append("可吃") }
+        else if destinations.contains(square) { parts.append("可走") }
+        if square == checkedGeneral { parts.append("被将军") }
+        return parts.joined(separator: " ")
     }
 
     private func point(_ square: Square) -> CGPoint {
@@ -219,6 +266,11 @@ struct BoardView: View {
         }
         .frame(width: geometry.coreSide, height: geometry.stripHeight)
         .background(style.boardSurface)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(isRed ? "file-numerals-red" : "file-numerals-black")
+        .accessibilityLabel((0..<Square.count)
+            .map { numeral(file: flipped ? Square.count - 1 - $0 : $0, forRedPlayer: isRed) }
+            .joined(separator: " "))
     }
 
     /// Files are numbered from each player's own right: Red's right is file g,
