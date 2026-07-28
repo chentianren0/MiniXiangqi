@@ -68,11 +68,32 @@
       "_note": "The fork's static library target is an accepted requirement that has not landed; see patches_pending/static-library-target. The artifact name and the per-platform build invocation belong here once it exists.",
       "artifact_name": null,
       "build_command": null
+    },
+
+    "vendored": {
+      "_about": "How the pinned revision reaches the core. Because the fork's own static library target has not landed, the core cannot consume a fork-built artifact and instead compiles a copied source snapshot with a core-owned CMakeLists.txt. core/third_party/fairy-stockfish/README.md justifies the copied-snapshot choice against a submodule and a subtree, and records what changes when the fork's target lands.",
+      "established": true,
+      "method": "copied-source-snapshot",
+      "path": "core/third_party/fairy-stockfish/upstream",
+      "source_paths": ["AUTHORS", "Copying.txt", "README.md", "Top CPU Contributors.txt", "src"],
+      "excluded_paths": [
+        "src/main.cpp",
+        "src/pyffish.cpp",
+        "src/ffishjs.cpp",
+        "src/Makefile",
+        "src/Makefile_js",
+        "src/variants.ini"
+      ],
+      "_excluded_about": "The engine's own main(), its Python bindings, its JavaScript/WebAssembly bindings, the fork's build system, and the fork's sample variant configuration. setup.py, pyffish.pyi, MANIFEST.in, tests/, .github/, appveyor.yml and test.py are outside source_paths and so are not present either.",
+      "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
+      "file_manifest_sha256": "e7142566b356362ce89ec47fb8adbfc634d104e49dc9ca6be809bfae52c407fe",
+      "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     }
   },
 
   "build_flags": {
     "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet, the fork's static library target has not landed, and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
+    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established.",
     "platforms": {
       "macos": {
         "established": false,
@@ -134,12 +155,14 @@
   },
 
   "variant": {
-    "_about": "The bundled variant configuration. The identifier and the filename are fixed by docs/engine-integration.md; the file itself has not been written, so its hash cannot be established and is null rather than invented.",
+    "_about": "The bundled variant configuration. The identifier and the filename are fixed by docs/engine-integration.md. The file now exists, so its hash is computed from its bytes rather than left null. Editing the file changes this hash and must be done in the same change, or the packaging build fails rather than shipping unverified bytes.",
     "id": "minixiangqiaxf",
     "base_variant": "minixiangqi",
     "filename": "minixiangqi-variants.ini",
-    "sha256": null,
-    "established": false
+    "path": "core/assets/minixiangqi-variants.ini",
+    "byte_length": 4953,
+    "sha256": "9a806bae89fd4ac49a9e171cde7fe297f4c0d90742cbc9d584757b118a8b6f99",
+    "established": true
   },
 
   "network": {

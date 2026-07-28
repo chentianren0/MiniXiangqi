@@ -142,9 +142,11 @@ bool RulesFacade::open(const std::string &store_directory,
     (void)store_directory;
     (void)asset_directory;
     reason =
-        "the core's rules facade is not built into this runner: it needs the "
-        "pinned Fairy-Stockfish fork, which is not vendored yet. Configure with "
-        "-DMXQ_ENABLE_RULES_FACADE=ON once it is.";
+        "the core's rules facade is not built into this runner. The pinned "
+        "Fairy-Stockfish fork is vendored and links with "
+        "-DMXQ_ENABLE_RULES_FACADE=ON, but the facade's own entry points — "
+        "mxq_core_init, mxq_rules_evaluate, mxq_rules_legal_moves — are not "
+        "implemented yet, so there is nothing for this runner to call.";
     return false;
 }
 

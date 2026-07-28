@@ -21,7 +21,11 @@ target_link_libraries(mxq_core_tests PRIVATE mxq::core mxq_warnings)
 # it at a checkout in another location.
 target_compile_definitions(mxq_core_tests PRIVATE
   MXQ_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/rules"
-  MXQ_TEST_RULES_FACADE=$<IF:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,1,0>
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  # The core loads the bundled variant configuration from its asset directory.
+  # The runner's store directory is a scratch path, so the two are not the same
+  # place and the asset directory has to be told to it explicitly.
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
 )
 
 add_test(NAME rules_fixtures

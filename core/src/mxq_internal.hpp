@@ -43,6 +43,12 @@ void fill_error(MxqError *err, MxqStatus status, const char *detail);
 void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
                          uint64_t required);
 
+/* As fill_error, additionally setting detail_index — which is the field
+ * MXQ_ERR_RULES_INVALID_HISTORY documents as carrying the first illegal move's
+ * index. required_size means the size a call needs and is a different field. */
+void fill_error_index(MxqError *err, MxqStatus status, const char *detail,
+                      uint64_t index);
+
 /*
  * Prepare a caller-supplied out struct: reject NULL, reject a struct_size this
  * build cannot interpret, and zero the part this build knows about so that

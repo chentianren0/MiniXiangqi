@@ -1,10 +1,117 @@
-/* Core lifecycle. Only mxq_core_version is implemented at this stage: it is a
- * pure report of compiled-in values and is callable before mxq_core_init. */
+/* Core lifecycle. */
 
 #include "mxq_build_config.h"
+#include "mxq_core_state.hpp"
 #include "mxq_internal.hpp"
 
+#if defined(MXQ_ENABLE_RULES_FACADE)
+#include "mxq_engine_bridge.hpp"
+#endif
+
+#include <cassert>
+#include <memory>
+#include <mutex>
+
+namespace mxq {
+namespace {
+std::mutex g_lifecycle_mutex;
+std::unique_ptr<MxqCore> g_core;
+} /* namespace */
+
+MxqCore *live_core() {
+    return g_core.get();
+}
+
+MxqStatus require_core(const MxqCore *core, MxqError *err) {
+    if (core == nullptr) {
+        assert(false && "required core handle was null");
+        fill_error(err, MXQ_ERR_ARG_NULL, "required core handle was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    if (core != g_core.get()) {
+        assert(false && "core handle is not the live instance");
+        fill_error(err, MXQ_ERR_STATE_NOT_INITIALIZED,
+                   "the core handle is not the live instance");
+        return MXQ_ERR_STATE_NOT_INITIALIZED;
+    }
+    if (core->shutting_down) {
+        fill_error(err, MXQ_ERR_STATE_SHUTTING_DOWN, "the core is shutting down");
+        return MXQ_ERR_STATE_SHUTTING_DOWN;
+    }
+    return MXQ_OK;
+}
+
+} /* namespace mxq */
+
 extern "C" {
+
+MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core,
+                                 MxqError *err) {
+    const MxqStatus rc = mxq::check_in(
+        config, config != nullptr ? config->struct_size : 0u,
+        static_cast<uint32_t>(sizeof(MxqCoreConfig)),
+        static_cast<uint32_t>(sizeof(MxqCoreConfig)), err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_core == nullptr) {
+        assert(false && "required out pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    *out_core = nullptr;
+
+    /* Only the major version gates: within one major there are no removals or
+     * signature changes, so an older or newer minor is compatible by contract. */
+    if (config->api_major != MXQ_API_VERSION_MAJOR) {
+        assert(false && "caller's API major version does not match");
+        mxq::fill_error(err, MXQ_ERR_ARG_API_VERSION,
+                        "the caller's MXQ_API_VERSION major does not match this core");
+        return MXQ_ERR_ARG_API_VERSION;
+    }
+
+    std::lock_guard<std::mutex> lock(mxq::g_lifecycle_mutex);
+    if (mxq::g_core) {
+        assert(false && "a second mxq_core_init before shutdown");
+        mxq::fill_error(err, MXQ_ERR_STATE_ALREADY_INITIALIZED,
+                        "the core is already initialised");
+        return MXQ_ERR_STATE_ALREADY_INITIALIZED;
+    }
+
+    auto core = std::make_unique<MxqCore>();
+    core->store_directory = config->store_directory ? config->store_directory : "";
+    core->asset_directory = config->asset_directory ? config->asset_directory : "";
+    core->flags = config->flags;
+
+#if defined(MXQ_ENABLE_RULES_FACADE)
+    /* The engine is prepared here rather than lazily, so that a packaging
+     * failure — a missing or malformed variant configuration — surfaces at
+     * initialisation instead of at the first rules query, where the caller has
+     * no sensible recovery. */
+    std::string detail;
+    if (!mxq::engine::ensure_initialised(core->asset_directory.c_str(), detail)) {
+        mxq::fill_error(err, MXQ_ERR_ENGINE_ASSET_MISSING, detail.c_str());
+        return MXQ_ERR_ENGINE_ASSET_MISSING;
+    }
+#endif
+
+    mxq::g_core = std::move(core);
+    *out_core = mxq::g_core.get();
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
+    std::lock_guard<std::mutex> lock(mxq::g_lifecycle_mutex);
+    if (core == nullptr || core != mxq::g_core.get()) {
+        assert(false && "shutdown of a handle that is not the live instance");
+        mxq::fill_error(err, MXQ_ERR_STATE_NOT_INITIALIZED,
+                        "the core handle is not the live instance");
+        return MXQ_ERR_STATE_NOT_INITIALIZED;
+    }
+    core->shutting_down = true;
+    mxq::g_core.reset();
+    return MXQ_OK;
+}
 
 MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err) {
     const MxqStatus rc = mxq::begin_out(

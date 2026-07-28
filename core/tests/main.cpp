@@ -41,6 +41,22 @@ namespace fs = std::filesystem;
 
 namespace {
 
+/* Where the bundled variant configuration lives. The store directory is a
+ * scratch path per run; the assets are part of the source tree, so the two are
+ * never the same place. $MXQ_ASSETS_DIR overrides, which is how a packaged
+ * build points at its own bundle. */
+std::string assets_dir() {
+    if (const char *env = std::getenv("MXQ_ASSETS_DIR")) {
+        return env;
+    }
+#if defined(MXQ_ASSETS_DIR_DEFAULT)
+    return MXQ_ASSETS_DIR_DEFAULT;
+#else
+    return std::string();
+#endif
+}
+
+
 enum class Verdict { Pass, Fail, NotImplemented, Error };
 
 struct FixtureResult {
@@ -535,7 +551,7 @@ int main(int argc, char **argv) {
     const fs::path scratch =
         fs::temp_directory_path(ec) / "minixiangqi-core-tests";
     const bool available =
-        facade.open(scratch.string(), scratch.string(), unavailable);
+        facade.open(scratch.string(), assets_dir(), unavailable);
     if (available) {
         std::cout << "  rules facade    available\n";
     } else {

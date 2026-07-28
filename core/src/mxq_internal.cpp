@@ -12,12 +12,33 @@ constexpr uint32_t kStructSizeField = static_cast<uint32_t>(sizeof(uint32_t));
 
 } /* namespace */
 
+namespace {
+
+/* required and index go to their own fields; a caller that wants neither
+ * passes zero for both, which is what an unset field reads as. */
+void fill(MxqError *err, MxqStatus status, const char *detail,
+          uint64_t required, uint64_t index);
+
+} /* namespace */
+
 void fill_error(MxqError *err, MxqStatus status, const char *detail) {
-    fill_error_required(err, status, detail, 0);
+    fill(err, status, detail, 0, 0);
 }
 
 void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
                          uint64_t required) {
+    fill(err, status, detail, required, 0);
+}
+
+void fill_error_index(MxqError *err, MxqStatus status, const char *detail,
+                      uint64_t index) {
+    fill(err, status, detail, 0, index);
+}
+
+namespace {
+
+void fill(MxqError *err, MxqStatus status, const char *detail,
+          uint64_t required, uint64_t index) {
     if (err == nullptr) {
         return;
     }
@@ -40,6 +61,9 @@ void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
     if (writable >= offsetof(MxqError, required_size) + sizeof(err->required_size)) {
         err->required_size = required;
     }
+    if (writable >= offsetof(MxqError, detail_index) + sizeof(err->detail_index)) {
+        err->detail_index = index;
+    }
     if (detail != nullptr &&
         writable >= offsetof(MxqError, detail) + 1u) {
         const size_t cap = writable - offsetof(MxqError, detail);
@@ -49,6 +73,8 @@ void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
         err->detail[copied] = '\0';
     }
 }
+
+} /* namespace */
 
 MxqStatus begin_out(void *out, uint32_t declared, uint32_t known,
                     uint32_t min_known, MxqError *err) {
