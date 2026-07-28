@@ -144,7 +144,17 @@ Imported games are local data. Importing must not contact a server.
 - The stable identity is unique; result well-formedness (the cross-field vocabulary rules), the mode-to-configuration relationship, and time ordering are check constraints; History content immutability — everything except pin state — and the archive-and-clear ordering are trigger-enforced; the single active game is structural through the one reference column. What SQL cannot express — legality of the move line, derived-column agreement, ended-early never recording a naturally terminal position — is core logic gated by tests.
 - The accepted History ordering — pinned first, then newest History-added time within each group, with a deterministic tie-break — is served by one partial index that excludes the active game structurally.
 - SQLite ships vendored in the core, pinned to the newest stable amalgamation at core landing and hash-recorded in the repository's pinned-input manifest, with a floor of 3.37.0 for `STRICT`; updates are explicit reviewed changes, never silent. It is compiled with the hardened option set and without extension loading; connections run write-ahead logging with full synchronous durability and foreign keys on. The store is one process, one connection, one serialized writer; every operation is one transaction.
-- Local preferences are not in schema version 1; if Settings preferences land in the shared store, a key-value table is a purely additive migration.
+- Local preferences are not in schema version 1 and are not planned for a later one: they live with each platform, per the accepted placement below. Should that ever be revisited, a key-value table remains a purely additive migration.
+
+### Accepted Settings placement
+
+The seven persistent preferences accepted in [product.md](product.md) — the default first-mover choice, the default AI level, **删除前确认**, the sound and haptics toggles, the piece style, and the piece symbols — live in **each platform's own preference system**, not in the shared store.
+
+- The core's ownership rule is that what is correctness-critical exists exactly once. No preference is correctness-critical: five are presentation or device capability, and the two that affect a game are read only when one is created.
+- The core therefore never reads a preference. The pre-start draft already carries the first-mover choice and AI level across the C boundary at game creation, and both are frozen into the created game, so the value the core acts on is always one the frontend passed in explicitly.
+- Each platform gains its system's own defaults registration, change observation, and settings integration rather than the core reimplementing them.
+- Divergence between platforms is bounded by this document's serialized vocabularies and by the defaults fixed in `product.md`, and there is no sync between installations for a difference to propagate through.
+- Preferences are outside the game archive and outside export and import. A file moved between platforms never carries them.
 
 ## Migration
 
@@ -162,5 +172,4 @@ The app does not use cloud synchronization, remote storage, or network backup on
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Define where Settings preferences live on each platform: the shared store or each platform's native preference system.
 - When a later archive version permits initial positions other than the frozen start, define the setup-legality predicate (one king per side inside its palace, piece-count bounds, the side not to move never attacked including through the facing-kings rule) and reject illegal setups at import.

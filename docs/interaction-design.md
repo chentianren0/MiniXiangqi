@@ -413,6 +413,8 @@ The interaction design must consider:
 
 The supported languages are Simplified Chinese and English. Simplified Chinese is the source language: the accepted user-facing copy in this document is normative, and its English counterparts are translations of it.
 
+The app follows the language the operating system selects for it and offers no interface-language control of its own, per the Settings scope in [product.md](product.md). On Apple platforms the system's per-app language setting is the place a user changes it.
+
 The interface must be designed for localization. User-facing text must not be embedded in visual assets, and layouts must tolerate different text lengths. Terminology for Xiangqi pieces, rules, results, and controls must be consistent within each supported language.
 
 Piece characters are game content and are excluded from localization, as defined under Piece representation. Their English names localize wherever they appear as text.

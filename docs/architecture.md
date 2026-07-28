@@ -2,7 +2,7 @@
 
 This document is for engineers and reviewers working on Mini Xiangqi. It defines the system's stable boundaries: the shared core, the native frontends, dependency direction, state ownership, concurrency, and error propagation. It does not define Xiangqi rules, detailed UI/UX, persistence schemas, engine search policy, implementation progress, or work tracking.
 
-> **Status: Accepted direction and boundaries.** The shared-core-plus-native-frontends structure, the core's responsibilities, the C boundary, the dependency direction, the error-handling contract, and the build and CI policy below are accepted. The concrete C surface — handles, signatures, error taxonomy, and threading — is the accepted contract in [core-interface.md](core-interface.md). The repository restructuring steps remain draft until reviewed. Items under **Need to discuss** are non-normative.
+> **Status: Accepted direction and boundaries.** The shared-core-plus-native-frontends structure, the core's responsibilities, the C boundary, the dependency direction, the error-handling contract, and the build and CI policy below are accepted. The concrete C surface — handles, signatures, error taxonomy, and threading — is the accepted contract in [core-interface.md](core-interface.md). The repository layout, the relocation of the Xcode project, the placement of Settings preferences, and the core test-runner decision below are also accepted. Items under **Need to discuss** are non-normative.
 
 ## Goals and constraints
 
@@ -32,7 +32,8 @@ Each frontend renders state, collects user intentions, and calls core operations
 - presentation, navigation, animation, sound, and haptics;
 - localization resources and accessibility integration;
 - platform services: storage location, file pickers, share/export surfaces, memory probes, and lifecycle events;
-- transient UI state such as selection, pre-start drafts, and confirmation flows.
+- transient UI state such as selection, pre-start drafts, and confirmation flows;
+- the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game cross the C boundary in the pre-start draft at creation.
 
 Frontends must not reimplement rules, result classification, archive parsing, or library invariants, and must not reach around the core to its storage or the engine.
 
@@ -70,13 +71,12 @@ MiniXiangqi/
 └── docs/
 ```
 
-- Relocating the existing Xcode project under `apple/` is an implementation step subject to the protected-settings review in `AGENTS.md`; this document records only the target.
-- Core tests must run on every development platform without a frontend.
+- Relocating the existing Xcode project under `apple/` is authorized and should happen before core implementation begins, while the project is still the generated scaffold and the move can break nothing. The fixed project settings listed in `CLAUDE.md` — bundle identifiers, development team, signing, entitlements, deployment targets, supported platforms, the `x86_64` exclusion, and Swift 6 — are preserved through it; target and platform configuration change only as far as relocation requires.
+- Core tests must run on every development platform without a frontend, and they standardize on **one shared C++ test runner** rather than per-platform harnesses. The approved rules fixtures are the project's independent authority, so they must be executed by one harness producing identical results everywhere; two harnesses would make a discrepancy between them possible. Platform binding tests — the Swift and C# layers over the C interface — stay in each platform's native framework, because what they test is the binding rather than the core.
 - Long or large builds — engine binaries, core artifacts, multi-platform test runs — are recommended to run on GitHub Actions CI rather than only on developer machines. CI is a convenience, not a required gate, and must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Windows toolchain pinning for the core and frontend, and the CI matrix that builds all platforms.
-- Whether core tests standardize on one framework or per-platform runners.
+- Windows toolchain pinning for the core and frontend, and the CI matrix that builds all platforms. The accepted direction is that builds run locally until Windows work begins, and that CI then covers both a macOS 26 runner and a Windows runner; the exact matrix and pinning remain open.
