@@ -43,7 +43,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 **No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result card before confirmation, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
 
-| Setting | System surfaces | The three custom surfaces |
+| Setting | System surfaces | Custom glass surfaces |
 |---|---|---|
 | Reduce Transparency | automatic | replace the material with an opaque fill and a hairline separator |
 | Increase Contrast | automatic | keep the material, raise the container's border |
