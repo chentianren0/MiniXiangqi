@@ -14,3 +14,42 @@ C++ test runner. The rules facade is gated by the approved fixtures in
 Pinned third-party inputs — the fork revision and its patches, build flags, the variant
 configuration, the network, and the vendored SQLite amalgamation — are recorded in the
 repository's pinned-input manifest, and every hash it records is verified before packaging.
+
+## Layout
+
+```text
+core/
+├── include/mxq.h     # the complete public C interface; the single input both
+│                     # bindings are generated from
+├── src/              # the C++ implementation behind it
+├── tests/            # the one shared C++ test runner
+├── third_party/      # where the pinned fork and SQLite are vendored
+└── CMakeLists.txt
+```
+
+## Building
+
+```sh
+cmake -S core -B core/.build -G Ninja
+cmake --build core/.build
+ctest --test-dir core/.build --output-on-failure
+```
+
+The runner takes `--fixtures <dir>` and `--junit <file>`, and honours
+`$MXQ_FIXTURES_DIR`. It reports `PASS`, `FAIL`, `NOT IMPLEMENTED` or `ERROR` per
+fixture and fails the run only on `FAIL` or `ERROR`.
+
+This CMake project is standalone and is deliberately not wired into the Xcode
+project under [`apple/`](../apple/) yet.
+
+## State
+
+Only the boundary exists so far. The implemented functions are the ones the
+contract marks callable from any thread without a core instance — the status and
+blob helpers, `mxq_core_version`, `mxq_rules_start_fen`,
+`mxq_archive_supported_versions`, and `mxq_engine_plan`, whose arithmetic the
+contract defines precisely so that every budget boundary is testable without an
+engine. The rest of `mxq.h` is declared and deliberately not stubbed: the
+accepted error taxonomy has no not-implemented code, and inventing one to return
+would be inventing contract vocabulary. Until the rules facade exists, every
+fixture reports `NOT IMPLEMENTED`.

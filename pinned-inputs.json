@@ -1,0 +1,161 @@
+{
+  "manifest_format": "minixiangqi-pinned-inputs",
+  "manifest_version": 1,
+  "_about": "The single source of truth for every input a reproducible Mini Xiangqi build consumes, per docs/engine-integration.md. The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The Fairy-Stockfish fork repository owns how its patches are implemented and how its own artifacts are built; this file records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.",
+  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. Nothing here has been consumed by a packaging build yet, so the names below are a proposal, not a frozen schema. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented.",
+
+  "fork": {
+    "repository": "https://github.com/ppppvz/Fairy-Stockfish",
+    "revision": "77d602e00db0527781e6abb76802bf1757f7e6fa",
+    "revision_committed_at": "2026-07-27T11:01:31-07:00",
+    "upstream_repository": "https://github.com/fairy-stockfish/Fairy-Stockfish",
+    "upstream_base_revision": "c19b5f6c66894fdb0e88d0dd100e3885f744760a",
+    "upstream_base_committed_at": "2026-07-23T19:20:28+02:00",
+
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts six focused changes in total; the five not yet landed are listed separately under patches_pending so that the difference between what the app consumes today and what the contract requires is explicit rather than implied by an absence.",
+    "patches": [
+      {
+        "id": "soldier-chase-target-exclusion",
+        "summary": "Adds the promotedSoldiersChaseable variant property so Mini Xiangqi soldiers, which are internally promoted from the start, are excluded as perpetual-chase targets. The property's default preserves every existing variant's adjudication.",
+        "required_by": [
+          "fixtures/rules/mx-chs-003",
+          "docs/xiangqi-rules.md",
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "77d602e00db0527781e6abb76802bf1757f7e6fa",
+        "commits": [
+          "232ca36b9cdede1c0ce574ddf17b20fdc8d00a34",
+          "ebe320a563ea03fce01fc3ef0822775587cc36c4"
+        ]
+      }
+    ],
+
+    "patches_pending": [
+      {
+        "id": "recoverable-hash-allocation",
+        "summary": "Replaces the process exits on transposition-table allocation failure and on the Windows large-page free path, which the accepted error contract forbids. Until it lands, MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED is unreachable.",
+        "required_by": ["docs/engine-integration.md"],
+        "merge_revision": null
+      },
+      {
+        "id": "static-library-target",
+        "summary": "A static library target for every supported platform, which the core links. The fork's Makefile currently produces an executable and a Python module, neither of which the core can consume.",
+        "required_by": ["docs/engine-integration.md"],
+        "merge_revision": null
+      },
+      {
+        "id": "adjudication-defect-corrections",
+        "summary": "Corrects two defects that produce false terminal losses: a chaser counted as chasing while pinned, and a flying-general pin test that counts only the victim's own pieces on the shared file.",
+        "required_by": ["docs/engine-integration.md"],
+        "merge_revision": null
+      },
+      {
+        "id": "chase-target-exemption-in-discovered-check-classifier",
+        "summary": "Completes the exclusion of generals and soldiers as chase targets in the discovered-check classifier path, so the exclusion holds in every path rather than in two of three.",
+        "required_by": ["docs/engine-integration.md"],
+        "merge_revision": null
+      },
+      {
+        "id": "repetition-window-parity-correction",
+        "summary": "Corrects the repetition window's parity asymmetry, which evaluates one side over a wider span than the other and resolves a mutual perpetual chase as a unilateral loss. Lands with the fixture pinning that corner.",
+        "required_by": ["docs/engine-integration.md", "docs/xiangqi-rules.md"],
+        "merge_revision": null
+      }
+    ],
+
+    "static_library": {
+      "established": false,
+      "_note": "The fork's static library target is an accepted requirement that has not landed; see patches_pending/static-library-target. The artifact name and the per-platform build invocation belong here once it exists.",
+      "artifact_name": null,
+      "build_command": null
+    }
+  },
+
+  "build_flags": {
+    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet, the fork's static library target has not landed, and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
+    "platforms": {
+      "macos": {
+        "established": false,
+        "toolchain": {
+          "xcode": "27 beta",
+          "xcode_build": "27A5228h",
+          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
+          "swift": "6"
+        },
+        "architectures": ["arm64"],
+        "deployment_target": "26.5",
+        "engine_defines": [],
+        "engine_flags": [],
+        "sqlite_defines": [],
+        "sqlite_flags": []
+      },
+      "ios": {
+        "established": false,
+        "toolchain": {
+          "xcode": "27 beta",
+          "xcode_build": "27A5228h",
+          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
+          "swift": "6"
+        },
+        "architectures": ["arm64"],
+        "deployment_target": "26.5",
+        "engine_defines": [],
+        "engine_flags": [],
+        "sqlite_defines": [],
+        "sqlite_flags": []
+      },
+      "ipados": {
+        "established": false,
+        "toolchain": {
+          "xcode": "27 beta",
+          "xcode_build": "27A5228h",
+          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
+          "swift": "6"
+        },
+        "architectures": ["arm64"],
+        "deployment_target": "26.5",
+        "engine_defines": [],
+        "engine_flags": [],
+        "sqlite_defines": [],
+        "sqlite_flags": []
+      },
+      "windows": {
+        "established": false,
+        "_note": "docs/architecture.md and docs/testing.md record the Windows toolchain — Visual Studio version, Windows App SDK version, .NET version, and the core's Windows compiler — as unpinned draft state that must be pinned and verified before any Windows validation claim.",
+        "toolchain": null,
+        "architectures": [],
+        "deployment_target": null,
+        "engine_defines": [],
+        "engine_flags": [],
+        "sqlite_defines": [],
+        "sqlite_flags": []
+      }
+    }
+  },
+
+  "variant": {
+    "_about": "The bundled variant configuration. The identifier and the filename are fixed by docs/engine-integration.md; the file itself has not been written, so its hash cannot be established and is null rather than invented.",
+    "id": "minixiangqiaxf",
+    "base_variant": "minixiangqi",
+    "filename": "minixiangqi-variants.ini",
+    "sha256": null,
+    "established": false
+  },
+
+  "network": {
+    "_about": "The bundled NNUE network. The repository never contains these bytes in any form; they enter builds from a workspace- or CI-provided location. The filename must begin with the variant identifier, because the engine restricts NNUE to the matching variant by that basename prefix and a mismatch disables NNUE silently while the Use NNUE option still reads true. Only the filename differs from the source copy; the byte length and the SHA-256 are over content and are unchanged.",
+    "filename": "minixiangqiaxf-12c45d5da817.nnue",
+    "byte_length": 4333499,
+    "sha256": "12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce",
+    "committed_to_version_control": false,
+    "established": true
+  },
+
+  "sqlite": {
+    "_about": "The vendored SQLite amalgamation, pinned to the newest stable release at core landing. It has not been vendored yet, so neither the version nor the hash can be established and both are null rather than invented. docs/game-data.md fixes a floor of 3.37.0 for STRICT tables, requires the hardened option set and no extension loading, and requires write-ahead logging with full synchronous durability and foreign keys on.",
+    "version": null,
+    "sha256": null,
+    "minimum_version": "3.37.0",
+    "established": false
+  }
+}
