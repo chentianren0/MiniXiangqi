@@ -483,6 +483,7 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Define the turn status's exact AI activity treatment, the 将军 token's form, remaining transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
+- Define what a player sees when the engine cannot be re-prepared mid-game, after the app was suspended and the AI is due to move. The accepted **无法启动 AI 对手** notice assumes a game that has not started, so neither its wording nor its **取消** action fits; the game itself remains active, saved, and resumable throughout.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
 - Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
 - Define the sound events, sound design, and platform differences behind the accepted sound toggle.
