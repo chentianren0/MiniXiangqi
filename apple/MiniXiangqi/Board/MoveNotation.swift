@@ -19,9 +19,16 @@ enum MoveNotation {
     static func text(for move: Move, in placement: Placement) -> String {
         guard let piece = placement[move.from] else { return move.text }
 
+        // A disambiguator opens the move and the piece name follows it —
+        // 前炮退二, not 炮前退二 — and it replaces the file rather than joining
+        // it. A file, when there is one, follows the piece name instead.
         let name = piece.kind.character(for: piece.side)
-        let origin = disambiguation(for: piece, at: move.from, in: placement)
-            ?? number(file: move.from.file, for: piece.side)
+        let opening: String
+        if let marker = disambiguation(for: piece, at: move.from, in: placement) {
+            opening = marker + name
+        } else {
+            opening = name + number(file: move.from.file, for: piece.side)
+        }
 
         // 进 is toward the opponent, which is up the board for Red and down for
         // Black; 平 is across, and carries the destination file rather than a
@@ -29,7 +36,7 @@ enum MoveNotation {
         let forward = piece.side == .red ? move.to.rank > move.from.rank
                                          : move.to.rank < move.from.rank
         if move.to.rank == move.from.rank {
-            return name + origin + "平" + number(file: move.to.file, for: piece.side)
+            return opening + "平" + number(file: move.to.file, for: piece.side)
         }
 
         let direction = forward ? "进" : "退"
@@ -38,24 +45,43 @@ enum MoveNotation {
         let value = piece.kind == .horse
             ? number(file: move.to.file, for: piece.side)
             : numeral(abs(move.to.rank - move.from.rank), for: piece.side)
-        return name + origin + direction + value
+        return opening + direction + value
     }
 
-    /// 前 or 后 in place of the file, when two pieces of the same type stand on
-    /// one file. 后 names the piece nearer its own side and 前 the one nearer
-    /// the opponent — a sense relative to the moving side, and therefore
-    /// unaffected by which way the board is facing.
+    /// What replaces the file when more than one piece of the same type stands
+    /// on it. Ordered from the opponent's end towards the mover's own, so the
+    /// sense is relative to the moving side and unaffected by which way the
+    /// board is facing: 前 is nearest the opponent, 后 nearest home.
+    ///
+    /// The accepted contract covers two pieces only. Three is reachable in this
+    /// variant — five soldiers a side, moving sideways from the first move — so
+    /// it takes 中 for the middle one, which is the same rule and the ordinary
+    /// form. Four or more is numbered from the front, again the ordinary form.
+    /// Both are noted in issue #37 for confirmation rather than left to fail
+    /// silently as an ambiguous file.
     private static func disambiguation(for piece: Piece, at square: Square,
                                        in placement: Placement) -> String? {
         let sameFile = (0..<Square.count)
             .map { Square(file: square.file, rank: $0) }
             .filter { placement[$0] == piece }
-        guard sameFile.count == 2 else { return nil }
+        guard sameFile.count > 1, let index = sameFile.firstIndex(of: square) else {
+            return nil
+        }
 
-        let ownSideIsLow = piece.side == .red     // Red's own side is rank 1
-        let nearer = ownSideIsLow ? sameFile.min(by: { $0.rank < $1.rank })
-                                  : sameFile.max(by: { $0.rank < $1.rank })
-        return square == nearer ? "后" : "前"
+        // Red's own side is rank 1, so for Red the front of the file is the
+        // highest rank; for Black it is the lowest.
+        let fromFront = piece.side == .red
+            ? sameFile.count - 1 - index
+            : index
+
+        switch (sameFile.count, fromFront) {
+        case (2, 0): return "前"
+        case (2, _): return "后"
+        case (3, 0): return "前"
+        case (3, 1): return "中"
+        case (3, _): return "后"
+        default: return numeral(fromFront + 1, for: piece.side)
+        }
     }
 
     /// Files are numbered from each player's own right: Red's right is file g,
