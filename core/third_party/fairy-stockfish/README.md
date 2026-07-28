@@ -1,0 +1,154 @@
+# Vendored Fairy-Stockfish
+
+The pinned `ppppvz/Fairy-Stockfish` fork, vendored as a **copied source snapshot**
+and compiled into the static library `mxq::fairy-stockfish`, which `mxq_core`
+links `PRIVATE`.
+
+| | |
+|---|---|
+| Repository | `https://github.com/ppppvz/Fairy-Stockfish` |
+| Revision | `77d602e00db0527781e6abb76802bf1757f7e6fa` |
+| Committed | 2026-07-27T11:01:31-07:00 |
+| Upstream base | `c19b5f6c66894fdb0e88d0dd100e3885f744760a` |
+| License | GPLv3 — [`upstream/Copying.txt`](upstream/Copying.txt) |
+
+Both the revision and the repository are recorded in
+[`pinned-inputs.json`](../../../pinned-inputs.json) under `fork`, which is the
+single source of truth; the table above repeats it for a reader who is already
+in this directory.
+
+## Layout
+
+```text
+core/third_party/fairy-stockfish/
+├── CMakeLists.txt    # ours: builds the snapshot as mxq::fairy-stockfish
+├── README.md         # ours: this file
+├── SOURCES.sha256    # ours: per-file SHA-256 of everything under upstream/
+└── upstream/         # a verbatim copy of the pinned revision, never edited here
+```
+
+Nothing under `upstream/` is modified. Every source change to the engine belongs
+to the fork repository and arrives here only as a new snapshot at a new pinned
+revision, which is what keeps the manifest's ordered patch list an accurate
+description of the bytes the core compiles.
+
+## Why a copied snapshot
+
+The two accepted requirements are that a build is reproducible from the pinned
+inputs and that the core embeds the engine as an **in-process library**
+([`docs/architecture.md`](../../../docs/architecture.md),
+[`docs/engine-integration.md`](../../../docs/engine-integration.md)). All three
+candidate mechanisms embed the engine in-process; they differ in what
+reproducibility costs.
+
+- **A submodule** pins by commit, but the pin then lives in two places — the
+  gitlink and `pinned-inputs.json` — which can disagree with each other while
+  both look authoritative. It also makes a checkout insufficient: the build
+  needs network access and the fork's remote to still exist and still carry that
+  commit. The product must build offline, and a GPLv3 corresponding-source offer
+  is far weaker when the corresponding source is a URL rather than bytes we hold.
+- **A subtree merge** would graft the fork's entire history into the product
+  repository. The fork owns its history; interleaving it with the product's
+  makes both harder to read for no gain here.
+- **A copied snapshot** is self-contained, works offline, carries the GPLv3
+  sources we are obliged to be able to supply, and leaves exactly one place —
+  the manifest — where the revision is recorded. Its one real cost is that
+  "which revision is this?" is not answerable from git metadata, which
+  `SOURCES.sha256` and the manifest together answer instead.
+
+### Verifying the snapshot
+
+The snapshot is exactly `git archive` of the pinned revision, restricted to the
+paths below. Re-cutting it from a fork checkout must produce byte-identical
+output:
+
+```sh
+git archive --format=tar 77d602e00db0527781e6abb76802bf1757f7e6fa \
+    AUTHORS Copying.txt README.md 'Top CPU Contributors.txt' src \
+  | tar -x -C upstream
+rm -f upstream/src/main.cpp upstream/src/pyffish.cpp upstream/src/ffishjs.cpp \
+      upstream/src/Makefile upstream/src/Makefile_js upstream/src/variants.ini
+```
+
+`SOURCES.sha256` records the SHA-256 of every file under `upstream/`, and is
+checked with:
+
+```sh
+cd upstream && shasum -a 256 -c ../SOURCES.sha256
+```
+
+## What is excluded, and why
+
+| Excluded | Reason |
+|---|---|
+| `src/main.cpp` | The engine's own `main()`. The core is a library; a second `main` symbol has no business in it. |
+| `src/pyffish.cpp`, `setup.py`, `pyffish.pyi`, `MANIFEST.in` | The Python bindings. They `#include <Python.h>` and would make CPython a build dependency of the core. |
+| `src/ffishjs.cpp`, `src/Makefile_js` | The JavaScript/WebAssembly bindings, which depend on Emscripten. |
+| `src/Makefile` | The fork's build system. This snapshot is built by `CMakeLists.txt` here; keeping a second, unused build description invites the two to drift. Its flag choices are cited in that file rather than carried. |
+| `src/variants.ini` | The fork's sample variant configuration. The product's own configuration is [`core/assets/minixiangqi-variants.ini`](../../assets/minixiangqi-variants.ini); shipping two `.ini` files, only one of which is loaded, is a trap. |
+| `tests/`, `.github/`, `appveyor.yml`, `test.py` | The fork's own test suite and CI. They belong to the fork repository, which owns running them. |
+
+The remainder of `src/` is kept as a unit. Nothing in it pulls in a UI framework
+or a network dependency: the only platform header anywhere in the snapshot is
+`<windows.h>` in `misc.cpp`, for large-page allocation and thread affinity, and
+there is no socket, HTTP or TLS code at all.
+
+Two files are protocol handlers over standard input and output rather than
+engine logic — `uci.cpp` (`UCI::loop`) and `xboard.cpp` — and neither is a UI or
+a network dependency. They stay because the engine's option table, move parsing
+and variant initialisation live alongside them in `uci.cpp` and `ucioption.cpp`,
+and separating them would mean editing fork sources, which is the fork
+repository's decision to make and not ours. **The core never calls `UCI::loop`.**
+That matters for one specific reason: `UCI::loop` reads the environment variable
+`FAIRY_STOCKFISH_VARIANT_PATH` and loads a variant file from it
+(`upstream/src/uci.cpp:319-323`). Because the core does not go through that
+function, no environment variable can substitute a variant configuration behind
+the app's back.
+
+## The fork's static-library target
+
+[`docs/engine-integration.md`](../../../docs/engine-integration.md) requires the
+**fork** to expose a static-library target for every supported platform, which
+the core links. That change has not landed —
+`pinned-inputs.json` records it under `fork.patches_pending/static-library-target`
+and `fork.static_library.established` is `false`.
+
+What was done instead: `CMakeLists.txt` in this directory is a **core-owned**
+build of the snapshot. It compiles the same sources with the same defines the
+fork's `make ARCH=apple-silicon nnue=no` would use, each one cited back to a line
+of the fork's `Makefile` at the pinned revision.
+
+When the fork's own target lands and a new revision is pinned:
+
+1. Replace this directory's `CMakeLists.txt` with one that drives the fork's
+   target and consumes its artifact, rather than restating the source list and
+   the flag set. The alias it defines must stay `mxq::fairy-stockfish`, because
+   that is what `core/CMakeLists.txt` links.
+2. Fill in `fork.static_library.artifact_name` and
+   `fork.static_library.build_command` in `pinned-inputs.json` and set
+   `established` to `true`.
+3. Move the flag set out of this file and into
+   `build_flags.platforms.<platform>.engine_defines` and `engine_flags`, which
+   are recorded as unestablished today precisely because no build had produced
+   them. A build now produces them for macOS/arm64; they are still not recorded
+   there, because those fields describe the *packaging* build and no packaging
+   build exists yet.
+
+Until then, the source list here has to be maintained by hand whenever the
+snapshot is re-cut. `CMakeLists.txt` fails configuration with an explicit message
+if a listed source is missing, so a re-cut that drops a file is a build error
+rather than a link error.
+
+## Build switch
+
+The engine is compiled only when `MXQ_ENABLE_RULES_FACADE` is `ON`:
+
+```sh
+cmake -S core -B core/.build -G Ninja -DMXQ_ENABLE_RULES_FACADE=ON
+cmake --build core/.build
+```
+
+With the option `OFF`, which is the default, `core/CMakeLists.txt` does not add
+this directory at all: the scaffold configures and builds exactly as it did
+before the snapshot arrived, and no one pays for a multi-minute engine
+compilation to work on the rest of the core.

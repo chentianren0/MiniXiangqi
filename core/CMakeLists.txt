@@ -37,10 +37,23 @@ get_filename_component(MXQ_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 option(MXQ_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(MXQ_ENABLE_RULES_FACADE
-       "Build the fixture runner against a rules facade that exists. Off until \
-the pinned Fairy-Stockfish fork is vendored and the facade is implemented; \
-while it is off, every fixture reports NOT IMPLEMENTED rather than passing."
+       "Compile and link the vendored Fairy-Stockfish fork into the core, and \
+build the fixture runner against a rules facade that exists. Off by default: \
+the engine is a multi-minute build, and nothing else in the core needs it. \
+While it is off, third_party/fairy-stockfish is not added at all and every \
+fixture reports NOT IMPLEMENTED rather than passing."
        OFF)
+
+# Whether the facade's own entry points — mxq_core_init, mxq_rules_evaluate,
+# mxq_rules_legal_moves — exist in src/. They do not yet: the commit that
+# vendored the engine deliberately stopped at the engine. The fixture runner
+# calls them only when this is ON, because a runner that referenced them today
+# would fail to link rather than report NOT IMPLEMENTED.
+#
+# The commit that implements them sets this ON permanently and deletes this
+# comment; it is not a user-facing option, and turning it on by hand only
+# produces link errors.
+set(MXQ_RULES_FACADE_IMPLEMENTED OFF)
 
 # --------------------------------------------------------------------------
 # Pinned inputs
@@ -153,22 +166,60 @@ set_target_properties(mxq_core PROPERTIES
 # Vendored third-party inputs
 # --------------------------------------------------------------------------
 #
-# Neither the pinned Fairy-Stockfish fork nor the vendored SQLite amalgamation
-# is part of this scaffold. Each drops into core/third_party/<name>/ carrying
-# its own CMakeLists.txt that defines the aliased target named below, and is
-# picked up here with no rearrangement of anything above: the loop links it into
-# mxq_core privately, which is what keeps both invisible through mxq.h, as
+# Each vendored input lives in core/third_party/<name>/ and carries its own
+# CMakeLists.txt defining the aliased target named below. The loop links it into
+# mxq_core privately, which is what keeps it invisible through mxq.h, as
 # docs/architecture.md requires. See core/third_party/README.md.
+#
+# The pinned Fairy-Stockfish fork is vendored; SQLite is not yet. The fork is
+# additionally gated on MXQ_ENABLE_RULES_FACADE, so the default configuration
+# does not compile it: it is a multi-minute build and nothing else in the core
+# needs it.
 
+set(MXQ_OPTIONAL_DEPS fairy-stockfish)
 foreach(mxq_dep IN ITEMS fairy-stockfish sqlite)
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/${mxq_dep}/CMakeLists.txt")
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/${mxq_dep}/CMakeLists.txt")
+    message(STATUS "Mini Xiangqi core: ${mxq_dep} not vendored")
+  elseif(mxq_dep IN_LIST MXQ_OPTIONAL_DEPS AND NOT MXQ_ENABLE_RULES_FACADE)
+    message(STATUS "Mini Xiangqi core: ${mxq_dep} vendored but not built "
+                   "(MXQ_ENABLE_RULES_FACADE is OFF)")
+  else()
     add_subdirectory("third_party/${mxq_dep}")
     target_link_libraries(mxq_core PRIVATE "mxq::${mxq_dep}")
     message(STATUS "Mini Xiangqi core: vendored ${mxq_dep}")
-  else()
-    message(STATUS "Mini Xiangqi core: ${mxq_dep} not vendored")
   endif()
 endforeach()
+
+# --------------------------------------------------------------------------
+# The bundled variant configuration
+# --------------------------------------------------------------------------
+#
+# assets/minixiangqi-variants.ini defines minixiangqiaxf, the target variant, and
+# is a packaging input rather than a build input: docs/engine-integration.md
+# fixes its name and its identifier, and pinned-inputs.json pins its SHA-256. It
+# is exposed here as a path so that the engine probe below, and the rules facade
+# after it, load the same file the app bundles rather than a second copy.
+
+set(MXQ_VARIANT_INI "${CMAKE_CURRENT_SOURCE_DIR}/assets/minixiangqi-variants.ini")
+if(NOT EXISTS "${MXQ_VARIANT_INI}")
+  message(FATAL_ERROR "bundled variant configuration not found at ${MXQ_VARIANT_INI}")
+endif()
+
+# --------------------------------------------------------------------------
+# Engine probe (temporary)
+# --------------------------------------------------------------------------
+#
+# Delete this target and core/tools/ when the rules facade lands; the approved
+# fixtures then demonstrate everything it demonstrates. It is not a test, is not
+# registered with CTest, and is built only alongside the engine. See the comment
+# at the top of core/tools/mxq_engine_probe.cpp.
+
+if(MXQ_ENABLE_RULES_FACADE)
+  add_executable(mxq_engine_probe tools/mxq_engine_probe.cpp)
+  target_link_libraries(mxq_engine_probe PRIVATE mxq::core mxq::fairy-stockfish)
+  target_compile_definitions(mxq_engine_probe PRIVATE
+    MXQ_VARIANT_INI_PATH="${MXQ_VARIANT_INI}")
+endif()
 
 # --------------------------------------------------------------------------
 # Tests
