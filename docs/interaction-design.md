@@ -107,6 +107,26 @@ Mini Xiangqi is played on the intersections of a line grid, so a 7-by-7 board is
 - Starting points are not marked. On a 7-point board the traditional soldier and cannon ticks would sit adjacent to almost every intersection and compete with the legal-move and last-move markers, which carry live information, and the fixed starting position is visible at the start of every game anyway.
 - The grid is square, and the board reserves a half-cell margin beyond the outer points so that edge discs are never clipped. Coordinates sit outside that margin.
 
+### Board metrics
+
+Every board dimension is a multiple of the **cell pitch** `p`, the distance between two adjacent points. Nothing on the board is a fixed point value, so the board scales from its smallest supported size to a large window without any dimension being re-tuned and without the relationships between them changing. The accepted floor is `p ≥ 44 pt` on every platform, fixed under [Layout shapes](#layout-shapes) below.
+
+| Quantity | Value | At the floor |
+|---|---|---|
+| Cell pitch | `p` | 44 pt |
+| Board core — 7 points plus a half-cell margin on each side | `7 p` square | 308 pt |
+| Piece disc | Ø `0.80 p` | 35.2 pt |
+| Piece symbol — character em, or icon bounding box | `0.50 p` | 22 pt |
+| Marker band, as a radius from a point's centre | `0.42 p` to `0.50 p` | 18.5 to 22 pt |
+
+Three rules govern the space around a point, and together they are what allow one marker vocabulary to work on every piece style, at every board size, without a per-case exception.
+
+- **Style decoration stays inside the disc; markers stay outside it.** A piece style's own rings and edge strokes live at or inside `0.40 p`. Every game-state marker lives at `0.42 p` or beyond. The `0.02 p` air gap between them is what keeps a marker legible against 传统's heavier Black ring, 现代's white inset ring, and 高对比's outlined disc alike. A style may not place decoration in the marker band, and a marker may not touch the disc face — so the choice of characters or icons never affects a marker.
+- **Every marker stays inside its own cell.** A marker belonging to a point is contained within that point's `1 p` by `1 p` cell — for a circular marker, a radius of at most `0.50 p` — at rest and throughout every animation, including the selection lift and any strengthening during a drag. Markers on adjacent points therefore cannot collide, in any position, without the pairing having to be checked case by case. The accepted half-cell margin is the same `0.50 p`, so the outermost points' markers are contained by the margin and never reach the coordinates outside it. Where a marker would grow beyond the cell it grows inward instead.
+- **Markers are never drawn in the Red or Black role colours**, which belong to the sides. Each style defines one **marker ink** per appearance, used at two strengths: **active ink**, at a contrast of at least 4.5:1 against that style's board surface, for selection, legal destinations, captures, check, and focus; and **record ink**, the same hue at reduced strength and at least 3:1, for the last move and the drag origin. Increase Contrast promotes record ink to active-ink values. Because every marker is carried by luminance and shape rather than by hue, the board under Differentiate Without Color is identical to the board without it.
+
+The exact marker-ink values belong to each style's colour work, as the piece-style requirements above do; the contrast figures are what those values must satisfy.
+
 ### User-visible notation
 
 The board edges and the move list use traditional Xiangqi notation, which is what Xiangqi instruction actually uses; a learner should be able to carry what they read here into any Xiangqi book, video, or lesson. This is presentation only: the canonical coordinate notation frozen in [xiangqi-rules.md](xiangqi-rules.md) remains what archives, fixtures, and the core interface store and exchange.
@@ -175,7 +195,7 @@ Settings has a **人机对弈默认设置** group with **默认先后手** and *
 - Tapping a legal destination commits the move immediately. Ordinary legal moves do not require confirmation.
 - Tapping another movable piece controlled by the human switches the selection directly.
 - Tapping the selected piece again, or tapping outside the board, cancels the selection.
-- Tapping an illegal board square does not move the piece or cancel the current selection. It provides brief, non-blocking feedback.
+- Tapping an illegal board square does not move the piece or cancel the current selection. It provides the brief, non-blocking feedback defined under [Game-state markers](#game-state-markers).
 - A legal move or an Undo whose immediate save fails does not happen: the board and game remain exactly at the pre-action state, brief non-blocking feedback distinct from illegal-move feedback indicates the change could not be saved, and the user may simply try again. There is no modal dialog and no accepted-but-unsaved change.
 - When the failed save is the AI's reply, the game remains at the last committed position with the AI still to move, and the app requests a new AI move rather than asking the user to retry a move that is not theirs.
 - A failed draw claim, resignation, or result confirmation uses the accepted **无法保存对局** retry presentation and leaves the game active and unchanged.
@@ -184,6 +204,32 @@ Settings has a **人机对弈默认设置** group with **默认先后手** and *
 - Keyboard and VoiceOver use an equivalent select-piece, inspect-destinations, and select-destination flow rather than requiring a drag gesture.
 - When input is unavailable, including while the AI is thinking or after a result is confirmed, the board rejects the interaction before visually moving a piece.
 
+### Game-state markers
+
+The board shows the position and the states of the position, and nothing else. Anything the interface must say that is not a fact about the position — that a save failed, that input is unavailable right now — is said by the turn-status element instead, so the board is never read for two kinds of information at once.
+
+Markers use four shape families, and no state borrows another's geometry: **small circles at a point** for things about a point, **rings around a disc** for things about a piece, **corner marks on a cell** for the last move, and **the turn-status element** for things about the game. Each shape has exactly one member, so no two markers are confusable at any supported size, on any piece style, in either appearance, with either symbol set. All strokes use rounded caps, and all radii are measured from the point's centre.
+
+- **Selected piece.** The disc lifts to ×1.05 and casts the lift shadow, and a solid ring is drawn around it: stroke `0.030 p`, centre-line radius `0.440 p`, active ink, attached to the piece so that it scales with the lift. Lift and shadow may not carry selection alone — shadows weaken under Increase Contrast, and a five per cent size change is not absolutely readable — so the ring is what makes the state certain.
+- **Legal empty destination.** A filled dot, Ø `0.22 p`, active ink, centred on the point and covering the grid crossing. Deliberately small: a chariot on an open board offers a dozen of these at once, and at this size twelve dots read as an available path rather than as clutter.
+- **Legal capture.** A dashed ring around the enemy disc: stroke `0.055 p`, outer edge exactly at the cell boundary `0.50 p`, twelve dashes of 18 degrees separated by 12-degree gaps. Fixing the dash count rather than a dash length keeps the pattern identical at every pitch. The target does not lift; only the piece the player holds lifts. Solid ring against dashed ring is the shape distinction the accepted piece-style requirement asks for, and in any case the two never appear on one disc — one rings the player's piece, the other an opponent's.
+- **Last move.** Four L-shaped corner brackets on both the origin cell and the destination cell: arm `0.16 p`, stroke `0.045 p`, inset `0.03 p` from each cell corner, record ink. Angular where every other marker is circular, so they are unmistakable at any size. They always mark the game's current last move: an Undo moves them to the move that is now last rather than leaving them behind, and no brackets are shown at an initial position. The AI's move uses these same brackets rather than a second marker — there is only ever one last move, and whose it was is carried by the turn status and the accessibility announcement.
+- **General in check.** A double ring around the checked general: two concentric solid rings of stroke `0.025 p` at centre-line radii `0.4325 p` and `0.4875 p`, active ink, persistent for as long as that side is in check. The pair pulses once in stroke weight as it appears and never again. A pulse in scale is not available here, because it would carry the outer ring out of the cell. Beside it, a **将军** token sits next to the side-to-move line in the turn status for exactly as long as check persists. The token is not a duplicate of the board treatment: the ring pair is missable at a glance, it is deliberately hidden in the state below, and the token gives a screen-reader user one stable place to re-read the fact.
+- **A held general in check.** The selection ring and the check rings occupy the same band and cannot both be drawn. While a checked general is held — selected or dragged — the check rings hide and the 将军 token carries the state alone; they return the moment it is released, including when a drag is abandoned. This is why the token is required rather than optional.
+- **Illegal tap.** No board mark. With a piece selected, its legal-destination markers pulse once: the question a learner is asking is where this piece may go, and answering it teaches more than marking the rejected point. With nothing selected, the turn status gives the acknowledgment beat described below. Either way the platform's lightest selection-weight feedback fires, never the warning pattern, and the selection is retained so that the correction is one tap away.
+- **Dragged piece.** The disc detaches at ×1.10 with the strongest lift shadow and follows the touch or pointer directly. On touch platforms it is offset `0.5 p` above the touch point so that a fingertip never covers it; under a pointer there is no offset. The origin keeps a hollow dot — ring Ø `0.22 p`, stroke `0.045 p`, record ink — the vacated twin of the filled destination dot, unambiguous against it because an origin is never itself a legal destination. While the drag is within `0.45 p` of a legal point, that point strengthens: a destination dot grows to Ø `0.33 p`, a capture ring thickens to `0.07 p` inward from its fixed outer edge. Strengthening releases beyond `0.55 p`, and the hysteresis between the two distances prevents flicker along a cell boundary.
+- **Pointer hover.** The point under the pointer takes a faint rounded-square fill, `0.90 p` square with a `0.12 p` corner radius, in marker ink at low opacity, drawn beneath the pieces. It reports where the pointer is, not what is legal.
+- **Keyboard focus.** The focused point takes a rounded-square outline, `0.88 p` square with stroke `0.06 p` and a `0.14 p` corner radius, in the platform's focus colour. It is the one marker that carries hue, because matching the platform's own focus ring is worth more here than vocabulary purity, and its rectangular shape distinguishes it regardless. It is also the only marker permitted to cross another: it is a platform affordance drawn above the board, and it never carries game state by itself.
+
+Two states deliberately have no board marker at all.
+
+- **A failed save** is reported by a transient capsule anchored to the turn-status element, reading **无法保存这一步，请重试。**, with the system warning pattern reserved for genuine failures. It is distinguished from illegal-tap feedback structurally — a different surface, a different shape, a different feedback pattern — rather than by inventing a second board mark. The board shows nothing because the position did not change.
+- **Unavailable input** is answered by an acknowledgment beat on the turn-status element: its background rises to full emphasis and falls back, in opacity only, with no movement, plus the same lightest feedback as an illegal tap. The reason input is unavailable is always already on screen, so the beat points at it rather than repeating it. The board is never dimmed while the AI is thinking or after a result is confirmed: a board with nothing wrong with it should look like a board, and the pause while the AI thinks is exactly when a learner wants to study the position. In replay the board is a read-only document, and a tap on it does nothing at all — no beat and no feedback — because any response would imply an interactivity that deliberately does not exist there.
+
+**Layering**, from the board upward: the style's board surface; the grid and palace diagonals; the pointer hover fill; last-move brackets; destination dots and the drag origin; resting discs with their style resting shadows; rings around resting discs; the held or dragged disc with its lift shadow and attached selection ring; the keyboard focus ring. Rings are drawn above resting discs so that no disc can clip one.
+
+Because every marker is contained by its own cell, only markers on the *same* point can ever meet, and those cases are closed: a destination dot or a capture ring coexists with last-move brackets without touching them, since the brackets occupy the cell's corners and the rings pass through its edge midpoints; a capture ring never surrounds a checked general, because a general is never a legal capture target; last-move brackets never fall on a checked general's cell, because the last move was the opponent's and neither of its cells holds that general; and a held general in check is resolved by the rule above.
+
 ### Turn status
 
 A persistent status element near the board is one coherent description of the current play state:
@@ -191,6 +237,8 @@ A persistent status element near the board is one coherent description of the cu
 - Its primary line always identifies the side to move, using the localized equivalent of **轮到红方** or **轮到黑方**.
 - In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line.
 - Free Play omits a human/AI controller label because the same person controls both sides.
+- While the side to move is in check, a **将军** token accompanies the side-to-move line, present for exactly as long as check persists.
+- The element carries the two board-state messages that are not facts about the position: the transient save-failure capsule, and the acknowledgment beat that answers input the game cannot accept. Both are defined under [Game-state markers](#game-state-markers).
 - The design does not add a separate, unrelated instruction such as “please move” or “your turn.”
 - Board input is accepted only when the committed game state permits the user to move. It is disabled while the AI is thinking.
 - History replay uses a separate move-progress and playback state rather than describing the position as a human or AI turn.
@@ -331,7 +379,7 @@ The first implementation uses a restrained, tactile motion language:
 - During a drag, the piece follows the pointer or touch, its origin retains a subtle marker, and a nearby legal target strengthens its feedback.
 - An ordinary move travels smoothly to its destination in approximately 180–240 ms.
 - A capture coordinates a brief scale-and-fade removal with the moving piece's arrival and targets an overall duration of approximately 250 ms.
-- An invalid drop returns the piece smoothly to its origin and gives the attempted destination brief feedback without an alert or forceful shake.
+- An invalid drop returns the piece smoothly to its origin and gives the same brief feedback as an illegal tap, without an alert or forceful shake.
 - An AI move uses the same move language and leaves persistent origin and destination markers so the player can identify the completed move.
 - Check uses a persistent, non-color-only king-square treatment plus one brief pulse. It does not flash continuously.
 - Undo visually reverses the affected move or decision cycle and restores a captured piece when needed. Board input and another Undo remain unavailable until the transition completes, and a new action does not interrupt a running transition. Because repeated Undo is an accepted capability, an Undo transition must therefore complete within 250 ms for one ply and 600 ms for a decision cycle, so that walking a game back does not accumulate noticeable waiting.
@@ -384,7 +432,9 @@ Two arrangements cover every device and window size, chosen by available width r
 - **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them.
 - **Side by side**, used by iPad landscape, wide iPad window sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the turn status, the move list, game metadata, and controls that do not need to sit under the thumb.
 
-The board is square and is sized to the largest square fitting **both** the available width and the height left after the surrounding chrome, so it never overflows a short window. Within that, a point of the grid is never smaller than 44 points on iOS and iPadOS, which is the platform's default control size, nor smaller than 28 points on macOS, where a pointer rather than a finger selects it.
+The board is square and is sized to the largest square fitting **both** the available width and the height left after the surrounding chrome, so it never overflows a short window. Within that, a point of the grid is never smaller than 44 points on **every** platform. On iOS and iPadOS that is the platform's default control size. macOS shares it rather than taking the smaller figure a pointer would allow, because the marker vocabulary in [Board metrics](#board-metrics) has one worst case instead of two, and because its finest distinctions — the air gap between a disc and its markers, and the gap between the two check rings — are fractions of a point at a smaller pitch.
+
+That floor is affordable on the most constrained configuration the target MVP supports. A built-in Retina display running at 1024 by 663 points — the largest-text setting on a current Mac — leaves a window of 1024 by 582 points once the menu bar and the Dock are subtracted, and 550 points of content height below a standard title bar. At the 44-point floor the board core is 308 points square, so more than 200 points of height remain for the turn status, the controls, the file numerals, and their spacing. The floor therefore never forces the window to fill the screen. The exact minimum window follows from the chrome inventory that remains open below, and must fit this budget.
 
 When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
 
@@ -419,14 +469,14 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Fix the minimum window size for macOS and for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
 - Resolve how the non-dismissible result card, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the card requires the board to stay visible and the chrome has its own floor.
 - Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
-- Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, and its own board surface — within the constraints the accepted styles impose.
+- Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, its own board surface, and its marker ink at both accepted strengths — within the constraints the accepted styles and board metrics impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
 - Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
 - Decide what a user reading icon symbols is offered for the move list, which remains character-based, and approve the table of positions and expected move strings that serves as the notation's test oracle.
-- Decide whether file numbers may be hidden, and define the visual system for them and for typography.
+- Decide whether file numbers may be hidden, and define the numeral strips' geometry, typography, and contrast requirement, together with the grid and palace-diagonal stroke weight in units of the cell pitch, all of which the accepted board metrics leave open.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
-- Define the exact visual treatment for selection, legal destinations, captures, illegal-square feedback, save-failure feedback, and unavailable input.
-- Define the turn status's exact AI activity treatment, transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
+- Decide whether a pointer previews a piece's legal destinations on hover, before any selection. It would teach, and it sits directly beside the accepted exclusion of move hints and analysis, so it is a scope question rather than a visual one.
+- Define the turn status's exact AI activity treatment, the 将军 token's form, remaining transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
