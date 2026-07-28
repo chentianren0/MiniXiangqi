@@ -53,7 +53,7 @@ fixture reports NOT IMPLEMENTED rather than passing."
 # The commit that implements them sets this ON permanently and deletes this
 # comment; it is not a user-facing option, and turning it on by hand only
 # produces link errors.
-set(MXQ_RULES_FACADE_IMPLEMENTED OFF)
+set(MXQ_RULES_FACADE_IMPLEMENTED ON)
 
 # --------------------------------------------------------------------------
 # Pinned inputs
@@ -144,6 +144,7 @@ add_library(mxq_core STATIC
   src/mxq_engine.cpp
   src/mxq_internal.cpp
   src/mxq_rules.cpp
+  $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
   src/mxq_status.cpp
 )
 add_library(mxq::core ALIAS mxq_core)
@@ -156,6 +157,15 @@ target_include_directories(mxq_core
     "${MXQ_GENERATED_DIR}"
 )
 target_link_libraries(mxq_core PRIVATE mxq_warnings)
+
+# The facade's entry points are compiled out unless the engine is present, so
+# the switch must reach the compiler and not only CMake. Without this the
+# library builds and links cleanly while mxq_rules_evaluate and
+# mxq_rules_legal_moves simply do not exist in it — which surfaces as an
+# undefined symbol in whatever links it, a long way from the cause.
+if(MXQ_ENABLE_RULES_FACADE)
+  target_compile_definitions(mxq_core PRIVATE MXQ_ENABLE_RULES_FACADE=1)
+endif()
 set_target_properties(mxq_core PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON
