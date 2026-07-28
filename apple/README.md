@@ -7,6 +7,6 @@ accessibility, platform services, transient UI state, and the persistent Setting
 preferences. It does not reimplement rules, result classification, archive parsing, or
 library invariants, and it never reaches around the core to its storage or the engine.
 
-Requires the toolchain pinned in the workspace `CLAUDE.md`. The code here is still the
+Requires the Apple toolchain pinned in [`docs/testing.md`](../docs/testing.md). The code here is still the
 generated scaffold: the accepted design lives in [`docs/`](../docs/), and the scaffold's
 `Item`, `ContentView` and `ModelContainer` are not evidence of any accepted decision.

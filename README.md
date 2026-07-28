@@ -36,7 +36,7 @@ export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 xcodebuild -version
 ```
 
-Open `MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/testing.md) for the draft validation contract, the verified toolchain check, and the build/test commands that still need to be approved. The Windows toolchain is not yet pinned.
+Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/testing.md) for the draft validation contract, the verified toolchain check, and the build/test commands that still need to be approved. The Windows toolchain is not yet pinned.
 
 ## Documentation
 
