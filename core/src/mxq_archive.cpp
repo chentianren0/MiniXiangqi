@@ -4,12 +4,15 @@
 
 #include "mxq_internal.hpp"
 
+#include <cassert>
+
 extern "C" {
 
 MxqStatus MXQ_CALL mxq_archive_supported_versions(uint32_t *out_min_readable,
                                                   uint32_t *out_current,
                                                   MxqError *err) {
     if (out_min_readable == nullptr && out_current == nullptr) {
+        assert(false && "both out parameters were null");
         mxq::fill_error(err, MXQ_ERR_ARG_NULL,
                         "both out parameters were null");
         return MXQ_ERR_ARG_NULL;

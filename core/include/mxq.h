@@ -179,8 +179,10 @@ enum {
                                            * function forbids */
     MXQ_ERR_ARG_CONCURRENT_USE    = 1009, /* two threads inside one session */
     MXQ_ERR_ARG_REENTRANT         = 1010, /* called from inside a search callback,
-                                           * where only the status and blob
-                                           * helpers are legal */
+                                           * where the legal calls are the
+                                           * status and blob helpers and the
+                                           * four pure queries that take no core
+                                           * instance: see MxqSearchCallback */
 
     /* State domain: 2000. */
     MXQ_ERR_STATE_NOT_INITIALIZED     = 2001,

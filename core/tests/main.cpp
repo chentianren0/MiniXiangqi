@@ -20,7 +20,7 @@
  * did, and 2 when the run could not be set up at all. NOT IMPLEMENTED does not
  * fail the run — it would be red by construction until the facade lands — but it
  * is stated on its own summary line and is emitted as a skipped test case in the
- * JUnit report, so no CI dashboard shows this suite as green-and-complete.
+ * JUnit report.
  */
 
 #include "mxq.h"
@@ -499,15 +499,20 @@ int main(int argc, char **argv) {
             /* A separate code per entry: sharing one with the iterator let a
              * broken entry be dropped in silence and a stale value abort the
              * run later. An entry that cannot be stat'd is a setup failure,
-             * because a fixture we cannot read is not a fixture we may skip. */
+             * because a fixture we cannot read is not a fixture we may skip —
+             * but an entry that stats cleanly and simply is not a regular file,
+             * such as a directory named *.json, is not a fixture at all and is
+             * passed over rather than taking the suite down. */
             std::error_code entry_ec;
-            if (!entry.is_regular_file(entry_ec) || entry_ec) {
+            const bool regular = entry.is_regular_file(entry_ec);
+            if (entry_ec) {
                 std::cerr << "mxq_core_tests: cannot read "
-                          << entry.path().string() << ": "
-                          << (entry_ec ? entry_ec.message()
-                                       : std::string("not a regular file"))
+                          << entry.path().string() << ": " << entry_ec.message()
                           << "\n";
                 return 2;
+            }
+            if (!regular) {
+                continue;
             }
             files.push_back(entry.path());
         }
