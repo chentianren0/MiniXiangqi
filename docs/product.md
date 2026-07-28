@@ -13,6 +13,7 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
 - Distribution is internal only: TestFlight internal testing on Apple platforms and direct internal installation on Windows. There is no public App Store, Microsoft Store, or other public release plan.
 - The application is fully offline and must not require an Internet connection.
+- Fully offline constrains the app, not the platform beneath it: the app itself never touches the network. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
 ## Target platforms
 
@@ -105,6 +106,5 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 > The items below are questions, not requirements or implementation authorization.
 
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it. It may later serve the education purpose by letting a teacher set up a position.
-- Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.
 - Decide whether the Windows build needs an in-app interface-language override, once the Windows frontend exists and internal testers there can be asked.
 - Define the exact Windows internal-distribution mechanism, packaging format, and minimum tested Windows configuration before Windows implementation begins.
