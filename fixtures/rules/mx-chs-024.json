@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-024",
+  "title": "Chasing two different pieces alternately is a perpetual chase of neither",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/c5c/7/R6/7/2K4 w - - 0 1",
+  "moves": [
+    "a3g3",
+    "d7d6",
+    "g3a3",
+    "d6d7",
+    "a3g3",
+    "d7d6",
+    "g3a3",
+    "d6d7"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/c5c/7/R6/7/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "Every Red move attacks an unprotected black cannon (g3 attacks g5, a3 attacks a5) while the black king shuttles idly, so each move taken alone is a chase. The violation is defined on one and the same enemy piece having its attack renewed by every move in the span, and no single cannon is chased on consecutive Red moves, so the repetition is neutral and merely claimable at the third occurrence."
+}

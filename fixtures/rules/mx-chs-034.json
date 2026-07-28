@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-034",
+  "title": "The Black half of the mutual chase alone is a unilateral perpetual chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "2k2r1/7/2N4/7/2r1nC1/7/4K2 w - - 0 1",
+  "moves": [
+    "c5b3",
+    "e3f5",
+    "b3c5",
+    "f5e3",
+    "c5b3",
+    "e3f5",
+    "b3c5",
+    "f5e3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k2r1/7/2N4/7/2r1nC1/7/4K2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "Black's two chariots alternate as the discovered attacker on the unprotected white cannon on f3 — c3 attacks it once the horse vacates e3, f7 once the horse returns and unblocks the f-file — so every Black move renews the attack on one and the same piece from a square that piece was not attacked from before the move. White's horse shuttle c5/b3 attacks nothing; the white cannon's own threat is produced by Black's moves and alternates between the two black chariots, which is a chase of neither. Black therefore loses at the third occurrence; this is the Black half of mx-mix-002 in isolation."
+}

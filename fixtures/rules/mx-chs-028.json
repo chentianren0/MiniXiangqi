@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-028",
+  "title": "An absolutely pinned chariot's threat is not a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3rk2/7/7/3R3/1c5/7/3K3 w - - 0 1",
+  "moves": [
+    "d4d3",
+    "b3b4",
+    "d3d4",
+    "b4b3",
+    "d4d3",
+    "b3b4",
+    "d3d4",
+    "b4b3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3rk2/7/7/3R3/1c5/7/3K3 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "The white chariot shuttles between d4 and d3 and appears to attack the black cannon on b4 and b3 along the rank, but it is absolutely pinned on the d-file by the black chariot on d7 against the white king on d1: its legal moves at every ply of this history are d-file moves only, so the capture is never available. An attack the chasing piece could not legally make is not a threat and is not a chase, so the repetition is neutral and merely claimable at the third occurrence. Patch-gated against fork correction P1: the current unpatched engine ignores the pin and rules Red the loser here, so this fixture states the contract against the engine and is expected to fail until that correction lands."
+}

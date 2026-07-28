@@ -1,0 +1,35 @@
+{
+  "id": "mx-chs-025",
+  "title": "The chasing piece may change while one chased piece is tracked through its own moves",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "R6/7/c3k2/7/1R5/7/3K3 w - - 0 1",
+  "moves": [
+    "b3a3",
+    "a5b5",
+    "a7b7",
+    "b5a5",
+    "b7a7",
+    "a5b5",
+    "a3b3",
+    "b5a5",
+    "b3a3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "R6/7/c3k2/7/R6/7/3K3 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "Two white rooks take turns renewing the attack on the same black cannon as it flees between a5 and b5: the northern rook from b7 and a7, the southern rook from b3 and a3. The chased piece is identified as a piece and followed through its own moves, while the chasing piece and the attacked square may both change from move to move, so the violation is sustained. The repeated position first arises after Red's first move, and the chasing side (Red) loses at its third occurrence."
+}

@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-018",
+  "title": "A soldier's move never creates a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/7/c6/1P5/7/2K4 w - - 0 1",
+  "moves": [
+    "b3a3",
+    "a4b4",
+    "a3b3",
+    "b4a4",
+    "b3a3",
+    "a4b4",
+    "a3b3",
+    "b4a4"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/7/c6/1P5/7/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "This is a meaningful negative, not a position without an attack: the white soldier genuinely attacks the undefended black cannon after each of its moves — a3 attacks a4 and b3 attacks b4, and the capture is legal — and the same wheel with a chariot in place of the soldier is a perpetual chase. A soldier takes no part in the chase rule as a chasing piece, so only the attacker-class rule produces the neutral repetition. The fixture also pins that a soldier move does not reset the halfmove clock: the fifth FEN field is 8 after eight plies of which four are soldier moves."
+}

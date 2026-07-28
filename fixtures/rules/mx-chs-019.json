@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-019",
+  "title": "A king's move never creates a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/7/7/3c3/2K4/7 w - - 0 1",
+  "moves": [
+    "c2d2",
+    "d3c3",
+    "d2c2",
+    "c3d3",
+    "c2d2",
+    "d3c3",
+    "d2c2",
+    "c3d3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/7/7/3c3/2K4/7 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "The companion meaningful negative to mx-chs-018 for the other excluded attacker: the white king genuinely attacks the undefended black cannon after each of its moves — d2 attacks d3 and c2 attacks c3, and the capture is legal — and the same shuttle driven by a chariot is a perpetual chase. A king takes no part in the chase rule as a chasing piece, so only the attacker-class rule produces the neutral repetition."
+}

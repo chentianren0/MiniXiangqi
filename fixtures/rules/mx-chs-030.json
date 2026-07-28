@@ -1,0 +1,35 @@
+{
+  "id": "mx-chs-030",
+  "title": "The chase test must not reach behind the first of the three occurrences",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/c6/7/7/7/R1K4 w - - 0 1",
+  "moves": [
+    "a1a3",
+    "a5b5",
+    "a3b3",
+    "b5a5",
+    "b3a3",
+    "a5b5",
+    "a3b3",
+    "b5a5",
+    "b3a3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/c6/7/R6/7/2K4 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The entry move a1a3 advances the chariot toward the cannon along the a-file, on which its attack already stood, so it renews nothing and is not itself a chase; the four White moves strictly after the first occurrence at ply 1 each swing the chariot across onto the file the cannon now stands on and renew the chase of that one unprotected piece, completing the violation at the third occurrence. Only moves inside the three-occurrence window are part of the test, and adjudication does not depend on which side happens to be to move when the third occurrence lands, which mx-chs-032 pins as the identical wheel at the other parity. Patch-gated against fork correction P3: the current unpatched engine also intersects the chase set of the quiet entry move, which lies outside the window, and returns a draw at this parity, so this fixture states the contract against the engine and is expected to fail until that correction lands."
+}

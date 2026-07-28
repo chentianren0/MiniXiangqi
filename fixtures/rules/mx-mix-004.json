@@ -1,0 +1,34 @@
+{
+  "id": "mx-mix-004",
+  "title": "Perpetual check outranks a simultaneous perpetual chase by the checked side",
+  "area": "mix",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/1r3N1/7/7/2K4/3C3 w - - 0 1",
+  "moves": [
+    "f5d6",
+    "b5d5",
+    "d6f5",
+    "d5b5",
+    "f5d6",
+    "b5d5",
+    "d6f5",
+    "d5b5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/1r3N1/7/7/2K4/3C3 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "This is mx-chs-027 with a white cannon added on d1: the horse arriving on d6 and then the black chariot left on d5 each screen the cannon onto the black general, so Red checks after every one of its moves, while Black's chariot renews the same chase of the unprotected white horse on every one of its own. Check outranks chase unconditionally, so Red loses although Black is chasing; the deletion control mx-chs-027, identical but for the cannon, awards the same eight plies to Red."
+}

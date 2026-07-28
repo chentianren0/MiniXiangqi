@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-014",
+  "title": "A horse chasing a protected chariot is still a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/3r2r/N6/7/7/4K2 w - - 0 1",
+  "moves": [
+    "a4c3",
+    "d5c5",
+    "c3a4",
+    "c5d5",
+    "a4c3",
+    "d5c5",
+    "c3a4",
+    "c5d5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/3r2r/N6/7/7/4K2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The white horse renews its attack on the black chariot after every move (c3 attacks d5, a4 attacks c5) while the chariot flees between d5 and c5. The chariot is defended on both squares by its partner on g5, but an attack by a horse or a cannon on a chariot is a chase independently of protection, because the capture wins material even after the recapture, so the chasing side (Red) loses at the third occurrence."
+}
