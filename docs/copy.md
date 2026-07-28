@@ -22,10 +22,10 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `nav.play` | 对局 *(proposed)* | Play | navigation destination | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there |
-| `nav.history` | 历史 *(proposed)* | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
-| `nav.settings` | 设置 *(proposed)* | Settings | navigation destination | same; 设置 is attested inside 本局设置 and 人机对弈默认设置 |
-| `nav.resumeGame` | 回到对局 *(proposed)* | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
+| `nav.play` | 对局 | Play | navigation destination | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there |
+| `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
+| `nav.settings` | 设置 | Settings | navigation destination | same; 设置 is attested inside 本局设置 and 人机对弈默认设置 |
+| `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
 
@@ -94,7 +94,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `reason.resignation` | 认输 | Resignation | reason line; metadata token | same |
 | `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token | same |
 
-**Stalemate is kept deliberately.** It is the standard English Xiangqi term, the notice title has already named the winner, and Help states that having no legal move loses in Xiangqi. The English word's chess sense is corrected by the surface it appears on rather than by renaming the reason.
+**Stalemate is kept deliberately.** It is the standard English Xiangqi term, the notice title has already named the winner, and the Help stage owes the statement that having no legal move loses in Xiangqi. The English word's chess sense is corrected by the surface it appears on rather than by renaming the reason.
 
 ### Alerts
 
@@ -250,12 +250,12 @@ These are consequences for the code, recorded here so that the later localizatio
 - **The three cluster buttons need accessibility identifiers.** `PlayScreenUITests` finds 悔棋, 判和, and 翻转棋盘 by their labels. A label is copy and will change with the language; an identifier will not. The identifiers go in before localization, not after it breaks the suite.
 - **The two failure screens gain Chinese sources.** `ContentView.swift` and `Play/PlayScreen.swift` carry English literals with no Chinese behind them. `failure.coreDidNotStart` and `failure.gameDidNotStart` supply it.
 - **`metadata.moveCount` is a plural pattern**, authored with the String Catalog's plural variants rather than as a literal with a number interpolated into it.
+- **One code comment still carries the pre-rename style name.** `Board/BoardStyle.swift` says 高对比 where the contract now says 高对比度; the rename rides along with the next change to that file.
 
 ## Need to discuss
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Approve or replace the four *(proposed)* rows, which are the only rows here that are not accepted: `nav.play`, `nav.history`, `nav.settings`, and `nav.resumeGame`. All four exist in the contracts in English only. 回到对局 for Resume Game must not be resolved by reusing 继续对局, which is already the threefold notice's decline-the-draw action.
 - Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
 - Supply copy for the surfaces that have no accepted string in either language yet, as each is designed: the sound and haptics toggles, the Help entry point and its contents, Import and Export, the replay transport controls and their autoplay speeds, the History row's date and move-count formatting, and the import, duplicate, conflict, and error messages that [interaction-design.md](interaction-design.md) leaves to be designed.
 - Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.

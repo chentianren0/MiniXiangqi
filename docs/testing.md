@@ -87,7 +87,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 ### Rules
 
-- Run the approved conformance fixtures in `fixtures/rules/` for movement, king safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase.
+- Run the approved conformance fixtures in `fixtures/rules/` for movement, general safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase.
 - Verify every ply's legal set, resulting position, check state, and final result where applicable.
 - Verify that the target custom variant has no move-count draw and recognizes the neutral draw outcome on the third occurrence for search.
 - Verify that the app-visible rules boundary exposes claim eligibility on that occurrence, continuing keeps the game active, and only an explicit claim commits the draw.
