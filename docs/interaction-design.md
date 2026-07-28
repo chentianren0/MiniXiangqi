@@ -269,11 +269,9 @@ Three controls sit together during play, never more, so the cluster stays reacha
 - **Free Play** — **悔棋**, **判和**, **翻转棋盘**. It cannot resign, having no opponent to resign to, and it is the mode the accepted orientation behaviour gives a flip control.
 - **Replay** — the transport controls and **翻转棋盘**. Replay offers no move input, so no play control applies.
 
-**判和 carries the claim state rather than a separate affordance.** A neutral threefold repetition left unclaimed keeps the claim available through this control, which becomes enabled and marked; it is not a second element competing for space. The control is disabled whenever no claim exists, so its presence never implies one.
-
 **认输** presents a confirmation, since it ends the game against the player and cannot be undone:
 
-- Title: **确认认输？**
+- Title: **认输？**
 - Message: **认输后本局将记为你落败。**
 - Actions: **取消** and **认输**.
 
@@ -499,7 +497,7 @@ The board is square and is sized to the largest square fitting **both** the avai
 
 That floor is affordable on the most constrained configuration measured so far. A built-in Retina display running at 1024 by 663 points — the largest-text setting on a current Mac — leaves a window of 1024 by 582 points once the menu bar and the Dock are subtracted, and 550 points of content height below a standard title bar. At the 44-point floor the board core is 308 points square, so more than 200 points of height remain for the turn status, the controls, the file numerals, and their spacing. The exact minimum window follows from the chrome inventory that remains open below and must fit this budget; verifying that it does, on this configuration and on the smallest display any tester actually uses, is a required check rather than an assumption.
 
-**The board has a maximum.** Its core stops growing at 720 points, a pitch of about 103 points. Beyond that the two palaces drift far enough apart on a large display to cost more in eye movement than the extra size returns, and a disc approaches 80 points, which no physical set resembles. Surplus space goes to the surrounding layout rather than to the board, and the half-cell margin stays functional space rather than a spacer to inflate.
+**The board has a maximum.** Its core stops growing at 720 points, a pitch of about 103 points. Beyond that the two palaces drift far enough apart on a large display to cost more in eye movement than the extra size returns, and a disc passes 82 points, which no physical set resembles. Surplus space goes to the surrounding layout rather than to the board, and the half-cell margin stays functional space rather than a spacer to inflate.
 
 When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
 
