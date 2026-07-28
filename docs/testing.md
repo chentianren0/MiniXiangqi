@@ -164,6 +164,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify every Settings preference persists in the platform's own preference system and survives relaunch, that none is written to the shared store, and that changing one never alters an active game or any History record.
 - Verify a game created from the pre-start draft freezes the first-mover choice and AI level supplied at creation, and that changing either Settings default afterwards leaves the created and archived game untouched.
 - Verify the app follows the operating system's language selection, including through an Apple per-app language change, and that it offers no interface-language control of its own.
+- Run the localization evidence that [copy.md](copy.md) § The localization process requires: the Double-Length and Bounded String pseudolanguage passes, the smoke flows in both Simplified Chinese and English, and — once the CI workflows below exist — the mechanical check that the copy contract and the String Catalog agree in both languages.
 - Verify the sound, haptics, and piece-symbols settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
 - Verify the grid and palace diagonals are stroked identically, that the outer boundary is a single line, and that both reach 3:1 against each style's board surface.
 - Verify both numeral strips are present, that each faces the player whose numerals it shows, that they follow the board's orientation, that the two sets share a baseline and read as equal in weight, and that every numeral reaches 4.5:1 against the board surface and 7:1 under Increase Contrast.
@@ -209,7 +210,6 @@ An internal distribution candidate — TestFlight on Apple platforms, or the int
 - Pin the Windows toolchain and record verified Windows build/test commands.
 - Define the GitHub Actions workflows, their pinned inputs, and which artifacts they retain.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
-- Define the localization review process and how approved English copy is validated against the accepted Chinese source copy.
 - Define which critical flows require UI automation versus structured manual review.
 - Define how the accepted import validation time budget is measured and enforced on each platform.
 - Define which evidence must be retained for an internal distribution candidate.

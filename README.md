@@ -42,6 +42,7 @@ Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](d
 
 - [Product](docs/product.md) — product purpose, scope, capabilities, lifecycle policies, and MVP exclusions.
 - [Interaction design](docs/interaction-design.md) — UI, UX, platform visual language, board presentation, motion, sound, touch, help, localization, and accessibility.
+- [Copy](docs/copy.md) — every user-facing string pair, its key, the vocabulary that is never translated, and the localization process.
 - [Mini Xiangqi rules](docs/xiangqi-rules.md) — normative rules source, adopted rules, runtime rules authority, and fixture requirements; the approved executable fixtures live in [fixtures/rules](fixtures/rules/).
 - [Architecture](docs/architecture.md) — the shared core, native frontends, dependency direction, concurrency, and lifecycle.
 - [Core C interface](docs/core-interface.md) — the core's C surface: modules, functions, error taxonomy, threading contract, and versioning.

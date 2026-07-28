@@ -57,7 +57,7 @@ Dependencies point inward:
 
 - Expected failures cross the C boundary as typed error codes with retrievable detail, never as crashes, `exit()`, or silently wrong results.
 - Invalid imports, persistence failures, unavailable engine resources, and engine failures must not terminate the app or partially replace a committed game. The last committed state always survives.
-- Frontends translate typed errors into the user-facing copy defined in [interaction-design.md](interaction-design.md), and retain diagnostic detail without recording private game data unnecessarily.
+- Frontends translate typed errors into the user-facing presentation defined in [interaction-design.md](interaction-design.md), whose strings are of record in [copy.md](copy.md), and retain diagnostic detail without recording private game data unnecessarily.
 
 ## Repository layout and build
 

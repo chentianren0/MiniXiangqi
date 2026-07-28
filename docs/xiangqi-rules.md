@@ -25,22 +25,24 @@ The public source and the accepted conformance fixtures are evidence for this co
 - Mini Xiangqi uses a 7-by-7 board.
 - There is no river.
 - There are no advisors or elephants.
-- Each side has a king, chariots, horses, cannons, and soldiers.
-- Each king remains inside its 3-by-3 palace.
+- Each side has a general, chariots, horses, cannons, and soldiers.
+- Each general remains inside its 3-by-3 palace.
 
 ## Starting position, coordinates, and notation
 
 - The starting position is FEN `rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1`. This string is byte-identical in the selected public source's implementation and in the built-in Fairy-Stockfish `minixiangqi` variant.
 - Squares are named `a1` through `g7`: files `a` to `g` from Red's left, ranks `1` to `7` from Red's back rank. A FEN piece-placement field lists rank 7 first and rank 1 last.
-- `w` is Red: uppercase pieces, moves first, king starting on `d1`, palace `c1`–`e3`. `b` is Black: lowercase pieces, king starting on `d7`, palace `c5`–`e7`.
+- `w` is Red: uppercase pieces, moves first, general starting on `d1`, palace `c1`–`e3`. `b` is Black: lowercase pieces, general starting on `d7`, palace `c5`–`e7`.
 - The canonical machine notation for a move is the origin square followed by the destination square, for example `b1b4`. No move suffix exists: Mini Xiangqi has no promotion, castling, en passant, drop, or gating. This notation is canonical for fixtures, game archives, and the shared core interface. The notation shown to the user is a separate presentation decision, accepted in [interaction-design.md](interaction-design.md), and never changes what is stored or exchanged.
 - A position record is a 6-field FEN. The third and fourth fields are always `-`. The fifth field counts plies since the last capture and drives no rule; a soldier move does not reset it. The sixth field is the fullmove number, starting at 1 and incrementing after each Black move.
 - Two position records denote the same position exactly when piece placement and side to move are equal; the two counters are ignored.
 
+**Serialized vocabulary and display copy differ deliberately.** The identifiers frozen here and in the fixtures are technical vocabulary and never change to follow a display string: the FEN letter `k`, the word *square* in the coordinate and canonical-notation contract above, and reason identifiers such as `stalemate` mean what this document says they mean, in every archive, fixture, and core interface. What the user reads is a separate matter, fixed in [copy.md](copy.md): English says *General* for the piece, *point* for an intersection of the board as [interaction-design.md](interaction-design.md) requires, and the approved reason words. Neither vocabulary is a translation of the other, and neither may be edited to make them match.
+
 ## Movement
 
-- A king moves one square orthogonally inside its palace.
-- The two kings may not face each other on an otherwise empty file; they attack each other through that file.
+- A general moves one square orthogonally inside its palace.
+- The two generals may not face each other on an otherwise empty file; they attack each other through that file.
 - A chariot moves any number of unobstructed squares orthogonally.
 - A horse uses Xiangqi horse movement and is blocked when its orthogonal first step is occupied.
 - A cannon moves like a chariot when not capturing. A cannon capture requires exactly one intervening screen.
@@ -49,7 +51,7 @@ The public source and the accepted conformance fixtures are evidence for this co
 ## Ordinary game results
 
 - A position with no legal move is a loss for the player who cannot move.
-- Check, legal check evasion, and checkmate must follow the movement and king-safety rules above.
+- Check, legal check evasion, and checkmate must follow the movement and general-safety rules above.
 
 The complete result taxonomy, including user-ended games and imported records, is defined jointly with [Game data](game-data.md); the fixture result identifiers below seed the rule-derived part of that taxonomy.
 
@@ -63,7 +65,7 @@ The complete result taxonomy, including user-ended games and imported records, i
 - A unilateral perpetual-check violation is a loss for the checking side.
 - A unilateral perpetual chase of the same unprotected target is a loss for the chasing side.
 - Adjudication does not depend on which side happens to be to move when the third occurrence lands. The engine currently evaluates a sustained chase over a window one move wider for one parity than the other, which costs a ply of detection in a unilateral chase and, in a mutual perpetual chase, resolves the required draw as a unilateral loss for whichever side did **not** make the quiet move that entered the repeating position; the entering side is handed the win. A fork correction is required; see [engine-integration.md](engine-integration.md).
-- Kings and soldiers take no part in the perpetual-chase rule, as targets or as chasing pieces: neither may be the chased piece, and a move by a king or a soldier never creates a chase. A king's or a soldier's move may still open another piece's line or horse leg, and the resulting threat is a chase by that other piece. Kings and soldiers protect normally.
+- Generals and soldiers take no part in the perpetual-chase rule, as targets or as chasing pieces: neither may be the chased piece, and a move by a general or a soldier never creates a chase. A general's or a soldier's move may still open another piece's line or horse leg, and the resulting threat is a chase by that other piece. Generals and soldiers protect normally.
 - A piece of the same type as the chasing piece is not a chase target, because the attack is mutual and the target can answer it — unless that piece is pinned and therefore cannot answer.
 - Independently of protection, an attack by a horse or a cannon on a chariot is always a chase, because the capture wins material even after the recapture. No other value relation overrides protection here: the chariot is the only piece these rules treat as strictly stronger than the horse and the cannon, which are treated as equals. This clause is an adopted AXF practice that the retained source does not literally state; it is recorded as reasoning rather than as a reading of the source.
 - When one side perpetually checks and the other perpetually chases, the checking side is the side required to stop and loses if the violation is completed. Check outranks chase unconditionally: a side that is perpetually checking loses even if it is simultaneously chasing, and even if the other side is also chasing. This orders check against chase; it does not override the mutual rule below, so two sides both perpetually checking remain a draw.
@@ -99,11 +101,11 @@ The approved set contains sixty-six fixtures. The first approved set was these s
 - `mx-move-002` — horse blocking on the occupied first step;
 - `mx-move-003` — cannon slides and the exactly-one-screen capture requirement;
 - `mx-move-004` — soldier forward and sideways moves and captures, and the rejected backward move;
-- `mx-move-005` — king palace confinement and single-step movement;
+- `mx-move-005` — general palace confinement and single-step movement;
 - `mx-move-006` — a check position whose legal set is exactly its evasions;
 - `mx-end-001` — checkmate as a loss for the side to move;
 - `mx-end-002` — stalemate as a loss for the side to move;
-- `mx-end-003` — rejection of moves that would leave the kings facing on an empty file;
+- `mx-end-003` — rejection of moves that would leave the generals facing on an empty file;
 - `mx-rep-001` — neutral threefold repetition claimable exactly at the third occurrence and not earlier;
 - `mx-chk-001` and `mx-chk-002` — unilateral perpetual check as a loss for the checking side at the third occurrence, pinned for both side-to-move parities;
 - `mx-chs-001` and `mx-chs-004` — unilateral perpetual chase of an unprotected cannon or horse as a loss for the chasing side at the third occurrence, including a repeated position that is not the setup position;
