@@ -18,6 +18,12 @@ final class Game {
     private(set) var legalMoves: [Move] = []
     private(set) var lastMove: Move?
 
+    /// Each played move as the player reads it. Recorded when the move is
+    /// played, because traditional notation depends on the placement *before*
+    /// it — including whether a second piece of the same type stood on the
+    /// same file, which the move itself may change.
+    private(set) var notation: [String] = []
+
     /// A core call that failed. Shown rather than swallowed: every one of them
     /// is a bug in this app or a packaging failure, never a rules outcome.
     private(set) var failure: CoreError?
@@ -87,7 +93,9 @@ final class Game {
     }
 
     private func play(_ move: Move) {
+        let read = MoveNotation.text(for: move, in: placement)
         moves.append(move.text)
+        notation.append(read)
         do {
             evaluation = try core.evaluate(from: startFEN, moves: moves)
             placement = Placement(fen: evaluation.fen)
@@ -96,6 +104,7 @@ final class Game {
             refreshLegalMoves()
         } catch {
             moves.removeLast()
+            notation.removeLast()
             failure = CoreError(wrapping: error)
         }
     }
