@@ -109,16 +109,18 @@ the app's back.
 
 [`docs/engine-integration.md`](../../../docs/engine-integration.md) requires the
 **fork** to expose a static-library target for every supported platform, which
-the core links. That change has not landed —
-`pinned-inputs.json` records it under `fork.patches_pending/static-library-target`
-and `fork.static_library.established` is `false`.
+the core links. That change landed at `86dad87e`, and `pinned-inputs.json`
+records the artifact and its build command under `fork.static_library`.
 
-What was done instead: `CMakeLists.txt` in this directory is a **core-owned**
+The core does not consume that artifact. The app needs `arm64` and `arm64e`, and
+producing both means driving the fork's Makefile twice and joining the results —
+a second build system to keep correct alongside the one the core already has.
+What it does instead: `CMakeLists.txt` in this directory is a **core-owned**
 build of the snapshot. It compiles the same sources with the same defines the
 fork's `make ARCH=apple-silicon nnue=no` would use, each one cited back to a line
 of the fork's `Makefile` at the pinned revision.
 
-When the fork's own target lands and a new revision is pinned:
+If the core ever switches to consuming the fork's own artifact:
 
 1. Replace this directory's `CMakeLists.txt` with one that drives the fork's
    target and consumes its artifact, rather than restating the source list and

@@ -10,7 +10,7 @@
     "upstream_repository": "https://github.com/fairy-stockfish/Fairy-Stockfish",
     "upstream_base_revision": "c19b5f6c66894fdb0e88d0dd100e3885f744760a",
     "upstream_base_committed_at": "2026-07-23T19:20:28+02:00",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts six focused changes in total, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts seven focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
     "patches": [
       {
         "id": "soldier-chase-target-exclusion",
@@ -68,7 +68,20 @@
         ],
         "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
         "commits": [
-          "4d8c1aa1",
+          "4d8c1aa1"
+        ]
+      },
+      {
+        "id": "optional-game-end-rule-accessor",
+        "summary": "Reports which rule produced an optional game end, through a read-only out-parameter on Position::is_optional_game_end and the OptionalGameEndRule enumeration. It changes no adjudication; it exposes one the engine already made. The core needs it because a neutral threefold and a mutual perpetual chase are the same draw value, and unlike mutual perpetual check a mutual chase leaves no trace in the move history to derive it from.",
+        "required_by": [
+          "fixtures/rules/mx-mix-002",
+          "fixtures/rules/mx-mix-005",
+          "fixtures/rules/mx-mix-006",
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
           "370e41d9"
         ]
       },
@@ -87,13 +100,13 @@
     ],
     "patches_pending": [],
     "static_library": {
-      "established": false,
-      "_note": "The fork's static library target is an accepted requirement that has not landed; see patches_pending/static-library-target. The artifact name and the per-platform build invocation belong here once it exists.",
-      "artifact_name": null,
-      "build_command": null
+      "established": true,
+      "_note": "The fork's static-library target landed at 86dad87e. The core does not consume the artifact: it compiles the copied source snapshot with a core-owned CMakeLists.txt, because the app needs arm64 and arm64e from one build system and the fork's Makefile is a second one. The target is what the contract requires of the fork; whether the core switches to consuming its artifact is a separate decision, and core/third_party/fairy-stockfish/README.md records what would change.",
+      "artifact_name": "libfairystockfish.a",
+      "build_command": "make lib ARCH=apple-silicon COMP=clang nnue=no largeboards=yes all=yes"
     },
     "vendored": {
-      "_about": "How the pinned revision reaches the core. Because the fork's own static library target has not landed, the core cannot consume a fork-built artifact and instead compiles a copied source snapshot with a core-owned CMakeLists.txt. core/third_party/fairy-stockfish/README.md justifies the copied-snapshot choice against a submodule and a subtree, and records what changes when the fork's target lands.",
+      "_about": "How the pinned revision reaches the core: as a copied source snapshot compiled by a core-owned CMakeLists.txt, rather than as an artifact built by the fork. core/third_party/fairy-stockfish/README.md justifies the copied-snapshot choice against a submodule and a subtree, and records what would change if the core consumed the fork's own static-library target instead.",
       "established": true,
       "method": "copied-source-snapshot",
       "path": "core/third_party/fairy-stockfish/upstream",
@@ -114,12 +127,12 @@
       ],
       "_excluded_about": "The engine's own main(), its Python bindings, its JavaScript/WebAssembly bindings, the fork's build system, and the fork's sample variant configuration. setup.py, pyffish.pyi, MANIFEST.in, tests/, .github/, appveyor.yml and test.py are outside source_paths and so are not present either.",
       "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
-      "file_manifest_sha256": "e7142566b356362ce89ec47fb8adbfc634d104e49dc9ca6be809bfae52c407fe",
+      "file_manifest_sha256": "c6dc95a360581d1b9c9da19ccb26025cf545f66b4d6dc98a55438e42bf46861f",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     }
   },
   "build_flags": {
-    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet, the fork's static library target has not landed, and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
+    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
     "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established.",
     "platforms": {
       "macos": {
