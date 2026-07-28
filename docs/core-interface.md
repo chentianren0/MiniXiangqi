@@ -248,6 +248,5 @@ Every function that takes an `MxqGame *` — including `mxq_search_start`, `mxq_
 
 > The following questions are non-normative and are not implementation requirements.
 
-- The exact ordering and cleanup contract between pre-start engine preparation, Random resolution, game creation, and the first search; this interface assumes prepare → resolve → create → search but the ordering is owned by [engine-integration.md](engine-integration.md) and remains open there.
 - Whether `mxq_engine_query` should expose additional bounded diagnostics (hash utilization, NPS) for a future internal diagnostics surface.
 - Concrete capacity constants (`MXQ_DETAIL_CAP`, page sizes, legal-move array headroom) to finalize against measured worst cases during implementation.

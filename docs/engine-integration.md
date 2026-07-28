@@ -2,7 +2,7 @@
 
 This document is for Mini Xiangqi engineers, engine integrators, build engineers, and reviewers. It defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine, and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, upstream synchronization, implementation progress, or work tracking; those subjects belong in the Fairy-Stockfish repository.
 
-> **Status: Accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, failure-containment decisions, NNUE handling policy, Apple memory entitlements, backgrounding and teardown behavior, preparation ordering, variant packaging, network failure policy, the pinned-input manifest, and the library build requirement below are all accepted; the concrete search-facade C surface is the accepted contract in [core-interface.md](core-interface.md). Items under **Need to discuss** are non-normative.
+> **Status: Accepted engine contract.** The search-facade placement, AI profiles, rule-integration decisions, failure-containment decisions, NNUE handling policy, Apple memory entitlements, backgrounding and teardown behavior, preparation ordering, variant packaging, network failure policy, the fork change set, the pinned-input manifest, and the library build requirement below are all accepted; the concrete search-facade C surface is the accepted contract in [core-interface.md](core-interface.md). Items under **Need to discuss** are non-normative.
 
 ## Scope and ownership
 
@@ -39,11 +39,13 @@ The pinned fork carries only focused changes this contract or [xiangqi-rules.md]
 - **Soldier chase-target exclusion**, which the approved fixture `mx-chs-003` requires. Landed; it introduces a variant property whose default preserves every existing variant's adjudication.
 - **Recoverable Hash allocation and release**, replacing the process exits on transposition-table allocation failure and on the Windows large-page free path, which the accepted error contract forbids.
 - **A static library target**, per the build requirement below.
-- **Correction of two adjudication defects that produce false terminal losses** — a chaser counted as chasing while pinned, and a flying-general pin test that does not require the intervening pieces to stand between the two generals. Both are wrong-result defects rather than judgement calls.
+- **Correction of two adjudication defects that produce false terminal losses** — a chaser counted as chasing while pinned, and a flying-general pin test that counts only the victim's own pieces on the shared file, so a chaser standing between the two generals is invisible to it and a demonstrably free piece is marked pinned. Both are wrong-result defects rather than judgement calls.
 - **Completion of the chase-target exemption in the discovered-check classifier path**, so the accepted exclusion of generals and soldiers holds in every path rather than in two of three.
 - **A read-only accessor reporting which repetition branch fired**, so the reserved `mutual-perpetual-chase` reason can be recorded. It changes no adjudication.
 
 Every change must leave built-in variants' adjudication unchanged, demonstrated by the fork's own suite, and must keep all approved fixtures passing.
+
+The two adjudication corrections and the classifier-path completion rest on execution-confirmed defects rather than on the deferred definitions of protection, interruption, and discovered or pinned attacks, which [xiangqi-rules.md](xiangqi-rules.md) still leaves open. Each lands together with the fixture that pins it, in the deferred edge-case tranche, and not before. One further confirmed defect — the chase window being one move wider for one side-to-move parity — is deliberately absent from this list pending a decision recorded in that document, so the list is complete for what is decided rather than for what is known.
 
 ## Search lifecycle
 
@@ -55,22 +57,23 @@ Every change must leave built-in variants' adjudication unchanged, demonstrated 
 
 ### Accepted backgrounding and teardown behavior
 
-Moving to the background cancels any running search **and releases the transposition table**, returning the engine to the uninitialized state. Returning to the foreground obtains a fresh memory probe, re-prepares the engine, and requests a new search from the committed position if one is owed.
+The trigger is **the platform's own suspension signal, not loss of focus**. On iOS and iPadOS that is scene backgrounding. On macOS and Windows, where an unfocused window is still a running app, it is system sleep, app termination, and a platform memory-pressure notification; switching windows changes nothing. Releasing gigabytes of Hash every time the user clicks another window would be worse than the problem this rule exists to solve.
 
-The reason is the Hash budget itself. It is bounded only by 4 GiB and the device's memory, so a backgrounded app can be holding gigabytes it is not using — precisely the profile the operating system reclaims first. Losing the app costs the user their place; losing an in-flight search costs at most five seconds of thinking, and the position it was thinking about is committed and unchanged.
+On that signal, any running search is cancelled **and the transposition table released**, returning the engine to the uninitialized state. The reason is the Hash budget itself: it is bounded only by 4 GiB and the device's memory, so a suspended app can be holding gigabytes it is not using — precisely the profile the operating system reclaims first. Losing the app costs the user their place; losing an in-flight search costs at most five seconds, and the position it was thinking about is committed and unchanged.
 
 - The committed game is never affected. The active game is already persisted, and a search result is never what commits a move.
-- A result that arrives from a search cancelled this way is rejected by the existing revision check rather than trusted.
-- Re-preparation can fail, most plausibly because memory conditions changed while the app was away. It uses the same insufficient-memory path as any other preparation, and the game remains saved and resumable with the AI unavailable.
-- Teardown is deterministic and does not rely on process termination: the frontend's lifecycle event drives cancellation, engine release, and store quiescence in that order.
-- Under a platform memory-pressure warning while in the foreground, the engine cancels and releases on the same path rather than shrinking Hash, because a partially reduced table is not a state this contract defines.
+- A result arriving from a search cancelled this way is discarded because **its request is no longer the current one** — the cancellation itself is what rejects it. The position-revision check does not cover this case: no mutation occurred, so the revision is unchanged and a late result would match it.
+- If the signal arrives during an in-flight game creation, the attempt is invalidated exactly as leaving the pre-start state invalidates it: anything prepared is released, no game is created, and a late completion cannot commit.
+- **Re-preparation happens when a search is next owed, not on return to the foreground.** A search is owed exactly when the resumed state is an active human-versus-AI game whose committed status reports the AI to move and a search expected. Replay, Free Play, a confirmed result, a game awaiting the user's move, and having no active game all require no engine, so none of them re-prepares one.
+- Re-preparation obtains a fresh memory probe and can fail, most plausibly because memory conditions changed while the app was away. It reports the same insufficient-memory error as any other preparation. The game remains active, saved, and resumable, with the AI unable to move until preparation succeeds. What the user sees in that mid-game case is not the accepted pre-start notice, whose wording and actions assume a game that has not started; it is an open interaction question below.
+- Teardown is deterministic and does not depend on process termination: cancellation, then engine release, then the store's outstanding work. It must not block the thread delivering the platform's lifecycle event.
 
 ### Accepted preparation ordering
 
 Human-versus-AI game creation runs **prepare → resolve → create → search**, and each step is a gate on the next:
 
 1. **Prepare** the engine from a fresh memory probe. Failure here reports insufficient memory and creates nothing.
-2. **Resolve** a Random first-mover choice. This happens only after preparation succeeds, so a resolved side never survives a failed creation.
+2. **Resolve** a Random first-mover choice, as part of the same creation operation and only after preparation succeeds. Resolution is not committed anywhere until step 3 succeeds, so a resolved side never survives a failed creation and a retry draws again.
 3. **Create and persist** the active game, freezing mode, resolved human side, level identifier, and exact `movetime`. Failure here releases the prepared engine and creates nothing.
 4. **Search**, if the resolved first mover is the AI.
 
@@ -122,7 +125,8 @@ Search speed statistics such as nodes per second, depth, and hash utilization ar
 
 - The target variant's identifier is **`minixiangqiaxf`**, defined in a bundled configuration file named `minixiangqi-variants.ini`. The name is distinct from built-in `minixiangqi` so that the two can be selected unambiguously in the same build, which the fixture harness requires in order to run a variant and its control side by side.
 - The variant keeps built-in `minixiangqi`'s board geometry and piece set exactly; it differs only in adjudication. That is what keeps the pinned network structurally valid for it.
-- The core always sets `EvalFile` explicitly to the bundled network's path and never relies on the engine's default network-name lookup, which derives a filename from the variant identifier. Renaming the variant therefore cannot silently detach it from its network, and the pinned `minixiangqi-12c45d5da817.nnue` needs no alias.
+- **The bundled network's filename must begin with the variant identifier.** `EvalFile` is not simply a path the engine opens: the engine restricts NNUE to the matching variant by requiring the file's basename to start with the variant name (or with a `nnueAlias` that an `.ini` variant cannot set). A basename that does not match does not produce an error — it silently sets `Use NNUE` false and the engine plays on classical evaluation. The pinned network is therefore bundled as **`minixiangqiaxf-12c45d5da817.nnue`**. Only the filename changes; the bytes, the byte length, and the SHA-256 that pins them are unchanged, since the hash is over content.
+- Because that failure is silent, the core's preflight must assert the engine's **effective NNUE state** after configuration, not merely that the file exists and parses. A preflight that checks only file presence would pass in exactly the case this rule exists to prevent.
 - The fork's patch boundary is the set of focused source changes this contract and [xiangqi-rules.md](xiangqi-rules.md) require, each recorded in the pinned manifest by revision. Their implementation, tests, and upstream maintenance belong to the fork repository.
 
 Engine search may evaluate a neutral threefold repetition as draw-valued, but that evaluation does not automatically commit the app-visible game or History record. The rules facade must expose claim eligibility to the accepted product flow.
@@ -136,7 +140,7 @@ The core's rules facade is the authoritative runtime rules component, as accepte
 - The repository never contains NNUE bytes. The network file is not committed to version control in any form; it enters builds from a workspace- or CI-provided location.
 - Bundling the pinned network into internal builds is accepted. The product is an internal education app distributed only to internal testers, and the user has approved using and bundling the existing network on that basis.
 - The bundled network is pinned by exact byte length and SHA-256 in a machine-readable manifest, and the build verifies the hash before packaging. A hash mismatch fails the build rather than shipping unverified bytes.
-- The selected network is `minixiangqi-12c45d5da817.nnue`: 4,333,499 bytes, SHA-256 `12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce`. Its structural loading with the current local `minixiangqi` engine has been verified.
+- The selected network is 4,333,499 bytes, SHA-256 `12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce`, bundled as `minixiangqiaxf-12c45d5da817.nnue` for the reason given under variant packaging. Its structural loading with the current local `minixiangqi` engine has been verified.
 - The file's known trainer string is not sufficient provenance or licensing evidence. Establishing origin, training revision, and redistribution license — or replacing the network — becomes a mandatory gate only if distribution ever expands beyond internal testing; no such expansion is planned.
 
 ### Accepted network failure policy
@@ -152,12 +156,12 @@ The core preflights the network against the engine's observable load state befor
 One machine-readable manifest, `pinned-inputs.json`, at the root of this repository, is the single source of truth for every input a reproducible build consumes:
 
 - the fork's repository, revision, and the ordered list of focused patches applied at that revision;
-- the build flags and defines used for each supported platform;
+- the build flags and defines the app build uses for each supported platform;
 - the bundled variant configuration's filename and SHA-256;
 - the bundled network's filename, exact byte length, and SHA-256;
 - the vendored SQLite amalgamation's version and SHA-256.
 
-The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The fork repository documents its own build implementation, but the app build reads only this manifest, so a value that appears in both is authoritative here.
+The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The fork repository owns how its patches are implemented and how its own artifacts are built; this manifest records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.
 
 ### Accepted library build requirement
 
@@ -170,7 +174,7 @@ The fork must expose a **static library target** for every supported platform, w
 - Network compatibility must be validated for the exact variant and build.
 - Missing, corrupted, incompatible, or rejected evaluation assets must produce a contained error or an explicitly approved fallback; they must not terminate the app.
 - Third-party notices and corresponding-source availability for GPLv3 inputs must be prepared before any build containing the engine is distributed to internal testers.
-- Long or large engine and core builds are recommended to run on GitHub Actions CI with pinned inputs, per [architecture.md](architecture.md).
+- Engine and core builds follow the build policy in [architecture.md](architecture.md): developer machines while the project is Apple-only, and CI covering a macOS runner and a Windows runner once Windows implementation begins.
 
 ## Accepted Apple memory entitlements
 
@@ -181,6 +185,7 @@ The fork must expose a **static library target** for every supported platform, w
 
 > The following questions are non-normative and are not implementation requirements.
 
+- Define what the user sees when re-preparation fails mid-game, after the app was suspended and a search is owed. The accepted **无法启动 AI 对手** notice assumes a game that has not started, so its wording and its 取消 action do not fit; this belongs to [interaction-design.md](interaction-design.md).
 - Confirm each platform's memory probe against the accepted budget boundaries on real hardware; the APIs are fixed above, their measured behavior is not.
 - Fix the manifest's concrete field names and schema version when the first build consumes it.
 - Decide whether a diagnostics surface later exposes bounded hash-utilization and nodes-per-second values, which are recorded as diagnostics rather than strength today.
