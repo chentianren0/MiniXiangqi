@@ -261,6 +261,26 @@ Two states deliberately have no board marker at all.
 
 Because every marker is contained by its own cell, only markers on the *same* point can ever meet, and those cases are closed: a destination dot or a capture ring coexists with last-move brackets without touching them, since the brackets occupy the cell's corners and the rings pass through its edge midpoints; a capture ring never surrounds a checked general, because no position a player can reach offers a general as a legal capture target — one in which a general could be taken is already illegal; last-move brackets never fall on a checked general's cell, because the move that produced the position was the opponent's, so its origin is now empty and its destination holds the opponent's own piece; and a held general in check is resolved by the rule above.
 
+### Play controls
+
+Three controls sit together during play, never more, so the cluster stays reachable under a thumb in the stacked layout and never competes with the board for width:
+
+- **Human versus AI** — **悔棋**, **判和**, **认输**. There is no board-flip control here: the accepted orientation behaviour already places the human's own side at the bottom, and letting a player move their own side to the top is disorienting rather than useful when they control only one side.
+- **Free Play** — **悔棋**, **判和**, **翻转棋盘**. It cannot resign, having no opponent to resign to, and it is the mode the accepted orientation behaviour gives a flip control.
+- **Replay** — the transport controls, **翻转棋盘**, and the affordance that summons the move list. Replay offers no move input, so no play control applies.
+
+**判和 carries the claim state rather than a separate affordance.** A neutral threefold repetition left unclaimed keeps the claim available through this control, which becomes enabled and marked; it is not a second element competing for the same space. The control is disabled whenever no claim exists, so its presence never implies one.
+
+**认输** presents a confirmation, since it ends the game against the player and cannot be undone:
+
+- Title: **确认认输？**
+- Message: **认输后本局将记为你落败。**
+- Actions: **取消** and **认输**.
+
+Confirming records a human loss and moves the game to immutable History. Cancelling changes nothing. Resignation stays a separate confirmed action and is never folded into the natural-result card.
+
+Where the side-by-side layout applies, these controls live in the panel alongside the turn status, the move list, and game metadata. That metadata states the same facts as the Play destination's own active-game metadata, derived from the same committed state rather than described a second way.
+
 ### Turn status
 
 A persistent status element near the board is one coherent description of the current play state:
@@ -337,6 +357,7 @@ The requested destination remains temporary only while this confirmation or retr
 ### Natural result presentation
 
 - When a natural terminal result is reached, the final board remains fully visible and a non-dismissible result card appears near it.
+- In the stacked layout the card **takes the place of the play controls** for as long as it is shown. Nothing is lost: 判和 and 认输 are meaningless once the game is over, 翻转棋盘 remains reachable from the recorded card's replay, and the card carries the two actions that do apply. In the side-by-side layout the panel has room for both, and the controls remain visible but disabled.
 - The card title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-AI play may also show relevant player metadata without replacing the result.
 - Before confirmation, the actions are **悔棋** and **结束对局**. Undo follows the mode-specific behavior above, dismisses the result card, and resumes the active game.
 - The result card cannot be dismissed by tapping outside it. Resignation remains a separate confirmed action rather than being folded into the natural-result card.
@@ -472,14 +493,24 @@ Piece characters are game content and are excluded from localization, as defined
 
 ### Layout shapes
 
-Two arrangements cover every device and window size, chosen by available width rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
+Two arrangements cover every device and window size, chosen by the shape of the space rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
 
-- **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them.
+**The choice is derived, not a named breakpoint.** Size the board to the height that remains after the chrome. If width is left over — enough for the panel — the panel goes beside it and the layout is side by side. If the board is instead bound by width, so that filling the height would overflow it, there is no room for a panel and the layout is stacked. That single test produces the right answer everywhere without naming a number: a portrait canvas is width-bound and stacks, a landscape one has width to spare and splits. A named breakpoint would be easier to test and would go stale the first time the panel's contents changed.
+
+- **Stacked**, used by iPhone portrait, by iPad portrait, and by narrow windows: turn status above the board, play controls below it, and the board centred between them. Anything consulted rather than watched — the move list, and game metadata beyond what the status carries — is reached on demand as a sheet rather than given permanent space.
 - **Side by side**, used by iPad landscape, wide iPad window sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the turn status, the move list, game metadata, and controls that do not need to sit under the thumb.
 
 The board is square and is sized to the largest square fitting **both** the available width and the height left after the surrounding chrome, so it never overflows a short window. Within that, a point of the grid is never smaller than 44 points on **every** platform. On iOS and iPadOS that is the platform's default control size. macOS shares it rather than taking the smaller figure a pointer would allow, because the marker vocabulary in [Board metrics](#board-metrics) has one worst case instead of two, and because its finest distinctions — the air gap between a disc and its markers, and the gap between the two check rings — are fractions of a point at a smaller pitch.
 
-That floor is affordable on the most constrained configuration measured so far. A built-in Retina display running at 1024 by 663 points — the largest-text setting on a current Mac — leaves a window of 1024 by 582 points once the menu bar and the Dock are subtracted, and 550 points of content height below a standard title bar. At the 44-point floor the board core is 308 points square, so more than 200 points of height remain for the turn status, the controls, the file numerals, and their spacing. The exact minimum window follows from the chrome inventory that remains open below and must fit this budget; verifying that it does, on this configuration and on the smallest display any tester actually uses, is a required check rather than an assumption.
+That floor is affordable on the most constrained configuration measured so far. A built-in Retina display running at 1024 by 663 points — the largest-text setting on a current Mac — leaves a window of 1024 by 582 points once the menu bar and the Dock are subtracted, and 550 points of content height below a standard title bar. At the 44-point floor the board core is 308 points square, so more than 200 points of height remain for the turn status, the controls, the file numerals, and their spacing. **Minimum sizes are per platform, because the platforms do not measure the same thing.** An iPadOS scene contains system chrome that a macOS content rectangle does not, so one number cannot serve both. macOS takes a minimum of **360 by 512 points of content**; an iPadOS scene takes a minimum of **360 by 648 points**. iPhone declares nothing, having no resizable window. A declared minimum bounds how far a window or scene may be resized; it is not a claim about which multitasking configurations the system will offer.
+
+The narrowest iPhone the stacked layout is verified against is **375 by 667 points**, which is both the narrowest and the shortest supported. Height is what binds on every iPhone; width never is.
+
+**The board page presents no navigation bar.** It is a single destination with no hierarchy to climb, and on the shortest supported iPhone that bar is the difference between the result card fitting and not fitting.
+
+**The board also has a maximum.** Its core stops growing at 720 points, a pitch of about 103 points. Beyond that the two palaces drift far enough apart on a large display to cost more in eye movement than the extra size returns, and a disc approaches 80 points, which no physical set resembles. Surplus width goes to the panel, and surplus height leaves the board vertically centred; the half-cell margin is functional space, never a spacer.
+
+**Dynamic Type is designed and verified through the AX3 accessibility size.** Above that the board is permitted to fall below its pitch floor rather than the layout breaking, which is a fallback rather than a designed experience.
 
 When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
 
@@ -491,7 +522,7 @@ Navigation uses one adaptive container, presenting as a tab bar at narrow widths
 
 - Where the side-by-side layout applies, the move list is permanently visible in the panel.
 - In the stacked layout during ordinary play it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
-- Replay is the exception: its accepted behaviour requires the move list to highlight the current move and to allow jumping to a selected one, so replay in the stacked layout shows the move list rather than hiding it, and the surrounding chrome is what tightens to make room.
+- Replay in the stacked layout reaches the move list the same way, as a sheet. Its accepted behaviour — highlighting the current move and allowing a jump to a selected one — is fully served there, and the board keeps its floor because the list costs no height until it is asked for. The transport controls stay permanently visible, since those are watched rather than consulted.
 
 ### Captured pieces
 
@@ -510,10 +541,8 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout.
-- Fix the minimum window size for macOS and for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
-- Resolve how the non-dismissible result card, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the card requires the board to stay visible and the chrome has its own floor.
-- Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
+- Define the sheet presentation itself — how the move list is summoned and dismissed on each platform, whether it is resizable, and what it shows beyond the list.
+
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, its own board surface, and its marker ink at both accepted strengths — within the constraints the accepted styles and board metrics impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
 - Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.

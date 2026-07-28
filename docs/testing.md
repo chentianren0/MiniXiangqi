@@ -58,7 +58,16 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify a grid point stays at or above 44 points on every platform, that chrome tightens before the board does, and that each platform's minimum window size prevents either from falling below its floor. Include a Mac at its largest-text display setting, where the window budget is smallest.
 - Verify the pre-start preview shrinks as needed so the setup controls always fit, including when a creation-failure error is shown.
 - Verify no captured-piece display appears in either layout shape.
-- Verify the move list is permanently visible in the side-by-side layout and reachable on demand in the stacked layout, without either the board or the controls losing space by default.
+- Verify the move list is permanently visible in the side-by-side layout and summoned as a sheet in the stacked layout, in play and in replay alike, and that it costs the board no height until it is asked for.
+- Verify the layout choice is derived from shape: a board sized to the remaining height leaves room for the panel in landscape and on Mac windows and does not in portrait, so portrait stacks on both iPhone and iPad without any width being named.
+- Verify the minimum sizes hold — 360 by 512 points of content on macOS, 360 by 648 points of scene on iPadOS — and that the board, its numeral strips, the turn status and the control row all fit within them.
+- Verify the board page presents no navigation bar, and that on a 375 by 667 point iPhone the result card fits with the final board fully visible at its pitch floor.
+- Verify the board core stops growing at 720 points, that surplus width goes to the panel and surplus height leaves the board centred, and that the half-cell margin is never inflated.
+- Verify the layout through the AX3 accessibility size on the shortest supported iPhone; above AX3 confirm only that the layout does not break.
+- Verify the play controls are 悔棋 · 判和 · 认输 in human-versus-AI with no flip control, 悔棋 · 判和 · 翻转棋盘 in Free Play, and the transport plus 翻转棋盘 and the move-list affordance in replay.
+- Verify 判和 is disabled when no claim exists and becomes enabled and marked when a neutral threefold repetition is left unclaimed, with no separate 可判和 element appearing.
+- Verify 认输 presents 确认认输？ / 认输后本局将记为你落败。 with 取消 and 认输; that confirming records a human loss and an immutable History record; that cancelling changes nothing; and that it is absent in Free Play and replay.
+- Verify that in the stacked layout the result card takes the place of the play controls while shown, and that in the side-by-side layout the controls remain visible but disabled.
 - Inspect light and dark appearances, text expansion, interruption, error, and destructive-action states.
 - Verify that a new installation defaults to **我先手** and **标准**, while Settings can persist **AI 先手**, **随机**, and any accepted AI level as later setup defaults.
 - Verify that entering human-versus-AI setup creates a fresh in-memory draft, per-game changes never update Settings, leaving discards the draft, and reopening reloads current Settings defaults.
