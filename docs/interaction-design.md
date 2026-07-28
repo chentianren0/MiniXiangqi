@@ -41,7 +41,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 **The AI-thinking indicator carries no material at all.** It is present for a large share of every human-versus-AI game, and a persistent glass surface beside the board would be exactly the "gratuitous" application the guidance warns against.
 
-**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result notice before confirmation, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
+**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result notice before confirmation, the concluding action the play-control cluster carries once a finished game's notice is closed, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
 
 | Setting | System surfaces | Custom glass surfaces |
 |---|---|---|
@@ -269,7 +269,7 @@ A persistent status element near the board is one coherent description of the cu
 - In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line.
 - Free Play omits a human/AI controller label because the same person controls both sides.
 - While the side to move is in check, a **将军** token accompanies the side-to-move line for as long as that remains true. Replay has no side-to-move line and therefore no token; there the board's own check treatment carries it, which is sound because replay never holds a piece.
-- The element carries the two transient board-state messages that are not facts about the position: the save-failure capsule, and the acknowledgment beat that answers input the game cannot accept. Both are defined under [Game-state markers](#game-state-markers). The placement of the persistent **可判和** affordance remains open below and is not settled by this.
+- The element carries the two transient board-state messages that are not facts about the position: the save-failure capsule, and the acknowledgment beat that answers input the game cannot accept. Both are defined under [Game-state markers](#game-state-markers). In Free Play the element's **可判和** line is half of the standing draw-claim offer, alongside the enabled **判和** control; how the pair fits the stacked layout remains open below.
 - The design does not add a separate, unrelated instruction such as “please move” or “your turn.”
 - Board input is accepted only when the committed game state permits the user to move. It is disabled while the AI is thinking.
 - History replay uses a separate move-progress and playback state rather than describing the position as a human or AI turn.
@@ -351,7 +351,7 @@ The requested destination remains temporary only while this confirmation or retr
 
 - In both human-versus-AI play and Free Play, a neutral threefold repetition does not automatically end the game.
 - The claim is the player's to invoke. **判和** presents the blocking notice, which says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
-- **以和棋结束** confirms an immutable draw record in History.
+- **以和棋结束** confirms an immutable draw record in History. Until History exists it presents the claimed draw through the result notice instead, without **悔棋**: the claim is the player's own confirmed act, and it is the one finish that cannot be walked back.
 - After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice. In Free Play the standing offer is the enabled **判和** control together with the turn status's **可判和** line, and nothing blocks the board.
 
 ### History replay

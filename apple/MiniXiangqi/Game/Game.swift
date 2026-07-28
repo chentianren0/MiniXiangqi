@@ -117,7 +117,7 @@ final class Game {
 
     /// Takes back one ply. The shortened history is evaluated before anything
     /// is committed, so an Undo the core cannot complete does not happen: the
-    /// game stays exactly at the pre-action state and the failure is shown.
+    /// game stays exactly at the pre-action state and the failure is recorded.
     func undo() {
         guard canUndo else { return }
         let shortened = Array(moves.dropLast())

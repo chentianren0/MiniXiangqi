@@ -82,7 +82,7 @@ struct ResultNotice: View {
         }
     }
 
-    /// The fuller card wording, which has room to be a sentence about the game
+    /// The fuller wording, which has room to be a sentence about the game
     /// where the status line has to be a line about the turn.
     private var title: String {
         switch state {

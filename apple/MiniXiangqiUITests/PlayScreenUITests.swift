@@ -31,10 +31,14 @@ final class PlayScreenUITests: XCTestCase {
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         XCTAssertFalse(app.staticTexts["The core did not start"].exists)
+        // The board appearing is what settles the screen, so it is waited for
+        // first: a refused replay line never shows a board, and checking for
+        // the failure text before the screen settles would pass against the
+        // spinner that precedes both outcomes.
+        let boardUp = point(app, "d1").waitForExistence(timeout: 10)
         XCTAssertFalse(app.staticTexts["The game did not start"].exists,
                        "a replay line the core refuses arrives here")
-        XCTAssertTrue(point(app, "d1").waitForExistence(timeout: 10),
-                      "the board's points should be addressable")
+        XCTAssertTrue(boardUp, "the board's points should be addressable")
         return app
     }
 
@@ -220,6 +224,23 @@ final class PlayScreenUITests: XCTestCase {
                        "a click on the finished board should close the notice")
         XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
                       "the game is still over")
+
+        // Closed is closed: another click on the finished board moves nothing
+        // and brings nothing back.
+        point(app, "g1").click()
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "the notice should not return for a result already seen")
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "a click on a finished board moves nothing")
+
+        // The dismissal belonged to the finished game it closed, not to every
+        // result after it: reaching the mate again announces it again.
+        app.buttons["悔棋"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        point(app, "b3").click()
+        point(app, "d3").click()
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5),
+                      "a fresh result presents a fresh notice")
     }
 
     func testTheCancelKeyClosesTheResultNotice() {
