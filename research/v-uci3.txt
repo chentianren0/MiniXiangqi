@@ -1,0 +1,8 @@
+uci
+isready
+setoption name Hash value 16
+isready
+go depth 12
+setoption name Clear Hash
+isready
+quit

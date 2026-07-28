@@ -1,0 +1,2873 @@
+{
+  "probes": {
+    "pyffish_version": [
+      0,
+      0,
+      89
+    ],
+    "engine_info": "Fairy-Stockfish 260726 LB by Fabian Fichter",
+    "start_fen_builtin": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+    "start_fen_axf_child": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+    "start_legal_moves": [
+      "a2a3",
+      "a2b2",
+      "b1b2",
+      "b1b3",
+      "b1b4",
+      "b1b5",
+      "b1b6",
+      "c2b2",
+      "c2c3",
+      "d2d3",
+      "e2e3",
+      "e2f2",
+      "f1f2",
+      "f1f3",
+      "f1f4",
+      "f1f5",
+      "f1f6",
+      "g2f2",
+      "g2g3"
+    ],
+    "start_fen_roundtrip": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+    "halfmove_after_soldier_move": "rcnkncr/p1ppp1p/7/7/3P3/P1P1P1P/RCNKNCR b - - 1 1",
+    "halfmove_capture_seq": [
+      "d2d3",
+      "d6d5",
+      "d3d4",
+      "d5d4"
+    ],
+    "halfmove_after_capture": "rcnkncr/p1p1p1p/7/3p3/7/P1P1P1P/RCNKNCR w - - 0 3",
+    "soldier_pre_last_rank_moves": [
+      "a6a7",
+      "a6b6",
+      "c1c2"
+    ],
+    "soldier_last_rank_fen": "P2k3/7/7/7/7/7/2K4 b - - 1 1",
+    "soldier_on_last_rank_black_reply_then_white_moves": [
+      "a7b7",
+      "c1c2"
+    ],
+    "nonconforming_move_strings": []
+  },
+  "fixtures": [
+    {
+      "id": "mx-move-001",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+              "fixture": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 19
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+              "fixture": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 19
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-move-002",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 12
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/3P3/3N3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 12
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-move-003",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1",
+              "fixture": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 15
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "applied_legal:d4d6",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4d6",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/3C3/3p3/n3PCr/7/7/4K2 b - - 0 1",
+              "fixture": "2k4/3C3/3p3/n3PCr/7/7/4K2 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4d6",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1",
+              "fixture": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 15
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "applied_legal:d4d6",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4d6",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/3C3/3p3/n3PCr/7/7/4K2 b - - 0 1",
+              "fixture": "2k4/3C3/3p3/n3PCr/7/7/4K2 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4d6",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-move-004",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3p3/2cP3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/3p3/2cP3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 6
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "applied_legal:d4d5",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4d5",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3P3/2c4/7/7/3K3 b - - 0 1",
+              "fixture": "3k3/7/3P3/2c4/7/7/3K3 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4d5",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "applied_legal:d4c4",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4c4",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3p3/2P4/7/7/3K3 b - - 0 1",
+              "fixture": "3k3/7/3p3/2P4/7/7/3K3 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4c4",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3p3/2cP3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/3p3/2cP3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 6
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "applied_legal:d4d5",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4d5",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3P3/2c4/7/7/3K3 b - - 0 1",
+              "fixture": "3k3/7/3P3/2c4/7/7/3K3 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4d5",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "applied_legal:d4c4",
+            "ok": true,
+            "detail": {}
+          },
+          {
+            "check": "applied_fen:d4c4",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/3p3/2P4/7/7/3K3 b - - 0 1",
+              "fixture": "3k3/7/3p3/2P4/7/7/3K3 b - - 0 1"
+            }
+          },
+          {
+            "check": "applied_check:d4c4",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-move-005",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/7/7/7/7/4K2/7 w - - 0 1",
+              "fixture": "2k4/7/7/7/7/4K2/7 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 3
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/7/7/7/7/4K2/7 w - - 0 1",
+              "fixture": "2k4/7/7/7/7/4K2/7 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 3
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-move-006",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1",
+              "fixture": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 3
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1",
+              "fixture": "7/3k3/3r3/R6/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 3
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-end-001",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1",
+              "fixture": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 0
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "game_result": -32000
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1",
+              "fixture": "R2k3/1R5/7/7/7/7/2K4 b - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 0
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "game_result": -32000
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-end-002",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1",
+              "fixture": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 0
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "game_result": -32000
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1",
+              "fixture": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 0
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "game_result": -32000
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-end-003",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/7/3C3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/7/3C3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 7
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/7/3C3/7/7/3K3 w - - 0 1",
+              "fixture": "3k3/7/7/3C3/7/7/3K3 w - - 0 1"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "legal_moves_exact",
+            "ok": true,
+            "detail": {
+              "engine_only": [],
+              "fixture_only": [],
+              "count": 7
+            }
+          },
+          {
+            "check": "rejected_moves_absent",
+            "ok": true,
+            "detail": {
+              "wrongly_legal": []
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-rep-001",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=c1c2",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[1]=e7e6",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[2]=c2c1",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[3]=e6e7",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[4]=c1c2",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[5]=e7e6",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[6]=c2c1",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[7]=e6e7",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/7/7/7/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/7/7/7/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=c1c2",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[1]=e7e6",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[2]=c2c1",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[3]=e6e7",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[4]=c1c2",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[5]=e7e6",
+            "ok": true,
+            "detail": {
+              "legal_count": 2
+            }
+          },
+          {
+            "check": "move_legal[6]=c2c1",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "move_legal[7]=e6e7",
+            "ok": true,
+            "detail": {
+              "legal_count": 3
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/7/7/7/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/7/7/7/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chk-001",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[1]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[2]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[3]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[4]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[5]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[6]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[7]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/7/3R3/7/7/4K2 b - - 8 5",
+              "fixture": "3k3/7/7/3R3/7/7/4K2 b - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                32000
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[1]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[2]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[3]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[4]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[5]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[6]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[7]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "3k3/7/7/3R3/7/7/4K2 b - - 8 5",
+              "fixture": "3k3/7/7/3R3/7/7/4K2 b - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": true
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                32000
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chk-002",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[2]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[3]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[4]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[6]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[7]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/7/7/3R3/7/7/4K2 w - - 8 5",
+              "fixture": "2k4/7/7/3R3/7/7/4K2 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                -32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                -32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                -32000
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[2]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[3]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[4]=d4c4",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=c7d7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "move_legal[6]=c4d4",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[7]=d7c7",
+            "ok": true,
+            "detail": {
+              "legal_count": 1
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "2k4/7/7/3R3/7/7/4K2 w - - 8 5",
+              "fixture": "2k4/7/7/3R3/7/7/4K2 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                -32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                -32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                -32000
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chs-001",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/c6/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/c6/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 11
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/c6/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/c6/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                -32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                -32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                -32000
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chs-002",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 18
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 17
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 18
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 17
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/c3r2/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/c3r2/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 18
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 17
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 18
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 17
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/c3r2/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/c3r2/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chs-003",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 4
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 5
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 4
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 5
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/p6/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/p6/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 4
+            }
+          },
+          {
+            "check": "move_legal[2]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 5
+            }
+          },
+          {
+            "check": "move_legal[4]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[5]=a5b5",
+            "ok": true,
+            "detail": {
+              "legal_count": 4
+            }
+          },
+          {
+            "check": "move_legal[6]=a3b3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=b5a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 5
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/p6/7/1R5/7/2K4 w - - 8 5",
+              "fixture": "4k2/7/p6/7/1R5/7/2K4 w - - 8 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                -32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 4,
+              "is_optional_game_end": [
+                false,
+                -32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                -32000
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "mx-chs-004",
+      "results": {
+        "minixiangqi": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5c6",
+            "ok": true,
+            "detail": {
+              "legal_count": 6
+            }
+          },
+          {
+            "check": "move_legal[2]=a3c3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=c6a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 7
+            }
+          },
+          {
+            "check": "move_legal[4]=c3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[5]=a5c6",
+            "ok": true,
+            "detail": {
+              "legal_count": 6
+            }
+          },
+          {
+            "check": "move_legal[6]=a3c3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=c6a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 7
+            }
+          },
+          {
+            "check": "move_legal[8]=c3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/n6/7/R6/7/2K4 b - - 9 5",
+              "fixture": "4k2/7/n6/7/R6/7/2K4 b - - 9 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                0
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 5,
+              "is_optional_game_end": [
+                false,
+                0
+              ],
+              "is_immediate_game_end": [
+                false,
+                0
+              ]
+            }
+          }
+        ],
+        "minixiangqiaxf": [
+          {
+            "check": "validate_fen",
+            "ok": true,
+            "detail": {
+              "returned": 1
+            }
+          },
+          {
+            "check": "move_legal[0]=b3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[1]=a5c6",
+            "ok": true,
+            "detail": {
+              "legal_count": 6
+            }
+          },
+          {
+            "check": "move_legal[2]=a3c3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[3]=c6a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 7
+            }
+          },
+          {
+            "check": "move_legal[4]=c3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "move_legal[5]=a5c6",
+            "ok": true,
+            "detail": {
+              "legal_count": 6
+            }
+          },
+          {
+            "check": "move_legal[6]=a3c3",
+            "ok": true,
+            "detail": {
+              "legal_count": 14
+            }
+          },
+          {
+            "check": "move_legal[7]=c6a5",
+            "ok": true,
+            "detail": {
+              "legal_count": 7
+            }
+          },
+          {
+            "check": "move_legal[8]=c3a3",
+            "ok": true,
+            "detail": {
+              "legal_count": 13
+            }
+          },
+          {
+            "check": "result_fen",
+            "ok": true,
+            "detail": {
+              "engine": "4k2/7/n6/7/R6/7/2K4 b - - 9 5",
+              "fixture": "4k2/7/n6/7/R6/7/2K4 b - - 9 5"
+            }
+          },
+          {
+            "check": "in_check",
+            "ok": true,
+            "detail": {
+              "engine": false
+            }
+          },
+          {
+            "check": "terminal_observations",
+            "ok": null,
+            "detail": {
+              "is_immediate_game_end": [
+                false,
+                0
+              ],
+              "is_optional_game_end": [
+                true,
+                32000
+              ]
+            }
+          },
+          {
+            "check": "boundary_not_yet_ended",
+            "ok": true,
+            "detail": {
+              "prefix_len": 5,
+              "is_optional_game_end": [
+                false,
+                32000
+              ],
+              "is_immediate_game_end": [
+                false,
+                32000
+              ]
+            }
+          }
+        ]
+      },
+      "cross_variant": [
+        {
+          "check": "variants_same_legal",
+          "ok": true,
+          "detail": {
+            "plies": 10
+          }
+        }
+      ]
+    }
+  ]
+}

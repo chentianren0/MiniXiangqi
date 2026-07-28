@@ -1,0 +1,49 @@
+## Three readings of the accepted layout rule, full screen, default text
+A = board sized to width AND height then leftover tested
+C = board sized to remaining HEIGHT and the 720 cap, then leftover tested (round-2's reading)
+B = panel reserved first, board takes the rest, side by side iff board >= 308
+
+device / orientation                 usableW  contH   A(320)   C(320)  C-left   B(320)  B-left
+744x1133 mini 6 / mini A17 portrait      704   1012    stack    stack     -32     SIDE     368
+744x1133 mini 6 / mini A17 landscape     813    687    stack    stack     160     SIDE     477
+768x1024 mini 5 portrait                 728    928    stack    stack      -8     SIDE     392
+768x1024 mini 5 landscape                984    672     SIDE     SIDE     346     SIDE     648
+810x1080 iPad 8 / 9 portrait             770    984    stack    stack      34     SIDE     434
+810x1080 iPad 8 / 9 landscape            760    778    stack    stack      24     SIDE     424
+820x1180 iPad 10/A16/Air11 portrait      780   1059    stack    stack      44     SIDE     444
+820x1180 iPad 10/A16/Air11 landscape     860    763    stack    stack     133     SIDE     524
+834x1112 Air 3 portrait                  794   1016    stack    stack      58     SIDE     458
+834x1112 Air 3 landscape                 792    802    stack    stack      56     SIDE     456
+834x1194 Pro 11 1st-4th portrait         794   1073    stack    stack      58     SIDE     458
+834x1194 Pro 11 1st-4th landscape        874    777    stack    stack     138     SIDE     538
+834x1210 Pro 11 M4/M5 portrait           794   1089    stack    stack      58     SIDE     458
+834x1210 Pro 11 M4/M5 landscape          890    777    stack    stack     154     SIDE     554
+1024x1366 Pro 12.9/Air 13 portrait       984   1245    stack    stack     248     SIDE     648
+1024x1366 Pro 12.9/Air 13 landscape     1046    967    stack    stack     310     SIDE     710
+1032x1376 Pro 13 M4/M5 portrait          712   1319    stack    stack     -24     SIDE     376
+1032x1376 Pro 13 M4/M5 landscape        1056    975     SIDE     SIDE     320     SIDE     720
+
+## Tiling: how many of the 18 device-orientations support each configuration at p=44, ordinary play, default text
+configuration           holds p=44  of   failing devices
+full                            18  18   -
+half side                       18  18   -
+half top/bottom                  5  18   744x1133 port, 744x1133 land, 768x1024 port, 768x1024 land, 810x1080 port, 810x1080 land, 820x1180 land, 834x1112 port, 834x1112 land, 834x1194 land, 834x1210 land, 1024x1366 land, 1032x1376 land
+third vertical                   8  18   744x1133 port, 768x1024 port, 768x1024 land, 810x1080 port, 820x1180 port, 834x1112 port, 834x1194 port, 834x1210 port, 1024x1366 port, 1032x1376 port
+two-thirds vertical             18  18   -
+third horizontal                 0  18   744x1133 port, 744x1133 land, 768x1024 port, 768x1024 land, 810x1080 port, 810x1080 land, 820x1180 port, 820x1180 land, 834x1112 port, 834x1112 land, 834x1194 port, 834x1194 land, 834x1210 port, 834x1210 land, 1024x1366 port, 1024x1366 land, 1032x1376 port, 1032x1376 land
+quadrant                         5  18   744x1133 port, 744x1133 land, 768x1024 port, 768x1024 land, 810x1080 port, 810x1080 land, 820x1180 land, 834x1112 port, 834x1112 land, 834x1194 land, 834x1210 land, 1024x1366 land, 1032x1376 land
+
+## Minimum scene size that holds each state at p=44, iPadOS, per text size
+scene height = content requirement + top 32 + tab 64 (>=668 wide) or bottom bar 83 (<668 wide) + indicator
+play-AI                    xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          575    577    580    582    587    592    596    610    628    653    734    760
+result-replaces            xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          628    633    638    642    652    662    671    663    687    765    860    902
+threefold-replaces         xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          600    603    608    610    618    652    660    686    716    757    966   1080
+replay-speed               xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          612    616    618    620    624    630    634    607    618    632    702    721
+replay-list1               xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          654    658    662    664    672    679    714    698    722    800    895    994
+prestart-AI                xS      S      M      L     xL    xxL   xxxL    AX1    AX2    AX3    AX4    AX5
+                          632    633    634    636    638    640    642    616    622    631    640    646

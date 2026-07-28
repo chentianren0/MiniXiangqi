@@ -1,0 +1,27 @@
+{
+  "id": "mx-move-005",
+  "title": "King moves one orthogonal step and may not leave the palace",
+  "area": "move",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/7/7/7/7/4K2/7 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/7/7/7/7/4K2/7 w - - 0 1",
+    "legal_moves": [
+      "e2d2",
+      "e2e1",
+      "e2e3"
+    ],
+    "rejected_moves": [
+      "e2f2"
+    ],
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "King on the palace edge e2: one-step orthogonal moves inside files c-e / ranks 1-3 are legal; e2f2 leaves the 3x3 palace and is rejected. Absence of any two-step or diagonal move pins the wazir movement."
+}

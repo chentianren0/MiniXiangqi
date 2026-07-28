@@ -1,0 +1,8 @@
+uci
+setoption name Hash value 4096
+go depth 8
+setoption name Clear Hash
+go depth 6
+setoption name Hash value 64
+go depth 8
+quit

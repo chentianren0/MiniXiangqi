@@ -1,0 +1,13 @@
+WINBOUNDS idiom=phone bounds=375.00x667.00 safeArea=(t20.00 b0.00 l0.00 r0.00) screen=375.00x667.00
+WINBOUNDS traits h=1 v=2 layoutMargins=(l8.00 r8.00)
+UIKIT navBar+tab: navBarH=54.00 tabBarH=83.00 innerSafe=(t74.00 b83.00 l0.00 r0.00) content=375.00x510.00
+UIKIT tabOnly: innerSafe=(t20.00 b83.00 l0.00 r0.00) content=375.00x564.00 layoutMargins=(l16.00 r16.00)
+ADAPT[w320] content=320.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w360] content=360.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w400] content=400.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w440] content=440.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w500] content=500.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w560] content=560.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w600] content=600.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+ADAPT[w640] content=640.00x564.00 insets=(t20.00 b83.00 lead0.00 trail0.00)
+@@DONE9@@

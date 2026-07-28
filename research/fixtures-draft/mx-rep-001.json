@@ -1,0 +1,34 @@
+{
+  "id": "mx-rep-001",
+  "title": "Neutral threefold repetition becomes claimable at exactly the third occurrence",
+  "area": "rep",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/7/7/7/7/2K4 w - - 0 1",
+  "moves": [
+    "c1c2",
+    "e7e6",
+    "c2c1",
+    "e6e7",
+    "c1c2",
+    "e7e6",
+    "c2c1",
+    "e6e7"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/7/7/7/7/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence of the position; not yet claimable"
+  },
+  "rationale": "Bare kings shuttle with no check and no attack by either side. The starting position occurs at plies 0, 4, and 8; on the third occurrence the position becomes eligible for a draw claim, and never earlier. Neither engine variant may score it as anything but a draw-valued optional end."
+}

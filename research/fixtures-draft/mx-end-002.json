@@ -1,0 +1,21 @@
+{
+  "id": "mx-end-002",
+  "title": "Stalemate: no legal move without check is a loss",
+  "area": "end",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/2R1R2/7/7/7/7/2K4 b - - 0 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "stalemate"
+    }
+  },
+  "boundary": null,
+  "rationale": "Rooks c6 and e6 cover c7, d6, and e7 without attacking d7. Black is not in check and has no legal move: in Mini Xiangqi this is a loss for the player to move, not a draw."
+}

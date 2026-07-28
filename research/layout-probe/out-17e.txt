@@ -1,0 +1,127 @@
+===================== 17e =====================
+### A-DEFAULT-navbar-inline
+idiom=phone contentSizeCategory=UICTContentSizeCategoryL osVersion=27.0 model=iPhone
+screen.bounds=390.00x844.00
+window.safeAreaInsets top=47.00 bottom=34.00 left=0.00 right=0.00
+tabBar.frame=390.00x83.00 origin=(0.00,761.00)
+navBar.frame.height=54.00 largeTitles=false hidden=false
+probeView.frame=390.00x844.00
+probeView.safeAreaInsets top=101.00 bottom=83.00 left=0.00 right=0.00
+USABLE=390.00x660.00  TOTAL_VERTICAL_CHROME=184.00
+layoutMargins l=16.00 r=16.00
+ELEM turnStatus ideal=154.67x36.33  h@328=36.33  h@343=36.33  h@360=36.33  h@375=36.33  h@400=36.33  h@500=36.33
+ELEM controlRow ideal=278.00x66.33  h@328=66.33  h@343=66.33  h@360=66.33  h@375=66.33  h@400=66.33  h@500=66.33
+ELEM resultCard ideal=193.67x126.67  h@328=126.67  h@343=126.67  h@360=126.67  h@375=126.67  h@400=126.67  h@500=126.67
+ELEM repetitionNotice ideal=240.67x120.67  h@328=120.67  h@343=120.67  h@360=120.67  h@375=120.67  h@400=120.67  h@500=120.67
+ELEM transportRow ideal=480.00x65.00  h@328=65.00  h@343=65.00  h@360=65.00  h@375=65.00  h@400=65.00  h@500=65.00
+ELEM moveListRow ideal=227.00x32.33  h@328=32.33  h@343=32.33  h@360=32.33  h@375=32.33  h@400=32.33  h@500=32.33
+ELEM metadataLine ideal=313.00x15.67  h@328=15.67  h@343=15.67  h@360=15.67  h@375=15.67  h@400=15.67  h@500=15.67
+ELEM autoplaySpeed ideal=170.00x31.00  h@328=31.00  h@343=31.00  h@360=31.00  h@375=31.00  h@400=31.00  h@500=31.00
+ELEM panelColumn ideal=313.00x186.67  h@328=186.67  h@343=186.67  h@360=186.67  h@375=186.67  h@400=186.67  h@500=186.67
+font[UICTFontTextStyleTitle2] pointSize=22.00 lineHeight=26.25
+font[UICTFontTextStyleHeadline] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleBody] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleSubhead] pointSize=15.00 lineHeight=17.90
+font[UICTFontTextStyleFootnote] pointSize=13.00 lineHeight=15.51
+### end A-DEFAULT-navbar-inline
+### B-AX5
+idiom=phone contentSizeCategory=UICTContentSizeCategoryAccessibilityXXXL osVersion=27.0 model=iPhone
+screen.bounds=390.00x844.00
+window.safeAreaInsets top=47.00 bottom=34.00 left=0.00 right=0.00
+tabBar.frame=390.00x83.00 origin=(0.00,761.00)
+navBar.frame.height=54.00 largeTitles=false hidden=false
+probeView.frame=390.00x844.00
+probeView.safeAreaInsets top=101.00 bottom=83.00 left=0.00 right=0.00
+USABLE=390.00x660.00  TOTAL_VERTICAL_CHROME=184.00
+layoutMargins l=16.00 r=16.00
+ELEM turnStatus ideal=374.33x79.33  h@328=141.33  h@343=141.33  h@360=141.33  h@375=79.33  h@400=79.33  h@500=79.33
+ELEM controlRow ideal=537.00x109.33  h@328=171.33  h@343=171.33  h@360=171.33  h@375=171.33  h@400=171.33  h@500=171.33
+ELEM resultCard ideal=432.67x251.00  h@328=313.00  h@343=313.00  h@360=313.00  h@375=313.00  h@400=313.00  h@500=251.00
+ELEM repetitionNotice ideal=679.33x247.33  h@328=487.33  h@343=425.33  h@360=367.33  h@375=367.33  h@400=367.33  h@500=305.33
+ELEM transportRow ideal=792.00x93.67  h@328=93.67  h@343=93.67  h@360=93.67  h@375=93.67  h@400=93.67  h@500=93.67
+ELEM moveListRow ideal=565.67x75.33  h@328=137.33  h@343=137.33  h@360=137.33  h@375=137.33  h@400=137.33  h@500=137.33
+ELEM metadataLine ideal=901.67x52.67  h@328=208.67  h@343=156.67  h@360=156.67  h@375=156.67  h@400=156.67  h@500=104.67
+ELEM autoplaySpeed ideal=170.00x31.00  h@328=31.00  h@343=31.00  h@360=31.00  h@375=31.00  h@400=31.00  h@500=31.00
+ELEM panelColumn ideal=901.67x352.67  h@328=694.67  h@343=642.67  h@360=642.67  h@375=580.67  h@400=580.67  h@500=528.67
+font[UICTFontTextStyleTitle2] pointSize=56.00 lineHeight=66.83
+font[UICTFontTextStyleHeadline] pointSize=53.00 lineHeight=63.25
+font[UICTFontTextStyleBody] pointSize=53.00 lineHeight=63.25
+font[UICTFontTextStyleSubhead] pointSize=49.00 lineHeight=58.47
+font[UICTFontTextStyleFootnote] pointSize=44.00 lineHeight=52.51
+### end B-AX5
+### C-DEFAULT-no-navbar
+idiom=phone contentSizeCategory=UICTContentSizeCategoryL osVersion=27.0 model=iPhone
+screen.bounds=390.00x844.00
+window.safeAreaInsets top=47.00 bottom=34.00 left=0.00 right=0.00
+tabBar.frame=390.00x83.00 origin=(0.00,761.00)
+navBar.frame.height=54.00 largeTitles=false hidden=true
+probeView.frame=390.00x844.00
+probeView.safeAreaInsets top=47.00 bottom=83.00 left=0.00 right=0.00
+USABLE=390.00x714.00  TOTAL_VERTICAL_CHROME=130.00
+layoutMargins l=16.00 r=16.00
+ELEM turnStatus ideal=154.67x36.33  h@328=36.33  h@343=36.33  h@360=36.33  h@375=36.33  h@400=36.33  h@500=36.33
+ELEM controlRow ideal=278.00x66.33  h@328=66.33  h@343=66.33  h@360=66.33  h@375=66.33  h@400=66.33  h@500=66.33
+ELEM resultCard ideal=193.67x126.67  h@328=126.67  h@343=126.67  h@360=126.67  h@375=126.67  h@400=126.67  h@500=126.67
+ELEM repetitionNotice ideal=240.67x120.67  h@328=120.67  h@343=120.67  h@360=120.67  h@375=120.67  h@400=120.67  h@500=120.67
+ELEM transportRow ideal=480.00x65.00  h@328=65.00  h@343=65.00  h@360=65.00  h@375=65.00  h@400=65.00  h@500=65.00
+ELEM moveListRow ideal=227.00x32.33  h@328=32.33  h@343=32.33  h@360=32.33  h@375=32.33  h@400=32.33  h@500=32.33
+ELEM metadataLine ideal=313.00x15.67  h@328=15.67  h@343=15.67  h@360=15.67  h@375=15.67  h@400=15.67  h@500=15.67
+ELEM autoplaySpeed ideal=170.00x31.00  h@328=31.00  h@343=31.00  h@360=31.00  h@375=31.00  h@400=31.00  h@500=31.00
+ELEM panelColumn ideal=313.00x186.67  h@328=186.67  h@343=186.67  h@360=186.67  h@375=186.67  h@400=186.67  h@500=186.67
+font[UICTFontTextStyleTitle2] pointSize=22.00 lineHeight=26.25
+font[UICTFontTextStyleHeadline] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleBody] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleSubhead] pointSize=15.00 lineHeight=17.90
+font[UICTFontTextStyleFootnote] pointSize=13.00 lineHeight=15.51
+### end C-DEFAULT-no-navbar
+### D-AX5-no-navbar
+idiom=phone contentSizeCategory=UICTContentSizeCategoryAccessibilityXXXL osVersion=27.0 model=iPhone
+screen.bounds=390.00x844.00
+window.safeAreaInsets top=47.00 bottom=34.00 left=0.00 right=0.00
+tabBar.frame=390.00x83.00 origin=(0.00,761.00)
+navBar.frame.height=54.00 largeTitles=false hidden=true
+probeView.frame=390.00x844.00
+probeView.safeAreaInsets top=47.00 bottom=83.00 left=0.00 right=0.00
+USABLE=390.00x714.00  TOTAL_VERTICAL_CHROME=130.00
+layoutMargins l=16.00 r=16.00
+ELEM turnStatus ideal=374.33x79.33  h@328=141.33  h@343=141.33  h@360=141.33  h@375=79.33  h@400=79.33  h@500=79.33
+ELEM controlRow ideal=537.00x109.33  h@328=171.33  h@343=171.33  h@360=171.33  h@375=171.33  h@400=171.33  h@500=171.33
+ELEM resultCard ideal=432.67x251.00  h@328=313.00  h@343=313.00  h@360=313.00  h@375=313.00  h@400=313.00  h@500=251.00
+ELEM repetitionNotice ideal=679.33x247.33  h@328=487.33  h@343=425.33  h@360=367.33  h@375=367.33  h@400=367.33  h@500=305.33
+ELEM transportRow ideal=792.00x93.67  h@328=93.67  h@343=93.67  h@360=93.67  h@375=93.67  h@400=93.67  h@500=93.67
+ELEM moveListRow ideal=565.67x75.33  h@328=137.33  h@343=137.33  h@360=137.33  h@375=137.33  h@400=137.33  h@500=137.33
+ELEM metadataLine ideal=901.67x52.67  h@328=208.67  h@343=156.67  h@360=156.67  h@375=156.67  h@400=156.67  h@500=104.67
+ELEM autoplaySpeed ideal=170.00x31.00  h@328=31.00  h@343=31.00  h@360=31.00  h@375=31.00  h@400=31.00  h@500=31.00
+ELEM panelColumn ideal=901.67x352.67  h@328=694.67  h@343=642.67  h@360=642.67  h@375=580.67  h@400=580.67  h@500=528.67
+font[UICTFontTextStyleTitle2] pointSize=56.00 lineHeight=66.83
+font[UICTFontTextStyleHeadline] pointSize=53.00 lineHeight=63.25
+font[UICTFontTextStyleBody] pointSize=53.00 lineHeight=63.25
+font[UICTFontTextStyleSubhead] pointSize=49.00 lineHeight=58.47
+font[UICTFontTextStyleFootnote] pointSize=44.00 lineHeight=52.51
+### end D-AX5-no-navbar
+### E-LANDSCAPE-default
+idiom=phone contentSizeCategory=UICTContentSizeCategoryL osVersion=27.0 model=iPhone
+screen.bounds=844.00x390.00
+window.safeAreaInsets top=0.00 bottom=20.00 left=47.00 right=47.00
+tabBar.frame=844.00x64.00 origin=(0.00,326.00)
+navBar.frame.height=54.00 largeTitles=false hidden=false
+probeView.frame=844.00x390.00
+probeView.safeAreaInsets top=78.00 bottom=64.00 left=47.00 right=47.00
+USABLE=750.00x248.00  TOTAL_VERTICAL_CHROME=142.00
+layoutMargins l=63.00 r=63.00
+ELEM turnStatus ideal=154.67x36.33  h@328=36.33  h@343=36.33  h@360=36.33  h@375=36.33  h@400=36.33  h@500=36.33
+ELEM controlRow ideal=278.00x66.33  h@328=66.33  h@343=66.33  h@360=66.33  h@375=66.33  h@400=66.33  h@500=66.33
+ELEM resultCard ideal=193.67x126.67  h@328=126.67  h@343=126.67  h@360=126.67  h@375=126.67  h@400=126.67  h@500=126.67
+ELEM repetitionNotice ideal=240.67x120.67  h@328=120.67  h@343=120.67  h@360=120.67  h@375=120.67  h@400=120.67  h@500=120.67
+ELEM transportRow ideal=480.00x65.00  h@328=65.00  h@343=65.00  h@360=65.00  h@375=65.00  h@400=65.00  h@500=65.00
+ELEM moveListRow ideal=227.00x32.33  h@328=32.33  h@343=32.33  h@360=32.33  h@375=32.33  h@400=32.33  h@500=32.33
+ELEM metadataLine ideal=313.00x15.67  h@328=15.67  h@343=15.67  h@360=15.67  h@375=15.67  h@400=15.67  h@500=15.67
+ELEM autoplaySpeed ideal=170.00x31.00  h@328=31.00  h@343=31.00  h@360=31.00  h@375=31.00  h@400=31.00  h@500=31.00
+ELEM panelColumn ideal=313.00x186.67  h@328=186.67  h@343=186.67  h@360=186.67  h@375=186.67  h@400=186.67  h@500=186.67
+font[UICTFontTextStyleTitle2] pointSize=22.00 lineHeight=26.25
+font[UICTFontTextStyleHeadline] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleBody] pointSize=17.00 lineHeight=20.29
+font[UICTFontTextStyleSubhead] pointSize=15.00 lineHeight=17.90
+font[UICTFontTextStyleFootnote] pointSize=13.00 lineHeight=15.51
+### end E-LANDSCAPE-default
+@@PROBE-DONE@@

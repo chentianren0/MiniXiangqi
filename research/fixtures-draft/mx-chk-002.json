@@ -1,0 +1,34 @@
+{
+  "id": "mx-chk-002",
+  "title": "Unilateral perpetual check, checking side to move at the third occurrence",
+  "area": "chk",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/7/7/3R3/7/7/4K2 w - - 0 1",
+  "moves": [
+    "d4c4",
+    "c7d7",
+    "c4d4",
+    "d7c7",
+    "d4c4",
+    "c7d7",
+    "c4d4",
+    "d7c7"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/7/7/3R3/7/7/4K2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "Same perpetual-check wheel as mx-chk-001 but phased so the repeated position has the checking side (Red) to move and no one momentarily in check. The adjudicated result must be identical: the perpetual checker loses regardless of which side is to move when the third occurrence lands."
+}

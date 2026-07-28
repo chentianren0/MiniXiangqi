@@ -1,0 +1,47 @@
+{
+  "id": "mx-move-003",
+  "title": "Cannon: slide moves, and capture requires exactly one screen",
+  "area": "move",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/3c3/3p3/n2CPCr/7/7/4K2 w - - 0 1",
+    "legal_moves": [
+      "d4b4",
+      "d4c4",
+      "d4d1",
+      "d4d2",
+      "d4d3",
+      "d4d6",
+      "e1d1",
+      "e1e2",
+      "e4e5",
+      "f4f1",
+      "f4f2",
+      "f4f3",
+      "f4f5",
+      "f4f6",
+      "f4f7"
+    ],
+    "rejected_moves": [
+      "d4a4",
+      "d4g4",
+      "f4g4"
+    ],
+    "applied": [
+      {
+        "move": "d4d6",
+        "result_fen": "2k4/3C3/3p3/n3PCr/7/7/4K2 b - - 0 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Cannon d4: capture of c on d6 over exactly one screen (d5) is legal; capture of n on a4 with zero screens and of r on g4 with two screens (e4, f4) is rejected; slide moves stop before any piece. Cannon f4 adjacent to r on g4 likewise cannot capture with zero screens."
+}

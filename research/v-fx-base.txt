@@ -1,0 +1,63 @@
+engine: Fairy-Stockfish 280726 LB by Fabian Fichter
+fixtures: 50 from /Users/tianren/coding/minixiangqi/MiniXiangqi/fixtures/rules
+
+  [ok  ] mx-chk-001   Unilateral perpetual check, checked side to move at the th
+  [ok  ] mx-chk-002   Unilateral perpetual check, checking side to move at the t
+  [ok  ] mx-chk-003   Perpetual check by a cannon battery that the checking move
+  [ok  ] mx-chk-004   Perpetual discovered check, delivered by moving the cannon
+  [ok  ] mx-chs-001   Unilateral perpetual chase of an unprotected cannon by a r
+  [ok  ] mx-chs-002   The same chase shape against a protected cannon is no viol
+  [ok  ] mx-chs-003   Perpetual pursuit of a soldier is excluded from the chase   <-- differs from control
+  [ok  ] mx-chs-004   Perpetual chase of an unprotected horse; repeated position
+  [ok  ] mx-chs-005   A pinned defender does not protect the chased cannon
+  [ok  ] mx-chs-006   Chase base for the c-file protection family: an unprotecte
+  [ok  ] mx-chs-007   An X-ray defender behind the attacker protects
+  [ok  ] mx-chs-008   A soldier is a valid defender
+  [ok  ] mx-chs-009   A general as sole defender does not protect when the flyin
+  [ok  ] mx-chs-010   A general as sole defender protects when the recapture is 
+  [ok  ] mx-chs-011   Adopted limit: a king recapture illegal for a non-flying-g
+  [ok  ] mx-chs-012   A king protects only inside its own palace
+  [ok  ] mx-chs-013   A cannon protects only through exactly one screen
+  [ok  ] mx-chs-014   A horse chasing a protected chariot is still a chase
+  [ok  ] mx-chs-015   A horse chasing a protected cannon is not a chase
+  [ok  ] mx-chs-016   Chariot against chariot is a mutual attack, not a chase
+  [ok  ] mx-chs-017   A pinned same-type target cannot answer, so the chase stan
+  [ok  ] mx-chs-018   A soldier's move never creates a chase
+  [ok  ] mx-chs-019   A king's move never creates a chase
+  [ok  ] mx-chs-020   One chasing move and one idle move per cycle is not a perp
+  [ok  ] mx-chs-021   An interruption inside the span makes the third occurrence
+  [ok  ] mx-chs-022   Resuming after an interruption re-arms: the violation atta
+  [ok  ] mx-chs-023   Cycle length is not part of the rule: a six-ply chase cycl
+  [ok  ] mx-chs-024   Chasing two different pieces alternately is a perpetual ch
+  [ok  ] mx-chs-025   The chasing piece may change while one chased piece is tra
+  [ok  ] mx-chs-026   Pure discovered chase: every chasing move is a discovery a
+  [ok  ] mx-chs-027   Renewal from a new square: a chasing piece that steps away
+  [FAIL] mx-chs-028   An absolutely pinned chariot's threat is not a chase
+  [FAIL] mx-chs-029   No flying-general pin exists when a piece of either colour
+  [FAIL] mx-chs-030   The chase test must not reach behind the first of the thre
+  [ok  ] mx-chs-033   The White half of the mutual chase alone is a unilateral p
+  [ok  ] mx-chs-034   The Black half of the mutual chase alone is a unilateral p
+  [ok  ] mx-end-001   Checkmate: side to move has no legal move and is in check
+  [ok  ] mx-end-002   Stalemate: no legal move without check is a loss
+  [ok  ] mx-end-003   Flying general: a move exposing facing kings on an empty f
+  [ok  ] mx-mix-001   Mutual perpetual check is a draw
+  [ok  ] mx-mix-002   Mutual perpetual chase is a draw
+  [ok  ] mx-mix-003   A side alternating check and chase commits neither violati
+  [ok  ] mx-mix-004   Perpetual check outranks a simultaneous perpetual chase by
+  [ok  ] mx-move-001  Complete legal-move set in the starting position
+  [ok  ] mx-move-002  Horse blocked by an occupied first orthogonal step
+  [ok  ] mx-move-003  Cannon: slide moves, and capture requires exactly one scre
+  [ok  ] mx-move-004  Soldier: forward or sideways only, capture the same way, n
+  [ok  ] mx-move-005  King moves one orthogonal step and may not leave the palac
+  [ok  ] mx-move-006  In check: the legal set is exactly the evasions
+  [ok  ] mx-rep-001   Neutral threefold repetition becomes claimable at exactly 
+
+target variant  (soldiers exempt):     3 failure(s)
+    mx-chs-028: expected value 0 for claimable-draw/threefold-repetition, got -32000
+    mx-chs-029: expected value 0 for claimable-draw/threefold-repetition, got -32000
+    mx-chs-030: expected value 32000 for black-wins/perpetual-chase, got 0
+control variant (soldiers chaseable): 4 failure(s)
+    mx-chs-003: expected value 0 for claimable-draw/threefold-repetition, got -32000
+    mx-chs-028: expected value 0 for claimable-draw/threefold-repetition, got -32000
+    mx-chs-029: expected value 0 for claimable-draw/threefold-repetition, got -32000
+    mx-chs-030: expected value 32000 for black-wins/perpetual-chase, got 0
