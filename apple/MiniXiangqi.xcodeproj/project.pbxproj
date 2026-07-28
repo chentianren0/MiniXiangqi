@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CE13596A3019482D00D752F9 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CE1359693019482D00D752F9 /* AppIcon.icon */; };
 		CE259B02301668730051B648 /* MiniXiangqiCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */; };
 		CE259B06301668730051B648 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE259B05301668730051B648 /* libc++.tbd */; };
 /* End PBXBuildFile section */
@@ -29,6 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		CE1359693019482D00D752F9 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		CE259A87301668710051B648 /* MiniXiangqi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniXiangqi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259A96301668730051B648 /* MiniXiangqiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259AA0301668730051B648 /* MiniXiangqiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,6 +80,7 @@
 		CE259A7E301668710051B648 = {
 			isa = PBXGroup;
 			children = (
+				CE1359693019482D00D752F9 /* AppIcon.icon */,
 				CE259A89301668710051B648 /* MiniXiangqi */,
 				CE259A99301668730051B648 /* MiniXiangqiTests */,
 				CE259AA3301668730051B648 /* MiniXiangqiUITests */,
@@ -217,6 +220,7 @@
 		CE259A85301668710051B648 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				CE13596A3019482D00D752F9 /* AppIcon.icon in Resources */,
 			);
 		};
 		CE259A94301668730051B648 /* Resources */ = {
