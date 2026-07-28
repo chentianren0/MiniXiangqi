@@ -170,7 +170,8 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
     }
 
     Value value = VALUE_DRAW;
-    if (pos.is_optional_game_end(value)) {
+    OptionalGameEndRule rule = OPTIONAL_END_NONE;
+    if (pos.is_optional_game_end(value, 0, 0, &rule)) {
         /* How many times the position on the board has now stood there. The
          * engine reports that an outcome attached, not where: a violation that
          * was interrupted and resumed attaches at the fourth occurrence, not
@@ -185,12 +186,21 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
         if (value == VALUE_DRAW) {
             /* A neutral threefold and a mutual same-class violation both come
              * back as a draw value. They are different outcomes: the first is
-             * claimable and the second is automatic. Mutual perpetual check is
-             * separable here, because both sides must have checked at every one
-             * of their own moves. Mutual perpetual chase leaves no such trace,
-             * and the fork does not yet report which branch fired, so it is
-             * reported as the neutral repetition it is indistinguishable from
-             * rather than guessed at. */
+             * claimable and the second is automatic, so the game does not end
+             * on its own if this is read wrongly.
+             *
+             * The fork reports which rule produced the end, which is what
+             * separates them: a draw the perpetual-chase branch produced is
+             * both sides chasing, because a unilateral chase is decisive. The
+             * check case is derived from the plies instead — the engine folds
+             * mutual perpetual check onto the same rule, and both sides having
+             * checked at every one of their own moves inside the repetition is
+             * the trace it leaves. */
+            if (rule == OPTIONAL_END_PERPETUAL_CHASE) {
+                a.state = MXQ_GAME_DRAW;
+                a.reason = MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE;
+                return a;
+            }
             size_t red_moves = 0, black_moves = 0;
             bool red_always_checked = true, black_always_checked = true;
             for (size_t i = first; i < plies.size(); ++i) {

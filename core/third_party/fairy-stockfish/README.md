@@ -7,8 +7,8 @@ links `PRIVATE`.
 | | |
 |---|---|
 | Repository | `https://github.com/ppppvz/Fairy-Stockfish` |
-| Revision | `77d602e00db0527781e6abb76802bf1757f7e6fa` |
-| Committed | 2026-07-27T11:01:31-07:00 |
+| Revision | `afec5690a2db547bfd8bfa6c6751e94e21013f29` |
+| Committed | 2026-07-28T10:56:39-07:00 |
 | Upstream base | `c19b5f6c66894fdb0e88d0dd100e3885f744760a` |
 | License | GPLv3 — [`upstream/Copying.txt`](upstream/Copying.txt) |
 
@@ -63,7 +63,7 @@ paths below. Re-cutting it from a fork checkout must produce byte-identical
 output:
 
 ```sh
-git archive --format=tar 77d602e00db0527781e6abb76802bf1757f7e6fa \
+git archive --format=tar afec5690a2db547bfd8bfa6c6751e94e21013f29 \
     AUTHORS Copying.txt README.md 'Top CPU Contributors.txt' src \
   | tar -x -C upstream
 rm -f upstream/src/main.cpp upstream/src/pyffish.cpp upstream/src/ffishjs.cpp \

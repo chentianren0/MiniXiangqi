@@ -85,11 +85,17 @@ public:
   void new_search() { generation8 += GENERATION_DELTA; } // Lower bits are used for other things
   TTEntry* probe(const Key key, bool& found) const;
   int hashfull() const;
-  void resize(size_t mbSize);
+  bool resize(size_t mbSize);
   void clear();
 
+  // Whether a table is currently allocated. False before the first resize() and
+  // after one that failed, which is how an embedding application observes an
+  // allocation failure reported through a path with no error channel of its own,
+  // such as the "Hash" and "Threads" UCI options.
+  bool allocated() const { return table != nullptr; }
+
   TTEntry* first_entry(const Key key) const {
-    return &table[mul_hi64(key, clusterCount)].entry[0];
+    return table ? &table[mul_hi64(key, clusterCount)].entry[0] : scratch.entry;
   }
 
 private:
@@ -98,6 +104,11 @@ private:
   size_t clusterCount;
   Cluster* table;
   uint8_t generation8; // Size must be not bigger than TTEntry::genBound8
+
+  // Stand-in returned while no table is allocated, so that a search started
+  // without one writes somewhere harmless instead of dereferencing null. Its
+  // contents are never trusted: probe() always reports a miss in that state.
+  static Cluster scratch;
 };
 
 extern TranspositionTable TT;

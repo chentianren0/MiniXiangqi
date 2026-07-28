@@ -30,6 +30,8 @@ namespace Stockfish {
 
 TranspositionTable TT; // Our global transposition table
 
+TranspositionTable::Cluster TranspositionTable::scratch; // Used while no table is allocated
+
 /// TTEntry::save() populates the TTEntry with a new node's data, possibly
 /// overwriting an old position. Update is not atomic and can be racy.
 
@@ -59,24 +61,41 @@ void TTEntry::save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev) 
 /// TranspositionTable::resize() sets the size of the transposition table,
 /// measured in megabytes. Transposition table consists of a power of 2 number
 /// of clusters and each cluster consists of ClusterSize number of TTEntry.
+/// It returns false if the requested table could not be allocated. The old
+/// table is released first either way, so on failure the table is left empty
+/// rather than half-initialised: the engine keeps running, probe() reports
+/// misses, and a later resize() can succeed.
 
-void TranspositionTable::resize(size_t mbSize) {
+bool TranspositionTable::resize(size_t mbSize) {
 
   Threads.main()->wait_for_search_finished();
 
   aligned_large_pages_free(table);
+  table = nullptr;
+  clusterCount = 0;
 
-  clusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
+  size_t newClusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
 
-  table = static_cast<Cluster*>(aligned_large_pages_alloc(clusterCount * sizeof(Cluster)));
-  if (!table)
+  // An empty request is a release, and succeeds. Asking the allocator for zero
+  // bytes may hand back a non-null pointer instead, which every reader below
+  // would then index out of bounds.
+  if (!newClusterCount)
+      return true;
+
+  Cluster* newTable = static_cast<Cluster*>(aligned_large_pages_alloc(newClusterCount * sizeof(Cluster)));
+  if (!newTable)
   {
       std::cerr << "Failed to allocate " << mbSize
                 << "MB for transposition table." << std::endl;
-      exit(EXIT_FAILURE);
+      return false;
   }
 
+  table = newTable;
+  clusterCount = newClusterCount;
+
   clear();
+
+  return true;
 }
 
 
@@ -84,6 +103,9 @@ void TranspositionTable::resize(size_t mbSize) {
 //  in a multi-threaded way.
 
 void TranspositionTable::clear() {
+
+  if (!table)
+      return;
 
   std::vector<std::thread> threads;
 
@@ -120,6 +142,13 @@ void TranspositionTable::clear() {
 TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
 
   TTEntry* const tte = first_entry(key);
+
+  // Without a table there is nothing to look up. Report a miss into the scratch
+  // cluster so that a search outliving a failed resize degrades instead of
+  // dereferencing released memory.
+  if (!table)
+      return found = false, tte;
+
   const uint16_t key16 = (uint16_t)key;  // Use the low 16 bits as key inside the cluster
 
   for (int i = 0; i < ClusterSize; ++i)
@@ -150,6 +179,9 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
 /// occupation during a search. The hash is x permill full, as per UCI protocol.
 
 int TranspositionTable::hashfull() const {
+
+  if (!table)
+      return 0;
 
   int cnt = 0;
   for (int i = 0; i < 1000; ++i)

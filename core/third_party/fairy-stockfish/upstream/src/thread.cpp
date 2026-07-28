@@ -153,7 +153,9 @@ void ThreadPool::set(size_t requested) {
           push_back(new Thread(size()));
       clear();
 
-      // Reallocate the hash with the new threadpool size
+      // Reallocate the hash with the new threadpool size. A failure here leaves
+      // the table empty and is observable through TT.allocated(); the thread
+      // pool itself stays usable either way.
       TT.resize(size_t(Options["Hash"]));
 
       // Init thread number dependent search params.
