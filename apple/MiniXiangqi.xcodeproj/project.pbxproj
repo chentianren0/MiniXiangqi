@@ -6,6 +6,11 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CE259B02301668730051B648 /* MiniXiangqiCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */; };
+		CE259B06301668730051B648 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE259B05301668730051B648 /* libc++.tbd */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CE259A97301668730051B648 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,8 @@
 		CE259A87301668710051B648 /* MiniXiangqi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniXiangqi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259A96301668730051B648 /* MiniXiangqiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259AA0301668730051B648 /* MiniXiangqiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = MiniXiangqiCore.xcframework; path = Generated/MiniXiangqiCore.xcframework; sourceTree = "<group>"; };
+		CE259B05301668730051B648 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "usr/lib/libc++.tbd"; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -51,6 +58,8 @@
 		CE259A84301668710051B648 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				CE259B02301668730051B648 /* MiniXiangqiCore.xcframework in Frameworks */,
+				CE259B06301668730051B648 /* libc++.tbd in Frameworks */,
 			);
 		};
 		CE259A93301668730051B648 /* Frameworks */ = {
@@ -72,6 +81,7 @@
 				CE259A89301668710051B648 /* MiniXiangqi */,
 				CE259A99301668730051B648 /* MiniXiangqiTests */,
 				CE259AA3301668730051B648 /* MiniXiangqiUITests */,
+				CE259B04301668730051B648 /* Generated */,
 				CE259A88301668710051B648 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,6 +96,15 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		CE259B04301668730051B648 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */,
+				CE259B05301668730051B648 /* libc++.tbd */,
+			);
+			name = Generated;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -93,6 +112,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CE259AA8301668730051B648 /* Build configuration list for PBXNativeTarget "MiniXiangqi" */;
 			buildPhases = (
+				CE259B20301668730051B648 /* Check the shared core is current */,
 				CE259A83301668710051B648 /* Sources */,
 				CE259A84301668710051B648 /* Frameworks */,
 				CE259A85301668710051B648 /* Resources */,
@@ -150,6 +170,28 @@
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CE259B20301668730051B648 /* Check the shared core is current */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Check the shared core is current";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$PROJECT_DIR/check-core-is-current.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXProject section */
 		CE259A7F301668710051B648 /* Project object */ = {
@@ -373,6 +415,7 @@
 				ENABLE_ENHANCED_SECURITY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_ARCHS = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu23;
@@ -424,6 +467,7 @@
 				ENABLE_ENHANCED_SECURITY = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_ARCHS = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu23;
@@ -464,6 +508,7 @@
 		CE259AAC301668730051B648 /* Debug configuration for PBXNativeTarget "MiniXiangqiTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64e;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -489,6 +534,7 @@
 		CE259AAD301668730051B648 /* Release configuration for PBXNativeTarget "MiniXiangqiTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64e;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
