@@ -90,6 +90,8 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify that the app-visible rules boundary exposes claim eligibility on that occurrence, continuing keeps the game active, and only an explicit claim commits the draw.
 - Verify that a unilateral perpetual violation becomes terminal automatically at the third sustained occurrence, is attributed to the violating side, and is presented through the standard natural-result flow rather than a claim.
 - Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and king and soldier chase-target exclusion.
+- Verify the accepted interpretations: a side alternating check and chase commits neither violation and reaches a neutral claimable repetition; a chase renews when the chasing piece attacks the target from the square it now occupies having not attacked it from that square before; and a chase whose target's only defender is a general is adjudicated on the flying-generals condition alone, degrading to a claimable repetition rather than a loss.
+- Verify a repeated sequence adjudicates identically whichever side plays it, so no outcome depends on side-to-move parity alone.
 - Run the same accepted history fixtures against the app-visible adjudicator and the engine search configuration. The engine may use a terminal or draw-valued representation for search while the app exposes a claim, but position identity, repetition occurrence, and draw classification must agree, and an engine search result must not auto-commit the app-visible draw.
 - Add a minimized failing fixture before changing an accepted rule interpretation.
 
