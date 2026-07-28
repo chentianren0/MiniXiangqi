@@ -14,6 +14,13 @@ struct TurnStatus: View {
     var sideToMove: Side
     var inCheck: Bool
 
+    /// The acknowledgment beat, 0 to 1: input the game cannot accept is
+    /// answered here, where the reason is already on screen, rather than on
+    /// the board. The background rises to full emphasis and falls back —
+    /// opacity only, no movement, so Reduce Motion changes nothing — in
+    /// neutral primary, because tint on the play screen belongs to the sides.
+    var beatEmphasis: Double = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(primaryLine)
@@ -27,6 +34,12 @@ struct TurnStatus: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(Motion.beatEmphasis * beatEmphasis))
+                .accessibilityHidden(true)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("turn-status")
     }

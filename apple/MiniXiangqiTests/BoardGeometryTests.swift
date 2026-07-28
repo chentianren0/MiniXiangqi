@@ -52,6 +52,55 @@ struct BoardGeometryTests {
         #expect(geometry.markerOuterLimit <= geometry.margin)
     }
 
+    @Test("The flip's path starts and ends exactly on the two orientations")
+    func flipPathEndsOnItsOrientations() {
+        for rank in 0..<Square.count {
+            for file in 0..<Square.count {
+                let square = Square(file: file, rank: rank)
+                #expect(geometry.center(of: square, flip: 0)
+                    == geometry.center(of: square, flipped: false))
+                #expect(geometry.center(of: square, flip: 1)
+                    == geometry.center(of: square, flipped: true))
+            }
+        }
+    }
+
+    @Test("No disc leaves the board core at any instant of the flip")
+    func flipStaysInsideTheCore() {
+        // The contained rotation holds the outermost points on the outer grid
+        // lines, so every disc keeps its at-rest clearance from the core's
+        // edge — a disc reaches 0.40 p past its point, the margin is 0.50 p.
+        let mid = geometry.coreSide / 2
+        let outermost = 3 * geometry.pitch
+        for rank in 0..<Square.count {
+            for file in 0..<Square.count {
+                let square = Square(file: file, rank: rank)
+                for step in 0...200 {
+                    let centre = geometry.center(of: square, flip: Double(step) / 200)
+                    #expect(abs(centre.x - mid) <= outermost + 0.0001)
+                    #expect(abs(centre.y - mid) <= outermost + 0.0001)
+                }
+            }
+        }
+    }
+
+    @Test("The flip cannot collide two discs: distances from the centre scale together")
+    func flipPreservesConcentricity() {
+        // Every point rides its own ring, and every ring is scaled by the
+        // same factor at the same instant, so two discs' separation can fall
+        // no faster than the rings themselves — adjacent rings stay disjoint.
+        let mid = geometry.coreSide / 2
+        for step in 0...100 {
+            let flip = Double(step) / 100
+            let inner = geometry.center(of: Square("d3")!, flip: flip)
+            let outer = geometry.center(of: Square("d1")!, flip: flip)
+            let innerRadius = hypot(inner.x - mid, inner.y - mid)
+            let outerRadius = hypot(outer.x - mid, outer.y - mid)
+            #expect(outerRadius - innerRadius > geometry.pitch,
+                    "rings three pitches apart at rest stay clear of each other")
+        }
+    }
+
     @Test("The board honours its floor and its ceiling")
     func fittingStaysWithinBounds() {
         #expect(BoardGeometry.fitting(CGSize(width: 100, height: 100)) == nil)

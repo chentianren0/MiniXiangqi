@@ -112,7 +112,7 @@ final class Game {
         }
         // An illegal tap moves nothing and keeps the selection, so the
         // correction is one tap away. Its feedback — the legal destinations
-        // pulsing once — is still to come.
+        // strengthening once — is PlayMotion's answer, not a game state.
     }
 
     /// Takes back one ply. The shortened history is evaluated before anything

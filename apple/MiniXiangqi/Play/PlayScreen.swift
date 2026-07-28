@@ -10,11 +10,16 @@
 // 44-point floor and never above the 720-point ceiling; surplus space goes to
 // the layout rather than to the board. When space is short the chrome tightens
 // first, and the window stops resizing where either would go below its floor.
+//
+// Motion runs through PlayMotion: every board input passes its gate, so input
+// during a committing transition is discarded here rather than queued, and the
+// controls that a running transition makes unavailable say so.
 
 import SwiftUI
 
 struct PlayScreen: View {
     @State private var game: Game?
+    @State private var motion: PlayMotion?
     @State private var startFailure: CoreError?
     @State private var claimPresented = false
 
@@ -23,15 +28,19 @@ struct PlayScreen: View {
     /// the notice does not come back for a result already seen.
     @State private var resultDismissed = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let core: Core
 
     private static let panelWidth: CGFloat = 260
     private static let boardPadding: CGFloat = 24
 
+    private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
+
     var body: some View {
         Group {
-            if let game {
-                layout(game)
+            if let game, let motion {
+                layout(game, motion)
             } else if let startFailure {
                 ContentUnavailableView("The game did not start",
                                        systemImage: "exclamationmark.triangle",
@@ -40,6 +49,7 @@ struct PlayScreen: View {
                 ProgressView()
             }
         }
+        .environment(\.motionPolicy, policy)
         .frame(minWidth: Self.minimumWidth, minHeight: Self.minimumHeight)
         #if DEBUG
         .preferredColorScheme(Self.launchColorScheme)
@@ -47,6 +57,9 @@ struct PlayScreen: View {
         .task {
             guard game == nil else { return }
             start(replayingLaunchLine: true)
+        }
+        .onChange(of: reduceMotion) {
+            motion?.policy = policy
         }
     }
 
@@ -61,8 +74,14 @@ struct PlayScreen: View {
             if replayingLaunchLine { try game.replay(Self.launchReplayLine) }
             #endif
             self.game = game
+            let motion = PlayMotion(game: game, policy: policy)
+            self.motion = motion
+            // A replayed position may already stand in check; its rings pulse
+            // as they first appear.
+            motion.boardAppeared()
         } catch {
             game = nil
+            motion = nil
             startFailure = CoreError(wrapping: error)
         }
     }
@@ -93,7 +112,7 @@ struct PlayScreen: View {
     }
     #endif
 
-    private func layout(_ game: Game) -> some View {
+    private func layout(_ game: Game, _ motion: PlayMotion) -> some View {
         GeometryReader { proxy in
             let geometry = boardGeometry(in: proxy.size)
             HStack(spacing: 0) {
@@ -106,21 +125,34 @@ struct PlayScreen: View {
                               captures: game.captures,
                               lastMove: game.lastMove,
                               checkedGeneral: game.checkedGeneral,
-                              onTap: { tap($0, in: game) })
+                              transit: motion.transit,
+                              transitFade: motion.transitFade,
+                              checkEmphasis: motion.checkEmphasis,
+                              markerEmphasis: motion.markerEmphasis,
+                              policy: motion.policy,
+                              onTap: { tap($0, in: game, motion) },
+                              onTravelArrival: { motion.travelArrived() },
+                              onFadeArrival: { motion.fadeArrived() })
 
-                    if game.isFinished, !resultDismissed {
+                    // The notice waits for the landing: a result arrives with
+                    // a move, and the move has to finish being shown before
+                    // an announcement stands in front of it.
+                    if game.isFinished, !resultDismissed, !motion.isCommitting {
                         ResultNotice(state: game.presentedState,
                                      reason: game.evaluation.reason,
-                                     canUndo: game.canUndo,
-                                     undo: { withAnimation(.snappy) { game.undo() } },
+                                     canUndo: motion.canUndo,
+                                     undo: { motion.undo() },
                                      startNewGame: { start(replayingLaunchLine: false) },
-                                     close: { withAnimation(.snappy) { resultDismissed = true } })
+                                     close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true } })
                             .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Tapping outside the board cancels the selection.
+                .contentShape(Rectangle())
+                .onTapGesture { motion.cancelSelection() }
 
-                panel(game)
+                panel(game, motion)
                     .frame(width: Self.panelWidth)
             }
         }
@@ -130,23 +162,34 @@ struct PlayScreen: View {
         }
     }
 
-    /// A finished board is not inert: it has nothing left to play, so a click
-    /// on it closes the notice standing in front of the position it produced.
-    private func tap(_ square: Square, in game: Game) {
+    /// Every board tap answers through the gate first: input during a
+    /// committing transition is discarded, never queued. A finished board is
+    /// not inert — it has nothing left to play, so a tap closes the notice
+    /// standing in front of the position it produced; once the notice is away
+    /// there is nothing left for a tap to do, and the acknowledgment beat is
+    /// its answer. The notice-closing tap is an accepted input, not a rejected
+    /// one, and gets no beat.
+    private func tap(_ square: Square, in game: Game, _ motion: PlayMotion) {
+        guard !motion.isCommitting else { return }
         guard game.isFinished else {
-            game.tap(square)
+            motion.tap(square)
             return
         }
-        withAnimation(.snappy) { resultDismissed = true }
+        if resultDismissed {
+            motion.acknowledge()
+        } else {
+            withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true }
+        }
     }
 
-    private func panel(_ game: Game) -> some View {
+    private func panel(_ game: Game, _ motion: PlayMotion) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             TurnStatus(state: game.presentedState,
                        reason: game.evaluation.reason,
                        sideToMove: game.evaluation.sideToMove,
-                       inCheck: game.evaluation.inCheck)
-                .padding(20)
+                       inCheck: game.evaluation.inCheck,
+                       beatEmphasis: motion.beatEmphasis)
+                .padding(8)
 
             Divider()
 
@@ -160,8 +203,8 @@ struct PlayScreen: View {
             // concluding action's longer label leaves no room, the flip control
             // falls back to its symbol, which carries the same label either way.
             ViewThatFits(in: .horizontal) {
-                controls(game, compactFlip: false)
-                controls(game, compactFlip: true)
+                controls(game, motion, compactFlip: false)
+                controls(game, motion, compactFlip: true)
             }
             .padding(16)
             // The blocking notice the contract gives the claim, presented when
@@ -170,11 +213,15 @@ struct PlayScreen: View {
             // 可判和 already stand for the offer.
             .alert("局面已三次重复，可以和棋结束。", isPresented: $claimPresented) {
                 Button("继续对局", role: .cancel) { }
-                Button("以和棋结束") { withAnimation(.snappy) { game.claimDraw() } }
+                Button("以和棋结束") { withAnimation(policy.fade(Motion.stateFadeAnimation)) { game.claimDraw() } }
             }
         }
         .frame(maxHeight: .infinity)
         .background(.regularMaterial)
+        // The panel is outside the board too: a tap on its quiet parts
+        // cancels the selection. Its controls keep their own taps.
+        .contentShape(Rectangle())
+        .onTapGesture { motion.cancelSelection() }
     }
 
     /// The play control cluster: the one custom glass surface on screen during
@@ -187,13 +234,14 @@ struct PlayScreen: View {
     /// A finished game has nothing to judge a draw in, so that slot carries the
     /// concluding action instead — the one obvious next action, and therefore
     /// the one thing on screen the tint rule allows.
-    private func controls(_ game: Game, compactFlip: Bool) -> some View {
+    private func controls(_ game: Game, _ motion: PlayMotion, compactFlip: Bool) -> some View {
         HStack(spacing: 8) {
-            Button("悔棋") {
-                withAnimation(.snappy) { game.undo() }
-            }
-            .buttonStyle(.glass)
-            .disabled(!game.canUndo)
+            // Unavailable until a running transition completes — its own
+            // Undo's included, which is what makes a second Undo wait its
+            // turn rather than queue.
+            Button("悔棋") { motion.undo() }
+                .buttonStyle(.glass)
+                .disabled(!motion.canUndo)
 
             if game.isFinished {
                 // Prominent once it is the only one: while the notice stands in
@@ -207,7 +255,7 @@ struct PlayScreen: View {
             }
 
             Button {
-                withAnimation(.snappy) { game.flipped.toggle() }
+                motion.flip()
             } label: {
                 if compactFlip {
                     Label("翻转棋盘", systemImage: "arrow.up.arrow.down")

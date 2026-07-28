@@ -27,8 +27,25 @@ struct BoardStyle {
     var activeInk: Color
     var recordInk: Color
 
-    var restingShadow: (color: Color, radius: CGFloat, y: CGFloat)
-    var liftShadow: (color: Color, radius: CGFloat, y: CGFloat)
+    /// A disc shadow, held as components so the lift can blend between the
+    /// resting and lift shadows: the shadow rises with the scale, per the
+    /// accepted selection transition, rather than snapping between two looks.
+    struct Shadow {
+        var opacity: Double
+        var radius: CGFloat   // as a multiple of the pitch
+        var y: CGFloat        // as a multiple of the pitch
+
+        var color: Color { .black.opacity(opacity) }
+
+        func blended(toward other: Shadow, by progress: Double) -> Shadow {
+            Shadow(opacity: opacity + (other.opacity - opacity) * progress,
+                   radius: radius + (other.radius - radius) * progress,
+                   y: y + (other.y - y) * progress)
+        }
+    }
+
+    var restingShadow: Shadow
+    var liftShadow: Shadow
 
     /// 传统 — the default. Both sides use the same warm light disc face, as a
     /// physical set does, with the symbols themselves in the Red and Black role
@@ -47,6 +64,6 @@ struct BoardStyle {
             : Color(red: 0.086, green: 0.078, blue: 0.067) },
         activeInk: Color(red: 0.075, green: 0.294, blue: 0.278),
         recordInk: Color(red: 0.302, green: 0.451, blue: 0.435),
-        restingShadow: (Color.black.opacity(0.22), 0.030, 0.018),
-        liftShadow: (Color.black.opacity(0.30), 0.075, 0.045))
+        restingShadow: Shadow(opacity: 0.22, radius: 0.030, y: 0.018),
+        liftShadow: Shadow(opacity: 0.30, radius: 0.075, y: 0.045))
 }

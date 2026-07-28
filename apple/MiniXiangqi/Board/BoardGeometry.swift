@@ -122,6 +122,32 @@ struct BoardGeometry {
                        y: margin + CGFloat(rank) * pitch)
     }
 
+    /// The centre of a point partway through the board flip, `flip` from 0 to
+    /// 1 with Red at the bottom at 0.
+    ///
+    /// The flipped board is the unflipped board rotated half a turn about its
+    /// centre, so the flip carries every point along the arc of that rotation:
+    /// the arcs are concentric, so no two discs can ever collide mid-flip,
+    /// where interpolating each point along a straight line would drive all
+    /// of them through the centre at once. The rotation alone would swing the
+    /// corner points beyond the core on the diagonals, so the whole position
+    /// is scaled by `1/(|cos| + |sin|)` — the rotating square held inside its
+    /// own bounding square — which keeps the outermost points riding exactly
+    /// along the outer grid lines: every disc keeps the same clearance from
+    /// the core's edge mid-flip that it has at rest. Positions rotate; the
+    /// characters are never rotated, so they stay upright throughout.
+    func center(of square: Square, flip: Double) -> CGPoint {
+        guard flip != 0 else { return center(of: square, flipped: false) }
+        guard flip != 1 else { return center(of: square, flipped: true) }
+        let base = center(of: square, flipped: false)
+        let mid = coreSide / 2
+        let angle = Double.pi * flip
+        let squeeze = 1 / (abs(cos(angle)) + abs(sin(angle)))
+        let dx = base.x - mid, dy = base.y - mid
+        return CGPoint(x: mid + (dx * cos(angle) - dy * sin(angle)) * squeeze,
+                       y: mid + (dx * sin(angle) + dy * cos(angle)) * squeeze)
+    }
+
     /// The point a tap at `location` addresses, or nil when the tap fell
     /// outside every cell — the half-cell margin means every location inside
     /// the board core belongs to exactly one point.
