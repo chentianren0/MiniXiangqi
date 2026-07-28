@@ -39,10 +39,10 @@ whichever target copies the assets into the bundle, and does not exist yet.
 
 - **Fairy-Stockfish.** Vendored as a copied source snapshot of the pinned
   revision, built by a core-owned `CMakeLists.txt`. The contract requires the
-  **fork** to expose the static-library target the core links, and that change
-  has not landed; the manifest records it under
-  `fork.patches_pending/static-library-target`. What was done in its place, and
-  what changes when it lands, is written down in
+  **fork** to expose a static-library target, which landed at `86dad87e`. The
+  core does not consume its artifact — it needs two architectures from one build
+  system — and what it does instead, with what would change if it switched, is
+  written down in
   [`fairy-stockfish/README.md`](fairy-stockfish/README.md). Its implementation,
   tests, and upstream maintenance belong to the fork repository, not here.
 - **SQLite.** Vendored as the amalgamation, compiled with the hardened option

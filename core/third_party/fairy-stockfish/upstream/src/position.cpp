@@ -2617,8 +2617,14 @@ bool Position::see_ge(Move m, Value threshold) const {
 
 /// Position::is_optional_game_end() tests whether the position may end the game by
 /// 50-move rule, by repetition, or a variant rule that allows a player to claim a game result.
+/// The optional 'rule' out-parameter reports which branch produced the answer. It is
+/// read-only information for the caller and never enters the adjudication itself; the
+/// returned value alone cannot tell a neutral repetition from a mutual perpetual chase.
 
-bool Position::is_optional_game_end(Value& result, int ply, int countStarted) const {
+bool Position::is_optional_game_end(Value& result, int ply, int countStarted, OptionalGameEndRule* rule) const {
+
+  if (rule)
+      *rule = OPTIONAL_END_NONE;
 
   // n-move rule
   if (n_move_rule() && st->rule50 > (2 * n_move_rule() - 1) && (!checkers() || MoveList<LEGAL>(*this).size()))
@@ -2641,6 +2647,8 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
       if (st->rule50 - offset > (2 * n_move_rule() - 1))
       {
           result = var->materialCounting ? convert_mate_value(material_counting_result(), ply) : VALUE_DRAW;
+          if (rule)
+              *rule = OPTIONAL_END_N_MOVE_RULE;
           return true;
       }
   }
@@ -2684,15 +2692,26 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
                       if (!stp->previous->previous->capturedPiece && from_sq(stp->move) == to_sq(stp->previous->previous->move))
                       {
                           result = VALUE_MATE;
+                          if (rule)
+                              *rule = OPTIONAL_END_MOVE_REPETITION;
                           return true;
                       }
                       else
                           moveRepetition = 0;
                   }
               }
-              // Chased pieces are empty when there is no previous move
-              if (i != st->pliesFromNull)
-                  chaseThem = undo_move_board(chaseThem, stp->previous->move) & stp->previous->previous->chased;
+              // The chase test has to span the same moves for both sides. chaseThem and
+              // chaseUs are both built by intersection, so a surplus term can only delete
+              // pieces: extending chaseThem here, before the repetition test, would also
+              // intersect in the chase set of the move that created the first of the three
+              // occurrences - a move outside the repetition window - and a chase entered by
+              // a quiet move would be dropped at one parity and kept at the other. Compute
+              // the extension at this point, because after stp advances the move it needs is
+              // no longer reachable on the backwards-linked chain, but commit it only where
+              // chaseUs is extended, below. When i == st->pliesFromNull the extension reads
+              // the root state, whose chased set is empty by construction; that value is
+              // never committed, because i + 1 <= end is then false.
+              Bitboard chaseThemNext = undo_move_board(chaseThem, stp->previous->move) & stp->previous->previous->chased;
               stp = stp->previous->previous;
               perpetualThem &= bool(stp->checkersBB);
 
@@ -2705,6 +2724,10 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
                                               : (chaseThem || chaseUs) ? (!chaseUs ? VALUE_MATE : !chaseThem ? -VALUE_MATE : VALUE_DRAW)
                                               : var->nFoldValueAbsolute && sideToMove == BLACK ? -var->nFoldValue
                                               : var->nFoldValue, ply);
+                  if (rule)
+                      *rule =   (perpetualThem || perpetualUs) ? OPTIONAL_END_PERPETUAL_CHECK
+                              : (chaseThem || chaseUs)         ? OPTIONAL_END_PERPETUAL_CHASE
+                                                               : OPTIONAL_END_N_FOLD;
                   if (result == VALUE_DRAW && var->materialCounting)
                       result = convert_mate_value(material_counting_result(), ply);
                   return true;
@@ -2714,6 +2737,7 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
               {
                   perpetualUs &= bool(stp->previous->checkersBB);
                   chaseUs = undo_move_board(chaseUs, stp->move) & stp->previous->chased;
+                  chaseThem = chaseThemNext;
               }
           }
       }
@@ -2726,6 +2750,8 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
       && (!checkers() || MoveList<LEGAL>(*this).size()))
   {
       result = VALUE_DRAW;
+      if (rule)
+          *rule = OPTIONAL_END_COUNTING_RULE;
       return true;
   }
 
@@ -2745,6 +2771,8 @@ bool Position::is_optional_game_end(Value& result, int ply, int countStarted) co
       if (promotionsOnly)
       {
           result = VALUE_DRAW;
+          if (rule)
+              *rule = OPTIONAL_END_SITTUYIN_STALEMATE;
           return true;
       }
   }
@@ -2976,19 +3004,37 @@ Bitboard Position::chased() const {
       return b;
 
   Bitboard pins = blockers_for_king(sideToMove);
-  if (var->flyingGeneral)
+  if (var->flyingGeneral && count<KING>(sideToMove) && count<KING>(~sideToMove))
   {
-      Bitboard kingFilePieces = file_bb(file_of(square<KING>(~sideToMove))) & pieces(sideToMove);
-      if ((kingFilePieces & pieces(sideToMove, KING)) && !more_than_one(kingFilePieces & ~pieces(KING)))
-          pins |= kingFilePieces & ~pieces(KING);
+      // A flying-general pin exists only when the two kings share a file and exactly
+      // one piece stands between them. The occupancy has to be counted over pieces of
+      // both colours and over the segment between the kings only: counting just the
+      // victim's own pieces hides a chaser standing between the kings, and counting
+      // the whole file catches pieces that are not between them at all. Either way a
+      // demonstrably free piece would be treated as pinned.
+      Square ksq = square<KING>(sideToMove);
+      Square oksq = square<KING>(~sideToMove);
+      if (file_of(ksq) == file_of(oksq))
+      {
+          Bitboard kingFileBlockers = between_bb(ksq, oksq) & ~square_bb(oksq) & pieces();
+          if (!more_than_one(kingFileBlockers))
+              pins |= kingFileBlockers & pieces(sideToMove);
+      }
   }
   // Chase targets exempt for the side to move: kings always, and soldiers unless the
-  // variant makes them chaseable once promoted. The discovered-check path below keeps
-  // its original unmasked behavior.
+  // variant makes them chaseable once promoted. Every classifier path below applies it.
   Bitboard chaseExempt = pieces(sideToMove, KING, SOLDIER);
   if (var->promotedSoldiersChaseable)
       chaseExempt ^= promoted_soldiers(sideToMove);
+  // Chasers that are absolutely pinned against their own king. Such a piece can only
+  // move along the line through its own king, so a capture it "threatens" off that
+  // line can never be executed and is not a chase.
+  Bitboard chaserPins = blockers_for_king(~sideToMove) & pieces(~sideToMove);
   auto addChased = [&](Square attackerSq, PieceType attackerType, Bitboard attacks) {
+      // Restrict a pinned chaser to its pin line. A pinned horse keeps nothing at all,
+      // because no square a horse attacks lies on a line through its own square.
+      if (chaserPins & attackerSq)
+          attacks &= line_bb(square<KING>(~sideToMove), attackerSq);
       if (attacks & ~b)
       {
           // Exclude attacks on exempt targets and checks
@@ -3078,7 +3124,7 @@ Bitboard Position::chased() const {
       {
           Square s = pop_lsb(newDiscoverers);
           PieceType discoveryPiece = type_of(piece_on(s));
-          Bitboard discoveryAttacks = attacks_from(~sideToMove, discoveryPiece, s) & pieces(sideToMove);
+          Bitboard discoveryAttacks = attacks_from(~sideToMove, discoveryPiece, s) & pieces(sideToMove) & ~chaseExempt;
           // Include all captures except where the king can pseudo-legally recapture
           b |= discoveryAttacks & ~attacks_from(sideToMove, KING, square<KING>(sideToMove));
           // Include captures where king can not legally recapture

@@ -3,16 +3,14 @@
   "manifest_version": 1,
   "_about": "The single source of truth for every input a reproducible Mini Xiangqi build consumes, per docs/engine-integration.md. The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The Fairy-Stockfish fork repository owns how its patches are implemented and how its own artifacts are built; this file records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.",
   "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. Nothing here has been consumed by a packaging build yet, so the names below are a proposal, not a frozen schema. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented.",
-
   "fork": {
     "repository": "https://github.com/ppppvz/Fairy-Stockfish",
-    "revision": "77d602e00db0527781e6abb76802bf1757f7e6fa",
-    "revision_committed_at": "2026-07-27T11:01:31-07:00",
+    "revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+    "revision_committed_at": "2026-07-28T10:56:39-07:00",
     "upstream_repository": "https://github.com/fairy-stockfish/Fairy-Stockfish",
     "upstream_base_revision": "c19b5f6c66894fdb0e88d0dd100e3885f744760a",
     "upstream_base_committed_at": "2026-07-23T19:20:28+02:00",
-
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts six focused changes in total; the five not yet landed are listed separately under patches_pending so that the difference between what the app consumes today and what the contract requires is explicit rather than implied by an absence.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts seven focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
     "patches": [
       {
         "id": "soldier-chase-target-exclusion",
@@ -27,55 +25,98 @@
           "232ca36b9cdede1c0ce574ddf17b20fdc8d00a34",
           "ebe320a563ea03fce01fc3ef0822775587cc36c4"
         ]
-      }
-    ],
-
-    "patches_pending": [
+      },
       {
         "id": "recoverable-hash-allocation",
         "summary": "Replaces the process exits on transposition-table allocation failure and on the Windows large-page free path, which the accepted error contract forbids. Until it lands, MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED is unreachable.",
-        "required_by": ["docs/engine-integration.md"],
-        "merge_revision": null
+        "required_by": [
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "cd68af08"
+        ]
       },
       {
         "id": "static-library-target",
         "summary": "A static library target for every supported platform, which the core links. The fork's Makefile currently produces an executable and a Python module, neither of which the core can consume.",
-        "required_by": ["docs/engine-integration.md"],
-        "merge_revision": null
+        "required_by": [
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "86dad87e"
+        ]
       },
       {
         "id": "adjudication-defect-corrections",
         "summary": "Corrects two defects that produce false terminal losses: a chaser counted as chasing while pinned, and a flying-general pin test that counts only the victim's own pieces on the shared file.",
-        "required_by": ["docs/engine-integration.md"],
-        "merge_revision": null
+        "required_by": [
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "66893179",
+          "769694f2"
+        ]
       },
       {
         "id": "chase-target-exemption-in-discovered-check-classifier",
         "summary": "Completes the exclusion of generals and soldiers as chase targets in the discovered-check classifier path, so the exclusion holds in every path rather than in two of three.",
-        "required_by": ["docs/engine-integration.md"],
-        "merge_revision": null
+        "required_by": [
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "4d8c1aa1"
+        ]
+      },
+      {
+        "id": "optional-game-end-rule-accessor",
+        "summary": "Reports which rule produced an optional game end, through a read-only out-parameter on Position::is_optional_game_end and the OptionalGameEndRule enumeration. It changes no adjudication; it exposes one the engine already made. The core needs it because a neutral threefold and a mutual perpetual chase are the same draw value, and unlike mutual perpetual check a mutual chase leaves no trace in the move history to derive it from.",
+        "required_by": [
+          "fixtures/rules/mx-mix-002",
+          "fixtures/rules/mx-mix-005",
+          "fixtures/rules/mx-mix-006",
+          "docs/engine-integration.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "370e41d9"
+        ]
       },
       {
         "id": "repetition-window-parity-correction",
         "summary": "Corrects the repetition window's parity asymmetry, which evaluates one side over a wider span than the other and resolves a mutual perpetual chase as a unilateral loss. Lands with the fixture pinning that corner.",
-        "required_by": ["docs/engine-integration.md", "docs/xiangqi-rules.md"],
-        "merge_revision": null
+        "required_by": [
+          "docs/engine-integration.md",
+          "docs/xiangqi-rules.md"
+        ],
+        "merge_revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
+        "commits": [
+          "89b1c777"
+        ]
       }
     ],
-
+    "patches_pending": [],
     "static_library": {
-      "established": false,
-      "_note": "The fork's static library target is an accepted requirement that has not landed; see patches_pending/static-library-target. The artifact name and the per-platform build invocation belong here once it exists.",
-      "artifact_name": null,
-      "build_command": null
+      "established": true,
+      "_note": "The fork's static-library target landed at 86dad87e. The core does not consume the artifact: it compiles the copied source snapshot with a core-owned CMakeLists.txt, because the app needs arm64 and arm64e from one build system and the fork's Makefile is a second one. The target is what the contract requires of the fork; whether the core switches to consuming its artifact is a separate decision, and core/third_party/fairy-stockfish/README.md records what would change.",
+      "artifact_name": "libfairystockfish.a",
+      "build_command": "make lib ARCH=apple-silicon COMP=clang nnue=no largeboards=yes all=yes"
     },
-
     "vendored": {
-      "_about": "How the pinned revision reaches the core. Because the fork's own static library target has not landed, the core cannot consume a fork-built artifact and instead compiles a copied source snapshot with a core-owned CMakeLists.txt. core/third_party/fairy-stockfish/README.md justifies the copied-snapshot choice against a submodule and a subtree, and records what changes when the fork's target lands.",
+      "_about": "How the pinned revision reaches the core: as a copied source snapshot compiled by a core-owned CMakeLists.txt, rather than as an artifact built by the fork. core/third_party/fairy-stockfish/README.md justifies the copied-snapshot choice against a submodule and a subtree, and records what would change if the core consumed the fork's own static-library target instead.",
       "established": true,
       "method": "copied-source-snapshot",
       "path": "core/third_party/fairy-stockfish/upstream",
-      "source_paths": ["AUTHORS", "Copying.txt", "README.md", "Top CPU Contributors.txt", "src"],
+      "source_paths": [
+        "AUTHORS",
+        "Copying.txt",
+        "README.md",
+        "Top CPU Contributors.txt",
+        "src"
+      ],
       "excluded_paths": [
         "src/main.cpp",
         "src/pyffish.cpp",
@@ -86,13 +127,12 @@
       ],
       "_excluded_about": "The engine's own main(), its Python bindings, its JavaScript/WebAssembly bindings, the fork's build system, and the fork's sample variant configuration. setup.py, pyffish.pyi, MANIFEST.in, tests/, .github/, appveyor.yml and test.py are outside source_paths and so are not present either.",
       "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
-      "file_manifest_sha256": "e7142566b356362ce89ec47fb8adbfc634d104e49dc9ca6be809bfae52c407fe",
+      "file_manifest_sha256": "c6dc95a360581d1b9c9da19ccb26025cf545f66b4d6dc98a55438e42bf46861f",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     }
   },
-
   "build_flags": {
-    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet, the fork's static library target has not landed, and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
+    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
     "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established.",
     "platforms": {
       "macos": {
@@ -103,7 +143,9 @@
           "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
           "swift": "6"
         },
-        "architectures": ["arm64"],
+        "architectures": [
+          "arm64"
+        ],
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
@@ -118,7 +160,9 @@
           "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
           "swift": "6"
         },
-        "architectures": ["arm64"],
+        "architectures": [
+          "arm64"
+        ],
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
@@ -133,7 +177,9 @@
           "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
           "swift": "6"
         },
-        "architectures": ["arm64"],
+        "architectures": [
+          "arm64"
+        ],
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
@@ -153,7 +199,6 @@
       }
     }
   },
-
   "variant": {
     "_about": "The bundled variant configuration. The identifier and the filename are fixed by docs/engine-integration.md. The file now exists, so its hash is computed from its bytes rather than left null. Editing the file changes this hash and must be done in the same change, or the packaging build fails rather than shipping unverified bytes.",
     "id": "minixiangqiaxf",
@@ -164,7 +209,6 @@
     "sha256": "9a806bae89fd4ac49a9e171cde7fe297f4c0d90742cbc9d584757b118a8b6f99",
     "established": true
   },
-
   "network": {
     "_about": "The bundled NNUE network. The repository never contains these bytes in any form; they enter builds from a workspace- or CI-provided location. The filename must begin with the variant identifier, because the engine restricts NNUE to the matching variant by that basename prefix and a mismatch disables NNUE silently while the Use NNUE option still reads true. Only the filename differs from the source copy; the byte length and the SHA-256 are over content and are unchanged.",
     "filename": "minixiangqiaxf-12c45d5da817.nnue",
@@ -173,7 +217,6 @@
     "committed_to_version_control": false,
     "established": true
   },
-
   "sqlite": {
     "_about": "The vendored SQLite amalgamation, pinned to the newest stable release at core landing. It has not been vendored yet, so neither the version nor the hash can be established and both are null rather than invented. docs/game-data.md fixes a floor of 3.37.0 for STRICT tables, requires the hardened option set and no extension loading, and requires write-ahead logging with full synchronous durability and foreign keys on.",
     "version": null,

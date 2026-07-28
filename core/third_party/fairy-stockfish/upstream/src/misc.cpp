@@ -465,11 +465,14 @@ void* aligned_large_pages_alloc(size_t allocSize) {
 #endif
 
 
-/// aligned_large_pages_free() will free the previously allocated ttmem
+/// aligned_large_pages_free() will free the previously allocated ttmem. It
+/// returns false when the operating system refused to release the block, which
+/// leaks it: the pointer must not be reused, but the process stays alive so an
+/// embedding application can report the failure instead of being terminated.
 
 #if defined(_WIN32)
 
-void aligned_large_pages_free(void* mem) {
+bool aligned_large_pages_free(void* mem) {
 
   if (mem && !VirtualFree(mem, 0, MEM_RELEASE))
   {
@@ -477,14 +480,17 @@ void aligned_large_pages_free(void* mem) {
       std::cerr << "Failed to free large page memory. Error code: 0x"
                 << std::hex << err
                 << std::dec << std::endl;
-      exit(EXIT_FAILURE);
+      return false;
   }
+
+  return true;
 }
 
 #else
 
-void aligned_large_pages_free(void *mem) {
+bool aligned_large_pages_free(void *mem) {
   std_aligned_free(mem);
+  return true;
 }
 
 #endif

@@ -30,5 +30,5 @@
     "prefix_len": 4,
     "expect": "second occurrence; not yet claimable"
   },
-  "rationale": "Identical rook shuttle as mx-chs-001 but the pursued piece is a soldier, which the adopted rules exclude as a perpetual-chase target (as they exclude kings). The repetition is therefore neutral and claimable only. The Fairy-Stockfish AXF classifier is expected to fail this fixture because Mini Xiangqi soldiers are internally promoted from the start and AXF treats promoted soldiers as chaseable."
+  "rationale": "Identical rook shuttle as mx-chs-001 but the pursued piece is a soldier, which the adopted rules exclude as a perpetual-chase target (as they exclude kings). The repetition is therefore neutral and claimable only. The Fairy-Stockfish AXF classifier fails this fixture on its own, because Mini Xiangqi soldiers are internally promoted from the start and AXF treats promoted soldiers as chaseable; the fork's promotedSoldiersChaseable property is what excludes them, and this fixture is what holds it in place."
 }

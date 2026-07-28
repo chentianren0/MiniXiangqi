@@ -310,6 +310,21 @@ enum ChasingRule {
   NO_CHASING, AXF_CHASING
 };
 
+/// Which rule produced the result of Position::is_optional_game_end(). It is purely
+/// informational and never influences adjudication; it exists because the value alone
+/// collapses a neutral repetition, a mutual perpetual check and a mutual perpetual
+/// chase onto the same draw score.
+enum OptionalGameEndRule {
+  OPTIONAL_END_NONE,             // no optional game end
+  OPTIONAL_END_N_MOVE_RULE,      // 50/n-move rule
+  OPTIONAL_END_MOVE_REPETITION,  // Janggi position-repetition rule
+  OPTIONAL_END_PERPETUAL_CHECK,  // n-fold repetition decided by perpetual check
+  OPTIONAL_END_PERPETUAL_CHASE,  // n-fold repetition decided by perpetual chase
+  OPTIONAL_END_N_FOLD,           // n-fold repetition with no perpetual violation
+  OPTIONAL_END_COUNTING_RULE,    // makruk/ASEAN style counting rules
+  OPTIONAL_END_SITTUYIN_STALEMATE
+};
+
 enum EnclosingRule {
   NO_ENCLOSING, REVERSI, ATAXX, QUADWRANGLE, SNORT, ANYSIDE, TOP
 };
