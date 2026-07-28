@@ -126,6 +126,15 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure whole-game playing behavior, latency, memory, energy, and thermal behavior of the accepted 1-, 3-, and 5-second profiles on representative supported devices. Any retuning is an explicit later product decision rather than an automatic response to diagnostic NPS or depth.
 - Verify that the app remains functional when increased memory is unavailable and treats `os_proc_available_memory()` as changing advisory information rather than a target to consume.
+- Verify that backgrounding during a search cancels it and releases the transposition table, that returning re-probes memory and re-prepares before requesting a new search, that the committed game is unchanged throughout, and that a result from the cancelled search is rejected by the revision check rather than applied.
+- Verify that re-preparation on return can fail into the accepted insufficient-memory path, leaving the game saved and resumable with the AI unavailable.
+- Verify a foreground memory-pressure warning takes the same cancel-and-release path and never shrinks Hash in place.
+- Verify the preparation ordering prepare → resolve → create → search at each failure point: a preparation failure creates nothing and resolves no Random side; a persistence failure releases the prepared engine and creates nothing; and leaving mid-attempt invalidates it and prevents a late completion from committing.
+- Verify that an allocation failure at a budget of at least 256 MiB presents the accepted **无法启动 AI 对手** notice unchanged, that Retry re-probes and recalculates, and that no smaller Hash is substituted.
+- Verify that a missing or hash-mismatched network prevents the AI from starting with no fallback to a different evaluation, that the failure is detected during preparation rather than by the engine's own fatal path, and that Free Play, History, replay, import, and export still work.
+- Verify each platform's memory probe against the accepted budget boundaries on real hardware.
+- Verify the build fails rather than packaging when any hash in `pinned-inputs.json` does not match, and that the packaged engine artifact is the static library built from the pinned revision and flags.
+- Verify the target variant `minixiangqiaxf` and built-in `minixiangqi` can both be selected in one build, and that `EvalFile` is set explicitly rather than resolved from the variant identifier.
 
 ### UI, accessibility, sound, and haptics
 
