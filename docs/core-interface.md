@@ -1,6 +1,6 @@
 # Core C Interface
 
-This document is for engineers and reviewers implementing or consuming the shared core. It defines the core's complete C-visible surface: the module and function inventory, handle model, data-passing conventions, error taxonomy, threading contract, and versioning policy. It does not define Xiangqi rules, persistence schemas, archive serialization, engine search policy, UI behavior, implementation progress, or work tracking; those belong to the other contracts in this directory.
+This document is for engineers and reviewers implementing or consuming the shared core. It defines the core's complete C-visible surface: the module and function inventory, handle model, data-passing conventions, error taxonomy, threading contract, and versioning policy. It does not define Xiangqi rules, persistence schemas, archive serialization, engine search policy, or UI behavior, which belong to the other contracts in this directory, nor implementation progress or work tracking, which belong in GitHub Issues.
 
 > **Status: Accepted interface contract, version 1 shape.** The inventory, handle model, conventions, error taxonomy, threading contract, and versioning policy below are accepted as the implementation contract. Changes, including signature corrections discovered during implementation, go through ordinary reviewed contract changes. Items under **Need to discuss** are non-normative.
 

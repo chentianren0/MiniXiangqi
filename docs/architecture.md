@@ -33,7 +33,7 @@ Each frontend renders state, collects user intentions, and calls core operations
 - localization resources and accessibility integration;
 - platform services: storage location, file pickers, share/export surfaces, memory probes, and lifecycle events;
 - transient UI state such as selection, pre-start drafts, and confirmation flows;
-- the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game cross the C boundary in the pre-start draft at creation.
+- the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game are passed as arguments to game creation, where they are frozen into the game.
 
 Frontends must not reimplement rules, result classification, archive parsing, or library invariants, and must not reach around the core to its storage or the engine.
 
@@ -72,12 +72,12 @@ MiniXiangqi/
 └── docs/
 ```
 
-`fixtures/` stays at the root rather than under `core/`: it is the independent authority the core is validated against, and both the core's test runner and any future harness consume it.
+`fixtures/` stays at the root rather than under `core/`: it is the independent authority the core is validated against, not an implementation detail of the core it validates.
 
 - Relocating the existing Xcode project under `apple/` is authorized and should happen before core implementation begins, while the project is still the generated scaffold and the move can break nothing. It changes file locations and the project's references to them, and nothing else about the build.
 - Core tests must run on every development platform without a frontend, and they standardize on **one shared C++ test runner** rather than per-platform harnesses. The approved rules fixtures are the project's independent authority, so they must be executed by one harness producing identical results everywhere; two harnesses would make a discrepancy between them possible. Platform binding tests — the Swift and C# layers over the C interface — stay in each platform's native framework, because what they test is the binding rather than the core.
-- Long or large builds — engine binaries, core artifacts, multi-platform test runs — are recommended to run on GitHub Actions CI rather than only on developer machines. CI is a convenience, not a required gate, and must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests.
-- Builds run on developer machines until Windows implementation begins, since Windows cannot be built here at all and CI setup would otherwise block the first Apple work. When Windows begins, CI covers **both** a macOS runner and a Windows runner, so neither platform is ever reproducible only on one machine.
+- Builds run on developer machines while the project is Apple-only, since CI setup would otherwise block the first work and Windows cannot be built here at all. When Windows implementation begins, GitHub Actions CI covers **both** a macOS runner and a Windows runner, so neither platform is ever reproducible only on one machine.
+- CI must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests. It remains a convenience rather than a merge gate; what it guarantees is that every platform is buildable somewhere other than one developer's machine.
 
 ## Need to discuss
 
