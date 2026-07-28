@@ -1,0 +1,96 @@
+/* The common prelude's status helpers. Callable from any thread, including
+ * inside a search callback, and before mxq_core_init. */
+
+#include "mxq_internal.hpp"
+
+extern "C" {
+
+MxqStatus MXQ_CALL mxq_status_domain(MxqStatus status) {
+    /* The 1000-block the code belongs to. An unrecognised code still yields its
+     * block, which is what lets a frontend route an unknown code by domain. */
+    return (status / 1000) * 1000;
+}
+
+const char *MXQ_CALL mxq_status_name(MxqStatus status) {
+    switch (status) {
+    case MXQ_OK: return "MXQ_OK";
+
+    case MXQ_ERR_ARG_NULL: return "MXQ_ERR_ARG_NULL";
+    case MXQ_ERR_ARG_INVALID_HANDLE: return "MXQ_ERR_ARG_INVALID_HANDLE";
+    case MXQ_ERR_ARG_STRUCT_SIZE: return "MXQ_ERR_ARG_STRUCT_SIZE";
+    case MXQ_ERR_ARG_API_VERSION: return "MXQ_ERR_ARG_API_VERSION";
+    case MXQ_ERR_ARG_BUFFER_TOO_SMALL: return "MXQ_ERR_ARG_BUFFER_TOO_SMALL";
+    case MXQ_ERR_ARG_ENCODING: return "MXQ_ERR_ARG_ENCODING";
+    case MXQ_ERR_ARG_RANGE: return "MXQ_ERR_ARG_RANGE";
+    case MXQ_ERR_ARG_WRONG_THREAD: return "MXQ_ERR_ARG_WRONG_THREAD";
+    case MXQ_ERR_ARG_CONCURRENT_USE: return "MXQ_ERR_ARG_CONCURRENT_USE";
+    case MXQ_ERR_ARG_REENTRANT: return "MXQ_ERR_ARG_REENTRANT";
+
+    case MXQ_ERR_STATE_NOT_INITIALIZED: return "MXQ_ERR_STATE_NOT_INITIALIZED";
+    case MXQ_ERR_STATE_ALREADY_INITIALIZED: return "MXQ_ERR_STATE_ALREADY_INITIALIZED";
+    case MXQ_ERR_STATE_SHUTTING_DOWN: return "MXQ_ERR_STATE_SHUTTING_DOWN";
+    case MXQ_ERR_STATE_ACTIVE_GAME_EXISTS: return "MXQ_ERR_STATE_ACTIVE_GAME_EXISTS";
+    case MXQ_ERR_STATE_ACTIVE_GAME_MISSING: return "MXQ_ERR_STATE_ACTIVE_GAME_MISSING";
+    case MXQ_ERR_STATE_SESSION_READ_ONLY: return "MXQ_ERR_STATE_SESSION_READ_ONLY";
+    case MXQ_ERR_STATE_SESSION_ARCHIVED: return "MXQ_ERR_STATE_SESSION_ARCHIVED";
+    case MXQ_ERR_STATE_GAME_OVER: return "MXQ_ERR_STATE_GAME_OVER";
+    case MXQ_ERR_STATE_UNDO_UNAVAILABLE: return "MXQ_ERR_STATE_UNDO_UNAVAILABLE";
+    case MXQ_ERR_STATE_CLAIM_UNAVAILABLE: return "MXQ_ERR_STATE_CLAIM_UNAVAILABLE";
+    case MXQ_ERR_STATE_RESIGN_UNAVAILABLE: return "MXQ_ERR_STATE_RESIGN_UNAVAILABLE";
+    case MXQ_ERR_STATE_SEARCH_IN_PROGRESS: return "MXQ_ERR_STATE_SEARCH_IN_PROGRESS";
+    case MXQ_ERR_STATE_ENGINE_NOT_READY: return "MXQ_ERR_STATE_ENGINE_NOT_READY";
+
+    case MXQ_ERR_RULES_MALFORMED_MOVE: return "MXQ_ERR_RULES_MALFORMED_MOVE";
+    case MXQ_ERR_RULES_ILLEGAL_MOVE: return "MXQ_ERR_RULES_ILLEGAL_MOVE";
+    case MXQ_ERR_RULES_INVALID_FEN: return "MXQ_ERR_RULES_INVALID_FEN";
+    case MXQ_ERR_RULES_ILLEGAL_POSITION: return "MXQ_ERR_RULES_ILLEGAL_POSITION";
+    case MXQ_ERR_RULES_INVALID_HISTORY: return "MXQ_ERR_RULES_INVALID_HISTORY";
+
+    case MXQ_ERR_STORE_IO: return "MXQ_ERR_STORE_IO";
+    case MXQ_ERR_STORE_CORRUPT: return "MXQ_ERR_STORE_CORRUPT";
+    case MXQ_ERR_STORE_BUSY: return "MXQ_ERR_STORE_BUSY";
+    case MXQ_ERR_STORE_FULL: return "MXQ_ERR_STORE_FULL";
+    case MXQ_ERR_STORE_NOT_FOUND: return "MXQ_ERR_STORE_NOT_FOUND";
+    case MXQ_ERR_STORE_IDENTITY_CONFLICT: return "MXQ_ERR_STORE_IDENTITY_CONFLICT";
+    case MXQ_ERR_STORE_MIGRATION_FAILED: return "MXQ_ERR_STORE_MIGRATION_FAILED";
+    case MXQ_ERR_STORE_SCHEMA_TOO_NEW: return "MXQ_ERR_STORE_SCHEMA_TOO_NEW";
+
+    case MXQ_ERR_ARCHIVE_MALFORMED: return "MXQ_ERR_ARCHIVE_MALFORMED";
+    case MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION: return "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION";
+    case MXQ_ERR_ARCHIVE_TOO_LARGE: return "MXQ_ERR_ARCHIVE_TOO_LARGE";
+    case MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY: return "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY";
+    case MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH: return "MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH";
+
+    case MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY: return "MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY";
+    case MXQ_ERR_ENGINE_ASSET_MISSING: return "MXQ_ERR_ENGINE_ASSET_MISSING";
+    case MXQ_ERR_ENGINE_ASSET_MISMATCH: return "MXQ_ERR_ENGINE_ASSET_MISMATCH";
+    case MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED: return "MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED";
+    case MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED: return "MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED";
+    case MXQ_ERR_ENGINE_NO_MOVE: return "MXQ_ERR_ENGINE_NO_MOVE";
+    case MXQ_ERR_ENGINE_ILLEGAL_RESULT: return "MXQ_ERR_ENGINE_ILLEGAL_RESULT";
+    case MXQ_ERR_ENGINE_FAULTED: return "MXQ_ERR_ENGINE_FAULTED";
+
+    case MXQ_ERR_RESOURCE_ALLOCATION_FAILED: return "MXQ_ERR_RESOURCE_ALLOCATION_FAILED";
+    case MXQ_ERR_RESOURCE_LIMIT_EXCEEDED: return "MXQ_ERR_RESOURCE_LIMIT_EXCEEDED";
+
+    case MXQ_ERR_INTERNAL_INVARIANT: return "MXQ_ERR_INTERNAL_INVARIANT";
+
+    default: break;
+    }
+
+    /* An unknown code within a known domain, which frontends must tolerate. The
+     * returned pointer is still an immortal literal. */
+    switch (mxq_status_domain(status)) {
+    case MXQ_DOMAIN_ARGUMENT: return "MXQ_DOMAIN_ARGUMENT(unknown)";
+    case MXQ_DOMAIN_STATE:    return "MXQ_DOMAIN_STATE(unknown)";
+    case MXQ_DOMAIN_RULES:    return "MXQ_DOMAIN_RULES(unknown)";
+    case MXQ_DOMAIN_STORE:    return "MXQ_DOMAIN_STORE(unknown)";
+    case MXQ_DOMAIN_ARCHIVE:  return "MXQ_DOMAIN_ARCHIVE(unknown)";
+    case MXQ_DOMAIN_ENGINE:   return "MXQ_DOMAIN_ENGINE(unknown)";
+    case MXQ_DOMAIN_RESOURCE: return "MXQ_DOMAIN_RESOURCE(unknown)";
+    case MXQ_DOMAIN_INTERNAL: return "MXQ_DOMAIN_INTERNAL(unknown)";
+    default:                  return "MXQ_STATUS(unknown)";
+    }
+}
+
+} /* extern "C" */
