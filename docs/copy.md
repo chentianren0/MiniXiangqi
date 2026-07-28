@@ -1,0 +1,261 @@
+# Copy
+
+This document is for UI engineers, designers, testers, and anyone who reviews or changes what the application says. It owns every user-facing string pair — the normative Simplified Chinese and its approved English — the symbolic key each pair is stored under, the vocabulary that is never translated, and the localization process. It does not own where a string appears, when it appears, or the behavior it describes; each of those belongs to the contract named beside the row.
+
+> **Status: Accepted bilingual copy contract**
+>
+> The Simplified Chinese here is normative and exact. The English counterparts are approved. Strings also appear inline in other contracts where behavior is described, and that is deliberate — a contract has to be readable on its own — but **this table is the string of record for the pair and for the key**, and a difference between a row here and a quotation elsewhere is resolved in favour of the row. A row marked *(proposed)* is not accepted and is listed again under **Need to discuss**, which is explicitly non-normative.
+
+## How to read the table
+
+- **Key** is the symbolic key the string is stored under in the String Catalog. Keys are hierarchical and stable: a key survives a wording change in either language, and it is the join between this contract and the build artefact. A key is never the source string.
+- **中文** is normative. It is what a reviewer approves and what a translator translates from.
+- **English** is approved, and is a translation of the Chinese rather than a second source.
+- **Surface** is what the string is presented as, because the same words are written differently on a button, in an alert title, and in an accessibility label.
+- **Source** names the contract section that owns the behavior, and, where the string is already live, the file it is live in. Every Chinese string below exists in a contract or in `apple/MiniXiangqi/` today, except where the Source column says otherwise.
+
+Contract sections are cited by document and section name rather than by line number, so that the citation survives an edit above it.
+
+## The string table
+
+### Navigation and modes
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `nav.play` | 对局 | Play | navigation destination | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there |
+| `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
+| `nav.settings` | 设置 | Settings | navigation destination | same; 设置 is attested inside 本局设置 and 人机对弈默认设置 |
+| `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
+| `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes |
+| `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
+
+### Controls
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift`, `Play/ResultNotice.swift` |
+| `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
+| `control.flipBoard` | 翻转棋盘 | Flip Board | button; accessibility label | [interaction-design.md](interaction-design.md) § Play controls, § Board orientation; `Play/PlayScreen.swift` |
+| `control.resign` | 认输 | Resign | button | [interaction-design.md](interaction-design.md) § Play controls |
+| `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `control.newGame` | 开始新对局 | New Game | button | `Play/PlayScreen.swift`, `Play/ResultNotice.swift` — the concluding action until History exists |
+| `control.endGame` | 结束对局 | End Game | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |
+| `control.tryAgain` | 重试 | Try Again | alert button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode |
+| `control.saveAndContinue` | 保存并继续 | Save and Continue | alert button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Games and history |
+| `control.keepPlaying` | 继续对局 | Keep Playing | alert button | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
+| `control.endAsDraw` | 以和棋结束 | End as a Draw | alert button | same |
+| `control.share` | 共享 | Share | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
+| `control.delete` | 删除 | Delete | swipe action; alert button | [interaction-design.md](interaction-design.md) § History library |
+| `control.pin` | 置顶 | Pin | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
+| `control.unpin` | 取消置顶 | Unpin | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
+
+### Turn status
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `status.redToMove` | 轮到红方 | Red to Move | status line | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` |
+| `status.blackToMove` | 轮到黑方 | Black to Move | status line | same |
+| `status.check` | 将军 | Check | status token | [interaction-design.md](interaction-design.md) § Turn status, § Game-state markers; `Play/TurnStatus.swift` |
+| `status.sideToMove.checked` | `%1$@　%2$@` | `%1$@ %2$@` | status-line format | `Play/TurnStatus.swift` — the separator is an ideographic space in Chinese and an ordinary space in English |
+| `status.drawAvailable` | 可判和 | Draw Available | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Claimable threefold repetition; `Play/TurnStatus.swift` |
+| `status.controller.you` | 你 | You | secondary label | [interaction-design.md](interaction-design.md) § Turn status |
+| `status.controller.ai` | AI | AI | secondary label | same — identical in both languages |
+| `status.redWins` | 红方胜 | Red Wins | status line | `Play/TurnStatus.swift` |
+| `status.blackWins` | 黑方胜 | Black Wins | status line | same |
+| `status.draw` | 和局 | Draw | status line | same |
+| `status.saveFailed` | 无法保存这一步，请重试。 | Couldn't save that move. Please try again. | transient capsule at the turn status | [interaction-design.md](interaction-design.md) § Game-state markers, § Move input |
+
+### Result notice
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `result.redWins` | 红方获胜 | Red Wins | notice title | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
+| `result.blackWins` | 黑方获胜 | Black Wins | notice title | same |
+| `result.draw` | 和棋 | Draw | notice title | same |
+| `result.recorded` | 已记录到历史 | Saved to History | notice title after the concluding action | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `result.announcement` | `%1$@，%2$@` | `%1$@, %2$@` | VoiceOver announcement format | `Play/ResultNotice.swift` — the separator is an ideographic comma in Chinese and a comma-space in English |
+
+### Result reasons
+
+One vocabulary, used by the result notice's second line, the turn status, the History row, and the save-and-continue metadata. Each row corresponds to an `end_reason` value frozen in [game-data.md](game-data.md).
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `reason.checkmate` | 将死 | Checkmate | reason line; metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `Play/TurnStatus.swift` |
+| `reason.stalemate` | 困毙 | Stalemate | reason line; metadata token | `Play/TurnStatus.swift` |
+| `reason.threefoldRepetition` | 三次重复 | Threefold Repetition | reason line; metadata token | same |
+| `reason.perpetualCheck` | 长将 | Perpetual Check | reason line; metadata token | same |
+| `reason.perpetualChase` | 长捉 | Perpetual Chase | reason line; metadata token | same |
+| `reason.mutualPerpetualCheck` | 双方长将 | Mutual Perpetual Check | reason line; metadata token | same |
+| `reason.mutualPerpetualChase` | 双方长捉 | Mutual Perpetual Chase | reason line; metadata token | same |
+| `reason.resignation` | 认输 | Resignation | reason line; metadata token | same |
+| `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token | same |
+
+**Stalemate is kept deliberately.** It is the standard English Xiangqi term, the notice title has already named the winner, and the Help stage owes the statement that having no legal move loses in Xiangqi. The English word's chess sense is corrected by the surface it appears on rather than by renaming the reason.
+
+### Alerts
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `alert.resign.title` | 认输？ | Resign? | alert title | [interaction-design.md](interaction-design.md) § Play controls |
+| `alert.resign.message` | 认输后本局将记为你落败。 | Resigning records this game as your loss. | alert message | same |
+| `alert.claimDraw.title` | 局面已三次重复 | This position has occurred three times. | alert title | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
+| `alert.claimDraw.message` | 可以和棋结束。 | You can end the game as a draw. | alert message | same |
+| `alert.newGame.title` | 开始新对局？ | Start a new game? | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
+| `alert.newGame.metadataHeader` | 当前对局 | Current Game | metadata header | same |
+| `alert.newGame.message` | 这盘对局将按当前状态保存到历史。 | This game will be saved to History as it is now. | alert message | same |
+| `alert.saveFailed.title` | 无法保存对局 | Couldn't Save the Game | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode, § Move input |
+| `alert.saveFailed.message` | 当前对局仍然保留。请重试。 | The current game is unchanged. Please try again. | alert message | same |
+| `alert.aiUnavailable.title` | 无法启动 AI 对手 | Couldn't Start the AI Opponent | alert title | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play; [engine-integration.md](engine-integration.md) |
+| `alert.aiUnavailable.message` | 当前可用内存不足。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. Please close some other apps, then try again. | alert message | same |
+| `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
+| `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
+
+`alert.claimDraw.title` and `alert.claimDraw.message` together preserve the accepted sentence 局面已三次重复，可以和棋结束。 The split into title and message is the accepted presentation; neither half is a new decision, and the pair must not be recombined into a single title.
+
+`alert.deleteGame.message` says *recovered* rather than *undone* on purpose: the application has a visible Undo control that means something else, and the target MVP has no deletion Undo.
+
+### Failure screens
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `failure.coreDidNotStart` | 核心未能启动 | The core did not start | unavailable-content title | `ContentView.swift` — English shipped; the Chinese source is supplied here |
+| `failure.gameDidNotStart` | 对局未能开始 | The game did not start | unavailable-content title | `Play/PlayScreen.swift` — same |
+
+Both screens carry a technical description beneath the title. That description is diagnostic text from the core, not copy, and is not localized.
+
+### Pre-start setup
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `setup.thisGame` | 本局设置 | This Game | control-group header | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `setup.iMoveFirst` | 我先手 | I Move First | option | same; [product.md](product.md) § Target-MVP play modes |
+| `setup.aiMovesFirst` | AI 先手 | AI Moves First | option | same |
+| `setup.random` | 随机 | Random | option | same |
+| `setup.aiLevel` | AI 等级 | AI Level | row label | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `setup.level.fast` | 快速 | Fast | option | same; [product.md](product.md) § Target-MVP play modes; [engine-integration.md](engine-integration.md) |
+| `setup.level.standard` | 标准 | Standard | option | same |
+| `setup.level.deep` | 深思 | Deep | option | same |
+| `setup.freePlayExplanation` | 你将控制红黑双方，红方先行。 | You control both Red and Black. Red moves first. | explanatory line | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+
+### Settings
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group label | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `settings.defaults.firstMover` | 默认先后手 | Default First Mover | row label | same |
+| `settings.defaults.aiLevel` | 默认 AI 等级 | Default AI Level | row label | same |
+| `settings.confirmBeforeDeleting` | 删除前确认 | Confirm Before Deleting | toggle label | [interaction-design.md](interaction-design.md) § History library; [product.md](product.md) § Product navigation |
+| `settings.pieces.group` | 棋子 | Pieces | group label | this contract — the group has no label in either language elsewhere; its options are fixed in [interaction-design.md](interaction-design.md) § Piece styles, § Piece symbols |
+| `settings.pieces.style` | 样式 | Style | row label | same |
+| `settings.pieces.symbols` | 符号 | Symbols | row label | same |
+| `settings.pieces.footer` | 棋子样式同时决定棋盘的配色。 | The piece style also sets the board colors. | group footer | this contract; the behavior it states is fixed in [interaction-design.md](interaction-design.md) § Piece styles |
+| `settings.pieces.style.traditional` | 传统 | Traditional | option | [interaction-design.md](interaction-design.md) § Piece styles |
+| `settings.pieces.style.modern` | 现代 | Modern | option | same |
+| `settings.pieces.style.highContrast` | 高对比度 | High Contrast | option | same |
+| `settings.pieces.symbols.characters` | 汉字 | Chinese Characters | option | [interaction-design.md](interaction-design.md) § Piece symbols |
+| `settings.pieces.symbols.icons` | 图标 | Icons | option | same |
+
+The footer states only that the piece style carries the board colors. It says nothing about Increase Contrast: honoring that setting is systemwide behavior fixed in [interaction-design.md](interaction-design.md) § Platform visual language, and a footer is the wrong place to promise it.
+
+### Game metadata
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `metadata.youRed` | 你执红 | You: Red | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
+| `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show |
+| `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
+| `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same |
+| `metadata.join` | `%1$@ · %2$@` | `%1$@ · %2$@` | metadata-line format | same; `Play/TurnStatus.swift` |
+
+`metadata.moveCount` is a plural pattern in English and a literal in Chinese: 步 is invariant, *move* is not, and a one-ply game is reachable in Free Play. English *move* counts one player's move, mirroring the number the Chinese shows; Help defines the term, and that definition is owed by the Help stage.
+
+`metadata.join` composes the accepted metadata lines — 人机对弈 · 你执红, 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步, 进行中 · 可判和 · 42 步 — and is applied repeatedly rather than once per line length. The middot and its surrounding spaces are the same in both languages.
+
+### Board accessibility
+
+The point description is composed from the square name, then the vocabulary below in the order the board contract gives.
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `board.a11y.red` | 红 | Red | accessibility label | `Board/BoardView.swift` |
+| `board.a11y.black` | 黑 | Black | accessibility label | same |
+| `board.a11y.empty` | 空 | Empty | accessibility label | same |
+| `board.a11y.selected` | 已选择 | Selected | accessibility label | same |
+| `board.a11y.legalMove` | 可走 | Legal Move | accessibility label | same |
+| `board.a11y.capture` | 可吃 | Capture | accessibility label | same |
+| `board.a11y.inCheck` | 被将军 | In Check | accessibility label | same |
+
+### Piece names
+
+English piece names are accepted in [interaction-design.md](interaction-design.md) § Piece representation. They are recorded here because they are the English half of a pair: where an accessibility label or a line of Help names a piece, Chinese names it by the character the piece carries and English names it by its name. They are never board labels in either language.
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `piece.general` | 帅 (red) / 将 (black) | General | help text; accessibility label | [interaction-design.md](interaction-design.md) § Piece representation; `Board/Board.swift` |
+| `piece.chariot` | 俥 / 车 | Chariot | help text; accessibility label | same |
+| `piece.horse` | 傌 / 马 | Horse | help text; accessibility label | same |
+| `piece.cannon` | 炮 / 砲 | Cannon | help text; accessibility label | same |
+| `piece.soldier` | 兵 / 卒 | Soldier | help text; accessibility label | same |
+
+### Move list and application
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `moveList.rowNumber` | `%lld.` | `%lld.` | move-list row number | `Play/MoveList.swift` — numerals and a full stop; no word is translated |
+| `app.displayName` | Mini Xiangqi | Mini Xiangqi | application name | [product.md](product.md) § Product identity and distribution; `apple/MiniXiangqi.xcodeproj` — one name in both languages for now, and open below |
+
+## Where the two languages deliberately do not match one to one
+
+These are decisions, not oversights, and a mechanical one-to-one check will flag them.
+
+- **Two Chinese result forms share one English form.** The notice titles 红方获胜 / 黑方获胜 / 和棋 and the shorter status-line forms 红方胜 / 黑方胜 / 和局 are two registers in Chinese — a sentence about the game and a line about the turn — and both take Red Wins / Black Wins / Draw in English. English has no equivalent register difference short enough for the status line, and inventing one would make the two surfaces disagree about the same result.
+- **One Chinese string takes two English words.** 认输 is the control (`control.resign`, **Resign**) and the recorded reason (`reason.resignation`, **Resignation**). The Chinese is the same word acting as verb and as noun; English is not.
+- **The claim's action and its state stay apart in both languages.** 判和 is the control (**Claim Draw**); 可判和 is the state (**Draw Available**). Chinese already distinguishes them and English follows.
+- **The accessibility representation switches with the language.** Chinese names a piece by the character on it — 帅, 炮 — because that is what the board shows and what the reader is learning. English names it by its piece name, never by the character, per the accepted piece-representation rule. So `b1 红 炮 已选择` is `b1 Red Cannon Selected` and not `b1 Red 炮 Selected`.
+- **请 is mirrored, not dropped.** Where the Chinese says 请, the English says *Please* — in `status.saveFailed`, `alert.saveFailed.message`, and `alert.aiUnavailable.message`. The English is a translation of the Chinese and says neither more nor less than it does.
+
+## Never translated
+
+Game content is identical in every supported language. It is not copy, it carries no key, and it never enters the String Catalog.
+
+- **The ten piece characters** — 帅 将 俥 车 傌 马 炮 砲 兵 卒. Fixed in [interaction-design.md](interaction-design.md) § Piece representation: the pieces are Chinese characters, this is a teaching application, and the board presents the real characters rather than a translated substitute.
+- **The notation direction and position tokens** — 进, 退, 平, and the leading 前, 中, 后 — and the numbered forms that replace them when four or more pieces of a type share a file: 一兵, 二兵, and so on. Fixed in [interaction-design.md](interaction-design.md) § User-visible notation, which also fixes that a piece is named in a move by its own side's character form.
+- **The Chinese numerals in notation and in the file-numeral strip** — 一 二 三 四 五 六 七. Red writes every number in a move in Chinese numerals and Black in Arabic ones, and the numeral strips show each player their own. Fixed in [interaction-design.md](interaction-design.md) § User-visible notation.
+- **Pictorial piece icons**, when that symbol set is selected. They are game presentation and do not change with the interface language, per [interaction-design.md](interaction-design.md) § Piece symbols.
+
+A reader using icon symbols still reads a character-based move list, because traditional notation names pieces by their characters. What else that reader is offered remains open in [interaction-design.md](interaction-design.md) § Need to discuss.
+
+## The localization process
+
+1. **Both languages are complete before a string ships.** A String Catalog carries a `zh-Hans` and an `en` entry for every key in the table above. A key with one language filled in is an incomplete string, not a partially localized one.
+2. **Keys are symbolic, never the source string.** Xcode's default is source-string-as-key; it is wrong here, because the source language is Chinese, a Chinese key is unreadable to an English reviewer, and a wording change in the normative Chinese would silently orphan its translation. The key is the join between this contract and the catalog, and it is what makes a copy change reviewable as a copy change.
+3. **`developmentRegion` stays `en`.** Chinese normativity is a property of this contract, not of an Xcode setting: the build's development region governs how Xcode and the platform treat the project, and changing it would buy nothing that this document does not already state. (Owner decision, 2026-07-28.)
+4. **Every copy change is a contract change.** A new string, a reworded string, or a retired key is a pull request against this file, reviewed as a contract is reviewed. The catalog follows the contract; the contract never follows the catalog.
+5. **Nothing machine-translated ships as accepted.** A translation carrying Xcode's Machine Translated state — XLIFF `state-qualifier` `leveraged-mt` — is a draft. Acceptance happens in this table.
+6. **Per internal build, two mechanical runs and one human pass.** Run the application under the Double-Length and Bounded String pseudolanguages and confirm nothing truncates and nothing intersects the board block; then run the accepted smoke flows in both Simplified Chinese and English, switching with the system's per-app language setting.
+7. **Native-speaker review is TestFlight internal testing.** Apple's own recommendation for reviewing localized copy is to put the build in front of native speakers, and internal distribution already does exactly that. There is no separate reviewer role and no XLIFF round trip: with one reviewer per language, a hand-off buys ceremony rather than scrutiny.
+8. **A mechanical agreement check joins CI when CI exists.** One check that this table and the String Catalog agree in both languages — the same key set, the same values, and no user-facing key in the catalog that is absent here. It needs no second human, and it is the evidence [testing.md](testing.md) asks for.
+
+## Implementation notes
+
+These are consequences for the code, recorded here so that the later localization pull request inherits them rather than rediscovering them.
+
+- **The accessibility representation switch needs a mapping the code does not have.** `Board/BoardView.swift` builds a point's label from the piece's *character*, which is correct in Chinese and wrong in English. The English label uses the piece name, so the code needs a piece-kind-to-localized-name mapping beside the existing kind-to-character one. `b1 红 炮 已选择` becomes `b1 Red Cannon Selected`.
+- **Every composed string becomes a localized format string.** Three exist today and each is currently built by concatenation: the result announcement's ideographic comma in `Play/ResultNotice.swift`, the ideographic space before 将军 in `Play/TurnStatus.swift`, and the ` · ` metadata join in the same file. Their separators differ between the languages and cannot be hard-coded around a translated fragment.
+- **The claim alert splits into a title and a message.** Today the whole sentence is the alert title in `Play/PlayScreen.swift`. `alert.claimDraw.title` and `alert.claimDraw.message` are separate keys and separate alert roles.
+- **The three cluster buttons need accessibility identifiers.** `PlayScreenUITests` finds 悔棋, 判和, and 翻转棋盘 by their labels. A label is copy and will change with the language; an identifier will not. The identifiers go in before localization, not after it breaks the suite.
+- **The two failure screens gain Chinese sources.** `ContentView.swift` and `Play/PlayScreen.swift` carry English literals with no Chinese behind them. `failure.coreDidNotStart` and `failure.gameDidNotStart` supply it.
+- **`metadata.moveCount` is a plural pattern**, authored with the String Catalog's plural variants rather than as a literal with a number interpolated into it.
+- **One code comment still carries the pre-rename style name.** `Board/BoardStyle.swift` says 高对比 where the contract now says 高对比度; the rename rides along with the next change to that file.
+
+## Need to discuss
+
+> The items below are questions, not requirements or implementation authorization.
+
+- Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
+- Supply copy for the surfaces that have no accepted string in either language yet, as each is designed: the sound and haptics toggles, the Help entry point and its contents, Import and Export, the replay transport controls and their autoplay speeds, the History row's date and move-count formatting, and the import, duplicate, conflict, and error messages that [interaction-design.md](interaction-design.md) leaves to be designed.
+- Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.

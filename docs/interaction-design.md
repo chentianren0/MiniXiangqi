@@ -83,7 +83,7 @@ A style covers the disc, its resting shadow, and **the board surface beneath it*
 
 - **传统** — the default. Both sides use the same warm light disc face, as a physical set does, with the symbols themselves in the Red and Black role colours. The Black disc additionally carries a heavier ring, so a second non-colour channel is always present. A soft resting shadow seats the disc on a warm low-chroma board surface.
 - **现代** — each disc is filled with a single strong colour, Red or Black, with a white ring inset within the disc and the symbol in white. It is flat, with no resting shadow, on a clean neutral board surface.
-- **高对比** — Red is a filled disc with the symbol reversed out of it; Black is an outlined disc on a neutral face with a heavier ring. Structure and luminance carry the side as strongly as possible, for low-vision use. It is flat, so edges stay crisp, on a board surface tuned for maximum separation from both discs.
+- **高对比度** — Red is a filled disc with the symbol reversed out of it; Black is an outlined disc on a neutral face with a heavier ring. Structure and luminance carry the side as strongly as possible, for low-vision use. It is flat, so edges stay crisp, on a board surface tuned for maximum separation from both discs.
 
 Each style therefore defines its own resting shadow, and there is no separate shadow setting. A resting shadow is presentation only: no style may rely on it to satisfy a contrast requirement, every requirement below must hold with the shadow removed, and resting shadows are reduced under Increase Contrast.
 
@@ -94,7 +94,7 @@ Every style must satisfy these, verifiable rather than aesthetic. They must hold
 - **The sides stay distinguishable when hue is removed.** Each style names the channel that carries the side once the symbols no longer do, which is the case whenever icon symbols are selected, and that channel is structural or luminance-based rather than hue-based:
   - by disc fill, in 现代 — the two fills reach at least 3:1 against each other;
   - by ring weight, in 传统 — the heavier ring is at least twice the width of the lighter, and each ring reaches at least 3:1 against its own disc face;
-  - by construction, in 高对比 — filled against outlined is itself structural and needs no further threshold.
+  - by construction, in 高对比度 — filled against outlined is itself structural and needs no further threshold.
 - **The symbol reaches at least 4.5:1 against its own disc face**, whether it is a character or an icon.
 - **The disc's boundary — its ring or edge stroke — reaches at least 3:1 against the style's own board surface**, measured against that base surface rather than against a grid line, and at a point away from any board marking. The requirement is on the boundary rather than on the fill: a light disc on a light board is a legitimate traditional look, and what separates it is its edge.
 - All of the above hold with resting shadows removed, in light and dark appearance, under Increase Contrast, and with either symbol set selected.
@@ -134,7 +134,7 @@ The board core is `7 p` square: seven points, plus the half-cell margin on each 
 
 Three rules govern the space around a point. They are what allow one marker vocabulary to work on every piece style at every board size, and they are stated as relationships because relationships are what a reviewer can check.
 
-- **Style decoration stays inside the disc; markers stay outside it.** On an occupied point, no game-state marker's ink touches the disc face, measured against the disc at its largest — a selected disc is scaled, and the rule holds at that size too. The air gap this leaves is what keeps a marker legible against 传统's heavier Black ring, 现代's white inset ring, and 高对比's outlined disc alike, and it is why the choice of characters or icons never affects a marker. Three markers are outside the rule because no disc is present to clear: the legal-destination dot and the drag-origin marker, which belong to empty points, and the pointer hover fill, which is drawn beneath the pieces.
+- **Style decoration stays inside the disc; markers stay outside it.** On an occupied point, no game-state marker's ink touches the disc face, measured against the disc at its largest — a selected disc is scaled, and the rule holds at that size too. The air gap this leaves is what keeps a marker legible against 传统's heavier Black ring, 现代's white inset ring, and 高对比度's outlined disc alike, and it is why the choice of characters or icons never affects a marker. Three markers are outside the rule because no disc is present to clear: the legal-destination dot and the drag-origin marker, which belong to empty points, and the pointer hover fill, which is drawn beneath the pieces.
 - **Every marker stays inside its own cell.** A marker belonging to a point is contained within that point's `1 p` by `1 p` cell, at rest and throughout every animation, including the selection lift and any strengthening during a drag. Markers on adjacent points therefore cannot collide, in any position, without the pairing having to be checked case by case. The accepted half-cell margin is the same distance, so the outermost points' markers are contained by the margin and never reach the coordinates outside it. Where a marker would grow beyond the cell it grows inward instead. A dragged piece is the one exception, and only while it is dragged: it has detached from the grid and follows the touch across the board, so it belongs to no point.
 - **Markers are never drawn in the Red or Black role colours**, which belong to the sides. Each style defines one **marker ink** per appearance, used at two strengths: **active ink**, at a contrast of at least 4.5:1, for selection, legal destinations, captures, check, and focus; and **record ink**, the same hue at reduced strength and at least 3:1, for the last move and the drag origin. Both are measured against that style's own board surface and against the pointer hover fill composited over it, with shadows excluded. Increase Contrast promotes record ink to active-ink values. Because every game-state marker is carried by luminance and shape rather than by hue, the board under Differentiate Without Color is identical to the board without it; the keyboard focus ring, which carries hue, is a platform affordance and never a game state.
 
@@ -458,6 +458,8 @@ The interaction design must consider:
 
 The supported languages are Simplified Chinese and English. Simplified Chinese is the source language: the accepted user-facing copy in this document is normative, and its English counterparts are translations of it.
 
+Every string pair, the symbolic key it is stored under, and the localization process live in [copy.md](copy.md), which is the string of record: the strings quoted throughout this document describe behavior, and where a quotation and a row disagree, the row is the copy.
+
 The app follows the language the operating system selects for it and offers no interface-language control of its own, per the Settings scope in [product.md](product.md). On Apple platforms the system's per-app language setting is the place a user changes it; on Windows the app follows the system's language preference list.
 
 The interface must be designed for localization. User-facing text must not be embedded in visual assets, and layouts must tolerate different text lengths. Terminology for Xiangqi pieces, rules, results, and controls must be consistent within each supported language.
@@ -535,8 +537,5 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Define the sound events, sound design, and platform differences behind the accepted sound toggle.
 - Define the haptic events behind the accepted haptics toggle.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
-- Approve the English counterparts of every accepted Chinese string in this document. The accepted copy is Chinese and exact; no English equivalent has been approved, so an English build is not yet fully specified.
-- Define the English Xiangqi terminology beyond the accepted piece names, and the localization review process.
-- Decide whether the piece-style and piece-symbol names are user-facing interface strings or internal design names, and approve their wording if they are user-facing.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
