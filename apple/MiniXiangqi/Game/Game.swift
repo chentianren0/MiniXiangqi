@@ -28,6 +28,11 @@ final class Game {
     /// is a bug in this app or a packaging failure, never a rules outcome.
     private(set) var failure: CoreError?
 
+    /// Whether the player has claimed the draw the core offered. The claim is
+    /// the player's, not the core's: a neutral threefold repetition leaves the
+    /// game running until somebody ends it.
+    private(set) var claimedDraw = false
+
     var selected: Square?
     var flipped = false
 
@@ -68,10 +73,28 @@ final class Game {
         return nil
     }
 
+    // MARK: - Result
+
+    /// Over one way or the other: adjudicated by the core, or claimed by the
+    /// player. Both stop input; only one of them can be taken back.
+    var isFinished: Bool { evaluation.isOver || claimedDraw }
+
+    /// The result to present. A claimed draw is a draw whatever the core still
+    /// calls the position, and it needs no separate reason: the reason the core
+    /// already reports is the one the claim was available for.
+    var presentedState: GameState { claimedDraw ? .draw : evaluation.state }
+
+    /// docs/interaction-design.md, "Undo and result confirmation": Free Play
+    /// removes one move per action and can repeat back to the initial position,
+    /// and a natural result stays undoable while its presentation is
+    /// unconfirmed. A claimed draw is not a natural result — the player
+    /// confirmed it — so it is the one finish this cannot walk back.
+    var canUndo: Bool { !moves.isEmpty && !claimedDraw && failure == nil }
+
     // MARK: - Input
 
     func tap(_ square: Square) {
-        guard !evaluation.isOver else { return }
+        guard !isFinished else { return }
 
         if square == selected {
             selected = nil
@@ -90,6 +113,38 @@ final class Game {
         // An illegal tap moves nothing and keeps the selection, so the
         // correction is one tap away. Its feedback — the legal destinations
         // pulsing once — is still to come.
+    }
+
+    /// Takes back one ply. The shortened history is evaluated before anything
+    /// is committed, so an Undo the core cannot complete does not happen: the
+    /// game stays exactly at the pre-action state and the failure is shown.
+    func undo() {
+        guard canUndo else { return }
+        let shortened = Array(moves.dropLast())
+        do {
+            let evaluation = try core.evaluate(from: startFEN, moves: shortened)
+            moves = shortened
+            notation.removeLast()
+            self.evaluation = evaluation
+            placement = Placement(fen: evaluation.fen)
+            // The brackets always mark the move that produced the position on
+            // screen, so an Undo moves them to the move that is now last, and
+            // an initial position carries none.
+            lastMove = shortened.last.flatMap { Move(text: $0) }
+            selected = nil
+            refreshLegalMoves()
+        } catch {
+            failure = CoreError(wrapping: error)
+        }
+    }
+
+    /// Ends the game as a draw on the repetition the core is offering. Only the
+    /// core decides whether the claim exists; this decides nothing but that the
+    /// player took it.
+    func claimDraw() {
+        guard evaluation.claimAvailable, !claimedDraw else { return }
+        claimedDraw = true
+        selected = nil
     }
 
     private func play(_ move: Move) {
@@ -119,3 +174,30 @@ final class Game {
         }
     }
 }
+
+#if DEBUG
+/// A move a replay line asked for and the core will not play.
+private struct RefusedReplayMove: Error, CustomStringConvertible {
+    var text: String
+    var description: String { "the replay line's move \(text) is not legal here" }
+}
+
+extension Game {
+    /// Plays a recorded line before the game is first shown, so a UI test can
+    /// start from a position that would otherwise take a dozen clicks to reach.
+    /// It goes through the same path a person's move does — nothing here knows
+    /// a rule the core has not been asked. A refused move is a bug in the line
+    /// rather than a rules outcome, so it is raised rather than skipped.
+    ///
+    /// Debug only: it is a test affordance, not a product one.
+    func replay(_ line: [String]) throws {
+        for text in line {
+            guard let move = Move(text: text), legalMoves.contains(move) else {
+                throw CoreError(wrapping: RefusedReplayMove(text: text))
+            }
+            play(move)
+            if let failure { throw failure }
+        }
+    }
+}
+#endif

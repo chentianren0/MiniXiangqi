@@ -28,6 +28,7 @@ struct TurnStatus: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("turn-status")
     }
 
     private var primaryLine: String {
@@ -45,13 +46,18 @@ struct TurnStatus: View {
     private var secondary: String? {
         switch state {
         case .ongoing: nil
-        case .claimableDraw: "可判和 · " + describe(reason)
-        default: describe(reason)
+        case .claimableDraw: "可判和 · " + reason.text
+        default: reason.text
         }
     }
+}
 
-    private func describe(_ reason: EndReason) -> String {
-        switch reason {
+extension EndReason {
+    /// How a result reads. One home for the vocabulary, because the status line
+    /// and the result notice say the same thing about the same position and a
+    /// second copy of these strings is a second thing to keep in step.
+    var text: String {
+        switch self {
         case .checkmate: "将死"
         case .stalemate: "困毙"
         case .threefoldRepetition: "三次重复"

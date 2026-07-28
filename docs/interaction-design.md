@@ -35,13 +35,13 @@ Each platform uses its own current native visual system rather than an imitation
 - Visual effects must not make controls, state, focus, or text harder to perceive.
 - The board, pieces, and game-state markers form one shared visual identity across platforms; only the surrounding functional chrome is platform-specific.
 
-**Where glass may appear.** Custom glass belongs to the functional layer — the play controls and the replay transport — and is used sparingly rather than maximised. System-provided glass in the tab bar or sidebar, navigation bar and toolbar, alerts, sheets, context menus and History swipe actions is additional and automatic.
+**Where glass may appear.** Custom glass belongs to the functional layer — the play controls, the result notice, and the replay transport — and is used sparingly rather than maximised. System-provided glass in the tab bar or sidebar, navigation bar and toolbar, alerts, sheets, context menus and History swipe actions is additional and automatic.
 
-**Where it may not.** No **resident** surface may intersect the **board block**: the board core, which already includes the half-cell margin, together with the file-numeral strips. A **user-summoned transient** surface may cover the board — a sheet the player asked for is expected to hide what is behind it while it is up, because they requested it and they dismiss it. The natural-result card is neither resident nor summoned: it is non-dismissible and nobody asked for it, so the accepted rule that the final board stays fully visible continues to apply to it. Nothing in the content layer takes glass — the board surface, grid, palace diagonals, numerals, discs, symbols, and every game-state marker are drawn directly. The board's own background is a flat fill rather than a system material, because a translucent board would let whatever is behind the window shift the colour a player reads a piece by.
+**Where it may not.** No **resident** surface may intersect the **board block**: the board core, which already includes the half-cell margin, together with the file-numeral strips. A **transient** surface may cover the board — a sheet the player asked for is expected to hide what is behind it while it is up, because they requested it and they dismiss it. The natural-result notice is a transient the player did not ask for, and it is dismissible for exactly that reason: it may stand in front of the board because the player can put it away, and the position it describes is underneath it undimmed the moment they do. Nothing in the content layer takes glass — the board surface, grid, palace diagonals, numerals, discs, symbols, and every game-state marker are drawn directly. The board's own background is a flat fill rather than a system material, because a translucent board would let whatever is behind the window shift the colour a player reads a piece by.
 
 **The AI-thinking indicator carries no material at all.** It is present for a large share of every human-versus-AI game, and a persistent glass surface beside the board would be exactly the "gratuitous" application the guidance warns against.
 
-**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result card before confirmation, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
+**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result notice before confirmation, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
 
 | Setting | System surfaces | Custom glass surfaces |
 |---|---|---|
@@ -245,11 +245,13 @@ Because every marker is contained by its own cell, only markers on the *same* po
 
 ### Play controls
 
-Three controls sit together during play, never more, so the cluster stays reachable under a thumb and never competes with the board for width:
+A small, calm cluster of controls sits together during play, so that it stays reachable under a thumb and never competes with the board for width. What bounds it is that judgement rather than a count: the controls must not crowd the screen or read strangely, which is settled against a rendered screen rather than fixed as a number in prose. The accepted compositions are:
 
 - **Human versus AI** — **悔棋**, **判和**, **认输**. There is no board-flip control here: the accepted orientation behaviour already places the human's own side at the bottom, and moving one's own side to the top is disorienting rather than useful when the player controls one side.
 - **Free Play** — **悔棋**, **判和**, **翻转棋盘**. It cannot resign, having no opponent to resign to, and it is the mode the accepted orientation behaviour gives a flip control.
 - **Replay** — the transport controls and **翻转棋盘**. Replay offers no move input, so no play control applies.
+
+While a game is finished there is no draw left to judge, so that slot carries the concluding action instead — **悔棋**, the concluding action, and **翻转棋盘** in Free Play — for as long as the game is finished.
 
 **认输** presents a confirmation, since it ends the game against the player and cannot be undone:
 
@@ -257,7 +259,7 @@ Three controls sit together during play, never more, so the cluster stays reacha
 - Message: **认输后本局将记为你落败。**
 - Actions: **取消** and **认输**.
 
-Confirming records a human loss and moves the game to immutable History. Cancelling changes nothing. Resignation stays a separate confirmed action and is never folded into the natural-result card.
+Confirming records a human loss and moves the game to immutable History. Cancelling changes nothing. Resignation stays a separate confirmed action and is never folded into the natural-result notice.
 
 ### Turn status
 
@@ -334,20 +336,23 @@ The requested destination remains temporary only while this confirmation or retr
 
 ### Natural result presentation
 
-- When a natural terminal result is reached, the final board remains fully visible and a non-dismissible result card appears near it.
-- The card title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-AI play may also show relevant player metadata without replacing the result.
-- Before confirmation, the actions are **悔棋** and **结束对局**. Undo follows the mode-specific behavior above, dismisses the result card, and resumes the active game.
-- The result card cannot be dismissed by tapping outside it. Resignation remains a separate confirmed action rather than being folded into the natural-result card.
-- After **结束对局**, the final board remains visible, the record becomes immutable History, and the card changes to **已记录到历史**.
+- When a natural terminal result is reached, a result notice appears in front of the board. Nothing else changes: the final board stays exactly as the last move left it, undimmed, with the notice the only thing added to it.
+- The notice title is the localized equivalent of **红方获胜**, **黑方获胜**, or **和棋**. A second line explains the result reason. Human-versus-AI play may also show relevant player metadata without replacing the result.
+- Before confirmation, the actions are **悔棋** and **结束对局**. Undo follows the mode-specific behavior above, takes the notice with it, and resumes the active game.
+- The notice is dismissible — by its own close control, by the platform's cancel key, or by a tap on the board — and it does not present itself again for the same result. Closing it decides nothing about the game: the result is still carried by the turn status, and the concluding action is still carried by the play-control cluster, where it holds the draw claim's slot for as long as the game is finished. The squares a result is worth studying are usually the ones a notice standing over the board would cover, which is why it can be put away.
+- A terminal game whose notice was closed without concluding is still archived with its actual winner or draw and its exact termination reason by the save-and-continue flow above, so dismissing the notice never loses the record.
+- Resignation remains a separate confirmed action rather than being folded into the natural-result notice.
+- After **结束对局**, the final board remains visible, the record becomes immutable History, and the notice changes to **已记录到历史**.
 - The recorded state offers **回放**, which opens the newly created History record from its initial position, and **完成**, which returns to the Play start state.
-- The target MVP does not add a Play Again action to this card.
+- The target MVP does not add a Play Again action to this notice.
+- Until History exists there is nothing to record to, so the concluding action starts a new game directly and no confirmation stands between the two.
 
 ### Claimable threefold repetition
 
 - In both human-versus-AI play and Free Play, a neutral threefold repetition does not automatically end the game.
-- When the draw first becomes available, the notice says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
+- The claim is the player's to invoke. **判和** presents the blocking notice, which says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
 - **以和棋结束** confirms an immutable draw record in History.
-- After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice.
+- After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice. In Free Play the standing offer is the enabled **判和** control together with the turn status's **可判和** line, and nothing blocks the board.
 
 ### History replay
 
@@ -510,7 +515,8 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 - Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout.
 - Fix the minimum window size for macOS and for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
-- Resolve how the non-dismissible result card, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the card requires the board to stay visible and the chrome has its own floor.
+- Resolve how the result notice, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the board behind the notice has to stay worth looking at and the chrome has its own floor.
+- Decide whether the claimable-draw notice also presents itself the first time a claim becomes available in human-versus-AI play, where the repetition can arrive on a move the player did not choose. Free Play settles it without one: the player made every move, and the **判和** control and the **可判和** line are already on screen.
 - Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, its own board surface, and its marker ink at both accepted strengths — within the constraints the accepted styles and board metrics impose.
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
