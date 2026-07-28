@@ -68,15 +68,19 @@ MiniXiangqi/
 ├── core/       # shared C++ core, its tests, and pinned third-party inputs
 ├── apple/      # Xcode project and SwiftUI frontend
 ├── windows/    # WinUI 3 frontend
+├── fixtures/   # approved rules conformance fixtures
 └── docs/
 ```
+
+`fixtures/` stays at the root rather than under `core/`: it is the independent authority the core is validated against, and both the core's test runner and any future harness consume it.
 
 - Relocating the existing Xcode project under `apple/` is authorized and should happen before core implementation begins, while the project is still the generated scaffold and the move can break nothing. It changes file locations and the project's references to them, and nothing else about the build.
 - Core tests must run on every development platform without a frontend, and they standardize on **one shared C++ test runner** rather than per-platform harnesses. The approved rules fixtures are the project's independent authority, so they must be executed by one harness producing identical results everywhere; two harnesses would make a discrepancy between them possible. Platform binding tests — the Swift and C# layers over the C interface — stay in each platform's native framework, because what they test is the binding rather than the core.
 - Long or large builds — engine binaries, core artifacts, multi-platform test runs — are recommended to run on GitHub Actions CI rather than only on developer machines. CI is a convenience, not a required gate, and must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests.
+- Builds run on developer machines until Windows implementation begins, since Windows cannot be built here at all and CI setup would otherwise block the first Apple work. When Windows begins, CI covers **both** a macOS runner and a Windows runner, so neither platform is ever reproducible only on one machine.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Windows toolchain pinning for the core and frontend, and the CI matrix that builds all platforms. The accepted direction is that builds run locally until Windows work begins, and that CI then covers both a macOS 26 runner and a Windows runner; the exact matrix and pinning remain open.
+- Windows toolchain pinning for the core and frontend, and the concrete CI matrix and runner images.

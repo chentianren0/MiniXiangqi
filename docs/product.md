@@ -82,7 +82,7 @@ Settings holds the persistent user preferences the target MVP accepts:
 - the **piece style**, chosen among the three accepted styles defined in `interaction-design.md`, defaulting to the traditional one;
 - the **piece symbols**, Chinese characters by default or pictorial icons, as defined in `interaction-design.md`.
 
-Settings stores no game data, and changing a default never alters an active game. It also holds no interface-language control: the app follows the language the operating system selects for it, which on Apple platforms is already a per-app setting the system provides. Adding our own would duplicate a system feature and create a second source of truth for what language the app is in.
+Settings stores no game data, and changing a default never alters an active game. It also holds no interface-language control: the app follows the language the operating system selects for it. On Apple platforms that is already a per-app setting the system provides, so our own control would duplicate it and create a second source of truth. On Windows the app follows the system's language preference list; whether internal testers there need an in-app override is recorded as an open question rather than answered now, since it cannot be evaluated before the Windows frontend exists.
 
 These preferences live in each platform's own preference system rather than in the shared core, as fixed in [game-data.md](game-data.md).
 
@@ -106,4 +106,5 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it. It may later serve the education purpose by letting a teacher set up a position.
 - Define what “fully offline” permits for platform-provided local diagnostics, backup, and other system behavior.
+- Decide whether the Windows build needs an in-app interface-language override, once the Windows frontend exists and internal testers there can be asked.
 - Define the exact Windows internal-distribution mechanism, packaging format, and minimum tested Windows configuration before Windows implementation begins.

@@ -100,7 +100,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Test repeated Free Play undo by ply and repeated human-versus-AI undo by decision cycle, including cancellation while the AI is thinking.
 - Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation or successful **保存并继续**.
 - Test persistence and relaunch of an active game whose current history makes a neutral repetition draw claimable, plus the transition from claimable active game to immutable draw record.
-- Test pin-state and delete-confirmation preference persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
+- Test pin-state persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
 - Test every released database schema migration and archive-format migration from file-backed fixtures.
 - Round-trip exported files across iOS, iPadOS, macOS, and Windows.
 - Verify the same game's canonical content bytes and content hash are byte-identical across platforms, and that export, import, and re-export reproduce identical canonical content.
@@ -140,6 +140,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the capture ring stays distinguishable from any ring belonging to the selected piece style.
 - Verify the illegal-square haptic uses the lightest selection-weight feedback, is distinguishable from the save-failure warning, and that Undo transitions complete within their accepted durations.
 - Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
+- Verify every Settings preference persists in the platform's own preference system and survives relaunch, that none is written to the shared store, and that changing one never alters an active game or any History record.
+- Verify a game created from the pre-start draft freezes the first-mover choice and AI level supplied at creation, and that changing either Settings default afterwards leaves the created and archived game untouched.
+- Verify the app follows the operating system's language selection, including through an Apple per-app language change, and that it offers no interface-language control of its own.
+- Verify the core test runner executes the approved fixtures identically on every development platform without a frontend.
 - Verify the sound, haptics, and piece-symbols settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
 - Verify the board is drawn as intersections with the outer points on the border lines, the palace diagonals meet at the palace centre at grid stroke weight, the grid is unbroken across the middle of the board, no starting points are marked, and edge discs are never clipped.
 - Verify every board marker — legal-move dot, capture ring, last-move markers, and check treatment — stays legible against each style's own board surface.

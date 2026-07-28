@@ -2,7 +2,7 @@
 
 This document is for engineers and reviewers responsible for persistence, game-history compatibility, and file interchange in Mini Xiangqi. It defines the local-data contract: the library store, the versioned game archive, saving, import, export, and migration. It does not define Xiangqi rules, screen flows, engine internals, implementation progress, or issue tracking.
 
-> **Status: Partially accepted data contract.** The core-owned SQLite storage direction, the save-before-mode behavior, the pre-start behavior, the MVP record behavior, the archive format version 1, the serialized identifier vocabulary, content equivalence and import validation, the store schema version 1, and the migration and compatibility promise below are accepted. Items under **Need to discuss** are non-normative.
+> **Status: Partially accepted data contract.** The core-owned SQLite storage direction, the save-before-mode behavior, the pre-start behavior, the MVP record behavior, the archive format version 1, the serialized identifier vocabulary, content equivalence and import validation, the store schema version 1, the Settings placement, and the migration and compatibility promise below are accepted. Items under **Need to discuss** are non-normative.
 
 ## Storage model
 
@@ -148,13 +148,13 @@ Imported games are local data. Importing must not contact a server.
 
 ### Accepted Settings placement
 
-The seven persistent preferences accepted in [product.md](product.md) — the default first-mover choice, the default AI level, **删除前确认**, the sound and haptics toggles, the piece style, and the piece symbols — live in **each platform's own preference system**, not in the shared store.
+The seven persistent preferences accepted in [product.md](product.md) — the default first-mover choice, the default AI level, **Confirm Before Deleting**, the sound and haptics toggles, the piece style, and the piece symbols — live in **each platform's own preference system**, not in the shared store.
 
-- The core's ownership rule is that what is correctness-critical exists exactly once. No preference is correctness-critical: five are presentation or device capability, and the two that affect a game are read only when one is created.
-- The core therefore never reads a preference. The pre-start draft already carries the first-mover choice and AI level across the C boundary at game creation, and both are frozen into the created game, so the value the core acts on is always one the frontend passed in explicitly.
+- The core's ownership rule is that what is correctness-critical exists exactly once. No preference is: four are presentation or device capability; **Confirm Before Deleting** gates a permanent deletion but does not perform it, and the core's own deletion invariants — including that a failed deletion leaves the record intact — hold whatever the preference says; and the two that affect a game are read only when one is created.
+- The core therefore never reads a preference. The frontend holds the pre-start draft in memory and passes its resolved values as arguments to game creation, where they are frozen into the game, so every value the core acts on is one the frontend supplied explicitly at that call.
 - Each platform gains its system's own defaults registration, change observation, and settings integration rather than the core reimplementing them.
 - Divergence between platforms is bounded by this document's serialized vocabularies and by the defaults fixed in `product.md`, and there is no sync between installations for a difference to propagate through.
-- Preferences are outside the game archive and outside export and import. A file moved between platforms never carries them.
+- Preferences themselves are outside the game archive and outside export and import, so a file moved between platforms never carries them. The archive does record `first_mover_choice` and `ai_level`, but as the created game's own frozen configuration rather than as the preference that suggested it; changing the preference afterwards leaves the archived game untouched.
 
 ## Migration
 
