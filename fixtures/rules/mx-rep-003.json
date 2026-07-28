@@ -1,0 +1,32 @@
+{
+  "id": "mx-rep-003",
+  "title": "The same placement with the other side to move is a different position and does not count",
+  "area": "rep",
+  "variant": "minixiangqi",
+  "start_fen": "4k1r/7/7/7/7/7/R1K4 w - - 0 1",
+  "moves": [
+    "a1a2",
+    "g7g6",
+    "a2a3",
+    "g6g7",
+    "a3a1",
+    "g7g6",
+    "a1a2",
+    "g6g5",
+    "a2a1",
+    "g5g7"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k1r/7/7/7/7/7/R1K4 w - - 10 6",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The converse half of mx-rep-002, isolated as its own assertion: the prefix at which the piece placement has stood on the board three times, at plies 0, 5 and 10, but with Black to move at ply 5. Position identity includes the side to move, so ply 5 records a different position and the position now on the board is only at its second occurrence: the game is ongoing and no draw may be claimed. An implementation that keyed repetition on piece placement alone, or that compared only the first FEN field, would wrongly report a claimable draw here."
+}

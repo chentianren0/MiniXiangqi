@@ -1,0 +1,23 @@
+{
+  "id": "mx-chk-005",
+  "title": "A bare position carries no prior occurrences: the repeated position of mx-chk-001 supplied with no history is ongoing",
+  "area": "chk",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/7/3R3/7/7/4K2 b - - 8 5",
+  "moves": [],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "3k3/7/7/3R3/7/7/4K2 b - - 8 5",
+    "legal_moves": [
+      "d7c7"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "This start_fen is byte-identical to the result_fen of mx-chk-001, which the contract rules a loss for the checking side at the third occurrence of the position. Here the same position record is supplied bare: Black is in check from the d4 chariot and has exactly one evasion, since d6 stays on the checked file and e7 would face the kings on the empty e-file. A perpetual-check violation is only complete when a position stands on the board for the third time with the violation sustained across its occurrences, and a bare position carries no prior occurrences, so no violation exists here and the game is ongoing. A live check with no history is not a perpetual check."
+}

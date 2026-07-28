@@ -1,0 +1,36 @@
+{
+  "id": "mx-chs-038",
+  "title": "Check outranks chase where the target is a general on a defended square",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "r2k3/7/3R3/7/7/7/2K4 b - - 0 1",
+  "moves": [
+    "d7e7",
+    "d5e5",
+    "e7d7",
+    "e5d5",
+    "d7e7",
+    "d5e5",
+    "e7d7",
+    "e5d5"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "r2k3/7/3R3/7/7/7/2K4 b - - 8 5",
+    "legal_moves": [
+      "d7e7"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The red chariot on d5 attacks the black general along rank 5 and file d in turn, and the general has exactly one legal square each ply, so Red renews the attack on every one of its moves and the position recurs at plies 0, 4 and 8. A black chariot stands on a7 and defends both squares the general shuttles between: rank 7 is clear from a7 to d7 while the general stands on d7 and clear to e7 while it stands on e7. That chariot never moves and Black never checks, so Black renews nothing and commits no violation of its own. Every attack on the general is a check, and check outranks chase unconditionally, so the perpetual-check rule gives Red the loss at the third occurrence whatever the chase rule would have said about the same wheel. What this fixture guards is that precedence: a wheel that offers a superficially available chase reading, with the target defended at every occurrence, is still decided as perpetual check and still attaches at the third occurrence. It does not guard the general's exclusion from the chase rule, and no fixture replaying this interface can: an attack on a general is a check, so the state, the reason and the occurrence are identical whether a general is a chase target or not. A build in which generals are chaseable was run against the whole approved set and reported exactly what the unmodified build reported. That exclusion is therefore an engine-level property, to be guarded where the chase set itself is observable rather than here."
+}

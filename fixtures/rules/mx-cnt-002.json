@@ -1,0 +1,23 @@
+{
+  "id": "mx-cnt-002",
+  "title": "A soldier move does not reset FEN field 5 and does not end the game at 100 plies",
+  "area": "cnt",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/7/3P3/7/7/2K4 w - - 99 60",
+  "moves": [
+    "d4d5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/3P3/7/7/7/2K4 b - - 100 60",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "FEN field 5 counts plies since the last capture and drives no rule, and a soldier move does not reset it. The record enters with 99 plies since the last capture; the soldier advance carries the count to 100 rather than clearing it, and the game is still ongoing. This pins the same absent move-count draw as mx-cnt-001 at the exact ply the inherited nMoveRule = 50 would fire, on a record loaded with its counter already set rather than replayed from the opening."
+}

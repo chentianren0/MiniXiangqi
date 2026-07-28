@@ -1,0 +1,46 @@
+{
+  "id": "mx-rep-002",
+  "title": "Position identity is placement plus side to move; the two counters are ignored",
+  "area": "rep",
+  "variant": "minixiangqi",
+  "start_fen": "4k1r/7/7/7/7/7/R1K4 w - - 0 1",
+  "moves": [
+    "a1a2",
+    "g7g6",
+    "a2a3",
+    "g6g7",
+    "a3a1",
+    "g7g6",
+    "a1a2",
+    "g6g5",
+    "a2a1",
+    "g5g7",
+    "a1a2",
+    "g7g6",
+    "a2a3",
+    "g6g7",
+    "a3a1",
+    "g7g6",
+    "a1a2",
+    "g6g5",
+    "a2a1",
+    "g5g7"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k1r/7/7/7/7/7/R1K4 w - - 20 11",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 10,
+    "expect": "the piece placement has now stood on the board three times, at plies 0, 5 and 10, but only twice with Red to move; the position record is at its second occurrence and nothing is claimable"
+  },
+  "rationale": "This fixture exists to pin position identity itself: two records denote the same position exactly when placement and side to move are equal, and the two counters are ignored. Each chariot runs a closed circuit on its own file, Red's three squares long and Black's two, so five plies restore the placement with the turn flipped and ten restore it with the turn intact. The placement therefore stands at plies 0, 5, 10, 15 and 20, but the position stands only at plies 0, 10 and 20. Both halves of the rule are load-bearing here. Counters ignored: the three counted occurrences carry halfmove clocks 0, 10 and 20 and fullmove numbers 1, 6 and 11, and are one and the same position regardless. Side to move significant: the ply-5 and ply-15 records share the placement but not the turn, are a different position, and do not count, which is why the claim attaches at ply 20 and not at ply 10 where a placement-only identity rule would already report three. Nothing else here can end the game: neither chariot ever shares a rank or file with an enemy piece, so there is no check and no chase at any ply, and no other position record occurs more than twice."
+}

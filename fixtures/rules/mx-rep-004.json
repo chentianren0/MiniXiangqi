@@ -1,0 +1,24 @@
+{
+  "id": "mx-rep-004",
+  "title": "A bare position carries no prior occurrences: the repeated position of mx-rep-001 supplied with no history is ongoing",
+  "area": "rep",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/7/7/7/7/2K4 w - - 8 5",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/7/7/7/7/2K4 w - - 8 5",
+    "legal_moves": [
+      "c1c2",
+      "c1d1"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "This start_fen is byte-identical to the result_fen of mx-rep-001, which the contract rules a claimable draw at its third occurrence. Here the same position record is supplied bare, with an empty move history, so it stands on the board for the first time and carries no prior occurrences: one occurrence is below the threshold of three and the position is ongoing, not claimable. The pair pins that repetition state is derived from the supplied history and from nothing else — not from a position-hash cache, a persistent occurrence table, or the FEN's counters, which drive no rule."
+}

@@ -10,6 +10,7 @@ Fixture IDs are stable and lowercase, `mx-<area>-NNN`:
 
 - `mx-move-*` — movement legality, blocking, palace confinement, check evasion.
 - `mx-end-*` — checkmate, stalemate loss, flying-general rejection.
+- `mx-cnt-*` — the absent move-count draw: long capture-free histories that must stay ongoing.
 - `mx-rep-*` — neutral repetition and claim eligibility.
 - `mx-chk-*` — perpetual check.
 - `mx-chs-*` — perpetual chase, protection, and chase-target exclusion.

@@ -1,0 +1,33 @@
+{
+  "id": "mx-chs-036",
+  "title": "Occurrence counting restarts at the supplied position: one further chase cycle from the bare position of mx-chs-035 is only the second occurrence",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/n6/7/R6/7/2K4 b - - 9 5",
+  "moves": [
+    "a5c6",
+    "a3c3",
+    "c6a5",
+    "c3a3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/n6/7/R6/7/2K4 b - - 13 7",
+    "legal_moves": [
+      "a5b3",
+      "a5b7",
+      "a5c4",
+      "a5c6",
+      "e7d7",
+      "e7e6"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The bare start is the position mx-chs-035 pins, and the four plies are exactly one more turn of the mx-chs-004 chase wheel: the chariot renews its attack on the unprotected horse from a3 and c3 while the horse flees between a5 and c6. Counted from the supplied history the position stands on the board at plies 0 and 4, which is the second occurrence, so the violation is not yet complete and the game is ongoing. In the game mx-chs-004 records, this same placement has already occurred three times and the game is over; supplied bare it starts again at one. This fixture is the constructive half of the rule that mx-chs-035 states negatively — counting restarts at the supplied position even while the position is actively repeating — and it is the case an implementation that imputed occurrences from anything other than the supplied history would get wrong with a non-empty history."
+}

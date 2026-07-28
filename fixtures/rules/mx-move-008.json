@@ -1,0 +1,53 @@
+{
+  "id": "mx-move-008",
+  "title": "Chariot: obstructed in every direction, captures the first piece, never jumps",
+  "area": "move",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/3P3/7/2nRP2/7/3c3/4K2 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/3P3/7/2nRP2/7/3c3/4K2 w - - 0 1",
+    "legal_moves": [
+      "d4c4",
+      "d4d2",
+      "d4d3",
+      "d4d5",
+      "d6c6",
+      "d6d7",
+      "d6e6",
+      "e1d1",
+      "e1e2",
+      "e4e5",
+      "e4f4"
+    ],
+    "rejected_moves": [
+      "d4d6",
+      "d4d7",
+      "d4d1",
+      "d4b4",
+      "d4a4",
+      "d4e4",
+      "d4f4",
+      "d4g4"
+    ],
+    "applied": [
+      {
+        "move": "d4c4",
+        "result_fen": "2k4/3P3/7/2R1P2/7/3c3/4K2 b - - 0 1",
+        "in_check": true
+      },
+      {
+        "move": "d4d2",
+        "result_fen": "2k4/3P3/7/2n1P2/7/3R3/4K2 b - - 0 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Chariot d4 is obstructed on all four rays. Up the d-file its own soldier d6 stops it on d5 and is neither capturable (d4d6) nor jumpable (d4d7); down the d-file the enemy cannon d2 lets it slide to d3 and capture on d2 but not pass to d1; westward the enemy horse c4 is the first piece it meets, so d4c4 is a capture while b4 and a4 beyond it are rejected although empty; eastward its own soldier e4 removes the ray entirely, so e4, f4 and g4 are all rejected even though e4f4 is legal for the soldier. After d4c4 the chariot checks the black king three squares up the empty c-file, and d4d2 shows the capture ending the ray at the piece it takes."
+}

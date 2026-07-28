@@ -1,0 +1,28 @@
+{
+  "id": "mx-chs-035",
+  "title": "A bare position carries no prior occurrences: the repeated position of mx-chs-004 supplied with no history is ongoing",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/n6/7/R6/7/2K4 b - - 9 5",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/n6/7/R6/7/2K4 b - - 9 5",
+    "legal_moves": [
+      "a5b3",
+      "a5b7",
+      "a5c4",
+      "a5c6",
+      "e7d7",
+      "e7e6"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "This start_fen is byte-identical to the result_fen of mx-chs-004, which the contract rules a loss for the chasing side at the third occurrence. Here the same position record is supplied bare: the a3 chariot does attack the unprotected a5 horse, so the chase threat is standing on the board, and the position is still ongoing. A perpetual chase is a single behaviour sustained across three occurrences of a position, and a bare position carries no prior occurrences, so one standing threat is not a violation. This is the sharp form of the rule: what makes a chase perpetual is the supplied history, never the attack visible in the position."
+}

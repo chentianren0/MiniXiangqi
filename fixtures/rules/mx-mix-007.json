@@ -1,0 +1,34 @@
+{
+  "id": "mx-mix-007",
+  "title": "Perpetual check outranks the checking side's own simultaneous perpetual chase",
+  "area": "mix",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/7/1N5/2c4/7/3CK2 w - - 0 1",
+  "moves": [
+    "b4d5",
+    "c3d3",
+    "d5b4",
+    "d3c3",
+    "b4d5",
+    "c3d3",
+    "d5b4",
+    "d3c3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/7/1N5/2c4/7/3CK2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "Red's horse alternates b4/d5 and every red move does both things at once. It works the cannon battery on the d-file, arriving on d5 as the single screen for the cannon on d1 and then leaving d5 so that Black's own cannon on d3 is the single screen, so Red checks after every one of its moves; and it attacks the unprotected black cannon from the square it has just reached, d5 attacking c3 and b4 attacking d3, from neither of which did it attack the cannon before the move, so every red move also renews the chase. Red therefore sustains the check class and the chase class simultaneously across all three occurrences while Black neither checks nor attacks a red man on any ply. This pins the clause that check outranks chase unconditionally: Red loses, and the reason is perpetual check rather than perpetual chase. It is also the boundary of the accepted alternation interpretation, and the two must not be confused: mx-mix-003 puts the two classes on different moves of the cycle, so neither is sustained and the repetition is merely claimable, whereas here both are sustained by every red move and the check decides the game. The deletion control mx-chs-037 is these same eight plies with the battery cannon removed and is a perpetual chase in its own right, which is what establishes that the chase component is real. The current unpatched engine returns the loss for Red but collapses the check and chase branches onto one mate value and cannot report which fired, so the reason identifier here rests on docs/xiangqi-rules.md, not on engine agreement."
+}
