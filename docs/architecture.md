@@ -48,7 +48,7 @@ Dependencies point inward:
 ## Concurrency and lifecycle
 
 - Search runs off the frontend's main/UI thread. Every search is identified by the game and position revision that requested it.
-- Undo, game completion, active-game replacement, leaving the relevant state, and app backgrounding cancel outstanding work. Cancellation is cooperative, and a result is rejected whenever its revision is stale — cancellation alone is not trusted.
+- Undo, game completion, active-game replacement, leaving the relevant state, and the platform's suspension signal cancel outstanding work. Cancellation is cooperative. A result is rejected whenever its revision is stale, and independently whenever its request has been superseded: most cancellations follow a mutation and are caught by staleness, but a suspension cancels without mutating anything, so the revision still matches and the superseded request is the only thing that rejects it. Neither check alone covers both.
 - Core callbacks deliver results to the frontend, which re-enters its main actor or dispatcher before touching UI state. Callbacks never mutate frontend state directly.
 - The C boundary documents, per function, which thread may call it and which thread delivers callbacks. The core is responsible for its own internal synchronization.
 - The frontend can deterministically shut the core down — engine, store, and outstanding work — without relying on process termination.
