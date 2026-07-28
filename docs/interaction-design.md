@@ -28,12 +28,29 @@ The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and W
 
 Each platform uses its own current native visual system rather than an imitation of another platform's.
 
-- On Apple platforms, Liquid Glass is a required part of the visual and interaction direction. Use it for functional interface layers such as navigation, controls, toolbars, and contextual actions.
+- On Apple platforms, Liquid Glass is the required material for functional interface layers — navigation, controls, toolbars, and contextual actions — and is not used in the content layer. It is required *of* those layers rather than maximised across the app; Apple's own guidance is to use it sparingly, and the board is content.
 - On Windows, the WinUI 3 Fluent design system fills the same role: system materials, controls, and navigation patterns rather than recreated Apple styling.
 - Preserve board readability and interaction clarity when translucent or material surfaces overlap or surround game content.
 - Prefer platform-native behavior and adaptation over fixed imitations of one platform’s layout.
 - Visual effects must not make controls, state, focus, or text harder to perceive.
 - The board, pieces, and game-state markers form one shared visual identity across platforms; only the surrounding functional chrome is platform-specific.
+
+**Where glass may appear, exactly.** The app defines **three** custom glass surfaces: the play control cluster, the replay transport, and one shared slot for the natural-result card and the threefold-repetition notice, which never coexist. At most two are on screen at once, and **during ordinary play exactly one is**. System-provided glass — the tab bar or sidebar, navigation bar and toolbar, alerts, sheets, context menus, and History swipe actions — is additional and automatic.
+
+**Where it may not.** No glass surface may intersect the **board block**: the board core, its half-cell margin, and the file-numeral strips. That is a rectangle a reviewer can measure against a screenshot rather than a principle they have to interpret. Nothing in the content layer takes glass — the board surface, grid, palace diagonals, numerals, discs, symbols, and every game-state marker are drawn directly. The board's own background is a flat fill rather than a system material, because a translucent board would let whatever is behind the window shift the colour a player reads a piece by.
+
+**The AI-thinking indicator carries no material at all.** It is present for a large share of every human-versus-AI game, and a persistent glass surface beside the board would be exactly the "gratuitous" application the guidance warns against.
+
+**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result card before confirmation, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
+
+| Setting | System surfaces | The three custom surfaces |
+|---|---|---|
+| Reduce Transparency | automatic | replace the material with an opaque fill and a hairline separator |
+| Increase Contrast | automatic | keep the material, raise the container's border |
+| Both | automatic | opaque fill **and** the raised border |
+| Dark appearance | automatic | no change; the material adapts |
+
+In every row the geometry, corner radius, and spacing are unchanged, so nothing reflows: only the background is substituted. Apple publishes no specification for how Liquid Glass renders under Reduce Transparency, so these are our values rather than a documented behaviour.
 
 ## Piece representation
 
@@ -126,6 +143,18 @@ Three rules govern the space around a point, and together they are what allow on
 - **Markers are never drawn in the Red or Black role colours**, which belong to the sides. Each style defines one **marker ink** per appearance, used at two strengths: **active ink**, at a contrast of at least 4.5:1, for selection, legal destinations, captures, check, and focus; and **record ink**, the same hue at reduced strength and at least 3:1, for the last move and the drag origin. Both are measured against that style's own board surface and against the pointer hover fill composited over it, since a marker may be drawn on either, and in both cases with shadows excluded. Increase Contrast promotes record ink to active-ink values. Because every game-state marker is carried by luminance and shape rather than by hue, the board under Differentiate Without Color is identical to the board without it; the keyboard focus ring, which carries hue, is a platform affordance and never a game state.
 
 The exact marker-ink values belong to each style's colour work, as the piece-style requirements above do; the contrast figures are what those values must satisfy.
+
+**The grid** is stroked at `0.026 p`, clamped to between 0.80 and 1.60 points so it neither disappears at the floor nor coarsens on a large board — 1.14 points at the floor. The palace diagonals match it exactly, as the accepted geometry requires. Both reach at least 3:1 against the style's own board surface.
+
+**The outer boundary is a single line at grid weight.** Many physical boards double it; here there is no room, because the half-cell margin is fully committed to containing the outermost points' markers, and a second line inside it would sit within the marker band.
+
+**The file numerals** occupy a strip above and below the board core, outside the half-cell margin, one strip per side. Each strip shows the numerals of the player it faces — Chinese for Red, Arabic for Black — and follows the board's orientation, so the numbers beside a player are always their own and both strips are always present.
+
+- Numeral size is `0.32 p`, clamped to between 13 and 20 points: 14 points at the floor.
+- Strip height is `0.08 p + 0.887 s`, where `s` is that size: 16 points at the floor, giving a board block of 308 by 340 points there.
+- The two numeral sets sit on a shared baseline, and measurement of the system font cascade on the pinned toolchain confirms their optical centres agree closely enough to need no per-set adjustment. They do **not** match in weight: at equal weight the Chinese numerals carry about a quarter more ink than the digits, because their advances are full-width. The digits therefore take one weight step more than the Chinese numerals so the two strips read as equals.
+- Numerals meet the record-ink contrast gate of 3:1, promoted with it under Increase Contrast.
+- **The strips are hidden at accessibility text sizes.** They are the first thing to yield when type grows, because the stacked layout has the least room exactly then; the board keeps its floor and the chrome keeps its own. Hiding them removes 32 points of height at the floor, which is what makes the largest text sizes fit.
 
 ### User-visible notation
 
@@ -388,6 +417,18 @@ The first implementation uses a restrained, tactile motion language:
 - Board flipping uses an approximately 300–400 ms coordinated re-layout while piece text and symbols remain upright.
 - With Reduce Motion, the animation of lifts, springs, pulses, and long-distance travel is removed in favor of a brief crossfade or immediate state update. The states themselves remain: a held piece still reads as raised, it simply arrives at that appearance without an animated transition.
 
+**Move travel scales with distance, inside the accepted band.** A one-step move takes 180 ms and a six-cell chariot sweep 240 ms, following a constant-acceleration law; the seven distances a 7-by-7 board admits give 180, 195, 200, 210, 220, 230, and 240 ms. The band cannot be widened later without reopening Undo: a decision cycle must complete within 600 ms, and that ceiling is what caps a single ply at 240.
+
+**Board flipping takes 340 ms**, derived from the distance a corner piece travels and a velocity ceiling shared with move travel rather than chosen for feel.
+
+**The AI's move has a floor, not a delay.** Its piece departs at the later of two instants: when the search returns, and 260 ms after the player's own move committed. A search that takes a second or more is unaffected; only a near-instant reply waits, so the AI never appears to twitch rather than move. If the search has not returned within 500 ms of the player's move, the turn status shows AI activity; below that threshold nothing appears, because an indicator that flashes for a fifth of a second is noise.
+
+**Interruption divides in two.** A *presentational* transition — a lift, a hover, a marker appearing — re-targets freely toward whatever the player just did. A *committing* transition — a move, a capture, an Undo — runs to completion, and input arriving during it is **discarded rather than queued**, so a player never watches a stack of actions replay. The accepted durations bound that wait to under half a second. Board flipping is the one action deferred rather than discarded: it changes nothing about the game, so it is applied when the running transition ends.
+
+**Reduce Motion is one rule.** Anything that animates position, scale, or rotation becomes a crossfade of at most 120 ms; anything that animates opacity, colour, stroke weight, or shadow is unchanged, because none of those is motion; springs lose their overshoot rather than their duration; and the order in which things happen is untouched. Every state survives — a held piece still reads as raised, a checked general still carries its rings, the legal destinations still answer an illegal tap — they simply arrive without travel.
+
+**Sound and haptics fire at the instant the event completes**, within one frame of it, never at the start of the animation that shows it. A move sounds when the piece lands, not when it lifts.
+
 The exact durations, easing curves, shadow, opacity, and feedback strength are first-version values subject to adjustment after testing on physical iPhone, iPad, and Mac hardware. The lift and drag scale factors are not among them: the marker geometry is derived from them, so changing one is a change to [Board metrics](#board-metrics). Liquid Glass belongs primarily to functional layers around the board; board-state markers must remain direct and readable rather than becoming translucent decoration.
 
 ## Sound and haptics
@@ -477,20 +518,19 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Design the icon set, and decide whether it is drawn for this project or adopted from an existing freely licensed international set.
 - Define how traditional notation renders the cases this contract leaves open, including three or more same-type pieces sharing a file, which the five sideways-capable soldiers make reachable.
 - Decide what a user reading icon symbols is offered for the move list, which remains character-based, and approve the table of positions and expected move strings that serves as the notation's test oracle.
-- Decide whether file numbers may be hidden, and define the numeral strips' geometry, typography, and contrast requirement, together with the grid and palace-diagonal stroke weight in units of the cell pitch, all of which the accepted board metrics leave open.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
 - Decide whether a pointer previews a piece's legal destinations on hover, before any selection. It would teach, and it sits directly beside the accepted exclusion of move hints and analysis, so it is a scope question rather than a visual one.
 - Define the turn status's exact AI activity treatment, the 将军 token's form, remaining transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
 - Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
-- Refine first-version motion timings, easing, interruption behavior, and feedback strength through physical-device testing.
+- Confirm the accepted motion timings and the compose-beat floor on physical iPhone, iPad, and Mac hardware, and refine easing and feedback strength there. The durations are accepted values, not placeholders; a change to one is a contract change, and the travel band cannot move without reopening the Undo ceiling that bounds it.
+- Confirm the numeral-strip measurements on iOS and iPadOS, which were taken on macOS, and define the exact accessibility text size at which the strips are hidden.
 - Define the sound events, sound design, and platform differences behind the accepted sound toggle.
 - Define the haptic events behind the accepted haptics toggle.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Approve the English counterparts of every accepted Chinese string in this document. The accepted copy is Chinese and exact; no English equivalent has been approved, so an English build is not yet fully specified.
 - Define the English Xiangqi terminology beyond the accepted piece names, and the localization review process.
 - Decide whether the piece-style and piece-symbol names are user-facing interface strings or internal design names, and approve their wording if they are user-facing.
-- Define how Liquid Glass behaves with contrast, Reduce Transparency, and different platform appearances.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
