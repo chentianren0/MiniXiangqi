@@ -50,7 +50,7 @@ Preserving other variants' adjudication exactly is the preferred bar and the fir
 
 The two adjudication corrections rest on execution-confirmed defects rather than on the deferred definitions of protection, interruption, and discovered or pinned attacks, which [xiangqi-rules.md](xiangqi-rules.md) still leaves open, and each lands together with the fixture that pins it.
 
-The classifier-path completion is different in kind and carries no fixture: a targeted search of 29,500 legal samples over 11.2 million cycles found **no** position where the gap changes an outcome, so it may well be unreachable. It is accepted not because a defect was demonstrated but because the accepted exclusion of kings and soldiers as chase targets should hold in every classifier path rather than in two of three, and completing it is one line inside a function the fork already patches. One further confirmed defect — the chase window being one move wider for one side-to-move parity — is deliberately absent from this list pending a decision recorded in that document, so the list is complete for what is decided rather than for what is known.
+The classifier-path completion is different in kind and carries no fixture: a targeted search of 29,500 legal samples over 11.2 million cycles found **no** position where the gap changes an outcome, so it may well be unreachable. It is accepted not because a defect was demonstrated but because the accepted exclusion of kings and soldiers as chase targets should hold in every classifier path rather than in two of three, and completing it is one line inside a function the fork already patches. The parity correction is decided and listed above; [xiangqi-rules.md](xiangqi-rules.md) records the rule it restores.
 
 ## Search lifecycle
 
