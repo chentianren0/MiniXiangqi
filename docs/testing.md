@@ -58,6 +58,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify a grid point stays at or above 44 points on every platform, that chrome tightens before the board does, and that each platform's minimum window size prevents either from falling below its floor. Include a Mac at its largest-text display setting, where the window budget is smallest.
 - Verify the pre-start preview shrinks as needed so the setup controls always fit, including when a creation-failure error is shown.
 - Verify no captured-piece display appears in either layout shape.
+- Verify the play controls are 悔棋 · 判和 · 认输 in human-versus-AI with no flip control, 悔棋 · 判和 · 翻转棋盘 in Free Play, and the transport plus 翻转棋盘 in replay, with no fourth control in any state.
+- Verify 判和 is disabled when no claim exists and becomes enabled and marked when a neutral threefold repetition is left unclaimed, with no separate 可判和 element appearing.
+- Verify 认输 presents 确认认输？ / 认输后本局将记为你落败。 with 取消 and 认输; that confirming records a human loss and an immutable History record; that cancelling changes nothing; and that it is absent in Free Play and replay.
+- Verify the board core stops growing at 720 points and that surplus space goes to the surrounding layout.
 - Verify the move list is permanently visible in the side-by-side layout and reachable on demand in the stacked layout, without either the board or the controls losing space by default.
 - Inspect light and dark appearances, text expansion, interruption, error, and destructive-action states.
 - Verify that a new installation defaults to **我先手** and **标准**, while Settings can persist **AI 先手**, **随机**, and any accepted AI level as later setup defaults.
