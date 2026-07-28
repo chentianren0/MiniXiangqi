@@ -100,8 +100,16 @@ public:
 
     bool integer(const JsonValue &v, int64_t &out, const std::string &where) {
         const double d = v.number();
+        if (!std::isfinite(d)) {
+            return fail(where + ": expected an integer, got a non-finite number");
+        }
         if (d != std::floor(d)) {
             return fail(where + ": expected an integer");
+        }
+        /* Converting a double outside int64_t's range is undefined, so the
+         * range check must precede the cast rather than validate its result. */
+        if (d < -9223372036854775808.0 || d >= 9223372036854775808.0) {
+            return fail(where + ": integer is outside the representable range");
         }
         out = static_cast<int64_t>(d);
         return true;

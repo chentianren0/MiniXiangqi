@@ -688,9 +688,12 @@ typedef struct MxqSearchResult {
  * Delivered on: the core's engine thread, always — never the calling thread and
  * never a platform queue.
  *
- * It must copy and return. Inside it, only mxq_status_domain,
- * mxq_status_name, mxq_blob_bytes, mxq_blob_len and mxq_blob_release are legal;
- * every other core function returns MXQ_ERR_ARG_REENTRANT. It must not block,
+ * It must copy and return. Inside it the legal calls are the status and blob
+ * helpers — mxq_status_domain, mxq_status_name, mxq_blob_bytes, mxq_blob_len,
+ * mxq_blob_release — together with the four pure queries that take no core
+ * instance and no lock: mxq_core_version, mxq_rules_start_fen, mxq_engine_plan
+ * and mxq_archive_supported_versions. Every other core function returns
+ * MXQ_ERR_ARG_REENTRANT. It must not block,
  * because the engine thread is the resource it would deadlock. Its whole job is
  * to hand the result to the frontend's dispatcher.
  *
@@ -755,8 +758,9 @@ MXQ_API void MXQ_CALL mxq_blob_release(MxqBlob *blob);
 /* ------------------------------------------------------------------------- */
 
 /*
- * Report the four independent version axes. Callable before mxq_core_init, and
- * the only core function that is.
+ * Report the four independent version axes. Callable before mxq_core_init, as
+ * are the other queries that take no core instance: mxq_rules_start_fen,
+ * mxq_engine_plan and mxq_archive_supported_versions.
  *
  * Thread: any thread, including inside a search callback.
  * Blocking: no.

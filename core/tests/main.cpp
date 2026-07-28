@@ -483,16 +483,34 @@ int main(int argc, char **argv) {
     }
 
     std::vector<fs::path> files;
-    for (const fs::directory_entry &entry :
-         fs::directory_iterator(opt.fixtures_dir, ec)) {
-        if (entry.is_regular_file(ec) && entry.path().extension() == ".json") {
+    {
+        std::error_code iter_ec;
+        fs::directory_iterator it(opt.fixtures_dir, iter_ec);
+        if (iter_ec) {
+            std::cerr << "mxq_core_tests: cannot read "
+                      << opt.fixtures_dir.string() << ": " << iter_ec.message()
+                      << "\n";
+            return 2;
+        }
+        for (const fs::directory_entry &entry : it) {
+            if (entry.path().extension() != ".json") {
+                continue;
+            }
+            /* A separate code per entry: sharing one with the iterator let a
+             * broken entry be dropped in silence and a stale value abort the
+             * run later. An entry that cannot be stat'd is a setup failure,
+             * because a fixture we cannot read is not a fixture we may skip. */
+            std::error_code entry_ec;
+            if (!entry.is_regular_file(entry_ec) || entry_ec) {
+                std::cerr << "mxq_core_tests: cannot read "
+                          << entry.path().string() << ": "
+                          << (entry_ec ? entry_ec.message()
+                                       : std::string("not a regular file"))
+                          << "\n";
+                return 2;
+            }
             files.push_back(entry.path());
         }
-    }
-    if (ec) {
-        std::cerr << "mxq_core_tests: cannot read "
-                  << opt.fixtures_dir.string() << ": " << ec.message() << "\n";
-        return 2;
     }
     std::sort(files.begin(), files.end());
     if (files.empty()) {

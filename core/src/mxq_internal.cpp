@@ -53,10 +53,12 @@ void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
 MxqStatus begin_out(void *out, uint32_t declared, uint32_t known,
                     uint32_t min_known, MxqError *err) {
     if (out == nullptr) {
+        assert(false && "required out pointer was null");
         fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
         return MXQ_ERR_ARG_NULL;
     }
     if (declared < min_known) {
+        assert(false && "struct_size is smaller than this interface version");
         fill_error(err, MXQ_ERR_ARG_STRUCT_SIZE,
                    "struct_size is smaller than this interface version");
         return MXQ_ERR_ARG_STRUCT_SIZE;
@@ -71,10 +73,12 @@ MxqStatus check_in(const void *in, uint32_t declared, uint32_t known,
                    uint32_t min_known, MxqError *err) {
     (void)known;
     if (in == nullptr) {
+        assert(false && "required in pointer was null");
         fill_error(err, MXQ_ERR_ARG_NULL, "required in pointer was null");
         return MXQ_ERR_ARG_NULL;
     }
     if (declared < min_known) {
+        assert(false && "struct_size is smaller than this interface version");
         fill_error(err, MXQ_ERR_ARG_STRUCT_SIZE,
                    "struct_size is smaller than this interface version");
         return MXQ_ERR_ARG_STRUCT_SIZE;
