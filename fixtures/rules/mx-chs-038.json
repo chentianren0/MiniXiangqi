@@ -1,0 +1,36 @@
+{
+  "id": "mx-chs-038",
+  "title": "The chase rule's protection test has no bearing on a general as target",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "r2k3/7/3R3/7/7/7/2K4 b - - 0 1",
+  "moves": [
+    "d7e7",
+    "d5e5",
+    "e7d7",
+    "e5d5",
+    "d7e7",
+    "d5e5",
+    "e7d7",
+    "e5d5"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "r2k3/7/3R3/7/7/7/2K4 b - - 8 5",
+    "legal_moves": [
+      "d7e7"
+    ],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The red chariot on d5 attacks the black general along rank 5 and file d in turn, and the general has exactly one legal square each ply, so Red renews the attack on every one of its moves and the position recurs at plies 0, 4 and 8. A black chariot stands on a7 and defends both squares the general shuttles between: rank 7 is clear from a7 to d7 while the general stands on d7 and clear to e7 while it stands on e7, so on the chase rule's own protection test the target is defended at every occurrence. That chariot never moves and Black never checks, so Black renews nothing and commits no violation of its own. Were a general a chase target, mx-chs-002 would make this defended wheel no violation and the repetition neutral and merely claimable; because generals take no part in the chase rule the protection test is never applied to one at all, and the perpetual-check rule, which carries no protection condition, gives Red the loss at the third occurrence. The exclusion's observable effect here is on the reported reason rather than on the result: check outranks chase unconditionally, so the loss would stand even if a general were chaseable, and what this fixture pins is that adding or removing a defender of the general's square cannot move a king wheel between a loss and a claimable draw — the discriminator the chase rule turns on and the general exclusion removes."
+}
