@@ -30,12 +30,12 @@ Each platform uses its own current native visual system rather than an imitation
 
 - On Apple platforms, Liquid Glass is the required material for functional interface layers — navigation, controls, toolbars, and contextual actions — and is not used in the content layer. It is required *of* those layers rather than maximised across the app; Apple's own guidance is to use it sparingly, and the board is content.
 - On Windows, the WinUI 3 Fluent design system fills the same role: system materials, controls, and navigation patterns rather than recreated Apple styling.
-- Translucent and material surfaces surround game content and never overlap it, per the boundary below.
+- Preserve board readability and interaction clarity where translucent or material surfaces surround game content. They surround it and never overlap it, per the boundary below.
 - Prefer platform-native behavior and adaptation over fixed imitations of one platform’s layout.
 - Visual effects must not make controls, state, focus, or text harder to perceive.
 - The board, pieces, and game-state markers form one shared visual identity across platforms; only the surrounding functional chrome is platform-specific.
 
-**Where glass may appear, exactly.** The app defines **three** custom glass surfaces: the play control cluster, the replay transport, and one shared slot for the natural-result card and the threefold-repetition notice, which never coexist. At most two are on screen at once, and **during ordinary play exactly one is**. System-provided glass — the tab bar or sidebar, navigation bar and toolbar, alerts, sheets, context menus, and History swipe actions — is additional and automatic.
+**Where glass may appear, exactly.** The app defines **three** custom glass surfaces: the play control cluster, the replay transport, and one shared slot for the natural-result card and the threefold-repetition notice, which never coexist. At most two are on screen at once, and **during ordinary play exactly one is** — ordinary play meaning an active game on the play screen with neither the result card nor the threefold notice presented, which is the state the app spends nearly all its time in. System-provided glass — the tab bar or sidebar, navigation bar and toolbar, alerts, sheets, context menus, and History swipe actions — is additional and automatic.
 
 **Where it may not.** No glass surface may intersect the **board block**: the board core, which already includes the half-cell margin, together with the file-numeral strips. That is a rectangle a reviewer can measure against a screenshot rather than a principle they have to interpret. Nothing in the content layer takes glass — the board surface, grid, palace diagonals, numerals, discs, symbols, and every game-state marker are drawn directly. The board's own background is a flat fill rather than a system material, because a translucent board would let whatever is behind the window shift the colour a player reads a piece by.
 
@@ -50,7 +50,7 @@ Each platform uses its own current native visual system rather than an imitation
 | Both | automatic | opaque fill **and** the raised border |
 | Dark appearance | automatic | no change; the material adapts |
 
-In every row the geometry, corner radius, and spacing are unchanged, so nothing reflows: only the background is substituted. Apple publishes no specification for how Liquid Glass renders under Reduce Transparency, so these are our values rather than a documented behaviour.
+In every row the geometry, corner radius, and spacing are unchanged, so nothing reflows: what changes is the surface's own material and border, never its position or size. Apple publishes no specification for how Liquid Glass renders under Reduce Transparency, so these are our values rather than a documented behaviour.
 
 ## Piece representation
 
@@ -144,17 +144,17 @@ Three rules govern the space around a point, and together they are what allow on
 
 The exact marker-ink values belong to each style's colour work, as the piece-style requirements above do; the contrast figures are what those values must satisfy.
 
-**The grid** is stroked at `0.026 p`, clamped to between 0.80 and 1.60 points so it neither disappears at the floor nor coarsens on a large board — 1.14 points at the floor. The palace diagonals match it exactly, as the accepted geometry requires. Both reach at least 3:1 against the style's own board surface.
+**The grid** is stroked at `0.026 p`, rounded to the nearest half point and clamped to between 0.80 and 1.60 points — 1.0 point at the floor, and at the ceiling from a pitch of about 62 points upward, so the lines never coarsen as the board grows. The lower bound binds only if a smaller pitch is ever accepted. The palace diagonals match it exactly, as the accepted geometry requires. Both reach at least 3:1 against the style's own board surface.
 
 **The outer boundary is a single line at grid weight.** Many physical boards double it; here there is no room, because the half-cell margin is fully committed to containing the outermost points' markers, and a second line inside it would sit within the marker band.
 
 **The file numerals** occupy a strip above and below the board core, outside the half-cell margin, one strip per side. Each strip shows the numerals of the player it faces — Chinese for Red, Arabic for Black — and follows the board's orientation, so the numbers beside a player are always their own. Both strips appear together or not at all.
 
 - Numeral size is `0.32 p`, clamped to between 13 and 20 points: 14 points at the floor.
-- Strip height is `0.08 p + 0.887 s`, where `s` is that size: 16 points at the floor, giving a board block of 308 by 340 points there.
+- Strip height is `0.08 p + 0.887 s`, where `s` is that size, rounded to the nearest point: 16 points at the floor, giving a board block of 308 by 340 points there. The `0.08 p` term is clear space between the board's outer line and the tallest numeral, so no numeral ever encroaches on the half-cell margin the outermost points' markers occupy.
 - The two numeral sets sit on a shared baseline, and measurement of the system font cascade on the pinned toolchain confirms their optical centres agree closely enough to need no per-set adjustment. They do **not** match in weight: at equal weight the Chinese numerals carry about a quarter more ink than the digits, because their advances are full-width. The Chinese numerals are therefore set **semibold** and the digits **bold**. The anchor matters as much as the relationship: at regular weight the single stroke of 一 measures about 1.02 points against a 1.14-point grid line, so the numeral labelling the board would be fainter than the lines it labels. A residual difference of about a tenth remains, which is below what a reader notices in two separated strips.
 - Numerals reach at least **4.5:1** against the board surface, and 7:1 under Increase Contrast. They are text at 14 points at the floor, below the size at which a 3:1 ratio would suffice, so the record-ink gate that governs the last-move brackets does not apply to them.
-- **The strips are hidden at accessibility text sizes.** They are the first thing to yield when type grows, because the stacked layout has the least room exactly then; the board keeps its floor and the chrome keeps its own. Hiding them removes 32 points of height at the floor, which is what makes the largest text sizes fit.
+- **The strips are hidden at accessibility text sizes.** They are the first thing to yield when type grows, because the stacked layout has the least room exactly then; the board keeps its floor and the chrome keeps its own. Hiding them returns 32 points of height at the floor. Whether that is enough for every supported device at the largest text sizes is settled by the layout bounds, not here. The cost is real and accepted: without the strips a reader cannot relate a move in the list to a file on the board without counting, which is a loss for the same user the larger type was for.
 
 ### User-visible notation
 
@@ -425,7 +425,7 @@ The first implementation uses a restrained, tactile motion language:
 
 **Interruption divides in two.** A *presentational* transition — a lift, a hover, a marker appearing — re-targets freely toward whatever the player just did. A *committing* transition — a move, a capture, an Undo — runs to completion, and input arriving during it is **discarded rather than queued**, so a player never watches a stack of actions replay. The accepted durations bound that wait to under half a second. Board flipping is the one action deferred rather than discarded: it changes nothing about the game, so it is applied when the running transition ends.
 
-**Reduce Motion is one rule.** Anything that animates position, scale, or rotation becomes a crossfade of at most 120 ms; anything that animates opacity, colour, stroke weight, or shadow is unchanged, because none of those is motion; springs lose their overshoot rather than their duration; and the order in which things happen is untouched. The check pulse is the exception that proves the rule: it animates stroke weight, not motion, and it is the only announcement that a general has come under attack, so it is required rather than cosmetic and survives Reduce Motion intact. Every state survives — a held piece still reads as raised, a checked general still carries its rings, the legal destinations still answer an illegal tap — they simply arrive without travel.
+**Reduce Motion is one rule.** Anything that animates position, scale, or rotation becomes a crossfade of at most 120 ms; anything that animates opacity, colour, stroke weight, or shadow is unchanged, because none of those is motion; springs lose their overshoot rather than their duration; and the order in which things happen is untouched. The check pulse is removed rather than converted, as the accepted rule requires of every pulse: check is a persistent treatment plus a pulse, so the double ring and the 将军 token still say everything the pulse said, and the rings simply arrive by crossfade. Removing it is the point — a repeating attention-grabbing animation is precisely what this setting exists to spare the people who enable it. Every state survives — a held piece still reads as raised, a checked general still carries its rings, the legal destinations still answer an illegal tap — they simply arrive without travel.
 
 **Sound and haptics fire at the instant the event completes**, within one frame of it: a move sounds when the piece lands, not when it lifts. Selection is the exception, and deliberately so — the feedback for picking a piece up leads its animation, because the touch is what the player is waiting to feel answered.
 
