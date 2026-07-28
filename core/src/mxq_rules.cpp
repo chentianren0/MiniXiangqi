@@ -89,18 +89,21 @@ MxqStatus replay_into(MxqCore *core, const char *start_fen,
     mxq::engine::Adjudication adj{};
     size_t first_illegal = 0;
 
-    if (!mxq::engine::replay(start_fen, moves, move_count, fen, in_check, ply,
-                             adj, out_legal, first_illegal, detail)) {
-        if (detail.find("start_fen") != std::string::npos) {
-            mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
-            return MXQ_ERR_RULES_INVALID_FEN;
-        }
+    switch (mxq::engine::replay(start_fen, moves, move_count, fen, in_check, ply,
+                                adj, out_legal, first_illegal, detail)) {
+    case mxq::engine::ReplayError::None:
+        break;
+    case mxq::engine::ReplayError::IllegalMove:
         if (out_first_illegal_index != nullptr) {
             *out_first_illegal_index = first_illegal;
         }
-        mxq::fill_error_required(err, MXQ_ERR_RULES_INVALID_HISTORY,
-                                 detail.c_str(), first_illegal);
+        mxq::fill_error_index(err, MXQ_ERR_RULES_INVALID_HISTORY,
+                              detail.c_str(), first_illegal);
         return MXQ_ERR_RULES_INVALID_HISTORY;
+    case mxq::engine::ReplayError::StartFenInvalid:
+    case mxq::engine::ReplayError::NotInitialised:
+        mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
+        return MXQ_ERR_RULES_INVALID_FEN;
     }
 
     if (out_position != nullptr) {

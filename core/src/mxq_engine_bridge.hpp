@@ -47,23 +47,33 @@ struct Adjudication {
  * absent from it — which is a packaging failure, not a rules failure. */
 bool ensure_initialised(const char *assets_dir, std::string &detail);
 
+/* Why a replay did not complete. Returned rather than inferred from the detail
+ * string: move text reaches this function from imported archives, so a history
+ * could otherwise name itself into the wrong error by containing the word the
+ * caller was matching on. */
+enum class ReplayError {
+    None,
+    NotInitialised,
+    StartFenInvalid,
+    IllegalMove,     /* first_illegal is the offending index */
+};
+
 /* Replay moves from start_fen under the target variant.
  *
- * Returns false on a malformed FEN or an illegal move, setting first_illegal to
- * the offending index in the latter case and leaving the outputs unspecified,
- * exactly as mxq_rules_evaluate documents. A history is replayed rather than a
- * bare position evaluated, because repetition and violation state derive from
+ * On anything but ReplayError::None the outputs are unspecified, exactly as
+ * mxq_rules_evaluate documents. A history is replayed rather than a bare
+ * position evaluated, because repetition and violation state derive from
  * history: docs/xiangqi-rules.md, "A bare position carries no prior
  * occurrences." */
-bool replay(const char *start_fen,
-            const char *const *moves, size_t move_count,
-            std::string &out_fen,
-            bool &out_in_check,
-            uint32_t &out_ply,
-            Adjudication &out_adj,
-            std::vector<std::string> *out_legal_moves,
-            size_t &first_illegal,
-            std::string &detail);
+ReplayError replay(const char *start_fen,
+                   const char *const *moves, size_t move_count,
+                   std::string &out_fen,
+                   bool &out_in_check,
+                   uint32_t &out_ply,
+                   Adjudication &out_adj,
+                   std::vector<std::string> *out_legal_moves,
+                   size_t &first_illegal,
+                   std::string &detail);
 
 /* Structural FEN validation only, per mxq_rules_validate_fen: version 1 applies
  * the frozen encoding and never judges setup legality. */

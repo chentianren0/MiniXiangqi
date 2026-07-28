@@ -17,6 +17,7 @@
 #include <deque>
 #include <fstream>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <sstream>
 
@@ -31,8 +32,13 @@ namespace {
 constexpr const char *kVariantId = "minixiangqiaxf";
 constexpr const char *kVariantFile = "minixiangqi-variants.ini";
 
-std::once_flag g_once;
-bool g_ready = false;
+/* The engine's process-global tables, which are built once and never rebuilt.
+ * Loading the variant configuration is separate and may be retried, because a
+ * missing or wrong asset directory is a caller's mistake to correct rather than
+ * a permanent property of the process. */
+std::once_flag g_bootstrap;
+std::mutex g_init_mutex;
+std::atomic<bool> g_ready{false};
 std::string g_init_detail;
 
 /* The engine's global state is process-wide and not re-entrant, and the core is
@@ -40,10 +46,14 @@ std::string g_init_detail;
  * are serialised here rather than assumed to be called one at a time. */
 std::mutex g_mutex;
 
-void initialise_once(const std::string &assets_dir) {
+void bootstrap() {
     pieceMap.init();
     variants.init();
     UCI::init(Options);
+}
+
+void initialise_once(const std::string &assets_dir) {
+    std::call_once(g_bootstrap, bootstrap);
 
     const std::string path = assets_dir.empty()
                                  ? std::string(kVariantFile)
@@ -107,6 +117,39 @@ std::string identity(const std::string &fen) {
     return fen.substr(0, sp2 == std::string::npos ? fen.size() : sp2);
 }
 
+/* Every ply after which the position now on the board stood there. */
+std::vector<size_t> occurrences_of(const std::vector<std::string> &identities,
+                                   const std::string &here) {
+    std::vector<size_t> at;
+    for (size_t i = 0; i < identities.size(); ++i) {
+        if (identities[i] == here) {
+            at.push_back(i);
+        }
+    }
+    return at;
+}
+
+/* The first ply of the repetition adjudication actually rests on: the three
+ * occurrences ending at the present one.
+ *
+ * Anything earlier is lead-in or an interrupted attempt, and neither says who
+ * is violating now. Judging over the whole history instead gets both ends
+ * wrong: every real perpetual check has a quiet lead-in, and counting those
+ * quiet plies makes it read as a chase; while an interrupted violation that
+ * later resumes would have its interruption held against it.
+ *
+ * This is the same window the rules contract adjudicates on. mx-chs-022 is the
+ * case that pins it: a violation interrupted and resumed attaches at the fourth
+ * occurrence, and it is the second, third and fourth — not the first — that
+ * decide what it was. */
+size_t window_start(const std::vector<size_t> &occurrences) {
+    if (occurrences.empty()) {
+        return 0;
+    }
+    return occurrences.size() >= 3 ? occurrences[occurrences.size() - 3]
+                                   : occurrences.front();
+}
+
 Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
                         const std::vector<std::string> &identities) {
     Adjudication a{};
@@ -133,13 +176,11 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
          * was interrupted and resumed attaches at the fourth occurrence, not
          * the third, so this is counted rather than assumed. */
         const std::string here = identity(pos.fen());
-        uint32_t occurrences = 0;
-        for (const std::string &id : identities) {
-            if (id == here) {
-                ++occurrences;
-            }
-        }
-        a.at_occurrence = occurrences;
+        const std::vector<size_t> occurrences = occurrences_of(identities, here);
+        a.at_occurrence = static_cast<uint32_t>(occurrences.size());
+
+        /* Judge the violation over the repetition, never over the whole game. */
+        const size_t first = window_start(occurrences);
 
         if (value == VALUE_DRAW) {
             /* A neutral threefold and a mutual same-class violation both come
@@ -152,7 +193,8 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
              * rather than guessed at. */
             size_t red_moves = 0, black_moves = 0;
             bool red_always_checked = true, black_always_checked = true;
-            for (const Ply &p : plies) {
+            for (size_t i = first; i < plies.size(); ++i) {
+                const Ply &p = plies[i];
                 if (p.by_red) {
                     ++red_moves;
                     if (!p.gives_check) red_always_checked = false;
@@ -185,7 +227,8 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
         const bool loser_is_red = !red_wins;
         size_t loser_moves = 0;
         bool loser_checked_every_move = true;
-        for (const Ply &p : plies) {
+        for (size_t i = first; i < plies.size(); ++i) {
+            const Ply &p = plies[i];
             if (p.by_red != loser_is_red) {
                 continue;
             }
@@ -206,8 +249,15 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
 } /* namespace */
 
 bool ensure_initialised(const char *assets_dir, std::string &detail) {
-    const std::string dir = assets_dir ? assets_dir : "";
-    std::call_once(g_once, [&] { initialise_once(dir); });
+    std::lock_guard<std::mutex> lock(g_init_mutex);
+    if (g_ready) {
+        return true;
+    }
+    /* Retried rather than latched: a failed init leaves the process able to
+     * succeed on a later attempt with a correct asset directory, and reports
+     * the attempt that actually failed rather than quoting a stale path. */
+    g_init_detail.clear();
+    initialise_once(assets_dir ? assets_dir : "");
     if (!g_ready) {
         detail = g_init_detail;
         return false;
@@ -233,29 +283,29 @@ bool validate_fen(const char *fen, std::string &detail) {
     return true;
 }
 
-bool replay(const char *start_fen,
-            const char *const *moves, size_t move_count,
-            std::string &out_fen,
-            bool &out_in_check,
-            uint32_t &out_ply,
-            Adjudication &out_adj,
-            std::vector<std::string> *out_legal_moves,
-            size_t &first_illegal,
-            std::string &detail) {
+ReplayError replay(const char *start_fen,
+                   const char *const *moves, size_t move_count,
+                   std::string &out_fen,
+                   bool &out_in_check,
+                   uint32_t &out_ply,
+                   Adjudication &out_adj,
+                   std::vector<std::string> *out_legal_moves,
+                   size_t &first_illegal,
+                   std::string &detail) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_ready) {
         detail = "the engine is not initialised";
-        return false;
+        return ReplayError::NotInitialised;
     }
     if (start_fen == nullptr) {
         detail = "start_fen was null";
-        return false;
+        return ReplayError::StartFenInvalid;
     }
 
     const Variant *v = target_variant();
     if (FEN::validate_fen(std::string(start_fen), v, false) != FEN::FEN_OK) {
         detail = "start_fen does not satisfy the frozen structural encoding";
-        return false;
+        return ReplayError::StartFenInvalid;
     }
 
     /* The state list must outlive every do_move: Position holds a pointer into
@@ -280,7 +330,7 @@ bool replay(const char *start_fen,
         if (moves == nullptr || moves[i] == nullptr) {
             first_illegal = i;
             detail = "a move in the history was null";
-            return false;
+            return ReplayError::IllegalMove;
         }
         /* to_move takes a non-const reference, so the string must be a named
          * lvalue rather than a temporary. */
@@ -289,7 +339,7 @@ bool replay(const char *start_fen,
         if (m == MOVE_NONE) {
             first_illegal = i;
             detail = "move " + move_text + " is not legal at its turn";
-            return false;
+            return ReplayError::IllegalMove;
         }
         plies.push_back(Ply{pos.side_to_move() == WHITE, pos.gives_check(m)});
         states->emplace_back();
@@ -308,7 +358,7 @@ bool replay(const char *start_fen,
             out_legal_moves->push_back(UCI::move(pos, m));
         }
     }
-    return true;
+    return ReplayError::None;
 }
 
 } /* namespace engine */
