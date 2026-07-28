@@ -93,23 +93,17 @@ module MiniXiangqiCore {
 }
 MODULEMAP
 
-# Repackaging is skipped when nothing changed, because this runs as a build
-# phase of the app: the compiled library is what the framework carries, so if it
-# is byte-identical there is nothing to rebuild, and tearing the framework down
-# and recreating it under a build that is linking it would be worse than
-# useless.
-stamp="$staging/packaged.a"
-if [ -d "$output" ] && cmp -s "$universal" "$stamp"; then
-  echo "up to date: $output"
-  exit 0
-fi
-
+# Repackaging every time, deliberately. The expensive part is the compile, and
+# CMake already makes that incremental; packaging an existing library takes a
+# moment. An earlier attempt to skip this step compared the freshly built
+# library against the packaged one, which never matched — `libtool -static` is
+# not byte-deterministic — so the skip was dead code that would have skipped
+# staging the app's resources as well had it ever fired.
 rm -rf "$output"
 mkdir -p "$(dirname "$output")"
 xcodebuild -create-xcframework \
            -library "$universal" -headers "$headers" \
            -output "$output" >/dev/null
-cp "$universal" "$stamp"
 
 # A stable path to the published headers, for targets that compile against the
 # core's module without linking it — the unit tests, which resolve every symbol
@@ -118,6 +112,13 @@ cp "$universal" "$stamp"
 # should have to spell it.
 slice=$(cd "$output" && ls -d macos-* | head -1)
 ln -sfn "MiniXiangqiCore.xcframework/$slice/Headers" "$(dirname "$output")/CoreHeaders"
+
+# A fingerprint of the sources this framework was built from, so the app can
+# tell whether it is current. Content, not timestamps: a git checkout of
+# another branch rewinds mtimes, and a check that trusted them would call a
+# stale core fresh — which is the one failure this whole arrangement exists to
+# prevent.
+"$root/apple/core-inputs-digest.sh" > "$(dirname "$output")/core-inputs.digest"
 
 # The bundled variant configuration the engine loads at initialisation. It is
 # an app resource, staged from the one copy in core/assets that the test runner

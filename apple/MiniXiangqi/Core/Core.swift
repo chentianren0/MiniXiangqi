@@ -16,6 +16,23 @@ struct CoreError: Error, CustomStringConvertible {
     var detail: String
 
     var description: String { "mxq status \(status): \(detail)" }
+
+    /// Any error, as one the app can show. The C vocabulary stops here, so
+    /// nothing above this file has to import the core's module to report a
+    /// failure that did not come from it.
+    init(wrapping error: Error) {
+        if let error = error as? CoreError {
+            self = error
+        } else {
+            self.init(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                      detail: String(describing: error))
+        }
+    }
+
+    init(status: MxqStatus, detail: String) {
+        self.status = status
+        self.detail = detail
+    }
 }
 
 enum Side {
@@ -98,8 +115,15 @@ struct Evaluation {
 final class Core {
     private let handle: OpaquePointer
 
-    static let shared: Result<Core, CoreError> = Result { try Core() }
-        .mapError { $0 as! CoreError }
+    static let shared: Result<Core, CoreError> = {
+        do {
+            return .success(try Core())
+        } catch {
+            // A store directory that cannot be created is still a start-up
+            // failure to show, not a reason to stop the process in a type cast.
+            return .failure(CoreError(wrapping: error))
+        }
+    }()
 
     private init() throws {
         // The bundled variant configuration the engine loads at initialisation.

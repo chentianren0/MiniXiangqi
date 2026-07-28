@@ -94,11 +94,9 @@ final class Game {
             lastMove = move
             selected = nil
             refreshLegalMoves()
-        } catch let error as CoreError {
-            moves.removeLast()
-            failure = error
         } catch {
             moves.removeLast()
+            failure = CoreError(wrapping: error)
         }
     }
 
@@ -106,11 +104,9 @@ final class Game {
         do {
             legalMoves = try core.legalMoves(from: startFEN, moves: moves)
                 .compactMap(Move.init(text:))
-        } catch let error as CoreError {
-            legalMoves = []
-            failure = error
         } catch {
             legalMoves = []
+            failure = CoreError(wrapping: error)
         }
     }
 }

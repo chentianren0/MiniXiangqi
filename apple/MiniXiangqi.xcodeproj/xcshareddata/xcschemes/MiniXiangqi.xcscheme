@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "2700"
+   version = "1.7">
+   <!--
+      The scheme is shared and checked in, so that everyone and CI build the
+      same thing.
+
+      The core is a prebuilt dependency. It is produced by
+      apple/build-core-xcframework.sh, run when the core changes, and the app
+      only consumes it — which is how a vendored native dependency normally
+      works, and the only arrangement that is correct here.
+
+      It cannot be produced during the build. Xcode plans its build graph up
+      front, so ProcessXCFramework — the task that extracts the library the app
+      links — snapshots the framework as it stands before any phase runs. A
+      framework rebuilt during the build is therefore picked up only by the
+      next one, silently. The app's "Check the shared core is current" phase
+      exists to make that impossible: it fails the build rather than let a core
+      change appear to have had no effect.
+   -->
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CE259A86301668710051B648"
+               BuildableName = "MiniXiangqi.app"
+               BlueprintName = "MiniXiangqi"
+               ReferencedContainer = "container:MiniXiangqi.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CE259A95301668730051B648"
+               BuildableName = "MiniXiangqiTests.xctest"
+               BlueprintName = "MiniXiangqiTests"
+               ReferencedContainer = "container:MiniXiangqi.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CE259A9F301668730051B648"
+               BuildableName = "MiniXiangqiUITests.xctest"
+               BlueprintName = "MiniXiangqiUITests"
+               ReferencedContainer = "container:MiniXiangqi.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "CE259A86301668710051B648"
+            BuildableName = "MiniXiangqi.app"
+            BlueprintName = "MiniXiangqi"
+            ReferencedContainer = "container:MiniXiangqi.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "CE259A86301668710051B648"
+            BuildableName = "MiniXiangqi.app"
+            BlueprintName = "MiniXiangqi"
+            ReferencedContainer = "container:MiniXiangqi.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>

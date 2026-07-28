@@ -2,9 +2,17 @@
 //
 // Nothing on the board is a fixed point value, so the board scales from its
 // floor to a large window without any dimension being re-tuned and without the
-// relationships between them changing. The figures here are the accepted ones
-// in docs/interaction-design.md, "Board metrics" and "Game-state markers"; this
-// type is where they are written down once so that no view invents its own.
+// relationships between them changing.
+//
+// This is where the exact values live, and deliberately so.
+// docs/interaction-design.md fixes the *relationships* and the gates — a
+// marker stays inside its own cell, a style's decoration stays inside the
+// disc, the contrast ratios each ink must reach, the 44-point floor and the
+// 720-point ceiling — and then says plainly that the exact dimensions are not
+// fixed there, because settling them in prose before anyone had seen a board
+// produced numbers that were internally consistent and unverifiable. They are
+// settled here instead, against a board that renders, and the gates are
+// measured by BoardStyleTests rather than asserted in a comment.
 
 import CoreGraphics
 
@@ -14,6 +22,13 @@ struct BoardGeometry {
 
     /// The accepted floor on every interactive board, on every platform.
     static let minimumPitch: CGFloat = 44
+
+    /// The board core stops growing at 720 points. Beyond that the two palaces
+    /// drift far enough apart on a large display to cost more in eye movement
+    /// than the extra size returns, and a disc passes 82 points, which no
+    /// physical set resembles. Surplus space goes to the surrounding layout
+    /// rather than to the board.
+    static let maximumPitch: CGFloat = 720 / 7
 
     // MARK: - The board itself
 
@@ -125,7 +140,7 @@ struct BoardGeometry {
     static func fitting(_ size: CGSize) -> BoardGeometry? {
         // stripHeight depends on the pitch, so solve by trying the width-bound
         // pitch and stepping down until the block's height fits too.
-        var pitch = (size.width / 7).rounded(.down)
+        var pitch = min((size.width / 7).rounded(.down), maximumPitch.rounded(.down))
         while pitch >= minimumPitch {
             let candidate = BoardGeometry(pitch: pitch)
             if candidate.blockSize.height <= size.height { return candidate }

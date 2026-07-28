@@ -58,13 +58,26 @@ struct BoardStyleTests {
         #expect(contrast(style.recordInk, style.boardSurface) >= 3.0)
     }
 
-    @Test("A style's decoration stays inside the band markers are kept out of")
-    func decorationClearsTheMarkerBand() {
+    @Test("A style's decoration stays inside the band markers are kept out of",
+          arguments: [0.010, 0.028, 0.060, 0.100] as [CGFloat])
+    func decorationClearsTheMarkerBand(strokeInPitches: CGFloat) {
         let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
-        for side in [Side.red, .black] {
-            let stroke = style.discEdgeStroke(side) * geometry.pitch
-            #expect(geometry.decorationExtent(edgeStroke: stroke)
-                    <= geometry.styleDecorationLimit)
-        }
+        let stroke = strokeInPitches * geometry.pitch
+
+        // The stroke is drawn inside the disc's own edge, so however heavy it
+        // is it reaches no further than the disc — and never into the marker
+        // band, which starts at 0.42 p.
+        #expect(geometry.decorationExtent(edgeStroke: stroke) <= geometry.styleDecorationLimit)
+        #expect(geometry.decorationExtent(edgeStroke: stroke) < geometry.markerInnerLimit)
+        // …and it stays a stroke rather than collapsing through the centre.
+        #expect(geometry.discEdgeRadius(stroke: stroke) > 0)
+    }
+
+    @Test("The styles in use satisfy that with room to spare", arguments: [Side.red, .black])
+    func styleStrokesAreWithinTheLimit(side: Side) {
+        let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+        let stroke = style.discEdgeStroke(side) * geometry.pitch
+        #expect(geometry.decorationExtent(edgeStroke: stroke) <= geometry.styleDecorationLimit)
+        #expect(geometry.discEdgeRadius(stroke: stroke) > geometry.symbolSize / 2)
     }
 }
