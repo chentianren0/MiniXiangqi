@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-016",
+  "title": "Chariot against chariot is a mutual attack, not a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/3r3/R6/7/7/2K4 w - - 0 1",
+  "moves": [
+    "a4a5",
+    "d5d4",
+    "a5a4",
+    "d4d5",
+    "a4a5",
+    "d5d4",
+    "a5a4",
+    "d4d5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/3r3/R6/7/7/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "The white chariot renews its attack on the undefended black chariot after every move (a5 attacks d5, a4 attacks d4), and black's replies attack nothing. A target of the same type as the attacking piece is nevertheless not a chase target, because the attack is mutual and the target can answer it, so the repetition is neutral."
+}

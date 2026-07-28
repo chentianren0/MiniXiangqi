@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-020",
+  "title": "One chasing move and one idle move per cycle is not a perpetual chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/c6/7/1R5/7/2K4 w - - 0 1",
+  "moves": [
+    "b3a3",
+    "a5a6",
+    "a3b3",
+    "a6a5",
+    "b3a3",
+    "a5a6",
+    "a3b3",
+    "a6a5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/c6/7/1R5/7/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "The rook attacks the unprotected cannon only from a3; on b3 it attacks neither a5 nor a6, so only every second Red move renews the attack while the cannon flees between a5 and a6. A perpetual chase requires every move the chasing side makes after the first of the three occurrences to renew the attack on one and the same piece, so a single idle move per cycle reduces the repetition to a neutral claimable draw; mx-chs-001 is the same shape with no idle move and is a loss."
+}

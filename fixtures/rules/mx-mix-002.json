@@ -1,0 +1,34 @@
+{
+  "id": "mx-mix-002",
+  "title": "Mutual perpetual chase is a draw",
+  "area": "mix",
+  "variant": "minixiangqi",
+  "start_fen": "2k2r1/7/1cN1R2/7/2r1nC1/7/1R2K2 w - - 0 1",
+  "moves": [
+    "c5b3",
+    "e3f5",
+    "b3c5",
+    "f5e3",
+    "c5b3",
+    "e3f5",
+    "b3c5",
+    "f5e3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k2r1/7/1cN1R2/7/2r1nC1/7/1R2K2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "draw",
+      "reason": "mutual-perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet a draw by mutual violation"
+  },
+  "rationale": "The exact union of mx-chs-033 and mx-chs-034: Red perpetually chases the unprotected black cannon on b5 and Black perpetually chases the unprotected white cannon on f3, each renewed by every move that side makes after the first of the three occurrences, and neither side ever gives check. Both sides commit the same class of violation, so the contract's mutual rule makes this a draw carrying the reserved reason mutual-perpetual-chase rather than a claimable repetition. The current unpatched engine returns the draw value but cannot report the reason — it collapses a neutral threefold, a mutual perpetual check and a mutual perpetual chase onto the same value, and unlike mx-mix-001 no check-flag signal separates them — so this fixture's reason is gated on a fork accessor exposing which branch fired and is not validated by engine agreement."
+}

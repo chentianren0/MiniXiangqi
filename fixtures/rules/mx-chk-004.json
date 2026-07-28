@@ -1,0 +1,34 @@
+{
+  "id": "mx-chk-004",
+  "title": "Perpetual discovered check, delivered by moving the cannon's screen",
+  "area": "chk",
+  "variant": "minixiangqi",
+  "start_fen": "3c3/7/2k4/3n3/4N2/7/3K3 w - - 0 1",
+  "moves": [
+    "e3d5",
+    "d4f5",
+    "d5e3",
+    "f5d4",
+    "e3d5",
+    "d4f5",
+    "d5e3",
+    "f5d4"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "3c3/7/2k4/3n3/4N2/7/3K3 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "Black's cannon on d7 bears down the d-file on the red king and never moves; each black move restores exactly one screen on that file (d4f5 leaving Red's horse on d5, f5d4 replacing it with Black's own horse), so every black move discovers check while Red only ever interposes and never checks. Pins that a discovered check sustains a perpetual-check violation and that the violation is attributed to the side whose moves deliver it, so Black loses at the third occurrence even though Red is the side standing in check at every one of its own turns."
+}

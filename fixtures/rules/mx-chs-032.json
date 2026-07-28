@@ -1,0 +1,36 @@
+{
+  "id": "mx-chs-032",
+  "title": "Matched control at the other parity: identical start and entry move to mx-chs-030",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "4k2/7/c6/7/7/7/R1K4 w - - 0 1",
+  "moves": [
+    "a1a3",
+    "a5b5",
+    "a3b3",
+    "b5a5",
+    "b3a3",
+    "a5b5",
+    "a3b3",
+    "b5a5",
+    "b3a3",
+    "a5b5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k2/7/1c5/7/R6/7/2K4 w - - 10 6",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 6,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The parity control for mx-chs-030: the same start position, the same quiet entry move a1a3, and the same four judged White moves at plies 3, 5, 7 and 9, with the three occurrences falling at plies 2, 6 and 10 instead of 1, 5 and 9. Red loses for the same reason, because adjudication does not depend on side-to-move parity; this fixture is a control rather than a patch-gated case because the current engine already agrees with it while it calls mx-chs-030 a draw, and that split on one identical set of judged moves is the whole content of the pair. Its nine-ply prefix is exactly mx-chs-030, which the contract already rules terminal, so this history is a probe of the adjudication function rather than a playable continuation."
+}

@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-029",
+  "title": "No flying-general pin exists when a piece of either colour blocks the file",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/7/R6/2r4/7/2P4/2K4 w - - 0 1",
+  "moves": [
+    "a5a4",
+    "c4c5",
+    "a4a5",
+    "c5c4",
+    "a5a4",
+    "c4c5",
+    "a4a5",
+    "c5c4"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/7/R6/2r4/7/2P4/2K4 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "Both chariots are undefended and attack each other on equal terms, which the same-type exclusion makes a mutual attack rather than a chase, and the black chariot is not pinned: the white soldier on c2 also stands between the two kings on the c-file, and it defends neither a4 nor a5. A piece is pinned by the flying-general rule only when the two kings share a file and it is the only piece of either colour standing between them, so neither side chases and the repetition is neutral. Patch-gated against fork correction P2: the current unpatched engine computes that pin over the victim's pieces alone, treats the black chariot as pinned, and rules Red the loser, so this fixture states the contract against the engine and is expected to fail until that correction lands."
+}

@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-015",
+  "title": "A horse chasing a protected cannon is not a chase",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "3k3/7/3c2r/N6/7/7/4K2 w - - 0 1",
+  "moves": [
+    "a4c3",
+    "d5c5",
+    "c3a4",
+    "c5d5",
+    "a4c3",
+    "d5c5",
+    "c3a4",
+    "c5d5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k3/7/3c2r/N6/7/7/4K2 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "One-piece differential of mx-chs-014: the target's type changes from chariot to cannon while the black chariot on g5 defends it on d5 and c5 by the same geometry. The horse and the cannon are treated as equals, so no value relation overrides the defence and the protected target is not chased; the repetition is neutral and merely claimable at the third occurrence."
+}

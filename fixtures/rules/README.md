@@ -13,6 +13,7 @@ Fixture IDs are stable and lowercase, `mx-<area>-NNN`:
 - `mx-rep-*` — neutral repetition and claim eligibility.
 - `mx-chk-*` — perpetual check.
 - `mx-chs-*` — perpetual chase, protection, and chase-target exclusion.
+- `mx-mix-*` — cross-class and both-sides outcomes: mutual violations, check-over-chase precedence, and mixed-class sequences.
 
 An accepted fixture's `id`, position, moves, and assertions are immutable in meaning; a corrected interpretation is a new fixture (or an explicitly reviewed amendment), not a silent edit.
 

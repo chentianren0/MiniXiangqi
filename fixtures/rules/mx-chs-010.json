@@ -1,0 +1,34 @@
+{
+  "id": "mx-chs-010",
+  "title": "A general as sole defender protects when the recapture is legal",
+  "area": "chs",
+  "variant": "minixiangqi",
+  "start_fen": "2k4/4R2/2c4/7/7/7/3K3 w - - 0 1",
+  "moves": [
+    "e6e5",
+    "c5c6",
+    "e5e6",
+    "c6c5",
+    "e6e5",
+    "c5c6",
+    "e5e6",
+    "c6c5"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "2k4/4R2/2c4/7/7/7/3K3 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet claimable"
+  },
+  "rationale": "mx-chs-009 with the white king moved c1 to d1, the single change. The kings no longer share a file, so c7c6 is a legal recapture and the cannon is protected on c6: Red's e5e6 is not a chase, the chase is not sustained across every Red move, and the repetition is neutral and merely claimable."
+}
