@@ -9,12 +9,22 @@
 #
 #   ./apple/build-core-xcframework.sh
 #
-# Two architectures. macOS on Apple silicon runs arm64e, and the app is built
-# for it; arm64 is carried alongside so the same framework serves a plain arm64
-# build — the command-line test runner, an Intel-free arm64 host, or a CI
-# machine — without a second package. They are built separately and joined with
-# lipo, because the vendored engine selects its instruction-set defines per
-# architecture and its build refuses to produce both in one pass.
+# Three library sets, because the app has three destinations and an XCFramework
+# carries one library per platform:
+#
+#   macOS          arm64 + arm64e
+#   iOS device     arm64 + arm64e
+#   iOS Simulator  arm64
+#
+# Both hardware platforms carry both architectures. Apple silicon runs arm64e
+# and the app is built for it; arm64 is carried alongside so the same framework
+# serves a plain arm64 build — the command-line test runner, an Intel-free arm64
+# host, a CI machine — without a second package. The Simulator is not hardware
+# and has no arm64e, so it carries the one architecture it can run.
+#
+# Every architecture is configured and compiled separately and the results are
+# joined with lipo, because the vendored engine selects its instruction-set
+# defines per architecture and its build refuses to produce two in one pass.
 #
 # Everything this writes is generated and ignored by git.
 
@@ -40,49 +50,77 @@ for tool in cmake ninja; do
   }
 done
 
-architectures="arm64 arm64e"
+# One deployment target for all three, because the project sets one: both
+# MACOSX_DEPLOYMENT_TARGET and IPHONEOS_DEPLOYMENT_TARGET in
+# apple/MiniXiangqi.xcodeproj are 26.5. A core built for a newer system than the
+# app targets is what the linker warns about, so this follows the project rather
+# than leading it.
 deployment_target=26.5
 
-for arch in $architectures; do
-  build="$staging/macosx-$arch"
-  cmake -S "$root/core" -B "$build" -G Ninja \
-        -DMXQ_ENABLE_RULES_FACADE=ON \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_OSX_SYSROOT=macosx \
-        -DCMAKE_OSX_ARCHITECTURES="$arch" \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET="$deployment_target" \
-        >/dev/null
-  cmake --build "$build" --target mxq_core
-done
+# Configure, compile and merge one platform's library.
+#
+#   build_platform <sdk> <CMake system name, empty for the host> <architectures>
+#
+# The system name is what turns a build into a cross build: empty for macOS,
+# which is the machine this runs on, and iOS for the two that are not — the
+# Simulator included, since a simulator binary is an iOS binary built against
+# another SDK rather than a macOS one.
+#
+# The core is three static libraries — the facade, the vendored engine and the
+# vendored SQLite — and an XCFramework carries one, so they are combined per
+# architecture with libtool and then joined across architectures with lipo,
+# rather than left for every consumer to link in the right order.
+build_platform() {
+  sdk=$1
+  system=$2
+  architectures=$3
 
-# One library per architecture, then one universal library. The core is three
-# static libraries — the facade, the vendored engine, and the vendored SQLite —
-# and an XCFramework carries one, so they are combined here rather than left
-# for every consumer to link in the right order.
-merge_slice() {
-  arch=$1
-  build="$staging/macosx-$arch"
-  merged="$staging/libMiniXiangqiCore-$arch.a"
-  rm -f "$merged"
-  libtool -static -no_warning_for_no_symbols -o "$merged" \
-          "$build/libmxqcore.a" \
-          "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
-          "$build/third_party/sqlite/libmxqsqlite.a"
-  echo "$merged"
+  slices=""
+  for arch in $architectures; do
+    build="$staging/$sdk-$arch"
+    set -- -S "$root/core" -B "$build" -G Ninja \
+           -DMXQ_ENABLE_RULES_FACADE=ON \
+           -DCMAKE_BUILD_TYPE=Release \
+           -DCMAKE_OSX_SYSROOT="$sdk" \
+           -DCMAKE_OSX_ARCHITECTURES="$arch" \
+           -DCMAKE_OSX_DEPLOYMENT_TARGET="$deployment_target"
+    if [ -n "$system" ]; then
+      set -- "$@" "-DCMAKE_SYSTEM_NAME=$system"
+    fi
+    cmake "$@" >/dev/null
+    cmake --build "$build" --target mxq_core
+
+    slice="$staging/libMiniXiangqiCore-$sdk-$arch.a"
+    rm -f "$slice"
+    libtool -static -no_warning_for_no_symbols -o "$slice" \
+            "$build/libmxqcore.a" \
+            "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
+            "$build/third_party/sqlite/libmxqsqlite.a"
+    slices="$slices $slice"
+  done
+
+  # lipo even for the single-architecture Simulator library, so that every
+  # platform's library has the same shape and nothing downstream has to care
+  # how many architectures went into it.
+  #
+  # One directory per platform, and the same file name in each: -create-xcframework
+  # copies each library in under the name it was given, so the name here is the
+  # name inside every slice. check-core-is-current.sh looks for exactly this one.
+  library="$staging/$sdk/libMiniXiangqiCore.a"
+  mkdir -p "$(dirname "$library")"
+  rm -f "$library"
+  # shellcheck disable=SC2086
+  lipo -create $slices -output "$library"
 }
 
-slices=""
-for arch in $architectures; do
-  slices="$slices $(merge_slice "$arch")"
-done
-
-universal="$staging/libMiniXiangqiCore.a"
-rm -f "$universal"
-# shellcheck disable=SC2086
-lipo -create $slices -output "$universal"
+build_platform macosx          ""  "arm64 arm64e"
+build_platform iphoneos        iOS "arm64 arm64e"
+build_platform iphonesimulator iOS "arm64"
 
 # The headers the XCFramework publishes: the repository's single public C
-# surface, and the module map that makes it importable from Swift.
+# surface, and the module map that makes it importable from Swift. One copy,
+# published with each library — mxq.h is platform-independent, and a per-slice
+# header set would be three copies of one file.
 headers="$staging/Headers"
 rm -rf "$headers"
 mkdir -p "$headers"
@@ -103,14 +141,39 @@ MODULEMAP
 rm -rf "$output"
 mkdir -p "$(dirname "$output")"
 xcodebuild -create-xcframework \
-           -library "$universal" -headers "$headers" \
+           -library "$staging/macosx/libMiniXiangqiCore.a" -headers "$headers" \
+           -library "$staging/iphoneos/libMiniXiangqiCore.a" -headers "$headers" \
+           -library "$staging/iphonesimulator/libMiniXiangqiCore.a" -headers "$headers" \
            -output "$output" >/dev/null
+
+# Signed if this machine can sign, and never failing if it cannot. Xcode
+# validates the frameworks a project links and stops with a trust prompt at an
+# unsigned one; a locally built artifact that carries this machine's development
+# signature is accepted without the prompt. A machine with no identity — CI, a
+# fresh checkout — still gets a working framework, and the prompt is the price.
+#
+# --timestamp=none: a development signature does not need Apple's timestamp
+# server, and asking for it makes the build depend on the network.
+identity=$(security find-identity -v -p codesigning 2>/dev/null \
+             | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p' | head -1)
+if [ -n "$identity" ]; then
+  if codesign --timestamp=none --sign "$identity" "$output"; then
+    echo "signed $output as $identity"
+  else
+    echo "note: signing failed; Xcode will ask you to trust the unsigned framework." >&2
+  fi
+else
+  echo "note: no Apple Development identity on this machine, so the framework is unsigned; Xcode's Accept Unsigned is expected for a locally built artifact."
+fi
 
 # A stable path to the published headers, for targets that compile against the
 # core's module without linking it — the unit tests, which resolve every symbol
 # through their host application. The slice directory inside an XCFramework is
-# named after the architectures it carries, so nothing outside this script
-# should have to spell it.
+# named after the platform and architectures it carries, so nothing outside this
+# script should have to spell it. The macOS slice, deterministically: the
+# headers are one file per slice and identical across all three, so which slice
+# publishes the path is arbitrary, and an arbitrary choice made the same way
+# every run is the one that keeps the path stable.
 slice=$(cd "$output" && ls -d macos-* | head -1)
 ln -sfn "MiniXiangqiCore.xcframework/$slice/Headers" "$(dirname "$output")/CoreHeaders"
 
