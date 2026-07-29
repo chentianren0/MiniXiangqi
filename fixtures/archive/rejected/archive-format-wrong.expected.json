@@ -1,0 +1,7 @@
+{
+  "class": "envelope: in-band type check",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "archive_format",
+  "why": "The in-band type check answers first, so a file that is not ours is never reported as a version problem or as corruption of ours."
+}

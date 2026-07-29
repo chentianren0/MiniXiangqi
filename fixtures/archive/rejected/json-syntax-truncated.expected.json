@@ -1,0 +1,7 @@
+{
+  "class": "JSON syntax",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "the document ended",
+  "why": "A file cut short mid-document."
+}

@@ -1,0 +1,7 @@
+{
+  "class": "field validity: move notation",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "canonical notation",
+  "why": "Moves are <from><to> over the seven-by-seven board. A square outside it is malformed, which is distinct from illegal."
+}

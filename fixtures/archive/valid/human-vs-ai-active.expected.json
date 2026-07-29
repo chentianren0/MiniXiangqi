@@ -1,0 +1,15 @@
+{
+  "title": "Human versus AI, active, Random resolved to Black",
+  "why": "human_side is the resolved side even when first_mover_choice is random, which is retained because it cannot be reconstructed later; the frozen movetime is stored beside the level.",
+  "info": {
+    "archive_version": 1,
+    "move_count": 2,
+    "mode": "human-vs-ai",
+    "human_side": "black",
+    "outcome": "none",
+    "end_reason": null,
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 0,
+    "game_id": "019b76da-a805-7000-8000-000000000005"
+  }
+}

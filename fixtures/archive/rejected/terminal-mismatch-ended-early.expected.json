@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: terminal pair",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH",
+  "detail_contains": "cannot record",
+  "why": "Ended-early never records a naturally terminal position: an unconfirmed natural result is always saved as its actual result."
+}

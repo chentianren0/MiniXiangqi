@@ -1,0 +1,7 @@
+{
+  "class": "content: missing member",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "no \"started_at\" member",
+  "why": "started_at is required in every archive, active or complete."
+}

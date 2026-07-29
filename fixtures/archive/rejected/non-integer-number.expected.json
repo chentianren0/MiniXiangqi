@@ -1,0 +1,7 @@
+{
+  "class": "non-integer number",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "not an integer",
+  "why": "Integers only. A fractional number is a document written against another contract, never a value to round."
+}

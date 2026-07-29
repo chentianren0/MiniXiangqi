@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: initial position",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "frozen starting position",
+  "why": "Version 1 defines exactly one initial position. A structural probe cannot judge it \u2014 no setup-legality predicate exists \u2014 so this is the rules tier's first question."
+}

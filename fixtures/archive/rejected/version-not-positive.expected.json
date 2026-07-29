@@ -1,0 +1,7 @@
+{
+  "class": "envelope: malformed version",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "not a positive integer",
+  "why": "Archive versions are a single monotonically increasing integer from 1. Zero is a corrupt field, not a release, so it must not claim to have been created by a newer version."
+}

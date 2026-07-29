@@ -1,0 +1,7 @@
+{
+  "class": "field validity: timestamp",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "RFC 3339",
+  "why": "Timestamps are the exact fixed-width form. One spelling is what makes two exports of one game compare byte for byte."
+}

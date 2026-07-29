@@ -1,0 +1,7 @@
+{
+  "class": "strict UTF-8",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "not valid UTF-8",
+  "why": "A byte that begins no valid UTF-8 sequence. Checked over the whole input before parsing, so no partial decode can disagree with it."
+}

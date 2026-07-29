@@ -1,0 +1,7 @@
+{
+  "class": "closed vocabulary",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "accepted end reasons",
+  "why": "end_reason has nine accepted values; nothing else is an end reason."
+}

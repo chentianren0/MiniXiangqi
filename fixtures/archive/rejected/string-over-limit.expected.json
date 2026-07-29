@@ -1,0 +1,7 @@
+{
+  "class": "structural limit: string length",
+  "probe": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "validate": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "detail_contains": "longer than the import limit",
+  "why": "A 257-byte string, one past the 256-byte limit."
+}

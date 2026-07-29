@@ -1,0 +1,7 @@
+{
+  "class": "null",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "null is forbidden",
+  "why": "The archive has no null: absence is spelled by omitting the member, which is exactly what the NONE constants of the C interface stand for."
+}

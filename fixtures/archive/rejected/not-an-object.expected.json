@@ -1,0 +1,7 @@
+{
+  "class": "JSON syntax",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "not a JSON object",
+  "why": "The archive is one JSON object; an array is not that shape."
+}

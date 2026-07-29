@@ -1,0 +1,7 @@
+{
+  "class": "unsupported version",
+  "probe": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "validate": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "detail_contains": "created by a newer version",
+  "why": "Version dispatch answers before the unknown-member rule, so a file from a later version is reported as exactly that \u2014 never as corruption \u2014 even though it also carries a member this version does not know."
+}

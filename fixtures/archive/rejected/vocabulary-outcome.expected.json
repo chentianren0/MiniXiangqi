@@ -1,0 +1,7 @@
+{
+  "class": "closed vocabulary",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "\"outcome\" is not one of",
+  "why": "The outcome vocabulary is the committed-result set, which is deliberately not the live fixture state set."
+}

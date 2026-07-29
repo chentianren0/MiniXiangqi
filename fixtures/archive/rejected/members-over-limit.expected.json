@@ -1,0 +1,7 @@
+{
+  "class": "structural limit: members per object",
+  "probe": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "validate": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "detail_contains": "more members",
+  "why": "Thirty-three members in one object, one past the limit. The limit is reached while parsing, so it answers before the unknown-member rule would."
+}
