@@ -126,26 +126,17 @@ final class Game {
         refreshLegalMoves()
     }
 
-    /// A stored move this app cannot read, which a resumed line can never
-    /// legitimately contain: the core validated the whole of it before a
-    /// session existed.
-    private struct UnreadableStoredMove: Error, CustomStringConvertible {
-        var ply: Int
-        var description: String { "the stored line holds no move at ply \(ply)" }
-    }
-
-    /// The stored line, read as it was written: each move's notation from the
-    /// placement before it, which the session replays on request. Quadratic in
-    /// the line's length and run once, at resume, where a game's own length is
-    /// the measure of what resuming it is worth.
+    /// The stored line, read as it was written — the same reading a History
+    /// record's replay gets, so a relaunch and a replay say the same words
+    /// about the same game.
     private static func notation(reading moves: [String],
                                  from rules: Rules) throws -> [String] {
-        try moves.enumerated().map { ply, text in
-            guard let move = Move(text: text) else {
-                throw CoreError(wrapping: UnreadableStoredMove(ply: ply))
+        do {
+            return try MoveNotation.line(for: moves) {
+                Placement(fen: try rules.fen(atPly: $0))
             }
-            return MoveNotation.text(for: move,
-                                     in: Placement(fen: try rules.fen(atPly: ply)))
+        } catch {
+            throw CoreError(wrapping: error)
         }
     }
 
@@ -164,16 +155,7 @@ final class Game {
     /// side in check: the core reports check for the position on screen.
     var checkedGeneral: Square? {
         guard evaluation.inCheck else { return nil }
-        for rank in 0..<Square.count {
-            for file in 0..<Square.count {
-                let square = Square(file: file, rank: rank)
-                if let piece = placement[square],
-                   piece.kind == .general, piece.side == evaluation.sideToMove {
-                    return square
-                }
-            }
-        }
-        return nil
+        return placement.general(of: evaluation.sideToMove)
     }
 
     // MARK: - Result

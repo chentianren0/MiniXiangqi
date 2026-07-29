@@ -17,7 +17,11 @@ import MiniXiangqiCore
 
 /// A failed core call. `status` is the contract; `detail` is a short English
 /// diagnostic for the log, never user-facing copy.
-struct CoreError: Error, Equatable, CustomStringConvertible {
+///
+/// Nonisolated, as every type in this file that is pure data is: the target
+/// defaults declarations to the main actor, which is right for a view and
+/// wrong for a value the store surface builds off it.
+nonisolated struct CoreError: Error, Equatable, CustomStringConvertible {
     var status: MxqStatus
     var detail: String
 
@@ -41,7 +45,7 @@ struct CoreError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-enum Side {
+nonisolated enum Side: Sendable {
     case red, black
 
     init?(_ color: MxqColor) {
@@ -56,7 +60,7 @@ enum Side {
 /// The live game state. These are exactly the fixture state identifiers, and
 /// exactly the core's own vocabulary: the C constants are mapped here so that
 /// no view has to import the C module to ask whose turn it is.
-enum GameState {
+nonisolated enum GameState: Sendable {
     case ongoing, claimableDraw, redWins, blackWins, draw
 
     init(_ state: MxqGameState) {
@@ -77,7 +81,32 @@ enum GameState {
     var isOver: Bool { self != .ongoing && self != .claimableDraw }
 }
 
-enum EndReason {
+/// The committed result of a finished game, which is not the same question as
+/// the position's verdict: a resignation and an early end are outcomes no
+/// position produces. `none` is the ended-early record's outcome, exactly when
+/// the reason is `endedEarly`.
+nonisolated enum Outcome: Sendable {
+    case none, redWins, blackWins, draw
+
+    init(_ outcome: MxqOutcome) {
+        switch outcome {
+        case MxqOutcome(MXQ_OUTCOME_RED_WINS): self = .redWins
+        case MxqOutcome(MXQ_OUTCOME_BLACK_WINS): self = .blackWins
+        case MxqOutcome(MXQ_OUTCOME_DRAW): self = .draw
+        default: self = .none
+        }
+    }
+}
+
+nonisolated enum PlayMode: Sendable {
+    case humanVersusAI, freePlay
+
+    init(_ mode: MxqPlayMode) {
+        self = mode == MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI) ? .humanVersusAI : .freePlay
+    }
+}
+
+nonisolated enum EndReason: Sendable {
     case none, checkmate, stalemate, threefoldRepetition
     case perpetualCheck, perpetualChase
     case mutualPerpetualCheck, mutualPerpetualChase
@@ -101,7 +130,7 @@ enum EndReason {
 
 /// A position and the game state, exactly as the core reports them — for a
 /// session, the session's; before one exists, the frozen start position's.
-struct Evaluation {
+nonisolated struct Evaluation: Sendable {
     var fen: String
     var sideToMove: Side
     var inCheck: Bool
@@ -117,6 +146,35 @@ struct Evaluation {
     var undoAvailable: Bool
 
     var isOver: Bool { state.isOver }
+}
+
+// MARK: - Plumbing shared by every call in this file
+
+// Nonisolated because the store surface below is a value that may leave the
+// main actor, and it speaks through exactly the same four helpers the session
+// calls do.
+
+private nonisolated func freshError() -> MxqError {
+    var err = MxqError()
+    err.struct_size = UInt32(MemoryLayout<MxqError>.size)
+    return err
+}
+
+private nonisolated func string<T>(of fixedArray: T, capacity: Int32) -> String {
+    withUnsafePointer(to: fixedArray) {
+        $0.withMemoryRebound(to: CChar.self, capacity: Int(capacity)) {
+            String(cString: $0)
+        }
+    }
+}
+
+private nonisolated func moveTexts(_ buffer: [MxqMove], count: Int) -> [String] {
+    buffer.prefix(count).map { string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP) }
+}
+
+private nonisolated func check(_ status: MxqStatus, _ err: MxqError) throws {
+    guard status != MXQ_OK else { return }
+    throw CoreError(status: status, detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))
 }
 
 /// The process-wide core. Singleton because the core is singleton-enforced: a
@@ -185,7 +243,7 @@ final class Core {
                 config.api_patch = UInt32(MXQ_API_VERSION_PATCH)
                 config.store_directory = storePath
                 config.asset_directory = assetPath
-                try Self.check(mxq_core_init(&config, &handle, &err), err)
+                try check(mxq_core_init(&config, &handle, &err), err)
             }
         }
         guard let handle else {
@@ -240,12 +298,6 @@ final class Core {
 
     // MARK: - Plumbing
 
-    private static func freshError() -> MxqError {
-        var err = MxqError()
-        err.struct_size = UInt32(MemoryLayout<MxqError>.size)
-        return err
-    }
-
     /// The attached session, or the typed refusal that says the caller asked a
     /// session question with no session — an app bug, never a rules outcome.
     private func attachedSession() throws -> OpaquePointer {
@@ -254,18 +306,6 @@ final class Core {
                             detail: "no session is attached")
         }
         return session
-    }
-
-    private static func string<T>(of fixedArray: T, capacity: Int32) -> String {
-        withUnsafePointer(to: fixedArray) {
-            $0.withMemoryRebound(to: CChar.self, capacity: Int(capacity)) {
-                String(cString: $0)
-            }
-        }
-    }
-
-    private static func moveTexts(_ buffer: [MxqMove], count: Int) -> [String] {
-        buffer.prefix(count).map { string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP) }
     }
 
     private static func evaluation(position: MxqPosition,
@@ -286,11 +326,6 @@ final class Core {
             undoAvailable: status.undo_available != 0)
     }
 
-    private static func check(_ status: MxqStatus, _ err: MxqError) throws {
-        guard status != MXQ_OK else { return }
-        throw CoreError(status: status,
-                        detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))
-    }
 }
 
 // MARK: - The rules seam
@@ -303,8 +338,8 @@ extension Core: Rules {
         precondition(session == nil, "a second session over the one active game")
         var game: OpaquePointer?
         var exists: UInt8 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_game_resume_active(handle, &game, &exists, &err), err)
+        var err = freshError()
+        try check(mxq_game_resume_active(handle, &game, &exists, &err), err)
         session = game
         return exists != 0
     }
@@ -320,8 +355,8 @@ extension Core: Rules {
         config.ai_movetime_ms = 0
 
         var game: OpaquePointer?
-        var err = Self.freshError()
-        try Self.check(mxq_game_create(handle, &config, &game, &err), err)
+        var err = freshError()
+        try check(mxq_game_create(handle, &config, &game, &err), err)
         session = game
         // The first move follows in the same user-visible action. If its
         // commit is refused the session stays, holding a game of no moves:
@@ -332,33 +367,33 @@ extension Core: Rules {
 
     func apply(_ move: String) throws {
         let session = try attachedSession()
-        var err = Self.freshError()
+        var err = freshError()
         try move.withCString {
-            try Self.check(mxq_game_apply_move(session, $0, nil, nil, &err), err)
+            try check(mxq_game_apply_move(session, $0, nil, nil, &err), err)
         }
     }
 
     func undo() throws -> Int {
         let session = try attachedSession()
         var removed: UInt32 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_game_undo(session, &removed, &err), err)
+        var err = freshError()
+        try check(mxq_game_undo(session, &removed, &err), err)
         return Int(removed)
     }
 
     func claimDraw() throws -> UInt64 {
         let session = try attachedSession()
         var recordID: UInt64 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_game_claim_draw(session, &recordID, &err), err)
+        var err = freshError()
+        try check(mxq_game_claim_draw(session, &recordID, &err), err)
         return recordID
     }
 
     func confirmResult() throws -> UInt64 {
         let session = try attachedSession()
         var recordID: UInt64 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_game_confirm_result(session, &recordID, &err), err)
+        var err = freshError()
+        try check(mxq_game_confirm_result(session, &recordID, &err), err)
         return recordID
     }
 
@@ -367,18 +402,18 @@ extension Core: Rules {
         position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-        var err = Self.freshError()
+        var err = freshError()
 
         if let session {
-            try Self.check(mxq_game_position(session, &position, &err), err)
-            try Self.check(mxq_game_status(session, &status, &err), err)
+            try check(mxq_game_position(session, &position, &err), err)
+            try check(mxq_game_status(session, &status, &err), err)
         } else {
             // Before a session exists the board shows the frozen start
             // position, and the stateless facade is what answers for it: the
             // empty board's state is still the core's to adjudicate, not this
             // file's to assume.
             try Core.startFEN.withCString { fen in
-                try Self.check(mxq_rules_evaluate(handle, fen, nil, 0,
+                try check(mxq_rules_evaluate(handle, fen, nil, 0,
                                                   &position, &status, nil, &err), err)
             }
         }
@@ -387,23 +422,23 @@ extension Core: Rules {
 
     func moveHistory() throws -> [String] {
         guard let session else { return [] }
-        var err = Self.freshError()
+        var err = freshError()
         var count = 0
         // The count alone first: a resumed game is as long as it is, and the
         // resume path deliberately lifts the import bounds, so no fixed buffer
         // is always sufficient here. The probe's buffer-too-small answer is
         // the count arriving, routine by the interface's own words.
         let probe = mxq_game_move_history(session, nil, 0, &count, &err)
-        if probe != MXQ_ERR_ARG_BUFFER_TOO_SMALL { try Self.check(probe, err) }
+        if probe != MXQ_ERR_ARG_BUFFER_TOO_SMALL { try check(probe, err) }
         guard count > 0 else { return [] }
         var buffer = [MxqMove](repeating: MxqMove(), count: count)
-        try Self.check(mxq_game_move_history(session, &buffer, buffer.count,
+        try check(mxq_game_move_history(session, &buffer, buffer.count,
                                              &count, &err), err)
-        return Self.moveTexts(buffer, count: count)
+        return moveTexts(buffer, count: count)
     }
 
     func legalMoves() throws -> [String] {
-        var err = Self.freshError()
+        var err = freshError()
         var count = 0
         // One call sized to the widest position this ruleset can reach. The
         // count comes back either way, so an undersized buffer is a bug here
@@ -411,29 +446,29 @@ extension Core: Rules {
         var buffer = [MxqMove](repeating: MxqMove(), count: 128)
 
         if let session {
-            try Self.check(mxq_game_legal_moves(session, &buffer, buffer.count,
+            try check(mxq_game_legal_moves(session, &buffer, buffer.count,
                                                 &count, &err), err)
         } else {
             // The empty board again: the start position's moves are a rules
             // question, and the stateless facade is the session-free way to
             // ask it.
             try Core.startFEN.withCString { fen in
-                try Self.check(mxq_rules_legal_moves(handle, fen, nil, 0,
+                try check(mxq_rules_legal_moves(handle, fen, nil, 0,
                                                      &buffer, buffer.count,
                                                      &count, &err), err)
             }
         }
-        return Self.moveTexts(buffer, count: count)
+        return moveTexts(buffer, count: count)
     }
 
     func fen(atPly ply: Int) throws -> String {
         let session = try attachedSession()
         var position = MxqPosition()
         position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
-        var err = Self.freshError()
-        try Self.check(mxq_game_position_at(session, UInt32(ply), &position, &err),
+        var err = freshError()
+        try check(mxq_game_position_at(session, UInt32(ply), &position, &err),
                        err)
-        return Self.string(of: position.fen, capacity: MXQ_FEN_CAP)
+        return string(of: position.fen, capacity: MXQ_FEN_CAP)
     }
 }
 
@@ -451,30 +486,263 @@ extension Core {
     }
 }
 
+// MARK: - The library's History surface
+
+/// One stored game, as the History list reads it: the core's own summary,
+/// converted and nothing more. Every field here is the store's answer; the row
+/// composes them and judges none of them.
+nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
+    /// The store's `record_id`, never reissued after a deletion — so a stale
+    /// one dangles rather than naming some later game.
+    var id: UInt64
+    var mode: PlayMode
+    /// The human's resolved side in human-versus-AI play; absent in Free Play,
+    /// where the same person controls both.
+    var humanSide: Side?
+    var outcome: Outcome
+    var reason: EndReason
+    /// Plies, which is what 步 counts.
+    var moveCount: Int
+    var pinned: Bool
+    var imported: Bool
+    /// When the game ended — the instant that made it a record. The store
+    /// orders the list by its own History-added time instead, and for a game
+    /// played on this device the two are one transaction apart.
+    var endedAt: Date
+}
+
+/// The library's History surface.
+///
+/// The screen calls these on the main actor, under the documented exception in
+/// docs/core-interface.md's threading contract that the active game's commits
+/// already run under: a page read commits nothing and does not fsync, and a pin
+/// or a delete is one commit per user action, which is exactly the shape the
+/// owner's proportionality ruling accepted. `mxq_store_history_open` is the one
+/// the argument does not bound — it decodes and replays a whole game — and it
+/// is named in the contract as the call to measure at Stage 6.
+///
+/// It is nonetheless a `Sendable` value over the core handle alone rather than
+/// a method on `Core`: it holds no Swift state to race on, and the core
+/// serializes store work behind one mutex and one connection, so moving these
+/// calls back off the main actor is a change of call site rather than of
+/// design. That is what makes the contract's "held in reserve" mean something.
+///
+/// A handle outliving its core is safe by the interface's own promise: after
+/// `mxq_core_shutdown` every handle it issued answers
+/// `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory.
+///
+/// `@unchecked` because `OpaquePointer` carries no sendability of its own and
+/// cannot: what makes this one safe to send is the C contract above it, which
+/// Swift cannot read. The claim being made is exactly the header's — any thread
+/// except inside a search callback — and nothing else in the struct can race.
+nonisolated struct HistoryStore: @unchecked Sendable {
+    fileprivate let handle: OpaquePointer
+
+    /// How many records there are, and the library revision — a monotonic
+    /// counter every committed store mutation bumps. Return values plus this
+    /// cheap staleness check are the interface's whole answer to observing the
+    /// library; there is no notification to subscribe to.
+    func count() throws -> (records: Int, revision: UInt64) {
+        var count: UInt32 = 0
+        var revision: UInt64 = 0
+        var err = freshError()
+        try check(mxq_store_history_count(handle, &count, &revision, &err), err)
+        return (Int(count), revision)
+    }
+
+    /// One page, in the core's own order — pinned first, then newest within
+    /// each group. The order is a core guarantee and nothing above re-sorts it.
+    func page(offset: Int, limit: Int) throws -> (records: [RecordSummary],
+                                                  revision: UInt64) {
+        var buffer = [MxqRecordSummary](repeating: MxqRecordSummary(), count: limit)
+        var written = 0
+        var revision: UInt64 = 0
+        var err = freshError()
+        // The caller chose the page size, so a buffer smaller than the limit is
+        // this code's bug rather than a routine way to ask for the count: the
+        // two are the same number here by construction.
+        try check(mxq_store_history_page(handle, UInt32(offset), UInt32(limit),
+                                         &buffer, buffer.count, &written,
+                                         &revision, &err), err)
+        return (buffer.prefix(written).map(RecordSummary.init), revision)
+    }
+
+    /// Every record, read a page at a time. The target MVP has no search and no
+    /// filters, so the list is the library, and a few thousand summaries is a
+    /// few hundred kilobytes.
+    func all() throws -> (records: [RecordSummary], revision: UInt64) {
+        var records: [RecordSummary] = []
+        var revision: UInt64 = 0
+        while true {
+            let page = try page(offset: records.count, limit: Self.pageSize)
+            records += page.records
+            revision = page.revision
+            // Short of the page size means the end of the list, by the
+            // interface's own words.
+            if page.records.count < Self.pageSize { return (records, revision) }
+        }
+    }
+
+    private static let pageSize = 200
+
+    /// Pin or unpin — the only mutable field a History record has.
+    func setPinned(_ pinned: Bool, on record: UInt64) throws {
+        var err = freshError()
+        try check(mxq_store_history_set_pinned(handle, record, pinned ? 1 : 0, &err),
+                  err)
+    }
+
+    /// Permanent, whole, and with no undo behind it.
+    func delete(_ record: UInt64) throws {
+        var err = freshError()
+        try check(mxq_store_history_delete(handle, record, &err), err)
+    }
+
+    /// Opens the record as a detached read-only session and hands back its
+    /// handle. Ownership passes to whoever receives it — the replay screen,
+    /// where every remaining call on it is a non-blocking session query.
+    func open(_ record: UInt64) throws -> ReplayHandle {
+        var replay: OpaquePointer?
+        var err = freshError()
+        try check(mxq_store_history_open(handle, record, &replay, &err), err)
+        guard let replay else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "mxq_store_history_open reported success without a session")
+        }
+        return ReplayHandle(handle: replay)
+    }
+}
+
+/// A detached replay session in transit, between the call that opened it and
+/// the object that will own it. The type exists to make that one hand-off
+/// visible, since a session is single-owner and this is the moment its owner is
+/// decided — and to keep the handle sendable, so that opening it off the main
+/// actor stays a change of call site rather than of design.
+nonisolated struct ReplayHandle: @unchecked Sendable {
+    fileprivate let handle: OpaquePointer
+}
+
+private nonisolated extension RecordSummary {
+    init(_ summary: MxqRecordSummary) {
+        self.init(id: summary.record_id,
+                  mode: PlayMode(summary.mode),
+                  humanSide: Side(summary.human_side),
+                  outcome: Outcome(summary.outcome),
+                  reason: EndReason(summary.end_reason),
+                  moveCount: Int(summary.move_count),
+                  pinned: summary.pinned != 0,
+                  imported: summary.provenance == MxqProvenance(MXQ_PROVENANCE_IMPORTED),
+                  endedAt: Date(milliseconds: summary.ended_at_ms != 0
+                                ? summary.ended_at_ms : summary.added_at_ms))
+    }
+}
+
+private nonisolated extension Date {
+    init(milliseconds: Int64) {
+        self.init(timeIntervalSince1970: Double(milliseconds) / 1000)
+    }
+}
+
+/// The position at one ply of a replayed game.
+nonisolated struct ReplayPosition: Sendable {
+    var fen: String
+    var sideToMove: Side
+    var inCheck: Bool
+}
+
+/// A History record open for replay: the core's detached read-only session.
+/// Every query answers as it does on any session, every affordance reads 0, and
+/// a mutation is refused — which is why the replay screen has no rule of its
+/// own to enforce about what the board will not do.
+///
+/// The queries below are the session's owner's to make and are non-blocking, so
+/// once the handle has arrived they cost a frame nothing: the walk is a lookup
+/// into a game the core has already replayed.
+final class ReplaySession {
+    private var handle: OpaquePointer?
+
+    init(_ opened: ReplayHandle) {
+        self.handle = opened.handle
+    }
+
+    /// The recorded line, whole.
+    func moves() throws -> [String] {
+        let session = try live()
+        var err = freshError()
+        var count = 0
+        let probe = mxq_game_move_history(session, nil, 0, &count, &err)
+        if probe != MXQ_ERR_ARG_BUFFER_TOO_SMALL { try check(probe, err) }
+        guard count > 0 else { return [] }
+        var buffer = [MxqMove](repeating: MxqMove(), count: count)
+        try check(mxq_game_move_history(session, &buffer, buffer.count, &count, &err),
+                  err)
+        return moveTexts(buffer, count: count)
+    }
+
+    /// The position after the first `ply` plies. This is the walk: replay never
+    /// applies a move, it asks the core what the position was.
+    func position(atPly ply: Int) throws -> ReplayPosition {
+        let session = try live()
+        var position = MxqPosition()
+        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
+        var err = freshError()
+        try check(mxq_game_position_at(session, UInt32(ply), &position, &err), err)
+        guard let side = Side(position.side_to_move) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported no side to move")
+        }
+        return ReplayPosition(fen: string(of: position.fen, capacity: MXQ_FEN_CAP),
+                              sideToMove: side,
+                              inCheck: position.in_check != 0)
+    }
+
+    /// Releases the session. The screen calls this as it closes, because a
+    /// detached session is a handle the core is holding open for it; release
+    /// cannot fail and refuses nothing.
+    func close() {
+        mxq_game_release(handle)
+        handle = nil
+    }
+
+    /// The safety net under `close()`. Isolated, because releasing a session
+    /// is its owner's call and this class is the owner: an ordinary deinit
+    /// could run anywhere and would be exactly the cross-thread release the
+    /// single-owner rule forbids.
+    isolated deinit { mxq_game_release(handle) }
+
+    private func live() throws -> OpaquePointer {
+        guard let handle else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_INVALID_HANDLE),
+                            detail: "the replay session is closed")
+        }
+        return handle
+    }
+}
+
+extension Core {
+    /// The library's History surface over this core.
+    var history: HistoryStore { HistoryStore(handle: handle) }
+}
+
 #if DEBUG
 // MARK: - Test evidence
 
 // The store read-backs the session tests assert against. Debug-only because
-// they exist as evidence — the History screen's real read surface arrives with
-// its own PR — and internal so a test reads the store through the same veneer
-// the app trusts rather than through a second one.
+// they exist as evidence rather than as product surface — the History screen
+// reads through `history` above — and internal so a test reads the store
+// through the same veneer the app trusts rather than through a second one.
 extension Core {
     /// Whether the library holds an active game.
     func activeGameExists() throws -> Bool {
         var exists: UInt8 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_store_active_exists(handle, &exists, &err), err)
+        var err = freshError()
+        try check(mxq_store_active_exists(handle, &exists, &err), err)
         return exists != 0
     }
 
     /// The number of immutable History records.
     func historyCount() throws -> Int {
-        var count: UInt32 = 0
-        var revision: UInt64 = 0
-        var err = Self.freshError()
-        try Self.check(mxq_store_history_count(handle, &count, &revision, &err),
-                       err)
-        return Int(count)
+        try history.count().records
     }
 }
 #endif

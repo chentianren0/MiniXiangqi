@@ -906,7 +906,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * zero in Free Play, matching the archive, which omits them; a configuration
  * that is neither shape is a programming error and returns MXQ_ERR_ARG_RANGE.
  *
- * Thread: any non-UI thread except inside a search callback.
+ * Thread: any non-UI thread except inside a search callback — except the
+ * store-attached active game, whose own calls docs/core-interface.md's
+ * threading contract documents as the one exception to "off the UI thread".
  * Blocking: yes — store work.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
@@ -933,7 +935,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  * user chose. The import size bounds are deliberately not applied here — a
  * locally produced game longer than they allow must always resume.
  *
- * Thread: any non-UI thread except inside a search callback.
+ * Thread: any non-UI thread except inside a search callback — except the
+ * store-attached active game, whose own calls docs/core-interface.md's
+ * threading contract documents as the one exception to "off the UI thread".
  * Blocking: yes — store work.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core,
@@ -1077,8 +1081,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_position_at(const MxqGame *game,
  * failure leaves the game exactly at its pre-mutation committed state; the move
  * did not happen.
  *
- * Thread: the session's owner, off the UI thread; never inside a search
- * callback.
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
  * Blocking: yes — the commit happens inside the call.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
@@ -1094,8 +1100,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
  * MxqGameStatus.undo_available reads 0. A store-domain failure leaves the game
  * exactly at its pre-mutation committed state.
  *
- * Thread: the session's owner, off the UI thread; never inside a search
- * callback.
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
  * Blocking: yes — the commit happens inside the call.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
@@ -1119,8 +1127,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
  * offer. mxq_archive_encode on it produces the finished document the History
  * record holds, which is the same bytes mxq_store_history_open would return.
  *
- * Thread: the session's owner, off the UI thread; never inside a search
- * callback.
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_claim_draw(MxqGame *game,
@@ -1139,8 +1149,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_claim_draw(MxqGame *game,
  * lose the result the game actually has, and the archive refuses it for the
  * same reason.
  *
- * Thread: the session's owner, off the UI thread; never inside a search
- * callback.
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_resign(MxqGame *game,
@@ -1157,8 +1169,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_resign(MxqGame *game,
  * such a result — the game continues there unless the claim is made, and
  * making it is mxq_game_claim_draw's decision rather than this one's.
  *
- * Thread: the session's owner, off the UI thread; never inside a search
- * callback.
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
@@ -1530,7 +1544,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_archive_and_clear(MxqCore *core,
  * staleness check are the accepted answer to library-change observation; there
  * is no notification mechanism.
  *
- * Thread: any thread except inside a search callback, off the UI thread.
+ * Thread: any thread except inside a search callback, off the UI thread —
+ * except from the app's own History surface, which docs/core-interface.md's
+ * threading contract documents alongside the active game's calls.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_store_history_count(
@@ -1555,7 +1571,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_count(
  * stamps a move's: an array is indexed by an element size the two sides have
  * already agreed on.
  *
- * Thread: any thread except inside a search callback, off the UI thread.
+ * Thread: any thread except inside a search callback, off the UI thread —
+ * except from the app's own History surface, which docs/core-interface.md's
+ * threading contract documents alongside the active game's calls.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_store_history_page(
@@ -1589,7 +1607,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_get(MxqCore *core,
  * resignation or an ended-early record is not the committed outcome at all:
  * that is MxqOutcome, and mxq_store_history_get is where it is read.
  *
- * Thread: any non-UI thread except inside a search callback.
+ * Thread: any non-UI thread except inside a search callback — except from
+ * the app's own History surface, which docs/core-interface.md's threading
+ * contract documents alongside the active game's calls. This is the one
+ * of those whose cost rises with the game's own length.
  * Blocking: yes — store work.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_store_history_open(MxqCore *core,
@@ -1603,7 +1624,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_open(MxqCore *core,
  * MXQ_ERR_ARG_RANGE. An unknown record_id, and the active game's — which the
  * schema forbids pinning — are MXQ_ERR_STORE_NOT_FOUND.
  *
- * Thread: any thread except inside a search callback, off the UI thread.
+ * Thread: any thread except inside a search callback, off the UI thread —
+ * except from the app's own History surface, which docs/core-interface.md's
+ * threading contract documents alongside the active game's calls.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_store_history_set_pinned(MxqCore *core,
@@ -1618,7 +1641,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_set_pinned(MxqCore *core,
  * never issued again after its record is deleted, so a stale one held across a
  * deletion dangles rather than resolving to some later game.
  *
- * Thread: any thread except inside a search callback, off the UI thread.
+ * Thread: any thread except inside a search callback, off the UI thread —
+ * except from the app's own History surface, which docs/core-interface.md's
+ * threading contract documents alongside the active game's calls.
  * Blocking: yes.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_store_history_delete(MxqCore *core,

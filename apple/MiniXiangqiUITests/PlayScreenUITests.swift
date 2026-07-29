@@ -236,6 +236,73 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "7-after-taking-a-move-back")
     }
 
+    // MARK: - The game that survives the destinations
+
+    /// The navigation's two destinations, by position: Play then History. A
+    /// position rather than a label, because the label is copy.
+    private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.windows.firstMatch.outlines.element(boundBy: 0).cells.element(boundBy: index)
+    }
+
+    /// The game is the app's state rather than the play destination's.
+    ///
+    /// The container keeps one destination's content alive at a time, so
+    /// walking to History and back tears the play screen down and builds a new
+    /// one. Three things have to survive that, and none of them did before the
+    /// game was hoisted above the container: the game itself — resuming is a
+    /// full decode-and-replay, and doing it per visit is both wrong and
+    /// wasteful — the board it left on screen, and the fact that the player has
+    /// already put the result notice away, which the contract says is final for
+    /// that result.
+    ///
+    /// The launch line is what makes the third failure visible rather than
+    /// merely wrong: a second start would replay 炮六平四 onto a position that
+    /// has already played it, the core would refuse it, and the play screen
+    /// would read 对局未能开始 instead of a board. Which is exactly why the
+    /// suite could not see this until a test walked between the destinations.
+    func testTheGameSurvivesWalkingToHistoryAndBack() {
+        let app = launch(replaying: Self.mateLine)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+        app.buttons["result-close"].click()
+        XCTAssertFalse(app.staticTexts["result-title"].exists, "the player put the notice away")
+
+        destination(app, 1).click()
+        XCTAssertTrue(app.staticTexts["还没有历史对局"].waitForExistence(timeout: 10),
+                      "the mate is unconfirmed, so it is still the active game and History is empty")
+
+        destination(app, 0).click()
+
+        XCTAssertTrue(point(app, "d3").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["对局未能开始"].exists,
+                       "coming back must not start the game a second time")
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "the mated position is exactly where it was left")
+        XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军")
+        XCTAssertTrue(app.staticTexts["炮六平四"].exists, "the move list still reads the game")
+        XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
+                      "and the status line still carries the result")
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "the notice does not present itself again for a result already seen")
+        attach(app, named: "35-play-after-a-round-trip-through-history")
+
+        // It is the same living game, not a fresh read of the same store: the
+        // mating move is still there to take back.
+        XCTAssertTrue(app.buttons["cluster-undo"].isEnabled)
+        app.buttons["cluster-undo"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["炮六平四"].exists)
+
+        // And a second round trip on a game with no result behind it stays
+        // just as quiet.
+        destination(app, 1).click()
+        XCTAssertTrue(app.staticTexts["还没有历史对局"].waitForExistence(timeout: 10))
+        destination(app, 0).click()
+        XCTAssertTrue(point(app, "b3").waitForExistence(timeout: 10))
+        XCTAssertEqual(point(app, "b3").label, "b3 红 炮")
+        XCTAssertFalse(app.staticTexts["对局未能开始"].exists)
+        XCTAssertFalse(app.staticTexts["result-title"].exists)
+    }
+
     // MARK: - The game that survives quitting
 
     /// The stage's own test: quit the app mid-game, open it again. Two moves
@@ -777,14 +844,15 @@ final class PlayScreenUITests: XCTestCase {
     func testTheLayoutAcrossTheWindowSizes() {
         // Sizes here are window sizes: what `-mxq-window` sets, what the window
         // occupies on screen, and what the screenshot comes out at, all one
-        // number. The layout itself gets that height less the title bar, and
-        // the title bar is measured rather than assumed. The board fills the
-        // layout's full height and the board block is centred in it, so the
-        // board's own centre would sit on the window's centre if there were no
-        // chrome; how far below it sits is half the chrome.
-        let reference = launch(replaying: Self.evidenceLine, window: "800x480")
+        // number. The layout itself gets that height less the chrome above the
+        // board — the title bar and the navigation container's toolbar — and
+        // that is measured rather than assumed. The board fills the layout's
+        // full height and the board block is centred in it, so the board's own
+        // centre would sit on the window's centre if there were no chrome; how
+        // far below it sits is half the chrome.
+        let reference = launch(replaying: Self.evidenceLine, window: "800x560")
         let referenceFrame = reference.windows.firstMatch.frame
-        XCTAssertEqual(referenceFrame.size, CGSize(width: 800, height: 480),
+        XCTAssertEqual(referenceFrame.size, CGSize(width: 800, height: 560),
                        "-mxq-window should set the window size it names")
         let boardCentre = (point(reference, "d7").frame.midY
                            + point(reference, "d1").frame.midY) / 2
@@ -835,9 +903,9 @@ final class PlayScreenUITests: XCTestCase {
         // photographed like the rest because a size nobody has looked at is not
         // a decided size, and this one has not been decided yet.
         let first = record("firstlaunch", window: nil)
-        XCTAssertGreaterThanOrEqual(first.window.width, 616,
+        XCTAssertGreaterThanOrEqual(first.window.width, 760,
                                     "a first launch cannot open below the minimum")
-        XCTAssertGreaterThanOrEqual(first.window.height, 420)
+        XCTAssertGreaterThanOrEqual(first.window.height, 492)
 
         // The smallest window the product allows. The size asked for is far
         // below it on both axes, so what comes back is the minimum itself.
@@ -845,11 +913,18 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(floor.pitch, 44, accuracy: 0.5,
                        "the board should sit exactly on its floor at the smallest window")
         // Pitch 44 alone cannot catch a minimum that shrank: below the floor
-        // the fallback pins 44 too. The accepted number itself is the pin.
-        XCTAssertEqual(floor.window.width, 616,
-                       "the minimum window is the decided 616 points wide")
-        XCTAssertEqual(floor.window.height - titleBar, 388, accuracy: 0.5,
-                       "the minimum layout is the decided 388 points under the measured title bar")
+        // the fallback pins 44 too. The accepted numbers themselves are the pin.
+        //
+        // The navigation container is what moved them: its sidebar takes 144
+        // points of width and its toolbar 52 of height, and the play content
+        // still gets exactly the 616 by 388 it always asked for inside that.
+        // 760 = 616 + 144 and 440 = 388 + 52, measured rather than derived.
+        XCTAssertEqual(floor.window.width, 760,
+                       "the minimum window is the decided 760 points wide")
+        XCTAssertEqual(floor.window.height - titleBar, 440, accuracy: 0.5,
+                       "the minimum layout is the decided 440 points under the measured chrome")
+        XCTAssertEqual(floor.window.width - 616, 144, accuracy: 0.5,
+                       "and the play content still gets its own accepted 616")
         record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
         record("min-result", window: CGSize(width: 320, height: 240), replaying: Self.mateLine)
 

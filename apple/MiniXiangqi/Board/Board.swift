@@ -97,6 +97,14 @@ struct Placement {
 
     subscript(square: Square) -> Piece? { pieces[square] }
 
+    /// Where a side's general stands. Not a rule and not an adjudication — the
+    /// core says whether a side is in check, and this only says which disc to
+    /// draw the rings around — but it is asked from two places now, play and
+    /// replay, so it is written once.
+    func general(of side: Side) -> Square? {
+        pieces.first { $0.value.kind == .general && $0.value.side == side }?.key
+    }
+
     /// Parses the piece-placement field, which lists rank 7 first and rank 1
     /// last. A malformed field yields an empty board rather than a crash: the
     /// FEN came from the core, so a failure here is a bug to see on screen.

@@ -1,3 +1,22 @@
+// The app's navigation, and what outlives it.
+//
+// docs/interaction-design.md, "Layout shapes": navigation uses one adaptive
+// container, presenting as a tab bar at narrow widths and as a sidebar at wide
+// ones, by the same width-driven rule as the layout shapes rather than by
+// device identity. `TabView` with the sidebar-adaptable style is exactly that
+// container: one declaration, a sidebar on a Mac, a tab bar on a phone.
+//
+// Two destinations, and Play is the one that opens. Settings is the third
+// primary destination in the product contract and holds nothing yet — a
+// preference screen with no preferences behind it would be a promise rather
+// than a destination — so it arrives with the preferences it is for.
+//
+// **The game is held here rather than inside Play.** The container keeps one
+// destination's content alive at a time, so the play screen is torn down and
+// rebuilt on every visit; a game living in it would be resumed on each one, and
+// a result notice the player had put away would come back with the rebuilt
+// view. `PlayState` is what the screen re-renders against instead.
+
 import SwiftUI
 
 struct ContentView: View {
@@ -23,7 +42,7 @@ struct ContentView: View {
     private var screen: some View {
         switch Core.shared {
         case .success(let core):
-            PlayScreen(core: core)
+            Destinations(core: core)
         case .failure(let error):
             // A core that will not start is a packaging failure, and saying so
             // plainly beats an empty board that silently does nothing. The
@@ -44,3 +63,98 @@ struct ContentView: View {
             || NSClassFromString("XCTestCase") != nil
     #endif
 }
+
+/// The container, and the one game beneath it.
+private struct Destinations: View {
+    private let core: Core
+
+    /// Created once, with the window, and outliving every switch between the
+    /// destinations inside it.
+    @State private var play: PlayState
+
+    init(core: Core) {
+        self.core = core
+        _play = State(initialValue: PlayState(core: core))
+    }
+
+    var body: some View {
+        TabView {
+            Tab("nav.play", systemImage: "square.grid.3x3") {
+                PlayScreen(play: play)
+            }
+
+            Tab("nav.history", systemImage: "clock") {
+                HistoryScreen(core: core)
+            }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+        // The two launch arguments that are about the *window* rather than
+        // about a destination sit here, above the container: applied to a
+        // destination they would be re-applied every time the player came back
+        // to it, and the window would jump.
+        #if DEBUG
+        .preferredColorScheme(Self.launchColorScheme)
+        #if os(macOS)
+        .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
+        #endif
+        #endif
+    }
+
+    #if DEBUG
+    /// The appearance `-mxq-appearance dark` names. AppKit no longer takes
+    /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
+    /// looked at in both appearances rather than reasoned about in one.
+    private static var launchColorScheme: ColorScheme? {
+        DebugLaunch.argument(after: "-mxq-appearance") == "dark" ? .dark : nil
+    }
+
+    /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
+    /// content size — which on this window is the whole frame, title bar
+    /// included, since the content view runs the full height of it. A
+    /// screenshot series about layout has to state the size each frame was
+    /// taken at, and a window a test resized by dragging its corner cannot.
+    private static var launchWindowSize: CGSize? {
+        guard let text = DebugLaunch.argument(after: "-mxq-window") else { return nil }
+        let sides = text.split(separator: "x").compactMap { Double($0) }
+        guard sides.count == 2, sides.allSatisfy({ $0 > 0 }) else { return nil }
+        return CGSize(width: sides[0], height: sides[1])
+    }
+    #endif
+}
+
+#if DEBUG && os(macOS)
+/// Applies `-mxq-window`'s size to the window, once there is a window to apply
+/// it to. Debug only, and it asks AppKit for the size rather than asserting it:
+/// the window's own minimum still clamps the request, which is how a test
+/// measures what that minimum actually comes to.
+private struct LaunchWindowSizer: NSViewRepresentable {
+    var contentSize: CGSize?
+
+    func makeNSView(context: Context) -> NSView { Sizer(contentSize: contentSize) }
+    func updateNSView(_ view: NSView, context: Context) { }
+
+    private final class Sizer: NSView {
+        private let contentSize: CGSize?
+
+        init(contentSize: CGSize?) {
+            self.contentSize = contentSize
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let contentSize else { return }
+            // On the next pass, after AppKit has restored the saved frame and
+            // SwiftUI has handed the window the content's minimum: either one
+            // arriving afterwards would undo this.
+            DispatchQueue.main.async { [weak window] in
+                window?.setContentSize(contentSize)
+                window?.center()
+            }
+        }
+    }
+}
+#endif

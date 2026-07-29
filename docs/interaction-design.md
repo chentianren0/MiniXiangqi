@@ -362,18 +362,24 @@ The requested destination remains temporary only while this confirmation or retr
 
 - Replay entered from History or from the just-recorded result begins at the game's initial position.
 - The board is read-only. Replay does not offer move input, Undo, or starting a new game from the displayed position.
-- Controls provide jump to beginning, one move back, play or pause, one move forward, and jump to end.
-- The move list highlights the currently displayed move and allows the user to jump to a selected move.
+- Controls provide jump to beginning, one move back, play or pause, one move forward, and jump to end. They are icon-only and carry their words as accessibility labels: five labelled buttons do not fit beside a board, and a transport is the one place a glyph is the familiar form. The end controls take the media transport's own symbols and the single steps take chevrons, because a step is not a scan.
+- The move list highlights the currently displayed move and allows the user to jump to a selected move. The highlight is a filled shape and a heavier weight, never colour alone.
+- Replay shows the record's own metadata — the same line the History row carries — and its progress through the game as *shown ply / recorded plies*. That pair is the accepted separate move-progress and playback state; there is no side-to-move line, because a finished game is not anybody's turn.
 - The accepted history orientation and visible Flip Board control remain available.
 - Pin, Share, and Delete are managed from the History list rather than from replay.
 - Autoplay starts only after a user action and waits for each move animation to finish before advancing.
-- Autoplay offers session-only speeds of 0.5×, 1×, and 2×. Manual move navigation, flipping the board, or the app moving to the background pauses playback. Playback stops at the final position.
+- **Autoplay runs at one speed.** The 0.5×/1×/2× set was accepted before a replay screen existed; a speed control is three more controls on a transport that has five already, plus a preference to carry, and nobody has yet watched a game back and wished it faster. The set is not withdrawn — it is deferred until someone wants it, and the transport has room for it. Manual move navigation, flipping the board, or the app moving to the background pauses playback. Playback stops at the final position.
 - With Reduce Motion, replay uses the accepted crossfade or immediate board update while preserving the same order and playback controls.
 
 ### History library
 
-- Pinned records appear before unpinned records. Each group orders the most recently recorded or imported first.
+- Pinned records appear before unpinned records. Each group orders the most recently recorded or imported first. **That order is the core's**, and the list never re-sorts it: the two groups are the pinned prefix of what the store returned and the rest of it.
+- The two groups are **rendered as two sections**, **已置顶** and **其他对局**, rather than as a per-row pin badge. Pinned-ness is ordering rather than decoration, and rendering it as ordering keeps a glyph off a row that is already carrying five facts and gives pin and unpin a visible confirmation for free — the row moves between the sections, and a pin the store refused is a row that did not move. With nothing pinned there is one unheaded section and the list reads as a plain list of games.
 - Each entry shows its date, mode, result or end reason, and move count. Human-versus-AI entries also show the human side; imported records have a visible imported marker.
+- **The row is two lines.** The first is when the game ended. The second is the accepted metadata composition applied to a filed game — `模式 · [执子] · 结果 · [结束原因] · 步数` — which is the save-and-continue confirmation's own vocabulary rather than a second one invented here. The second line never truncates: every token in it is contract-required row content, so it wraps.
+- Two segments are left out where the line would otherwise say one thing twice. **执子** is absent in Free Play, where the turn status omits a controller label for the same reason. **结束原因** is absent where the result word already carries it, which is exactly the ended-early record: `outcome = none` holds exactly when `end_reason = ended-early`, so the row shows **提前结束** in the result slot and says it once. A resignation keeps its reason, because **红方获胜** alone does not say whether the loser was mated or resigned.
+- **The date is the game's own end**, in the reader's locale, calendar and time zone: the system's *today* or *yesterday* word plus the time for those two days, and a numeric date with a four-digit year plus the time otherwise. The time is always present, because it is what tells two games played on one day apart, and **no date or time pattern is ever written by the app** — whether the clock reads 14:32 or 2:32 PM belongs to the locale and to the reader's own system setting.
+- **The move count is the integer, a space, and the unit** — `42 步`. It counts plies, which is what 步 means; the English *moves* takes the ordinary-English sense and Help owes the definition.
 - Selecting an entry opens its read-only replay.
 - Record content is read-only. Pinning changes only local library organization.
 - A partial right-to-left swipe reveals icon-and-text actions on the trailing side. From left to right, they are blue **共享** and red **删除**, with Delete nearest the trailing edge.
@@ -385,15 +391,17 @@ The requested destination remains temporary only while this confirmation or retr
   - Title: **删除这盘棋？**
   - Message: **删除后无法恢复。**
   - Actions: **取消** and **删除**.
-- The record remains in the list until the user confirms. When **删除前确认** is disabled, either deletion gesture permanently deletes immediately.
-- There is no deletion Undo and no Recently Deleted collection. If persistence fails, the record remains and the app presents an error.
+- The record remains in the list until the user confirms. When **删除前确认** is disabled, either deletion gesture permanently deletes immediately. **Every** Delete entry point is gated identically — the swipe action, the complete swipe, the context menu, and the screen-reader custom action — because they are the same operation and the confirmation is about the operation rather than about the gesture.
+- There is no deletion Undo and no Recently Deleted collection. If persistence fails, the record remains and the app presents the same "could not do it, nothing changed, try again" alert the rest of the app uses: title **无法删除这盘棋**, message **这盘棋仍然保留在历史里。请重试。**, actions **取消** and **重试**.
+- **A pin or unpin the store refuses is not an alert.** It is the accepted non-blocking treatment for a reversible, low-stakes action, and the two sections are what report it: the row does not move.
+- **An empty History says so quietly** — **还没有历史对局**, with **对局结束后会保存到这里。** beneath it — and offers nothing else to do. A library that cannot be read says *that* instead, in the failure-screen family, rather than showing an empty list it has no evidence for.
 - Import selects one game file at a time. A valid import creates an immutable History record and leaves the active game unchanged.
 - An exact duplicate does not create a second record and offers a way to view the existing record. A stable-identity conflict with different game content is rejected with an explanation.
 - Bulk deletion, search, filters, tags, and editing a History game are absent from the target MVP.
 - Trackpad swipes use the same leading and trailing behavior where supported. Pointer context menus, keyboard commands, and screen-reader custom actions — VoiceOver on Apple platforms, Narrator on Windows — expose equivalent Pin or Unpin, Share, and Delete operations without adding permanent row buttons. On Windows, the context menu is the primary path to these actions.
 - Action meaning is carried by icon and text as well as color.
 
-The exact list layout, date and move-count formatting, file-picker presentation, import feedback, conflict feedback, and recoverable error copy remain to be designed.
+The file-picker presentation, import feedback, and conflict feedback remain to be designed, with the import, duplicate, and conflict copy they need.
 
 ## Help
 
@@ -509,7 +517,9 @@ That floor is affordable on the most constrained configuration measured so far. 
 
 When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
 
-**macOS stops at 616 by 420 points**, which is 616 by 388 of layout under a standard title bar. That is the sum of what the two floors ask for and nothing else: the board block at its 44-point floor is 308 by 340, the air around it is 24 points a side, and the panel beside it is 260. A window one step narrower clips the board against the panel, and one step shorter carries it up behind the title bar; both were photographed with the floor lifted before the number was accepted.
+**The play content's floor is 616 by 388 points**, which is the sum of what the two floors ask for and nothing else: the board block at its 44-point floor is 308 by 340, the air around it is 24 points a side, and the panel beside it is 260. A window one step narrower clips the board against the panel, and one step shorter carries it up behind the title bar; both were photographed with the floor lifted before the number was accepted.
+
+**macOS stops at 760 by 492 points**, which is that floor plus the navigation container: 144 points of sidebar beside it and 52 of toolbar above it, both measured on the running app rather than derived. The 616 by 388 the play content gets inside that window is unchanged, which is the point — the destination structure was added around the layout rather than out of it. The number moved when the navigation arrived and is expected to move again if the container's presentation changes.
 
 **The file numerals are present at every macOS window size**, including the smallest. The move list speaks of 兵四进一 and the strips are what ground 四 on the board, so a size where the game can be played but not read about is not a size worth having. They cost about a tenth of the board block's height at the floor and proportionally less as the board grows, and at the minimum window they cost nothing at all, because that window is bound by its width.
 
@@ -542,7 +552,7 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout.
+- Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout. Replay's own answer is settled — its list is part of the screen rather than reached from it, because its accepted behaviour needs the list to indicate the shown move — so what remains open is ordinary play's.
 - Fix the minimum window size for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
 - Fix what size a macOS window opens at when there is nothing to restore. The minimum is settled and the opening size is not: today a window whose content is flexible in both directions opens at the whole visible area of whatever display it lands on, and the scene's declared default size does not change that on the current toolchain.
 - Resolve how the result notice, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the board behind the notice has to stay worth looking at and the chrome has its own floor.
@@ -553,7 +563,7 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Decide what a user reading icon symbols is offered for the move list, which remains character-based, and approve the table of positions and expected move strings that serves as the notation's test oracle.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
 - Define the turn status's exact AI activity treatment, the 将军 token's form, remaining transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
-- Define the exact History-list layout, date and move-count formatting, and detailed import, duplicate, conflict, and error flows.
+- Define the detailed import, duplicate, and conflict flows and the copy they need. The list layout, the date and move-count formatting, the deletion-failure copy, and the empty state are settled above.
 - Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
 - Define what a player sees when the engine cannot be re-prepared mid-game, after the app was suspended and the AI is due to move. The accepted **无法启动 AI 对手** notice assumes a game that has not started, so neither its wording nor its **取消** action fits; the game itself remains active, saved, and resumable throughout.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
@@ -563,4 +573,4 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Define the haptic events outside board play, and where and how the accepted sound and haptics toggles are presented. Board play's haptic set is defined under [Sound and haptics](#sound-and-haptics); its sound half already follows the accepted sound preference wherever a sound would play, ahead of the screen that will offer it.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
-- Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
+- Define the loading, AI-thinking, and corrupted-import states. History's empty state, its unreadable-library state, and its destructive-action confirmation are settled above; History's own loading state is deliberately nothing, because a local paged read of a library that cannot exceed a few thousand rows does not reach the threshold at which an indicator helps.
