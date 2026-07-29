@@ -77,6 +77,70 @@ struct GameSessionTests {
                 "orientation is the sitting's, not the game's: a fresh launch opens red-at-bottom")
     }
 
+    /// A game long enough that its history read is not a short one. The move
+    /// history comes back through a buffer sized from a count the core supplies
+    /// first, and a three-ply game exercises that sizing the same way a
+    /// one-element array exercises an allocator: not at all. Forty plies is an
+    /// ordinary sitting, and every one of them has to survive the round trip.
+    ///
+    /// The line develops both sides — soldiers, horses, chariots, cannons —
+    /// and then shuffles a chariot on the open a-file. The shuffle repeats a
+    /// position, which makes a draw claimable and leaves the game running: a
+    /// neutral repetition is an offer, not an ending.
+    static let longLine = [
+        "a2a3", "a6a5", "c2c3", "c6c5", "d2d3", "d6d5", "e2e3", "e6e5",
+        "g2g3", "g6g5", "c1b3", "c7b5", "e1f3", "e7f5", "a1a2", "a7a6",
+        "g1g2", "g7g6", "f1f2", "f7f6", "b1b2", "b7b6",
+        "a2a1", "a6a7", "a1a2", "a7a6", "a2a1", "a6a7", "a1a2", "a7a6",
+        "a2a1", "a6a7", "a1a2", "a7a6", "a2a1", "a6a7", "a1a2", "a7a6",
+        "a2a1", "a6a7",
+    ]
+
+    @Test("A forty-ply game resumes whole: every ply, every word, the same position")
+    func aLongGameResumesWhole() throws {
+        let directory = TestCores.scratchDirectory()
+        var core = try TestCores.open(at: directory)
+        let played = try Game(rules: core)
+        try played.replay(Self.longLine)
+        #expect(played.moves.count == 40, "the premise: forty plies were committed")
+        let fen = played.evaluation.fen
+        let notation = played.notation
+
+        core = try TestCores.open(at: directory)
+        let resumed = try Game(rules: core)
+
+        #expect(resumed.moves == Self.longLine, "the whole line came back")
+        #expect(resumed.notation == notation, "and reads in the same forty words")
+        #expect(resumed.evaluation.fen == fen)
+        #expect(resumed.lastMove == Move(text: "a6a7"))
+        #expect(resumed.evaluation.claimAvailable,
+                "the repetition the line ends on is still on offer")
+        #expect(!resumed.isFinished, "and a claimable repetition is not an ending")
+    }
+
+    @Test("Two finished games make two History records, newest first")
+    func twoGamesFileIntoOneStore() throws {
+        let core = try TestCores.fresh()
+
+        let first = try Game(rules: core)
+        try first.replay(GameTests.mateLine)
+        try first.file()
+
+        core.endSession()
+        let second = try Game(rules: core)
+        try second.replay(GameTests.shuffleLine)
+        second.claimDraw()
+
+        #expect(try core.historyCount() == 2, "one library, two games")
+        #expect(try !core.activeGameExists(), "and nothing left active")
+        #expect(first.filedRecordID != second.filedRecordID,
+                "two records, not one written twice")
+
+        let page = try core.history.all().records
+        #expect(page.map(\.id) == [second.filedRecordID, first.filedRecordID],
+                "the core orders the most recently added first")
+    }
+
     @Test("With nothing stored, launch is the empty board and creates nothing")
     func absenceIsTheEmptyBoard() throws {
         let core = try TestCores.fresh()

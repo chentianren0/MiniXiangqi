@@ -777,14 +777,15 @@ final class PlayScreenUITests: XCTestCase {
     func testTheLayoutAcrossTheWindowSizes() {
         // Sizes here are window sizes: what `-mxq-window` sets, what the window
         // occupies on screen, and what the screenshot comes out at, all one
-        // number. The layout itself gets that height less the title bar, and
-        // the title bar is measured rather than assumed. The board fills the
-        // layout's full height and the board block is centred in it, so the
-        // board's own centre would sit on the window's centre if there were no
-        // chrome; how far below it sits is half the chrome.
-        let reference = launch(replaying: Self.evidenceLine, window: "800x480")
+        // number. The layout itself gets that height less the chrome above the
+        // board — the title bar and the navigation container's toolbar — and
+        // that is measured rather than assumed. The board fills the layout's
+        // full height and the board block is centred in it, so the board's own
+        // centre would sit on the window's centre if there were no chrome; how
+        // far below it sits is half the chrome.
+        let reference = launch(replaying: Self.evidenceLine, window: "800x560")
         let referenceFrame = reference.windows.firstMatch.frame
-        XCTAssertEqual(referenceFrame.size, CGSize(width: 800, height: 480),
+        XCTAssertEqual(referenceFrame.size, CGSize(width: 800, height: 560),
                        "-mxq-window should set the window size it names")
         let boardCentre = (point(reference, "d7").frame.midY
                            + point(reference, "d1").frame.midY) / 2
@@ -835,9 +836,9 @@ final class PlayScreenUITests: XCTestCase {
         // photographed like the rest because a size nobody has looked at is not
         // a decided size, and this one has not been decided yet.
         let first = record("firstlaunch", window: nil)
-        XCTAssertGreaterThanOrEqual(first.window.width, 616,
+        XCTAssertGreaterThanOrEqual(first.window.width, 760,
                                     "a first launch cannot open below the minimum")
-        XCTAssertGreaterThanOrEqual(first.window.height, 420)
+        XCTAssertGreaterThanOrEqual(first.window.height, 492)
 
         // The smallest window the product allows. The size asked for is far
         // below it on both axes, so what comes back is the minimum itself.
@@ -845,11 +846,18 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(floor.pitch, 44, accuracy: 0.5,
                        "the board should sit exactly on its floor at the smallest window")
         // Pitch 44 alone cannot catch a minimum that shrank: below the floor
-        // the fallback pins 44 too. The accepted number itself is the pin.
-        XCTAssertEqual(floor.window.width, 616,
-                       "the minimum window is the decided 616 points wide")
-        XCTAssertEqual(floor.window.height - titleBar, 388, accuracy: 0.5,
-                       "the minimum layout is the decided 388 points under the measured title bar")
+        // the fallback pins 44 too. The accepted numbers themselves are the pin.
+        //
+        // The navigation container is what moved them: its sidebar takes 144
+        // points of width and its toolbar 52 of height, and the play content
+        // still gets exactly the 616 by 388 it always asked for inside that.
+        // 760 = 616 + 144 and 440 = 388 + 52, measured rather than derived.
+        XCTAssertEqual(floor.window.width, 760,
+                       "the minimum window is the decided 760 points wide")
+        XCTAssertEqual(floor.window.height - titleBar, 440, accuracy: 0.5,
+                       "the minimum layout is the decided 440 points under the measured chrome")
+        XCTAssertEqual(floor.window.width - 616, 144, accuracy: 0.5,
+                       "and the play content still gets its own accepted 616")
         record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
         record("min-result", window: CGSize(width: 320, height: 240), replaying: Self.mateLine)
 
