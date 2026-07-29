@@ -240,6 +240,11 @@ void case_fresh_open_creates_schema_v1() {
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
                             "key='created_schema_version';"),
              "1", "the meta bookkeeping row");
+    /* A library that has recorded no mutation is at revision 0, which is what
+     * a caller comparing revisions starts from. */
+    check_eq(query_text(db, "SELECT value FROM meta WHERE "
+                            "key='library_revision';"),
+             "0", "a fresh library is at revision 0");
     sqlite3_close(db);
 }
 
@@ -357,8 +362,11 @@ void case_reopen_is_idempotent() {
              "user_version unchanged after reopens");
     check_eq(query_text(db, "SELECT count(*) FROM library;"), "1",
              "still exactly one library row");
-    check_eq(query_text(db, "SELECT count(*) FROM meta;"), "1",
-             "the bookkeeping row was not re-inserted");
+    check_eq(query_text(db, "SELECT count(*) FROM meta;"), "2",
+             "the two bookkeeping rows were not re-inserted");
+    check_eq(query_text(db, "SELECT value FROM meta WHERE "
+                            "key='library_revision';"),
+             "0", "reopening a library is not a mutation of it");
     sqlite3_close(db);
 }
 

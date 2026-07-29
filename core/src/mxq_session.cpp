@@ -78,6 +78,30 @@ void forget(MxqGame *game) {
  * handle answers after mxq_core_shutdown, so returning it there is the
  * contract being kept rather than a caller being caught.
  */
+/*
+ * The third check, made by every mutation and by nothing else.
+ *
+ * The order matters: a detached session was never attached to a row, so
+ * read-only is asked before archived. Read-only asserts because mxq.h lists it
+ * among the programming errors; archived does not, because a frontend can
+ * legitimately still hold the handle of a game that has just ended.
+ */
+MxqStatus require_mutable_impl(const MxqGame *game, MxqError *err) {
+    if (game->read_only) {
+        assert(false && "a mutation on a detached read-only session");
+        fill_error(err, MXQ_ERR_STATE_SESSION_READ_ONLY,
+                   "this session is a detached read-only replay");
+        return MXQ_ERR_STATE_SESSION_READ_ONLY;
+    }
+    if (game->archived) {
+        fill_error(err, MXQ_ERR_STATE_SESSION_ARCHIVED,
+                   "this game has been archived and is now an immutable "
+                   "History record");
+        return MXQ_ERR_STATE_SESSION_ARCHIVED;
+    }
+    return MXQ_OK;
+}
+
 MxqStatus require_impl(const MxqGame *game, MxqError *err) {
     if (game == nullptr) {
         assert(false && "required session handle was null");
@@ -190,6 +214,27 @@ void fill_status(const MxqGame &game, const Replayed &replayed,
     out->state = replayed.adj.state;
     out->reason = replayed.adj.reason;
     out->at_occurrence = replayed.adj.at_occurrence;
+
+    /*
+     * A session that can no longer mutate offers nothing. A replay and an
+     * archived game are both finished: undo, the claim, resignation and an
+     * owed search are all actions on a game still being played, and a frontend
+     * that had to work that out for itself would be re-deriving exactly the
+     * policy these flags exist to carry.
+     *
+     * The state above is still the replayed one, because that is what
+     * MxqGameState is for: the committed outcome of a finished game — which
+     * for a resignation or an ended-early record is not a position's verdict
+     * at all — is MxqOutcome, and MxqRecordSummary is where it is read.
+     */
+    if (game.read_only || game.archived) {
+        out->undo_available = 0;
+        out->undo_plies = 0;
+        out->claim_available = 0;
+        out->resign_available = 0;
+        out->search_expected = 0;
+        return;
+    }
 
     const uint32_t undo = undo_plies_for(game);
     out->undo_available = undo > 0 ? 1u : 0u;
@@ -330,10 +375,219 @@ MxqStatus commit_line(MxqGame &game, std::vector<std::string> line,
     return MXQ_OK;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Ending a game                                                           */
+/* ---------------------------------------------------------------------- */
+
+/* The committed outcome a live terminal state commits as. The two live states
+ * that are not terminal have no committed outcome at all, which is what makes
+ * this a question with a false answer rather than a mapping with a default. */
+bool outcome_of(MxqGameState state, MxqOutcome &out) {
+    switch (state) {
+    case MXQ_GAME_RED_WINS:   out = MXQ_OUTCOME_RED_WINS;   return true;
+    case MXQ_GAME_BLACK_WINS: out = MXQ_OUTCOME_BLACK_WINS; return true;
+    case MXQ_GAME_DRAW:       out = MXQ_OUTCOME_DRAW;       return true;
+    default: break;
+    }
+    return false;
+}
+
+/*
+ * The one atomic ending, shared by all four archiving paths.
+ *
+ * The classification arrives already derived from the committed state; what
+ * happens here is the rest of the sentence mxq.h writes three times and
+ * core-interface.md once — commit the outcome, insert the immutable History
+ * record, clear the active-game reference, atomically — plus the adoption that
+ * may only follow it.
+ *
+ * One reading of the clock serves the whole event: the game ended, it entered
+ * History, and the document recording that change was written, all at the same
+ * instant. Two readings would put three timestamps a second apart on one
+ * commit and make the bytes depend on how many times the clock was asked.
+ *
+ * Adoption is strictly after the commit, exactly as an ordinary mutation's is:
+ * a store-domain failure returns with the game still active, still unarchived,
+ * and still holding the bytes it held, so the retry the accepted 无法保存对局
+ * flow offers is a retry of the same call on the same game.
+ */
+MxqStatus end_game(MxqGame &game, MxqOutcome outcome, MxqEndReason reason,
+                   uint64_t &out_record_id, MxqError *err) {
+    out_record_id = 0;
+    const int64_t at = game.core->identity.now_ms();
+
+    archive::Record record = record_of(game);
+    record.completed = true;
+    record.outcome = outcome;
+    record.end_reason = reason;
+    record.ended_at_ms = at;
+    record.written_at_ms = at;
+
+    const std::string content = archive::content_bytes(record);
+    const std::string document = archive::document_bytes(record, content);
+
+    store::Completion done;
+    done.archive = document;
+    done.content_sha256 = sha256_hex(content);
+    done.move_count = static_cast<int64_t>(record.moves.size());
+    done.outcome = archive::outcome_text(outcome);
+    done.end_reason = archive::end_reason_text(reason);
+    done.ended_at_ms = at;
+    done.added_at_ms = at;
+
+    const MxqStatus rc =
+        store::commit_completion(*game.core->store, game.record_id, done, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    game.completed = true;
+    game.outcome = outcome;
+    game.end_reason = reason;
+    game.ended_at_ms = at;
+    game.written_at_ms = at;
+    game.archived = true;
+    /* The revision is the staleness authority, and a game that has ended is
+     * the strongest reason there is to reject a search that is still running
+     * against it. */
+    ++game.position_revision;
+    out_record_id = game.record_id;
+    return MXQ_OK;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Building a session from a stored row                                    */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * The path back from bytes to a session, shared by resume and by opening a
+ * History record.
+ *
+ * Three things are asked of a row this core wrote, in order: that the bytes
+ * still decode, that the content hash the row records is the hash of the
+ * content they carry, and that the move line still replays. The first and the
+ * third catch structural and rules damage; the middle one is a comparison
+ * against a value written at the same instant as the blob, so a byte flipped
+ * in either is caught by a hash rather than by whether some later stage
+ * happens to notice. All three are store corruption where they fail: nothing
+ * imported this row, and the answer is about the user's library rather than
+ * about a file they chose. The import size bounds are deliberately not
+ * applied — a long local game must always open.
+ */
+MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
+                           const std::string &archive_bytes,
+                           const std::string &content_sha256,
+                           bool expect_completed, bool read_only,
+                           std::unique_ptr<MxqGame> &out, MxqError *err) {
+    out.reset();
+
+    archive::Stored stored;
+    MxqError decode_error;
+    std::memset(&decode_error, 0, sizeof(decode_error));
+    decode_error.struct_size = static_cast<uint32_t>(sizeof(decode_error));
+    const MxqStatus decoded = archive::read_stored(
+        reinterpret_cast<const uint8_t *>(archive_bytes.data()),
+        archive_bytes.size(), stored, &decode_error);
+    if (decoded != MXQ_OK) {
+        fill_error_subsystem(err, MXQ_ERR_STORE_CORRUPT,
+                             (std::string("the stored game does not decode: ") +
+                              decode_error.detail)
+                                 .c_str(),
+                             decoded);
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+    if (stored.completed != expect_completed) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   expect_completed
+                       ? "a History record's archive records no end"
+                       : "the active game's archive records an end, which only "
+                         "a History record may");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+    if (stored.start_fen != MXQ_START_FEN) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the stored game does not start from the frozen starting "
+                   "position");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+
+    auto game = std::unique_ptr<MxqGame>(new MxqGame());
+    game->game_id = stored.game_id;
+    game->config = stored.config;
+    game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
+    game->started_at_ms = stored.started_at_ms;
+    game->written_at_ms = stored.written_at_ms;
+    game->moves = stored.moves;
+    game->completed = stored.completed;
+    game->outcome = stored.outcome;
+    game->end_reason = stored.end_reason;
+    game->ended_at_ms = stored.ended_at_ms;
+    game->record_id = record_id;
+    game->read_only = read_only;
+    game->core = core;
+
+    /* The integrity compare. Re-encoding the decoded document reproduces the
+     * canonical bytes this writer produced — that is the property the golden
+     * corpus pins — so hashing them is hashing what the row should hold. */
+    const std::string content = archive::content_bytes(record_of(*game));
+    if (sha256_hex(content) != content_sha256) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the stored game's content hash does not match its bytes");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+
+    /* The rules tier, on the line as stored. */
+    Replayed replayed;
+    MxqError replay_error;
+    std::memset(&replay_error, 0, sizeof(replay_error));
+    replay_error.struct_size = static_cast<uint32_t>(sizeof(replay_error));
+    if (replay_prefix(*game, game->moves.size(), false, replayed,
+                      &replay_error) != MXQ_OK) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   (std::string("the stored game does not replay: ") +
+                    replay_error.detail)
+                       .c_str());
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+
+    out = std::move(game);
+    return MXQ_OK;
+}
+
+/*
+ * Whether a live session is already attached to this row.
+ *
+ * Resuming the active game twice would produce two sessions over one row, each
+ * committing over the other's work with no diagnosis at all. mxq.h already
+ * answers "two owners of one thing" with MXQ_ERR_ARG_CONCURRENT_USE, and this
+ * is that question asked of the row rather than of the session: it is a
+ * frontend bug, it is detected rather than serialised, and nothing is changed
+ * by the refusal.
+ *
+ * An archived session no longer owns its row — the row is a History record and
+ * the library holds no active game — so it does not stand in the way of
+ * anything; but neither does it make resume succeed, because there is nothing
+ * active to resume.
+ */
+bool attached_to(const MxqCore *core, uint64_t record_id) {
+    std::lock_guard<std::mutex> lock(registry_mutex());
+    for (const MxqGame *game : registry()) {
+        if (game->core == core && !game->read_only && !game->archived &&
+            game->record_id == record_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } /* namespace */
 
 MxqStatus require(const MxqGame *game, MxqError *err) {
     return require_impl(game, err);
+}
+
+MxqStatus require_mutable(const MxqGame *game, MxqError *err) {
+    return require_mutable_impl(game, err);
 }
 
 MxqStatus concurrent_use(MxqError *err) {
@@ -362,10 +616,144 @@ archive::Record record_of(const MxqGame &game) {
     record.moves = game.moves;
     record.started_at_ms = game.started_at_ms;
     record.written_at_ms = game.written_at_ms;
-    /* An active game's stored content records no end. The terminal trio is
-     * written by the commits that end a game, which are not this PR's. */
-    record.completed = false;
+    /* An active game's stored content records no end; a game one of the four
+     * archiving paths has ended carries the trio that path committed, so
+     * encoding an archived session reproduces the History record's own
+     * bytes. */
+    record.completed = game.completed;
+    record.outcome = game.outcome;
+    record.end_reason = game.end_reason;
+    record.ended_at_ms = game.ended_at_ms;
     return record;
+}
+
+MxqStatus status_of_line(const MxqGameConfig &config,
+                         const std::vector<std::string> &moves,
+                         MxqGameStatus *out, MxqError *err) {
+    /* A session is its configuration plus its move line plus replay, and this
+     * borrows exactly that much of one. It is never registered and never
+     * handed out, so it is not a session in the sense mxq.h uses the word: no
+     * handle exists, nothing owns it, and it cannot be mutated. */
+    MxqGame line;
+    line.config = config;
+    line.moves = moves;
+
+    Replayed replayed;
+    const MxqStatus rc = replay_prefix(line, line.moves.size(), false, replayed,
+                                       err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    fill_status(line, replayed, out);
+    return MXQ_OK;
+}
+
+MxqStatus archive_and_clear(MxqCore *core, MxqGame *active,
+                            uint64_t *out_record_id, MxqError *err) {
+    if (out_record_id != nullptr) {
+        *out_record_id = 0;
+    }
+    MxqStatus rc = require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (active == nullptr) {
+        /*
+         * The one required pointer this function takes is the active game
+         * itself, so its absence is a state rather than a programming error:
+         * a frontend reaching the save-before-mode path with no game to save
+         * is asking a question the library can answer.
+         */
+        fill_error(err, MXQ_ERR_STATE_ACTIVE_GAME_MISSING,
+                   "there is no active game to archive");
+        return MXQ_ERR_STATE_ACTIVE_GAME_MISSING;
+    }
+    rc = require(active, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (active->core != core) {
+        assert(false && "the session belongs to another core");
+        fill_error(err, MXQ_ERR_ARG_INVALID_HANDLE,
+                   "the session was not issued by this core");
+        return MXQ_ERR_ARG_INVALID_HANDLE;
+    }
+    Owner owner(active);
+    if (!owner.held()) {
+        return concurrent_use(err);
+    }
+    rc = require_mutable(active, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    Replayed replayed;
+    rc = replay_prefix(*active, active->moves.size(), false, replayed, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /*
+     * The classification docs/game-data.md accepts for save-before-mode, and
+     * the only place ended-early may be written.
+     *
+     * An unconfirmed natural terminal state keeps its actual result and its
+     * exact termination reason — recording a checkmate as "ended early" would
+     * lose a result the game really has. Everything else is ended early with
+     * no competitive result, the unclaimed claimable repetition included: it
+     * is still an ongoing game, and a draw it records would be a draw nobody
+     * claimed.
+     */
+    MxqOutcome outcome = MXQ_OUTCOME_NONE;
+    MxqEndReason reason = MXQ_END_REASON_ENDED_EARLY;
+    if (outcome_of(replayed.adj.state, outcome)) {
+        reason = replayed.adj.reason;
+    }
+
+    uint64_t record_id = 0;
+    rc = end_game(*active, outcome, reason, record_id, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_record_id != nullptr) {
+        *out_record_id = record_id;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus history_open(MxqCore *core, uint64_t record_id, MxqGame **out_replay,
+                       MxqError *err) {
+    MxqStatus rc = require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_replay == nullptr) {
+        assert(false && "required out pointer was null");
+        fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    *out_replay = nullptr;
+
+    store::Summary summary;
+    std::string archive_bytes;
+    rc = store::history_record(*core->store, record_id, summary, &archive_bytes,
+                               err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    std::unique_ptr<MxqGame> game;
+    rc = session_from_row(core, record_id, archive_bytes, summary.content_sha256,
+                          /*expect_completed=*/true, /*read_only=*/true, game,
+                          err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    MxqGame *raw = game.release();
+    register_session(raw);
+    *out_replay = raw;
+    return MXQ_OK;
 }
 
 } /* namespace session */
@@ -480,8 +868,9 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
     bool exists = false;
     uint64_t record_id = 0;
     std::string archive;
-    const MxqStatus load =
-        mxq::store::load_active(*core->store, exists, record_id, archive, err);
+    std::string content_sha256;
+    const MxqStatus load = mxq::store::load_active(
+        *core->store, exists, record_id, archive, content_sha256, err);
     if (load != MXQ_OK) {
         return load;
     }
@@ -492,67 +881,29 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
     }
 
     /*
-     * The stored bytes go back through the codec — structurally, and then
-     * through the same replay the archive validator uses — rather than being
-     * trusted because this core wrote them. What is deliberately not applied
-     * are the import size bounds: a long local game must always resume.
-     *
-     * A row that fails either half is store corruption. It is not an archive
-     * rejection: nothing imported it, and the user's answer is about their
-     * library rather than about a file they chose.
+     * One session per active row. A second resume while the first is still
+     * live would leave two sessions committing over one another with no
+     * diagnosis at all, so it is detected and refused rather than served.
      */
-    mxq::archive::Stored stored;
-    MxqError decode_error;
-    std::memset(&decode_error, 0, sizeof(decode_error));
-    decode_error.struct_size = static_cast<uint32_t>(sizeof(decode_error));
-    const MxqStatus decoded = mxq::archive::read_stored(
-        reinterpret_cast<const uint8_t *>(archive.data()), archive.size(),
-        stored, &decode_error);
-    if (decoded != MXQ_OK) {
-        mxq::fill_error_subsystem(
-            err, MXQ_ERR_STORE_CORRUPT,
-            (std::string("the stored active game does not decode: ") +
-             decode_error.detail)
-                .c_str(),
-            decoded);
-        return MXQ_ERR_STORE_CORRUPT;
-    }
-    if (stored.completed) {
-        mxq::fill_error(err, MXQ_ERR_STORE_CORRUPT,
-                        "the active game's archive records an end, which only "
-                        "a History record may");
-        return MXQ_ERR_STORE_CORRUPT;
-    }
-    if (stored.start_fen != MXQ_START_FEN) {
-        mxq::fill_error(err, MXQ_ERR_STORE_CORRUPT,
-                        "the active game does not start from the frozen "
-                        "starting position");
-        return MXQ_ERR_STORE_CORRUPT;
+    if (mxq::session::attached_to(core, record_id)) {
+        mxq::fill_error(err, MXQ_ERR_ARG_CONCURRENT_USE,
+                        "a session is already attached to the active game");
+        return MXQ_ERR_ARG_CONCURRENT_USE;
     }
 
-    auto game = std::unique_ptr<MxqGame>(new MxqGame());
-    game->game_id = stored.game_id;
-    game->config = stored.config;
-    game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
-    game->started_at_ms = stored.started_at_ms;
-    game->written_at_ms = stored.written_at_ms;
-    game->moves = stored.moves;
-    game->record_id = record_id;
-    game->core = core;
-
-    /* The rules tier, on the line as stored. */
-    mxq::session::Replayed replayed;
-    MxqError replay_error;
-    std::memset(&replay_error, 0, sizeof(replay_error));
-    replay_error.struct_size = static_cast<uint32_t>(sizeof(replay_error));
-    if (mxq::session::replay_prefix(*game, game->moves.size(), false, replayed,
-                                    &replay_error) != MXQ_OK) {
-        mxq::fill_error(
-            err, MXQ_ERR_STORE_CORRUPT,
-            (std::string("the stored active game does not replay: ") +
-             replay_error.detail)
-                .c_str());
-        return MXQ_ERR_STORE_CORRUPT;
+    /*
+     * The stored bytes go back through the codec — structurally, then against
+     * the hash the row records, then through the same replay the archive
+     * validator uses — rather than being trusted because this core wrote them.
+     * See session_from_row; what is deliberately not applied are the import
+     * size bounds, because a long local game must always resume.
+     */
+    std::unique_ptr<MxqGame> game;
+    const MxqStatus built = mxq::session::session_from_row(
+        core, record_id, archive, content_sha256, /*expect_completed=*/false,
+        /*read_only=*/false, game, err);
+    if (built != MXQ_OK) {
+        return built;
     }
 
     MxqGame *raw = game.release();
@@ -808,6 +1159,10 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     if (!owner.held()) {
         return mxq::session::concurrent_use(err);
     }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
     if (out_after != nullptr) {
         rc = mxq::begin_out(out_after, out_after->struct_size,
                             static_cast<uint32_t>(sizeof(MxqPosition)),
@@ -912,13 +1267,17 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
 
 MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game, uint32_t *out_plies_removed,
                                  MxqError *err) {
-    const MxqStatus rc = mxq::session::require(game, err);
+    MxqStatus rc = mxq::session::require(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
     mxq::session::Owner owner(game);
     if (!owner.held()) {
         return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
     }
     if (out_plies_removed != nullptr) {
         *out_plies_removed = 0;
@@ -941,6 +1300,185 @@ MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game, uint32_t *out_plies_removed,
     }
     if (out_plies_removed != nullptr) {
         *out_plies_removed = plies;
+    }
+    return MXQ_OK;
+}
+
+/* ------------------------------------------------------------------------- */
+/* The terminal commits                                                      */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * The three of them share a shape: the handle checks, the single-owner claim,
+ * the mutability check, and the replay their classification is derived from.
+ * Each then decides one thing — whether the ending it names is available here,
+ * and what outcome and reason it commits — and hands that to end_game. None
+ * takes a classification from the caller, because none may: docs/game-data.md
+ * derives the saved classification from the committed game state, and a
+ * caller-supplied result would be a second authority for what a game's outcome
+ * is.
+ *
+ * The preamble is written out in each rather than factored into a helper,
+ * because its order is load-bearing: the registry check comes before anything
+ * dereferences the handle, and the owner guard must live for the whole call.
+ */
+MxqStatus MXQ_CALL mxq_game_claim_draw(MxqGame *game, uint64_t *out_record_id,
+                                       MxqError *err) {
+    if (out_record_id != nullptr) {
+        *out_record_id = 0;
+    }
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    mxq::session::Replayed replayed;
+    rc = mxq::session::replay_prefix(*game, game->moves.size(), false, replayed,
+                                     err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /* The claim is legal exactly where the core reports it available, which is
+     * the same fact MxqGameStatus.claim_available carries: a frontend offering
+     * 判和 and the core accepting it read one adjudication. */
+    if (replayed.adj.state != MXQ_GAME_CLAIMABLE_DRAW) {
+        mxq::fill_error(err, MXQ_ERR_STATE_CLAIM_UNAVAILABLE,
+                        "there is no claimable repetition in this position");
+        return MXQ_ERR_STATE_CLAIM_UNAVAILABLE;
+    }
+
+    /* The reason is the core's own, not a constant written twice. In this
+     * ruleset threefold repetition is the only claimable outcome there is,
+     * which is why mxq.h can name it. */
+    uint64_t record_id = 0;
+    rc = mxq::session::end_game(*game, MXQ_OUTCOME_DRAW, replayed.adj.reason,
+                                record_id, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_record_id != nullptr) {
+        *out_record_id = record_id;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_resign(MxqGame *game, uint64_t *out_record_id,
+                                   MxqError *err) {
+    if (out_record_id != nullptr) {
+        *out_record_id = 0;
+    }
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    mxq::session::Replayed replayed;
+    rc = mxq::session::replay_prefix(*game, game->moves.size(), false, replayed,
+                                     err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /*
+     * Resignation is human-versus-AI only, and there is nothing to resign once
+     * the game has a result of its own — which is exactly when
+     * MxqGameStatus.resign_available reads 0, so the affordance and the
+     * refusal are one rule rather than two.
+     *
+     * It is also what the archive requires: a recorded resignation must have a
+     * non-terminal final position, because an unconfirmed natural result is
+     * always recorded as its actual result. Refusing here is what keeps the
+     * store from being asked to hold a row its own constraints would refuse.
+     */
+    MxqGameStatus status;
+    std::memset(&status, 0, sizeof(status));
+    status.struct_size = static_cast<uint32_t>(sizeof(status));
+    mxq::session::fill_status(*game, replayed, &status);
+    if (status.resign_available == 0) {
+        mxq::fill_error(err, MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                        game->config.mode == MXQ_PLAY_MODE_HUMAN_VS_AI
+                            ? "the game already has a result to resign from"
+                            : "resignation is a human-versus-AI action");
+        return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
+    }
+
+    /* The loss is the human's, so the win is the other side's. */
+    const MxqOutcome outcome = game->config.human_side == MXQ_COLOR_RED
+                                   ? MXQ_OUTCOME_BLACK_WINS
+                                   : MXQ_OUTCOME_RED_WINS;
+    uint64_t record_id = 0;
+    rc = mxq::session::end_game(*game, outcome, MXQ_END_REASON_RESIGNATION,
+                                record_id, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_record_id != nullptr) {
+        *out_record_id = record_id;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
+                                           uint64_t *out_record_id,
+                                           MxqError *err) {
+    if (out_record_id != nullptr) {
+        *out_record_id = 0;
+    }
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    mxq::session::Replayed replayed;
+    rc = mxq::session::replay_prefix(*game, game->moves.size(), false, replayed,
+                                     err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /* There must be a natural result to confirm. A claimable repetition is not
+     * one: the game continues there unless the claim is made, and claiming is
+     * mxq_game_claim_draw's decision rather than this one's. */
+    MxqOutcome outcome = MXQ_OUTCOME_NONE;
+    if (!mxq::session::outcome_of(replayed.adj.state, outcome)) {
+        mxq::fill_error(err, MXQ_ERR_STATE_CONFIRM_UNAVAILABLE,
+                        "this position has no natural result to confirm");
+        return MXQ_ERR_STATE_CONFIRM_UNAVAILABLE;
+    }
+
+    uint64_t record_id = 0;
+    rc = mxq::session::end_game(*game, outcome, replayed.adj.reason, record_id,
+                                err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_record_id != nullptr) {
+        *out_record_id = record_id;
     }
     return MXQ_OK;
 }
