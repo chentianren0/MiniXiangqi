@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The one key the generated Info.plist cannot carry: the game archive's type.
+
+  GENERATE_INFOPLIST_FILE stays on and this file is its base, so every
+  INFOPLIST_KEY_* build setting still lands in the built plist and only what is
+  written here is written by hand.
+
+  docs/game-data.md fixes all three parts of the declaration — the extension,
+  the identifier, and the conformance to public.json — and UTType
+  .miniXiangqiGame in History/GameFile.swift is the same identifier spelled for
+  Swift. The two must agree; this file is what registers the type with the
+  system, and the Swift constant only names it.
+
+  It is exported rather than imported because this application defines the type,
+  and it is deliberately not accompanied by CFBundleDocumentTypes: declaring the
+  type is not claiming to open one. Import happens on the History destination,
+  where the list is already on screen to receive the result, and a Finder or
+  Files handler would be a second entry path with its own launch-time state that
+  no accepted contract asks for.
+-->
+<plist version="1.0">
+<dict>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.ppppvz.minixiangqi.game</string>
+			<key>UTTypeDescription</key>
+			<string>Mini Xiangqi Game</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mxq</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.minixiangqi.game+json</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

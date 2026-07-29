@@ -68,7 +68,23 @@ extension RecordSummary {
         String(format: String(localized: "metadata.moveCount"), moveCount)
     }
 
-    /// When the game ended, in the reader's own locale, calendar and time zone.
+    /// When the game ended, and — for a game that came from a file — that it
+    /// did.
+    ///
+    /// The imported marker the contract asks for is a word rather than a glyph,
+    /// and it is on this line rather than the metadata one because of what it
+    /// explains. The list is ordered by when a record entered *this* library,
+    /// and the row shows when the game itself ended; for a game played here
+    /// those are one transaction apart, and for an imported one they can be
+    /// years apart. 导入 · is what tells a reader why a game from 2024 is
+    /// sitting at the top of the list.
+    var whenText: String {
+        guard imported else { return endedAtText }
+        return [String(localized: "metadata.imported"), endedAtText]
+            .joined(by: String(localized: "metadata.join"))
+    }
+
+    /// The date itself, in the reader's own locale, calendar and time zone.
     ///
     /// Today and yesterday take the system's own day word plus the time; every
     /// other day takes a numeric date and the time. The time is always there,
@@ -79,7 +95,7 @@ extension RecordSummary {
     /// **No date or time pattern is written here, in either branch.** Whether
     /// the clock reads 14:32 or 2:32 PM belongs to the locale and to the
     /// reader's own system setting; a hand-written `HH:mm` would override both.
-    var whenText: String {
+    var endedAtText: String {
         let calendar = Calendar.current
         if calendar.isDateInToday(endedAt) || calendar.isDateInYesterday(endedAt) {
             // Relative day names come only from `DateFormatter`, which is why

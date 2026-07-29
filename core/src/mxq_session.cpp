@@ -465,6 +465,36 @@ MxqStatus end_game(MxqGame &game, MxqOutcome outcome, MxqEndReason reason,
 /* ---------------------------------------------------------------------- */
 
 /*
+ * A decoded document as a session, without asking anything of it.
+ *
+ * Three callers build a session from bytes — resume, opening a History record,
+ * and opening an archive file for preview — and they differ in what they check
+ * first, not in what a session is. This is the part they share; the checks stay
+ * with the caller that owns their meaning, because "the row this core wrote no
+ * longer replays" and "the file you chose does not replay" are different
+ * sentences with different statuses.
+ */
+std::unique_ptr<MxqGame> session_of(MxqCore *core,
+                                    const archive::Stored &stored,
+                                    uint64_t record_id, bool read_only) {
+    auto game = std::unique_ptr<MxqGame>(new MxqGame());
+    game->game_id = stored.game_id;
+    game->config = stored.config;
+    game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
+    game->started_at_ms = stored.started_at_ms;
+    game->written_at_ms = stored.written_at_ms;
+    game->moves = stored.moves;
+    game->completed = stored.completed;
+    game->outcome = stored.outcome;
+    game->end_reason = stored.end_reason;
+    game->ended_at_ms = stored.ended_at_ms;
+    game->record_id = record_id;
+    game->read_only = read_only;
+    game->core = core;
+    return game;
+}
+
+/*
  * The path back from bytes to a session, shared by resume and by opening a
  * History record.
  *
@@ -516,20 +546,8 @@ MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
         return MXQ_ERR_STORE_CORRUPT;
     }
 
-    auto game = std::unique_ptr<MxqGame>(new MxqGame());
-    game->game_id = stored.game_id;
-    game->config = stored.config;
-    game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
-    game->started_at_ms = stored.started_at_ms;
-    game->written_at_ms = stored.written_at_ms;
-    game->moves = stored.moves;
-    game->completed = stored.completed;
-    game->outcome = stored.outcome;
-    game->end_reason = stored.end_reason;
-    game->ended_at_ms = stored.ended_at_ms;
-    game->record_id = record_id;
-    game->read_only = read_only;
-    game->core = core;
+    std::unique_ptr<MxqGame> game =
+        session_of(core, stored, record_id, read_only);
 
     /* The integrity compare. Re-encoding the decoded document reproduces the
      * canonical bytes this writer produced — that is the property the golden
@@ -915,6 +933,53 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
     mxq::session::register_session(raw);
     *out_game = raw;
     *out_exists = 1;
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_open_archive(MxqCore *core, const uint8_t *bytes,
+                                         size_t len, MxqGame **out_game,
+                                         MxqError *err) {
+    const MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_game == nullptr) {
+        assert(false && "required out pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    *out_game = nullptr;
+    if (bytes == nullptr) {
+        assert(false && "required bytes pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "bytes was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+
+    /*
+     * The importer's own validation, whole: a preview that shows a replayable
+     * board must replay, and it must accept exactly the files an import would.
+     * A preview that displayed a game import then refused would be the worst
+     * of both answers.
+     *
+     * The rejections are therefore the archive-domain ones a file gets, not
+     * the store-domain ones a row gets: nothing about the user's library is
+     * being reported here.
+     */
+    mxq::archive::Stored stored;
+    const MxqStatus read = mxq::archive::read_imported(bytes, len, stored, err);
+    if (read != MXQ_OK) {
+        return read;
+    }
+
+    /* Detached: no store row, so no record id, and read-only for good. The
+     * move line was replayed by the validation above, so there is nothing left
+     * to ask before the handle exists. */
+    std::unique_ptr<MxqGame> game =
+        mxq::session::session_of(core, stored, /*record_id=*/0,
+                                 /*read_only=*/true);
+    MxqGame *raw = game.release();
+    mxq::session::register_session(raw);
+    *out_game = raw;
     return MXQ_OK;
 }
 

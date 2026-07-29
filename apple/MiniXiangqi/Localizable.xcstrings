@@ -107,6 +107,212 @@
         }
       }
     },
+    "alert.importConflict.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It is the same game as one in History, but its contents differ. History is unchanged. To use this file, delete that game from History first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。"
+          }
+        }
+      }
+    },
+    "alert.importConflict.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This File Conflicts with a Game in History"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件和历史中的一盘棋冲突"
+          }
+        }
+      }
+    },
+    "alert.importDamagedRecord.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The record in History matching this file is damaged, so it can't be compared or imported. To use this file, delete that game from History first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件对应的历史记录已损坏，无法比较或导入。如果要用这个文件，请先删除历史中的那一盘。"
+          }
+        }
+      }
+    },
+    "alert.importDamagedRecord.title": {
+      "comment": "The one import answer that is about the library rather than about the file, and the only one that may say damaged.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Game in History Is Damaged"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "历史中有一盘损坏的棋"
+          }
+        }
+      }
+    },
+    "alert.importDuplicate.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The game in this file is identical to one already in History, so it wasn't added again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件里的对局和历史中的一盘完全相同，所以没有重复添加。"
+          }
+        }
+      }
+    },
+    "alert.importDuplicate.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Game Is Already in History"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这盘棋已经在历史里"
+          }
+        }
+      }
+    },
+    "alert.importNewerVersion.message": {
+      "comment": "The one message the data contract requires to be distinct, and never to be presented as corruption: no word here means damaged.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This version can't read it. Update Mini Xiangqi and try again. History is unchanged."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。"
+          }
+        }
+      }
+    },
+    "alert.importNewerVersion.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This File Was Created by a Newer Version of Mini Xiangqi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件由更新版本的 Mini Xiangqi 创建"
+          }
+        }
+      }
+    },
+    "alert.importSaveFailed.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The game file is fine, but saving it to History failed. History is unchanged. Please try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对局文件没有问题，但保存到历史时出错。历史没有改变。请重试。"
+          }
+        }
+      }
+    },
+    "alert.importSaveFailed.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Save the Imported Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存导入的对局"
+          }
+        }
+      }
+    },
+    "alert.importUnreadable.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file's contents are invalid or too large to import. History is unchanged. Check that the file is complete, or ask for a new copy."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。"
+          }
+        }
+      }
+    },
+    "alert.importUnreadable.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't Read This Game File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取这个对局文件"
+          }
+        }
+      }
+    },
     "alert.saveFailed.message": {
       "extractionState": "manual",
       "localizations": {
@@ -311,6 +517,23 @@
         }
       }
     },
+    "control.done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
+          }
+        }
+      }
+    },
     "control.endAsDraw": {
       "extractionState": "manual",
       "localizations": {
@@ -341,6 +564,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "翻转棋盘"
+          }
+        }
+      }
+    },
+    "control.import": {
+      "comment": "The trailing character is a horizontal ellipsis in both languages: the action opens a picker before it does anything.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入…"
           }
         }
       }
@@ -379,6 +620,23 @@
         }
       }
     },
+    "control.ok": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        }
+      }
+    },
     "control.pin": {
       "extractionState": "manual",
       "localizations": {
@@ -392,6 +650,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "置顶"
+          }
+        }
+      }
+    },
+    "control.replay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replay"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回放"
+          }
+        }
+      }
+    },
+    "control.share": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享"
           }
         }
       }
@@ -443,6 +735,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消置顶"
+          }
+        }
+      }
+    },
+    "control.view": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看"
           }
         }
       }
@@ -565,6 +874,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "已置顶"
+          }
+        }
+      }
+    },
+    "metadata.imported": {
+      "comment": "The imported marker, a word rather than a glyph, joined to the row's date by metadata.join.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入"
           }
         }
       }
@@ -1149,6 +1476,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "和棋"
+          }
+        }
+      }
+    },
+    "result.recorded": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved to History"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已记录到历史"
           }
         }
       }

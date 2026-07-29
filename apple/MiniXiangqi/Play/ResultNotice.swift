@@ -8,10 +8,21 @@
 // changes nothing about the game: the turn status still carries the result and
 // the play controls still carry the actions.
 //
-// Until History exists the concluding action starts a new game directly, so
-// this shows 开始新对局 where the contract's recorded flow will later show
-// 结束对局. It is the one tinted element on screen, which the tint rule allows
-// a moment with a single obvious next action.
+// The notice has two states, and which one it is in is a fact about the game
+// rather than about this view. While the result is still the player's to undo,
+// the actions are 悔棋 and the concluding one. Once the game has been filed —
+// which a claimed draw is the moment the claim commits — the record exists, and
+// the notice says so: 已记录到历史, with 回放 to watch it back and 完成 to
+// return to the start state. There is nothing left to undo at that point, and
+// offering it would be offering to undo a History record.
+//
+// The concluding action is still 开始新对局 rather than the contract's 结束对局
+// because in this app it still does both things at once: it files the game and
+// resets the board in one press. Splitting the two is a flow change and not a
+// label change, and it is not this PR's.
+//
+// Whichever state it is in, one action is tinted, which the tint rule allows a
+// moment with a single obvious next step.
 
 import SwiftUI
 
@@ -19,8 +30,11 @@ struct ResultNotice: View {
     var state: GameState
     var reason: EndReason
     var canUndo: Bool
+    /// Whether the game is already an immutable History record.
+    var recorded: Bool
     var undo: () -> Void
     var startNewGame: () -> Void
+    var replay: () -> Void
     var close: () -> Void
 
     @Environment(\.motionPolicy) private var policy
@@ -40,14 +54,23 @@ struct ResultNotice: View {
             }
 
             HStack(spacing: 10) {
-                if canUndo {
-                    Button("control.undo", action: undo)
+                if recorded {
+                    Button("control.replay", action: replay)
                         .buttonStyle(.glass)
-                        .accessibilityIdentifier("result-undo")
+                        .accessibilityIdentifier("result-replay")
+                    Button("control.done", action: startNewGame)
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("result-done")
+                } else {
+                    if canUndo {
+                        Button("control.undo", action: undo)
+                            .buttonStyle(.glass)
+                            .accessibilityIdentifier("result-undo")
+                    }
+                    Button("control.newGame", action: startNewGame)
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("result-new-game")
                 }
-                Button("control.newGame", action: startNewGame)
-                    .buttonStyle(.glassProminent)
-                    .accessibilityIdentifier("result-new-game")
             }
             .padding(.top, 16)
         }
@@ -92,14 +115,18 @@ struct ResultNotice: View {
     }
 
     /// The fuller wording, which has room to be a sentence about the game
-    /// where the status line has to be a line about the turn.
+    /// where the status line has to be a line about the turn — and, once the
+    /// game is filed, the accepted sentence about where it went instead. The
+    /// result itself is not lost by that: the turn status is still carrying it,
+    /// a few points below, and the reason line under this title is unchanged.
     private var title: String {
+        if recorded { return String(localized: "result.recorded") }
         switch state {
-        case .redWins: String(localized: "result.redWins")
-        case .blackWins: String(localized: "result.blackWins")
+        case .redWins: return String(localized: "result.redWins")
+        case .blackWins: return String(localized: "result.blackWins")
         // A finished game that neither side won is a draw, whether the core
         // adjudicated it or the player claimed it.
-        case .draw, .ongoing, .claimableDraw: String(localized: "result.draw")
+        case .draw, .ongoing, .claimableDraw: return String(localized: "result.draw")
         }
     }
 }

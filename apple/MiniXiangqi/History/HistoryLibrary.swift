@@ -12,13 +12,20 @@
 // fsync, so it is strictly cheaper than the ~2 ms per-move commit the owner's
 // proportionality ruling already accepted there. `HistoryStore` stays a
 // `Sendable` value over the core handle alone, so the off-main restructure
-// remains available in reserve rather than having to be invented later.
+// remains available in reserve rather than having to be invented later. Import
+// is the one call here that the exception does not cover and that therefore
+// already runs off it.
 
+import Foundation
+import MiniXiangqiCore
 import Observation
 
 @Observable
 final class HistoryLibrary {
-    private let store: HistoryStore
+    /// The surface this library reads through, and the one 共享 exports
+    /// through: the file a row hands out and the list that row is in are the
+    /// same library's, and there is no second handle for either to drift from.
+    let store: HistoryStore
 
     /// The records, in the core's order. Never sorted here.
     private(set) var records: [RecordSummary] = []
@@ -42,6 +49,17 @@ final class HistoryLibrary {
     /// the two sections, which is the accepted non-blocking treatment for a
     /// reversible action.
     private(set) var deletionFailure: CoreError?
+
+    /// What the last import had to say, other than the row appearing — and,
+    /// when the row *is* what it had to say, which row.
+    ///
+    /// Both live here rather than on the screen because an import outlives the
+    /// screen that started it: the destination is torn down and rebuilt as the
+    /// player moves between destinations, and an answer held in a view would be
+    /// delivered to a view that is no longer the one being looked at. An import
+    /// is a fact about the library, and this is the library.
+    private(set) var importAnswer: ImportAnswer?
+    private(set) var importedRecord: UInt64?
 
     init(store: HistoryStore) {
         self.store = store
@@ -111,6 +129,54 @@ final class HistoryLibrary {
         deletionFailure = nil
     }
 
+    // MARK: - Import
+
+    /// Files one game file, then reads back.
+    ///
+    /// Unlike everything else here, the call itself runs off the main actor:
+    /// docs/core-interface.md keeps import outside the exception the rest of
+    /// this surface runs under, because validating an untrusted file replays
+    /// every ply of it against a two-second budget before anything is written.
+    /// That is a change of call site and not of design — the store surface is
+    /// already a `Sendable` value over the core handle.
+    ///
+    /// The answer is recorded here rather than returned, so that whichever
+    /// screen is on show when it arrives is the one that presents it.
+    func importGame(_ bytes: Data) async {
+        let store = self.store
+        importAnswer = nil
+        do {
+            let imported = try await Task.detached { try store.importGame(bytes) }.value
+            load()
+            switch imported.outcome {
+            case .created:
+                // Nothing to say: the row is the answer, and the list has it.
+                importedRecord = imported.record.id
+            case .existing:
+                importAnswer = .duplicate(imported.record)
+            }
+        } catch {
+            // Nothing was written on any refusal, so there is nothing to read
+            // back — only something to say.
+            importAnswer = ImportAnswer(refusing: CoreError(wrapping: error),
+                                        retrying: bytes)
+        }
+    }
+
+    /// The picker could not hand a file over at all, which from here is
+    /// indistinguishable from a file that cannot be read.
+    func reportUnreadableFile() {
+        importAnswer = .unreadable
+    }
+
+    func dismissImportAnswer() {
+        importAnswer = nil
+    }
+
+    func clearImportedRecord() {
+        importedRecord = nil
+    }
+
     // MARK: - Replay
 
     /// Opens one record as a detached read-only session and builds the replay
@@ -123,6 +189,79 @@ final class HistoryLibrary {
                                        session: ReplaySession(try store.open(record.id))))
         } catch {
             return .failure(CoreError(wrapping: error))
+        }
+    }
+}
+
+/// Everything an import can answer other than a row appearing.
+///
+/// The classes are the ones the core's own taxonomy distinguishes, and no
+/// others: a file that is not ours and a file that is damaged are both
+/// `MXQ_ERR_ARCHIVE_MALFORMED`, and telling them apart above the interface
+/// would mean reading a diagnostic string the contract reserves for logs. The
+/// picker is where the wrong-file case is actually prevented, by filtering to
+/// the declared type.
+///
+/// The created-by-a-newer-version answer is the one the data contract requires
+/// to be distinct and never to be presented as corruption, and it is. The one
+/// answer that *is* about corruption is about the library's own record rather
+/// than about the file, and says so.
+enum ImportAnswer {
+    case duplicate(RecordSummary)
+    case conflict
+    case newerVersion
+    case unreadable
+    /// The file is fine and so is the library; the record already under this
+    /// file's identity is not. Its own bytes no longer decode, or no longer
+    /// hash to what the row recorded for them, so the comparison an import has
+    /// to make cannot be made at all.
+    case damagedRecord
+    /// The file was fine; the library would not take it. The bytes are held so
+    /// that 重试 is a retry of the same import.
+    case saveFailed(Data)
+
+    init(refusing error: CoreError, retrying bytes: Data) {
+        switch error.status {
+        case MxqStatus(MXQ_ERR_STORE_IDENTITY_CONFLICT):
+            self = .conflict
+        case MxqStatus(MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION):
+            self = .newerVersion
+        case MxqStatus(MXQ_ERR_STORE_CORRUPT):
+            // Not a save that failed. Nothing was being saved yet: the import
+            // reached the record already holding this identity and found it
+            // damaged. A retry would find it damaged again, so offering one
+            // would be offering an action that cannot work — and calling this
+            // a failure to save would understate what is wrong and point at
+            // the wrong thing.
+            self = .damagedRecord
+        default:
+            // Which side refused decides which sentence is true: the archive
+            // domain means the file, and anything else that reaches here means
+            // the write that would have filed it.
+            self = mxq_status_domain(error.status) == MxqStatus(MXQ_DOMAIN_ARCHIVE)
+                ? .unreadable : .saveFailed(bytes)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .duplicate: "alert.importDuplicate.title"
+        case .conflict: "alert.importConflict.title"
+        case .newerVersion: "alert.importNewerVersion.title"
+        case .unreadable: "alert.importUnreadable.title"
+        case .damagedRecord: "alert.importDamagedRecord.title"
+        case .saveFailed: "alert.importSaveFailed.title"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .duplicate: "alert.importDuplicate.message"
+        case .conflict: "alert.importConflict.message"
+        case .newerVersion: "alert.importNewerVersion.message"
+        case .unreadable: "alert.importUnreadable.message"
+        case .damagedRecord: "alert.importDamagedRecord.message"
+        case .saveFailed: "alert.importSaveFailed.message"
         }
     }
 }

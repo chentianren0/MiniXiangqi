@@ -172,6 +172,12 @@ The canonical form has seven clauses. Three of them decide what a document *mean
 
 The golden files are held to the full canonical form anyway, because they are what the encoder must reproduce.
 
+## A second runner over the same corpus
+
+`core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
+
+The three active shapes are its one deliberate divergence: they are valid version 1 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+
 ## Consumption
 
 The archive codec is gated by these fixtures on every platform. Every rejection class in [docs/game-data.md](../../docs/game-data.md)'s accepted validation order has at least one fixture here, and a new rejection class arrives with one; a rejection the corpus does not cover is a gap in the corpus, not a licence to add one silently.

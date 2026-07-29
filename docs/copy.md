@@ -40,17 +40,20 @@ Contract sections are cited by document and section name rather than by line num
 | `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
 | `control.newGame` | 开始新对局 | New Game | button | `Play/PlayScreen.swift`, `Play/ResultNotice.swift` — the concluding action until History exists |
 | `control.endGame` | 结束对局 | End Game | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
-| `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
-| `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
+| `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |
 | `control.tryAgain` | 重试 | Try Again | alert button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode |
 | `control.saveAndContinue` | 保存并继续 | Save and Continue | alert button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Games and history |
 | `control.keepPlaying` | 继续对局 | Keep Playing | alert button | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
 | `control.endAsDraw` | 以和棋结束 | End as a Draw | alert button | same |
-| `control.share` | 共享 | Share | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
+| `control.share` | 共享 | Share | swipe action; context menu; screen-reader action | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 | `control.delete` | 删除 | Delete | swipe action; alert button | [interaction-design.md](interaction-design.md) § History library |
 | `control.pin` | 置顶 | Pin | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
 | `control.unpin` | 取消置顶 | Unpin | swipe action; context menu | [interaction-design.md](interaction-design.md) § History library |
+| `control.import` | 导入… | Import… | toolbar item | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `control.view` | 查看 | View | alert button | same — the duplicate answer's way to the record it found |
+| `control.ok` | 好 | OK | alert button | same — the acknowledgement of an alert that is informational plus at most one navigation |
 
 ### Turn status
 
@@ -75,7 +78,7 @@ Contract sections are cited by document and section name rather than by line num
 | `result.redWins` | 红方获胜 | Red Wins | notice title | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `result.blackWins` | 黑方获胜 | Black Wins | notice title | same |
 | `result.draw` | 和棋 | Draw | notice title | same |
-| `result.recorded` | 已记录到历史 | Saved to History | notice title after the concluding action | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `result.recorded` | 已记录到历史 | Saved to History | notice title once the game is filed | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `result.announcement` | `%1$@，%2$@` | `%1$@, %2$@` | VoiceOver announcement format | `Play/ResultNotice.swift` — the separator is an ideographic comma in Chinese and a comma-space in English |
 
 ### Result reasons
@@ -115,6 +118,18 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
 | `alert.deleteFailed.title` *(proposed)* | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 | `alert.deleteFailed.message` *(proposed)* | 这盘棋仍然保留在历史里。请重试。 | This game is still in History. Please try again. | alert message | same |
+| `alert.importDuplicate.title` | 这盘棋已经在历史里 | This Game Is Already in History | alert title | [interaction-design.md](interaction-design.md) § History library; [game-data.md](game-data.md) § Accepted MVP record behavior; `History/HistoryScreen.swift` |
+| `alert.importDuplicate.message` | 文件里的对局和历史中的一盘完全相同，所以没有重复添加。 | The game in this file is identical to one already in History, so it wasn't added again. | alert message | same |
+| `alert.importConflict.title` | 这个文件和历史中的一盘棋冲突 | This File Conflicts with a Game in History | alert title | same |
+| `alert.importConflict.message` | 它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。 | It is the same game as one in History, but its contents differ. History is unchanged. To use this file, delete that game from History first. | alert message | same |
+| `alert.importNewerVersion.title` | 这个文件由更新版本的 Mini Xiangqi 创建 | This File Was Created by a Newer Version of Mini Xiangqi | alert title | [game-data.md](game-data.md) § Migration — the one message the compatibility promise requires to be distinct |
+| `alert.importNewerVersion.message` | 当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。 | This version can't read it. Update Mini Xiangqi and try again. History is unchanged. | alert message | same |
+| `alert.importUnreadable.title` | 无法读取这个对局文件 | Can't Read This Game File | alert title | [interaction-design.md](interaction-design.md) § History library |
+| `alert.importUnreadable.message` | 文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。 | The file's contents are invalid or too large to import. History is unchanged. Check that the file is complete, or ask for a new copy. | alert message | same |
+| `alert.importSaveFailed.title` | 无法保存导入的对局 | Couldn't Save the Imported Game | alert title | same |
+| `alert.importSaveFailed.message` | 对局文件没有问题，但保存到历史时出错。历史没有改变。请重试。 | The game file is fine, but saving it to History failed. History is unchanged. Please try again. | alert message | same |
+| `alert.importDamagedRecord.title` | 历史中有一盘损坏的棋 | A Game in History Is Damaged | alert title | same — the one import answer about the library rather than the file, and the only one that may say 损坏 |
+| `alert.importDamagedRecord.message` | 这个文件对应的历史记录已损坏，无法比较或导入。如果要用这个文件，请先删除历史中的那一盘。 | The record in History matching this file is damaged, so it can't be compared or imported. To use this file, delete that game from History first. | alert message | same |
 
 `alert.claimDraw.title` and `alert.claimDraw.message` together preserve the accepted sentence 局面已三次重复，可以和棋结束。 The split into title and message is the accepted presentation; neither half is a new decision, and the pair must not be recombined into a single title.
 
@@ -172,6 +187,7 @@ The footer states only that the piece style carries the board colors. It says no
 | `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show |
 | `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
 | `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same |
+| `metadata.imported` | 导入 | Imported | row prefix on an imported record | [interaction-design.md](interaction-design.md) § History library; `History/RecordMetadata.swift` |
 | `metadata.join` | `%1$@ · %2$@` | `%1$@ · %2$@` | metadata-line format | same; `Play/TurnStatus.swift` |
 
 `metadata.moveCount` is a plural pattern in English and a literal in Chinese: 步 is invariant, *move* is not, and a one-ply game is reachable in Free Play. English *move* counts one player's move, mirroring the number the Chinese shows; Help defines the term, and that definition is owed by the Help stage.
@@ -281,5 +297,5 @@ These are the consequences for the code that the localization pull request inher
 
 - Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
 - Approve the rows marked *(proposed)* above: the two History section headers, the empty state's two lines, the History-read failure title, the deletion-failure pair, and the replay transport's seven. They are what the History destination and its replay say, and they ship in the String Catalog behind this proposal.
-- Supply copy for the surfaces that still have no accepted string in either language: the sound and haptics toggles, the Help entry point and its contents, Import and Export, autoplay speeds if they are ever offered, and the import, duplicate, conflict, and error messages that [interaction-design.md](interaction-design.md) leaves to be designed. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
+- Supply copy for the surfaces that still have no accepted string in either language: the sound and haptics toggles, the Help entry point and its contents, and autoplay speeds if they are ever offered. Import and export, and the import, duplicate, conflict and error messages, are proposed above rather than still open. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
 - Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.

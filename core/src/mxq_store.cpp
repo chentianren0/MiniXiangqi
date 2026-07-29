@@ -865,6 +865,153 @@ MxqStatus commit_completion(Store &store, uint64_t record_id,
     return MXQ_OK;
 }
 
+MxqStatus import_game(Store &store, const ImportedGame &row,
+                      const SameGame &same_game, bool &out_existing,
+                      uint64_t &out_record_id, Summary &out_summary,
+                      MxqError *err) {
+    out_existing = false;
+    out_record_id = 0;
+    out_summary = Summary();
+
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    int rc = SQLITE_OK;
+    std::string detail;
+    Transaction tx(db);
+    if (!tx.begin(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot begin the import transaction: " +
+                                        detail);
+    }
+
+    {
+        /*
+         * The identity question, asked inside the transaction that would
+         * insert. Between an answer read outside it and the insert there is a
+         * window in which another writer could take the identity; there is one
+         * writer here, but the invariant is the schema's UNIQUE constraint and
+         * this is where it is enforced, so this is where it is asked.
+         */
+        const std::string sql = std::string("SELECT ") + kSummaryColumns +
+                                ", archive FROM game WHERE game_id = ?;";
+        Stmt select(db, sql.c_str());
+        if (!select.ok()) {
+            return fail_sqlite(err, select.rc(),
+                               "cannot prepare the identity query: " +
+                                   select.error(db));
+        }
+        select.bind_text(1, row.game_id);
+        const int step = select.step();
+        if (step == SQLITE_ROW) {
+            Summary existing;
+            read_summary(select.get(), existing);
+            std::string existing_archive;
+            if (!read_archive(select.get(), kArchiveColumn, existing_archive)) {
+                return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
+                            "the existing record's archive column is "
+                            "unreadable");
+            }
+
+            bool same = false;
+            const MxqStatus judged =
+                same_game(existing_archive, existing.content_sha256, same, err);
+            if (judged != MXQ_OK) {
+                return judged;
+            }
+            if (!same) {
+                fill_error(err, MXQ_ERR_STORE_IDENTITY_CONFLICT,
+                           "a different game is already recorded under this "
+                           "identity");
+                return MXQ_ERR_STORE_IDENTITY_CONFLICT;
+            }
+
+            /* An exact duplicate. The existing record is the answer, and
+             * nothing is written — not even the revision, because the library
+             * did not change. The transaction rolls back on the way out. */
+            out_existing = true;
+            out_record_id = existing.record_id;
+            out_summary = existing;
+            return MXQ_OK;
+        }
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step, "cannot read the existing record: " +
+                                              select.error(db));
+        }
+    }
+
+    {
+        /* One insert, naming its columns, never OR REPLACE, and never naming
+         * the library: an imported game is a History record from the moment it
+         * exists, and the active game is not this statement's business. */
+        Stmt insert(db,
+                    "INSERT INTO game (game_id, archive, content_sha256, mode,"
+                    " human_side, ai_level, ai_movetime_ms, first_mover_choice,"
+                    " move_count, outcome, end_reason, provenance, started_at_ms,"
+                    " ended_at_ms, added_at_ms)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?, ?,"
+                    " ?);");
+        if (!insert.ok()) {
+            return fail_sqlite(err, insert.rc(),
+                               "cannot prepare the import insert: " +
+                                   insert.error(db));
+        }
+        insert.bind_text(1, row.game_id);
+        insert.bind_blob(2, row.archive);
+        insert.bind_text(3, row.content_sha256);
+        insert.bind_text(4, row.mode);
+        insert.bind_text(5, row.human_side);
+        insert.bind_text(6, row.ai_level);
+        insert.bind_int64_or_null(7, row.ai_movetime_ms);
+        insert.bind_text(8, row.first_mover_choice);
+        insert.bind_int64(9, row.move_count);
+        insert.bind_text(10, row.outcome);
+        insert.bind_text(11, row.end_reason);
+        insert.bind_int64(12, row.started_at_ms);
+        insert.bind_int64(13, row.ended_at_ms);
+        insert.bind_int64(14, row.added_at_ms);
+        const int step = insert.step();
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step, "cannot insert the imported game: " +
+                                              insert.error(db));
+        }
+    }
+
+    const int64_t record_id = sqlite3_last_insert_rowid(db);
+
+    {
+        /* The summary the caller is handed is read back from the row that was
+         * just written rather than assembled from the values that were sent to
+         * it: what the caller reports is what the library now holds. */
+        const std::string sql = std::string("SELECT ") + kSummaryColumns +
+                                " FROM game WHERE record_id = ?;";
+        Stmt select(db, sql.c_str());
+        if (!select.ok()) {
+            return fail_sqlite(err, select.rc(),
+                               "cannot prepare the imported-record query: " +
+                                   select.error(db));
+        }
+        select.bind_int64(1, record_id);
+        const int step = select.step();
+        if (step != SQLITE_ROW) {
+            return fail_sqlite(err, step,
+                               "cannot read back the imported record: " +
+                                   select.error(db));
+        }
+        read_summary(select.get(), out_summary);
+    }
+
+    if (!bump_revision(db, rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot bump the library revision: " + detail);
+    }
+    if (!tx.commit(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot commit the imported game: " +
+                                        detail);
+    }
+    out_record_id = static_cast<uint64_t>(record_id);
+    return MXQ_OK;
+}
+
 MxqStatus active_exists(Store &store, bool &out_exists, MxqError *err) {
     out_exists = false;
     std::lock_guard<std::mutex> lock(store.mutex());

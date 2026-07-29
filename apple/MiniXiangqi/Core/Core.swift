@@ -613,6 +613,76 @@ nonisolated struct HistoryStore: @unchecked Sendable {
     }
 }
 
+/// What one import did. Both cases are success: a file the library already
+/// holds is not an error, and the record it names is the one it already had.
+nonisolated enum ImportOutcome: Sendable {
+    case created
+    case existing
+}
+
+/// One import's answer: which of the two happened, and the record either way.
+nonisolated struct ImportedGame: Sendable {
+    var outcome: ImportOutcome
+    var record: RecordSummary
+}
+
+/// Interchange: one game out as a file, one game in from one.
+///
+/// These two are the calls `docs/core-interface.md` keeps **outside** the
+/// main-actor exception the rest of this surface runs under, so every caller
+/// reaches them from a detached context. Both are unbounded in a way the
+/// exception's argument does not cover: an export decodes and re-encodes a
+/// whole game, and an import validates an untrusted file — replaying every ply
+/// of it — against a two-second budget before it writes anything.
+nonisolated extension HistoryStore {
+    /// One immutable History record, as the portable file that leaves the app.
+    ///
+    /// The bytes are the record's own content with the export event stamped on
+    /// it; the core owns both halves of that sentence, and nothing here reads
+    /// or edits the document.
+    func export(_ record: UInt64) throws -> Data {
+        var blob: OpaquePointer?
+        var err = freshError()
+        try check(mxq_store_export(handle, record, &blob, &err), err)
+        guard let blob else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "mxq_store_export reported success without a blob")
+        }
+        // The one pointer into core memory this interface hands out, valid
+        // until the release below — so the bytes are copied before it goes.
+        defer { mxq_blob_release(blob) }
+        guard let bytes = mxq_blob_bytes(blob) else { return Data() }
+        return Data(bytes: bytes, count: mxq_blob_len(blob))
+    }
+
+    /// One game file, validated whole and filed — or refused, with the library
+    /// untouched. The bytes are untrusted input and the core treats them as
+    /// such; this hands them over and reports what came back.
+    func importGame(_ file: Data) throws -> ImportedGame {
+        var outcome = MxqImportOutcome(MXQ_IMPORT_CREATED)
+        var record: UInt64 = 0
+        var summary = MxqRecordSummary()
+        summary.struct_size = UInt32(MemoryLayout<MxqRecordSummary>.size)
+        var err = freshError()
+        // A zero-byte file is one the picker will really hand over, and the
+        // core has an answer for it — the archive is empty — but a null pointer
+        // is a programming error rather than a bad file. An empty buffer has no
+        // address, so a spare byte lends one and the length stays 0.
+        var spare: UInt8 = 0
+        let status = withUnsafePointer(to: &spare) { lent in
+            file.withUnsafeBytes { raw in
+                mxq_store_import(handle,
+                                 raw.bindMemory(to: UInt8.self).baseAddress ?? lent,
+                                 raw.count, &outcome, &record, &summary, &err)
+            }
+        }
+        try check(status, err)
+        return ImportedGame(outcome: outcome == MxqImportOutcome(MXQ_IMPORT_EXISTING)
+                                     ? .existing : .created,
+                            record: RecordSummary(summary))
+    }
+}
+
 /// A detached replay session in transit, between the call that opened it and
 /// the object that will own it. The type exists to make that one hand-off
 /// visible, since a session is single-owner and this is the moment its owner is
