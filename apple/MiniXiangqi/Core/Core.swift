@@ -175,7 +175,8 @@ final class Core {
         var length = 0
         let status = mxq_rules_start_fen(&buffer, buffer.count, &length, nil)
         precondition(status == MXQ_OK, "the starting FEN does not fit MXQ_FEN_CAP")
-        return String(cString: buffer)
+        return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
+                      as: UTF8.self)
     }
 
     func evaluate(from startFEN: String, moves: [String]) throws -> Evaluation {
@@ -248,7 +249,7 @@ final class Core {
         _ body: (UnsafePointer<UnsafePointer<CChar>?>?, Int) throws -> R
     ) rethrows -> R {
         guard !moves.isEmpty else { return try body(nil, 0) }
-        var copies = moves.map { UnsafePointer<CChar>(strdup($0)) }
+        let copies = moves.map { UnsafePointer<CChar>(strdup($0)) }
         defer { copies.forEach { free(UnsafeMutablePointer(mutating: $0)) } }
         return try copies.withUnsafeBufferPointer { try body($0.baseAddress, moves.count) }
     }
