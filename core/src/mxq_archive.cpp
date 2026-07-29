@@ -1,12 +1,13 @@
 /*
- * The archive codec boundary — the read side.
+ * The archive codec boundary.
  *
  * mxq_archive_supported_versions is a pure report of compiled-in values and is
  * callable before mxq_core_init. mxq_archive_probe decodes and structurally
  * validates an archive; mxq_archive_validate does everything probe does and
- * then replays the move line through the rules tier. mxq_archive_encode, the
- * write side, is not here yet: it is the only function that produces canonical
- * bytes, and it lands with sessions.
+ * then replays the move line through the rules tier. mxq_archive_encode is the
+ * write side: it takes a session, so it is gated on the rules facade like the
+ * sessions themselves, and every question about the canonical spelling belongs
+ * to mxq_archive_write.cpp rather than here.
  *
  * The ladder below is docs/game-data.md's accepted validation order, in that
  * order and no other, because the order is itself the contract: a file that
@@ -35,10 +36,13 @@
 #include "mxq_internal.hpp"
 
 #include "mxq_archive_json.hpp"
+#include "mxq_archive_read.hpp"
 #include "mxq_core_state.hpp"
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
+#include "mxq_archive_write.hpp"
 #include "mxq_engine_bridge.hpp"
+#include "mxq_session.hpp"
 #endif
 
 #include <cassert>
@@ -64,9 +68,9 @@ constexpr size_t kMaxStringBytes  = 256u;
  * These bound the import surface and nothing else. Live local play is not
  * length-limited, and a locally produced game that exceeds them stays fully
  * playable and replayable — only re-importing its export is refused. Both
- * entry points here are import-facing and apply them; the store's own path
- * back into a game it wrote must not, or a long local game could be exported
- * and never resumed.
+ * public entry points here are import-facing and apply them; the store's own
+ * path back into a game it wrote does not, or a long local game could be
+ * exported and never resumed. read_stored below is that path.
  */
 
 json::Limits limits() {
@@ -78,6 +82,20 @@ json::Limits limits() {
      * format has, so enforcing it during parsing enforces it before any
      * schema question is asked, which is where the accepted order puts it. */
     l.max_array_elements = kMaxPlies;
+    return l;
+}
+
+/*
+ * The same reader with the two *size* bounds lifted — plies here, the file
+ * size at the transport stage — and the three that describe the format's own
+ * shape kept. Depth, members per object and string length are properties of a
+ * version 1 document rather than of how long a game ran, no document this core
+ * writes approaches them, and keeping them means a corrupted row cannot steer
+ * the reader into unbounded work.
+ */
+json::Limits stored_limits() {
+    json::Limits l = limits();
+    l.max_array_elements = SIZE_MAX;
     return l;
 }
 
@@ -104,6 +122,11 @@ struct Decoded {
     uint32_t            ai_movetime_ms = 0;
     MxqFirstMoverChoice first_mover_choice = MXQ_FIRST_MOVER_NONE;
     int64_t             started_at_ms = 0;
+    /* origin.exported_at. Nothing in the decoded summary carries it — origin
+     * is never hashed, compared or trusted — but the store's own path back
+     * into a game keeps it, so that resuming and re-encoding a session
+     * reproduces the bytes the row holds rather than restamping them. */
+    int64_t             origin_written_at_ms = 0;
     /* The terminal triple is present exactly when the game is completed; an
      * active game's stored content omits all three. */
     bool                completed = false;
@@ -431,7 +454,7 @@ bool is_draw_reason(MxqEndReason reason) {
 /* Stage 3: the envelope and version dispatch                              */
 /* ---------------------------------------------------------------------- */
 
-bool read_origin(const json::Value &origin, Reject &err) {
+bool read_origin(const json::Value &origin, Decoded &out, Reject &err) {
     /* origin describes the export event and is never hashed, never compared,
      * and never trusted — but it is still part of the version-1 document, so a
      * malformed one is a malformed file. Nothing read here reaches the
@@ -449,8 +472,7 @@ bool read_origin(const json::Value &origin, Reject &err) {
     if (exported_at == nullptr) {
         return false;
     }
-    int64_t ignored = 0;
-    if (!parse_timestamp(exported_at->string(), ignored)) {
+    if (!parse_timestamp(exported_at->string(), out.origin_written_at_ms)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"origin.exported_at\" is not an RFC 3339 UTC instant "
                       "in the form YYYY-MM-DDTHH:MM:SS.sssZ");
@@ -531,7 +553,7 @@ bool read_envelope(const json::Value &document, const json::Value *&out_content,
     if (origin == nullptr) {
         return false;
     }
-    if (!read_origin(*origin, err)) {
+    if (!read_origin(*origin, out, err)) {
         return false;
     }
 
@@ -827,12 +849,18 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
 /* Stages 1 to 4 together                                                  */
 /* ---------------------------------------------------------------------- */
 
-bool decode(const uint8_t *bytes, size_t len, Decoded &out, Reject &err) {
+/* import_bounds selects between the two callers this decoder has: an
+ * import-facing entry point, which applies the accepted file-size and ply
+ * bounds, and the store's own path back into a game it wrote, which must
+ * not. Everything else about the ladder is identical, because a stored
+ * document is a version 1 document like any other. */
+bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
+            Reject &err) {
     /* Stage 1: transport and size. */
     if (len == 0) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED, "the archive is empty");
     }
-    if (len > kMaxArchiveBytes) {
+    if (import_bounds && len > kMaxArchiveBytes) {
         return reject(err, MXQ_ERR_ARCHIVE_TOO_LARGE,
                       "the archive is larger than the 1 MiB import limit");
     }
@@ -840,7 +868,8 @@ bool decode(const uint8_t *bytes, size_t len, Decoded &out, Reject &err) {
     /* Stage 2: strict UTF-8 and JSON syntax under the structural limits. */
     json::Value document;
     json::Error json_error{};
-    if (!json::parse(bytes, len, limits(), document, json_error)) {
+    if (!json::parse(bytes, len, import_bounds ? limits() : stored_limits(),
+                     document, json_error)) {
         return reject(err, json_error.status, json_error.detail);
     }
 
@@ -869,6 +898,25 @@ void fill_info(const Decoded &decoded, MxqArchiveInfo *out) {
     out->started_at_ms = decoded.started_at_ms;
     out->ended_at_ms = decoded.completed ? decoded.ended_at_ms : 0;
     copy_bounded(out->game_id, sizeof(out->game_id), decoded.game_id.c_str());
+}
+
+void fill_stored(const Decoded &decoded, Stored &out) {
+    out.game_id = decoded.game_id;
+    out.config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
+    out.config.mode = decoded.mode;
+    out.config.human_side = decoded.human_side;
+    out.config.ai_level = decoded.ai_level;
+    out.config.first_mover_choice = decoded.first_mover_choice;
+    out.config.ai_movetime_ms = decoded.ai_movetime_ms;
+    out.moves = decoded.moves;
+    out.start_fen = decoded.start_fen;
+    out.started_at_ms = decoded.started_at_ms;
+    out.written_at_ms = decoded.origin_written_at_ms;
+    out.completed = decoded.completed;
+    out.outcome = decoded.completed ? decoded.outcome : MXQ_OUTCOME_NONE;
+    out.end_reason = decoded.completed ? decoded.end_reason
+                                       : MXQ_END_REASON_NONE;
+    out.ended_at_ms = decoded.completed ? decoded.ended_at_ms : 0;
 }
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
@@ -980,6 +1028,27 @@ MxqStatus begin(MxqCore *core, const uint8_t *bytes, MxqArchiveInfo *out,
 }
 
 } /* namespace */
+
+/* The store's own path back in. Same ladder, same diagnostics, the two import
+ * size bounds lifted; see mxq_archive_read.hpp for why they must be. */
+MxqStatus read_stored(const uint8_t *bytes, size_t len, Stored &out,
+                      MxqError *err) {
+    out = Stored{};
+    if (bytes == nullptr) {
+        assert(false && "required bytes pointer was null");
+        fill_error(err, MXQ_ERR_ARG_NULL, "bytes was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    Decoded decoded;
+    Reject rejected{};
+    if (!decode(bytes, len, /*import_bounds=*/false, decoded, rejected)) {
+        fill_error(err, rejected.status, rejected.detail.c_str());
+        return rejected.status;
+    }
+    fill_stored(decoded, out);
+    return MXQ_OK;
+}
+
 } /* namespace archive */
 } /* namespace mxq */
 
@@ -1013,7 +1082,7 @@ MxqStatus MXQ_CALL mxq_archive_probe(MxqCore *core, const uint8_t *bytes,
 
     mxq::archive::Decoded decoded;
     mxq::archive::Reject rejected{};
-    if (!mxq::archive::decode(bytes, len, decoded, rejected)) {
+    if (!mxq::archive::decode(bytes, len, true, decoded, rejected)) {
         mxq::fill_error(err, rejected.status, rejected.detail.c_str());
         return rejected.status;
     }
@@ -1033,7 +1102,7 @@ MxqStatus MXQ_CALL mxq_archive_validate(MxqCore *core, const uint8_t *bytes,
 
     mxq::archive::Decoded decoded;
     mxq::archive::Reject rejected{};
-    if (!mxq::archive::decode(bytes, len, decoded, rejected)) {
+    if (!mxq::archive::decode(bytes, len, true, decoded, rejected)) {
         mxq::fill_error(err, rejected.status, rejected.detail.c_str());
         return rejected.status;
     }
@@ -1097,6 +1166,51 @@ MxqStatus MXQ_CALL mxq_archive_validate(MxqCore *core, const uint8_t *bytes,
      * as an ongoing one. */
 
     mxq::archive::fill_info(decoded, out);
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_archive_encode(MxqCore *core, const MxqGame *game,
+                                      MxqBlob **out_blob, MxqError *err) {
+    if (out_blob == nullptr) {
+        assert(false && "required out pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    /* Written before anything can fail, so that a caller reading *out_blob
+     * after a rejection reads NULL rather than whatever it held. */
+    *out_blob = nullptr;
+
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (game->core != core) {
+        assert(false && "the session belongs to another core");
+        mxq::fill_error(err, MXQ_ERR_ARG_INVALID_HANDLE,
+                        "the session was not issued by this core");
+        return MXQ_ERR_ARG_INVALID_HANDLE;
+    }
+    mxq::session::Owner owner(const_cast<MxqGame *>(game));
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+
+    /* The classification derives from the committed game state and never from
+     * the caller; for an active game there is none to derive, and the document
+     * omits the terminal trio. */
+    const mxq::archive::Record record = mxq::session::record_of(*game);
+    const std::string content = mxq::archive::content_bytes(record);
+    const std::string document = mxq::archive::document_bytes(record, content);
+
+    auto *blob = new MxqBlob();
+    blob->data = new uint8_t[document.size()];
+    blob->len = document.size();
+    std::memcpy(blob->data, document.data(), document.size());
+    *out_blob = blob;
     return MXQ_OK;
 }
 
