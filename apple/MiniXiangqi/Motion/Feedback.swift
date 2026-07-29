@@ -16,7 +16,9 @@
 // meaning of what arrived: one sound per landing, chosen by the event, silent
 // wherever the contract keeps it silent.
 
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 
 struct Feedback {
@@ -106,9 +108,19 @@ struct Feedback {
     /// The sounds are loaded and primed as this is built — at the play screen's
     /// construction, long before the first landing — so that the first tock is
     /// no later than the second.
+    ///
+    /// `NSHapticFeedbackManager` is AppKit, so the felt half described above is
+    /// the macOS one. On iOS it is deliberately silent for now: UIKit's feedback
+    /// generators are a different shape — prepared ahead of the event rather
+    /// than performed at a named time — and choosing their patterns is a
+    /// design decision about a device that vibrates in the hand, not a
+    /// translation of this one. Stage 6, which brings the iOS pass, owns it.
+    /// Nothing is lost meanwhile: no feedback here is the only channel for
+    /// anything, and the heard half is identical on both platforms.
     static let live: Feedback = {
         let sounds = BoardSounds()
         return gatingSound { event in
+            #if os(macOS)
             let performer = NSHapticFeedbackManager.defaultPerformer
             switch event {
             case .landing:
@@ -116,6 +128,7 @@ struct Feedback {
             case .acknowledgement:
                 performer.perform(.generic, performanceTime: .now)
             }
+            #endif
         } play: { sound in
             sounds.play(sound)
         }
