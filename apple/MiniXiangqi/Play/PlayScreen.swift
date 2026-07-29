@@ -22,20 +22,18 @@
 import SwiftUI
 
 struct PlayScreen: View {
-    @State private var game: Game?
-    @State private var motion: PlayMotion?
-    @State private var startFailure: CoreError?
-    @State private var claimPresented = false
+    /// The game, and the presentation state that belongs to it. Held above the
+    /// navigation container, because the container rebuilds this screen every
+    /// time the player comes back to it and the game is not the screen's to
+    /// create twice.
+    let play: PlayState
 
-    /// Whether the player has closed the result notice. It is view state and
-    /// not game state: closing the notice changes nothing about the game, and
-    /// the notice does not come back for a result already seen — though a
-    /// result still unconfirmed at quit presents its notice again at the next
-    /// launch, because the finished, unfiled game is exactly what resumed.
-    @State private var resultDismissed = false
+    @State private var claimPresented = false
 
     /// Whether the save-failure capsule is up. Raised when a ply's commit is
     /// refused, and transient: it answers the touch and withdraws by itself.
+    /// View state, and rightly so — it has a four-second life and nothing to
+    /// say to a screen that is not on show.
     @State private var saveFailureShown = false
 
     /// The terminal commit the store refused — the draw claim, or the filing
@@ -47,15 +45,13 @@ struct PlayScreen: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let core: Core
-
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
 
     var body: some View {
         Group {
-            if let game, let motion {
+            if let game = play.game, let motion = play.motion {
                 layout(game, motion)
-            } else if let startFailure {
+            } else if let startFailure = play.startFailure {
                 // The description under the title is the core's own diagnostic
                 // text: not copy, and not localized.
                 ContentUnavailableView("failure.gameDidNotStart",
@@ -68,142 +64,29 @@ struct PlayScreen: View {
         .environment(\.motionPolicy, policy)
         #if DEBUG
         // The floor is the product's; `-mxq-no-minimum` takes it off so a
-        // screenshot can show what the layout does below it.
+        // screenshot can show what the layout does below it. It stays on the
+        // destination's own content rather than on the container, so that the
+        // navigation chrome adds to the board's floor instead of eating it.
         .frame(minWidth: Self.liftsWindowMinimum ? nil : BoardLayout.minimumWidth,
                minHeight: Self.liftsWindowMinimum ? nil : BoardLayout.minimumHeight)
-        .preferredColorScheme(Self.launchColorScheme)
-        #if os(macOS)
-        .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
-        #endif
         #else
         .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
         #endif
         .task {
-            guard game == nil else { return }
-            #if DEBUG
-            fileLaunchHistory()
-            #endif
-            start(replayingLaunchLine: true)
+            play.startIfNeeded(policy: policy)
         }
         .onChange(of: reduceMotion) {
-            motion?.policy = policy
+            play.adopt(policy)
         }
     }
 
-    /// Opens the game the library holds, or the empty board when it holds
-    /// none: launch is a resume, and an untouched board creates nothing. A
-    /// game that will not start is shown rather than swallowed — it is a bug
-    /// in this app or a packaging failure, never a rules outcome.
-    private func start(replayingLaunchLine: Bool) {
-        startFailure = nil
-        resultDismissed = false
-        // Whatever session the previous game held is over for this screen:
-        // filed if it finished, released either way. Release before resume is
-        // the single-session rule's precondition, not a saving act — the core
-        // committed everything as it happened.
-        core.endSession()
-        do {
-            let game = try Game(rules: Self.rules(over: core))
-            #if DEBUG
-            if replayingLaunchLine { try game.replay(Self.launchReplayLine) }
-            #endif
-            self.game = game
-            let motion = PlayMotion(game: game, policy: policy)
-            self.motion = motion
-            // A resumed position may already stand in check; its rings pulse
-            // as they first appear.
-            motion.boardAppeared()
-        } catch {
-            game = nil
-            motion = nil
-            startFailure = CoreError(wrapping: error)
-        }
-    }
-
-    /// What 开始新对局 does on a finished board: the game is filed in History
-    /// first — a claimed draw already was, by the claim; an unconfirmed
-    /// natural result is committed as what it is — and only then does the
-    /// board reset. A filing the store refuses resets nothing: the accepted
-    /// retry presents, and the game stays exactly as it stood.
-    private func startNewGame(_ game: Game) {
-        do {
-            try game.file()
-            start(replayingLaunchLine: false)
-        } catch {
-            failedFiling = .file
-        }
-    }
-
-    /// The seam the game speaks through: the core, unless a debug launch asked
-    /// for the refusing stand-in so the save-failure state can be produced on
-    /// a real screen.
-    private static func rules(over core: Core) -> Rules {
-        #if DEBUG
-        if DebugLaunch.contains("-mxq-refuse-saves") {
-            return RefusingRules(core, refuses: true)
-        }
-        #endif
-        return core
+    /// 开始新对局 on a finished board. The filing is the state's; what is
+    /// decided here is only what a refusal looks like on screen.
+    private func startNewGame() {
+        if !play.startNewGame(policy: policy) { failedFiling = .file }
     }
 
     #if DEBUG
-    /// The line `-mxq-replay a1a2,b7b5,…` names, played before first display so
-    /// a UI test can start from a position it would otherwise have to click its
-    /// way to. Debug only, and no move of it bypasses the core.
-    private static var launchReplayLine: [String] {
-        (DebugLaunch.argument(after: "-mxq-replay") ?? "")
-            .split(separator: ",")
-            .map(String.init)
-    }
-
-    /// The games `-mxq-history a1a2,b7b5;…;…` names, each played and filed
-    /// before the board opens, so that a screenshot of the History list has a
-    /// library to show and a UI test has records to act on. Games are separated
-    /// by `;` and plies by `,`.
-    ///
-    /// Each one goes through the same path a person's game does — every ply
-    /// committed by the core, the finished game filed by its own terminal
-    /// commit — so nothing seeded here is a record the app could not have made.
-    /// A line the core refuses stops the seeding rather than filing a
-    /// half-game, and the launch continues: the failure then shows as a shorter
-    /// list than the test asked for, where a test can see it.
-    private func fileLaunchHistory() {
-        let lines = (DebugLaunch.argument(after: "-mxq-history") ?? "")
-            .split(separator: ";")
-            .map { $0.split(separator: ",").map(String.init) }
-        guard !lines.isEmpty else { return }
-        for line in lines {
-            core.endSession()
-            guard let game = try? Game(rules: core), (try? game.replay(line)) != nil
-            else { return }
-            if game.evaluation.claimAvailable {
-                game.claimDraw()
-            } else if game.isFinished {
-                try? game.file()
-            }
-        }
-        core.endSession()
-    }
-
-    /// The appearance `-mxq-appearance dark` names. AppKit no longer takes
-    /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
-    /// looked at in both appearances rather than reasoned about in one.
-    private static var launchColorScheme: ColorScheme? {
-        DebugLaunch.argument(after: "-mxq-appearance") == "dark" ? .dark : nil
-    }
-
-    /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
-    /// content size — which on this window is the whole frame, title bar
-    /// included, since the content view runs the full height of it. A
-    /// screenshot series about layout has to state the size each frame was
-    /// taken at, and a window a test resized by dragging its corner cannot.
-    private static var launchWindowSize: CGSize? {
-        guard let text = DebugLaunch.argument(after: "-mxq-window") else { return nil }
-        let sides = text.split(separator: "x").compactMap { Double($0) }
-        guard sides.count == 2, sides.allSatisfy({ $0 > 0 }) else { return nil }
-        return CGSize(width: sides[0], height: sides[1])
-    }
-
     /// Whether `-mxq-no-minimum` was given. The window's floor is the thing
     /// under discussion, so it has to be possible to photograph below it.
     private static var liftsWindowMinimum: Bool {
@@ -249,13 +132,13 @@ struct PlayScreen: View {
                     // The notice waits for the landing: a result arrives with
                     // a move, and the move has to finish being shown before
                     // an announcement stands in front of it.
-                    if game.isFinished, !resultDismissed, !motion.isCommitting {
+                    if game.isFinished, !play.resultDismissed, !motion.isCommitting {
                         ResultNotice(state: game.presentedState,
                                      reason: game.evaluation.reason,
                                      canUndo: motion.canUndo,
                                      undo: { motion.undo() },
-                                     startNewGame: { startNewGame(game) },
-                                     close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true } })
+                                     startNewGame: { startNewGame() },
+                                     close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { play.resultDismissed = true } })
                             .transition(.opacity)
                     }
                 }
@@ -270,7 +153,7 @@ struct PlayScreen: View {
         }
         // A game that resumes has a result to show again if it reaches one.
         .onChange(of: game.isFinished) { _, finished in
-            if !finished { resultDismissed = false }
+            if !finished { play.resultDismissed = false }
         }
         // The capsule follows the recorded failure: raised when a ply's save
         // is refused, cleared the moment a new attempt starts. Its withdrawal
@@ -296,7 +179,7 @@ struct PlayScreen: View {
     private func retryFiling(_ game: Game, _ motion: PlayMotion) {
         switch failedFiling {
         case .claim: claimDraw(game, motion)
-        case .file: startNewGame(game)
+        case .file: startNewGame()
         case nil: break
         }
     }
@@ -318,8 +201,8 @@ struct PlayScreen: View {
     /// beat — goes through PlayMotion, which asks the game.
     private func tap(_ square: Square, in game: Game, _ motion: PlayMotion) {
         guard !motion.isCommitting else { return }
-        if game.isFinished, !resultDismissed {
-            withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true }
+        if game.isFinished, !play.resultDismissed {
+            withAnimation(policy.fade(Motion.stateFadeAnimation)) { play.resultDismissed = true }
             return
         }
         motion.tap(square)
@@ -466,7 +349,7 @@ struct PlayScreen: View {
                 // Prominent once it is the only one: while the notice stands in
                 // front of the board it carries the tinted copy of this action,
                 // and two tinted buttons for one action is one too many.
-                concludingAction(game, prominent: resultDismissed)
+                concludingAction(prominent: play.resultDismissed)
             } else {
                 Button("control.claimDraw") { claimPresented = true }
                     .buttonStyle(.glass)
@@ -493,8 +376,8 @@ struct PlayScreen: View {
     }
 
     @ViewBuilder
-    private func concludingAction(_ game: Game, prominent: Bool) -> some View {
-        let action = Button("control.newGame") { startNewGame(game) }
+    private func concludingAction(prominent: Bool) -> some View {
+        let action = Button("control.newGame") { startNewGame() }
             .accessibilityIdentifier("cluster-new-game")
         if prominent {
             action.buttonStyle(.glassProminent)
@@ -504,40 +387,3 @@ struct PlayScreen: View {
     }
 
 }
-
-#if DEBUG && os(macOS)
-/// Applies `-mxq-window`'s size to the window, once there is a window to apply
-/// it to. Debug only, and it asks AppKit for the size rather than asserting it:
-/// the window's own minimum still clamps the request, which is how a test
-/// measures what that minimum actually comes to.
-private struct LaunchWindowSizer: NSViewRepresentable {
-    var contentSize: CGSize?
-
-    func makeNSView(context: Context) -> NSView { Sizer(contentSize: contentSize) }
-    func updateNSView(_ view: NSView, context: Context) { }
-
-    private final class Sizer: NSView {
-        private let contentSize: CGSize?
-
-        init(contentSize: CGSize?) {
-            self.contentSize = contentSize
-            super.init(frame: .zero)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError("not from a nib") }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window, let contentSize else { return }
-            // On the next pass, after AppKit has restored the saved frame and
-            // SwiftUI has handed the window the content's minimum: either one
-            // arriving afterwards would undo this.
-            DispatchQueue.main.async { [weak window] in
-                window?.setContentSize(contentSize)
-                window?.center()
-            }
-        }
-    }
-}
-#endif

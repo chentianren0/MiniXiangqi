@@ -236,6 +236,73 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "7-after-taking-a-move-back")
     }
 
+    // MARK: - The game that survives the destinations
+
+    /// The navigation's two destinations, by position: Play then History. A
+    /// position rather than a label, because the label is copy.
+    private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.windows.firstMatch.outlines.element(boundBy: 0).cells.element(boundBy: index)
+    }
+
+    /// The game is the app's state rather than the play destination's.
+    ///
+    /// The container keeps one destination's content alive at a time, so
+    /// walking to History and back tears the play screen down and builds a new
+    /// one. Three things have to survive that, and none of them did before the
+    /// game was hoisted above the container: the game itself — resuming is a
+    /// full decode-and-replay, and doing it per visit is both wrong and
+    /// wasteful — the board it left on screen, and the fact that the player has
+    /// already put the result notice away, which the contract says is final for
+    /// that result.
+    ///
+    /// The launch line is what makes the third failure visible rather than
+    /// merely wrong: a second start would replay 炮六平四 onto a position that
+    /// has already played it, the core would refuse it, and the play screen
+    /// would read 对局未能开始 instead of a board. Which is exactly why the
+    /// suite could not see this until a test walked between the destinations.
+    func testTheGameSurvivesWalkingToHistoryAndBack() {
+        let app = launch(replaying: Self.mateLine)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+        app.buttons["result-close"].click()
+        XCTAssertFalse(app.staticTexts["result-title"].exists, "the player put the notice away")
+
+        destination(app, 1).click()
+        XCTAssertTrue(app.staticTexts["还没有历史对局"].waitForExistence(timeout: 10),
+                      "the mate is unconfirmed, so it is still the active game and History is empty")
+
+        destination(app, 0).click()
+
+        XCTAssertTrue(point(app, "d3").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["对局未能开始"].exists,
+                       "coming back must not start the game a second time")
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "the mated position is exactly where it was left")
+        XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军")
+        XCTAssertTrue(app.staticTexts["炮六平四"].exists, "the move list still reads the game")
+        XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
+                      "and the status line still carries the result")
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "the notice does not present itself again for a result already seen")
+        attach(app, named: "35-play-after-a-round-trip-through-history")
+
+        // It is the same living game, not a fresh read of the same store: the
+        // mating move is still there to take back.
+        XCTAssertTrue(app.buttons["cluster-undo"].isEnabled)
+        app.buttons["cluster-undo"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["炮六平四"].exists)
+
+        // And a second round trip on a game with no result behind it stays
+        // just as quiet.
+        destination(app, 1).click()
+        XCTAssertTrue(app.staticTexts["还没有历史对局"].waitForExistence(timeout: 10))
+        destination(app, 0).click()
+        XCTAssertTrue(point(app, "b3").waitForExistence(timeout: 10))
+        XCTAssertEqual(point(app, "b3").label, "b3 红 炮")
+        XCTAssertFalse(app.staticTexts["对局未能开始"].exists)
+        XCTAssertFalse(app.staticTexts["result-title"].exists)
+    }
+
     // MARK: - The game that survives quitting
 
     /// The stage's own test: quit the app mid-game, open it again. Two moves
