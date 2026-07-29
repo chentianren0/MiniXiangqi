@@ -3,3 +3,4 @@
 # fresh worktree starts buildable; re-run apple/build-core-xcframework.sh after
 # any change under core/.
 apple/Generated/
+apple/MiniXiangqi/Resources/minixiangqi-variants.ini

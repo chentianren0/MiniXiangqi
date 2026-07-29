@@ -13,7 +13,9 @@
 
 set -eu
 
-root=$(cd "$PROJECT_DIR/.." && pwd)
+# Under Xcode PROJECT_DIR is the apple/ directory; run by hand there is no
+# PROJECT_DIR, and this script's own location is the same directory.
+root=$(cd "${PROJECT_DIR:-$(dirname "$0")}/.." && pwd)
 recorded="$root/apple/Generated/core-inputs.digest"
 
 if [ ! -f "$recorded" ] || [ -z "$(find "$root/apple/Generated" -name libMiniXiangqiCore.a 2>/dev/null | head -1)" ]; then
@@ -29,4 +31,19 @@ if [ "$(cat "$recorded")" != "$("$root/apple/core-inputs-digest.sh")" ]; then
   echo "error: the shared core has changed since it was last built." >&2
   echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
   exit 1
+fi
+
+# A seeded worktree arrives with the framework but without the two artifacts
+# derived beside it: the CoreHeaders symlink (worktree seeding copies files,
+# not symlinks) and the staged variant configuration. Both derive from content
+# the digest above just verified as current, so they are recreated rather than
+# demanded.
+generated="$root/apple/Generated"
+if [ ! -e "$generated/CoreHeaders" ]; then
+  slice=$(cd "$generated/MiniXiangqiCore.xcframework" && ls -d macos-* | head -1)
+  ln -sfn "MiniXiangqiCore.xcframework/$slice/Headers" "$generated/CoreHeaders"
+fi
+if [ ! -f "$root/apple/MiniXiangqi/Resources/minixiangqi-variants.ini" ]; then
+  mkdir -p "$root/apple/MiniXiangqi/Resources"
+  cp "$root/core/assets/minixiangqi-variants.ini" "$root/apple/MiniXiangqi/Resources/"
 fi

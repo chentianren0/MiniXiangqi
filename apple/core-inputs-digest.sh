@@ -12,11 +12,15 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # The vendored engine is included: re-vendoring the fork is exactly the kind of
 # change that must not slip through. -print0 and -0 so a path with a space
 # cannot split an entry.
+# The per-file lines carry paths, and the final hash must not: the same
+# sources checked out at another root — a worktree — are the same core, so the
+# paths are made tree-relative before the digest of digests.
 find "$root/core/src" "$root/core/include" "$root/core/assets" \
      "$root/core/third_party" "$root/core/CMakeLists.txt" \
      "$root/apple/build-core-xcframework.sh" \
      -type f -print0 2>/dev/null \
   | LC_ALL=C sort -z \
   | xargs -0 shasum -a 256 \
+  | sed "s|  $root/|  |" \
   | shasum -a 256 \
   | cut -d' ' -f1
