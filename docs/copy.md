@@ -113,6 +113,8 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.aiUnavailable.message` | 当前可用内存不足。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. Please close some other apps, then try again. | alert message | same |
 | `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
+| `alert.deleteFailed.title` *(proposed)* | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `alert.deleteFailed.message` *(proposed)* | 这盘棋仍然保留在历史里。请重试。 | This game is still in History. Please try again. | alert message | same |
 
 `alert.claimDraw.title` and `alert.claimDraw.message` together preserve the accepted sentence 局面已三次重复，可以和棋结束。 The split into title and message is the accepted presentation; neither half is a new decision, and the pair must not be recombined into a single title.
 
@@ -124,6 +126,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 |---|---|---|---|---|
 | `failure.coreDidNotStart` | 核心未能启动 | The core did not start | unavailable-content title | `ContentView.swift` — English shipped; the Chinese source is supplied here |
 | `failure.gameDidNotStart` | 对局未能开始 | The game did not start | unavailable-content title | `Play/PlayScreen.swift` — same |
+| `failure.historyDidNotLoad` *(proposed)* | 历史未能载入 | History did not load | unavailable-content title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 
 Both screens carry a technical description beneath the title. That description is diagnostic text from the core, not copy, and is not localized.
 
@@ -174,6 +177,26 @@ The footer states only that the piece style carries the board colors. It says no
 `metadata.moveCount` is a plural pattern in English and a literal in Chinese: 步 is invariant, *move* is not, and a one-ply game is reachable in Free Play. English *move* counts one player's move, mirroring the number the Chinese shows; Help defines the term, and that definition is owed by the Help stage.
 
 `metadata.join` composes the accepted metadata lines — 人机对弈 · 你执红, 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步, 进行中 · 可判和 · 42 步 — and is applied repeatedly rather than once per line length. The middot and its surrounding spaces are the same in both languages.
+
+### History and replay
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `history.section.pinned` *(proposed)* | 已置顶 | Pinned | list section header | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `history.section.others` *(proposed)* | 其他对局 | Other Games | list section header | same |
+| `history.empty.title` *(proposed)* | 还没有历史对局 | No Games Yet | unavailable-content title | same |
+| `history.empty.description` *(proposed)* | 对局结束后会保存到这里。 | Games you finish are saved here. | unavailable-content description | same |
+| `replay.progress` *(proposed)* | `%1$lld / %2$lld` | `%1$lld / %2$lld` | replay progress | [interaction-design.md](interaction-design.md) § History replay; `History/ReplayScreen.swift` — plies shown of plies recorded; numerals and a separator, and no word is translated |
+| `replay.first` *(proposed)* | 回到开始 | Go to Start | accessibility label | same; `History/ReplayTransport.swift` |
+| `replay.previous` *(proposed)* | 上一步 | Previous Move | accessibility label | same |
+| `replay.next` *(proposed)* | 下一步 | Next Move | accessibility label | same |
+| `replay.last` *(proposed)* | 跳到最后 | Go to End | accessibility label | same |
+| `replay.autoplay` *(proposed)* | 自动播放 | Autoplay | accessibility label | same |
+| `replay.pause` *(proposed)* | 暂停 | Pause | accessibility label | same |
+
+The five transport controls are icon-only, so every one of these is what a screen reader reads and what a pointer's help tag shows; none of them is drawn on screen. **Autoplay** rather than *Play* in English because 对局 is already *Play*: the navigation destination and the playback control would otherwise be the same English word, and the Chinese never had that collision.
+
+`history.empty.description` is one sentence rather than the two the Part 7 draft proposed. The second named importing a game file, and import does not exist yet; a line that offers an action the app cannot take is worse than a short line.
 
 ### Board accessibility
 
@@ -257,5 +280,6 @@ These are the consequences for the code that the localization pull request inher
 > The items below are questions, not requirements or implementation authorization.
 
 - Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
-- Supply copy for the surfaces that have no accepted string in either language yet, as each is designed: the sound and haptics toggles, the Help entry point and its contents, Import and Export, the replay transport controls and their autoplay speeds, the History row's date and move-count formatting, and the import, duplicate, conflict, and error messages that [interaction-design.md](interaction-design.md) leaves to be designed.
+- Approve the rows marked *(proposed)* above: the two History section headers, the empty state's two lines, the History-read failure title, the deletion-failure pair, and the replay transport's seven. They are what the History destination and its replay say, and they ship in the String Catalog behind this proposal.
+- Supply copy for the surfaces that still have no accepted string in either language: the sound and haptics toggles, the Help entry point and its contents, Import and Export, autoplay speeds if they are ever offered, and the import, duplicate, conflict, and error messages that [interaction-design.md](interaction-design.md) leaves to be designed. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
 - Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.

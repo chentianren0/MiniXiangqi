@@ -81,8 +81,10 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify the threefold notice, **继续对局**, **以和棋结束**, and retained non-blocking **可判和** affordance in both play modes.
 - Verify manual replay navigation and autoplay at 0.5×, 1×, and 2×, including animation completion, manual-navigation pause, board-flip pause, background pause, end-of-game stop, and Reduce Motion behavior.
 - Verify pinned-first and newest-within-group History ordering, accepted row metadata, read-only game content, one-game import/export, duplicate navigation, conflict rejection, and the absence of Move, folders, bulk deletion, search, filters, tags, and game editing.
+- Verify that the History row's date and time are produced without the app writing a date or time pattern, so the 12- or 24-hour clock follows the locale and the reader's own system setting. This one fails silently — a hand-written pattern looks right on the machine it was written on — and is cheap to gate.
+- Verify that the row omits the human side in Free Play and omits the end reason exactly where the result word already carries it, and that a resignation keeps its reason.
 - Verify partial and complete leading and trailing swipes, action order, icon-and-text labels, Share and Delete colors, immediate Pin or Unpin, full-swipe Delete, and pointer, keyboard, and VoiceOver equivalents.
-- Verify **删除前确认** defaults on and governs both the visible Delete action and complete swipe. Test the accepted confirmation copy, Cancel, confirmed deletion, immediate deletion when disabled, persistence failure, and the absence of deletion Undo or Recently Deleted.
+- Verify **删除前确认** defaults on and governs every Delete entry point — the visible action, the complete swipe, the context menu, the keyboard, and the screen-reader custom action. Test the accepted confirmation copy, Cancel, confirmed deletion, immediate deletion when disabled, persistence failure, and the absence of deletion Undo or Recently Deleted.
 - Verify the accepted insufficient-memory title, message, Cancel, and Retry actions. Cancel creates or changes no active game; Retry obtains a fresh budget without automatic cleanup or a smaller Hash.
 
 ### Rules
