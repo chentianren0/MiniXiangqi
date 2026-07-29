@@ -49,17 +49,6 @@ struct PlayScreen: View {
 
     let core: Core
 
-    private static let panelWidth: CGFloat = 260
-
-    /// The air around the board, and an allowance rather than a padding: it is
-    /// taken off the space the board is fitted into, and the board is then
-    /// centred in the whole of it. At the minimum window that comes to exactly
-    /// 24 points on every side, which is what the number is chosen for. Above
-    /// the minimum the centring hands the board more than 24, and that is
-    /// accepted — the surplus a window has beyond the board it can carry
-    /// belongs around the board rather than inside it.
-    private static let boardPadding: CGFloat = 24
-
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
 
     var body: some View {
@@ -80,17 +69,20 @@ struct PlayScreen: View {
         #if DEBUG
         // The floor is the product's; `-mxq-no-minimum` takes it off so a
         // screenshot can show what the layout does below it.
-        .frame(minWidth: Self.liftsWindowMinimum ? nil : Self.minimumWidth,
-               minHeight: Self.liftsWindowMinimum ? nil : Self.minimumHeight)
+        .frame(minWidth: Self.liftsWindowMinimum ? nil : BoardLayout.minimumWidth,
+               minHeight: Self.liftsWindowMinimum ? nil : BoardLayout.minimumHeight)
         .preferredColorScheme(Self.launchColorScheme)
         #if os(macOS)
         .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
         #endif
         #else
-        .frame(minWidth: Self.minimumWidth, minHeight: Self.minimumHeight)
+        .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
         #endif
         .task {
             guard game == nil else { return }
+            #if DEBUG
+            fileLaunchHistory()
+            #endif
             start(replayingLaunchLine: true)
         }
         .onChange(of: reduceMotion) {
@@ -164,6 +156,35 @@ struct PlayScreen: View {
             .map(String.init)
     }
 
+    /// The games `-mxq-history a1a2,b7b5;…;…` names, each played and filed
+    /// before the board opens, so that a screenshot of the History list has a
+    /// library to show and a UI test has records to act on. Games are separated
+    /// by `;` and plies by `,`.
+    ///
+    /// Each one goes through the same path a person's game does — every ply
+    /// committed by the core, the finished game filed by its own terminal
+    /// commit — so nothing seeded here is a record the app could not have made.
+    /// A line the core refuses stops the seeding rather than filing a
+    /// half-game, and the launch continues: the failure then shows as a shorter
+    /// list than the test asked for, where a test can see it.
+    private func fileLaunchHistory() {
+        let lines = (DebugLaunch.argument(after: "-mxq-history") ?? "")
+            .split(separator: ";")
+            .map { $0.split(separator: ",").map(String.init) }
+        guard !lines.isEmpty else { return }
+        for line in lines {
+            core.endSession()
+            guard let game = try? Game(rules: core), (try? game.replay(line)) != nil
+            else { return }
+            if game.evaluation.claimAvailable {
+                game.claimDraw()
+            } else if game.isFinished {
+                try? game.file()
+            }
+        }
+        core.endSession()
+    }
+
     /// The appearance `-mxq-appearance dark` names. AppKit no longer takes
     /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
     /// looked at in both appearances rather than reasoned about in one.
@@ -203,7 +224,7 @@ struct PlayScreen: View {
 
     private func layout(_ game: Game, _ motion: PlayMotion) -> some View {
         GeometryReader { proxy in
-            let geometry = boardGeometry(in: proxy.size)
+            let geometry = BoardLayout.geometry(in: proxy.size)
             HStack(spacing: 0) {
                 ZStack {
                     BoardView(geometry: geometry,
@@ -244,7 +265,7 @@ struct PlayScreen: View {
                 .onTapGesture { motion.cancelSelection() }
 
                 panel(game, motion)
-                    .frame(width: Self.panelWidth)
+                    .frame(width: BoardLayout.panelWidth)
             }
         }
         // A game that resumes has a result to show again if it reaches one.
@@ -305,13 +326,11 @@ struct PlayScreen: View {
     }
 
     /// The panel's three sections read down one edge, so they begin on one
-    /// edge: `panelInset` from the panel's own. Each of them brings its own
-    /// interior — the status line's background is inset within it, the move
-    /// list's number column is right-aligned within it — and the outer padding
-    /// here is what makes the three agree. The status line therefore takes 4,
-    /// because its own background already accounts for the other 12.
-    private static let panelInset: CGFloat = 16
-
+    /// edge: `BoardLayout.panelInset` from the panel's own. Each of them brings
+    /// its own interior — the status line's background is inset within it, the
+    /// move list's number column is right-aligned within it — and the outer
+    /// padding here is what makes the three agree. The status line therefore
+    /// takes 4, because its own background already accounts for the other 12.
     private func panel(_ game: Game, _ motion: PlayMotion) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             TurnStatus(state: game.presentedState,
@@ -319,13 +338,13 @@ struct PlayScreen: View {
                        sideToMove: game.evaluation.sideToMove,
                        inCheck: game.evaluation.inCheck,
                        beatEmphasis: motion.beatEmphasis)
-                .padding(.horizontal, Self.panelInset - 12)
+                .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
 
             Divider()
 
             MoveList(notation: game.notation)
-                .padding(.horizontal, Self.panelInset)
+                .padding(.horizontal, BoardLayout.panelInset)
                 .frame(maxHeight: .infinity)
                 // The transient capsule the contract anchors to the turn
                 // status: hung just beneath the element it answers for, over
@@ -350,7 +369,7 @@ struct PlayScreen: View {
                 controls(game, motion, compactFlip: false)
                 controls(game, motion, compactFlip: true)
             }
-            .padding(Self.panelInset)
+            .padding(BoardLayout.panelInset)
             // The blocking notice the contract gives the claim, presented when
             // the player invokes it rather than the moment it becomes
             // available: in Free Play the enabled control and the status line's
@@ -484,26 +503,6 @@ struct PlayScreen: View {
         }
     }
 
-    /// The largest board that fits beside the panel, bounded by the accepted
-    /// floor and ceiling.
-    private func boardGeometry(in size: CGSize) -> BoardGeometry {
-        let available = CGSize(width: size.width - Self.panelWidth - 2 * Self.boardPadding,
-                               height: size.height - 2 * Self.boardPadding)
-        let fitted = BoardGeometry.fitting(available)
-            ?? BoardGeometry(pitch: BoardGeometry.minimumPitch)
-        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
-    }
-
-    /// Both the board and the chrome have floors, so the window has one too.
-    static var minimumWidth: CGFloat {
-        BoardGeometry(pitch: BoardGeometry.minimumPitch).coreSide
-            + panelWidth + 2 * boardPadding
-    }
-
-    static var minimumHeight: CGFloat {
-        BoardGeometry(pitch: BoardGeometry.minimumPitch).blockSize.height
-            + 2 * boardPadding
-    }
 }
 
 #if DEBUG && os(macOS)
