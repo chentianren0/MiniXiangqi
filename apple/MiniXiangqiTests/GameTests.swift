@@ -143,4 +143,35 @@ struct GameTests {
         #expect(game.notation.count == 2)
         #expect(game.evaluation.sideToMove == .red)
     }
+
+    // MARK: - A failure describes the last attempt
+
+    @Test("A refused action leaves the game unchanged, and trying again works")
+    func aFailureClearsOnTheNextAttempt() throws {
+        let rules = RefusingRules(try Core.shared.get())
+        let game = try Game(core: rules)
+        try game.replay(["b1b4", "a6a5"])
+
+        rules.refuses = true
+        game.undo()
+        #expect(game.failure != nil, "the refused Undo records its failure")
+        #expect(game.notation.count == 2, "an Undo the core refused did not happen")
+        #expect(game.canUndo, "a failed attempt does not take the control away — the contract says the user may simply try again")
+
+        rules.refuses = false
+        game.undo()
+        #expect(game.failure == nil, "a new attempt starts clean")
+        #expect(game.notation.count == 1, "the retry is an ordinary Undo")
+
+        rules.refuses = true
+        game.tap(Square(file: 0, rank: 5))
+        game.tap(Square(file: 0, rank: 4))
+        #expect(game.failure != nil, "the refused move records its failure")
+        #expect(game.notation.count == 1, "a move the core refused did not happen")
+
+        rules.refuses = false
+        game.tap(Square(file: 0, rank: 4))
+        #expect(game.failure == nil, "the retried move plays clean")
+        #expect(game.notation.count == 2)
+    }
 }

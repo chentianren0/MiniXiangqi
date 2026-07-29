@@ -37,8 +37,10 @@ final class Game {
     /// same file, which the move itself may change.
     private(set) var notation: [String] = []
 
-    /// A core call that failed. Shown rather than swallowed: every one of them
-    /// is a bug in this app or a packaging failure, never a rules outcome.
+    /// The last attempt's failed core call, recorded rather than swallowed:
+    /// every one of them is a bug in this app or a packaging failure, never a
+    /// rules outcome. A new attempt starts clean — the action that could not
+    /// complete did not happen, so the user may simply try again.
     private(set) var failure: CoreError?
 
     /// Whether the player has claimed the draw the core offered. The claim is
@@ -102,7 +104,7 @@ final class Game {
     /// and a natural result stays undoable while its presentation is
     /// unconfirmed. A claimed draw is not a natural result — the player
     /// confirmed it — so it is the one finish this cannot walk back.
-    var canUndo: Bool { !moves.isEmpty && !claimedDraw && failure == nil }
+    var canUndo: Bool { !moves.isEmpty && !claimedDraw }
 
     // MARK: - Input
 
@@ -158,6 +160,7 @@ final class Game {
     /// is committed, so an Undo the core cannot complete does not happen: the
     /// game stays exactly at the pre-action state and the failure is recorded.
     func undo() {
+        failure = nil
         guard canUndo else { return }
         let shortened = Array(moves.dropLast())
         do {
@@ -187,6 +190,7 @@ final class Game {
     }
 
     private func play(_ move: Move) {
+        failure = nil
         let read = MoveNotation.text(for: move, in: placement)
         moves.append(move.text)
         notation.append(read)

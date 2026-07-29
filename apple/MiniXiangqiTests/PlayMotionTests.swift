@@ -43,14 +43,14 @@ private final class FeedbackRecorder {
     }
 }
 
-private struct RefusedByTheCore: Error { }
+struct RefusedByTheCore: Error { }
 
 /// The real core, with a switch that makes it refuse. Every answer here is the
 /// core's own — nothing decides a rule — and refusing is the only way to reach
 /// the state a failed core call leaves behind, which the transitions above have
 /// to survive: the ply refused, the position unchanged, and a transition that
 /// took the gate holding nothing to draw.
-private final class RefusingRules: Rules {
+final class RefusingRules: Rules {
     private let real: Rules
     var refuses = false
 
