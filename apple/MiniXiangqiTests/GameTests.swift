@@ -31,6 +31,13 @@ struct GameTests {
     /// The quickest capture: the soldiers meet on the d-file and Black takes.
     static let captureLine = ["d2d3", "d6d5", "d3d4", "d5d4"]
 
+    /// A capture that is also a check, which the board has to sound as one
+    /// event rather than two: Red's soldier steps off c2 to free the horse, the
+    /// horse comes to d3, and when Black's c-file soldier advances the horse
+    /// takes it on c5 — arriving at the one point from which it attacks d7,
+    /// through the leg the soldier itself has just vacated.
+    static let capturingCheckLine = ["c2c3", "a6a5", "c1d3", "c6c5", "d3c5"]
+
     private func game(playing line: [String] = []) throws -> Game {
         let game = try Game(core: Core.shared.get())
         try game.replay(line)
@@ -117,6 +124,17 @@ struct GameTests {
         #expect(game.placement[Square("d5")!] == nil)
         #expect(game.lastMove == Move(text: "d5d4"))
         #expect(game.evaluation.state == .ongoing)
+    }
+
+    @Test("The pinned capturing-check line takes a piece and gives check at once")
+    func theCapturingCheckLineDoesBoth() throws {
+        let game = try game(playing: Self.capturingCheckLine)
+        #expect(game.placement[Square("c5")!] == Piece(kind: .horse, side: .red),
+                "the horse stands where the soldier stood")
+        #expect(game.evaluation.inCheck)
+        #expect(game.checkedGeneral == Square("d7"))
+        #expect(game.evaluation.state == .ongoing,
+                "a check and not a mate: the d6 soldier steps across to c6 and blocks the leg")
     }
 
     // MARK: - Checkmate

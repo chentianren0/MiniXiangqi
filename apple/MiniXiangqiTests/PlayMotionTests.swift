@@ -8,6 +8,7 @@
 // completion until the test fires it, so "during a transition" is a state the
 // test stands in for as long as it likes.
 
+import Foundation
 import Testing
 @testable import MiniXiangqi
 
@@ -35,11 +36,32 @@ private final class ManualAnimator {
     }
 }
 
+/// Records the two halves apart, because they are two decisions: every landing
+/// is felt the same way, and each one is heard according to what it was. A test
+/// that could only see one number could not tell a silenced sound from a missing
+/// landing.
 @MainActor
 private final class FeedbackRecorder {
     private(set) var events: [Feedback.Event] = []
+    private(set) var sounds: [Feedback.Sound] = []
+
+    /// The defaults the sound gate reads. Never the standard ones: under a
+    /// hosted test bundle those are the app's own domain — the very domain the
+    /// accepted Settings toggle will write — and a suite that read it would
+    /// fall silent the day somebody switched sound off in the app.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults) { self.defaults = defaults }
+
+    /// Composed the way the live feedback composes it — the app's own gate in
+    /// front of the heard half — so that what these tests watch being silenced
+    /// is what the app silences.
     var feedback: Feedback {
-        Feedback { [self] event in events.append(event) }
+        Feedback.gatingSound(by: defaults) { [self] event in
+            events.append(event)
+        } play: { [self] sound in
+            sounds.append(sound)
+        }
     }
 }
 
@@ -74,17 +96,32 @@ struct PlayMotionTests {
     private func makeMotion(
         playing line: [String] = [],
         reduceMotion: Bool = false,
-        rules: Rules? = nil
+        rules: Rules? = nil,
+        defaults: UserDefaults? = nil
     ) throws -> (PlayMotion, ManualAnimator, FeedbackRecorder) {
         let game = try Game(core: rules ?? Core.shared.get())
         try game.replay(line)
         let animator = ManualAnimator()
-        let recorder = FeedbackRecorder()
+        let recorder = try FeedbackRecorder(
+            defaults: defaults ?? scratchDefaults(soundEnabled: true))
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: reduceMotion),
                                 animator: animator.animator,
                                 feedback: recorder.feedback)
         return (motion, animator, recorder)
+    }
+
+    /// The preference the accepted Settings toggle will write, in a scratch
+    /// domain of this suite's own. Cleared each time, so no test inherits the
+    /// state another left, and audible by default because most of these tests
+    /// are about something the board does rather than about the toggle.
+    private static let scratchSuite = "com.chentianren.MiniXiangqi.tests.sound"
+
+    private func scratchDefaults(soundEnabled: Bool?) throws -> UserDefaults {
+        let defaults = try #require(UserDefaults(suiteName: Self.scratchSuite))
+        defaults.removePersistentDomain(forName: Self.scratchSuite)
+        if let soundEnabled { defaults.set(soundEnabled, forKey: Feedback.soundEnabledKey) }
+        return defaults
     }
 
     // MARK: - Moves
@@ -420,6 +457,8 @@ struct PlayMotionTests {
         motion.tap(Square("c3")!)   // no cannon move reaches c3
         #expect(recorder.events == [.acknowledgement],
                 "the touch is answered before anything is drawn")
+        #expect(recorder.sounds.isEmpty,
+                "and answered silently: learning where a piece may go is not a failure")
         #expect(motion.game.selected == Square("b1"), "the selection is retained")
         #expect(motion.markerEmphasis == 1, "the legal destinations strengthen")
 
@@ -450,11 +489,166 @@ struct PlayMotionTests {
 
         motion.tap(Square("d4")!)   // empty, and nothing is selected
         #expect(recorder.events == [.acknowledgement])
+        #expect(recorder.sounds.isEmpty, "refused input is felt, never heard")
         #expect(motion.beatEmphasis == 1, "the background rises to full emphasis")
 
         animator.completeAll()
         #expect(motion.beatEmphasis == 0, "and falls back")
         #expect(motion.game.selected == nil)
+    }
+
+    // MARK: - What a landing sounds like
+
+    /// Plays a pinned line and stops on its last landing. Everything before the
+    /// last move is replayed into the position, and the last move is made the
+    /// way a player makes it — one tap to lift, one to place — so what is heard
+    /// is what the screen would have produced, on the wire it would have come
+    /// in on.
+    private func landing(_ line: [String],
+                         defaults: UserDefaults? = nil) throws
+        -> (PlayMotion, FeedbackRecorder) {
+        let last = try #require(line.last.flatMap(Move.init(text:)))
+        let (motion, animator, recorder) = try makeMotion(playing: Array(line.dropLast()),
+                                                          defaults: defaults)
+        motion.tap(last.from)
+        motion.tap(last.to)
+        animator.completeAll()
+        return (motion, recorder)
+    }
+
+    @Test("An ordinary arrival is the plain tock")
+    func aPlainLandingSoundsPlain() throws {
+        let (motion, recorder) = try landing(["b1b4"])
+        #expect(recorder.sounds == [.plain])
+        #expect(recorder.events == [.landing], "felt as every landing is")
+        #expect(motion.game.evaluation.state == .ongoing)
+    }
+
+    @Test("A capture sounds like a capture")
+    func aCaptureSoundsLikeACapture() throws {
+        let (motion, recorder) = try landing(GameTests.captureLine)
+        #expect(motion.transit == nil, "the take has finished")
+        #expect(recorder.sounds == [.capture], "a landing with mass, not the plain tock")
+        #expect(recorder.events == [.landing])
+    }
+
+    @Test("A checking move sounds the accent")
+    func aCheckSoundsTheAccent() throws {
+        let (motion, recorder) = try landing(GameTests.checkLine)
+        #expect(motion.game.checkedGeneral != nil, "the line gives check")
+        #expect(recorder.sounds == [.check])
+    }
+
+    @Test("A capture that checks sounds like a capture")
+    func aCapturingCheckSoundsLikeACapture() throws {
+        let (motion, recorder) = try landing(GameTests.capturingCheckLine)
+        // The premise, so this test proves what it claims to be about: the
+        // horse takes the soldier and the general is in check, both at once.
+        #expect(motion.game.evaluation.inCheck)
+        #expect(motion.game.placement[Square("c5")!] == Piece(kind: .horse, side: .red))
+        #expect(recorder.sounds == [.capture],
+                "the take is the louder fact, and the rings say the rest")
+    }
+
+    @Test("A move that ends the game sounds the conclusion instead of a landing")
+    func aMateSoundsTheConclusion() throws {
+        let (motion, recorder) = try landing(GameTests.mateLine)
+        #expect(motion.game.isFinished)
+        #expect(recorder.sounds == [.conclusion],
+                "one sound, and it replaces the landing rather than joining it")
+        #expect(recorder.events == [.landing],
+                "the haptic is unchanged: a disc still landed on a point")
+    }
+
+    @Test("Claiming the draw sounds the conclusion, with nothing landing")
+    func aClaimSoundsTheConclusion() throws {
+        let (motion, _, recorder) = try makeMotion(playing: GameTests.shuffleLine)
+        #expect(motion.game.evaluation.claimAvailable)
+
+        motion.claimDraw()
+        #expect(motion.game.isFinished)
+        #expect(recorder.sounds == [.conclusion],
+                "the one result that arrives with no piece moving still sounds")
+        #expect(recorder.events.isEmpty, "and nothing landed, so nothing is felt")
+
+        motion.claimDraw()
+        #expect(recorder.sounds == [.conclusion], "a second claim is not a second result")
+    }
+
+    @Test("A claim the core is not offering ends nothing and sounds nothing")
+    func anUnavailableClaimIsSilent() throws {
+        let (motion, _, recorder) = try makeMotion()
+        motion.claimDraw()
+        #expect(!motion.game.isFinished, "only the core decides the claim exists")
+        #expect(recorder.sounds.isEmpty)
+    }
+
+    @Test("An Undo's return is the plain tock")
+    func anUndoSoundsPlain() throws {
+        let (motion, animator, recorder) = try makeMotion(playing: GameTests.captureLine)
+
+        motion.undo()
+        animator.completeAll()
+        #expect(motion.game.moves.count == 3, "the take is back on the board")
+        #expect(recorder.sounds == [.plain],
+                "a piece landing on a point, and no sound played backwards")
+        #expect(recorder.events == [.landing])
+    }
+
+    @Test("An Undo that lands back into a check sounds the accent")
+    func anUndoIntoCheckSoundsTheAccent() throws {
+        // The rule is about the position that arrives, not about the action
+        // that produced it: the rings pulse at this landing exactly as they did
+        // at the move's, so the accent that goes with them sounds too. What an
+        // Undo never gets is a sound of its own.
+        let (motion, animator, recorder) = try makeMotion(
+            playing: GameTests.checkLine + ["d5c5"])
+        #expect(!motion.game.evaluation.inCheck, "the screen stepped aside")
+
+        motion.undo()
+        animator.completeAll()
+        #expect(motion.game.checkedGeneral != nil, "and the check is back")
+        #expect(recorder.sounds == [.check])
+    }
+
+    // MARK: - The sound toggle
+
+    @Test("With sound switched off the board is silent and still felt")
+    func soundOffSilencesOnlyTheSound() throws {
+        let defaults = try scratchDefaults(soundEnabled: false)
+        defer { defaults.removePersistentDomain(forName: Self.scratchSuite) }
+
+        let (_, recorder) = try landing(GameTests.captureLine, defaults: defaults)
+        #expect(recorder.sounds.isEmpty, "nothing is heard")
+        #expect(recorder.events == [.landing],
+                "and the haptic is untouched: it answers to its own toggle")
+    }
+
+    @Test("Sound is on where nobody has said otherwise, and follows the toggle back")
+    func soundDefaultsToOn() throws {
+        let unset = try scratchDefaults(soundEnabled: nil)
+        defer { unset.removePersistentDomain(forName: Self.scratchSuite) }
+        #expect(Feedback.soundIsEnabled(in: unset), "an absent preference is sound on")
+
+        let (_, heard) = try landing(["b1b4"], defaults: unset)
+        #expect(heard.sounds == [.plain])
+
+        // Read at the landing rather than cached: switching it back on within
+        // the life of one feedback is heard on the next landing, not the next
+        // launch.
+        let toggled = try scratchDefaults(soundEnabled: false)
+        let (motion, animator, recorder) = try makeMotion(defaults: toggled)
+        motion.tap(Square("b1")!)
+        motion.tap(Square("b4")!)
+        animator.completeAll()
+        #expect(recorder.sounds.isEmpty)
+
+        toggled.set(true, forKey: Feedback.soundEnabledKey)
+        motion.tap(Square("a6")!)
+        motion.tap(Square("a5")!)
+        animator.completeAll()
+        #expect(recorder.sounds == [.plain])
+        toggled.removePersistentDomain(forName: Self.scratchSuite)
     }
 
     // MARK: - The check pulse

@@ -200,6 +200,20 @@ final class PlayMotion {
         }
     }
 
+    /// The player takes the draw the core is offering. It is the one result
+    /// that arrives with nothing moving, so it is also the one place the
+    /// concluding sound cannot wait for a landing: it sounds at the commit,
+    /// which is the moment the game ends. Whether the claim exists at all is
+    /// the game's to say, and it says so by whether it took it.
+    func claimDraw() {
+        guard !game.claimedDraw else { return }
+        animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
+            game.claimDraw()
+        } completion: { }
+        guard game.claimedDraw else { return }
+        feedback.play(.conclusion)
+    }
+
     /// Applied at once between committing transitions, deferred across one:
     /// flipping changes nothing about the game, so nothing of it is discarded.
     /// A second press while one is running re-targets it — the board turns
@@ -298,10 +312,15 @@ final class PlayMotion {
     /// the first report is the landing, the second is nothing. The landing
     /// feedback fires here — the event completing, never the tap that asked —
     /// and the gate opens unless a capture's removal tail still holds it.
+    ///
+    /// Felt and heard together, and they are not the same choice: the haptic is
+    /// the alignment pattern at every landing there is, while the sound is the
+    /// one below that says what this landing was.
     func travelArrived() {
         guard committing != nil, !travelReported else { return }
         travelReported = true
         feedback.perform(.landing)
+        feedback.play(soundOfTheLanding())
         // A removal outlives the arrival that caused it, and the gate holds
         // for that tail — when one is being drawn. Whether one is was settled
         // at the departure; asking the policy again here is what would leave
@@ -317,6 +336,35 @@ final class PlayMotion {
         guard committing != nil, fadeScheduled, !fadeReported else { return }
         fadeReported = true
         if travelReported { land() }
+    }
+
+    /// What this landing sounds like: one sound, chosen by what has arrived
+    /// rather than by what was pressed, in the accepted order of precedence.
+    ///
+    /// - The game being over outranks everything, and replaces the landing
+    ///   sound rather than joining it: a result is the last thing that
+    ///   happened, and a tock underneath it would be the move competing with
+    ///   its own consequence.
+    /// - A capture outranks a check, because the take is the louder fact and
+    ///   the check has the rings, the 将军 token, and the status line saying it
+    ///   as well.
+    /// - Everything else is the plain tock, an Undo's return included: taking a
+    ///   move back is a disc landing on a point, and a sound played backwards
+    ///   would be a fifth thing to learn for an action the board already
+    ///   animates in reverse.
+    ///
+    /// It reads the arrived position and the transit's own plan, both of which
+    /// are settled before anything can arrive. A capture is the transit's
+    /// fading disc — but only a move's, since an Undo's fading disc is the
+    /// piece coming *back*, which is a restoration and not a take.
+    private func soundOfTheLanding() -> Feedback.Sound {
+        if game.isFinished { return .conclusion }
+        if transit?.kind == .move, transit?.fading != nil { return .capture }
+        // The same condition the rings are drawn on, so the accent and the
+        // pulse are one event: an Undo that lands back into a check is a check
+        // arriving, and it is answered as one.
+        if game.checkedGeneral != nil { return .check }
+        return .plain
     }
 
     private func begin(_ kind: Transit.Kind, drawingRemoval: Bool = false) -> Int {

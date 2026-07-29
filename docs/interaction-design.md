@@ -444,6 +444,23 @@ Both are user-controllable through separate Settings toggles, per the Settings s
 
 Haptic strength follows the meaning of the event, not its frequency. In particular, tapping an illegal square is a normal part of learning how the pieces move rather than a failure, so it uses the platform's lightest selection-weight feedback and never the system warning pattern. The warning pattern is reserved for genuine failures such as an action that could not be saved, and overusing it would both punish the learner and dilute its meaning. The two must remain distinguishable from each other, as their visual responses already are: an illegal tap answers on the board by strengthening the legal destinations, while a failed save appears only at the turn status.
 
+### Board play
+
+**The board plays one sound per landing, and chooses it by what the landing means.** A real set has one dominant sound — a piece meeting the board — so that is the sound the app is built around, and the rest are variations on it rather than additions to it. The four:
+
+- **A plain landing** is a quiet, wooden, percussive knock. Every committing arrival makes it, an Undo's return included: taking a move back is a piece landing on a point, and the board already shows the reversal.
+- **A capture** is the same knock, lower and slightly weightier. A take is a landing with mass.
+- **A check** is the plain knock plus one brighter, quieter accent transient, sounding with the check rings' pulse.
+- **A conclusion** is a soft, low, settling gesture. It **replaces** the landing sound rather than joining it, and it is one neutral sound for every result: which result it was is said on screen, in the notice and in the turn status. A draw the player claims ends the game without any piece moving, so its conclusion sounds at the moment the claim is confirmed.
+
+Where a landing answers to more than one of these, the higher meaning is the only one heard: **conclusion, then capture, then check, then the plain landing**. A capturing check therefore sounds like a capture — the take is the louder fact, and the check already has the rings, the **将军** token, and the status line saying it.
+
+**Sound character is percussive, dark, and short**: a landing's sound is an impact rather than a tone, nothing melodic is used — a sequence of pitches reads as interface decoration rather than as a board — and the overall level stays under the system alert sound at the same volume, quiet enough to sit beneath the landing haptic rather than compete with it. The samples are generated in-repo from a checked-in script rather than sourced, so the sound is tuned by parameter and regenerated, and the app carries no third-party audio. Exact spectra, decay times, and levels are settled by ear against the running app, as motion's exact durations are settled against running hardware.
+
+**Silence is a decision too.** Nothing sounds for an illegal tap, refused input, a selection or a lift, a board flip, or the acknowledgment beat. Those are answered on the board and by the platform's lightest haptic: an exploratory tap is how the moves are learned, and a noise in reply would read as a reprimand.
+
+**The haptic set is separate and is not derived from the sound set.** Every landing takes the alignment pattern, whatever the landing meant; the touch answers take the lightest pattern. A result changes what is heard and not what is felt.
+
 ## Accessibility
 
 The interaction design must consider:
@@ -542,8 +559,8 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
 - Confirm the accepted motion timings and the compose-beat floor on physical iPhone, iPad, and Mac hardware, and refine easing and feedback strength there. A change to an accepted duration is a contract change rather than a tuning pass.
 - Confirm the numeral-strip measurements on iOS and iPadOS, which were taken on macOS, and define the exact accessibility text size at which the strips are hidden.
-- Define the sound events, sound design, and platform differences behind the accepted sound toggle.
-- Define the haptic events behind the accepted haptics toggle.
+- Define the sound events outside board play — whether the History, Settings, and Help surfaces sound at all — and the per-platform differences behind the accepted sound toggle, including what an iOS device does with a board sound under the silent switch. Board play's four sounds, their precedence, their character, and the events that stay silent are defined under [Sound and haptics](#sound-and-haptics), and their samples are tuned by ear against the running app.
+- Define the haptic events outside board play, and where and how the accepted sound and haptics toggles are presented. Board play's haptic set is defined under [Sound and haptics](#sound-and-haptics); its sound half already follows the accepted sound preference wherever a sound would play, ahead of the screen that will offer it.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
 - Define empty, loading, AI-thinking, error, corrupted-import, and destructive-action states.
