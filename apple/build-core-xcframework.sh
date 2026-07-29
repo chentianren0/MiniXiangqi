@@ -55,10 +55,10 @@ for arch in $architectures; do
   cmake --build "$build" --target mxq_core
 done
 
-# One library per architecture, then one universal library. The core is two
-# static libraries — the facade and the vendored engine — and an XCFramework
-# carries one, so they are combined here rather than left for every consumer to
-# link in the right order.
+# One library per architecture, then one universal library. The core is three
+# static libraries — the facade, the vendored engine, and the vendored SQLite —
+# and an XCFramework carries one, so they are combined here rather than left
+# for every consumer to link in the right order.
 merge_slice() {
   arch=$1
   build="$staging/macosx-$arch"
@@ -66,7 +66,8 @@ merge_slice() {
   rm -f "$merged"
   libtool -static -no_warning_for_no_symbols -o "$merged" \
           "$build/libmxqcore.a" \
-          "$build/third_party/fairy-stockfish/libmxqfairystockfish.a"
+          "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
+          "$build/third_party/sqlite/libmxqsqlite.a"
   echo "$merged"
 }
 

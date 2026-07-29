@@ -49,6 +49,12 @@ void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
 void fill_error_index(MxqError *err, MxqStatus status, const char *detail,
                       uint64_t index);
 
+/* As fill_error, additionally setting subsystem_code — the raw subsystem
+ * result (a SQLite result code, for the store) that MxqError carries for
+ * diagnostics only and that is never branched on. */
+void fill_error_subsystem(MxqError *err, MxqStatus status, const char *detail,
+                          int32_t subsystem_code);
+
 /*
  * Prepare a caller-supplied out struct: reject NULL, reject a struct_size this
  * build cannot interpret, and zero the part this build knows about so that

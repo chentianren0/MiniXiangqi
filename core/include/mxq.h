@@ -94,7 +94,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 1
-#define MXQ_API_VERSION_MINOR 0
+#define MXQ_API_VERSION_MINOR 1
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -488,8 +488,39 @@ typedef struct MxqVersion {
     char     nnue_sha256[MXQ_SHA256_HEX_CAP];   /* lowercase hexadecimal */
 } MxqVersion;
 
-/* No flags are defined in version 1. */
+/*
+ * MxqCoreConfig.flags values. Flags are appended here as they are defined,
+ * like every other constant vocabulary.
+ */
 #define MXQ_CORE_FLAG_NONE 0u
+
+/*
+ * A test affordance, never product behaviour: with this flag the core's one
+ * clock and identity provider becomes deterministic, so store round-trip
+ * fixtures and archive golden files can be byte-stable across runs and
+ * machines. Production callers never set it; without it the provider reads the
+ * real clock and generates real version 7 UUIDs from a cryptographically
+ * seeded source.
+ *
+ * The deterministic behaviour, exactly:
+ *
+ *   - The clock starts at 2026-01-01T00:00:00.000Z (epoch millisecond
+ *     1767225600000). The first read returns that instant and every further
+ *     read returns 1000 ms more than the previous one — time advances one
+ *     second per observation and never else.
+ *   - Game identifiers are version-7-shaped UUIDs from a counter that starts
+ *     at 0 at mxq_core_init. The nth identifier carries epoch millisecond
+ *     1767225600000 + n in its 48-bit time field, version nibble 7, zero
+ *     rand_a, RFC 9562 variant bits, and n in its final 62 bits; the counter
+ *     is independent of the clock above. The 0th is therefore exactly
+ *     "019b76da-a800-7000-8000-000000000000" and the 1st
+ *     "019b76da-a801-7000-8000-000000000001".
+ *
+ * Both sequences reset at mxq_core_init, so two runs of the same test perform
+ * identical writes. The flag changes identity and time generation only; it
+ * changes no rule, no schema, and no store behaviour.
+ */
+#define MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY (1u << 0)
 
 /*
  * Core configuration. Both directories are supplied by the frontend — the
@@ -774,6 +805,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err);
  * MXQ_ERR_STATE_ALREADY_INITIALIZED if a core is live, and
  * MXQ_ERR_ARG_API_VERSION if the caller's compiled-in API version is not
  * compatible with this build.
+ *
+ * The store opens — creating the database file and schema on first run — under
+ * config->store_directory, whose leading directories are created as needed. A
+ * store that cannot be opened or created fails with its store-domain status;
+ * one written by a newer build is refused with MXQ_ERR_STORE_SCHEMA_TOO_NEW
+ * rather than opened, per the forward-only migration rule in
+ * docs/game-data.md.
  *
  * Thread: the UI or setup thread; never inside a search callback.
  * Blocking: yes.

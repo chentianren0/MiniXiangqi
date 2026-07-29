@@ -40,6 +40,8 @@ MxqStatus mxq_core_shutdown(MxqCore *core, MxqError *err);    /* deterministic t
 
 `MxqCore` is handle-shaped but singleton-enforced: a second `mxq_core_init` before shutdown returns `MXQ_ERR_STATE_ALREADY_INITIALIZED`, because the embedded engine's process-global state admits one instance. The handle keeps teardown explicit and the signatures stable if that constraint ever lifts.
 
+One config flag exists: `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`, a test affordance and never product behavior. The core has exactly one clock and identity provider — everything that needs an instant or a fresh `game_id` asks it — and under this flag it becomes deterministic, resetting at `mxq_core_init`, so store round-trip fixtures and archive golden files can be byte-stable across runs and machines. The exact deterministic sequences (a fixed epoch advancing one second per read; version-7-shaped identifiers from a counter) are documented normatively on the flag in `mxq.h`. Without the flag the provider reads the real clock and generates real version 7 UUIDs; the flag changes identity and time generation only — no rule, no schema, no store behavior.
+
 ### Rules facade — `mxq_game_` (sessions) and `mxq_rules_` (session-free)
 
 A session composes the rules facade with the game's frozen configuration — `MxqPlayMode`, resolved `human_side`, `first_mover_choice`, `ai_level`, exact `ai_movetime_ms` (the enums `MxqPlayMode`, `MxqColor`, `MxqAiLevel`, and the first-mover choice correspond one-to-one to the serialized vocabulary in [game-data.md](game-data.md)) — because undo, resign, search eligibility, and the archive all depend on it. Sessions are **store-attached** when created or resumed (`mxq_game_create`, `mxq_game_resume_active`) and **detached read-only** when opened for replay or import preview (`mxq_store_history_open`, `mxq_game_open_archive`).
@@ -181,7 +183,7 @@ MxqStatus mxq_store_import(MxqCore *core, const uint8_t *bytes, size_t len,
 ```
 
 - `mxq_store_archive_and_clear` is the accepted atomic archive-and-clear in one transaction. On success the passed session is marked archived; later mutations on it return `MXQ_ERR_STATE_SESSION_ARCHIVED`; the caller still releases the handle.
-- `mxq_store_history_page` returns records in the accepted order — pinned first, newest within each group, deterministic tie-break — as a core guarantee; frontends never re-sort.
+- `mxq_store_history_page` returns records in the accepted order — pinned first, newest within each group, `record_id` descending as the tie-break — as a core guarantee; frontends never re-sort.
 - `mxq_store_active_summary` serves the Play destination and the save-and-continue confirmation without materializing a session.
 - `out_library_revision` is a monotonic counter bumped by every committed store mutation: the accepted answer to library-change observation is return values plus this cheap staleness check, with no notification mechanism in the MVP.
 - `mxq_store_import` returns `MXQ_IMPORT_EXISTING` with the existing record for an exact duplicate — success, not an error — and typed failures for every rejection class defined by the import pipeline in [game-data.md](game-data.md).

@@ -128,13 +128,14 @@ endif()
 # The static library
 # --------------------------------------------------------------------------
 #
-# Only the functions the contract marks callable from any thread without a core
-# instance are implemented so far: the status and blob helpers, mxq_core_version,
-# mxq_rules_start_fen, mxq_archive_supported_versions, and mxq_engine_plan,
-# whose arithmetic the contract defines precisely so that it is testable without
-# an engine. The remaining declarations in mxq.h are deliberately left undefined
-# rather than stubbed: the accepted error taxonomy has no not-implemented code,
-# and inventing one to return would be inventing contract vocabulary.
+# Implemented so far: the status and blob helpers, the pure queries that take
+# no core instance, core lifecycle with the store opened at initialisation,
+# the session-free rules facade (behind MXQ_ENABLE_RULES_FACADE), and the
+# clock/identity provider the deterministic-identity flag configures. The
+# remaining declarations in mxq.h — sessions, the store surface, most of the
+# archive codec — are deliberately left undefined rather than stubbed: the
+# accepted error taxonomy has no not-implemented code, and inventing one to
+# return would be inventing contract vocabulary.
 
 add_library(mxq_core STATIC
   src/mxq_abi.cpp
@@ -142,8 +143,10 @@ add_library(mxq_core STATIC
   src/mxq_blob.cpp
   src/mxq_core.cpp
   src/mxq_engine.cpp
+  src/mxq_identity.cpp
   src/mxq_internal.cpp
   src/mxq_rules.cpp
+  src/mxq_store.cpp
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
   src/mxq_status.cpp
 )
@@ -181,10 +184,11 @@ set_target_properties(mxq_core PROPERTIES
 # mxq_core privately, which is what keeps it invisible through mxq.h, as
 # docs/architecture.md requires. See core/third_party/README.md.
 #
-# The pinned Fairy-Stockfish fork is vendored; SQLite is not yet. The fork is
-# additionally gated on MXQ_ENABLE_RULES_FACADE, so the default configuration
-# does not compile it: it is a multi-minute build and nothing else in the core
-# needs it.
+# Both inputs are vendored. The fork is additionally gated on
+# MXQ_ENABLE_RULES_FACADE, so the default configuration does not compile it: it
+# is a multi-minute build and nothing else in the core needs it. SQLite is not
+# gated: the store is part of the core on every configuration, and the
+# amalgamation compiles in seconds.
 
 set(MXQ_OPTIONAL_DEPS fairy-stockfish)
 foreach(mxq_dep IN ITEMS fairy-stockfish sqlite)
