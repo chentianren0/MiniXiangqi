@@ -414,7 +414,12 @@ bool outcome_of(MxqGameState state, MxqOutcome &out) {
 MxqStatus end_game(MxqGame &game, MxqOutcome outcome, MxqEndReason reason,
                    uint64_t &out_record_id, MxqError *err) {
     out_record_id = 0;
-    const int64_t at = game.core->identity.now_ms();
+    // Clamped to the creation instant: the schema refuses an ending before its
+    // beginning, and a wall clock stepped backwards since creation would
+    // otherwise make the ending fail identically on every retry until the
+    // clock caught up — a retry the accepted flow offers must be able to work.
+    const int64_t at = std::max(game.started_at_ms,
+                                game.core->identity.now_ms());
 
     archive::Record record = record_of(game);
     record.completed = true;

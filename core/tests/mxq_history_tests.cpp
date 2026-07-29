@@ -1701,17 +1701,20 @@ void case_corrupt_content_hash_is_refused() {
     mxq_game_release(game);
     mxq_core_shutdown(core, nullptr);
 
-    /* The row's hash is replaced with a well-formed one that is not the hash
-     * of its bytes: the schema's own length constraint still holds, so this is
-     * damage the database cannot see. */
+    /* The blob is tampered into a document that still decodes, still
+     * canonicalises, and still replays — the recorded move swapped for a
+     * different legal move of the same length — so nothing but the hash
+     * comparison can tell it from the record it replaced. The review drove
+     * exactly this shape; the weaker hash-column rewrite proved only that a
+     * comparison exists. */
     sqlite3 *tamper = open_second_connection(store);
     c.check(tamper != nullptr, "the tampering connection opens");
     if (tamper != nullptr) {
         c.check(run_sql(tamper,
-                        "UPDATE game SET content_sha256 = "
-                        "'0000000000000000000000000000000000000000000000000000"
-                        "000000000000' WHERE outcome IS NULL;"),
-                "the content hash is rewritten");
+                        "UPDATE game SET archive = CAST(REPLACE(CAST(archive "
+                        "AS TEXT), '\"b1b3\"', '\"b1b2\"') AS BLOB) "
+                        "WHERE outcome IS NULL;"),
+                "the blob is rewritten valid-but-different");
         sqlite3_close(tamper);
     }
 

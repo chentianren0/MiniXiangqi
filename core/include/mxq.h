@@ -1497,9 +1497,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_active_summary(MxqCore *core,
  * recorded as ended early with no competitive result.
  *
  * The one required pointer here is the active game itself, so its absence is a
- * state rather than a programming error: with no active game to archive this
- * returns MXQ_ERR_STATE_ACTIVE_GAME_MISSING and changes nothing, whether the
- * caller passed NULL or a session whose row the library no longer holds.
+ * state rather than a programming error, and the three absent shapes stay
+ * distinguishable: a NULL session returns MXQ_ERR_STATE_ACTIVE_GAME_MISSING;
+ * a session already archived returns MXQ_ERR_STATE_SESSION_ARCHIVED, because
+ * archived and missing are different facts; and a live session whose row the
+ * library no longer names as active returns MXQ_ERR_STORE_NOT_FOUND. Each
+ * changes nothing.
  *
  * On success the passed session is marked archived and later mutations on it
  * return MXQ_ERR_STATE_SESSION_ARCHIVED; the caller still releases the handle.
@@ -1545,7 +1548,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_count(
  * — MXQ_ERR_ARG_BUFFER_TOO_SMALL with MxqError.required_size set to limit, and
  * nothing written. *out_count is the number of records written, which is fewer
  * than limit only at the end of the list; use mxq_store_history_count for the
- * total. limit 0 writes nothing and is not an error. Each written element's
+ * total. limit 0 writes nothing and is not an error. On any failure *out_count
+ * is 0 and the buffer's contents are unspecified — a corrupt record fails the
+ * call at its own element, after earlier elements were already written. Each written element's
  * struct_size is stamped by the core rather than read, as mxq_game_legal_moves
  * stamps a move's: an array is indexed by an element size the two sides have
  * already agreed on.
