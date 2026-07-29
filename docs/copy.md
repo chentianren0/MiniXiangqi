@@ -33,7 +33,7 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift`, `Play/ResultNotice.swift` |
+| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the play-control cluster's, and only there |
 | `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
 | `control.flipBoard` | 翻转棋盘 | Flip Board | button; accessibility label | [interaction-design.md](interaction-design.md) § Play controls, § Board orientation; `Play/PlayScreen.swift` |
 | `control.resign` | 认输 | Resign | button | [interaction-design.md](interaction-design.md) § Play controls |
