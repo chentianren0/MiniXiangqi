@@ -82,6 +82,7 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
     core->store_directory = config->store_directory ? config->store_directory : "";
     core->asset_directory = config->asset_directory ? config->asset_directory : "";
     core->flags = config->flags;
+    core->identity.reset((core->flags & MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY) != 0);
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
     /* The engine is prepared here rather than lazily, so that a packaging
@@ -94,6 +95,15 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
         return MXQ_ERR_ENGINE_ASSET_MISSING;
     }
 #endif
+
+    /* The store opens with the core and a store that cannot open or create
+     * fails initialisation whole: a core without persistence would break every
+     * promise the session surface makes, so there is no degraded mode. */
+    const MxqStatus store_rc =
+        mxq::store::open(core->store_directory, core->store, err);
+    if (store_rc != MXQ_OK) {
+        return store_rc;
+    }
 
     mxq::g_core = std::move(core);
     *out_core = mxq::g_core.get();
@@ -109,6 +119,10 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
         return MXQ_ERR_STATE_NOT_INITIALIZED;
     }
     core->shutting_down = true;
+    /* Close the store before the instance goes away, explicitly rather than
+     * by member destruction order, because "shutdown closes the store" is a
+     * contract clause and not an implementation accident. */
+    core->store.reset();
     mxq::g_core.reset();
     return MXQ_OK;
 }

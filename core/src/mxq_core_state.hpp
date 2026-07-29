@@ -11,6 +11,10 @@
 
 #include "mxq.h"
 
+#include "mxq_identity.hpp"
+#include "mxq_store.hpp"
+
+#include <memory>
 #include <string>
 
 struct MxqCore {
@@ -18,6 +22,14 @@ struct MxqCore {
     std::string asset_directory;
     uint32_t    flags = 0;
     bool        shutting_down = false;
+
+    /* The library store, opened by mxq_core_init and closed at shutdown. Never
+     * null on a live core: a store that cannot open fails initialisation. */
+    std::unique_ptr<mxq::store::Store> store;
+
+    /* The core's one clock and identity provider, configured from
+     * MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY at initialisation. */
+    mxq::identity::Provider identity;
 };
 
 namespace mxq {
