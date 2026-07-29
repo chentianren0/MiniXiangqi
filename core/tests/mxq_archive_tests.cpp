@@ -676,14 +676,21 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     Case c;
     c.name = "contract/arguments";
 
+#if defined(NDEBUG)
+    /*
+     * A null pointer and a struct_size this build cannot interpret are
+     * programming errors, not rejections of a file — and the contract says they
+     * assert in debug builds and return their code in release builds. So the
+     * returned code is only a promise where the assertion is compiled out;
+     * asking for it in a debug build would be asking the core to break its own
+     * rule.
+     */
     MxqArchiveInfo info = make_info();
     MxqError err = make_error();
     MxqStatus rc = mxq_archive_probe(core, nullptr, 12, &info, &err);
     c.check_eq(std::string(mxq_status_name(rc)), std::string("MXQ_ERR_ARG_NULL"),
                "null bytes");
 
-    /* A struct_size this build cannot interpret is a programming error, not a
-     * rejection of the file. */
     info = make_info();
     info.struct_size = 4;
     err = make_error();
@@ -692,6 +699,12 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
                            golden.size(), &info, &err);
     c.check_eq(std::string(mxq_status_name(rc)),
                std::string("MXQ_ERR_ARG_STRUCT_SIZE"), "short struct_size");
+#else
+    (void)core;
+    (void)golden;
+    MxqError err = make_error();
+    MxqStatus rc = MXQ_OK;
+#endif
 
     /* The version report the codec dispatches on. */
     uint32_t min_readable = 0;
