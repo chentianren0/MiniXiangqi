@@ -12,6 +12,12 @@
 /* The revision of this repository, or "unknown" outside a git checkout. */
 #define MXQ_BUILD_CORE_REVISION "@MXQ_BUILD_CORE_REVISION@"
 
+/* The product version, from this project's own declaration. It is written into
+ * an archive's origin.app_version, which describes the event that produced the
+ * document; the core is the only writer of an archive, so the version that
+ * describes one is the version of the core that wrote it. */
+#define MXQ_BUILD_APP_VERSION "@PROJECT_VERSION@"
+
 /* pinned-inputs.json: fork.revision */
 #define MXQ_BUILD_FORK_REVISION "@MXQ_BUILD_FORK_REVISION@"
 

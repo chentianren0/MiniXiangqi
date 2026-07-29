@@ -1,0 +1,24 @@
+{
+  "title": "Human versus AI, Random resolved to Black: the AI opened, the human answered",
+  "why": "The configuration is frozen at creation and survives the round trip whole, the resolved side included — first_mover_choice stays random because it cannot be reconstructed later. With the human's own move last, one Undo cancels that move; with only the AI's opening move left there is no human decision cycle to return to, so Undo is unavailable rather than removing a move the human never made. Its bytes are the corpus's human-vs-ai-active golden.",
+  "config": {
+    "mode": "human-vs-ai",
+    "human_side": "black",
+    "ai_level": "deep",
+    "ai_movetime_ms": 5000,
+    "first_mover_choice": "random"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "archive": "human-vs-ai-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": true,
+    "search_expected": true
+  },
+  "undo": [1]
+}

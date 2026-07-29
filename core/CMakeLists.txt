@@ -130,25 +130,35 @@ endif()
 #
 # Implemented so far: the status and blob helpers, the pure queries that take
 # no core instance, core lifecycle with the store opened at initialisation,
-# the session-free rules facade (behind MXQ_ENABLE_RULES_FACADE), and the
-# clock/identity provider the deterministic-identity flag configures. The
-# remaining declarations in mxq.h — sessions, the store surface, most of the
-# archive codec — are deliberately left undefined rather than stubbed: the
-# accepted error taxonomy has no not-implemented code, and inventing one to
-# return would be inventing contract vocabulary.
+# the session-free rules facade (behind MXQ_ENABLE_RULES_FACADE), the
+# clock/identity provider the deterministic-identity flag configures, the
+# archive codec's read and write sides, and store-attached sessions with their
+# per-mutation commits. The remaining declarations in mxq.h — the terminal
+# commits, the History and interchange surface, the search facade — are
+# deliberately left undefined rather than stubbed: the accepted error taxonomy
+# has no not-implemented code, and inventing one to return would be inventing
+# contract vocabulary.
+#
+# mxq_session.cpp is gated with the engine like mxq_engine_bridge.cpp: a
+# session answers every one of its queries by replaying its move line through
+# the rules facade, so without the facade the mxq_game_ functions cannot exist
+# and are absent from the library rather than stubbed.
 
 add_library(mxq_core STATIC
   src/mxq_abi.cpp
   src/mxq_archive.cpp
   src/mxq_archive_json.cpp
+  src/mxq_archive_write.cpp
   src/mxq_blob.cpp
   src/mxq_core.cpp
   src/mxq_engine.cpp
   src/mxq_identity.cpp
   src/mxq_internal.cpp
   src/mxq_rules.cpp
+  src/mxq_sha256.cpp
   src/mxq_store.cpp
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
+  $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_session.cpp>
   src/mxq_status.cpp
 )
 add_library(mxq::core ALIAS mxq_core)

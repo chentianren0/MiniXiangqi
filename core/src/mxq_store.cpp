@@ -326,7 +326,291 @@ MxqStatus create_schema_v1(sqlite3 *db, MxqError *err) {
     return MXQ_OK;
 }
 
+/* ---------------------------------------------------------------------- */
+/* Statements                                                              */
+/* ---------------------------------------------------------------------- */
+
+/* A prepared statement that finalises itself. No statement outlives its
+ * operation in this design — the store's close relies on it — so ownership is
+ * scoped rather than cached. */
+class Stmt {
+public:
+    Stmt(sqlite3 *db, const char *sql) {
+        rc_ = sqlite3_prepare_v2(db, sql, -1, &stmt_, nullptr);
+    }
+    ~Stmt() { sqlite3_finalize(stmt_); }
+
+    Stmt(const Stmt &) = delete;
+    Stmt &operator=(const Stmt &) = delete;
+
+    bool ok() const { return rc_ == SQLITE_OK && stmt_ != nullptr; }
+    int rc() const { return rc_; }
+    sqlite3_stmt *get() { return stmt_; }
+
+    /* One-based, as SQLite counts parameters. */
+    void bind_text(int at, const char *value) {
+        if (value == nullptr) {
+            sqlite3_bind_null(stmt_, at);
+        } else {
+            sqlite3_bind_text(stmt_, at, value, -1, SQLITE_TRANSIENT);
+        }
+    }
+    void bind_text(int at, const std::string &value) {
+        sqlite3_bind_text(stmt_, at, value.data(),
+                          static_cast<int>(value.size()), SQLITE_TRANSIENT);
+    }
+    void bind_blob(int at, const std::string &value) {
+        sqlite3_bind_blob(stmt_, at, value.data(),
+                          static_cast<int>(value.size()), SQLITE_TRANSIENT);
+    }
+    void bind_int64(int at, int64_t value) {
+        sqlite3_bind_int64(stmt_, at, value);
+    }
+    /* Zero is the archive's own way of saying "this member is absent", so a
+     * column that mirrors an omitted member holds NULL rather than 0. */
+    void bind_int64_or_null(int at, int64_t value) {
+        if (value == 0) {
+            sqlite3_bind_null(stmt_, at);
+        } else {
+            sqlite3_bind_int64(stmt_, at, value);
+        }
+    }
+
+    int step() { return sqlite3_step(stmt_); }
+
+    std::string error(sqlite3 *db) const { return sqlite3_errmsg(db); }
+
+private:
+    sqlite3_stmt *stmt_ = nullptr;
+    int           rc_ = SQLITE_OK;
+};
+
+/* One transaction, rolled back whole unless it is committed. Every store
+ * operation is one transaction (docs/game-data.md), and a rollback that
+ * depends on remembering to call it is a rollback that is one early return
+ * from not happening. */
+class Transaction {
+public:
+    explicit Transaction(sqlite3 *db) : db_(db) {}
+    ~Transaction() {
+        if (open_) {
+            std::string ignored;
+            int rc = SQLITE_OK;
+            exec(db_, "ROLLBACK;", rc, ignored);
+        }
+    }
+
+    Transaction(const Transaction &) = delete;
+    Transaction &operator=(const Transaction &) = delete;
+
+    bool begin(int &rc, std::string &detail) {
+        /* IMMEDIATE: the write lock is taken up front, so a busy store is
+         * reported here rather than at the commit, where half the statements
+         * would already have run. */
+        if (!exec(db_, "BEGIN IMMEDIATE;", rc, detail)) {
+            return false;
+        }
+        open_ = true;
+        return true;
+    }
+
+    bool commit(int &rc, std::string &detail) {
+        if (!exec(db_, "COMMIT;", rc, detail)) {
+            return false;
+        }
+        open_ = false;
+        return true;
+    }
+
+private:
+    sqlite3 *db_ = nullptr;
+    bool     open_ = false;
+};
+
 } /* namespace */
+
+MxqStatus create_active(Store &store, const ActiveGame &row,
+                        uint64_t &out_record_id, MxqError *err) {
+    out_record_id = 0;
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    int rc = SQLITE_OK;
+    std::string detail;
+    Transaction tx(db);
+    if (!tx.begin(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot begin the creation transaction: " +
+                                        detail);
+    }
+
+    /* The single active game, checked inside the transaction that would break
+     * it: the reference column is the invariant, so the reference is what is
+     * asked. */
+    {
+        Stmt active(db, "SELECT active_record_id FROM library WHERE id = 1;");
+        if (!active.ok()) {
+            return fail_sqlite(err, active.rc(),
+                               "cannot read the library row: " +
+                                   active.error(db));
+        }
+        const int step = active.step();
+        if (step != SQLITE_ROW) {
+            return fail(err, MXQ_ERR_STORE_CORRUPT, step,
+                        "the library row is missing");
+        }
+        if (sqlite3_column_type(active.get(), 0) != SQLITE_NULL) {
+            fill_error(err, MXQ_ERR_STATE_ACTIVE_GAME_EXISTS,
+                       "the library already holds an active game");
+            return MXQ_ERR_STATE_ACTIVE_GAME_EXISTS;
+        }
+    }
+
+    {
+        Stmt insert(db,
+                    "INSERT INTO game (game_id, archive, content_sha256, mode,"
+                    " human_side, ai_level, ai_movetime_ms, first_mover_choice,"
+                    " move_count, provenance, started_at_ms)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'locally-played', ?);");
+        if (!insert.ok()) {
+            return fail_sqlite(err, insert.rc(),
+                               "cannot prepare the insert: " + insert.error(db));
+        }
+        insert.bind_text(1, row.game_id);
+        insert.bind_blob(2, row.archive);
+        insert.bind_text(3, row.content_sha256);
+        insert.bind_text(4, row.mode);
+        insert.bind_text(5, row.human_side);
+        insert.bind_text(6, row.ai_level);
+        insert.bind_int64_or_null(7, row.ai_movetime_ms);
+        insert.bind_text(8, row.first_mover_choice);
+        insert.bind_int64(9, row.move_count);
+        insert.bind_int64(10, row.started_at_ms);
+        const int step = insert.step();
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step,
+                               "cannot insert the active game: " +
+                                   insert.error(db));
+        }
+    }
+
+    const int64_t record_id = sqlite3_last_insert_rowid(db);
+
+    {
+        /* The reference is set after the row exists and while its outcome is
+         * still null, which is the order the active_reference_is_an_
+         * uncommitted_game trigger requires. */
+        Stmt reference(db,
+                       "UPDATE library SET active_record_id = ? WHERE id = 1;");
+        if (!reference.ok()) {
+            return fail_sqlite(err, reference.rc(),
+                               "cannot prepare the reference update: " +
+                                   reference.error(db));
+        }
+        reference.bind_int64(1, record_id);
+        const int step = reference.step();
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step,
+                               "cannot point the library at the new game: " +
+                                   reference.error(db));
+        }
+    }
+
+    if (!tx.commit(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot commit the new game: " + detail);
+    }
+    out_record_id = static_cast<uint64_t>(record_id);
+    return MXQ_OK;
+}
+
+MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
+                      std::string &out_archive, MxqError *err) {
+    out_exists = false;
+    out_record_id = 0;
+    out_archive.clear();
+
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    Stmt select(db, "SELECT g.record_id, g.archive FROM library l"
+                    " JOIN game g ON g.record_id = l.active_record_id"
+                    " WHERE l.id = 1;");
+    if (!select.ok()) {
+        return fail_sqlite(err, select.rc(),
+                           "cannot prepare the active-game query: " +
+                               select.error(db));
+    }
+    const int step = select.step();
+    if (step == SQLITE_DONE) {
+        /* No active game. Absence is an ordinary state and not an error. */
+        return MXQ_OK;
+    }
+    if (step != SQLITE_ROW) {
+        return fail_sqlite(err, step, "cannot read the active game: " +
+                                          select.error(db));
+    }
+
+    const void *blob = sqlite3_column_blob(select.get(), 1);
+    const int bytes = sqlite3_column_bytes(select.get(), 1);
+    if (bytes < 0 || (blob == nullptr && bytes > 0)) {
+        return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
+                    "the active game's archive column is unreadable");
+    }
+    out_record_id =
+        static_cast<uint64_t>(sqlite3_column_int64(select.get(), 0));
+    out_archive.assign(static_cast<const char *>(blob),
+                       static_cast<size_t>(bytes));
+    out_exists = true;
+    return MXQ_OK;
+}
+
+MxqStatus rewrite_active(Store &store, uint64_t record_id,
+                         const std::string &archive,
+                         const std::string &content_sha256, int64_t move_count,
+                         MxqError *err) {
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    int rc = SQLITE_OK;
+    std::string detail;
+    Transaction tx(db);
+    if (!tx.begin(rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot begin the mutation transaction: " + detail);
+    }
+
+    {
+        /* The outcome condition is not decoration: it is what makes this
+         * statement incapable of rewriting a History record, whatever record
+         * id it is handed. The trigger would refuse it too; refusing it here
+         * as well means the answer is a status rather than a raised error. */
+        Stmt update(db, "UPDATE game SET archive = ?, content_sha256 = ?,"
+                        " move_count = ? WHERE record_id = ?"
+                        " AND outcome IS NULL;");
+        if (!update.ok()) {
+            return fail_sqlite(err, update.rc(),
+                               "cannot prepare the update: " + update.error(db));
+        }
+        update.bind_blob(1, archive);
+        update.bind_text(2, content_sha256);
+        update.bind_int64(3, move_count);
+        update.bind_int64(4, static_cast<int64_t>(record_id));
+        const int step = update.step();
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step, "cannot rewrite the active game: " +
+                                              update.error(db));
+        }
+        if (sqlite3_changes(db) != 1) {
+            fill_error(err, MXQ_ERR_STORE_NOT_FOUND,
+                       "the active game's row is no longer there to rewrite");
+            return MXQ_ERR_STORE_NOT_FOUND;
+        }
+    }
+
+    if (!tx.commit(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot commit the move: " + detail);
+    }
+    return MXQ_OK;
+}
 
 Store::~Store() {
     if (db_ != nullptr) {

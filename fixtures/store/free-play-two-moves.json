@@ -1,0 +1,20 @@
+{
+  "title": "Free Play, two moves: one commit per move, one ply per Undo",
+  "why": "The ordinary case. Every accepted move rewrites the one active row and commits before returning, and Free Play removes one ply per Undo with repeated Undo reaching the initial position. Its bytes are the archive corpus's free-play-active golden, which is what makes the writer and the reader the same contract.",
+  "config": {
+    "mode": "free-play"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "archive": "free-play-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": [1, 1]
+}

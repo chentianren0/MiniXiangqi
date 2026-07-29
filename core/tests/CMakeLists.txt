@@ -87,3 +87,39 @@ add_test(NAME archive_fixtures COMMAND mxq_archive_tests)
 set_tests_properties(archive_fixtures PROPERTIES
   LABELS "archive;fixtures"
 )
+
+# The session runner: the store round-trip scenarios in fixtures/store/, the
+# interface properties a game cannot express (a failed commit, a concurrent
+# call, a tombstoned handle), and the core's own SHA-256 against the published
+# vectors.
+#
+# Like mxq_store_tests it links the vendored SQLite directly — the failed-commit
+# case takes the database's write lock from a second connection, so the failure
+# arrives through the store's own path rather than through a seam that exists
+# only in tests — and includes the core's internal headers on purpose, for the
+# identity provider and the session's owner guard.
+#
+# It degrades in the engine-less configuration exactly as archive_fixtures
+# does: a session replays to answer anything at all, so without the facade the
+# mxq_game_ functions are absent from the library and every session expectation
+# reports NOT IMPLEMENTED, while the SHA-256 vectors still run.
+
+add_executable(mxq_session_tests
+  mxq_session_tests.cpp
+  mxq_json.cpp
+)
+target_link_libraries(mxq_session_tests PRIVATE mxq::core mxq::sqlite mxq_warnings)
+target_include_directories(mxq_session_tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+target_compile_definitions(mxq_session_tests PRIVATE
+  MXQ_STORE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/store"
+  MXQ_ARCHIVE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/archive"
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME store_sessions COMMAND mxq_session_tests)
+set_tests_properties(store_sessions PROPERTIES
+  LABELS "store;fixtures"
+)

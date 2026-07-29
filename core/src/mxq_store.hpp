@@ -23,6 +23,7 @@
 
 #include "mxq.h"
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -59,6 +60,65 @@ private:
     std::mutex mutex_;
     sqlite3   *db_ = nullptr;
 };
+
+/*
+ * The active game's row, as the store writes it.
+ *
+ * The canonical archive bytes are the record; every other member is a derived
+ * summary column that exists only to answer the History list without decoding
+ * a blob, and must be exactly recomputable from it (docs/game-data.md). They
+ * are written from the same values the document was written from, in one
+ * place, so the two cannot drift.
+ *
+ * The vocabulary members are the serialised spellings, or null where the
+ * archive omits the member and the column holds SQL NULL: the four
+ * configuration members exist exactly for human-versus-AI games. The pointers
+ * are borrowed for the duration of the call.
+ */
+struct ActiveGame {
+    std::string game_id;
+    std::string archive;        /* the canonical bytes, verbatim */
+    std::string content_sha256; /* 64 lowercase hexadecimal characters */
+    const char *mode = nullptr;
+    const char *human_side = nullptr;
+    const char *ai_level = nullptr;
+    const char *first_mover_choice = nullptr;
+    int64_t     ai_movetime_ms = 0; /* 0 means the archive omits it */
+    int64_t     move_count = 0;
+    int64_t     started_at_ms = 0;
+};
+
+/*
+ * Insert the new active game and point the library at it, in one transaction.
+ * Returns MXQ_ERR_STATE_ACTIVE_GAME_EXISTS, changing nothing, when the library
+ * already holds one: the single-active-game invariant is structural in the
+ * schema and checked inside the transaction that would break it.
+ *
+ * The insert names its columns explicitly and never uses OR REPLACE, per the
+ * prohibition at the top of this header.
+ */
+MxqStatus create_active(Store &store, const ActiveGame &row,
+                        uint64_t &out_record_id, MxqError *err);
+
+/*
+ * Read the active game's row. Absence is success with out_exists false: there
+ * being no active game is an ordinary state, not a failure.
+ */
+MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
+                      std::string &out_archive, MxqError *err);
+
+/*
+ * Rewrite the one active row — the new canonical bytes, their hash, and the
+ * move count derived from them — in one transaction, and commit before
+ * returning. This is what an accepted move or undo is: there is no per-move
+ * table and no deferred write, so every mutation is this one statement inside
+ * its own transaction, and a failure leaves the previously committed row
+ * exactly as it was.
+ */
+MxqStatus rewrite_active(Store &store, uint64_t record_id,
+                         const std::string &archive,
+                         const std::string &content_sha256, int64_t move_count,
+                         MxqError *err);
 
 /*
  * Open — creating if absent — the store under directory, whose leading

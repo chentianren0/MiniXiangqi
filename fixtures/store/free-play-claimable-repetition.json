@@ -1,0 +1,19 @@
+{
+  "title": "Free Play, a claimable neutral repetition, resumed as one",
+  "why": "A claimable threefold repetition remains an active game: continuing creates no record, and the claim is a separate decision. What the store must carry across a relaunch is therefore not only the moves but the state they produce — the claim is available again after the resume because it is derived from the same replayed history, never persisted as a flag.",
+  "config": {
+    "mode": "free-play"
+  },
+  "moves": ["b1b3", "b7b5", "b3b1", "b5b7", "b1b3", "b7b5", "b3b1", "b5b7"],
+  "status": {
+    "state": "claimable-draw",
+    "reason": "threefold-repetition",
+    "at_occurrence": 3,
+    "claim_available": true,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": [1, 1, 1, 1, 1, 1, 1, 1]
+}

@@ -6,6 +6,7 @@
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
+#include "mxq_session.hpp"
 #endif
 
 #include <cassert>
@@ -119,6 +120,14 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
         return MXQ_ERR_STATE_NOT_INITIALIZED;
     }
     core->shutting_down = true;
+#if defined(MXQ_ENABLE_RULES_FACADE)
+    /* Invalidate outstanding handles before the store they are attached to
+     * goes away. They are tombstoned rather than freed: their owners still
+     * hold them and still release them, and until they do, every function on
+     * one answers MXQ_ERR_ARG_INVALID_HANDLE instead of touching freed
+     * memory. */
+    mxq::session::invalidate_all(core);
+#endif
     /* Close the store before the instance goes away, explicitly rather than
      * by member destruction order, because "shutdown closes the store" is a
      * contract clause and not an implementation accident. */

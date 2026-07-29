@@ -8,7 +8,7 @@
  * not blittable.
  *
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
- * 53 functions, three opaque handles.
+ * 54 functions, three opaque handles.
  *
  * Conventions, all from that contract:
  *
@@ -94,7 +94,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 1
-#define MXQ_API_VERSION_MINOR 1
+#define MXQ_API_VERSION_MINOR 2
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -884,6 +884,14 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * configuration. Returns MXQ_ERR_STATE_ACTIVE_GAME_EXISTS when the library
  * already holds an active game.
  *
+ * The configuration arrives resolved: a MXQ_FIRST_MOVER_RANDOM choice is
+ * resolved into human_side by the frontend before this call, because only
+ * successful creation commits a resolved side and the core never invents a
+ * value the frontend owns. The four human-versus-AI members must be present
+ * exactly in MXQ_PLAY_MODE_HUMAN_VS_AI and must read as the NONE constants and
+ * zero in Free Play, matching the archive, which omits them; a configuration
+ * that is neither shape is a programming error and returns MXQ_ERR_ARG_RANGE.
+ *
  * Thread: any non-UI thread except inside a search callback.
  * Blocking: yes — store work.
  */
@@ -895,6 +903,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  * Resume the single active game as a store-attached session. Sets *out_exists
  * to 0 and *out_game to NULL, and returns MXQ_OK, when there is no active game:
  * absence is not an error.
+ *
+ * The stored record is decoded and replayed before a session exists, so a row
+ * this build can no longer read or no longer reproduce is refused as
+ * MXQ_ERR_STORE_CORRUPT rather than as an archive rejection: nothing was
+ * imported, and the answer is about the library rather than about a file the
+ * user chose. The import size bounds are deliberately not applied here — a
+ * locally produced game longer than they allow must always resume.
  *
  * Thread: any non-UI thread except inside a search callback.
  * Blocking: yes — store work.
@@ -925,6 +940,23 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_open_archive(MxqCore *core,
  * Blocking: no.
  */
 MXQ_API void MXQ_CALL mxq_game_release(MxqGame *game);
+
+/*
+ * Write the session's stable identity — the version 7 UUID frozen at creation —
+ * and its length. Same buffer convention as mxq_rules_start_fen;
+ * MXQ_GAME_ID_CAP is always sufficient.
+ *
+ * A session must be able to state its own identity: the staleness comparison
+ * MxqSearchResult prescribes is against (game_id, position_revision), and a
+ * detached replay or import-preview session has no other route to the value at
+ * all.
+ *
+ * Thread: the session's owner.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_id(const MxqGame *game, char *out,
+                                       size_t cap, size_t *out_len,
+                                       MxqError *err);
 
 /*
  * The session's current position.
@@ -971,7 +1003,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_legal_moves(const MxqGame *game,
 /*
  * The legal moves originating at from_square, a two-character square name such
  * as "d1". Same buffer convention as mxq_game_legal_moves. A well-formed square
- * with no legal move yields *out_count 0 and MXQ_OK.
+ * with no legal move yields *out_count 0 and MXQ_OK; a string that is not
+ * ^[a-g][1-7]$ is a programming error and returns MXQ_ERR_ARG_RANGE, because a
+ * frontend asking about a square its own board does not have is a frontend
+ * bug.
  *
  * Thread: the session's owner.
  * Blocking: no.
@@ -996,7 +1031,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_move_history(const MxqGame *game,
 
 /*
  * The position after the first ply plies, for replay scrubbing. ply 0 is the
- * initial position; ply beyond the retained line returns MXQ_ERR_ARG_RANGE.
+ * initial position; ply beyond the retained line returns MXQ_ERR_ARG_RANGE,
+ * which a scrubber may legitimately provoke by probing an end and which
+ * therefore does not assert. position_revision reports the session's current
+ * revision whichever ply is asked for: it identifies the session's state, not
+ * the position walked to.
  *
  * Thread: the session's owner.
  * Blocking: no.
@@ -1010,8 +1049,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_position_at(const MxqGame *game,
  * before returning. There is no separate save operation.
  *
  * A malformed move returns MXQ_ERR_RULES_MALFORMED_MOVE and an illegal one
- * MXQ_ERR_RULES_ILLEGAL_MOVE. A store-domain failure leaves the game exactly at
- * its pre-mutation committed state; the move did not happen.
+ * MXQ_ERR_RULES_ILLEGAL_MOVE. A game that already has a result of its own
+ * returns MXQ_ERR_STATE_GAME_OVER; a claimable neutral repetition is not such a
+ * result, because play continues there unless the claim is made. A store-domain
+ * failure leaves the game exactly at its pre-mutation committed state; the move
+ * did not happen.
  *
  * Thread: the session's owner, off the UI thread; never inside a search
  * callback.
@@ -1024,8 +1066,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
 
 /*
  * Undo, and commit the updated active game before returning.
- * *out_plies_removed is 1 or 2 per the decision-cycle rule. A store-domain
- * failure leaves the game exactly at its pre-mutation committed state.
+ * *out_plies_removed is 1 or 2 per the decision-cycle rule, and matches the
+ * undo_plies MxqGameStatus reported before the call. Undo with nothing to
+ * remove returns MXQ_ERR_STATE_UNDO_UNAVAILABLE, which is exactly when
+ * MxqGameStatus.undo_available reads 0. A store-domain failure leaves the game
+ * exactly at its pre-mutation committed state.
  *
  * Thread: the session's owner, off the UI thread; never inside a search
  * callback.
@@ -1338,6 +1383,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_archive_validate(MxqCore *core,
  * Encode a session as canonical archive bytes. The classification — outcome and
  * end reason — derives from the committed game state and never from the caller.
  * The caller releases the blob with mxq_blob_release.
+ *
+ * The bytes are a pure function of that committed state, the export event's own
+ * origin member included: encoding one session twice, or encoding it again
+ * after resuming it in another process, reproduces the same bytes, and they are
+ * the bytes the store holds for an attached session. That is what lets a
+ * content hash be compared rather than recomputed and a golden file be
+ * compared byte for byte.
  *
  * Because this takes an MxqGame *, it counts as being inside that session for
  * the single-owner rule.
