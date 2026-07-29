@@ -27,13 +27,18 @@ final class PlayScreenUITests: XCTestCase {
                         darkAppearance: Bool = false,
                         window: String? = nil,
                         hidingNumerals: Bool = false,
-                        liftingWindowMinimum: Bool = false) -> XCUIApplication {
+                        liftingWindowMinimum: Bool = false,
+                        ignoringSavedState: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
         if let window { app.launchArguments += ["-mxq-window", window] }
         if hidingNumerals { app.launchArguments.append("-mxq-hide-numerals") }
         if liftingWindowMinimum { app.launchArguments.append("-mxq-no-minimum") }
+        // AppKit's own switch, not one of ours: it makes the launch behave as
+        // a first launch, with no saved frame to restore, which is the only
+        // condition under which the scene's default size is what opens.
+        if ignoringSavedState { app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"] }
         app.launch()
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
@@ -405,9 +410,10 @@ final class PlayScreenUITests: XCTestCase {
 
     // Evidence, not a verdict. Nothing here says what the layout should do at
     // any size; it photographs what it does do at the sizes that bound it — the
-    // window's own minimum, sizes below it, an ordinary one, and the largest
-    // the display can show whole — with the strips on and off, so the decisions
-    // can be taken against frames rather than against arithmetic. Every frame
+    // size a first launch opens at, the window's own minimum, sizes below it,
+    // an ordinary one, and the largest the display can show whole — with the
+    // strips on and off, so the decisions can be taken against frames rather
+    // than against arithmetic, and stay taken afterwards. Every frame
     // is named with the window size it was taken at, and logged beside the
     // layout area and the cell pitch measured off the running app, because a
     // screenshot that does not say what size it was taken at is not evidence
@@ -468,27 +474,39 @@ final class PlayScreenUITests: XCTestCase {
 
         @discardableResult
         func record(_ label: String,
-                    window: CGSize,
+                    window: CGSize?,
                     replaying line: String = Self.evidenceLine,
                     hidingNumerals: Bool = false,
                     liftingWindowMinimum: Bool = false) -> (window: CGSize, pitch: CGFloat) {
-            let requested = "\(Int(window.width))x\(Int(window.height))"
+            let requested = window.map { "\(Int($0.width))x\(Int($0.height))" }
             let app = launch(replaying: line,
                              window: requested,
                              hidingNumerals: hidingNumerals,
-                             liftingWindowMinimum: liftingWindowMinimum)
+                             liftingWindowMinimum: liftingWindowMinimum,
+                             ignoringSavedState: requested == nil)
             let arrived = app.windows.firstMatch.frame.size
             let cell = pitch(app)
             let name = "\(label)-\(Int(arrived.width))x\(Int(arrived.height))"
             attach(app, named: name)
             log.append("""
-                \(name) requested=\(requested) \
+                \(name) requested=\(requested ?? "the scene's default") \
                 layout=\(Int(arrived.width))x\(Int(arrived.height - titleBar)) \
                 pitch=\(cell) board-core=\(cell * 7)
                 """)
             print("LAYOUT-EVIDENCE \(log.last!)")
             return (arrived, cell)
         }
+
+        // What a first launch opens at: no `-mxq-window`, and no saved frame to
+        // restore. Today that is the display's whole visible area, on this
+        // display and on every one measured so far — the content is flexible in
+        // both directions and nothing tells the window otherwise. It is
+        // photographed like the rest because a size nobody has looked at is not
+        // a decided size, and this one has not been decided yet.
+        let first = record("firstlaunch", window: nil)
+        XCTAssertGreaterThanOrEqual(first.window.width, 616,
+                                    "a first launch cannot open below the minimum")
+        XCTAssertGreaterThanOrEqual(first.window.height, 420)
 
         // The smallest window the product allows. The size asked for is far
         // below it on both axes, so what comes back is the minimum itself.

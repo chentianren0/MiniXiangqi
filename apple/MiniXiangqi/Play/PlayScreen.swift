@@ -33,6 +33,14 @@ struct PlayScreen: View {
     let core: Core
 
     private static let panelWidth: CGFloat = 260
+
+    /// The air around the board, and an allowance rather than a padding: it is
+    /// taken off the space the board is fitted into, and the board is then
+    /// centred in the whole of it. At the minimum window that comes to exactly
+    /// 24 points on every side, which is what the number is chosen for. Above
+    /// the minimum the centring hands the board more than 24, and that is
+    /// accepted — the surplus a window has beyond the board it can carry
+    /// belongs around the board rather than inside it.
     private static let boardPadding: CGFloat = 24
 
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
@@ -218,6 +226,14 @@ struct PlayScreen: View {
         motion.tap(square)
     }
 
+    /// The panel's three sections read down one edge, so they begin on one
+    /// edge: `panelInset` from the panel's own. Each of them brings its own
+    /// interior — the status line's background is inset within it, the move
+    /// list's number column is right-aligned within it — and the outer padding
+    /// here is what makes the three agree. The status line therefore takes 4,
+    /// because its own background already accounts for the other 12.
+    private static let panelInset: CGFloat = 16
+
     private func panel(_ game: Game, _ motion: PlayMotion) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             TurnStatus(state: game.presentedState,
@@ -225,12 +241,13 @@ struct PlayScreen: View {
                        sideToMove: game.evaluation.sideToMove,
                        inCheck: game.evaluation.inCheck,
                        beatEmphasis: motion.beatEmphasis)
-                .padding(8)
+                .padding(.horizontal, Self.panelInset - 12)
+                .padding(.vertical, 8)
 
             Divider()
 
             MoveList(notation: game.notation)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, Self.panelInset)
                 .frame(maxHeight: .infinity)
 
             Divider()
@@ -242,7 +259,7 @@ struct PlayScreen: View {
                 controls(game, motion, compactFlip: false)
                 controls(game, motion, compactFlip: true)
             }
-            .padding(16)
+            .padding(Self.panelInset)
             // The blocking notice the contract gives the claim, presented when
             // the player invokes it rather than the moment it becomes
             // available: in Free Play the enabled control and the status line's
@@ -253,7 +270,15 @@ struct PlayScreen: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .background(.regularMaterial)
+        // The material runs to the window's top edge, behind the title bar, so
+        // the panel reads as one surface from the top of the window down. Only
+        // the material goes up there: the sections keep their own inset and
+        // stay clear of the title bar's controls.
+        .background {
+            Rectangle()
+                .fill(.regularMaterial)
+                .ignoresSafeArea(.container, edges: .top)
+        }
         // The panel is outside the board too: a tap on its quiet parts
         // cancels the selection. Its controls keep their own taps.
         .contentShape(Rectangle())
