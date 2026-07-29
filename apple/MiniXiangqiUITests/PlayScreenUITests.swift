@@ -462,6 +462,132 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "17-a-claimed-draw-with-the-notice-closed")
     }
 
+    // MARK: - The two languages
+
+    // docs/copy.md is the register: normative Simplified Chinese with an
+    // approved English beside it, the pair stored under one symbolic key. The
+    // String Catalog is what puts them on screen, and the only thing that can
+    // say the catalog is live is the running screen in each language. So the
+    // two tests below walk one language each over the surfaces the copy lives
+    // on — ordinary play, the result notice, the claim's alert, and the
+    // cluster at the smallest window the product allows — and photograph them.
+    //
+    // They also assert what does *not* change with the language. Traditional
+    // notation, the piece characters, and the numeral strips are game
+    // presentation rather than interface copy: the same characters in every
+    // language, and asserted here so that a future translation cannot quietly
+    // take them.
+
+    func testTheInterfaceInChinese() {
+        photographTheInterface(in: .chinese)
+    }
+
+    func testTheInterfaceInEnglish() {
+        photographTheInterface(in: .english)
+    }
+
+    private func photographTheInterface(in language: Language) {
+        // Ordinary play, mid-game: the turn status, a filled move list, and
+        // the control cluster, all carrying words at once.
+        let play = launch(replaying: Self.evidenceLine, in: language)
+        XCTAssertEqual(play.buttons["cluster-undo"].label, language.undo,
+                       "the control's label is the register's, in this language")
+        XCTAssertEqual(play.buttons["cluster-claim"].label, language.claimDraw)
+        XCTAssertEqual(play.buttons["cluster-flip"].label, language.flipBoard)
+        XCTAssertTrue(reading(play, "turn-status").contains(language.redToMove),
+                      "the turn status names the side to move")
+
+        // The move list is not copy. It reads the same either way.
+        XCTAssertTrue(play.staticTexts["卒4进1"].exists,
+                      "traditional notation is game presentation, not interface copy")
+        XCTAssertTrue(play.staticTexts["5."].exists, "and so is a row number")
+        let strips = play.windows.firstMatch.descendants(matching: .any)
+        XCTAssertEqual(strips["file-numerals-red"].label, "七 六 五 四 三 二 一",
+                       "each player's own numerals, in either language")
+        XCTAssertEqual(strips["file-numerals-black"].label, "1 2 3 4 5 6 7")
+        attach(play, named: "\(language.short)-play")
+
+        // Where the two languages part company most sharply. A screen reader
+        // hears the character in Chinese, because that is what the disc shows
+        // and what the reader is learning, and the piece's name in English.
+        point(play, "b1").click()
+        XCTAssertEqual(point(play, "b1").label, language.cannonSelectedOnB1,
+                       "the point description switches with the language")
+        attach(play, named: "\(language.short)-piece-selected")
+
+        // The result notice, and the status line that keeps saying it.
+        let finished = launch(replaying: Self.mateLine, in: language)
+        XCTAssertTrue(finished.staticTexts["result-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(reading(finished, "result-title"), language.redWinsNotice)
+        XCTAssertEqual(reading(finished, "result-reason"), language.checkmate)
+        XCTAssertEqual(finished.buttons["result-undo"].label, language.undo)
+        XCTAssertEqual(finished.buttons["result-new-game"].label, language.newGame)
+        XCTAssertTrue(reading(finished, "turn-status").contains(language.redWinsLine),
+                      "the shorter status-line form of the same result")
+        attach(finished, named: "\(language.short)-result-notice")
+
+        // The claim's alert, which is one accepted sentence said in the two
+        // roles an alert has.
+        let claimable = launch(replaying: Self.shuffleLine, in: language)
+        XCTAssertTrue(claimable.buttons["cluster-claim"].waitForExistence(timeout: 10))
+        XCTAssertTrue(reading(claimable, "turn-status").contains(language.drawAvailableAndReason),
+                      "the standing offer and its reason, joined by the metadata middot")
+        claimable.buttons["cluster-claim"].click()
+        let notice = claimable.sheets.firstMatch
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        attach(claimable, named: "\(language.short)-claim-alert")
+
+        let lines = notice.staticTexts.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(lines.count, 2, "a title and a message, never one recombined title")
+        XCTAssertEqual(lines.first, language.claimTitle)
+        XCTAssertEqual(lines.last, language.claimMessage)
+        XCTAssertTrue(notice.buttons[language.keepPlaying].exists)
+        XCTAssertTrue(notice.buttons[language.endAsDraw].exists)
+        notice.buttons[language.keepPlaying].click()
+
+        // The smallest window the product allows, where the English labels are
+        // materially wider than the Chinese they translate. Both states of the
+        // cluster are photographed, because the finished game's concluding
+        // action is the longest of the three and is what the flip control's
+        // fallback to its symbol exists for. Nothing here says what the
+        // cluster should look like; it says that all of it is still on screen,
+        // and the frames are what the words are read off.
+        for (line, name) in [(Self.evidenceLine, "play"), (Self.mateLine, "result")] {
+            let smallest = launch(replaying: line, in: language, window: "320x240")
+            let window = smallest.windows.firstMatch.frame
+            let cluster = ["cluster-undo",
+                           line == Self.mateLine ? "cluster-new-game" : "cluster-claim",
+                           "cluster-flip"]
+            for identifier in cluster {
+                let button = smallest.buttons[identifier]
+                XCTAssertTrue(button.exists, "\(identifier) should still be there at the minimum")
+                XCTAssertTrue(window.contains(button.frame),
+                              "\(identifier) should sit inside the minimum window, not past it")
+                print("CLUSTER-EVIDENCE \(language.short)-\(name) \(identifier) "
+                      + "label=\(button.label) width=\(button.frame.width)")
+            }
+            attach(smallest, named: "\(language.short)-\(name)-minimum-window")
+        }
+    }
+
+    /// The failure screen the play screen shows when a game will not start.
+    /// It is the one surface whose Chinese the register had to supply — the
+    /// application shipped an English literal with nothing behind it — so it
+    /// is worth seeing rather than assuming. A replay line the core refuses is
+    /// what puts it on screen.
+    func testTheGameThatDidNotStartSaysSoInBothLanguages() {
+        for language in [Language.chinese, .english] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-AppleLanguages", "(\(language.code))",
+                                   "-mxq-replay", "d1d7"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts[language.gameDidNotStart].waitForExistence(timeout: 20),
+                          "a refused replay line should say so in \(language.code)")
+            attach(app, named: "\(language.short)-game-did-not-start")
+            app.terminate()
+        }
+    }
+
     // MARK: - The layout at the sizes the window can be
 
     // Evidence, not a verdict. Nothing here says what the layout should do at
