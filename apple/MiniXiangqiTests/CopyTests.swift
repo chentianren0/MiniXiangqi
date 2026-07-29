@@ -38,11 +38,13 @@ struct CopyTests {
         // These are the ones the application asks for today.
         let keys = [
             "alert.claimDraw.title", "alert.claimDraw.message",
+            "alert.saveFailed.title", "alert.saveFailed.message",
             "board.a11y.red", "board.a11y.black", "board.a11y.empty",
             "board.a11y.selected", "board.a11y.legalMove", "board.a11y.capture",
             "board.a11y.inCheck",
             "control.undo", "control.claimDraw", "control.flipBoard",
             "control.newGame", "control.keepPlaying", "control.endAsDraw",
+            "control.cancel", "control.tryAgain",
             "failure.coreDidNotStart", "failure.gameDidNotStart",
             "metadata.join", "metadata.moveCount", "moveList.rowNumber",
             "piece.general", "piece.chariot", "piece.horse", "piece.cannon", "piece.soldier",
@@ -54,6 +56,7 @@ struct CopyTests {
             "status.redToMove", "status.blackToMove", "status.check",
             "status.sideToMove.checked", "status.drawAvailable",
             "status.redWins", "status.blackWins", "status.draw",
+            "status.saveFailed",
         ]
         for language in ["en", "zh-Hans"] {
             for key in keys {

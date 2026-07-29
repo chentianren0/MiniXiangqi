@@ -65,30 +65,6 @@ private final class FeedbackRecorder {
     }
 }
 
-struct RefusedByTheCore: Error { }
-
-/// The real core, with a switch that makes it refuse. Every answer here is the
-/// core's own — nothing decides a rule — and refusing is the only way to reach
-/// the state a failed core call leaves behind, which the transitions above have
-/// to survive: the ply refused, the position unchanged, and a transition that
-/// took the gate holding nothing to draw.
-final class RefusingRules: Rules {
-    private let real: Rules
-    var refuses = false
-
-    init(_ real: Rules) { self.real = real }
-
-    func evaluate(from startFEN: String, moves: [String]) throws -> Evaluation {
-        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
-        return try real.evaluate(from: startFEN, moves: moves)
-    }
-
-    func legalMoves(from startFEN: String, moves: [String]) throws -> [String] {
-        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
-        return try real.legalMoves(from: startFEN, moves: moves)
-    }
-}
-
 @Suite("The committing-transition gate")
 @MainActor
 struct PlayMotionTests {
@@ -99,7 +75,9 @@ struct PlayMotionTests {
         rules: Rules? = nil,
         defaults: UserDefaults? = nil
     ) throws -> (PlayMotion, ManualAnimator, FeedbackRecorder) {
-        let game = try Game(core: rules ?? Core.shared.get())
+        // The real core over a scratch store, unless the test brought the
+        // refusing stand-in — which wraps one of the same.
+        let game = try Game(rules: rules ?? TestCores.fresh())
         try game.replay(line)
         let animator = ManualAnimator()
         let recorder = try FeedbackRecorder(
@@ -387,7 +365,7 @@ struct PlayMotionTests {
         // A committing transition takes the gate before the core is asked, so
         // a core that refuses leaves one holding nothing to draw. It has to
         // let go, and without a landing: nothing arrived, so nothing sounds.
-        let rules = RefusingRules(try Core.shared.get())
+        let rules = RefusingRules(try TestCores.fresh())
         let (refused, refusedAnimator, refusedFeedback) = try makeMotion(rules: rules)
 
         refused.tap(Square("b1")!)
