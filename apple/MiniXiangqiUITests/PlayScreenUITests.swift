@@ -41,6 +41,8 @@ final class PlayScreenUITests: XCTestCase {
         let redToMove, drawAvailableAndReason, redWinsLine, checkmate: String
         let redWinsNotice: String
         let claimTitle, claimMessage, keepPlaying, endAsDraw: String
+        /// The notice once the game is filed, and the two actions it offers.
+        let recordedNotice, replay, done: String
 
         /// A whole point description, which is where the two languages part
         /// company most sharply: Chinese names a piece by the character on its
@@ -56,6 +58,7 @@ final class PlayScreenUITests: XCTestCase {
             redWinsLine: "红方胜", checkmate: "将死", redWinsNotice: "红方获胜",
             claimTitle: "局面已三次重复", claimMessage: "可以和棋结束。",
             keepPlaying: "继续对局", endAsDraw: "以和棋结束",
+            recordedNotice: "已记录到历史", replay: "回放", done: "完成",
             cannonSelectedOnB1: "b1 红 炮 已选择",
             coreDidNotStart: "核心未能启动", gameDidNotStart: "对局未能开始")
 
@@ -67,6 +70,7 @@ final class PlayScreenUITests: XCTestCase {
             claimTitle: "This position has occurred three times.",
             claimMessage: "You can end the game as a draw.",
             keepPlaying: "Keep Playing", endAsDraw: "End as a Draw",
+            recordedNotice: "Saved to History", replay: "Replay", done: "Done",
             cannonSelectedOnB1: "b1 Red Cannon Selected",
             coreDidNotStart: "The core did not start", gameDidNotStart: "The game did not start")
     }
@@ -660,13 +664,16 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
         app.sheets.firstMatch.buttons["以和棋结束"].click()
 
+        // The claim is the terminal commit: the record is in History the moment
+        // it succeeds, so the notice reads as the recorded state rather than as
+        // a result still awaiting one.
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5))
-        XCTAssertEqual(reading(app, "result-title"), "和棋")
+        XCTAssertEqual(reading(app, "result-title"), "已记录到历史")
         XCTAssertEqual(reading(app, "result-reason"), "三次重复")
         XCTAssertFalse(app.buttons["result-undo"].exists,
                        "a claimed draw is the player's own confirmed result")
         XCTAssertTrue(reading(app, "turn-status").contains("和局"),
-                      "the status line agrees")
+                      "the result itself is still on screen, on the status line")
         attach(app, named: "16-a-claimed-draw")
 
         app.buttons["result-close"].click()
@@ -675,6 +682,37 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertFalse(app.buttons["cluster-undo"].isEnabled,
                        "a claimed draw cannot be taken back")
         attach(app, named: "17-a-claimed-draw-with-the-notice-closed")
+    }
+
+    /// The notice's recorded state, which History existing is what unlocked:
+    /// the game is filed, so the notice says where it went and offers the two
+    /// actions the accepted design gives it.
+    func testARecordedResultOffersReplayAndDone() {
+        let app = launch(replaying: Self.shuffleLine)
+        XCTAssertTrue(app.buttons["cluster-claim"].waitForExistence(timeout: 10))
+        app.buttons["cluster-claim"].click()
+        XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
+        app.sheets.firstMatch.buttons["以和棋结束"].click()
+
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5))
+        XCTAssertEqual(reading(app, "result-title"), "已记录到历史")
+        XCTAssertEqual(app.buttons["result-replay"].label, "回放")
+        XCTAssertEqual(app.buttons["result-done"].label, "完成")
+        XCTAssertFalse(app.buttons["result-new-game"].exists,
+                       "a game already filed is not filed again")
+        XCTAssertFalse(app.buttons["result-undo"].exists,
+                       "and a History record has nothing to take back")
+        attach(app, named: "40-the-recorded-result-notice")
+
+        // 回放 opens the record it just made, from its initial position — which
+        // is on the other destination, inside its own navigation stack.
+        app.buttons["result-replay"].click()
+        let progress = app.windows.firstMatch.descendants(matching: .any)["replay-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 15),
+                      "回放 opens the newly recorded game")
+        XCTAssertEqual(progress.value as? String, "0 / 8",
+                       "at the game's initial position, with its whole line behind it")
+        attach(app, named: "41-the-replay-opened-from-the-recorded-notice")
     }
 
     // MARK: - The two languages
@@ -759,6 +797,18 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(notice.buttons[language.keepPlaying].exists)
         XCTAssertTrue(notice.buttons[language.endAsDraw].exists)
         notice.buttons[language.keepPlaying].click()
+
+        // And the notice the claim leaves behind, which is the recorded state:
+        // the claim is the terminal commit, so the record exists before the
+        // notice does.
+        claimable.buttons["cluster-claim"].click()
+        XCTAssertTrue(claimable.sheets.firstMatch.waitForExistence(timeout: 5))
+        claimable.sheets.firstMatch.buttons[language.endAsDraw].click()
+        XCTAssertTrue(claimable.staticTexts["result-title"].waitForExistence(timeout: 5))
+        XCTAssertEqual(reading(claimable, "result-title"), language.recordedNotice)
+        XCTAssertEqual(claimable.buttons["result-replay"].label, language.replay)
+        XCTAssertEqual(claimable.buttons["result-done"].label, language.done)
+        attach(claimable, named: "\(language.short)-recorded-result-notice")
 
         // The smallest window the product allows, where the English labels are
         // materially wider than the Chinese they translate. Both states of the

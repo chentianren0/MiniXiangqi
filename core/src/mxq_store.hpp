@@ -31,6 +31,7 @@
 #include "mxq.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -206,6 +207,88 @@ struct Summary {
     int64_t     ended_at_ms = 0;
     int64_t     added_at_ms = 0;
 };
+
+/*
+ * An imported game's row, whole.
+ *
+ * It is not an ActiveGame plus a Completion: an active game has no ending to
+ * write and a History record is never the library's active game, so an import
+ * writes one row that is complete from the moment it exists. The vocabulary
+ * members are the serialised spellings, null exactly where the archive omits
+ * the member, and the terminal pair is never null — an imported record is
+ * always a completed game.
+ *
+ * added_at_ms is the History-added time, which for an import is the import
+ * instant: docs/game-data.md orders each group by "the most recently completed
+ * or imported first", so the file's own dates order nothing.
+ */
+struct ImportedGame {
+    std::string game_id;
+    std::string archive;        /* the canonical bytes, verbatim */
+    std::string content_sha256; /* 64 lowercase hexadecimal characters */
+    const char *mode = nullptr;
+    const char *human_side = nullptr;
+    const char *ai_level = nullptr;
+    const char *first_mover_choice = nullptr;
+    int64_t     ai_movetime_ms = 0; /* 0 means the archive omits it */
+    int64_t     move_count = 0;
+    int64_t     started_at_ms = 0;
+    const char *outcome = nullptr;
+    const char *end_reason = nullptr;
+    int64_t     ended_at_ms = 0;
+    int64_t     added_at_ms = 0;
+};
+
+/*
+ * The import's one write transaction — the last stage of docs/game-data.md's
+ * validation order, and the only stage that touches the database at all.
+ *
+ * Inside one transaction: look for a row already holding this stable identity,
+ * and then either
+ *
+ *   - there is none, and one insert creates the immutable History record. The
+ *     library's active-game reference is not named by any statement here, which
+ *     is how "an import never creates or replaces the active game" is
+ *     structural rather than checked;
+ *   - there is one and it is the same game, which is success: out_existing is
+ *     true, the existing record is returned, and nothing is written — not even
+ *     the library revision, because nothing changed;
+ *   - there is one and it is a different game, which is
+ *     MXQ_ERR_STORE_IDENTITY_CONFLICT with no persistent change.
+ *
+ * same_game is asked that question inside the transaction, because the codec
+ * lives above the store: it is handed the bytes and the hash the row holds and
+ * answers whether they are this file's game. A status other than MXQ_OK from it
+ * aborts the import with that status — a row that no longer decodes is store
+ * corruption rather than a conflict.
+ */
+using SameGame = std::function<MxqStatus(const std::string &archive,
+                                         const std::string &content_sha256,
+                                         bool &out_same, MxqError *err)>;
+
+MxqStatus import_game(Store &store, const ImportedGame &row,
+                      const SameGame &same_game, bool &out_existing,
+                      uint64_t &out_record_id, Summary &out_summary,
+                      MxqError *err);
+
+/*
+ * A row's summary columns as the MxqRecordSummary the C surface hands out, and
+ * the out-struct preparation that precedes it.
+ *
+ * The store speaks the database's vocabulary — the serialised spellings the
+ * schema's CHECK constraints are written in — and turning that into the enums
+ * mxq.h carries is the C surface's job. It is declared here because the store
+ * has two C surfaces now: the active game and History as something to read, and
+ * the interchange pair. One translation, so a record cannot mean one thing when
+ * a page reports it and another when an import returns it.
+ *
+ * A value outside a closed vocabulary is MXQ_ERR_STORE_CORRUPT rather than a
+ * summary with a guessed field in it; nothing is recomputed from the blob,
+ * because the columns were written from the same values the document was.
+ */
+MxqStatus fill_summary(const Summary &row, bool is_active, MxqRecordSummary *out,
+                       MxqError *err);
+MxqStatus begin_summary(MxqRecordSummary *out, MxqError *err);
 
 /* Whether the library holds an active game. A dangling reference is corruption
  * here for the same reason it is in load_active. */

@@ -135,8 +135,11 @@ bool provenance_of(const std::string &text, MxqProvenance &out) {
     return false;
 }
 
+} /* namespace */
+
 /*
- * One row's summary columns as MxqRecordSummary.
+ * One row's summary columns as MxqRecordSummary. Declared in mxq_store.hpp
+ * because the interchange pair returns one too; see the comment there.
  *
  * Every field is a column; nothing is recomputed from the blob here, because
  * the columns are written from the same values the document is written from
@@ -192,7 +195,6 @@ MxqStatus begin_summary(MxqRecordSummary *out, MxqError *err) {
                      static_cast<uint32_t>(sizeof(MxqRecordSummary)), err);
 }
 
-} /* namespace */
 } /* namespace store */
 } /* namespace mxq */
 

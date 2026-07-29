@@ -947,11 +947,22 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core,
 
 /*
  * Open archive bytes as a detached read-only session, for import preview. The
- * bytes are borrowed for the duration of the call. Mutations on the resulting
- * session return MXQ_ERR_STATE_SESSION_READ_ONLY.
+ * bytes are borrowed for the duration of the call and are untrusted input.
+ * Mutations on the resulting session return MXQ_ERR_STATE_SESSION_READ_ONLY.
+ *
+ * The bytes are fully validated first — everything mxq_archive_validate does,
+ * with every import bound applied — because a preview that shows a replayable
+ * board must be able to replay it, and because a preview must accept exactly
+ * the files mxq_store_import accepts: one that displayed a game the import then
+ * refused would be the worst of both answers. The refusals are therefore that
+ * function's, class for class and status for status, including the refusal of a
+ * file recording no end, which is not a game an import could file.
+ *
+ * No store row is involved: the session's record identity is not a record, the
+ * library is neither read nor written, and releasing it changes nothing.
  *
  * Thread: any non-UI thread except inside a search callback.
- * Blocking: yes — decode work.
+ * Blocking: yes — decode and replay work.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_open_archive(MxqCore *core,
                                                  const uint8_t *bytes,
@@ -1656,7 +1667,15 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_delete(MxqCore *core,
 
 /*
  * Export one immutable History record as portable archive bytes. The caller
- * releases the blob with mxq_blob_release.
+ * releases the blob with mxq_blob_release. The active game is not a History
+ * record, so its record_id is MXQ_ERR_STORE_NOT_FOUND exactly as an identifier
+ * that was never issued is.
+ *
+ * One member of the document is regenerated and no other: origin describes the
+ * export event, so it names this one. The content — the moves, the frozen
+ * configuration, the identity, the ending — and therefore the content hash are
+ * the record's own, unchanged, which is what lets an exported file be compared
+ * with the row it came from and with another export of the same record.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
@@ -1672,9 +1691,16 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_export(MxqCore *core, uint64_t record_id,
  *
  * An exact duplicate — same game_id, same archive version, same content hash
  * and bytes — sets *out_outcome to MXQ_IMPORT_EXISTING and returns the existing
- * record: success, not an error. The same identity with differing content is
+ * record: success, not an error, and nothing is written, so the library
+ * revision does not move either. The same identity with differing content is
  * MXQ_ERR_STORE_IDENTITY_CONFLICT. Every other rejection class returns its own
- * typed error. out_outcome, out_record_id and out_summary are each optional.
+ * typed error. out_outcome, out_record_id and out_summary are each optional,
+ * and out_outcome is meaningful only on MXQ_OK.
+ *
+ * The record is marked imported by the library rather than by the file: origin
+ * is stored as the file gave it, because it describes an export event that
+ * really happened, and it is never what sets provenance. The History-added time
+ * that orders the list is the import, not the game's own dates.
  *
  * The bytes are borrowed for the duration of the call and are untrusted input.
  *
