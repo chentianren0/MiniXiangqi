@@ -901,6 +901,7 @@ void fill_info(const Decoded &decoded, MxqArchiveInfo *out) {
 }
 
 void fill_stored(const Decoded &decoded, Stored &out) {
+    out.archive_version = decoded.archive_version;
     out.game_id = decoded.game_id;
     out.config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
     out.config.mode = decoded.mode;
@@ -1009,6 +1010,64 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
     return MXQ_OK;
 }
 
+/*
+ * Stage 5, the rules tier, in one place because two entry points run it.
+ *
+ * The initial position must be exactly the frozen starting FEN — version 1
+ * defines no other, and the setup-legality predicate a later version would need
+ * does not exist — then every move must be legal in sequence, then the recorded
+ * terminal pair must agree with the replayed adjudication.
+ *
+ * An archive that records no end has no terminal pair to agree with: an
+ * unconfirmed natural terminal position remains the active game, so it is as
+ * valid there as an ongoing one. mxq_archive_validate accepts that shape;
+ * read_imported refuses it one stage earlier, for a reason that is about what
+ * an import creates rather than about what the rules say.
+ */
+MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
+    if (decoded.start_fen != MXQ_START_FEN) {
+        fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
+                   "\"start_fen\" is not the frozen starting position, which "
+                   "is the only initial position archive version 1 defines");
+        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    }
+
+    std::vector<const char *> moves;
+    moves.reserve(decoded.moves.size());
+    for (const std::string &move : decoded.moves) {
+        moves.push_back(move.c_str());
+    }
+
+    std::string fen;
+    std::string detail;
+    bool in_check = false;
+    uint32_t ply = 0;
+    engine::Adjudication adj{};
+    size_t first_illegal = 0;
+
+    switch (engine::replay(decoded.start_fen.c_str(),
+                           moves.empty() ? nullptr : moves.data(), moves.size(),
+                           fen, in_check, ply, adj, nullptr, first_illegal,
+                           detail)) {
+    case engine::ReplayError::None:
+        break;
+    case engine::ReplayError::IllegalMove:
+        fill_error_index(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
+                         ("the move line is not legal: " + detail).c_str(),
+                         first_illegal);
+        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    case engine::ReplayError::StartFenInvalid:
+    case engine::ReplayError::NotInitialised:
+        fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY, detail.c_str());
+        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    }
+
+    if (!decoded.completed) {
+        return MXQ_OK;
+    }
+    return check_terminal_pair(decoded, adj, err);
+}
+
 #endif /* MXQ_ENABLE_RULES_FACADE */
 
 MxqStatus begin(MxqCore *core, const uint8_t *bytes, MxqArchiveInfo *out,
@@ -1048,6 +1107,61 @@ MxqStatus read_stored(const uint8_t *bytes, size_t len, Stored &out,
     fill_stored(decoded, out);
     return MXQ_OK;
 }
+
+#if defined(MXQ_ENABLE_RULES_FACADE)
+
+/* The importer's path in. Same ladder, every bound applied, the rules tier
+ * run, and the one refusal that belongs to import rather than to the format;
+ * see mxq_archive_read.hpp. */
+MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
+                        MxqError *err) {
+    out = Stored{};
+    if (bytes == nullptr) {
+        assert(false && "required bytes pointer was null");
+        fill_error(err, MXQ_ERR_ARG_NULL, "bytes was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+
+    Decoded decoded;
+    Reject rejected{};
+    if (!decode(bytes, len, /*import_bounds=*/true, decoded, rejected)) {
+        fill_error(err, rejected.status, rejected.detail.c_str());
+        return rejected.status;
+    }
+
+    const MxqStatus rules = validate_rules_tier(decoded, err);
+    if (rules != MXQ_OK) {
+        return rules;
+    }
+
+    /*
+     * And then the one refusal that is import's rather than the format's: an
+     * exported file contains one immutable History game, and a document with no
+     * terminal trio is the shape a stored *active* game has. Refusing it here
+     * keeps the store's own "a record can only enter this library as imported
+     * once it is complete" from being the thing that says so, which would be a
+     * database error for a file problem.
+     *
+     * It comes last, after the accepted validation order has run entire, and
+     * not among its stages. It is not one of them: those five decide whether
+     * the bytes are a version 1 archive, and this decides whether that archive
+     * is a game an import may file. Asking it earlier would mask a rejection
+     * class the corpus names — an incomplete document with an illegal move
+     * would be reported for the shape rather than for the move — and the answer
+     * a file gets must not depend on which entry point asked.
+     */
+    if (!decoded.completed) {
+        fill_error(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                   "the file records no end, and an imported game is always a "
+                   "completed one");
+        return MXQ_ERR_ARCHIVE_MALFORMED;
+    }
+
+    fill_stored(decoded, out);
+    return MXQ_OK;
+}
+
+#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* namespace archive */
 } /* namespace mxq */
@@ -1107,63 +1221,12 @@ MxqStatus MXQ_CALL mxq_archive_validate(MxqCore *core, const uint8_t *bytes,
         return rejected.status;
     }
 
-    /*
-     * Stage 5, the rules tier. The initial position must be exactly the frozen
-     * starting FEN — version 1 defines no other, and the setup-legality
-     * predicate a later version would need does not exist — then every move
-     * must be legal in sequence, then the recorded terminal pair must agree
-     * with the replayed adjudication.
-     */
-    if (decoded.start_fen != MXQ_START_FEN) {
-        mxq::fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
-                        "\"start_fen\" is not the frozen starting position, "
-                        "which is the only initial position archive version 1 "
-                        "defines");
-        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    /* Stage 5, the rules tier — the same one mxq_store_import runs, so a file
+     * this call accepts is a file that import's validation accepts. */
+    const MxqStatus rules = mxq::archive::validate_rules_tier(decoded, err);
+    if (rules != MXQ_OK) {
+        return rules;
     }
-
-    std::vector<const char *> moves;
-    moves.reserve(decoded.moves.size());
-    for (const std::string &move : decoded.moves) {
-        moves.push_back(move.c_str());
-    }
-
-    std::string fen;
-    std::string detail;
-    bool in_check = false;
-    uint32_t ply = 0;
-    mxq::engine::Adjudication adj{};
-    size_t first_illegal = 0;
-
-    switch (mxq::engine::replay(decoded.start_fen.c_str(),
-                                moves.empty() ? nullptr : moves.data(),
-                                moves.size(), fen, in_check, ply, adj, nullptr,
-                                first_illegal, detail)) {
-    case mxq::engine::ReplayError::None:
-        break;
-    case mxq::engine::ReplayError::IllegalMove:
-        mxq::fill_error_index(
-            err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
-            ("the move line is not legal: " + detail).c_str(), first_illegal);
-        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
-    case mxq::engine::ReplayError::StartFenInvalid:
-    case mxq::engine::ReplayError::NotInitialised:
-        mxq::fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
-                        detail.c_str());
-        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
-    }
-
-    if (decoded.completed) {
-        const MxqStatus terminal =
-            mxq::archive::check_terminal_pair(decoded, adj, err);
-        if (terminal != MXQ_OK) {
-            return terminal;
-        }
-    }
-    /* An active game's stored content records no end, and there is nothing for
-     * the adjudication to agree with: an unconfirmed natural terminal state
-     * remains the active game, so a terminal final position is as valid there
-     * as an ongoing one. */
 
     mxq::archive::fill_info(decoded, out);
     return MXQ_OK;

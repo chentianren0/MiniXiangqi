@@ -159,3 +159,38 @@ add_test(NAME store_history COMMAND mxq_history_tests)
 set_tests_properties(store_history PROPERTIES
   LABELS "store;fixtures"
 )
+
+# The interchange runner: export and import, over the archive corpus the codec
+# runner already owns.
+#
+# It re-runs that corpus rather than growing one of its own, because what it
+# asserts is not what the codec decides but what the pipeline around it does:
+# every rejection class refusing through mxq_store_import with the status the
+# sidecar already fixed, and the library untouched each time. A validation that
+# is right and a transaction that runs anyway would pass archive_fixtures
+# completely.
+#
+# It links the vendored SQLite for the write lock, exactly as the History runner
+# does: an import that fails at BEGIN IMMEDIATE is the only honest way to drive
+# the "never partially imported" promise, and nothing in the core arranges it.
+# It needs no internal headers — every case here is public surface.
+#
+# Without the engine an import cannot replay a move line and is absent from the
+# library, and no History record can be made for an export to find; one case
+# runs there, and the rest report NOT IMPLEMENTED.
+
+add_executable(mxq_interchange_tests
+  mxq_interchange_tests.cpp
+  mxq_json.cpp
+)
+target_link_libraries(mxq_interchange_tests PRIVATE mxq::core mxq::sqlite mxq_warnings)
+target_compile_definitions(mxq_interchange_tests PRIVATE
+  MXQ_ARCHIVE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/archive"
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME store_interchange COMMAND mxq_interchange_tests)
+set_tests_properties(store_interchange PROPERTIES
+  LABELS "store;archive;fixtures"
+)
