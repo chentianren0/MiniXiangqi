@@ -17,6 +17,7 @@
 // a result notice the player had put away would come back with the rebuilt
 // view. `PlayState` is what the screen re-renders against instead.
 
+import Foundation
 import SwiftUI
 
 struct ContentView: View {
@@ -53,6 +54,19 @@ struct ContentView: View {
         }
     }
 
+    /// The game files `-mxq-import <base64>;<base64>` names. Debug only: a
+    /// release build has no launch argument to read and no files to import, so
+    /// the list is empty and History's launch-import path never runs.
+    static var launchImports: [Data] {
+        #if DEBUG
+        (DebugLaunch.argument(after: "-mxq-import") ?? "")
+            .split(separator: ";")
+            .compactMap { Data(base64Encoded: String($0)) }
+        #else
+        []
+        #endif
+    }
+
     #if DEBUG
     /// Whether this process is the unit suite's host. The test bundle is
     /// injected into the app, so the testing environment and the XCTest
@@ -81,11 +95,23 @@ private struct Destinations: View {
     @State private var destination: Destination = .play
     @State private var pendingReplay: UInt64?
 
+    /// The game files a debug launch asked to be imported, held here for the
+    /// same reason and consumed by History the first time it appears. Always
+    /// empty in a release build, where the launch argument does not exist.
+    @State private var pendingImports: [Data] = ContentView.launchImports
+
+    /// The library, created once with the window for the same reason the game
+    /// is: a destination rebuilt on every visit would otherwise rebuild it too,
+    /// and a record written while another copy of the list is on screen would
+    /// be invisible to the copy being looked at.
+    @State private var library: HistoryLibrary
+
     private enum Destination: Hashable { case play, history }
 
     init(core: Core) {
         self.core = core
         _play = State(initialValue: PlayState(core: core))
+        _library = State(initialValue: HistoryLibrary(store: core.history))
     }
 
     var body: some View {
@@ -98,7 +124,8 @@ private struct Destinations: View {
             }
 
             Tab("nav.history", systemImage: "clock", value: Destination.history) {
-                HistoryScreen(core: core, pendingReplay: $pendingReplay)
+                HistoryScreen(library: library, pendingReplay: $pendingReplay,
+                              pendingImports: $pendingImports)
             }
         }
         .tabViewStyle(.sidebarAdaptable)

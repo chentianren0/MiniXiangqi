@@ -331,8 +331,14 @@ final class HistoryScreenUITests: XCTestCase {
                       "and reads as the game the file described — it reads \(row.label)")
         XCTAssertTrue(row.label.contains(language.importedMarker),
                       "with the imported marker the contract asks for")
-        XCTAssertFalse(app.sheets.firstMatch.exists,
-                       "a successful import says nothing: the row is the answer")
+        // A successful import says nothing: the row is the answer. Asserted as
+        // the absence of the words an import would have said rather than as the
+        // absence of a sheet — the window carries containers a sheet query can
+        // match that have nothing to do with an alert.
+        XCTAssertFalse(app.staticTexts[language.duplicateTitle].exists)
+        XCTAssertFalse(app.staticTexts[language.newerVersionTitle].exists)
+        XCTAssertFalse(app.buttons[language.ok].exists,
+                       "and no alert to acknowledge")
         XCTAssertFalse(self.row(app, 1).exists, "one file, one game")
         attach(app, named: "37-the-imported-game-in-the-list")
     }

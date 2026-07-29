@@ -23,14 +23,32 @@ import MiniXiangqiCore
 import SwiftUI
 
 struct HistoryScreen: View {
-    let core: Core
+    /// The library, held above the container and handed down.
+    ///
+    /// It is the app's rather than this destination's, for the same reason the
+    /// game is: the container tears one destination's content down and rebuilds
+    /// it on every visit, so a library created in here would be a *different*
+    /// library on every visit, each with its own copy of the list. That is
+    /// merely wasteful until something writes to the store while another copy
+    /// is on screen — an import is exactly that — at which point one copy holds
+    /// the new record and the one being looked at does not.
+    let library: HistoryLibrary
 
     /// A record another destination asked to be shown — the just-recorded
     /// game's 回放. It is resolved against the loaded list rather than pushed
     /// blind, because the destination takes a record and not an identifier.
     @Binding var pendingReplay: UInt64?
 
-    @State private var library: HistoryLibrary?
+    /// Game files a debug launch asked to be imported, taken and cleared the
+    /// first time this destination appears. Always empty in a release build.
+    ///
+    /// It lives above the container for the same reason the pending replay
+    /// does: this destination is torn down and rebuilt on every visit, so a
+    /// request held inside it would be made again on the second visit — and an
+    /// import made twice is a duplicate, which is a test's own setup producing
+    /// the very thing another test is about.
+    @Binding var pendingImports: [Data]
+
     @State private var path: [RecordSummary] = []
 
     /// The record a deletion is about — while its confirmation is up, and
@@ -38,16 +56,9 @@ struct HistoryScreen: View {
     @State private var deleting: RecordSummary?
     @State private var confirmingDeletion = false
 
-    /// The file picker, and what the import it started had to say.
+    /// The file picker. What the import it starts has to say is the library's,
+    /// not this view's — see `HistoryLibrary.importAnswer`.
     @State private var importing = false
-    @State private var answer: ImportAnswer?
-
-    /// The record a successful import just added, while the list lights it.
-    @State private var revealed: UInt64?
-
-    #if DEBUG
-    @State private var launchFilesImported = false
-    #endif
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -58,9 +69,7 @@ struct HistoryScreen: View {
             content
                 .navigationTitle("nav.history")
                 .navigationDestination(for: RecordSummary.self) { record in
-                    if let library {
-                        ReplayScreen(record: record, library: library)
-                    }
+                    ReplayScreen(record: record, library: library)
                 }
                 .toolbar {
                     ToolbarItem {
@@ -77,17 +86,11 @@ struct HistoryScreen: View {
             // Filing a game happens on the other destination, so coming back
             // here is exactly when the list may have changed underneath. The
             // library revision is what says whether it did.
-            let library = library ?? HistoryLibrary(store: core.history)
-            self.library = library
             library.loadIfChanged()
-            showPendingReplay(library)
-            #if DEBUG
-            importLaunchFiles()
-            #endif
+            showPendingReplay()
+            importPendingFiles()
         }
-        .onChange(of: pendingReplay) { _, _ in
-            if let library { showPendingReplay(library) }
-        }
+        .onChange(of: pendingReplay) { _, _ in showPendingReplay() }
         // One file at a time is the accepted rule, and the picker is the
         // cheapest place to keep it: a player never selects five games and then
         // has four of them refused. The allowed type is the declared one, so
@@ -102,58 +105,53 @@ struct HistoryScreen: View {
             case .failure:
                 // The picker could not hand the file over at all, which from
                 // here is indistinguishable from a file that cannot be read.
-                answer = .unreadable
+                library.reportUnreadableFile()
             }
         }
     }
 
-    @ViewBuilder
     private var content: some View {
-        if let library {
-            list(library)
-                .alert("alert.deleteGame.title", isPresented: $confirmingDeletion) {
-                    Button("control.cancel", role: .cancel) { deleting = nil }
-                    Button("control.delete", role: .destructive) {
-                        if let record = deleting { library.delete(record) }
-                    }
-                } message: {
-                    Text("alert.deleteGame.message")
+        list
+            .alert("alert.deleteGame.title", isPresented: $confirmingDeletion) {
+                Button("control.cancel", role: .cancel) { deleting = nil }
+                Button("control.delete", role: .destructive) {
+                    if let record = deleting { library.delete(record) }
                 }
-                // A deletion the store refused: the record is still there, and
-                // the retry is the same deletion. Same shape as every other
-                // "could not do it, nothing changed, try again" in the app.
-                .alert("alert.deleteFailed.title",
-                       isPresented: Binding(get: { library.deletionFailure != nil },
-                                            set: { if !$0 { library.dismissDeletionFailure() } })) {
-                    Button("control.cancel", role: .cancel) {
-                        library.dismissDeletionFailure()
-                        deleting = nil
-                    }
-                    Button("control.tryAgain") {
-                        library.dismissDeletionFailure()
-                        if let record = deleting { library.delete(record) }
-                    }
-                } message: {
-                    Text("alert.deleteFailed.message")
+            } message: {
+                Text("alert.deleteGame.message")
+            }
+            // A deletion the store refused: the record is still there, and the
+            // retry is the same deletion. Same shape as every other "could not
+            // do it, nothing changed, try again" in the app.
+            .alert("alert.deleteFailed.title",
+                   isPresented: Binding(get: { library.deletionFailure != nil },
+                                        set: { if !$0 { library.dismissDeletionFailure() } })) {
+                Button("control.cancel", role: .cancel) {
+                    library.dismissDeletionFailure()
+                    deleting = nil
                 }
-                // Every answer an import has other than the row appearing. One
-                // alert rather than five, because they differ in their words
-                // and their actions and in nothing else.
-                .alert(LocalizedStringKey(answer?.title ?? ""),
-                       isPresented: Binding(get: { answer != nil },
-                                            set: { if !$0 { answer = nil } }),
-                       presenting: answer) { answer in
-                    actions(for: answer)
-                } message: { answer in
-                    Text(LocalizedStringKey(answer.message))
+                Button("control.tryAgain") {
+                    library.dismissDeletionFailure()
+                    if let record = deleting { library.delete(record) }
                 }
-        } else {
-            ProgressView()
-        }
+            } message: {
+                Text("alert.deleteFailed.message")
+            }
+            // Every answer an import has other than the row appearing. One
+            // alert rather than five, because they differ in their words and
+            // their actions and in nothing else.
+            .alert(LocalizedStringKey(library.importAnswer?.title ?? ""),
+                   isPresented: Binding(get: { library.importAnswer != nil },
+                                        set: { if !$0 { library.dismissImportAnswer() } }),
+                   presenting: library.importAnswer) { answer in
+                actions(for: answer)
+            } message: { answer in
+                Text(LocalizedStringKey(answer.message))
+            }
     }
 
     @ViewBuilder
-    private func list(_ library: HistoryLibrary) -> some View {
+    private var list: some View {
         if let failure = library.failure, library.records.isEmpty {
             // A library that cannot be read is worth saying so about: an empty
             // list here would be a claim about the player's games that this
@@ -173,19 +171,19 @@ struct HistoryScreen: View {
                 List {
                     if !library.pinnedRecords.isEmpty {
                         Section("history.section.pinned") {
-                            rows(library, library.pinnedRecords)
+                            rows(library.pinnedRecords)
                         }
                         Section("history.section.others") {
-                            rows(library, library.unpinnedRecords)
+                            rows(library.unpinnedRecords)
                         }
                     } else {
                         // With nothing pinned there is one unheaded section, and
                         // the list looks like a plain list of games.
-                        rows(library, library.unpinnedRecords)
+                        rows(library.unpinnedRecords)
                     }
                 }
                 .accessibilityIdentifier("history-list")
-                .onChange(of: revealed) { _, id in
+                .onChange(of: library.importedRecord) { _, id in
                     guard let id else { return }
                     // A scroll is travel, and travel is what Reduce Motion
                     // removes: the row still arrives, immediately. The light on
@@ -196,12 +194,20 @@ struct HistoryScreen: View {
                         scroll.scrollTo(id, anchor: .center)
                     }
                 }
+                // The light decays on its own; nothing here dismisses anything
+                // the player has to read.
+                .task(id: library.importedRecord) {
+                    guard library.importedRecord != nil else { return }
+                    try? await Task.sleep(for: .milliseconds(600))
+                    withAnimation(policy.fade(Motion.stateFadeAnimation)) {
+                        library.clearImportedRecord()
+                    }
+                }
             }
         }
     }
 
-    private func rows(_ library: HistoryLibrary,
-                      _ records: ArraySlice<RecordSummary>) -> some View {
+    private func rows(_ records: ArraySlice<RecordSummary>) -> some View {
         ForEach(records) { record in
             NavigationLink(value: record) {
                 row(record)
@@ -210,7 +216,7 @@ struct HistoryScreen: View {
             // ordering rule is about: `history-row-0` is whatever the core
             // put first.
             .accessibilityIdentifier("history-row-\(library.records.firstIndex(of: record) ?? 0)")
-            .listRowBackground(revealed == record.id
+            .listRowBackground(library.importedRecord == record.id
                                ? Color.accentColor.opacity(0.18) : nil)
             // Delete is listed first so that it is the outermost trailing
             // action and the full-swipe default, which is what the accepted
@@ -225,12 +231,12 @@ struct HistoryScreen: View {
                 shareButton(record).tint(.blue)
             }
             .swipeActions(edge: .leading) {
-                pinButton(library, record).tint(.orange)
+                pinButton(record).tint(.orange)
             }
             // The pointer equivalent the contract asks for, without adding a
             // permanent button to the row.
             .contextMenu {
-                pinButton(library, record)
+                pinButton(record)
                 shareButton(record)
                 Button("control.delete", systemImage: "trash", role: .destructive) {
                     confirmDeletion(of: record)
@@ -238,7 +244,7 @@ struct HistoryScreen: View {
             }
             // And the screen-reader equivalent, in the same order.
             .accessibilityActions {
-                pinButton(library, record)
+                pinButton(record)
                 shareButton(record)
                 Button("control.delete") { confirmDeletion(of: record) }
             }
@@ -261,8 +267,7 @@ struct HistoryScreen: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func pinButton(_ library: HistoryLibrary,
-                           _ record: RecordSummary) -> some View {
+    private func pinButton(_ record: RecordSummary) -> some View {
         Button(record.pinned ? "control.unpin" : "control.pin",
                systemImage: record.pinned ? "pin.slash" : "pin") {
             library.setPinned(!record.pinned, on: record)
@@ -274,7 +279,7 @@ struct HistoryScreen: View {
     /// presenting this costs nothing and no work is done for a share sheet the
     /// player dismisses.
     private func shareButton(_ record: RecordSummary) -> some View {
-        ShareLink(item: GameFile(record: record, store: core.history),
+        ShareLink(item: GameFile(record: record, store: library.store),
                   preview: SharePreview(record.metadataLine)) {
             Label("control.share", systemImage: "square.and.arrow.up")
         }
@@ -296,34 +301,10 @@ struct HistoryScreen: View {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let bytes = try? Data(contentsOf: url) else {
-            answer = .unreadable
+            library.reportUnreadableFile()
             return
         }
-        Task { await load(bytes) }
-    }
-
-    private func load(_ bytes: Data) async {
-        guard let library else { return }
-        switch await library.importGame(bytes) {
-        case .success(let imported) where imported.outcome == .created:
-            // No alert. The row is the answer, and it is already on screen.
-            answer = nil
-            reveal(imported.record.id)
-        case .success(let imported):
-            answer = .duplicate(imported.record)
-        case .failure(let error):
-            answer = ImportAnswer(refusing: error, retrying: bytes)
-        }
-    }
-
-    /// Scrolls the new record into view and lights it briefly. The light decays
-    /// on its own; nothing here dismisses anything the player has to read.
-    private func reveal(_ record: UInt64) {
-        withAnimation(policy.fade(Motion.stateFadeAnimation)) { revealed = record }
-        Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            withAnimation(policy.fade(Motion.stateFadeAnimation)) { revealed = nil }
-        }
+        Task { await library.importGame(bytes) }
     }
 
     @ViewBuilder
@@ -335,43 +316,35 @@ struct HistoryScreen: View {
             Button("control.ok", role: .cancel) { }
         case .saveFailed(let bytes):
             Button("control.cancel", role: .cancel) { }
-            Button("control.tryAgain") { Task { await load(bytes) } }
+            Button("control.tryAgain") { Task { await library.importGame(bytes) } }
         case .conflict, .unreadable, .newerVersion:
             Button("control.ok", role: .cancel) { }
         }
     }
 
-    #if DEBUG
-    /// The game files `-mxq-import <base64>;<base64>` names, imported in order
-    /// the first time this destination appears.
+    /// The files a debug launch asked for, taken once and imported in order.
     ///
-    /// Each one goes through `load(_:)` — the very call the picker's completion
-    /// makes — so the pipeline, the answer it produces and the presentation of
-    /// that answer are all the real ones; the only thing standing aside is the
-    /// system's open panel, which belongs to the system. The bytes travel in
-    /// the argument rather than as a path because the runner and the app are
-    /// separate sandboxes and a path one of them can read the other cannot.
-    private func importLaunchFiles() {
-        guard !launchFilesImported else { return }
-        launchFilesImported = true
-        let files = (DebugLaunch.argument(after: "-mxq-import") ?? "")
-            .split(separator: ";")
-            .compactMap { Data(base64Encoded: String($0)) }
-        guard !files.isEmpty else { return }
+    /// Each one goes through the same call the picker's completion makes, so
+    /// the pipeline, the answer it produces and the presentation of that answer
+    /// are all the real ones; the only thing standing aside is the system's
+    /// open panel, which belongs to the system.
+    private func importPendingFiles() {
+        guard !pendingImports.isEmpty else { return }
+        let files = pendingImports
+        pendingImports = []
         Task {
             // In order, and one at a time: importing the same file twice is
             // exactly how the duplicate answer is reached, and the second
             // import must see what the first one wrote.
-            for file in files { await load(file) }
+            for file in files { await library.importGame(file) }
         }
     }
-    #endif
 
     /// Pushes the record another destination asked for, once the list holding
     /// it has loaded. An identifier that names no record — a game deleted since
     /// — is dropped rather than reported: the request is a convenience, and the
     /// list it lands on is the answer either way.
-    private func showPendingReplay(_ library: HistoryLibrary) {
+    private func showPendingReplay() {
         guard let id = pendingReplay else { return }
         guard let record = library.records.first(where: { $0.id == id }) else {
             pendingReplay = nil
@@ -379,61 +352,5 @@ struct HistoryScreen: View {
         }
         path = [record]
         pendingReplay = nil
-    }
-}
-
-/// Everything an import can answer other than a row appearing.
-///
-/// The classes are the ones the core's own taxonomy distinguishes, and no
-/// others: a file that is not ours and a file that is damaged are both
-/// `MXQ_ERR_ARCHIVE_MALFORMED`, and telling them apart above the interface
-/// would mean reading a diagnostic string the contract reserves for logs. The
-/// picker is where the wrong-file case is actually prevented, by filtering to
-/// the declared type.
-///
-/// The created-by-a-newer-version answer is the one the data contract requires
-/// to be distinct and never to be presented as corruption, and it is.
-private enum ImportAnswer {
-    case duplicate(RecordSummary)
-    case conflict
-    case newerVersion
-    case unreadable
-    /// The file was fine; the library would not take it. The bytes are held so
-    /// that 重试 is a retry of the same import.
-    case saveFailed(Data)
-
-    init(refusing error: CoreError, retrying bytes: Data) {
-        switch error.status {
-        case MxqStatus(MXQ_ERR_STORE_IDENTITY_CONFLICT):
-            self = .conflict
-        case MxqStatus(MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION):
-            self = .newerVersion
-        default:
-            // Which side refused decides which sentence is true: the archive
-            // domain means the file, and anything else that reaches here means
-            // the write that would have filed it.
-            self = mxq_status_domain(error.status) == MxqStatus(MXQ_DOMAIN_ARCHIVE)
-                ? .unreadable : .saveFailed(bytes)
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .duplicate: "alert.importDuplicate.title"
-        case .conflict: "alert.importConflict.title"
-        case .newerVersion: "alert.importNewerVersion.title"
-        case .unreadable: "alert.importUnreadable.title"
-        case .saveFailed: "alert.importSaveFailed.title"
-        }
-    }
-
-    var message: String {
-        switch self {
-        case .duplicate: "alert.importDuplicate.message"
-        case .conflict: "alert.importConflict.message"
-        case .newerVersion: "alert.importNewerVersion.message"
-        case .unreadable: "alert.importUnreadable.message"
-        case .saveFailed: "alert.importSaveFailed.message"
-        }
     }
 }
