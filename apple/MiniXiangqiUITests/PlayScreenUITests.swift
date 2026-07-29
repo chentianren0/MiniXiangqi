@@ -71,8 +71,24 @@ final class PlayScreenUITests: XCTestCase {
             coreDidNotStart: "The core did not start", gameDidNotStart: "The game did not start")
     }
 
+    /// A name for a store nobody keeps. Every launch passes one: the app
+    /// persists the active game now, so a launch that inherited the player's
+    /// own store would resume a game no test asked for — and could file one.
+    ///
+    /// A name and not a path, because the runner and the app are different
+    /// sandbox containers: a path minted here is unwritable over there. The
+    /// app resolves the name inside its own temporary directory, so a
+    /// relaunch given the same name is the same store — the resume tests'
+    /// whole subject — and the leftovers are the system's to reclaim, since
+    /// this process cannot reach into that container to tidy them.
+    private func scratchStoreName() -> String {
+        "mxq-uitest-store-" + UUID().uuidString
+    }
+
     private func launch(replaying line: String? = nil,
                         in language: Language = .chinese,
+                        store: String? = nil,
+                        refusingSaves: Bool = false,
                         darkAppearance: Bool = false,
                         window: String? = nil,
                         hidingNumerals: Bool = false,
@@ -84,6 +100,8 @@ final class PlayScreenUITests: XCTestCase {
         // happens to be set to is not evidence about either of the two the
         // application speaks. The normative one is the default.
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
+        app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
+        if refusingSaves { app.launchArguments.append("-mxq-refuse-saves") }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
         if let window { app.launchArguments += ["-mxq-window", window] }
@@ -216,6 +234,136 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["炮六进三"].exists,
                       "Undo removes one ply, not the game")
         attach(app, named: "7-after-taking-a-move-back")
+    }
+
+    // MARK: - The game that survives quitting
+
+    /// The stage's own test: quit the app mid-game, open it again. Two moves
+    /// are made the way a person makes them, the process is terminated with
+    /// no farewell, and the relaunch must show the identical position, the
+    /// identical notation, and the turn where it stood. Orientation is the
+    /// one thing deliberately not carried: the flip is session-scoped by the
+    /// accepted design, a relaunch is a new sitting, and the board it opens
+    /// is the default one — which the flipped board before quitting is here
+    /// to prove.
+    func testTheActiveGameSurvivesQuitting() {
+        let store = scratchStoreName()
+        let app = launch(store: store)
+
+        point(app, "b1").click()
+        point(app, "b4").click()
+        XCTAssertTrue(app.staticTexts["炮六进三"].waitForExistence(timeout: 5))
+        point(app, "a6").click()
+        point(app, "a5").click()
+        XCTAssertTrue(app.staticTexts["卒1进1"].waitForExistence(timeout: 5))
+
+        // Turn the board round before quitting, so the relaunch can show
+        // orientation resetting rather than merely staying.
+        app.buttons["cluster-flip"].click()
+        let strips = app.windows.firstMatch.descendants(matching: .any)
+        XCTAssertEqual(strips["file-numerals-red"].label, "一 二 三 四 五 六 七")
+
+        app.terminate()
+
+        let again = launch(store: store)
+        XCTAssertEqual(point(again, "b4").label, "b4 红 炮",
+                       "the cannon stands where the quit left it")
+        XCTAssertEqual(point(again, "a5").label, "a5 黑 卒")
+        XCTAssertEqual(point(again, "b1").label, "b1 空")
+        XCTAssertEqual(point(again, "a6").label, "a6 空")
+        XCTAssertTrue(again.staticTexts["炮六进三"].exists,
+                      "the move list reads exactly as it did")
+        XCTAssertTrue(again.staticTexts["卒1进1"].exists)
+        XCTAssertTrue(again.staticTexts["轮到红方"].exists,
+                      "and it is still Red to move")
+        let stripsAgain = again.windows.firstMatch.descendants(matching: .any)
+        XCTAssertEqual(stripsAgain["file-numerals-red"].label, "七 六 五 四 三 二 一",
+                       "a new sitting opens the default way round")
+        attach(again, named: "21-the-resumed-game-after-relaunch")
+
+        // The resumed game is the same game to play on: an Undo takes back
+        // the ply the previous sitting made.
+        again.buttons["cluster-undo"].click()
+        XCTAssertTrue(again.staticTexts["轮到黑方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(again.staticTexts["卒1进1"].exists)
+    }
+
+    /// An unconfirmed natural result is the game's state, so quitting on the
+    /// mate and relaunching presents the finished board and its notice again;
+    /// Undo still resumes it, because nothing was confirmed; and 开始新对局
+    /// files it, after which a further relaunch has nothing to resume.
+    func testAnUnconfirmedResultSurvivesQuittingAndFilesOnNewGame() {
+        let store = scratchStoreName()
+        var app = launch(replaying: Self.mateLine, store: store)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+        app.terminate()
+
+        app = launch(store: store)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10),
+                      "the unconfirmed result presents its notice again")
+        XCTAssertEqual(reading(app, "result-title"), "红方获胜")
+        XCTAssertEqual(reading(app, "result-reason"), "将死")
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "over the mated position it announced the first time")
+        attach(app, named: "22-the-notice-presented-again-after-relaunch")
+
+        // Unconfirmed is unconfirmed across a relaunch: the mating move can
+        // still be taken back, and the game runs on.
+        app.buttons["result-undo"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["result-title"].exists)
+        wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
+                               evaluatedWith: app.buttons["cluster-undo"])],
+             timeout: 5)
+
+        // Mate again, and this time file it: the concluding action commits
+        // the result to History before the board resets.
+        point(app, "b3").click()
+        point(app, "d3").click()
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5))
+        app.buttons["result-new-game"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮",
+                       "the starting position is back")
+        app.terminate()
+
+        // The filed game stays filed: this launch resumes nothing.
+        app = launch(store: store)
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "a filed result does not come back")
+        XCTAssertFalse(app.staticTexts["1."].exists, "the move list is empty")
+    }
+
+    /// The save-failure capsule, produced on the real screen: with the debug
+    /// stand-in refusing every commit, a legal move is played and does not
+    /// happen — the position unchanged, the move list empty, and the accepted
+    /// sentence standing at the turn status until it withdraws by itself.
+    func testARefusedSaveAnswersWithTheCapsule() {
+        let app = launch(refusingSaves: true)
+
+        point(app, "b1").click()
+        point(app, "b4").click()
+
+        let capsule = app.windows.firstMatch.descendants(matching: .any)["save-failure"]
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5),
+                      "the refused save answers at the turn status")
+        XCTAssertTrue(app.staticTexts["无法保存这一步，请重试。"].exists,
+                      "with the register's words")
+        attach(app, named: "23-the-save-failure-capsule")
+
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮 已选择",
+                       "the position did not change, and the piece is still held")
+        XCTAssertEqual(point(app, "b4").label, "b4 空 可走",
+                       "the destination is still empty, still on offer — the correction is one tap away")
+        XCTAssertFalse(app.staticTexts["1."].exists,
+                       "a move that did not happen enters no list")
+        XCTAssertTrue(app.staticTexts["轮到红方"].exists)
+
+        // Transient: it withdraws by its own clock, no dismissal asked.
+        wait(for: [expectation(for: NSPredicate(format: "exists == false"),
+                               evaluatedWith: capsule)],
+             timeout: 10)
     }
 
     // MARK: - The result notice
@@ -579,6 +727,7 @@ final class PlayScreenUITests: XCTestCase {
         for language in [Language.chinese, .english] {
             let app = XCUIApplication()
             app.launchArguments = ["-AppleLanguages", "(\(language.code))",
+                                   "-mxq-store-name", scratchStoreName(),
                                    "-mxq-replay", "d1d7"]
             app.launch()
             XCTAssertTrue(app.staticTexts[language.gameDidNotStart].waitForExistence(timeout: 20),

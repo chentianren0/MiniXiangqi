@@ -6,6 +6,9 @@
 // position, and pinning them is the point: a line that stops being a checkmate,
 // or a shuffle that stops repeating, is a change in the core that the app must
 // hear about.
+//
+// Each test plays on the real core over a scratch store of its own — the same
+// sessions the app commits through, pointed somewhere disposable.
 
 import Testing
 @testable import MiniXiangqi
@@ -38,34 +41,36 @@ struct GameTests {
     /// through the leg the soldier itself has just vacated.
     static let capturingCheckLine = ["c2c3", "a6a5", "c1d3", "c6c5", "d3c5"]
 
-    private func game(playing line: [String] = []) throws -> Game {
-        let game = try Game(core: Core.shared.get())
+    private func game(playing line: [String] = []) throws -> (game: Game, core: Core) {
+        let core = try TestCores.fresh()
+        let game = try Game(rules: core)
         try game.replay(line)
-        return game
+        return (game, core)
     }
 
     // MARK: - Undo
 
     @Test("Undo removes exactly one ply and nothing else")
     func undoRemovesOnePly() throws {
-        let game = try game(playing: ["b1b4", "a6a5"])
+        let (game, core) = try game(playing: ["b1b4", "a6a5"])
         game.undo()
 
         #expect(game.notation.count == 1)
         #expect(game.notation == ["炮六进三"])
+        #expect(game.moves == ["b1b4"], "the line is the session's own, read back")
         #expect(game.evaluation.sideToMove == .black)
         #expect(game.lastMove == Move(text: "b1b4"))
 
-        // The position is the core's own answer for the shortened history,
-        // rather than the previous position remembered here.
-        let fresh = try Core.shared.get().evaluate(from: Core.startFEN, moves: ["b1b4"])
-        #expect(game.evaluation.fen == fresh.fen)
+        // The position is the core's own answer for the shortened history —
+        // the session's replay of its whole line — rather than the previous
+        // position remembered here.
+        #expect(game.evaluation.fen == (try core.fen(atPly: 1)))
         #expect(game.failure == nil)
     }
 
     @Test("Undo repeats back to the initial position and stops there")
     func undoRepeatsToTheStart() throws {
-        let game = try game(playing: ["b1b4", "a6a5", "b4b6"])
+        let (game, core) = try game(playing: ["b1b4", "a6a5", "b4b6"])
         #expect(game.canUndo)
 
         game.undo()
@@ -77,8 +82,7 @@ struct GameTests {
         #expect(game.lastMove == nil)
         #expect(game.evaluation.sideToMove == .red)
 
-        let initial = try Core.shared.get().evaluate(from: Core.startFEN, moves: [])
-        #expect(game.evaluation.fen == initial.fen)
+        #expect(game.evaluation.fen == (try core.fen(atPly: 0)))
         #expect(!game.canUndo, "there is nothing left to take back")
     }
 
@@ -86,7 +90,7 @@ struct GameTests {
 
     @Test("The start position a third time offers the claim, and claiming it ends the game")
     func theShuffleReachesAClaimableDraw() throws {
-        let game = try game(playing: Self.shuffleLine)
+        let (game, core) = try game(playing: Self.shuffleLine)
 
         #expect(game.evaluation.claimAvailable)
         #expect(game.evaluation.state == .claimableDraw)
@@ -103,6 +107,12 @@ struct GameTests {
         #expect(game.evaluation.reason == .threefoldRepetition)
         #expect(!game.canUndo, "the player confirmed this result")
 
+        // The claim was the terminal commit: the game is in History and no
+        // active game remains — quitting here would resume nothing.
+        #expect(game.filedRecordID != nil)
+        #expect(try core.historyCount() == 1)
+        #expect(try !core.activeGameExists())
+
         game.tap(Square("b1")!)
         #expect(game.selected == nil, "a finished game accepts no input")
     }
@@ -111,7 +121,7 @@ struct GameTests {
 
     @Test("The pinned check line checks without mating")
     func theCheckLineChecks() throws {
-        let game = try game(playing: Self.checkLine)
+        let (game, _) = try game(playing: Self.checkLine)
         #expect(game.evaluation.inCheck)
         #expect(game.evaluation.state == .ongoing, "the general still has d6")
         #expect(game.checkedGeneral == Square("d7"))
@@ -119,7 +129,7 @@ struct GameTests {
 
     @Test("The pinned capture line takes the red soldier on d4")
     func theCaptureLineCaptures() throws {
-        let game = try game(playing: Self.captureLine)
+        let (game, _) = try game(playing: Self.captureLine)
         #expect(game.placement[Square("d4")!] == Piece(kind: .soldier, side: .black))
         #expect(game.placement[Square("d5")!] == nil)
         #expect(game.lastMove == Move(text: "d5d4"))
@@ -128,7 +138,7 @@ struct GameTests {
 
     @Test("The pinned capturing-check line takes a piece and gives check at once")
     func theCapturingCheckLineDoesBoth() throws {
-        let game = try game(playing: Self.capturingCheckLine)
+        let (game, _) = try game(playing: Self.capturingCheckLine)
         #expect(game.placement[Square("c5")!] == Piece(kind: .horse, side: .red),
                 "the horse stands where the soldier stood")
         #expect(game.evaluation.inCheck)
@@ -141,7 +151,7 @@ struct GameTests {
 
     @Test("The pinned line is a checkmate")
     func theMateLineMates() throws {
-        let game = try game(playing: Self.mateLine)
+        let (game, _) = try game(playing: Self.mateLine)
 
         #expect(game.evaluation.state == .redWins)
         #expect(game.evaluation.reason == .checkmate)
@@ -151,7 +161,7 @@ struct GameTests {
 
     @Test("A natural result stays undoable, and Undo resumes the game")
     func undoResumesAfterANaturalResult() throws {
-        let game = try game(playing: Self.mateLine)
+        let (game, _) = try game(playing: Self.mateLine)
         #expect(game.canUndo, "a natural result is undoable while it is unconfirmed")
 
         game.undo()
@@ -166,8 +176,8 @@ struct GameTests {
 
     @Test("A refused action leaves the game unchanged, and trying again works")
     func aFailureClearsOnTheNextAttempt() throws {
-        let rules = RefusingRules(try Core.shared.get())
-        let game = try Game(core: rules)
+        let rules = RefusingRules(try TestCores.fresh())
+        let game = try Game(rules: rules)
         try game.replay(["b1b4", "a6a5"])
 
         rules.refuses = true
