@@ -183,7 +183,7 @@ MxqStatus mxq_store_import(MxqCore *core, const uint8_t *bytes, size_t len,
 ```
 
 - `mxq_store_archive_and_clear` is the accepted atomic archive-and-clear in one transaction. On success the passed session is marked archived; later mutations on it return `MXQ_ERR_STATE_SESSION_ARCHIVED`; the caller still releases the handle.
-- `mxq_store_history_page` returns records in the accepted order — pinned first, newest within each group, deterministic tie-break — as a core guarantee; frontends never re-sort.
+- `mxq_store_history_page` returns records in the accepted order — pinned first, newest within each group, `record_id` descending as the tie-break — as a core guarantee; frontends never re-sort.
 - `mxq_store_active_summary` serves the Play destination and the save-and-continue confirmation without materializing a session.
 - `out_library_revision` is a monotonic counter bumped by every committed store mutation: the accepted answer to library-change observation is return values plus this cheap staleness check, with no notification mechanism in the MVP.
 - `mxq_store_import` returns `MXQ_IMPORT_EXISTING` with the existing record for an exact duplicate — success, not an error — and typed failures for every rejection class defined by the import pipeline in [game-data.md](game-data.md).

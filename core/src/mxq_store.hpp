@@ -11,6 +11,11 @@
  * store operation (core-interface.md's threading contract); in this PR the
  * only operations are open and close, but the lock discipline is established
  * with the handle so later operations inherit it rather than invent it.
+ *
+ * Write paths must never use OR REPLACE or the REPLACE conflict resolution on
+ * game or library: SQLite's implicit delete fires no trigger with recursion
+ * off, so the defensive triggers above the schema would be silently bypassed.
+ * Conflicts are handled by the explicit statements a transaction states.
  */
 
 #ifndef MXQ_STORE_HPP

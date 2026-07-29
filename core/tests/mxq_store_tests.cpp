@@ -210,6 +210,12 @@ void case_fresh_open_creates_schema_v1() {
                             "type='table' AND name NOT LIKE 'sqlite_%';"),
              "3", "no tables beyond the three");
 
+    /* record_id is never reused: the History tie-break is this column, so a
+     * reused rowid would let a stale id resolve to some later game. */
+    check_eq(query_text(db, "SELECT count(*) FROM sqlite_schema WHERE "
+                            "name='game' AND sql LIKE '%AUTOINCREMENT%';"),
+             "1", "game.record_id is AUTOINCREMENT");
+
     /* The triggers and the one partial History index. */
     for (const char *trigger : {"library_row_is_permanent",
                                 "history_content_is_immutable",

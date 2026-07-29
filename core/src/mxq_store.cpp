@@ -44,7 +44,10 @@ CREATE TABLE meta (
 ) STRICT;
 
 CREATE TABLE game (
-  record_id          INTEGER PRIMARY KEY,
+  -- AUTOINCREMENT so a record_id is never reused: History ordering breaks its
+  -- ties on this column, and a stale id held across a deletion must dangle
+  -- rather than resolve to some later game.
+  record_id          INTEGER PRIMARY KEY AUTOINCREMENT,
   game_id            TEXT    NOT NULL UNIQUE CHECK (length(game_id) = 36),
   archive            BLOB    NOT NULL,
   content_sha256     TEXT    NOT NULL CHECK (length(content_sha256) = 64),
@@ -370,7 +373,13 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
      * connection: the schema and the file structure cannot be rewritten
      * through SQL even by a corrupted statement. */
     sqlite3_extended_result_codes(db, 1);
-    sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, nullptr);
+    /* Checked like the pragmas below: a connection that silently declined the
+     * defensive regime would be exactly the kind of quiet weakening this
+     * open sequence exists to refuse. */
+    if (int rc = sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, nullptr);
+        rc != SQLITE_OK) {
+        return fail_sqlite(err, rc, "cannot enable the defensive regime");
+    }
 
     /* The accepted connection regime, applied and read back. */
     MxqStatus st = apply_pragma(db, "PRAGMA journal_mode = WAL;",
