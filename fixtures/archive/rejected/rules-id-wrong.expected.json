@@ -1,0 +1,7 @@
+{
+  "class": "closed vocabulary",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "\"rules_id\" is not",
+  "why": "rules_id names the ruleset identity of xiangqi-rules.md and has exactly one accepted value. A file naming another ruleset is not a later version of ours; it is not ours."
+}

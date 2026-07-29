@@ -102,15 +102,18 @@ One archive per rejection class of the accepted validation order, each stating t
 | envelope: in-band type check | `archive-format-wrong` | `MALFORMED` | `MALFORMED` |
 | envelope: missing member | `envelope-member-missing` | `MALFORMED` | `MALFORMED` |
 | envelope: malformed version | `version-not-positive` | `MALFORMED` | `MALFORMED` |
-| **unsupported version** | `version-newer` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
+| **unsupported archive version** | `version-newer` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
+| **unsupported rules version** | `rules-version-unsupported` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
 | unknown member in a known version | `envelope-member-unknown` | `MALFORMED` | `MALFORMED` |
 | unknown member in a known version | `content-member-unknown` | `MALFORMED` | `MALFORMED` |
 | content: missing member | `content-member-missing` | `MALFORMED` | `MALFORMED` |
+| content: wrong member type | `moves-not-an-array` | `MALFORMED` | `MALFORMED` |
 | content: mode-to-configuration shape | `free-play-carries-human-side` | `MALFORMED` | `MALFORMED` |
 | content: mode-to-configuration shape | `human-vs-ai-missing-ai-level` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-mode` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-outcome` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-end-reason` | `MALFORMED` | `MALFORMED` |
+| closed vocabulary | `rules-id-wrong` | `MALFORMED` | `MALFORMED` |
 | field validity: `game_id` | `game-id-not-uuid7` | `MALFORMED` | `MALFORMED` |
 | field validity: timestamp | `timestamp-form` | `MALFORMED` | `MALFORMED` |
 | field validity: move notation | `move-notation` | `MALFORMED` | `MALFORMED` |
@@ -146,9 +149,13 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 
 `probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member version 1 does not know, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
 
+### Two versions are dispatched on, not one
+
+`archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of one value: a file naming another ruleset is not a later version of ours, so it is `MALFORMED`.
+
 ## What the read path does not enforce
 
-The canonical form is UTF-8, one line, members in codepoint order, no insignificant whitespace, integers only, no `null`. Of these, the read path enforces the **value** restrictions — no `null`, integers only, no duplicate member names — and not the **spelling** ones: member order and insignificant whitespace are re-established by canonicalisation, which the accepted validation order performs after validation and before hashing. An incoming file that spells the same document differently is accepted and canonicalised; it is not refused over its whitespace.
+The canonical form has seven clauses. Three of them decide what a document *means* — UTF-8, integers only, `null` forbidden — and the read path enforces those, along with the duplicate-member rejection the validation order states separately. The other four — one line, members in codepoint order, no insignificant whitespace, minimal string escaping — describe the writer's output and are re-established by canonicalisation, which the accepted validation order performs after validation and before hashing. An incoming file that spells the same document differently is accepted and canonicalised; it is not refused over its whitespace.
 
 The golden files are held to the full canonical form anyway, because they are what the encoder must reproduce.
 

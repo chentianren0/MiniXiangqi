@@ -1301,7 +1301,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_search_wait(MxqCore *core, uint64_t ticket,
  * mxq_archive_validate would refuse; structural validity is all it claims. The
  * bytes are borrowed for the duration of the call and are untrusted input.
  *
- * out is filled only on MXQ_OK.
+ * out carries a decoded archive only on MXQ_OK. On every rejection it has been
+ * zeroed and its struct_size rewritten to the size this build could interpret,
+ * which is the core-wide convention for an out struct: every field the caller
+ * can read is written exactly once, whether or not the call succeeds.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: CPU-bound; keep off the UI thread.

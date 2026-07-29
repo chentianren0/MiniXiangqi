@@ -1,0 +1,7 @@
+{
+  "class": "unsupported rules version",
+  "probe": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "validate": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "detail_contains": "recorded under rules version 2",
+  "why": "A game's meaning derives from rules_id plus rules_version, and that version increments only when an accepted change alters a legal move or a user-visible result. A build that replayed a foreign interpretation would either reject a legal move or reproduce a different result and present the disagreement as corruption, so the file is refused as an unsupported version instead."
+}

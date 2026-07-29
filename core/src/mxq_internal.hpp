@@ -21,6 +21,14 @@
 #define MXQ_ARCHIVE_VERSION_MIN_READABLE 1u
 #define MXQ_STORE_SCHEMA_VERSION         1u
 
+/* The rules interpretation this build implements, owned by
+ * docs/xiangqi-rules.md § Rules interpretation version. It increments only when
+ * an accepted interpretation change alters a legal move or a user-visible
+ * result, which is exactly why an archive recorded under another one cannot be
+ * reproduced here: it is a fifth axis, independent of the four MxqVersion
+ * reports, and the archive records it beside rules_id. */
+#define MXQ_RULES_VERSION 1u
+
 /* The frozen starting position, per docs/xiangqi-rules.md. */
 #define MXQ_START_FEN "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
 

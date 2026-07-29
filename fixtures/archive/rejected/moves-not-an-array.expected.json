@@ -1,0 +1,7 @@
+{
+  "class": "content: wrong member type",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "must be an array",
+  "why": "The retained main line is an ordered array. A string that happens to contain move text is a different encoding, and guessing at it is how one reader comes to disagree with another about the same file."
+}

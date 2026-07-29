@@ -575,6 +575,24 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"rules_version\" is not a positive integer");
     }
+    /*
+     * A rules interpretation this build does not implement is refused the same
+     * way an archive version it cannot read is, because it is the same fact: a
+     * game's meaning derives from rules_id plus rules_version, that version
+     * increments only when an accepted change alters a legal move or a
+     * user-visible result, and so a file recorded under another one cannot be
+     * reproduced here. Replaying it under this interpretation would either
+     * fail as an illegal move or — worse — succeed and disagree about the
+     * result, which would be presented as corruption of the file. The
+     * unsupported-version answer says the true thing instead.
+     */
+    if (rules_version->integer() != MXQ_RULES_VERSION) {
+        return reject(err, MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION,
+                      "recorded under rules version " +
+                          std::to_string(rules_version->integer()) +
+                          "; this build implements " +
+                          std::to_string(MXQ_RULES_VERSION));
+    }
     out.rules_version = rules_version->integer();
 
     const json::Value *start_fen = typed_member(
@@ -582,6 +600,16 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     if (start_fen == nullptr) {
         return false;
     }
+    /*
+     * The capacity bound is field validity, not a rules judgment, and the
+     * split it creates is deliberate: a start_fen at or over MXQ_FEN_CAP is
+     * refused here at stage 4, because no such string can cross the interface
+     * in MxqPosition.fen whatever it says, while a shorter FEN that is merely
+     * wrong is carried on and resolved at the rules tier, where being "not the
+     * frozen starting position" is a replay answer rather than a structural
+     * one. Probe therefore accepts every wrong-but-carryable FEN, which is
+     * exactly what probe promises.
+     */
     if (start_fen->string().empty() ||
         start_fen->string().size() >= MXQ_FEN_CAP) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,

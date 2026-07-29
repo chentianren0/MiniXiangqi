@@ -93,7 +93,13 @@ MxqArchiveInfo make_info() {
 struct Case {
     std::string name;
     std::vector<std::string> messages;
-    bool skipped_something = false;
+    /* An expectation this build cannot evaluate. The reason is carried with it
+     * so that a skip never reports someone else's cause — a case skipped
+     * because the assertions are compiled in is not a case skipped because the
+     * rules facade is absent. */
+    std::string skip_reason;
+
+    void skip(const std::string &why) { skip_reason = why; }
 
     void check(bool ok, const std::string &what) {
         ++g_checks;
@@ -123,10 +129,10 @@ void report(const Case &c) {
         }
         return;
     }
-    if (c.skipped_something) {
+    if (!c.skip_reason.empty()) {
         ++g_skipped;
-        std::cout << "  PART SKIP " << c.name
-                  << "  (validate needs the rules facade)\n";
+        std::cout << "  PART SKIP " << c.name << "  (" << c.skip_reason
+                  << ")\n";
         return;
     }
     ++g_passed;
@@ -502,7 +508,7 @@ void run_golden(MxqCore *core, const fs::path &file, const fs::path &sidecar) {
                 "validate is documented as everything probe does");
     }
 #else
-    c.skipped_something = true;
+    c.skip("validate needs the rules facade");
 #endif
 
     report(c);
@@ -574,7 +580,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
      * reaches. */
     (void)detail_index;
     (void)want_validate;
-    c.skipped_something = true;
+    c.skip("validate needs the rules facade");
 #endif
 
     report(c);
@@ -704,6 +710,11 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     (void)golden;
     MxqError err = make_error();
     MxqStatus rc = MXQ_OK;
+    /* Said out loud rather than passed in silence: in a debug build these two
+     * expectations were not evaluated, and a case that reported PASS would be
+     * claiming coverage it did not have. */
+    c.skip("the argument assertions are compiled in; only a release build "
+           "returns their codes");
 #endif
 
     /* The version report the codec dispatches on. */
