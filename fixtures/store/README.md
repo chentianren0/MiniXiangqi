@@ -1,17 +1,18 @@
 # Store Round-Trip Fixtures
 
-This directory holds the approved, executable fixtures for a **store-attached session's round trip**: create a game, play it, close the core, reopen it, resume — and find the same game. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together, exactly as the archive corpus and that document do.
+This directory holds the approved, executable fixtures for a **store-attached session's round trip**: create a game, play it, close the core, reopen it, resume — and find the same game. Beside it, in `terminal/`, are the fixtures for the four ways that game **ends**. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together, exactly as the archive corpus and that document do.
 
-Normative stance: every expected value comes from the accepted contracts — the autosave rule ("the core commits explicitly after every accepted move and undo"; "a move or undo whose commit fails does not happen"), the undo rule (one ply in Free Play, human decision cycles in human-versus-AI), the active-game shape of the archive, and the frozen configuration — never from what the core currently happens to do. A scenario the core disagrees with is a core defect until the contract says otherwise.
+Normative stance: every expected value comes from the accepted contracts — the autosave rule ("the core commits explicitly after every accepted move and undo"; "a move or undo whose commit fails does not happen"), the undo rule (one ply in Free Play, human decision cycles in human-versus-AI), the state-derived classification of an ending, the two shapes of the archive, and the frozen configuration — never from what the core currently happens to do. A scenario the core disagrees with is a core defect until the contract says otherwise.
 
 ## Layout
 
 ```text
 fixtures/store/
-└── <stem>.json     one scenario: a configuration, a move line, and what must be true of it
+├── <stem>.json           one round-trip scenario: a configuration, a move line, and what must be true of it
+└── terminal/<stem>.json  one ending: the same, plus the call that ends the game and the record it must leave
 ```
 
-The runner walks every `*.json` here, so a new scenario is a new file and never new runner code.
+Each runner walks every `*.json` in its own directory, so a new scenario is a new file and never new runner code.
 
 ## What runs them
 
@@ -76,6 +77,50 @@ Some of what a session promises is not a property of a game but of the interface
 
 The failed-commit case takes the database's write lock from a second SQLite connection, so the failure is a real one arriving through the store's own path rather than through a seam that exists only in tests. There is no test-only hook in the core.
 
+## The endings, in `terminal/`
+
+`core/tests/mxq_history_tests.cpp`, registered with CTest as `store_history`, runs these. It takes the same `--fixtures` and `--archives` options and reads its scenarios from the `terminal/` subdirectory.
+
+Each scenario states the game and the one call that ends it, and the runner drives that ending end to end:
+
+1. **Play.** The scenario's line is created and applied, and the state it reaches is compared with the `end.state` the scenario names — the state the classification is derived from.
+2. **End.** The named call — `claim_draw`, `resign`, `confirm_result` or `archive_and_clear` — returns a record identifier and bumps the library revision.
+3. **The session afterwards.** Every mutation returns `MXQ_ERR_STATE_SESSION_ARCHIVED`; every query still answers, with every derived affordance at 0; `mxq_archive_encode` produces the finished document, which is compared **byte for byte** with the golden the scenario names and is not the document the active game held.
+4. **The library afterwards.** No active game, no active summary, exactly one History record, whose every summary field is checked against the scenario and the frozen configuration, and which the page returns.
+5. **Another game.** One may now be created, and filed in its turn, with a record identifier strictly greater than the first.
+6. **Across a relaunch.** The core is shut down and initialised again: `mxq_game_resume_active` reports absence, and the record reads back identically.
+7. **Opened for replay.** `mxq_store_history_open` yields a detached read-only session with the same identity, the same line, the record's own bytes — which `mxq_archive_validate` accepts — and a refusal of `MXQ_ERR_STATE_SESSION_READ_ONLY` for every mutation.
+
+### Terminal scenario
+
+```json
+{
+  "title": "…",
+  "why": "…",
+  "config": { "mode": "free-play" },
+  "moves": ["b1b3", "b7b5"],
+  "end": { "action": "archive_and_clear", "archive": "free-play-ended-early.mxq",
+           "outcome": "none", "end_reason": "ended-early", "state": "ongoing" }
+}
+```
+
+`action` is one of `claim_draw`, `resign`, `confirm_result`, `archive_and_clear`. `outcome` and `end_reason` are the committed classification in the serialised vocabulary, and `state` is the live state the position is in when the ending is performed — which for a resignation and an ended-early record is deliberately not terminal.
+
+The same four scenarios drive the atomicity case: with the database locked by a second connection, each ending fails in the store domain, the game stays active and byte-for-byte unchanged with no History record and no revision bump, and the same call succeeds once the lock is released.
+
+| case | what it pins |
+|---|---|
+| an empty library | counting, paging and the revision of a library with nothing in it — the one case that needs no engine |
+| a failed ending | all four endings, under a real write lock: unchanged, unarchived, retryable |
+| nothing to archive | `archive_and_clear` with no active game is `MXQ_ERR_STATE_ACTIVE_GAME_MISSING`; a second one on an archived session is `MXQ_ERR_STATE_SESSION_ARCHIVED` |
+| refusals | each ending refuses where its own rule does not hold, and changes nothing when it does |
+| ordering | pinned first, newest first, and a same-millisecond tie broken by `record_id` |
+| pagination | an exact page, a roomy one, one overlapping the end, one past it, `limit` 0, and a buffer below the limit |
+| revisions | every committed mutation bumps the counter, a refused one does not, and a deleted `record_id` is never issued again |
+| the active summary | the summary and live state of the active game, and one active game across an archiving |
+| corruption | a content hash that disagrees with its bytes, and a library reference to a row that is not there |
+| aliasing | a second `resume_active` while a session is attached |
+
 ## Consumption
 
-Sessions are gated by these fixtures on every platform. What they do not cover — terminal commits, History, import and export — arrives with the PRs that implement it, and each brings its own scenarios rather than stretching these.
+Sessions and the endings are gated by these fixtures on every platform. What they do not cover — import and export — arrives with the PR that implements it, and brings its own scenarios rather than stretching these.

@@ -1,0 +1,1961 @@
+/*
+ * The History runner: the four ways a game ends, and the library they leave
+ * behind.
+ *
+ * Two kinds of case, as the session runner has:
+ *
+ *   - the scenarios in fixtures/store/terminal/, which are data — a
+ *     configuration, a move line, the ending that closes it, and the golden it
+ *     must reproduce — so a fifth ending is a new file and never a new
+ *     function here;
+ *   - named cases for what is a property of the library rather than of a game:
+ *     the ordering, the pagination boundaries, the revision counter, the
+ *     single-active invariant across an archiving, and the three hardening
+ *     paths the sessions verify asked for.
+ *
+ * Most of it runs through the public C surface only. Two things are reached
+ * through the core's internal headers on purpose, both already established by
+ * the session runner: the clock and identity provider, to place a game at the
+ * identity a golden was minted with and to give two games the same
+ * History-added instant; and a second SQLite connection, used to take the
+ * database's write lock so that an archiving transaction fails for the reason
+ * a real one would, and to tamper with a row so that the corruption paths are
+ * driven by damage rather than by a seam.
+ *
+ * Without MXQ_ENABLE_RULES_FACADE a game cannot be played, so no History
+ * record can be made and every case that needs one reports NOT IMPLEMENTED,
+ * which is never counted as a pass. What still runs there is the empty
+ * library: mxq_store_history_count, mxq_store_history_page and the revision
+ * are pure store queries and answer in both configurations.
+ */
+
+#include "mxq.h"
+
+#include "mxq_json.hpp"
+
+#if MXQ_TEST_RULES_FACADE
+#include "mxq_core_state.hpp" /* internal, deliberately: the identity provider */
+#include "sqlite3.h"
+#endif
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <string>
+#include <vector>
+
+namespace fs = std::filesystem;
+
+#ifndef MXQ_TEST_RULES_FACADE
+#define MXQ_TEST_RULES_FACADE 0
+#endif
+
+namespace {
+
+int g_passed = 0;
+int g_failed = 0;
+int g_skipped = 0;
+int g_checks = 0;
+
+/* ---------------------------------------------------------------------- */
+/* One case's verdict                                                      */
+/* ---------------------------------------------------------------------- */
+
+struct Case {
+    std::string              name;
+    std::vector<std::string> messages;
+    std::string              skip_reason;
+
+    explicit Case(std::string n) : name(std::move(n)) {}
+
+    void skip(const std::string &why) { skip_reason = why; }
+
+    void check(bool ok, const std::string &what) {
+        ++g_checks;
+        if (!ok) {
+            messages.push_back(what);
+        }
+    }
+
+    void check_eq(const std::string &got, const std::string &want,
+                  const std::string &what) {
+        check(got == want,
+              what + ": expected \"" + want + "\", got \"" + got + "\"");
+    }
+
+    void check_eq(int64_t got, int64_t want, const std::string &what) {
+        check(got == want, what + ": expected " + std::to_string(want) +
+                               ", got " + std::to_string(got));
+    }
+
+    void check_status(MxqStatus got, MxqStatus want, const std::string &what) {
+        check(got == want, what + ": expected " +
+                               std::string(mxq_status_name(want)) + ", got " +
+                               std::string(mxq_status_name(got)));
+    }
+
+    void report() {
+        if (!messages.empty()) {
+            ++g_failed;
+            std::cout << "  FAIL      " << name << "\n";
+            for (const std::string &m : messages) {
+                std::cout << "            " << m << "\n";
+            }
+            return;
+        }
+        if (!skip_reason.empty()) {
+            ++g_skipped;
+            std::cout << "  SKIP      " << name << "  (" << skip_reason << ")\n";
+            return;
+        }
+        ++g_passed;
+        std::cout << "  PASS      " << name << "\n";
+    }
+};
+
+/* ---------------------------------------------------------------------- */
+/* Scaffolding                                                             */
+/* ---------------------------------------------------------------------- */
+
+std::string assets_dir() {
+    if (const char *env = std::getenv("MXQ_ASSETS_DIR")) {
+        return env;
+    }
+#if defined(MXQ_ASSETS_DIR_DEFAULT)
+    return MXQ_ASSETS_DIR_DEFAULT;
+#else
+    return std::string();
+#endif
+}
+
+MxqError make_error() {
+    MxqError err;
+    std::memset(&err, 0, sizeof(err));
+    err.struct_size = static_cast<uint32_t>(sizeof(err));
+    return err;
+}
+
+MxqRecordSummary make_summary() {
+    MxqRecordSummary s;
+    std::memset(&s, 0, sizeof(s));
+    s.struct_size = static_cast<uint32_t>(sizeof(s));
+    return s;
+}
+
+#if MXQ_TEST_RULES_FACADE
+/* Only a build that can play a game needs these: without the facade the one
+ * case that runs never reaches a position, a status or a configuration. */
+MxqGameStatus make_status() {
+    MxqGameStatus s;
+    std::memset(&s, 0, sizeof(s));
+    s.struct_size = static_cast<uint32_t>(sizeof(s));
+    return s;
+}
+
+MxqPosition make_position() {
+    MxqPosition p;
+    std::memset(&p, 0, sizeof(p));
+    p.struct_size = static_cast<uint32_t>(sizeof(p));
+    return p;
+}
+
+MxqGameConfig make_config() {
+    MxqGameConfig c;
+    std::memset(&c, 0, sizeof(c));
+    c.struct_size = static_cast<uint32_t>(sizeof(c));
+    c.mode = MXQ_PLAY_MODE_FREE_PLAY;
+    c.human_side = MXQ_COLOR_NONE;
+    c.ai_level = MXQ_AI_LEVEL_NONE;
+    c.first_mover_choice = MXQ_FIRST_MOVER_NONE;
+    c.ai_movetime_ms = 0;
+    return c;
+}
+#endif /* MXQ_TEST_RULES_FACADE */
+
+fs::path scratch_root() {
+    static const fs::path root = [] {
+        std::random_device rd;
+        char token[17];
+        std::snprintf(token, sizeof(token), "%08x%08x", rd(), rd());
+        return fs::temp_directory_path() /
+               ("minixiangqi-history-tests-" + std::string(token));
+    }();
+    return root;
+}
+
+fs::path scratch_dir(const std::string &name) {
+    const fs::path dir = scratch_root() / name;
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    return dir;
+}
+
+MxqStatus init_core(const fs::path &store_dir, uint32_t flags, MxqCore **out,
+                    MxqError *err) {
+    const std::string assets = assets_dir();
+    const std::string store = store_dir.string();
+    MxqCoreConfig config;
+    std::memset(&config, 0, sizeof(config));
+    config.struct_size = static_cast<uint32_t>(sizeof(config));
+    config.api_major = MXQ_API_VERSION_MAJOR;
+    config.api_minor = MXQ_API_VERSION_MINOR;
+    config.api_patch = MXQ_API_VERSION_PATCH;
+    config.flags = flags;
+    config.store_directory = store.c_str();
+    config.asset_directory = assets.c_str();
+    return mxq_core_init(&config, out, err);
+}
+
+/* ---------------------------------------------------------------------- */
+/* The empty library, which needs no engine                                */
+/* ---------------------------------------------------------------------- */
+
+void case_empty_library() {
+    Case c("an empty library counts, pages and reports its revision");
+    const fs::path store = scratch_dir("empty");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, std::string("mxq_core_init failed: ") + err.detail);
+        c.report();
+        return;
+    }
+
+    uint8_t exists = 1;
+    err = make_error();
+    c.check_status(mxq_store_active_exists(core, &exists, &err), MXQ_OK,
+                   "mxq_store_active_exists");
+    c.check_eq(exists, 0, "a fresh library holds no active game");
+
+    uint32_t count = 99;
+    uint64_t revision = 99;
+    err = make_error();
+    c.check_status(mxq_store_history_count(core, &count, &revision, &err),
+                   MXQ_OK, "mxq_store_history_count");
+    c.check_eq(count, 0, "a fresh library has no History records");
+    c.check_eq(static_cast<int64_t>(revision), 0,
+               "a fresh library is at revision 0");
+
+    /* A page of an empty library writes nothing and is not an error, whether
+     * it is asked for from the start or from past the end. */
+    std::vector<MxqRecordSummary> page(4, make_summary());
+    size_t written = 99;
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 0, 4, page.data(), page.size(),
+                                          &written, &revision, &err),
+                   MXQ_OK, "a page of an empty library");
+    c.check_eq(static_cast<int64_t>(written), 0, "nothing was written");
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 10, 4, page.data(), page.size(),
+                                          &written, &revision, &err),
+                   MXQ_OK, "a page past the end of an empty library");
+    c.check_eq(static_cast<int64_t>(written), 0, "nothing was written");
+
+    /* And an identifier no record ever had is not found rather than empty. */
+    MxqRecordSummary summary = make_summary();
+    err = make_error();
+    c.check_status(mxq_store_history_get(core, 1, &summary, &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "mxq_store_history_get on nothing");
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, 1, 1, &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "pinning nothing");
+    err = make_error();
+    c.check_status(mxq_store_history_delete(core, 1, &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "deleting nothing");
+
+    err = make_error();
+    c.check_status(mxq_store_history_count(core, &count, &revision, &err),
+                   MXQ_OK, "mxq_store_history_count again");
+    c.check_eq(static_cast<int64_t>(revision), 0,
+               "a refused mutation is not a mutation");
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+#if MXQ_TEST_RULES_FACADE
+
+/* ---------------------------------------------------------------------- */
+/* Small readers                                                           */
+/* ---------------------------------------------------------------------- */
+
+bool read_file(const fs::path &path, std::string &out) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    out.assign(std::istreambuf_iterator<char>(in),
+               std::istreambuf_iterator<char>());
+    return true;
+}
+
+std::string encode_of(MxqCore *core, const MxqGame *game, Case &c,
+                      const std::string &where) {
+    MxqBlob *blob = nullptr;
+    MxqError err = make_error();
+    const MxqStatus rc = mxq_archive_encode(core, game, &blob, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_archive_encode failed: " +
+                              std::string(mxq_status_name(rc)) + ": " +
+                              err.detail);
+    if (rc != MXQ_OK) {
+        return std::string();
+    }
+    const std::string bytes(
+        reinterpret_cast<const char *>(mxq_blob_bytes(blob)),
+        mxq_blob_len(blob));
+    mxq_blob_release(blob);
+    return bytes;
+}
+
+uint64_t revision_of(MxqCore *core, Case &c, const std::string &where) {
+    uint32_t count = 0;
+    uint64_t revision = 0;
+    MxqError err = make_error();
+    const MxqStatus rc =
+        mxq_store_history_count(core, &count, &revision, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_store_history_count failed: " +
+                              std::string(mxq_status_name(rc)));
+    return revision;
+}
+
+uint32_t count_of(MxqCore *core, Case &c, const std::string &where) {
+    uint32_t count = 0;
+    uint64_t revision = 0;
+    MxqError err = make_error();
+    const MxqStatus rc =
+        mxq_store_history_count(core, &count, &revision, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_store_history_count failed: " +
+                              std::string(mxq_status_name(rc)));
+    return count;
+}
+
+std::vector<MxqRecordSummary> page_of(MxqCore *core, uint32_t offset,
+                                      uint32_t limit, Case &c,
+                                      const std::string &where) {
+    std::vector<MxqRecordSummary> page(limit == 0 ? 1 : limit, make_summary());
+    size_t written = 0;
+    uint64_t revision = 0;
+    MxqError err = make_error();
+    const MxqStatus rc = mxq_store_history_page(core, offset, limit,
+                                                page.data(), limit, &written,
+                                                &revision, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_store_history_page failed: " +
+                              std::string(mxq_status_name(rc)) + ": " +
+                              err.detail);
+    page.resize(rc == MXQ_OK ? written : 0);
+    return page;
+}
+
+std::string state_text(MxqGameState state) {
+    switch (state) {
+    case MXQ_GAME_ONGOING: return "ongoing";
+    case MXQ_GAME_CLAIMABLE_DRAW: return "claimable-draw";
+    case MXQ_GAME_RED_WINS: return "red-wins";
+    case MXQ_GAME_BLACK_WINS: return "black-wins";
+    case MXQ_GAME_DRAW: return "draw";
+    default: break;
+    }
+    return "unknown(" + std::to_string(state) + ")";
+}
+
+std::string outcome_text(MxqOutcome outcome) {
+    switch (outcome) {
+    case MXQ_OUTCOME_NONE: return "none";
+    case MXQ_OUTCOME_RED_WINS: return "red-wins";
+    case MXQ_OUTCOME_BLACK_WINS: return "black-wins";
+    case MXQ_OUTCOME_DRAW: return "draw";
+    default: break;
+    }
+    return "unknown(" + std::to_string(outcome) + ")";
+}
+
+std::string reason_text(MxqEndReason reason) {
+    switch (reason) {
+    case MXQ_END_REASON_NONE: return "null";
+    case MXQ_END_REASON_CHECKMATE: return "checkmate";
+    case MXQ_END_REASON_STALEMATE: return "stalemate";
+    case MXQ_END_REASON_THREEFOLD_REPETITION: return "threefold-repetition";
+    case MXQ_END_REASON_PERPETUAL_CHECK: return "perpetual-check";
+    case MXQ_END_REASON_PERPETUAL_CHASE: return "perpetual-chase";
+    case MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK: return "mutual-perpetual-check";
+    case MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE: return "mutual-perpetual-chase";
+    case MXQ_END_REASON_RESIGNATION: return "resignation";
+    case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
+    default: break;
+    }
+    return "unknown(" + std::to_string(reason) + ")";
+}
+
+/*
+ * The index a deterministic identifier carries: the counter is spelled in the
+ * final 62 bits, so the last group of the UUID is it. Advancing the provider
+ * to that index is how a golden minted as the corpus's fourth game can be
+ * reproduced by a run that would otherwise mint its first.
+ */
+bool advance_identity_to(MxqCore *core, const std::string &game_id,
+                         std::string &error) {
+    const size_t dash = game_id.rfind('-');
+    if (dash == std::string::npos) {
+        error = "the golden's game_id is not a UUID";
+        return false;
+    }
+    const unsigned long long index =
+        std::strtoull(game_id.substr(dash + 1).c_str(), nullptr, 16);
+    if (index > 1024) {
+        error = "the golden's identity index is implausibly far along";
+        return false;
+    }
+    for (unsigned long long i = 0; i < index; ++i) {
+        core->identity.next_game_id();
+    }
+    return true;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Locking and tampering, through a second connection                      */
+/* ---------------------------------------------------------------------- */
+
+sqlite3 *open_second_connection(const fs::path &store) {
+    sqlite3 *db = nullptr;
+    const std::string path = (store / "library.sqlite3").string();
+    if (sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READWRITE, nullptr) !=
+        SQLITE_OK) {
+        sqlite3_close(db);
+        return nullptr;
+    }
+    return db;
+}
+
+bool run_sql(sqlite3 *db, const char *sql) {
+    return sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Playing a scenario's move line                                          */
+/* ---------------------------------------------------------------------- */
+
+struct Ending {
+    std::string action;
+    std::string archive;
+    std::string outcome;
+    std::string end_reason;
+    std::string state;
+};
+
+struct Scenario {
+    std::string              title;
+    MxqGameConfig            config = make_config();
+    std::vector<std::string> moves;
+    Ending                   end;
+};
+
+bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
+    std::string text;
+    if (!read_file(path, text)) {
+        error = "cannot read " + path.string();
+        return false;
+    }
+    mxqtest::JsonValue root;
+    if (!mxqtest::json_parse(text, root, error)) {
+        return false;
+    }
+    if (!root.is_object()) {
+        error = "the scenario is not a JSON object";
+        return false;
+    }
+
+    const mxqtest::JsonValue *title = root.member("title");
+    out.title = title != nullptr && title->is_string() ? title->string()
+                                                       : path.stem().string();
+
+    const mxqtest::JsonValue *config = root.member("config");
+    if (config == nullptr || !config->is_object()) {
+        error = "the scenario has no \"config\" object";
+        return false;
+    }
+    const mxqtest::JsonValue *mode = config->member("mode");
+    if (mode == nullptr || !mode->is_string()) {
+        error = "\"config.mode\" is missing";
+        return false;
+    }
+    if (mode->string() == "human-vs-ai") {
+        out.config.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+        const mxqtest::JsonValue *side = config->member("human_side");
+        const mxqtest::JsonValue *level = config->member("ai_level");
+        const mxqtest::JsonValue *movetime = config->member("ai_movetime_ms");
+        const mxqtest::JsonValue *first = config->member("first_mover_choice");
+        if (side == nullptr || level == nullptr || movetime == nullptr ||
+            first == nullptr) {
+            error = "a human-versus-AI scenario states all four configuration "
+                    "members";
+            return false;
+        }
+        out.config.human_side =
+            side->string() == "red" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+        out.config.ai_level = level->string() == "fast" ? MXQ_AI_LEVEL_FAST
+                              : level->string() == "standard"
+                                  ? MXQ_AI_LEVEL_STANDARD
+                                  : MXQ_AI_LEVEL_DEEP;
+        out.config.ai_movetime_ms = static_cast<uint32_t>(movetime->number());
+        out.config.first_mover_choice =
+            first->string() == "human-first"  ? MXQ_FIRST_MOVER_HUMAN_FIRST
+            : first->string() == "ai-first"   ? MXQ_FIRST_MOVER_AI_FIRST
+                                              : MXQ_FIRST_MOVER_RANDOM;
+    } else if (mode->string() != "free-play") {
+        error = "\"config.mode\" is not one of the two accepted modes";
+        return false;
+    }
+
+    if (const mxqtest::JsonValue *moves = root.member("moves")) {
+        for (const mxqtest::JsonValue &move : moves->array()) {
+            out.moves.push_back(move.string());
+        }
+    }
+
+    const mxqtest::JsonValue *end = root.member("end");
+    if (end == nullptr || !end->is_object()) {
+        error = "the scenario has no \"end\" object";
+        return false;
+    }
+    const auto member = [&](const char *name) {
+        const mxqtest::JsonValue *v = end->member(name);
+        return v != nullptr && v->is_string() ? v->string() : std::string();
+    };
+    out.end.action = member("action");
+    out.end.archive = member("archive");
+    out.end.outcome = member("outcome");
+    out.end.end_reason = member("end_reason");
+    out.end.state = member("state");
+    if (out.end.action.empty()) {
+        error = "the scenario's \"end\" states no action";
+        return false;
+    }
+    return true;
+}
+
+/* The one call a scenario's ending names. */
+MxqStatus perform_ending(const std::string &action, MxqCore *core,
+                         MxqGame *game, uint64_t *out_record_id,
+                         MxqError *err) {
+    if (action == "claim_draw") {
+        return mxq_game_claim_draw(game, out_record_id, err);
+    }
+    if (action == "resign") {
+        return mxq_game_resign(game, out_record_id, err);
+    }
+    if (action == "confirm_result") {
+        return mxq_game_confirm_result(game, out_record_id, err);
+    }
+    return mxq_store_archive_and_clear(core, game, out_record_id, err);
+}
+
+/* Every mutation an archived session must refuse, and the status it owes. */
+void check_archived_refuses_everything(Case &c, MxqCore *core, MxqGame *game,
+                                       const std::string &where) {
+    struct Refusal {
+        const char *name;
+        MxqStatus   status;
+    };
+    uint64_t record_id = 0;
+    uint32_t removed = 0;
+    const Refusal refusals[] = {
+        {"mxq_game_apply_move",
+         mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr)},
+        {"mxq_game_undo", mxq_game_undo(game, &removed, nullptr)},
+        {"mxq_game_claim_draw",
+         mxq_game_claim_draw(game, &record_id, nullptr)},
+        {"mxq_game_resign", mxq_game_resign(game, &record_id, nullptr)},
+        {"mxq_game_confirm_result",
+         mxq_game_confirm_result(game, &record_id, nullptr)},
+        {"mxq_store_archive_and_clear",
+         mxq_store_archive_and_clear(core, game, &record_id, nullptr)},
+    };
+    for (const Refusal &refusal : refusals) {
+        c.check(refusal.status == MXQ_ERR_STATE_SESSION_ARCHIVED,
+                where + ": " + refusal.name +
+                    " on an archived session is MXQ_ERR_STATE_SESSION_ARCHIVED,"
+                    " got " +
+                    std::string(mxq_status_name(refusal.status)));
+    }
+    c.check_eq(removed, 0, where + ": a refused undo removes nothing");
+    c.check_eq(static_cast<int64_t>(record_id), 0,
+               where + ": a refused ending yields no record id");
+}
+
+/* Every query an archived or detached session must still answer, with no
+ * affordance left on the table. */
+void check_queries_still_answer(Case &c, MxqGame *game, size_t move_count,
+                                const std::string &state,
+                                const std::string &where) {
+    MxqPosition position = make_position();
+    MxqError err = make_error();
+    c.check_status(mxq_game_position(game, &position, &err), MXQ_OK,
+                   where + ": mxq_game_position");
+    c.check_eq(position.ply_count, static_cast<int64_t>(move_count),
+               where + ": the ply count");
+
+    MxqGameStatus status = make_status();
+    err = make_error();
+    c.check_status(mxq_game_status(game, &status, &err), MXQ_OK,
+                   where + ": mxq_game_status");
+    c.check_eq(state_text(status.state), state, where + ": the replayed state");
+    c.check_eq(status.claim_available, 0, where + ": claim_available");
+    c.check_eq(status.undo_available, 0, where + ": undo_available");
+    c.check_eq(status.undo_plies, 0, where + ": undo_plies");
+    c.check_eq(status.resign_available, 0, where + ": resign_available");
+    c.check_eq(status.search_expected, 0, where + ": search_expected");
+
+    MxqGameConfig config = make_config();
+    err = make_error();
+    c.check_status(mxq_game_config(game, &config, &err), MXQ_OK,
+                   where + ": mxq_game_config");
+
+    char id[MXQ_GAME_ID_CAP];
+    size_t len = 0;
+    err = make_error();
+    c.check_status(mxq_game_id(game, id, sizeof(id), &len, &err), MXQ_OK,
+                   where + ": mxq_game_id");
+    c.check_eq(static_cast<int64_t>(len), 36, where + ": the identity's length");
+
+    size_t count = 0;
+    err = make_error();
+    const MxqStatus history =
+        mxq_game_move_history(game, nullptr, 0, &count, &err);
+    c.check(move_count == 0 ? history == MXQ_OK
+                            : history == MXQ_ERR_ARG_BUFFER_TOO_SMALL,
+            where + ": mxq_game_move_history reports its count");
+    c.check_eq(static_cast<int64_t>(count), static_cast<int64_t>(move_count),
+               where + ": the retained line's length");
+
+    MxqPosition initial = make_position();
+    err = make_error();
+    c.check_status(mxq_game_position_at(game, 0, &initial, &err), MXQ_OK,
+                   where + ": mxq_game_position_at(0)");
+}
+
+/* The record a scenario's ending must have left in History. */
+void check_record(Case &c, const MxqRecordSummary &record,
+                  const Scenario &scenario, uint64_t record_id,
+                  const std::string &game_id, const std::string &where) {
+    c.check_eq(static_cast<int64_t>(record.record_id),
+               static_cast<int64_t>(record_id), where + ": record_id");
+    c.check_eq(std::string(record.game_id), game_id, where + ": game_id");
+    c.check_eq(static_cast<int64_t>(record.move_count),
+               static_cast<int64_t>(scenario.moves.size()),
+               where + ": move_count");
+    c.check_eq(outcome_text(record.outcome), scenario.end.outcome,
+               where + ": outcome");
+    c.check_eq(reason_text(record.end_reason), scenario.end.end_reason,
+               where + ": end_reason");
+    c.check_eq(record.mode, scenario.config.mode, where + ": mode");
+    c.check_eq(record.human_side, scenario.config.human_side,
+               where + ": human_side");
+    c.check_eq(record.ai_level, scenario.config.ai_level, where + ": ai_level");
+    c.check_eq(record.ai_movetime_ms, scenario.config.ai_movetime_ms,
+               where + ": ai_movetime_ms");
+    c.check_eq(record.provenance, MXQ_PROVENANCE_LOCALLY_PLAYED,
+               where + ": provenance");
+    c.check_eq(record.pinned, 0, where + ": a new record is unpinned");
+    c.check_eq(record.is_active, 0, where + ": a History record is not active");
+    c.check(record.added_at_ms > 0,
+            where + ": a History record has a History-added time");
+    c.check(record.ended_at_ms == record.added_at_ms,
+            where + ": the game ended and entered History at one instant");
+    c.check(record.ended_at_ms >= record.started_at_ms,
+            where + ": it did not end before it started");
+}
+
+/* ---------------------------------------------------------------------- */
+/* The scenario: one ending, end to end                                    */
+/* ---------------------------------------------------------------------- */
+
+void run_scenario(const fs::path &path, const fs::path &archives) {
+    Scenario scenario;
+    std::string error;
+    Case c(path.stem().string());
+    if (!read_scenario(path, scenario, error)) {
+        c.check(false, "cannot read the scenario: " + error);
+        c.report();
+        return;
+    }
+    c.name = path.stem().string() + " — " + scenario.title;
+
+    std::string golden;
+    if (!scenario.end.archive.empty() &&
+        !read_file(archives / "valid" / scenario.end.archive, golden)) {
+        c.check(false, "cannot read the golden " + scenario.end.archive);
+        c.report();
+        return;
+    }
+
+    const fs::path store = scratch_dir(path.stem().string());
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    MxqStatus rc = init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core,
+                             &err);
+    c.check(rc == MXQ_OK, std::string("mxq_core_init failed: ") + err.detail);
+    if (rc != MXQ_OK) {
+        c.report();
+        return;
+    }
+
+    if (!golden.empty()) {
+        const size_t at = golden.find("\"game_id\":\"");
+        if (at == std::string::npos ||
+            !advance_identity_to(core, golden.substr(at + 11, 36), error)) {
+            c.check(false, "cannot align the identity sequence: " + error);
+            mxq_core_shutdown(core, nullptr);
+            c.report();
+            return;
+        }
+    }
+
+    /* ---- play the line ---- */
+    MxqGame *game = nullptr;
+    err = make_error();
+    rc = mxq_game_create(core, &scenario.config, &game, &err);
+    c.check(rc == MXQ_OK, std::string("mxq_game_create failed: ") +
+                              mxq_status_name(rc) + ": " + err.detail);
+    if (rc != MXQ_OK) {
+        mxq_core_shutdown(core, nullptr);
+        c.report();
+        return;
+    }
+    for (size_t i = 0; i < scenario.moves.size(); ++i) {
+        err = make_error();
+        rc = mxq_game_apply_move(game, scenario.moves[i].c_str(), nullptr,
+                                 nullptr, &err);
+        c.check(rc == MXQ_OK, "move " + std::to_string(i) + " (" +
+                                  scenario.moves[i] + ") was refused: " +
+                                  std::string(mxq_status_name(rc)) + ": " +
+                                  err.detail);
+        if (rc != MXQ_OK) {
+            mxq_game_release(game);
+            mxq_core_shutdown(core, nullptr);
+            c.report();
+            return;
+        }
+    }
+
+    char id_buffer[MXQ_GAME_ID_CAP];
+    size_t id_len = 0;
+    mxq_game_id(game, id_buffer, sizeof(id_buffer), &id_len, nullptr);
+    const std::string game_id(id_buffer);
+    const std::string active_bytes = encode_of(core, game, c, "before the end");
+    const uint64_t revision_before = revision_of(core, c, "before the end");
+
+    MxqGameStatus before = make_status();
+    mxq_game_status(game, &before, nullptr);
+    c.check_eq(state_text(before.state), scenario.end.state,
+               "the state the ending is classified from");
+
+    /* ---- the ending ---- */
+    uint64_t record_id = 0;
+    err = make_error();
+    rc = perform_ending(scenario.end.action, core, game, &record_id, &err);
+    c.check(rc == MXQ_OK, "the ending was refused: " +
+                              std::string(mxq_status_name(rc)) + ": " +
+                              err.detail);
+    if (rc != MXQ_OK) {
+        mxq_game_release(game);
+        mxq_core_shutdown(core, nullptr);
+        c.report();
+        return;
+    }
+    c.check(record_id > 0, "the ending returns the new record's identifier");
+    c.check(revision_of(core, c, "after the ending") > revision_before,
+            "the ending bumped the library revision");
+
+    /* ---- the session afterwards ---- */
+    check_archived_refuses_everything(c, core, game, "archived");
+    check_queries_still_answer(c, game, scenario.moves.size(),
+                               scenario.end.state, "archived");
+
+    const std::string finished = encode_of(core, game, c, "archived");
+    c.check(finished != active_bytes,
+            "the finished document is not the active one");
+    if (!golden.empty()) {
+        c.check_eq(finished, golden,
+                   "the archived session is the golden " + scenario.end.archive);
+    }
+
+    /* ---- the library afterwards ---- */
+    uint8_t exists = 1;
+    err = make_error();
+    c.check_status(mxq_store_active_exists(core, &exists, &err), MXQ_OK,
+                   "mxq_store_active_exists");
+    c.check_eq(exists, 0, "the library holds no active game");
+
+    exists = 1;
+    err = make_error();
+    MxqRecordSummary active = make_summary();
+    MxqGameStatus active_status = make_status();
+    c.check_status(mxq_store_active_summary(core, &active, &active_status,
+                                            &exists, &err),
+                   MXQ_OK, "mxq_store_active_summary");
+    c.check_eq(exists, 0, "there is no active summary to report");
+
+    c.check_eq(count_of(core, c, "after the ending"), 1,
+               "History holds exactly the archived game");
+
+    MxqRecordSummary record = make_summary();
+    err = make_error();
+    c.check_status(mxq_store_history_get(core, record_id, &record, &err),
+                   MXQ_OK, "mxq_store_history_get");
+    check_record(c, record, scenario, record_id, game_id, "the record");
+
+    const std::vector<MxqRecordSummary> page =
+        page_of(core, 0, 8, c, "after the ending");
+    c.check_eq(static_cast<int64_t>(page.size()), 1, "the page holds one row");
+    if (page.size() == 1) {
+        c.check_eq(static_cast<int64_t>(page[0].record_id),
+                   static_cast<int64_t>(record_id),
+                   "the page holds the archived game");
+    }
+
+    /* ---- and a new game may be created, because the old one is filed ---- */
+    MxqGameConfig fresh = make_config();
+    MxqGame *next = nullptr;
+    uint64_t next_record = 0;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &fresh, &next, &err), MXQ_OK,
+                   "a new game may be created once the old one is filed");
+    if (next != nullptr) {
+        err = make_error();
+        c.check_status(
+            mxq_store_archive_and_clear(core, next, &next_record, &err), MXQ_OK,
+            "and filed in its turn");
+        c.check(next_record > record_id,
+                "record identifiers are never reused");
+        mxq_game_release(next);
+        err = make_error();
+        c.check_status(mxq_store_history_delete(core, next_record, &err),
+                       MXQ_OK, "the second record is deleted again");
+    }
+
+    mxq_game_release(game);
+    game = nullptr;
+    mxq_core_shutdown(core, nullptr);
+    core = nullptr;
+
+    /* ---- across a relaunch ---- */
+    err = make_error();
+    rc = init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err);
+    c.check(rc == MXQ_OK, std::string("reopening the store failed: ") +
+                              err.detail);
+    if (rc != MXQ_OK) {
+        c.report();
+        return;
+    }
+
+    uint8_t resumed_exists = 1;
+    MxqGame *resumed = reinterpret_cast<MxqGame *>(0x1);
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &resumed, &resumed_exists, &err),
+                   MXQ_OK, "mxq_game_resume_active after the ending");
+    c.check_eq(resumed_exists, 0, "there is nothing left to resume");
+    c.check(resumed == nullptr, "and no session was produced");
+
+    MxqRecordSummary after_reopen = make_summary();
+    err = make_error();
+    c.check_status(mxq_store_history_get(core, record_id, &after_reopen, &err),
+                   MXQ_OK, "the record survives the relaunch");
+    check_record(c, after_reopen, scenario, record_id, game_id,
+                 "the record after the relaunch");
+
+    /* ---- opened for replay ---- */
+    MxqGame *replay = nullptr;
+    err = make_error();
+    rc = mxq_store_history_open(core, record_id, &replay, &err);
+    c.check(rc == MXQ_OK, std::string("mxq_store_history_open failed: ") +
+                              mxq_status_name(rc) + ": " + err.detail);
+    if (rc == MXQ_OK) {
+        check_queries_still_answer(c, replay, scenario.moves.size(),
+                                   scenario.end.state, "replay");
+
+        char replay_id[MXQ_GAME_ID_CAP];
+        size_t replay_len = 0;
+        mxq_game_id(replay, replay_id, sizeof(replay_id), &replay_len, nullptr);
+        c.check_eq(std::string(replay_id), game_id,
+                   "the replay is the same game");
+
+        const std::string replayed_bytes =
+            encode_of(core, replay, c, "replay");
+        c.check_eq(replayed_bytes, finished,
+                   "the replay encodes to the record's own bytes");
+
+        MxqArchiveInfo info;
+        std::memset(&info, 0, sizeof(info));
+        info.struct_size = static_cast<uint32_t>(sizeof(info));
+        err = make_error();
+        c.check_status(
+            mxq_archive_validate(
+                core, reinterpret_cast<const uint8_t *>(replayed_bytes.data()),
+                replayed_bytes.size(), &info, &err),
+            MXQ_OK, "the archived bytes validate");
+        c.check_eq(outcome_text(info.outcome), scenario.end.outcome,
+                   "the validated outcome");
+        c.check_eq(reason_text(info.end_reason), scenario.end.end_reason,
+                   "the validated end reason");
+
+        /* A replay is read-only, and every mutation says so. */
+        uint32_t removed = 0;
+        uint64_t ignored = 0;
+        const MxqStatus refusals[] = {
+            mxq_game_apply_move(replay, "b1b3", nullptr, nullptr, nullptr),
+            mxq_game_undo(replay, &removed, nullptr),
+            mxq_game_claim_draw(replay, &ignored, nullptr),
+            mxq_game_resign(replay, &ignored, nullptr),
+            mxq_game_confirm_result(replay, &ignored, nullptr),
+            mxq_store_archive_and_clear(core, replay, &ignored, nullptr),
+        };
+        for (const MxqStatus refusal : refusals) {
+            c.check(refusal == MXQ_ERR_STATE_SESSION_READ_ONLY,
+                    std::string("a mutation on a replay is "
+                                "MXQ_ERR_STATE_SESSION_READ_ONLY, got ") +
+                        mxq_status_name(refusal));
+        }
+        mxq_game_release(replay);
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Cases that are properties of the library                                */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * A failing ending, on every one of the four paths, driven through the store's
+ * own transaction: a second connection holds the database's write lock, so
+ * BEGIN IMMEDIATE inside the archiving is refused as SQLITE_BUSY exactly as a
+ * real contended write would be. Nothing sleeps, and no seam in the core
+ * arranges it.
+ *
+ * What must be true afterwards is the whole of docs/game-data.md's sentence
+ * about it: the game remains active and unchanged, no History record exists,
+ * and the same call succeeds once the store is free — which is what makes the
+ * accepted 无法保存对局 retry a retry rather than a second chance at a
+ * different outcome.
+ */
+void case_a_failed_ending_is_retryable(const std::vector<fs::path> &paths) {
+    Case c("a failed ending leaves the game active, unchanged and retryable");
+
+    for (const fs::path &path : paths) {
+        Scenario scenario;
+        std::string error;
+        if (!read_scenario(path, scenario, error)) {
+            c.check(false, "cannot read the scenario: " + error);
+            continue;
+        }
+        const std::string what = path.stem().string();
+        const fs::path store = scratch_dir("retry-" + what);
+
+        MxqCore *core = nullptr;
+        MxqError err = make_error();
+        if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core,
+                      &err) != MXQ_OK) {
+            c.check(false, what + ": mxq_core_init failed");
+            continue;
+        }
+        MxqGame *game = nullptr;
+        err = make_error();
+        if (mxq_game_create(core, &scenario.config, &game, &err) != MXQ_OK) {
+            c.check(false, what + ": mxq_game_create failed");
+            mxq_core_shutdown(core, nullptr);
+            continue;
+        }
+        for (const std::string &move : scenario.moves) {
+            mxq_game_apply_move(game, move.c_str(), nullptr, nullptr, nullptr);
+        }
+        const std::string before_bytes = encode_of(core, game, c, what);
+        const uint64_t before_revision = revision_of(core, c, what);
+        MxqGameStatus before = make_status();
+        mxq_game_status(game, &before, nullptr);
+
+        sqlite3 *blocker = open_second_connection(store);
+        c.check(blocker != nullptr, what + ": the second connection opens");
+        if (blocker == nullptr) {
+            mxq_game_release(game);
+            mxq_core_shutdown(core, nullptr);
+            continue;
+        }
+        c.check(run_sql(blocker, "BEGIN EXCLUSIVE;"),
+                what + ": the second connection takes the write lock");
+
+        uint64_t refused_id = 99;
+        err = make_error();
+        const MxqStatus refused =
+            perform_ending(scenario.end.action, core, game, &refused_id, &err);
+        c.check(mxq_status_domain(refused) == MXQ_DOMAIN_STORE,
+                what + ": an ending that cannot commit fails in the store "
+                       "domain, got " +
+                    std::string(mxq_status_name(refused)));
+        c.check_eq(static_cast<int64_t>(refused_id), 0,
+                   what + ": a failed ending yields no record id");
+        c.check_eq(encode_of(core, game, c, what + " after the failure"),
+                   before_bytes,
+                   what + ": the game is exactly at its pre-ending committed "
+                          "state");
+
+        MxqGameStatus after = make_status();
+        err = make_error();
+        c.check_status(mxq_game_status(game, &after, &err), MXQ_OK,
+                       what + ": the session still answers");
+        c.check(after.undo_available == before.undo_available &&
+                    after.claim_available == before.claim_available &&
+                    after.resign_available == before.resign_available,
+                what + ": a failed ending withdraws no affordance");
+
+        c.check(run_sql(blocker, "ROLLBACK;"), what + ": the lock is released");
+        sqlite3_close(blocker);
+
+        c.check_eq(count_of(core, c, what), 0,
+                   what + ": no History record exists");
+        c.check_eq(static_cast<int64_t>(revision_of(core, c, what)),
+                   static_cast<int64_t>(before_revision),
+                   what + ": a failed ending is not a mutation");
+
+        /* The same call, on the same game, now succeeds: what failed was the
+         * commit and not the ending. */
+        uint64_t record_id = 0;
+        err = make_error();
+        const MxqStatus retried =
+            perform_ending(scenario.end.action, core, game, &record_id, &err);
+        c.check(retried == MXQ_OK,
+                what + ": the same ending commits once the store is free, got " +
+                    std::string(mxq_status_name(retried)) + ": " + err.detail);
+        c.check(record_id > 0, what + ": and it returns a record id");
+        c.check_eq(count_of(core, c, what + " after the retry"), 1,
+                   what + ": History holds exactly one record");
+
+        MxqRecordSummary record = make_summary();
+        err = make_error();
+        if (mxq_store_history_get(core, record_id, &record, &err) == MXQ_OK) {
+            c.check_eq(outcome_text(record.outcome), scenario.end.outcome,
+                       what + ": the retried ending recorded the same outcome");
+            c.check_eq(reason_text(record.end_reason), scenario.end.end_reason,
+                       what + ": and the same reason");
+        }
+
+        mxq_game_release(game);
+        mxq_core_shutdown(core, nullptr);
+    }
+
+    c.report();
+}
+
+/* Create a game, play it, and file it. Returns the new record's identifier. */
+uint64_t play_and_file(MxqCore *core, const MxqGameConfig &config,
+                       const std::vector<std::string> &moves, Case &c,
+                       const std::string &where) {
+    MxqGameConfig local = config;
+    MxqGame *game = nullptr;
+    MxqError err = make_error();
+    MxqStatus rc = mxq_game_create(core, &local, &game, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_game_create failed: " +
+                              std::string(mxq_status_name(rc)) + ": " +
+                              err.detail);
+    if (rc != MXQ_OK) {
+        return 0;
+    }
+    for (const std::string &move : moves) {
+        err = make_error();
+        rc = mxq_game_apply_move(game, move.c_str(), nullptr, nullptr, &err);
+        c.check(rc == MXQ_OK, where + ": " + move + " was refused: " +
+                                  std::string(mxq_status_name(rc)));
+    }
+    uint64_t record_id = 0;
+    err = make_error();
+    rc = mxq_store_archive_and_clear(core, game, &record_id, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_store_archive_and_clear failed: " +
+                              std::string(mxq_status_name(rc)) + ": " +
+                              err.detail);
+    mxq_game_release(game);
+    return record_id;
+}
+
+void case_archive_and_clear_without_a_game() {
+    Case c("archive-and-clear with nothing to archive");
+    const fs::path store = scratch_dir("nothing-to-archive");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    /* No session at all: the one required pointer is the active game, so its
+     * absence is a state rather than a programming error. */
+    uint64_t record_id = 99;
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, nullptr, &record_id, &err),
+                   MXQ_ERR_STATE_ACTIVE_GAME_MISSING,
+                   "archiving no game at all");
+    c.check_eq(static_cast<int64_t>(record_id), 0, "no record id was produced");
+    c.check_eq(count_of(core, c, "after the refusal"), 0,
+               "nothing entered History");
+
+    /* And a session that has already been archived is archived, not missing:
+     * the two are different facts and the caller can tell them apart. */
+    MxqGameConfig config = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &config, &game, &err);
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, game, &record_id, &err),
+                   MXQ_OK, "the first archiving");
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, game, &record_id, &err),
+                   MXQ_ERR_STATE_SESSION_ARCHIVED, "the second archiving");
+    c.check_eq(count_of(core, c, "after the second"), 1,
+               "History holds one record, not two");
+
+    mxq_game_release(game);
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_endings_refuse_where_they_do_not_apply() {
+    Case c("each ending refuses where its own rule does not hold");
+    const fs::path store = scratch_dir("refusals");
+
+    /* The status this PR appends is in the state domain and names itself, so a
+     * frontend routing by domain and a log naming the code both work before
+     * anything returns it. */
+    c.check_eq(std::string(mxq_status_name(MXQ_ERR_STATE_CONFIRM_UNAVAILABLE)),
+               "MXQ_ERR_STATE_CONFIRM_UNAVAILABLE",
+               "the appended status names itself");
+    c.check_eq(mxq_status_domain(MXQ_ERR_STATE_CONFIRM_UNAVAILABLE),
+               MXQ_DOMAIN_STATE, "and reports the state domain");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    /* Free Play, one move: ongoing. */
+    MxqGameConfig free_play = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &free_play, &game, &err);
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+    const std::string bytes = encode_of(core, game, c, "before the refusals");
+    const uint64_t revision = revision_of(core, c, "before the refusals");
+
+    uint64_t record_id = 99;
+    err = make_error();
+    c.check_status(mxq_game_claim_draw(game, &record_id, &err),
+                   MXQ_ERR_STATE_CLAIM_UNAVAILABLE,
+                   "claiming a draw with no repetition to claim");
+    err = make_error();
+    c.check_status(mxq_game_resign(game, &record_id, &err),
+                   MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                   "resigning in Free Play");
+    err = make_error();
+    c.check_status(mxq_game_confirm_result(game, &record_id, &err),
+                   MXQ_ERR_STATE_CONFIRM_UNAVAILABLE,
+                   "confirming a result an ongoing game does not have");
+    c.check_eq(static_cast<int64_t>(record_id), 0,
+               "no refusal produced a record id");
+    c.check_eq(encode_of(core, game, c, "after the refusals"), bytes,
+               "the game is untouched by every refusal");
+    c.check_eq(static_cast<int64_t>(revision_of(core, c, "after the refusals")),
+               static_cast<int64_t>(revision),
+               "a refused ending is not a mutation");
+    c.check_eq(count_of(core, c, "after the refusals"), 0,
+               "and nothing entered History");
+
+    /* The claimable repetition is not a result to confirm: the game continues
+     * there unless the claim is made, and confirming is the other decision. */
+    for (const char *move : {"b7b5", "b3b1", "b5b7", "b1b3", "b7b5", "b3b1",
+                             "b5b7"}) {
+        mxq_game_apply_move(game, move, nullptr, nullptr, nullptr);
+    }
+    MxqGameStatus claimable = make_status();
+    mxq_game_status(game, &claimable, nullptr);
+    c.check_eq(state_text(claimable.state), "claimable-draw",
+               "the line reaches a claimable repetition");
+    err = make_error();
+    c.check_status(mxq_game_confirm_result(game, &record_id, &err),
+                   MXQ_ERR_STATE_CONFIRM_UNAVAILABLE,
+                   "confirming a claimable repetition");
+
+    /* File it, so the next game may be created. An unclaimed claimable
+     * repetition is still an ongoing game, so it is recorded as ended early
+     * rather than as the draw nobody claimed. */
+    uint64_t filed = 0;
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, game, &filed, &err),
+                   MXQ_OK, "the unclaimed repetition is filed");
+    MxqRecordSummary unclaimed = make_summary();
+    err = make_error();
+    mxq_store_history_get(core, filed, &unclaimed, &err);
+    c.check_eq(outcome_text(unclaimed.outcome), "none",
+               "an unclaimed repetition records no competitive result");
+    c.check_eq(reason_text(unclaimed.end_reason), "ended-early",
+               "it is recorded as ended early rather than as a draw");
+    mxq_game_release(game);
+
+    /* Human versus AI, mated: resignation would overwrite a result the game
+     * really has, and the claim has nothing to claim. */
+    MxqGameConfig human = make_config();
+    human.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+    human.human_side = MXQ_COLOR_RED;
+    human.ai_level = MXQ_AI_LEVEL_STANDARD;
+    human.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
+    human.ai_movetime_ms = MXQ_MOVETIME_STANDARD_MS;
+    MxqGame *mated = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &human, &mated, &err), MXQ_OK,
+                   "the human-versus-AI game is created");
+    for (const char *move : {"b1b3", "a6a5", "b3d3"}) {
+        mxq_game_apply_move(mated, move, nullptr, nullptr, nullptr);
+    }
+    MxqGameStatus over = make_status();
+    mxq_game_status(mated, &over, nullptr);
+    c.check_eq(state_text(over.state), "red-wins", "the line is a checkmate");
+    c.check_eq(over.resign_available, 0,
+               "resignation is withdrawn once the game has a result");
+
+    err = make_error();
+    c.check_status(mxq_game_resign(mated, &record_id, &err),
+                   MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                   "resigning a game that already has a result");
+    err = make_error();
+    c.check_status(mxq_game_claim_draw(mated, &record_id, &err),
+                   MXQ_ERR_STATE_CLAIM_UNAVAILABLE,
+                   "claiming a draw in a mated position");
+
+    mxq_game_release(mated);
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_history_ordering() {
+    Case c("History is ordered pinned first, newest first, by record id");
+    const fs::path store = scratch_dir("ordering");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    const uint64_t first = play_and_file(core, config, {"b1b3"}, c, "first");
+    const uint64_t second = play_and_file(core, config, {"b1b3", "b7b5"}, c,
+                                          "second");
+    const uint64_t third = play_and_file(core, config, {"b1b2"}, c, "third");
+    c.check(first < second && second < third,
+            "record identifiers increase with each new record");
+
+    const auto ids = [&](const std::string &where) {
+        std::vector<uint64_t> out;
+        for (const MxqRecordSummary &row : page_of(core, 0, 8, c, where)) {
+            out.push_back(row.record_id);
+        }
+        return out;
+    };
+
+    c.check(ids("unpinned") == std::vector<uint64_t>({third, second, first}),
+            "newest History-added time first");
+
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, first, 1, &err), MXQ_OK,
+                   "the oldest record is pinned");
+    c.check(ids("pinned") == std::vector<uint64_t>({first, third, second}),
+            "a pinned record leads, whatever its time");
+
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, second, 1, &err), MXQ_OK,
+                   "a second record is pinned");
+    c.check(ids("two pinned") == std::vector<uint64_t>({second, first, third}),
+            "the pinned group is ordered by time within itself");
+
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, first, 0, &err), MXQ_OK,
+                   "the first record is unpinned");
+    c.check_status(mxq_store_history_set_pinned(core, second, 0, &err), MXQ_OK,
+                   "and so is the second");
+    c.check(ids("unpinned again") ==
+                std::vector<uint64_t>({third, second, first}),
+            "unpinning restores the plain order");
+
+    MxqRecordSummary summary = make_summary();
+    err = make_error();
+    mxq_store_history_get(core, first, &summary, &err);
+    c.check_eq(summary.pinned, 0, "the pin state round-trips to 0");
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_ordering_tie_is_broken_by_record_id() {
+    Case c("two records added in the same millisecond are ordered by record id");
+    const fs::path store = scratch_dir("tie");
+
+    /*
+     * The deterministic clock restarts at every mxq_core_init, so two games
+     * played in two lifetimes of the same store, with the same number of
+     * committed changes, reach History at exactly the same instant. That is
+     * the tie the accepted ordering breaks on record_id, arranged out of the
+     * contract's own guarantees rather than by writing a timestamp by hand.
+     *
+     * The identity sequence restarts too, and game_id is unique, so the
+     * second lifetime is advanced past the first game's identifier before it
+     * creates its own.
+     */
+    std::vector<uint64_t> made;
+    for (int lifetime = 0; lifetime < 2; ++lifetime) {
+        MxqCore *core = nullptr;
+        MxqError err = make_error();
+        if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core,
+                      &err) != MXQ_OK) {
+            c.check(false, "mxq_core_init failed");
+            c.report();
+            return;
+        }
+        for (int skip = 0; skip < lifetime; ++skip) {
+            core->identity.next_game_id();
+        }
+        MxqGameConfig config = make_config();
+        made.push_back(play_and_file(core, config, {"b1b3"}, c,
+                                     "lifetime " + std::to_string(lifetime)));
+        mxq_core_shutdown(core, nullptr);
+    }
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "reopening failed");
+        c.report();
+        return;
+    }
+    const std::vector<MxqRecordSummary> page = page_of(core, 0, 8, c, "tie");
+    c.check_eq(static_cast<int64_t>(page.size()), 2, "both records are there");
+    if (page.size() == 2) {
+        c.check_eq(page[0].added_at_ms, page[1].added_at_ms,
+                   "the two records share a History-added time");
+        c.check_eq(static_cast<int64_t>(page[0].record_id),
+                   static_cast<int64_t>(made[1]),
+                   "the later record_id leads the tie");
+        c.check_eq(static_cast<int64_t>(page[1].record_id),
+                   static_cast<int64_t>(made[0]),
+                   "and the earlier one follows");
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_pagination_boundaries() {
+    Case c("pagination at its boundaries");
+    const fs::path store = scratch_dir("pagination");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    std::vector<uint64_t> made;
+    for (int i = 0; i < 3; ++i) {
+        made.push_back(play_and_file(core, config, {"b1b3"}, c,
+                                     "record " + std::to_string(i)));
+    }
+    std::reverse(made.begin(), made.end()); /* newest first, as History reads */
+
+    uint32_t count = 0;
+    uint64_t revision = 0;
+    err = make_error();
+    c.check_status(mxq_store_history_count(core, &count, &revision, &err),
+                   MXQ_OK, "mxq_store_history_count");
+    c.check_eq(count, 3, "three records");
+
+    /* A page exactly the size of the list. */
+    std::vector<MxqRecordSummary> exact(3, make_summary());
+    size_t written = 0;
+    uint64_t page_revision = 0;
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 0, 3, exact.data(), 3, &written,
+                                          &page_revision, &err),
+                   MXQ_OK, "an exact page");
+    c.check_eq(static_cast<int64_t>(written), 3, "all three were written");
+    c.check_eq(static_cast<int64_t>(page_revision),
+               static_cast<int64_t>(revision),
+               "the page reports the same revision the count did");
+
+    /* A page larger than the list writes only what there is. */
+    std::vector<MxqRecordSummary> roomy(8, make_summary());
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 0, 8, roomy.data(), 8, &written,
+                                          &page_revision, &err),
+                   MXQ_OK, "a page larger than the list");
+    c.check_eq(static_cast<int64_t>(written), 3, "only three were written");
+
+    /* A page that starts inside the list and runs past its end. */
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 2, 8, roomy.data(), 8, &written,
+                                          &page_revision, &err),
+                   MXQ_OK, "a page overlapping the end");
+    c.check_eq(static_cast<int64_t>(written), 1, "one record was left");
+    if (written == 1) {
+        c.check_eq(static_cast<int64_t>(roomy[0].record_id),
+                   static_cast<int64_t>(made[2]), "and it is the last one");
+    }
+
+    /* A page entirely past the end. */
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 3, 8, roomy.data(), 8, &written,
+                                          &page_revision, &err),
+                   MXQ_OK, "a page past the end");
+    c.check_eq(static_cast<int64_t>(written), 0, "nothing was written");
+
+    /* A buffer smaller than the page the caller asked for is the caller's bug,
+     * and the required size is the page size it named. */
+    written = 99;
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 0, 4, roomy.data(), 3, &written,
+                                          &page_revision, &err),
+                   MXQ_ERR_ARG_BUFFER_TOO_SMALL, "a buffer below the limit");
+    c.check_eq(static_cast<int64_t>(err.required_size), 4,
+               "required_size names the requested page size");
+    c.check_eq(static_cast<int64_t>(written), 0, "nothing was written");
+
+    /* Asking for no records at all is not an error. */
+    written = 99;
+    err = make_error();
+    c.check_status(mxq_store_history_page(core, 0, 0, nullptr, 0, &written,
+                                          &page_revision, &err),
+                   MXQ_OK, "a page of zero records");
+    c.check_eq(static_cast<int64_t>(written), 0, "nothing was written");
+
+    /* Offsets walk the list in the accepted order, one at a time. */
+    for (uint32_t i = 0; i < 3; ++i) {
+        const std::vector<MxqRecordSummary> one =
+            page_of(core, i, 1, c, "offset " + std::to_string(i));
+        c.check_eq(static_cast<int64_t>(one.size()), 1, "one row at a time");
+        if (one.size() == 1) {
+            c.check_eq(static_cast<int64_t>(one[0].record_id),
+                       static_cast<int64_t>(made[i]),
+                       "offset " + std::to_string(i) + " is the right record");
+        }
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_pin_and_delete_bump_the_revision() {
+    Case c("every committed mutation bumps the library revision");
+    const fs::path store = scratch_dir("revisions");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    std::vector<uint64_t> revisions;
+    revisions.push_back(revision_of(core, c, "fresh"));
+
+    MxqGameConfig config = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &config, &game, &err);
+    revisions.push_back(revision_of(core, c, "after the creation"));
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+    revisions.push_back(revision_of(core, c, "after the move"));
+    uint32_t removed = 0;
+    mxq_game_undo(game, &removed, nullptr);
+    revisions.push_back(revision_of(core, c, "after the undo"));
+    uint64_t record_id = 0;
+    err = make_error();
+    mxq_store_archive_and_clear(core, game, &record_id, &err);
+    revisions.push_back(revision_of(core, c, "after the archiving"));
+    mxq_game_release(game);
+
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, record_id, 1, &err),
+                   MXQ_OK, "pinning");
+    revisions.push_back(revision_of(core, c, "after the pin"));
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, record_id, 0, &err),
+                   MXQ_OK, "unpinning");
+    revisions.push_back(revision_of(core, c, "after the unpin"));
+    err = make_error();
+    c.check_status(mxq_store_history_delete(core, record_id, &err), MXQ_OK,
+                   "deleting");
+    revisions.push_back(revision_of(core, c, "after the deletion"));
+
+    for (size_t i = 1; i < revisions.size(); ++i) {
+        c.check(revisions[i] > revisions[i - 1],
+                "revision " + std::to_string(i) + " (" +
+                    std::to_string(revisions[i]) +
+                    ") is greater than the one before it (" +
+                    std::to_string(revisions[i - 1]) + ")");
+    }
+
+    /* A refused mutation commits nothing, so it moves nothing. */
+    const uint64_t settled = revisions.back();
+    err = make_error();
+    c.check_status(mxq_store_history_delete(core, record_id, &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "deleting it twice");
+    c.check_eq(static_cast<int64_t>(revision_of(core, c, "after the refusal")),
+               static_cast<int64_t>(settled),
+               "a refused deletion is not a mutation");
+    c.check_eq(count_of(core, c, "after the deletion"), 0,
+               "the deletion was permanent");
+
+    /* And the identifier never comes back: AUTOINCREMENT is what makes the
+     * ordering tie-break strict and a stale identifier dangle. */
+    const uint64_t next = play_and_file(core, config, {"b1b3"}, c, "the next");
+    c.check(next > record_id,
+            "a deleted record's identifier is never issued again");
+    MxqRecordSummary gone = make_summary();
+    err = make_error();
+    c.check_status(mxq_store_history_get(core, record_id, &gone, &err),
+                   MXQ_ERR_STORE_NOT_FOUND,
+                   "the deleted identifier still resolves to nothing");
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_active_summary_and_the_single_active_game() {
+    Case c("the active summary, and one active game across an archiving");
+    const fs::path store = scratch_dir("active-summary");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    config.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+    config.human_side = MXQ_COLOR_BLACK;
+    config.ai_level = MXQ_AI_LEVEL_DEEP;
+    config.first_mover_choice = MXQ_FIRST_MOVER_RANDOM;
+    config.ai_movetime_ms = MXQ_MOVETIME_DEEP_MS;
+
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "mxq_game_create");
+
+    /* Before any move: the human is Black, so it is the AI's turn, and the
+     * summary derives that from the frozen configuration and the empty line
+     * rather than from anything persisted. */
+    MxqGameStatus owed = make_status();
+    uint8_t present = 0;
+    err = make_error();
+    c.check_status(
+        mxq_store_active_summary(core, nullptr, &owed, &present, &err), MXQ_OK,
+        "mxq_store_active_summary before the first move");
+    c.check_eq(present, 1, "the created game is the active one");
+    c.check_eq(owed.search_expected, 1, "a search is owed at the start");
+
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+
+    char id[MXQ_GAME_ID_CAP];
+    size_t len = 0;
+    mxq_game_id(game, id, sizeof(id), &len, nullptr);
+
+    MxqRecordSummary summary = make_summary();
+    MxqGameStatus status = make_status();
+    uint8_t exists = 0;
+    err = make_error();
+    c.check_status(
+        mxq_store_active_summary(core, &summary, &status, &exists, &err),
+        MXQ_OK, "mxq_store_active_summary");
+    c.check_eq(exists, 1, "there is an active game");
+    c.check_eq(std::string(summary.game_id), std::string(id),
+               "the summary names the active game");
+    c.check_eq(summary.is_active, 1, "is_active");
+    c.check_eq(summary.move_count, 1, "move_count");
+    c.check_eq(summary.mode, MXQ_PLAY_MODE_HUMAN_VS_AI, "mode");
+    c.check_eq(summary.human_side, MXQ_COLOR_BLACK, "human_side");
+    c.check_eq(summary.ai_level, MXQ_AI_LEVEL_DEEP, "ai_level");
+    c.check_eq(summary.ai_movetime_ms, MXQ_MOVETIME_DEEP_MS, "ai_movetime_ms");
+    c.check_eq(summary.outcome, MXQ_OUTCOME_NONE, "an active game has no outcome");
+    c.check_eq(summary.end_reason, MXQ_END_REASON_NONE, "and no end reason");
+    c.check_eq(summary.added_at_ms, 0, "and no History-added time");
+    c.check_eq(summary.ended_at_ms, 0, "and no end instant");
+    c.check_eq(summary.pinned, 0, "the active game is never pinned");
+    c.check(summary.started_at_ms > 0, "it does have a start instant");
+
+    /* The live state comes from the stored line, not from a flag. */
+    c.check_eq(state_text(status.state), "ongoing", "the reported state");
+    c.check_eq(status.resign_available, 1,
+               "a human-versus-AI game in progress may be resigned");
+    c.check_eq(status.search_expected, 0,
+               "and after the AI's move it is the human's turn");
+
+    /* It is not a History record, and History does not claim it. */
+    MxqRecordSummary as_history = make_summary();
+    err = make_error();
+    c.check_status(
+        mxq_store_history_get(core, summary.record_id, &as_history, &err),
+        MXQ_ERR_STORE_NOT_FOUND, "the active game is not a History record");
+    MxqGame *as_replay = reinterpret_cast<MxqGame *>(0x1);
+    err = make_error();
+    c.check_status(
+        mxq_store_history_open(core, summary.record_id, &as_replay, &err),
+        MXQ_ERR_STORE_NOT_FOUND, "nor can it be opened as one");
+    c.check(as_replay == nullptr, "and no replay session was produced");
+    err = make_error();
+    c.check_status(mxq_store_history_set_pinned(core, summary.record_id, 1,
+                                                &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "nor pinned");
+    err = make_error();
+    c.check_status(mxq_store_history_delete(core, summary.record_id, &err),
+                   MXQ_ERR_STORE_NOT_FOUND, "nor deleted");
+
+    /* A second creation is refused while it is active; after the archiving it
+     * is not. */
+    MxqGameConfig free_play = make_config();
+    MxqGame *second = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &free_play, &second, &err),
+                   MXQ_ERR_STATE_ACTIVE_GAME_EXISTS,
+                   "a second active game is refused");
+
+    uint64_t record_id = 0;
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, game, &record_id, &err),
+                   MXQ_OK, "the active game is filed");
+    mxq_game_release(game);
+
+    err = make_error();
+    c.check_status(mxq_game_create(core, &free_play, &second, &err), MXQ_OK,
+                   "and then another may be created");
+    if (second != nullptr) {
+        MxqRecordSummary now = make_summary();
+        exists = 0;
+        err = make_error();
+        c.check_status(
+            mxq_store_active_summary(core, &now, nullptr, &exists, &err),
+            MXQ_OK, "the new game is the active one");
+        c.check_eq(exists, 1, "there is an active game again");
+        c.check(now.record_id != record_id,
+                "and it is not the record that was filed");
+        mxq_game_release(second);
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_corrupt_content_hash_is_refused() {
+    Case c("a row whose content hash disagrees with its bytes is corruption");
+    const fs::path store = scratch_dir("bad-hash");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+    MxqGameConfig config = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &config, &game, &err);
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+    mxq_game_release(game);
+    mxq_core_shutdown(core, nullptr);
+
+    /* The blob is tampered into a document that still decodes, still
+     * canonicalises, and still replays — the recorded move swapped for a
+     * different legal move of the same length — so nothing but the hash
+     * comparison can tell it from the record it replaced. The review drove
+     * exactly this shape; the weaker hash-column rewrite proved only that a
+     * comparison exists. */
+    sqlite3 *tamper = open_second_connection(store);
+    c.check(tamper != nullptr, "the tampering connection opens");
+    if (tamper != nullptr) {
+        c.check(run_sql(tamper,
+                        "UPDATE game SET archive = CAST(REPLACE(CAST(archive "
+                        "AS TEXT), '\"b1b3\"', '\"b1b2\"') AS BLOB) "
+                        "WHERE outcome IS NULL;"),
+                "the blob is rewritten valid-but-different");
+        sqlite3_close(tamper);
+    }
+
+    err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "reopening failed");
+        c.report();
+        return;
+    }
+    MxqGame *resumed = reinterpret_cast<MxqGame *>(0x1);
+    uint8_t exists = 1;
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &resumed, &exists, &err),
+                   MXQ_ERR_STORE_CORRUPT, "resuming a row with a wrong hash");
+    c.check(resumed == nullptr, "no session was produced");
+    c.check(std::string(err.detail).find("hash") != std::string::npos,
+            std::string("the diagnostic names the hash: ") + err.detail);
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_second_resume_is_refused() {
+    Case c("a second resume while a session is attached is refused");
+    const fs::path store = scratch_dir("second-resume");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+    MxqGameConfig config = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &config, &game, &err);
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+
+    /* The created session is attached to the row, so resuming it would alias
+     * it: two sessions committing over one another, last writer wins. */
+    MxqGame *second = reinterpret_cast<MxqGame *>(0x1);
+    uint8_t exists = 1;
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &second, &exists, &err),
+                   MXQ_ERR_ARG_CONCURRENT_USE,
+                   "resuming a game a session already holds");
+    c.check(second == nullptr, "no second session was produced");
+    c.check_eq(exists, 0, "and nothing was claimed to exist");
+
+    /* Releasing the first makes the row resumable again, which is what says
+     * the refusal was about the attachment and not about the row. */
+    mxq_game_release(game);
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &second, &exists, &err), MXQ_OK,
+                   "resuming once the first session is released");
+    c.check_eq(exists, 1, "the game is there");
+
+    /* An archived session no longer holds its row — but there is nothing
+     * active left to resume either. */
+    uint64_t record_id = 0;
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, second, &record_id, &err),
+                   MXQ_OK, "the game is filed");
+    MxqGame *third = reinterpret_cast<MxqGame *>(0x1);
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &third, &exists, &err), MXQ_OK,
+                   "resuming after the archiving");
+    c.check_eq(exists, 0, "there is nothing active to resume");
+    c.check(third == nullptr, "and no session was produced");
+
+    mxq_game_release(second);
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_dangling_active_reference_is_corruption() {
+    Case c("a library reference to a row that is not there is corruption");
+    const fs::path store = scratch_dir("dangling");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+    MxqGameConfig config = make_config();
+    MxqGame *game = nullptr;
+    err = make_error();
+    mxq_game_create(core, &config, &game, &err);
+    mxq_game_release(game);
+    mxq_core_shutdown(core, nullptr);
+
+    /* Foreign keys are off on this connection, which is the only way to write
+     * a reference the core's own connection would refuse: this is external
+     * damage, not a state the core can reach. */
+    sqlite3 *tamper = open_second_connection(store);
+    c.check(tamper != nullptr, "the tampering connection opens");
+    if (tamper != nullptr) {
+        c.check(run_sql(tamper, "PRAGMA foreign_keys = OFF;"),
+                "foreign keys are off for the tamper");
+        c.check(run_sql(tamper,
+                        "UPDATE library SET active_record_id = 424242"
+                        " WHERE id = 1;"),
+                "the library is pointed at a row that is not there");
+        sqlite3_close(tamper);
+    }
+
+    err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "reopening failed");
+        c.report();
+        return;
+    }
+
+    uint8_t exists = 1;
+    err = make_error();
+    c.check_status(mxq_store_active_exists(core, &exists, &err),
+                   MXQ_ERR_STORE_CORRUPT,
+                   "mxq_store_active_exists on a dangling reference");
+    c.check_eq(exists, 0, "and it claims no active game");
+
+    MxqGame *resumed = reinterpret_cast<MxqGame *>(0x1);
+    exists = 1;
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &resumed, &exists, &err),
+                   MXQ_ERR_STORE_CORRUPT,
+                   "mxq_game_resume_active on a dangling reference");
+    c.check(resumed == nullptr, "no session was produced");
+    c.check_eq(exists, 0, "and absence was not reported as success");
+
+    MxqRecordSummary summary = make_summary();
+    exists = 1;
+    err = make_error();
+    c.check_status(
+        mxq_store_active_summary(core, &summary, nullptr, &exists, &err),
+        MXQ_ERR_STORE_CORRUPT, "mxq_store_active_summary likewise");
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+#endif /* MXQ_TEST_RULES_FACADE */
+
+} /* namespace */
+
+int main(int argc, char **argv) {
+    fs::path fixtures;
+    fs::path archives;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--fixtures" && i + 1 < argc) {
+            fixtures = argv[++i];
+        } else if (arg == "--archives" && i + 1 < argc) {
+            archives = argv[++i];
+        } else {
+            std::cerr << "usage: mxq_history_tests [--fixtures <dir>] "
+                         "[--archives <dir>]\n";
+            return 2;
+        }
+    }
+    if (fixtures.empty()) {
+        if (const char *env = std::getenv("MXQ_STORE_FIXTURES_DIR")) {
+            fixtures = env;
+        } else {
+            fixtures = MXQ_STORE_FIXTURES_DIR_DEFAULT;
+        }
+    }
+    fixtures /= "terminal";
+    if (archives.empty()) {
+        if (const char *env = std::getenv("MXQ_ARCHIVE_FIXTURES_DIR")) {
+            archives = env;
+        } else {
+            archives = MXQ_ARCHIVE_FIXTURES_DIR_DEFAULT;
+        }
+    }
+
+    std::cout << "Mini Xiangqi terminal-commit and History tests\n"
+              << "  fixtures        " << fixtures.string() << "\n"
+              << "  archives        " << archives.string() << "\n"
+              << "  rules facade    "
+              << (MXQ_TEST_RULES_FACADE
+                      ? "available; a game can be played and ended"
+                      : "ABSENT; no game can be played, so none can be ended")
+              << "\n\n";
+
+    case_empty_library();
+
+#if MXQ_TEST_RULES_FACADE
+    std::vector<fs::path> scenarios;
+    std::error_code ec;
+    for (const fs::directory_entry &entry :
+         fs::directory_iterator(fixtures, ec)) {
+        if (entry.path().extension() == ".json") {
+            scenarios.push_back(entry.path());
+        }
+    }
+    if (ec || scenarios.empty()) {
+        std::cerr << "mxq_history_tests: no scenarios in " << fixtures.string()
+                  << "\n";
+        return 2;
+    }
+    std::sort(scenarios.begin(), scenarios.end());
+    for (const fs::path &scenario : scenarios) {
+        run_scenario(scenario, archives);
+    }
+
+    case_a_failed_ending_is_retryable(scenarios);
+    case_archive_and_clear_without_a_game();
+    case_endings_refuse_where_they_do_not_apply();
+    case_history_ordering();
+    case_ordering_tie_is_broken_by_record_id();
+    case_pagination_boundaries();
+    case_pin_and_delete_bump_the_revision();
+    case_active_summary_and_the_single_active_game();
+    case_corrupt_content_hash_is_refused();
+    case_second_resume_is_refused();
+    case_dangling_active_reference_is_corruption();
+
+    std::error_code cleanup;
+    fs::remove_all(scratch_root(), cleanup);
+#else
+    Case skipped("the terminal commits and the History surface");
+    skipped.skip("ending a game needs the rules facade");
+    skipped.report();
+#endif
+
+    const int total = g_passed + g_failed + g_skipped;
+    std::cout << "\n"
+              << total << " cases: " << g_passed << " passed, " << g_failed
+              << " failed, " << g_skipped << " skipped\n"
+              << g_checks << " expectations evaluated\n";
+    if (g_skipped > 0) {
+        std::cout << "\nNOT IMPLEMENTED: the endings and the sessions they "
+                     "produce are not in this build. Build with "
+                     "-DMXQ_ENABLE_RULES_FACADE=ON to evaluate them.\n";
+    }
+    return g_failed > 0 ? 1 : 0;
+}

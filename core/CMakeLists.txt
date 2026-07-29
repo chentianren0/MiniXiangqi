@@ -132,17 +132,22 @@ endif()
 # no core instance, core lifecycle with the store opened at initialisation,
 # the session-free rules facade (behind MXQ_ENABLE_RULES_FACADE), the
 # clock/identity provider the deterministic-identity flag configures, the
-# archive codec's read and write sides, and store-attached sessions with their
-# per-mutation commits. The remaining declarations in mxq.h — the terminal
-# commits, the History and interchange surface, the search facade — are
-# deliberately left undefined rather than stubbed: the accepted error taxonomy
-# has no not-implemented code, and inventing one to return would be inventing
-# contract vocabulary.
+# archive codec's read and write sides, store-attached sessions with their
+# per-mutation commits, the four archiving paths that end a game, and the
+# History read surface. The remaining declarations in mxq.h — the interchange
+# pair, mxq_game_open_archive, the search facade — are deliberately left
+# undefined rather than stubbed: the accepted error taxonomy has no
+# not-implemented code, and inventing one to return would be inventing contract
+# vocabulary.
 #
 # mxq_session.cpp is gated with the engine like mxq_engine_bridge.cpp: a
 # session answers every one of its queries by replaying its move line through
 # the rules facade, so without the facade the mxq_game_ functions cannot exist
-# and are absent from the library rather than stubbed.
+# and are absent from the library rather than stubbed. mxq_store_api.cpp is not
+# gated as a whole, because most of the store's surface is a pure query that
+# can answer without an engine; the three functions in it that need a session
+# or a live state are guarded inside the file, exactly as mxq_archive_validate
+# is inside mxq_archive.cpp.
 
 add_library(mxq_core STATIC
   src/mxq_abi.cpp
@@ -157,6 +162,7 @@ add_library(mxq_core STATIC
   src/mxq_rules.cpp
   src/mxq_sha256.cpp
   src/mxq_store.cpp
+  src/mxq_store_api.cpp
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_session.cpp>
   src/mxq_status.cpp

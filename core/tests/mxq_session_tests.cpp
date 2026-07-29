@@ -1279,7 +1279,7 @@ void case_tombstoned_handle() {
     uint32_t removed = 0;
     char id[MXQ_GAME_ID_CAP];
     size_t len = 0;
-    MxqBlob *blob = nullptr;
+    uint64_t record_id = 0;
 
     const std::vector<std::pair<const char *, MxqStatus>> answers = {
         {"mxq_game_position", mxq_game_position(game, &position, nullptr)},
@@ -1297,6 +1297,11 @@ void case_tombstoned_handle() {
         {"mxq_game_apply_move",
          mxq_game_apply_move(game, "b7b5", nullptr, nullptr, nullptr)},
         {"mxq_game_undo", mxq_game_undo(game, &removed, nullptr)},
+        {"mxq_game_claim_draw",
+         mxq_game_claim_draw(game, &record_id, nullptr)},
+        {"mxq_game_resign", mxq_game_resign(game, &record_id, nullptr)},
+        {"mxq_game_confirm_result",
+         mxq_game_confirm_result(game, &record_id, nullptr)},
     };
     for (const auto &answer : answers) {
         c.check(answer.second == MXQ_ERR_ARG_INVALID_HANDLE,
@@ -1304,7 +1309,10 @@ void case_tombstoned_handle() {
                     " on a tombstone is MXQ_ERR_ARG_INVALID_HANDLE, got " +
                     mxq_status_name(answer.second));
     }
-    c.check(blob == nullptr, "no blob was produced");
+    /* mxq_archive_encode is deliberately not in that list: it takes the core
+     * as well as the session, and this core has been shut down, so the call
+     * would be a use of a freed handle rather than a test of a tombstoned one.
+     * The concurrency case covers encode's own handle checks. */
 
     /* Release is still the caller's to make, and is still safe. */
     mxq_game_release(game);

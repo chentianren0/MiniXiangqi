@@ -81,14 +81,17 @@ The active-game shape is the archive as the store holds it while the game is bei
 
 The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY` documents — one per file, so no two goldens claim the same identity — and the timestamps start at the deterministic clock's epoch, so the round-trip fixtures in [`../store/`](../store/README.md) compare these files byte for byte against what the core writes.
 
-### Provenance of the three active-shape goldens
+### Provenance: every golden is now produced
 
-Those three files are now **produced** rather than hand-written: `fixtures/store/` names each of them from a scenario, and the runner fails unless `mxq_archive_encode` reproduces the file byte for byte. Two consequences, both deliberate:
+All seven files are **produced** rather than hand-written. `fixtures/store/` names each of them from a scenario — the three active shapes from a round-trip scenario, the four completed shapes from a terminal scenario in `fixtures/store/terminal/` — and the runners fail unless `mxq_archive_encode` reproduces the file byte for byte under `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`.
+
+The regenerations, in order:
 
 - `free-play-created` was added with the encoder, as the shape a creation writes.
-- `free-play-active` and `human-vs-ai-active` had their `origin.exported_at` restamped from `2026-01-01T00:01:00.000Z`, a hand-chosen "a minute later", to the instant of the committed change each document actually records — the second of their two moves, at `2026-01-01T00:00:02.000Z`. `game-data.md` § canonical form now states that rule for a stored active game; nothing else in either file changed, and no sidecar did, because `origin` is never part of what a file decodes to.
+- `free-play-active` and `human-vs-ai-active` had their `origin.exported_at` restamped from `2026-01-01T00:01:00.000Z`, a hand-chosen "a minute later", to the instant of the committed change each document actually records — the second of their two moves, at `2026-01-01T00:00:02.000Z`.
+- The four completed goldens — `free-play-ended-early`, `free-play-draw-threefold`, `human-vs-ai-checkmate`, `human-vs-ai-resignation` — had their `ended_at` and `origin.exported_at` restamped when the archiving paths that can produce them landed. Both now carry the instant of the one committed event that ended each game, which under the deterministic clock is the creation plus one second per committed change: `00:00:03.000` after two moves and an archive-and-clear, `00:00:09.000` after eight moves and a claim, `00:00:04.000` after three moves and a confirmation, `00:00:03.000` after two moves and a resignation. Their sidecars' `ended_at_ms` moved with them; nothing else in any of the eight files changed, and no sidecar changed for `origin`, which is never part of what a file decodes to.
 
-The three completed goldens keep their hand-written export instants until the terminal commits that can produce them land, and are regenerated then.
+`game-data.md` § canonical form states the rule those instants follow: a stored document's `exported_at` is the committed change that produced it, and for an ending that is also its `ended_at` and its History-added time, because they are one event.
 
 ## The rejection corpus
 

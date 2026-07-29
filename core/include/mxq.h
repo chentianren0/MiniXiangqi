@@ -94,7 +94,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 1
-#define MXQ_API_VERSION_MINOR 2
+#define MXQ_API_VERSION_MINOR 3
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -177,7 +177,11 @@ enum {
     MXQ_ERR_ARG_RANGE             = 1007, /* a numeric argument was out of range */
     MXQ_ERR_ARG_WRONG_THREAD      = 1008, /* called from a thread class this
                                            * function forbids */
-    MXQ_ERR_ARG_CONCURRENT_USE    = 1009, /* two threads inside one session */
+    MXQ_ERR_ARG_CONCURRENT_USE    = 1009, /* two owners of one thing: two
+                                           * threads inside one session, or a
+                                           * second mxq_game_resume_active
+                                           * while a session is already
+                                           * attached to the active game */
     MXQ_ERR_ARG_REENTRANT         = 1010, /* called from inside a search callback,
                                            * where the legal calls are the
                                            * status and blob helpers and the
@@ -199,6 +203,16 @@ enum {
     MXQ_ERR_STATE_UNDO_UNAVAILABLE    = 2009,
     MXQ_ERR_STATE_CLAIM_UNAVAILABLE   = 2010,
     MXQ_ERR_STATE_RESIGN_UNAVAILABLE  = 2011,
+    MXQ_ERR_STATE_CONFIRM_UNAVAILABLE = 2014, /* mxq_game_confirm_result on a
+                                               * position with no natural
+                                               * result to confirm. The third
+                                               * of the same family as the two
+                                               * above: the action this
+                                               * function performs is not
+                                               * available in this state, and
+                                               * MXQ_ERR_STATE_GAME_OVER is its
+                                               * opposite rather than its
+                                               * equivalent */
     MXQ_ERR_STATE_SEARCH_IN_PROGRESS  = 2012, /* engine reconfiguration
                                                * serialises behind search */
     MXQ_ERR_STATE_ENGINE_NOT_READY    = 2013,
@@ -902,10 +916,18 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
 /*
  * Resume the single active game as a store-attached session. Sets *out_exists
  * to 0 and *out_game to NULL, and returns MXQ_OK, when there is no active game:
- * absence is not an error.
+ * absence is not an error. A library reference naming a row that is not there
+ * is not absence; it is MXQ_ERR_STORE_CORRUPT.
  *
- * The stored record is decoded and replayed before a session exists, so a row
- * this build can no longer read or no longer reproduce is refused as
+ * There is at most one session per active game. A second resume while the
+ * first is still live returns MXQ_ERR_ARG_CONCURRENT_USE and produces no
+ * session, because two sessions over one row would commit over one another
+ * with no diagnosis at all — the same "two owners of one thing" the
+ * single-owner rule refuses, asked of the row rather than of the session.
+ *
+ * The stored record is decoded, checked against the content hash the library
+ * recorded for it, and replayed, all before a session exists, so a row this
+ * build can no longer read or no longer reproduce is refused as
  * MXQ_ERR_STORE_CORRUPT rather than as an archive rejection: nothing was
  * imported, and the answer is about the library rather than about a file the
  * user chose. The import size bounds are deliberately not applied here — a
@@ -1091,6 +1113,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
  * releases the handle. On a store-domain failure the game remains active and
  * unchanged and no History record exists.
  *
+ * An archived session keeps answering every query — a frontend holding the
+ * handle of a game that has just ended still has a board to show — and every
+ * derived affordance then reads 0, because there is no longer an action to
+ * offer. mxq_archive_encode on it produces the finished document the History
+ * record holds, which is the same bytes mxq_store_history_open would return.
+ *
  * Thread: the session's owner, off the UI thread; never inside a search
  * callback.
  * Blocking: yes.
@@ -1100,10 +1128,16 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_claim_draw(MxqGame *game,
                                                MxqError *err);
 
 /*
- * Resign for the human side, with reason MXQ_END_REASON_RESIGNATION. Legal only
- * in human-versus-AI play; otherwise MXQ_ERR_STATE_RESIGN_UNAVAILABLE. Same
- * atomic transaction and same archived-session consequence as
- * mxq_game_claim_draw.
+ * Resign for the human side, with reason MXQ_END_REASON_RESIGNATION, and the
+ * outcome the win for the side opposite human_side. Same atomic transaction and
+ * same archived-session consequence as mxq_game_claim_draw.
+ *
+ * Legal only in human-versus-AI play, and only while the game has no result of
+ * its own — which is exactly when MxqGameStatus.resign_available reads 1.
+ * Either refusal is MXQ_ERR_STATE_RESIGN_UNAVAILABLE, so the affordance and
+ * the refusal are one rule: a resignation recorded over a natural result would
+ * lose the result the game actually has, and the archive refuses it for the
+ * same reason.
  *
  * Thread: the session's owner, off the UI thread; never inside a search
  * callback.
@@ -1117,6 +1151,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_resign(MxqGame *game,
  * Commit an unconfirmed natural terminal state as its actual result and exact
  * termination reason. Same atomic transaction and same archived-session
  * consequence as mxq_game_claim_draw.
+ *
+ * There must be a result to confirm: a position that is not terminal returns
+ * MXQ_ERR_STATE_CONFIRM_UNAVAILABLE. A claimable neutral repetition is not
+ * such a result — the game continues there unless the claim is made, and
+ * making it is mxq_game_claim_draw's decision rather than this one's.
  *
  * Thread: the session's owner, off the UI thread; never inside a search
  * callback.
@@ -1417,7 +1456,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_archive_supported_versions(
 /* ------------------------------------------------------------------------- */
 
 /*
- * Whether the library holds an active game.
+ * Whether the library holds an active game. A reference naming a row that is
+ * not there is MXQ_ERR_STORE_CORRUPT rather than an answer of 0.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
@@ -1432,6 +1472,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_active_exists(MxqCore *core,
  * need. Sets *out_exists to 0 and returns MXQ_OK when there is no active game.
  * out and out_status are each optional.
  *
+ * The summary of an active game has no committed outcome: added_at_ms is 0,
+ * end_reason is MXQ_END_REASON_NONE, outcome reads MXQ_OUTCOME_NONE for want
+ * of an absent constant, pinned is 0, and is_active is 1. The live state comes
+ * from replaying the stored line, exactly as a session's does; no state flag
+ * is persisted.
+ *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
  */
@@ -1445,7 +1491,18 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_active_summary(MxqCore *core,
  * Place the active game in History and clear the active-game reference in one
  * atomic transaction. This is the save-before-mode path and the only one that
  * may record MXQ_END_REASON_ENDED_EARLY; the classification is derived from the
- * committed state, never supplied.
+ * committed state, never supplied. An unconfirmed natural terminal state keeps
+ * its actual result and exact reason; every other state — an ordinary ongoing
+ * game, and an unclaimed claimable repetition, which is still one — is
+ * recorded as ended early with no competitive result.
+ *
+ * The one required pointer here is the active game itself, so its absence is a
+ * state rather than a programming error, and the three absent shapes stay
+ * distinguishable: a NULL session returns MXQ_ERR_STATE_ACTIVE_GAME_MISSING;
+ * a session already archived returns MXQ_ERR_STATE_SESSION_ARCHIVED, because
+ * archived and missing are different facts; and a live session whose row the
+ * library no longer names as active returns MXQ_ERR_STORE_NOT_FOUND. Each
+ * changes nothing.
  *
  * On success the passed session is marked archived and later mutations on it
  * return MXQ_ERR_STATE_SESSION_ARCHIVED; the caller still releases the handle.
@@ -1481,11 +1538,22 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_count(
     MxqError *err);
 
 /*
- * One page of History, in the accepted order — pinned first, newest
- * History-added time within each group, deterministic tie-break. The order is a
- * core guarantee; frontends never re-sort. Same buffer convention as
- * mxq_game_legal_moves, where *out_count is the number written rather than the
- * total; use mxq_store_history_count for the total.
+ * One page of History, in the accepted order — pinned first, then newest
+ * History-added time within each group, then record_id descending. The order
+ * is a core guarantee; frontends never re-sort.
+ *
+ * The buffer convention is not mxq_game_legal_moves': there the count is the
+ * answer and a small buffer is a routine way to ask for it, while here the
+ * caller chose the page size itself. cap below limit is therefore a caller bug
+ * — MXQ_ERR_ARG_BUFFER_TOO_SMALL with MxqError.required_size set to limit, and
+ * nothing written. *out_count is the number of records written, which is fewer
+ * than limit only at the end of the list; use mxq_store_history_count for the
+ * total. limit 0 writes nothing and is not an error. On any failure *out_count
+ * is 0 and the buffer's contents are unspecified — a corrupt record fails the
+ * call at its own element, after earlier elements were already written. Each written element's
+ * struct_size is stamped by the core rather than read, as mxq_game_legal_moves
+ * stamps a move's: an array is indexed by an element size the two sides have
+ * already agreed on.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
@@ -1497,7 +1565,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_page(
 
 /*
  * One History record's summary. Returns MXQ_ERR_STORE_NOT_FOUND for an unknown
- * record_id.
+ * record_id, and for the active game's, which is not a History record; is_active
+ * therefore always reads 0 here.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
@@ -1508,8 +1577,17 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_get(MxqCore *core,
                                                  MxqError *err);
 
 /*
- * Open a History record as a detached read-only session for replay. Mutations
- * on it return MXQ_ERR_STATE_SESSION_READ_ONLY.
+ * Open a History record as a detached read-only session for replay. Every query
+ * answers as it does on any session — the position at each ply, the move line,
+ * the frozen configuration, the identity — while every derived affordance reads
+ * 0, because a finished game offers no action. Mutations on it return
+ * MXQ_ERR_STATE_SESSION_READ_ONLY. Returns MXQ_ERR_STORE_NOT_FOUND for an
+ * unknown record_id, and MXQ_ERR_STORE_CORRUPT for a row this build can no
+ * longer read, hash-match, or reproduce.
+ *
+ * MxqGameStatus.state is still the replayed position's verdict, which for a
+ * resignation or an ended-early record is not the committed outcome at all:
+ * that is MxqOutcome, and mxq_store_history_get is where it is read.
  *
  * Thread: any non-UI thread except inside a search callback.
  * Blocking: yes — store work.
@@ -1521,7 +1599,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_open(MxqCore *core,
 
 /*
  * Set or clear a record's pin state, the only mutable field of a History
- * record. pinned is 0 or 1.
+ * record. pinned is 0 or 1; any other value is a programming error and returns
+ * MXQ_ERR_ARG_RANGE. An unknown record_id, and the active game's — which the
+ * schema forbids pinning — are MXQ_ERR_STORE_NOT_FOUND.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
@@ -1533,7 +1613,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_store_history_set_pinned(MxqCore *core,
 
 /*
  * Permanently delete a History record, whole. There is no soft delete and no
- * undo. A failed deletion leaves the existing record intact.
+ * undo. A failed deletion leaves the existing record intact. An unknown
+ * record_id, and the active game's, are MXQ_ERR_STORE_NOT_FOUND. A record_id is
+ * never issued again after its record is deleted, so a stale one held across a
+ * deletion dangles rather than resolving to some later game.
  *
  * Thread: any thread except inside a search callback, off the UI thread.
  * Blocking: yes.
