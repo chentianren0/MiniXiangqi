@@ -1160,11 +1160,6 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err) {
     return MXQ_OK;
 }
 
-MxqStatus library_revision(Store &store, uint64_t &out_revision,
-                           MxqError *err) {
-    std::lock_guard<std::mutex> lock(store.mutex());
-    return read_revision(store.db(), out_revision, err);
-}
 
 Store::~Store() {
     if (db_ != nullptr) {

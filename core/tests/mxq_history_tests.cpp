@@ -1135,6 +1135,15 @@ void case_endings_refuse_where_they_do_not_apply() {
     Case c("each ending refuses where its own rule does not hold");
     const fs::path store = scratch_dir("refusals");
 
+    /* The status this PR appends is in the state domain and names itself, so a
+     * frontend routing by domain and a log naming the code both work before
+     * anything returns it. */
+    c.check_eq(std::string(mxq_status_name(MXQ_ERR_STATE_CONFIRM_UNAVAILABLE)),
+               "MXQ_ERR_STATE_CONFIRM_UNAVAILABLE",
+               "the appended status names itself");
+    c.check_eq(mxq_status_domain(MXQ_ERR_STATE_CONFIRM_UNAVAILABLE),
+               MXQ_DOMAIN_STATE, "and reports the state domain");
+
     MxqCore *core = nullptr;
     MxqError err = make_error();
     if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=

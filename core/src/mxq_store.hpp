@@ -254,10 +254,6 @@ MxqStatus history_set_pinned(Store &store, uint64_t record_id, bool pinned,
  * so the identifier is never issued again. */
 MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
 
-/* The library revision alone, for the callers that report it beside something
- * other than a count. */
-MxqStatus library_revision(Store &store, uint64_t &out_revision, MxqError *err);
-
 /*
  * Open — creating if absent — the store under directory, whose leading
  * directories are created as needed:
