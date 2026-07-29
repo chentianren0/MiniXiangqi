@@ -92,7 +92,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `reason.mutualPerpetualCheck` | 双方长将 | Mutual Perpetual Check | reason line; metadata token | same |
 | `reason.mutualPerpetualChase` | 双方长捉 | Mutual Perpetual Chase | reason line; metadata token | same |
 | `reason.resignation` | 认输 | Resignation | reason line; metadata token | same |
-| `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token | same |
+| `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token; the History row's **result** slot | same; [interaction-design.md](interaction-design.md) § History library — `outcome = none` holds exactly when the reason is ended-early, so the row states the one fact once rather than adding a word for the absence of a winner |
 
 **Stalemate is kept deliberately.** It is the standard English Xiangqi term, the notice title has already named the winner, and the Help stage owes the statement that having no legal move loses in Xiangqi. The English word's chess sense is corrected by the surface it appears on rather than by renaming the reason.
 

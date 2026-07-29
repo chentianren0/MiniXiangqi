@@ -150,8 +150,9 @@ nonisolated struct Evaluation: Sendable {
 
 // MARK: - Plumbing shared by every call in this file
 
-// Nonisolated because the store surface below runs off the main actor and
-// speaks through exactly the same four helpers the session calls do.
+// Nonisolated because the store surface below is a value that may leave the
+// main actor, and it speaks through exactly the same four helpers the session
+// calls do.
 
 private nonisolated func freshError() -> MxqError {
     var err = MxqError()
@@ -510,17 +511,21 @@ nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
     var endedAt: Date
 }
 
-/// The library's History surface, as a value that can leave the main actor.
+/// The library's History surface.
 ///
-/// docs/core-interface.md's threading contract keeps every `mxq_store_*` call
-/// off the UI thread, and its one documented exception is the active game's own
-/// commits rather than these. So this is a `Sendable` value over the core
-/// handle alone — it holds no Swift state to race on, and the core serializes
-/// store work behind one mutex and one connection — which is what lets the
-/// History screen await it from a detached task instead of blocking a frame on
-/// SQLite. `mxq_store_history_open` is the one that makes the trip worth taking
-/// on its own: it decodes and replays a whole game, and a game's length has no
-/// ceiling this side of the import bounds.
+/// The screen calls these on the main actor, under the documented exception in
+/// docs/core-interface.md's threading contract that the active game's commits
+/// already run under: a page read commits nothing and does not fsync, and a pin
+/// or a delete is one commit per user action, which is exactly the shape the
+/// owner's proportionality ruling accepted. `mxq_store_history_open` is the one
+/// the argument does not bound — it decodes and replays a whole game — and it
+/// is named in the contract as the call to measure at Stage 6.
+///
+/// It is nonetheless a `Sendable` value over the core handle alone rather than
+/// a method on `Core`: it holds no Swift state to race on, and the core
+/// serializes store work behind one mutex and one connection, so moving these
+/// calls back off the main actor is a change of call site rather than of
+/// design. That is what makes the contract's "held in reserve" mean something.
 ///
 /// A handle outliving its core is safe by the interface's own promise: after
 /// `mxq_core_shutdown` every handle it issued answers
@@ -594,9 +599,8 @@ nonisolated struct HistoryStore: @unchecked Sendable {
     }
 
     /// Opens the record as a detached read-only session and hands back its
-    /// handle. Ownership passes to whoever receives it — the replay screen, on
-    /// the main actor, where every remaining call on it is a non-blocking
-    /// session query.
+    /// handle. Ownership passes to whoever receives it — the replay screen,
+    /// where every remaining call on it is a non-blocking session query.
     func open(_ record: UInt64) throws -> ReplayHandle {
         var replay: OpaquePointer?
         var err = freshError()
@@ -609,9 +613,11 @@ nonisolated struct HistoryStore: @unchecked Sendable {
     }
 }
 
-/// A detached replay session in transit: opened off the main actor, owned on
-/// it. The type exists to make that one hand-off visible, since a session is
-/// single-owner and this is the moment its owner is decided.
+/// A detached replay session in transit, between the call that opened it and
+/// the object that will own it. The type exists to make that one hand-off
+/// visible, since a session is single-owner and this is the moment its owner is
+/// decided — and to keep the handle sendable, so that opening it off the main
+/// actor stays a change of call site rather than of design.
 nonisolated struct ReplayHandle: @unchecked Sendable {
     fileprivate let handle: OpaquePointer
 }
@@ -649,9 +655,9 @@ nonisolated struct ReplayPosition: Sendable {
 /// a mutation is refused — which is why the replay screen has no rule of its
 /// own to enforce about what the board will not do.
 ///
-/// The handle is opened off the main actor and owned here, on it: the queries
-/// below are the session's owner's to make and are non-blocking, so once
-/// ownership has arrived nothing else has to leave.
+/// The queries below are the session's owner's to make and are non-blocking, so
+/// once the handle has arrived they cost a frame nothing: the walk is a lookup
+/// into a game the core has already replayed.
 final class ReplaySession {
     private var handle: OpaquePointer?
 
@@ -721,11 +727,10 @@ extension Core {
 #if DEBUG
 // MARK: - Test evidence
 
-// The synchronous store read-backs the session tests assert against. Debug-only
-// because they exist as evidence rather than as product surface — the History
-// screen reads through `history` above, off the main actor — and internal so a
-// test reads the store through the same veneer the app trusts rather than
-// through a second one.
+// The store read-backs the session tests assert against. Debug-only because
+// they exist as evidence rather than as product surface — the History screen
+// reads through `history` above — and internal so a test reads the store
+// through the same veneer the app trusts rather than through a second one.
 extension Core {
     /// Whether the library holds an active game.
     func activeGameExists() throws -> Bool {
