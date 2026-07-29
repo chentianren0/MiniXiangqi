@@ -12,8 +12,11 @@
 // fsync, so it is strictly cheaper than the ~2 ms per-move commit the owner's
 // proportionality ruling already accepted there. `HistoryStore` stays a
 // `Sendable` value over the core handle alone, so the off-main restructure
-// remains available in reserve rather than having to be invented later.
+// remains available in reserve rather than having to be invented later. Import
+// is the one call here that the exception does not cover and that therefore
+// already runs off it.
 
+import Foundation
 import Observation
 
 @Observable
@@ -109,6 +112,31 @@ final class HistoryLibrary {
 
     func dismissDeletionFailure() {
         deletionFailure = nil
+    }
+
+    // MARK: - Import
+
+    /// Files one game file, then reads back.
+    ///
+    /// Unlike everything else here, the call itself runs off the main actor:
+    /// docs/core-interface.md keeps import outside the exception the rest of
+    /// this surface runs under, because validating an untrusted file replays
+    /// every ply of it against a two-second budget before anything is written.
+    /// That is a change of call site and not of design — the store surface is
+    /// already a `Sendable` value over the core handle.
+    ///
+    /// A refusal is returned rather than held: an import has five different
+    /// things it can have to say and the screen is where they are said. Nothing
+    /// is written on any of them, so there is nothing to read back either.
+    func importGame(_ bytes: Data) async -> Result<ImportedGame, CoreError> {
+        let store = self.store
+        do {
+            let imported = try await Task.detached { try store.importGame(bytes) }.value
+            load()
+            return .success(imported)
+        } catch {
+            return .failure(CoreError(wrapping: error))
+        }
     }
 
     // MARK: - Replay

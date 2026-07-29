@@ -72,19 +72,33 @@ private struct Destinations: View {
     /// destinations inside it.
     @State private var play: PlayState
 
+    /// Which destination is showing, and the record one of them has asked the
+    /// other to open. 回放 on the just-recorded result crosses the container:
+    /// the replay screen lives inside History's own stack, and this is the one
+    /// piece of state that says so. Both live here rather than in a screen for
+    /// the same reason the game does — a destination is rebuilt on every visit,
+    /// and a request made in one has to survive the switch to the other.
+    @State private var destination: Destination = .play
+    @State private var pendingReplay: UInt64?
+
+    private enum Destination: Hashable { case play, history }
+
     init(core: Core) {
         self.core = core
         _play = State(initialValue: PlayState(core: core))
     }
 
     var body: some View {
-        TabView {
-            Tab("nav.play", systemImage: "square.grid.3x3") {
-                PlayScreen(play: play)
+        TabView(selection: $destination) {
+            Tab("nav.play", systemImage: "square.grid.3x3", value: Destination.play) {
+                PlayScreen(play: play, replay: { record in
+                    pendingReplay = record
+                    destination = .history
+                })
             }
 
-            Tab("nav.history", systemImage: "clock") {
-                HistoryScreen(core: core)
+            Tab("nav.history", systemImage: "clock", value: Destination.history) {
+                HistoryScreen(core: core, pendingReplay: $pendingReplay)
             }
         }
         .tabViewStyle(.sidebarAdaptable)

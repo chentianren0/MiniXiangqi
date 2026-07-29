@@ -38,9 +38,22 @@
 		CE259B05301668730051B648 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "usr/lib/libc++.tbd"; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CE259B10301668730051B648 /* Exceptions for "MiniXiangqi" folder in "MiniXiangqi" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CE259A86301668710051B648 /* MiniXiangqi */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CE259A89301668710051B648 /* MiniXiangqi */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CE259B10301668730051B648 /* Exceptions for "MiniXiangqi" folder in "MiniXiangqi" target */,
+			);
 			path = MiniXiangqi;
 			sourceTree = "<group>";
 		};
@@ -416,6 +429,7 @@
 				EXCLUDED_ARCHS = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MiniXiangqi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Mini Xiangqi";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.board-games";
@@ -468,6 +482,7 @@
 				EXCLUDED_ARCHS = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MiniXiangqi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Mini Xiangqi";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.board-games";

@@ -33,9 +33,13 @@ final class HistoryScreenUITests: XCTestCase {
         let rows: [String]
         let pinnedSection, otherSection: String
         let emptyTitle, emptyDescription: String
-        let pin, unpin, delete, cancel: String
+        let pin, unpin, delete, cancel, share: String
         let deleteTitle, deleteMessage: String
         let flipBoard: String
+        /// The imported row's own line: the marker, and the game behind it.
+        let importedMarker, importedRow: String
+        let duplicateTitle, duplicateMessage, view, ok: String
+        let newerVersionTitle, newerVersionMessage: String
 
         static let chinese = Language(
             code: "zh-Hans", short: "zh",
@@ -46,8 +50,16 @@ final class HistoryScreenUITests: XCTestCase {
             emptyTitle: "还没有历史对局",
             emptyDescription: "对局结束后会保存到这里。",
             pin: "置顶", unpin: "取消置顶", delete: "删除", cancel: "取消",
+            share: "共享",
             deleteTitle: "删除这盘棋？", deleteMessage: "删除后无法恢复。",
-            flipBoard: "翻转棋盘")
+            flipBoard: "翻转棋盘",
+            importedMarker: "导入",
+            importedRow: "人机对弈 · 你执红 · 红方获胜 · 将死 · 3 步",
+            duplicateTitle: "这盘棋已经在历史里",
+            duplicateMessage: "文件里的对局和历史中的一盘完全相同，所以没有重复添加。",
+            view: "查看", ok: "好",
+            newerVersionTitle: "这个文件由更新版本的 Mini Xiangqi 创建",
+            newerVersionMessage: "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。")
 
         static let english = Language(
             code: "en", short: "en",
@@ -58,11 +70,35 @@ final class HistoryScreenUITests: XCTestCase {
             emptyTitle: "No Games Yet",
             emptyDescription: "Games you finish are saved here.",
             pin: "Pin", unpin: "Unpin", delete: "Delete", cancel: "Cancel",
+            share: "Share",
             deleteTitle: "Delete this game?", deleteMessage: "This game can't be recovered.",
-            flipBoard: "Flip Board")
+            flipBoard: "Flip Board",
+            importedMarker: "Imported",
+            importedRow: "Human versus AI · You: Red · Red Wins · Checkmate · 3 moves",
+            duplicateTitle: "This Game Is Already in History",
+            duplicateMessage: "The game in this file is identical to one already in History, so it wasn't added again.",
+            view: "View", ok: "OK",
+            newerVersionTitle: "This File Was Created by a Newer Version of Mini Xiangqi",
+            newerVersionMessage: "This version can't read it. Update Mini Xiangqi and try again. History is unchanged.")
     }
 
+    /// One of the archive corpus's own goldens, verbatim: a human-versus-AI
+    /// game red mated in three plies. It is written out rather than read from
+    /// `fixtures/archive/` because the runner and the app are separate
+    /// sandboxes and neither can reach a path in the repository — the same
+    /// reason the launch argument carries the bytes rather than a path.
+    private static let goldenGame = """
+    {"archive_format":"minixiangqi-game","archive_version":1,"content":{"ai_level":"standard","ai_movetime_ms":3000,"end_reason":"checkmate","ended_at":"2026-01-01T00:00:04.000Z","first_mover_choice":"human-first","human_side":"red","mode":"human-vs-ai","moves":["b1b3","a6a5","b3d3"],"outcome":"red-wins","rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a803-7000-8000-000000000003","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:04.000Z"}}
+    """
+
+    /// The corpus's created-by-a-newer-version rejection, which is the one
+    /// message the data contract requires to be distinct.
+    private static let newerVersionGame = """
+    {"archive_format":"minixiangqi-game","archive_version":2,"content":{"a_member_from_the_future":"x","mode":"free-play","moves":["b1b3","b7b5"],"rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a800-7000-8000-000000000000","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:01:00.000Z"}}
+    """
+
     private func launch(history: String? = nil,
+                        importing files: [String] = [],
                         in language: Language = .chinese,
                         window: String = "900x600") -> XCUIApplication {
         let app = XCUIApplication()
@@ -70,6 +106,15 @@ final class HistoryScreenUITests: XCTestCase {
         app.launchArguments += ["-mxq-store-name", "mxq-uitest-store-\(UUID().uuidString)"]
         app.launchArguments += ["-mxq-window", window]
         if let history { app.launchArguments += ["-mxq-history", history] }
+        if !files.isEmpty {
+            // Base64, because a launch argument is a string and a game file is
+            // bytes. The app decodes and feeds each one through the same call
+            // the file picker's completion makes.
+            let encoded = files
+                .map { Data($0.utf8).base64EncodedString() }
+                .joined(separator: ";")
+            app.launchArguments += ["-mxq-import", encoded]
+        }
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         // The board settles the launch: the seeding runs before it, so a board
@@ -121,6 +166,25 @@ final class HistoryScreenUITests: XCTestCase {
             app.typeKey(.escape, modifierFlags: [])
         }
         XCTFail("the row's context menu should offer \(title)")
+    }
+
+    /// Opens one row's context menu and leaves it open, retried for the same
+    /// window-server reasons `invoke` retries. Returns the menu once `title` is
+    /// in it; the caller closes it.
+    @discardableResult
+    private func openMenu(showing title: String, onRow index: Int,
+                          in app: XCUIApplication) -> XCUIElement {
+        let row = row(app, index)
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        let menu = app.menus["history-row-\(index)"]
+        for _ in 0..<3 {
+            row.rightClick()
+            if menu.menuItems[title].waitForExistence(timeout: 3) { return menu }
+            app.typeKey(.escape, modifierFlags: [])
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        XCTFail("the row's context menu should offer \(title)")
+        return menu
     }
 
     private func attach(_ app: XCUIApplication, named name: String) {
@@ -220,6 +284,101 @@ final class HistoryScreenUITests: XCTestCase {
         XCTAssertTrue(row(app, 0).label.contains(language.rows[0]))
         XCTAssertTrue(row(app, 1).label.contains(language.rows[2]),
                       "and the deleted one is gone from between them")
+    }
+
+    // MARK: - Share
+
+    /// 共享 exports the selected record as one game file. What can be asserted
+    /// from here is that the action is on every row, in the surface the
+    /// contract names, and that invoking it opens the system's own share UI:
+    /// past that point the sheet belongs to the system and this suite has no
+    /// business inside it.
+    func testEveryRowOffersShare() {
+        let app = launch(history: Self.threeGames)
+        openHistory(app)
+        let language = Language.chinese
+        XCTAssertTrue(row(app, 0).waitForExistence(timeout: 10))
+
+        for index in 0..<3 {
+            openMenu(showing: language.share, onRow: index, in: app)
+            if index == 0 { attach(app, named: "36-the-share-action-on-a-row") }
+            app.typeKey(.escape, modifierFlags: [])
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        // And it really invokes: the share UI comes up over the window, and the
+        // escape key puts it away again with the list untouched behind it.
+        invoke(language.share, onRow: 0, in: app)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(row(app, 0).waitForExistence(timeout: 5),
+                      "the list is exactly as it was")
+        XCTAssertTrue(row(app, 2).exists, "and still holds all three games")
+    }
+
+    // MARK: - Import
+
+    /// One game file, imported end to end through the real pipeline: the bytes
+    /// go to `mxq_store_import`, the record it creates is what the list reads,
+    /// and the row that appears is the whole of the success presentation.
+    func testImportingAGameAddsItToTheList() {
+        let app = launch(importing: [Self.goldenGame])
+        openHistory(app)
+        let language = Language.chinese
+
+        let row = row(app, 0)
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "the imported game is in the list")
+        XCTAssertTrue(row.label.contains(language.importedRow),
+                      "and reads as the game the file described — it reads \(row.label)")
+        XCTAssertTrue(row.label.contains(language.importedMarker),
+                      "with the imported marker the contract asks for")
+        XCTAssertFalse(app.sheets.firstMatch.exists,
+                       "a successful import says nothing: the row is the answer")
+        XCTAssertFalse(self.row(app, 1).exists, "one file, one game")
+        attach(app, named: "37-the-imported-game-in-the-list")
+    }
+
+    /// The same file twice. The second import is a success that deliberately
+    /// does not meet the expectation a first one sets, which is exactly when an
+    /// alert is right — and it offers the record it found.
+    func testImportingTheSameGameTwiceSaysSo() {
+        let app = launch(importing: [Self.goldenGame, Self.goldenGame])
+        openHistory(app)
+        let language = Language.chinese
+
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15))
+        let lines = sheet.staticTexts.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(lines, [language.duplicateTitle, language.duplicateMessage])
+        XCTAssertTrue(sheet.buttons[language.view].exists,
+                      "the accepted answer offers a way to view the existing record")
+        attach(app, named: "38-the-duplicate-answer")
+
+        // 查看 opens the record the library already had.
+        sheet.buttons[language.view].click()
+        let progress = app.windows.firstMatch.descendants(matching: .any)["replay-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        XCTAssertEqual(progress.value as? String, "0 / 3",
+                       "which is the game the file described")
+    }
+
+    /// The one rejection the data contract requires to be distinguishable, and
+    /// never to be presented as corruption.
+    func testAFileFromANewerVersionSaysThatAndNotCorruption() {
+        let app = launch(importing: [Self.newerVersionGame])
+        openHistory(app)
+        let language = Language.chinese
+
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15))
+        let lines = sheet.staticTexts.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(lines, [language.newerVersionTitle, language.newerVersionMessage])
+        // Not corruption, in either language: the message says what is true.
+        XCTAssertFalse(lines.contains { $0.contains("损坏") })
+        attach(app, named: "39-the-newer-version-answer")
+
+        sheet.buttons[language.ok].click()
+        XCTAssertTrue(app.staticTexts[language.emptyTitle].waitForExistence(timeout: 5),
+                      "and the library is exactly as empty as it was")
     }
 
     // MARK: - Replay
@@ -355,6 +514,16 @@ final class HistoryScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[language.otherSection].exists)
         attach(app, named: "\(language.short)-history-list")
 
+        // The row's actions, where 共享 now stands beside the two that were
+        // already there — this language's words for all three.
+        let menu = openMenu(showing: language.share, onRow: 0, in: app)
+        XCTAssertTrue(menu.menuItems[language.delete].exists)
+        XCTAssertTrue(menu.menuItems[language.unpin].exists,
+                      "the pinned row offers to unpin, not to pin again")
+        attach(app, named: "\(language.short)-history-row-actions")
+        app.typeKey(.escape, modifierFlags: [])
+        Thread.sleep(forTimeInterval: 0.5)
+
         // The deletion confirmation, which is the one irreversible act here.
         invoke(language.delete, onRow: 1, in: app)
         let sheet = app.sheets.firstMatch
@@ -385,6 +554,33 @@ final class HistoryScreenUITests: XCTestCase {
         XCTAssertTrue(empty.staticTexts[language.emptyTitle].waitForExistence(timeout: 10))
         XCTAssertTrue(empty.staticTexts[language.emptyDescription].exists)
         attach(empty, named: "\(language.short)-history-empty")
+
+        // Import: the same file twice, so one frame carries the row a
+        // successful import produces and the other the duplicate's answer.
+        let imported = launch(importing: [Self.goldenGame, Self.goldenGame], in: language)
+        openHistory(imported)
+        let duplicate = imported.sheets.firstMatch
+        XCTAssertTrue(duplicate.waitForExistence(timeout: 15))
+        let duplicateLines = duplicate.staticTexts.allElementsBoundByIndex
+            .map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(duplicateLines, [language.duplicateTitle, language.duplicateMessage])
+        attach(imported, named: "\(language.short)-import-duplicate")
+
+        duplicate.buttons[language.ok].click()
+        XCTAssertTrue(row(imported, 0).waitForExistence(timeout: 5))
+        XCTAssertTrue(row(imported, 0).label.contains(language.importedRow))
+        XCTAssertTrue(row(imported, 0).label.contains(language.importedMarker))
+        attach(imported, named: "\(language.short)-history-imported-row")
+
+        // And the refusal the compatibility promise is written as.
+        let refused = launch(importing: [Self.newerVersionGame], in: language)
+        openHistory(refused)
+        let newer = refused.sheets.firstMatch
+        XCTAssertTrue(newer.waitForExistence(timeout: 15))
+        let newerLines = newer.staticTexts.allElementsBoundByIndex
+            .map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(newerLines, [language.newerVersionTitle, language.newerVersionMessage])
+        attach(refused, named: "\(language.short)-import-newer-version")
     }
 
     private func point(_ app: XCUIApplication, _ name: String) -> XCUIElement {

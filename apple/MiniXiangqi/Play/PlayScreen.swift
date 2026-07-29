@@ -28,6 +28,11 @@ struct PlayScreen: View {
     /// create twice.
     let play: PlayState
 
+    /// Opens one History record's replay. The screen it opens on is not this
+    /// one, so the container above both is what performs it; 回放 on a recorded
+    /// result is the only thing that asks.
+    var replay: (UInt64) -> Void
+
     @State private var claimPresented = false
 
     /// Whether the save-failure capsule is up. Raised when a ply's commit is
@@ -136,8 +141,16 @@ struct PlayScreen: View {
                         ResultNotice(state: game.presentedState,
                                      reason: game.evaluation.reason,
                                      canUndo: motion.canUndo,
+                                     // A filed game is a History record, and
+                                     // the notice reads as one. Today that is
+                                     // the claimed draw, whose claim was the
+                                     // commit; everything else is filed by the
+                                     // concluding action, which resets the
+                                     // board in the same press.
+                                     recorded: game.filedRecordID != nil,
                                      undo: { motion.undo() },
                                      startNewGame: { startNewGame() },
+                                     replay: { if let record = game.filedRecordID { replay(record) } },
                                      close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { play.resultDismissed = true } })
                             .transition(.opacity)
                     }
