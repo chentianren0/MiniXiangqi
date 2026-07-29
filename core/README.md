@@ -71,12 +71,13 @@ stubbed: the accepted error taxonomy has no not-implemented code, and inventing
 one to return would be inventing contract vocabulary.
 
 Six CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
-`store_foundation`, `archive_fixtures` over
-[`fixtures/archive/`](../fixtures/archive/), `store_sessions` and `store_history`
-over [`fixtures/store/`](../fixtures/store/), and `store_interchange`, which
-re-runs the archive corpus through the import pipeline. Everything that replays a
-move line through the engine — `mxq_rules_evaluate` and its relatives,
-`mxq_archive_validate`, every `mxq_game_` function, and `mxq_store_import` —
-exists only in a build configured with `-DMXQ_ENABLE_RULES_FACADE=ON`; without it
-they are absent from the library rather than stubbed, and the expectations that
-need them report `NOT IMPLEMENTED`, which is never counted as a pass.
+`archive_fixtures` over [`fixtures/archive/`](../fixtures/archive/),
+`store_foundation`, `store_sessions`, and `store_history` over scratch stores
+(with [`fixtures/store/`](../fixtures/store/) holding their declarative
+expectations), and `store_interchange`, which re-runs the archive corpus through
+the import pipeline. Everything that replays a move line through the engine —
+`mxq_rules_evaluate` and its relatives, `mxq_archive_validate`, every
+`mxq_game_` function, and `mxq_store_import` — exists only in a build configured
+with `-DMXQ_ENABLE_RULES_FACADE=ON`; without it they are absent from the library
+rather than stubbed, and the expectations that need them report
+`NOT IMPLEMENTED`, which is never counted as a pass.
