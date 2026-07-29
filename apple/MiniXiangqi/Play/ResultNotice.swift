@@ -41,11 +41,11 @@ struct ResultNotice: View {
 
             HStack(spacing: 10) {
                 if canUndo {
-                    Button("悔棋", action: undo)
+                    Button("control.undo", action: undo)
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("result-undo")
                 }
-                Button("开始新对局", action: startNewGame)
+                Button("control.newGame", action: startNewGame)
                     .buttonStyle(.glassProminent)
                     .accessibilityIdentifier("result-new-game")
             }
@@ -80,8 +80,14 @@ struct ResultNotice: View {
             }
             // Announced rather than made modal: the final position stays
             // explorable, so VoiceOver hears the result without losing the
-            // board it came from.
-            AccessibilityNotification.Announcement("\(title)，\(reason.text)").post()
+            // board it came from. The two halves are joined by a format string
+            // rather than by interpolation: the separator is an ideographic
+            // comma in Chinese and a comma and a space in English, and neither
+            // can be hard-coded around the other language's fragment.
+            AccessibilityNotification
+                .Announcement(String(format: String(localized: "result.announcement"),
+                                     title, reason.text))
+                .post()
         }
     }
 
@@ -89,11 +95,11 @@ struct ResultNotice: View {
     /// where the status line has to be a line about the turn.
     private var title: String {
         switch state {
-        case .redWins: "红方获胜"
-        case .blackWins: "黑方获胜"
+        case .redWins: String(localized: "result.redWins")
+        case .blackWins: String(localized: "result.blackWins")
         // A finished game that neither side won is a draw, whether the core
         // adjudicated it or the player claimed it.
-        case .draw, .ongoing, .claimableDraw: "和棋"
+        case .draw, .ongoing, .claimableDraw: String(localized: "result.draw")
         }
     }
 }

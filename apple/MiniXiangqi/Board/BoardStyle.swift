@@ -8,7 +8,7 @@
 // work. The values below satisfy those ratios; `BoardStyleTests` measures them
 // rather than trusting this comment.
 //
-// Only 传统 is implemented so far. 现代 and 高对比 are accepted and still to
+// Only 传统 is implemented so far. 现代 and 高对比度 are accepted and still to
 // come, which is why every value a view reads goes through this type.
 
 import SwiftUI
