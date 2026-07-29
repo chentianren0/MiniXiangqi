@@ -34,3 +34,28 @@ add_test(NAME rules_fixtures
 set_tests_properties(rules_fixtures PROPERTIES
   LABELS "rules;fixtures"
 )
+
+# The store-foundation runner: the SQLite-backed store mxq_core_init opens,
+# asserted against scratch databases, plus the deterministic-identity seam.
+# It links the vendored SQLite directly so schema assertions query the closed
+# database rather than trust the DDL, and it includes the core's internal
+# headers on purpose — the identity provider has no public accessor, and the
+# white-box read is the test's whole point. Both runs need no engine; with the
+# engine compiled in, mxq_core_init also loads the variant configuration, so
+# the assets default is supplied the same way as above.
+
+add_executable(mxq_store_tests
+  mxq_store_tests.cpp
+)
+target_link_libraries(mxq_store_tests PRIVATE mxq::core mxq::sqlite mxq_warnings)
+target_include_directories(mxq_store_tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+target_compile_definitions(mxq_store_tests PRIVATE
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME store_foundation COMMAND mxq_store_tests)
+set_tests_properties(store_foundation PROPERTIES
+  LABELS "store"
+)
