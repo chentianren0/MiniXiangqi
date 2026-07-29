@@ -62,6 +62,16 @@ struct MoveNotationTests {
         #expect(read(move, from: "rck1kcr/p1ppp1p/7/3N3/7/P1PPP1P/RC1K1CR w - - 0 1") == expected)
     }
 
+    @Test("The general is a line piece here: ranks after 进, a file after 平")
+    func generalCountsRanksAndNamesItsFile() {
+        // The one piece the multi-piece rules can never reach still needs its
+        // own clause: a review proved the whole suite stayed green with the
+        // general rendering like a horse.
+        let fen = "3k3/7/3p3/7/7/7/3K3 w - - 0 1"
+        #expect(read("d1d2", from: fen) == "帅四进一")
+        #expect(read("d1c1", from: fen) == "帅四平五")
+    }
+
     // MARK: - Two or more of a type on one file
 
     @Test("With two on a file the disambiguator OPENS the move and replaces the file")
@@ -98,10 +108,71 @@ struct MoveNotationTests {
 
     @Test("Four or more on a file are numbered from the front")
     func fourOnAFile() {
-        // Soldiers on b6, b4, b2 and b1.
-        let fen = "3k3/1P5/7/1P5/7/1P5/1P1K3 w - - 0 1"
+        // Soldiers on b6, b4, b2 and b1. The general stands off the d-file so
+        // the position stays legal: the research's own oracle held every row
+        // to legality, and the distilled table keeps that.
+        let fen = "2k4/1P5/7/1P5/7/1P5/1P1K3 w - - 0 1"
         #expect(read("b6b7", from: fen) == "一兵进一")
         #expect(read("b1a1", from: fen) == "四兵平七")
+    }
+
+    @Test("The ordinal is Chinese for Black too, because it continues 前/中/后")
+    func blackOrdinalIsChinese() {
+        // The ordinal is the positional word carried past three, not a number
+        // in the move, so it does not follow Black's Arabic numerals: 一卒进1,
+        // never 1卒进1. Black soldiers on b6, b4, b2 and b1; Black's front is
+        // the lowest rank. The black general stands off the d-file so the
+        // generals do not face.
+        let fen = "2k4/1p5/7/1p5/7/1p5/1p1K3 b - - 0 1"
+        #expect(read("b1a1", from: fen) == "一卒平1")
+        #expect(read("b6b5", from: fen) == "四卒进1")
+    }
+
+    // MARK: - More than one doubled file
+
+    @Test("A second doubled file brings the origin file back after the name")
+    func twoDoubledFilesRestoreTheFile() {
+        // Red soldiers paired on b and d, with a lone one on f: 前 alone no
+        // longer says which pair moved, so the pairs carry their file — and
+        // the lone soldier keeps the plain form untouched.
+        let fen = "3k3/7/1P1P3/7/1P1P1P1/7/3K3 w - - 0 1"
+        #expect(read("b5b6", from: fen) == "前兵六进一")
+        #expect(read("b3b4", from: fen) == "后兵六进一")
+        #expect(read("d5d6", from: fen) == "前兵四进一")
+        #expect(read("f3f4", from: fen) == "兵二进一")
+    }
+
+    @Test("Three and two across two files keep 前, 中 and 后, with the file")
+    func threeTwoShapeKeepsItsWords() {
+        // All five soldiers: three on b, two on d. The words stay the words;
+        // only the file returns.
+        let fen = "3k3/7/1P1P3/7/1P1P3/7/1P1K3 w - - 0 1"
+        #expect(read("b5b6", from: fen) == "前兵六进一")
+        #expect(read("b3b4", from: fen) == "中兵六进一")
+        #expect(read("b1b2", from: fen) == "后兵六进一")
+        #expect(read("d3d4", from: fen) == "后兵四进一")
+    }
+
+    @Test("Black's restored file is Arabic, like every number of Black's")
+    func blackRestoredFileIsArabic() {
+        // Black soldiers paired on b and d. The restored file follows the
+        // ordinary numbering rule — only the ordinal above is outside it.
+        let fen = "3k3/7/1p1p3/7/1p1p3/7/3K3 b - - 0 1"
+        #expect(read("b3b2", from: fen) == "前卒2进1")
+        #expect(read("b5b4", from: fen) == "后卒2进1")
+        #expect(read("d3d2", from: fen) == "前卒4进1")
+    }
+
+    // MARK: - Captures
+
+    @Test("A capture renders exactly as the quiet move would")
+    func captureCarriesNoMark() {
+        // The same soldier push with and without a red soldier standing on the
+        // destination: one string, no capture mark.
+        let quiet = "3k3/7/3p3/7/7/7/3K3 b - - 0 1"
+        let capture = "3k3/7/3p3/3P3/7/7/3K3 b - - 0 1"
+        #expect(read("d5d4", from: quiet) == "卒4进1")
+        #expect(read("d5d4", from: capture) == "卒4进1")
     }
 
     // MARK: - What it is not
