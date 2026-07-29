@@ -255,8 +255,10 @@ struct PlayScreen: View {
             Divider()
 
             // Where all three fit at their full width they keep it; where the
-            // concluding action's longer label leaves no room, the flip control
-            // falls back to its symbol, which carries the same label either way.
+            // other two's labels leave no room — the concluding action in
+            // Chinese, every cluster state in English at the minimum window —
+            // the flip control falls back to its symbol, which carries the
+            // same accessibility label either way.
             ViewThatFits(in: .horizontal) {
                 controls(game, motion, compactFlip: false)
                 controls(game, motion, compactFlip: true)
