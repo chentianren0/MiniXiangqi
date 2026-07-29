@@ -23,7 +23,7 @@ struct ResultNotice: View {
     var startNewGame: () -> Void
     var close: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionPolicy) private var policy
     @State private var settled = false
 
     var body: some View {
@@ -69,10 +69,13 @@ struct ResultNotice: View {
                 .padding(8)
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
-        .scaleEffect(settled || reduceMotion ? 1 : 0.92)
+        // The entrance consults the one Reduce Motion rule: the scale settle
+        // is motion, so under the policy the notice crossfades in at full
+        // size instead.
+        .scaleEffect(settled || policy.reduceMotion ? 1 : 0.92)
         .opacity(settled ? 1 : 0)
         .onAppear {
-            withAnimation(reduceMotion ? .linear(duration: 0.2) : .spring(duration: 0.35)) {
+            withAnimation(policy.appear) {
                 settled = true
             }
             // Announced rather than made modal: the final position stays

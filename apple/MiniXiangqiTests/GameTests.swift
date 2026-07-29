@@ -24,6 +24,13 @@ struct GameTests {
     static let shuffleLine = ["b1b2", "b7b6", "b2b1", "b6b7",
                               "b1b2", "b7b6", "b2b1", "b6b7"]
 
+    /// A check that is only a check: the cannon reaches the general's file
+    /// behind the soldier Black advanced, and the vacated d6 is the escape.
+    static let checkLine = ["b1b3", "d6d5", "b3d3"]
+
+    /// The quickest capture: the soldiers meet on the d-file and Black takes.
+    static let captureLine = ["d2d3", "d6d5", "d3d4", "d5d4"]
+
     private func game(playing line: [String] = []) throws -> Game {
         let game = try Game(core: Core.shared.get())
         try game.replay(line)
@@ -91,6 +98,25 @@ struct GameTests {
 
         game.tap(Square("b1")!)
         #expect(game.selected == nil, "a finished game accepts no input")
+    }
+
+    // MARK: - Check and capture, pinned for the motion evidence
+
+    @Test("The pinned check line checks without mating")
+    func theCheckLineChecks() throws {
+        let game = try game(playing: Self.checkLine)
+        #expect(game.evaluation.inCheck)
+        #expect(game.evaluation.state == .ongoing, "the general still has d6")
+        #expect(game.checkedGeneral == Square("d7"))
+    }
+
+    @Test("The pinned capture line takes the red soldier on d4")
+    func theCaptureLineCaptures() throws {
+        let game = try game(playing: Self.captureLine)
+        #expect(game.placement[Square("d4")!] == Piece(kind: .soldier, side: .black))
+        #expect(game.placement[Square("d5")!] == nil)
+        #expect(game.lastMove == Move(text: "d5d4"))
+        #expect(game.evaluation.state == .ongoing)
     }
 
     // MARK: - Checkmate

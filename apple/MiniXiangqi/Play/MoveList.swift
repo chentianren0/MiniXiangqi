@@ -9,6 +9,8 @@ import SwiftUI
 struct MoveList: View {
     var notation: [String]
 
+    @Environment(\.motionPolicy) private var policy
+
     private var rows: [(number: Int, red: String, black: String?)] {
         stride(from: 0, to: notation.count, by: 2).map { index in
             (number: index / 2 + 1,
@@ -40,7 +42,11 @@ struct MoveList: View {
             }
             .onChange(of: notation.count) {
                 guard let last = rows.last else { return }
-                withAnimation { proxy.scrollTo(last.number, anchor: .bottom) }
+                // An animated scroll is movement with no crossfade to fall
+                // back to, so under Reduce Motion it arrives immediately.
+                withAnimation(policy.scroll(.default)) {
+                    proxy.scrollTo(last.number, anchor: .bottom)
+                }
             }
         }
     }

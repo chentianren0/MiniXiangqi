@@ -126,6 +126,20 @@ final class PlayScreenUITests: XCTestCase {
                        "Black's numerals should follow the board round")
         attach(app, named: "6-board-turned-round")
 
+        // Board input is discarded while the board turns, because for those
+        // 350 ms the points are not under the discs they name, and it is
+        // handed back at the arrival. That hand-back is a wire the running app
+        // has to fire for itself — a gate left holding would leave the board
+        // deaf for the rest of the game, and no unit test can see the live
+        // wiring. The screenshot above has already waited out the flip, so a
+        // click that selects is the evidence that the gate reopened.
+        point(app, "b4").click()
+        XCTAssertEqual(point(app, "b4").label, "b4 红 炮 已选择",
+                       "the board should accept input again once the flip lands")
+        point(app, "b4").click()
+        XCTAssertEqual(point(app, "b4").label, "b4 红 炮",
+                       "and the same click again puts the piece down")
+
         // One Undo removes one ply, so Black's reply leaves the list and the
         // turn goes back to Black.
         app.buttons["悔棋"].click()
@@ -234,9 +248,16 @@ final class PlayScreenUITests: XCTestCase {
                        "a click on a finished board moves nothing")
 
         // The dismissal belonged to the finished game it closed, not to every
-        // result after it: reaching the mate again announces it again.
+        // result after it: reaching the mate again announces it again. Input
+        // during the Undo's reversal is discarded, so the clicks wait the
+        // transition out rather than race it — and what says it is over is the
+        // control the gate itself disables: 悔棋 is unavailable until the
+        // reversal lands.
         app.buttons["悔棋"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
+                               evaluatedWith: app.buttons["悔棋"])],
+             timeout: 5)
         point(app, "b3").click()
         point(app, "d3").click()
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5),
@@ -260,6 +281,68 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
         XCTAssertEqual(reading(app, "result-title"), "红方获胜")
         attach(app, named: "13-the-result-notice-in-dark-appearance")
+    }
+
+    // MARK: - The motion states a still frame can carry
+
+    /// The check line is pinned by the unit suite: a check that is only a
+    /// check. What a screenshot can show is the persistent state — the double
+    /// ring around the general after its one-time pulse has settled; the
+    /// pulse itself, and every travel, is judged by running the app.
+    func testTheCheckStateRingsTheGeneral() {
+        let app = launch(replaying: "b1b3,d6d5,b3d3")
+
+        XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军",
+                       "the checked general carries the state")
+        XCTAssertTrue(reading(app, "turn-status").contains("轮到黑方"),
+                      "whose turn it is remains true while they are in check")
+        XCTAssertTrue(reading(app, "turn-status").contains("将军"),
+                      "the token accompanies the side-to-move line")
+        attach(app, named: "18-the-check-rings")
+    }
+
+    /// The capture line is pinned by the unit suite. The screenshot is the
+    /// post-state: the taken soldier gone, the taker on its point, the
+    /// brackets on the move that did it.
+    func testTheBoardAfterACapture() {
+        let app = launch(replaying: "d2d3,d6d5,d3d4,d5d4")
+
+        XCTAssertEqual(point(app, "d4").label, "d4 黑 卒",
+                       "the taker stands where the taken stood")
+        XCTAssertEqual(point(app, "d5").label, "d5 空")
+        XCTAssertTrue(app.staticTexts["卒4进1"].exists,
+                      "the capture reads in the move list")
+        attach(app, named: "19-after-a-capture")
+    }
+
+    /// A tap the game cannot accept is answered on the turn status — the
+    /// acknowledgment beat. The beat is opacity rising and falling over
+    /// 400 ms, so the screenshot is taken inside it; the board itself must
+    /// show nothing, which the labels prove.
+    func testARefusedTapBeatsOnTheTurnStatus() {
+        let app = launch(replaying: Self.mateLine)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+
+        point(app, "a1").click()   // closes the notice: an accepted input
+        XCTAssertFalse(app.staticTexts["result-title"].exists)
+
+        point(app, "g1").click()   // nothing left to accept: the beat answers
+        // A wall clock on purpose. The beat is a background opacity rising and
+        // falling, and an opacity is nothing XCUI can wait on: no attribute
+        // carries it, no element appears while it runs, and the assertions
+        // below — which are about the board — are true before and after it.
+        // The screenshot is the only thing that needs to land inside the beat,
+        // so this waits into it rather than for it.
+        Thread.sleep(forTimeInterval: 0.15)
+        let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        shot.name = "20-the-beat-answering-a-refused-tap"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "the refused tap moved nothing")
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "and brought nothing back")
     }
 
     // MARK: - The claimable draw

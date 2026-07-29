@@ -6,9 +6,22 @@
 
 import Observation
 
+/// The rules, as this type asks them. `Core` is the only implementation the app
+/// ever runs, and this is not an abstraction over rule engines: it exists
+/// because a core call that fails is a state this type must handle — the ply
+/// refused, the position unchanged, the failure recorded, the transition above
+/// abandoned — and a working core will not produce one on request. A stand-in
+/// may refuse a call; it may never answer a rules question itself.
+protocol Rules {
+    func evaluate(from startFEN: String, moves: [String]) throws -> Evaluation
+    func legalMoves(from startFEN: String, moves: [String]) throws -> [String]
+}
+
+extension Core: Rules { }
+
 @Observable
 final class Game {
-    private let core: Core
+    private let core: Rules
 
     let startFEN: String
     private(set) var moves: [String] = []
@@ -36,7 +49,7 @@ final class Game {
     var selected: Square?
     var flipped = false
 
-    init(core: Core) throws {
+    init(core: Rules) throws {
         self.core = core
         let startFEN = Core.startFEN
         let evaluation = try core.evaluate(from: startFEN, moves: [])
@@ -93,26 +106,52 @@ final class Game {
 
     // MARK: - Input
 
-    func tap(_ square: Square) {
-        guard !isFinished else { return }
+    /// What a tap on a point means. One home for the board's whole affordance:
+    /// whether a point offers a move, a piece, or nothing is a question about
+    /// the position, and the position is here. The motion above asks this and
+    /// adds only the animation — an own-side test or an unavailable-input
+    /// guard written a second time up there is a second place for the board to
+    /// disagree with itself.
+    enum TapEffect: Equatable {
+        /// Put the held piece down: it was tapped again.
+        case cancelSelection
+        /// A legal move, ready to play.
+        case play(Move)
+        /// Take up this piece.
+        case select(Square)
+        /// A point the held piece cannot reach. It moves nothing and keeps the
+        /// selection, so the correction is one tap away; the answer — the
+        /// legal destinations strengthening once — is PlayMotion's, not a game
+        /// state.
+        case illegal
+        /// Nothing this game can act on: a point that offers nothing with
+        /// nothing held, or a board with nothing left to play.
+        case unavailable
+    }
 
-        if square == selected {
-            selected = nil
-            return
-        }
+    func effect(ofTapAt square: Square) -> TapEffect {
+        // A finished game accepts no input, and it is refused here rather than
+        // by each caller: a board that has nothing left to play has nothing
+        // left to offer at any point on it.
+        guard !isFinished else { return .unavailable }
+
+        if square == selected { return .cancelSelection }
         if let selected, let move = legalMoves.first(where: {
             $0.from == selected && $0.to == square
         }) {
-            play(move)
-            return
+            return .play(move)
         }
-        if placement[square]?.side == evaluation.sideToMove {
-            selected = square
-            return
+        if placement[square]?.side == evaluation.sideToMove { return .select(square) }
+        return selected == nil ? .unavailable : .illegal
+    }
+
+    func tap(_ square: Square) {
+        switch effect(ofTapAt: square) {
+        case .cancelSelection: selected = nil
+        case .play(let move): play(move)
+        case .select(let square): selected = square
+        case .illegal, .unavailable: break
         }
-        // An illegal tap moves nothing and keeps the selection, so the
-        // correction is one tap away. Its feedback — the legal destinations
-        // pulsing once — is still to come.
     }
 
     /// Takes back one ply. The shortened history is evaluated before anything

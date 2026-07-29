@@ -2,9 +2,11 @@
 //
 // Xcode's preview JIT does not run against this app's entitlements on the
 // pinned toolchain, and a board nobody has rendered is exactly the kind of
-// design a review cannot check. These write into `.snapshots/` at the
-// repository root, which is ignored by git, and assert the render's size.
+// design a review cannot check. These write into the sandboxed host's own
+// caches and attach the same image to the result bundle, and assert the
+// render's size.
 
+import AppKit
 import SwiftUI
 import Testing
 @testable import MiniXiangqi
@@ -34,6 +36,10 @@ private func render(_ view: some View, scale: CGFloat = 2, named name: String) t
                                             withIntermediateDirectories: true)
     let url = snapshotDirectory.appendingPathComponent("\(name).png")
     try png.write(to: url)
+    // Also into the result bundle, which is readable without standing in
+    // front of the machine: the container is the sandboxed host's own, and
+    // exporting attachments is how anything else gets to look.
+    Attachment.record(image, named: name, as: .png)
     #expect(FileManager.default.fileExists(atPath: url.path), "wrote \(url.path)")
     return image.size
 }
@@ -74,5 +80,92 @@ struct BoardSnapshotTests {
                              flipped: true)
         let size = try render(view, named: "flipped")
         #expect(size == geometry.blockSize)
+    }
+}
+
+/// Frames from the middle of each motion, rendered stilled. Animation cannot
+/// be screenshotted, but every one of its frames is a drawing of explicit
+/// phases, so the interesting instants — a capture giving way under an
+/// arriving disc, the board mid-flip, the dissolve that stands in for travel
+/// under Reduce Motion, the check rings at the peak of their swell — can be
+/// rendered and looked at rather than reasoned about.
+@Suite("Motion frames")
+@MainActor
+struct MotionFrameTests {
+    let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+
+    private func game(playing line: [String]) throws -> Game {
+        let game = try Game(core: Core.shared.get())
+        try game.replay(line)
+        return game
+    }
+
+    private func frame(_ game: Game, transit: Transit? = nil,
+                       phases: BoardPhases, reduceMotion: Bool = false) -> some View {
+        BoardCanvas(geometry: geometry,
+                    placement: game.placement,
+                    style: .traditional,
+                    policy: MotionPolicy(reduceMotion: reduceMotion),
+                    destinations: game.destinations,
+                    captures: game.captures,
+                    lastMove: game.lastMove,
+                    checkedGeneral: game.checkedGeneral,
+                    transit: transit,
+                    phases: phases)
+            .frame(width: geometry.coreSide, height: geometry.coreSide)
+            .background(BoardStyle.traditional.boardSurface)
+    }
+
+    @Test("A capture mid-arrival: the taken disc gives way under the mover")
+    func captureMidArrival() throws {
+        let game = try game(playing: GameTests.captureLine)
+        let transit = Transit(kind: .move,
+                              move: Move(text: "d5d4")!,
+                              piece: Piece(kind: .soldier, side: .black),
+                              fading: (Piece(kind: .soldier, side: .red), Square("d4")!))
+        let size = try render(frame(game, transit: transit,
+                                    phases: BoardPhases(travel: 0.85, fade: 0.35)),
+                              named: "capture-mid-arrival")
+        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+    }
+
+    @Test("The flip midway: one coordinated re-layout, characters upright")
+    func flipMidway() throws {
+        let game = try game(playing: ["b1b4", "a6a5"])
+        let size = try render(frame(game, phases: BoardPhases(flip: 0.45)),
+                              named: "flip-midway")
+        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+    }
+
+    @Test("Reduce Motion travels by dissolve: both ends, no movement")
+    func reducedMotionDissolve() throws {
+        let game = try game(playing: ["b1b4"])
+        let transit = Transit(kind: .move,
+                              move: Move(text: "b1b4")!,
+                              piece: Piece(kind: .cannon, side: .red),
+                              fading: nil)
+        let size = try render(frame(game, transit: transit,
+                                    phases: BoardPhases(travel: 0.5),
+                                    reduceMotion: true),
+                              named: "reduced-motion-dissolve")
+        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+    }
+
+    @Test("The check rings at the peak of their one-time swell")
+    func checkPulsePeak() throws {
+        let game = try game(playing: GameTests.checkLine)
+        let size = try render(frame(game, phases: BoardPhases(check: 1)),
+                              named: "check-pulse-peak")
+        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+    }
+
+    @Test("The markers strengthened: the illegal-tap answer at full emphasis")
+    func markersStrengthened() throws {
+        let game = try game(playing: ["d2d3", "d6d5", "d3d4"])
+        game.tap(Square("d5")!)   // Black holds the soldier facing a capture
+        let size = try render(frame(game, phases: BoardPhases(marker: 1,
+                                                              lifts: SquarePhases(raised: game.selected))),
+                              named: "markers-strengthened")
+        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
     }
 }
