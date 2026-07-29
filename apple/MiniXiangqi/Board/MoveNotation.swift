@@ -9,7 +9,9 @@
 // names the piece, its file, a direction, and a value. Files are numbered from
 // each player's own right, so the two sides number them in opposite directions,
 // and Red writes its numbers as Chinese numerals while Black writes Arabic —
-// every number in the move, not only the file.
+// every number in the move, not only the file. The one word outside that rule
+// is the ordinal that numbers four or more on a file: it continues 前/中/后
+// rather than counting anything, and is Chinese for both sides.
 
 import Foundation
 
@@ -25,7 +27,13 @@ enum MoveNotation {
         let name = piece.kind.character(for: piece.side)
         let opening: String
         if let marker = disambiguation(for: piece, at: move.from, in: placement) {
-            opening = marker + name
+            // With a second file doubled, the leading word alone no longer
+            // says which piece moved, so the origin file returns after the
+            // name — 前兵六进一, 后卒3进1. Pieces alone on their file never
+            // reach here and keep the plain form.
+            opening = doubledFiles(of: piece, in: placement) > 1
+                ? marker + name + number(file: move.from.file, for: piece.side)
+                : marker + name
         } else {
             opening = name + number(file: move.from.file, for: piece.side)
         }
@@ -51,14 +59,9 @@ enum MoveNotation {
     /// What replaces the file when more than one piece of the same type stands
     /// on it. Ordered from the opponent's end towards the mover's own, so the
     /// sense is relative to the moving side and unaffected by which way the
-    /// board is facing: 前 is nearest the opponent, 后 nearest home.
-    ///
-    /// The accepted contract covers two pieces only. Three is reachable in this
-    /// variant — five soldiers a side, moving sideways from the first move — so
-    /// it takes 中 for the middle one, which is the same rule and the ordinary
-    /// form. Four or more is numbered from the front, again the ordinary form.
-    /// Both are noted in issue #37 for confirmation rather than left to fail
-    /// silently as an ambiguous file.
+    /// board is facing: 前 is nearest the opponent, 后 nearest home. Three take
+    /// 前, 中 and 后; four or more are numbered from the front — reachable
+    /// here, with five sideways-capable soldiers a side.
     private static func disambiguation(for piece: Piece, at square: Square,
                                        in placement: Placement) -> String? {
         let sameFile = (0..<Square.count)
@@ -80,7 +83,21 @@ enum MoveNotation {
         case (3, 0): return "前"
         case (3, 1): return "中"
         case (3, _): return "后"
-        default: return numeral(fromFront + 1, for: piece.side)
+        // The ordinal continues 前/中/后 rather than counting anything, so it
+        // is Chinese for both sides: 一卒进1, never 1卒进1.
+        default: return chineseNumeral(fromFront + 1)
+        }
+    }
+
+    /// How many of the mover's files carry two or more of this piece. One is
+    /// ordinary disambiguation; two or more restores the file — reachable only
+    /// for soldiers, as 2-2 or 3-2, and never together with the numbered form,
+    /// which needs four on a single file.
+    private static func doubledFiles(of piece: Piece, in placement: Placement) -> Int {
+        (0..<Square.count).count { file in
+            (0..<Square.count).count { rank in
+                placement[Square(file: file, rank: rank)] == piece
+            } >= 2
         }
     }
 
@@ -91,7 +108,10 @@ enum MoveNotation {
     }
 
     private static func numeral(_ value: Int, for side: Side) -> String {
-        guard side == .red else { return String(value) }
+        side == .red ? chineseNumeral(value) : String(value)
+    }
+
+    private static func chineseNumeral(_ value: Int) -> String {
         let chinese = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
         return (0..<chinese.count).contains(value) ? chinese[value] : String(value)
     }
