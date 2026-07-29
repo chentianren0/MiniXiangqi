@@ -50,9 +50,11 @@ struct PlayScreen: View {
             if let game, let motion {
                 layout(game, motion)
             } else if let startFailure {
-                ContentUnavailableView("The game did not start",
+                // The description under the title is the core's own diagnostic
+                // text: not copy, and not localized.
+                ContentUnavailableView("failure.gameDidNotStart",
                                        systemImage: "exclamationmark.triangle",
-                                       description: Text(startFailure.description).monospaced())
+                                       description: Text(verbatim: startFailure.description).monospaced())
             } else {
                 ProgressView()
             }
@@ -253,8 +255,10 @@ struct PlayScreen: View {
             Divider()
 
             // Where all three fit at their full width they keep it; where the
-            // concluding action's longer label leaves no room, the flip control
-            // falls back to its symbol, which carries the same label either way.
+            // other two's labels leave no room — the concluding action in
+            // Chinese, every cluster state in English at the minimum window —
+            // the flip control falls back to its symbol, which carries the
+            // same accessibility label either way.
             ViewThatFits(in: .horizontal) {
                 controls(game, motion, compactFlip: false)
                 controls(game, motion, compactFlip: true)
@@ -264,9 +268,16 @@ struct PlayScreen: View {
             // the player invokes it rather than the moment it becomes
             // available: in Free Play the enabled control and the status line's
             // 可判和 already stand for the offer.
-            .alert("局面已三次重复，可以和棋结束。", isPresented: $claimPresented) {
-                Button("继续对局", role: .cancel) { }
-                Button("以和棋结束") { withAnimation(policy.fade(Motion.stateFadeAnimation)) { game.claimDraw() } }
+            //
+            // The accepted sentence is one sentence and stays one, but it is
+            // said in the two roles an alert has: what has happened is the
+            // title, and what can be done about it is the message. The halves
+            // are separate keys and are never recombined into a single title.
+            .alert("alert.claimDraw.title", isPresented: $claimPresented) {
+                Button("control.keepPlaying", role: .cancel) { }
+                Button("control.endAsDraw") { withAnimation(policy.fade(Motion.stateFadeAnimation)) { game.claimDraw() } }
+            } message: {
+                Text("alert.claimDraw.message")
             }
         }
         .frame(maxHeight: .infinity)
@@ -295,14 +306,19 @@ struct PlayScreen: View {
     /// A finished game has nothing to judge a draw in, so that slot carries the
     /// concluding action instead — the one obvious next action, and therefore
     /// the one thing on screen the tint rule allows.
+    ///
+    /// Each carries an identifier beside its label, in the cluster's own
+    /// namespace. A label is copy and changes with the interface language; an
+    /// identifier does not, so it is what a test addresses a control by.
     private func controls(_ game: Game, _ motion: PlayMotion, compactFlip: Bool) -> some View {
         HStack(spacing: 8) {
             // Unavailable until a running transition completes — its own
             // Undo's included, which is what makes a second Undo wait its
             // turn rather than queue.
-            Button("悔棋") { motion.undo() }
+            Button("control.undo") { motion.undo() }
                 .buttonStyle(.glass)
                 .disabled(!motion.canUndo)
+                .accessibilityIdentifier("cluster-undo")
 
             if game.isFinished {
                 // Prominent once it is the only one: while the notice stands in
@@ -310,23 +326,25 @@ struct PlayScreen: View {
                 // and two tinted buttons for one action is one too many.
                 concludingAction(prominent: resultDismissed)
             } else {
-                Button("判和") { claimPresented = true }
+                Button("control.claimDraw") { claimPresented = true }
                     .buttonStyle(.glass)
                     .disabled(!game.evaluation.claimAvailable)
+                    .accessibilityIdentifier("cluster-claim")
             }
 
             Button {
                 motion.flip()
             } label: {
                 if compactFlip {
-                    Label("翻转棋盘", systemImage: "arrow.up.arrow.down")
+                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
                         .labelStyle(.iconOnly)
                 } else {
-                    Label("翻转棋盘", systemImage: "arrow.up.arrow.down")
+                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
                 }
             }
             .buttonStyle(.glass)
-            .accessibilityLabel("翻转棋盘")
+            .accessibilityLabel(Text("control.flipBoard"))
+            .accessibilityIdentifier("cluster-flip")
 
             Spacer(minLength: 0)
         }
@@ -334,7 +352,7 @@ struct PlayScreen: View {
 
     @ViewBuilder
     private func concludingAction(prominent: Bool) -> some View {
-        let action = Button("开始新对局") { start(replayingLaunchLine: false) }
+        let action = Button("control.newGame") { start(replayingLaunchLine: false) }
             .accessibilityIdentifier("cluster-new-game")
         if prominent {
             action.buttonStyle(.glassProminent)

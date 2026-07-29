@@ -134,18 +134,25 @@ struct BoardView: View {
 
     /// What a screen reader says about a point: its name, what stands there,
     /// and any state that is on it.
+    ///
+    /// The point's name is a coordinate and is the same in every language. The
+    /// piece is named by `PieceKind.name(for:)`, which is where the two
+    /// languages part company — Chinese says the character on the disc, English
+    /// says the piece's name — so `b1 红 炮 已选择` is `b1 Red Cannon Selected`.
     private func describe(_ square: Square) -> String {
         var parts = [square.name]
         if let piece = placement[square] {
-            parts.append(piece.side == .red ? "红" : "黑")
-            parts.append(piece.kind.character(for: piece.side))
+            parts.append(piece.side == .red
+                         ? String(localized: "board.a11y.red")
+                         : String(localized: "board.a11y.black"))
+            parts.append(piece.kind.name(for: piece.side))
         } else {
-            parts.append("空")
+            parts.append(String(localized: "board.a11y.empty"))
         }
-        if square == selected { parts.append("已选择") }
-        if captures.contains(square) { parts.append("可吃") }
-        else if destinations.contains(square) { parts.append("可走") }
-        if square == checkedGeneral { parts.append("被将军") }
+        if square == selected { parts.append(String(localized: "board.a11y.selected")) }
+        if captures.contains(square) { parts.append(String(localized: "board.a11y.capture")) }
+        else if destinations.contains(square) { parts.append(String(localized: "board.a11y.legalMove")) }
+        if square == checkedGeneral { parts.append(String(localized: "board.a11y.inCheck")) }
         return parts.joined(separator: " ")
     }
 

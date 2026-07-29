@@ -242,7 +242,7 @@ A reader using icon symbols still reads a character-based move list, because tra
 
 ## Implementation notes
 
-These are consequences for the code, recorded here so that the later localization pull request inherits them rather than rediscovering them.
+These are the consequences for the code that the localization pull request inherited rather than rediscovered. **All seven were discharged by that PR**; they stand as the record of what it owed, and the code they describe is the code as it stood before it.
 
 - **The accessibility representation switch needs a mapping the code does not have.** `Board/BoardView.swift` builds a point's label from the piece's *character*, which is correct in Chinese and wrong in English. The English label uses the piece name, so the code needs a piece-kind-to-localized-name mapping beside the existing kind-to-character one. `b1 红 炮 已选择` becomes `b1 Red Cannon Selected`.
 - **Every composed string becomes a localized format string.** Three exist today and each is currently built by concatenation: the result announcement's ideographic comma in `Play/ResultNotice.swift`, the ideographic space before 将军 in `Play/TurnStatus.swift`, and the ` · ` metadata join in the same file. Their separators differ between the languages and cannot be hard-coded around a translated fragment.

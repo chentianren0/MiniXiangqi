@@ -25,13 +25,20 @@ struct MoveList: View {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(rows, id: \.number) { row in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("\(row.number).")
+                            // Numerals and a full stop, keyed all the same: it
+                            // is what a row is numbered with, and what a
+                            // language puts around a number is that language's
+                            // to say.
+                            Text(String(format: String(localized: "moveList.rowNumber"), row.number))
                                 .font(.callout.monospacedDigit())
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 28, alignment: .trailing)
-                            Text(row.red)
+                            // The moves themselves are traditional notation:
+                            // game presentation rather than interface copy, the
+                            // same characters in every language.
+                            Text(verbatim: row.red)
                                 .frame(width: 76, alignment: .leading)
-                            Text(row.black ?? "")
+                            Text(verbatim: row.black ?? "")
                                 .frame(width: 76, alignment: .leading)
                         }
                         .font(.callout)

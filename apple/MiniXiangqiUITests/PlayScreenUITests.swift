@@ -23,13 +23,67 @@ final class PlayScreenUITests: XCTestCase {
     /// The start position a third time, which is what makes the draw claimable.
     private static let shuffleLine = "b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7"
 
+    /// A language to run the interface in, and the strings docs/copy.md
+    /// accepts for it.
+    ///
+    /// The words are written out here rather than read from the application's
+    /// own catalog. A test that reads the file the application reads asserts
+    /// only that the file is itself; what needs proving is that the accepted
+    /// words reach the screen, so the accepted words are what stands in the
+    /// test. A copy change is a change to docs/copy.md, to the catalog, and to
+    /// the line below that quotes it — which is the point.
+    private struct Language {
+        /// What `-AppleLanguages` is given, and what a frame is named after.
+        let code: String
+        let short: String
+
+        let undo, claimDraw, flipBoard, newGame: String
+        let redToMove, drawAvailableAndReason, redWinsLine, checkmate: String
+        let redWinsNotice: String
+        let claimTitle, claimMessage, keepPlaying, endAsDraw: String
+
+        /// A whole point description, which is where the two languages part
+        /// company most sharply: Chinese names a piece by the character on its
+        /// disc, English by the piece's name.
+        let cannonSelectedOnB1: String
+
+        let coreDidNotStart, gameDidNotStart: String
+
+        static let chinese = Language(
+            code: "zh-Hans", short: "zh",
+            undo: "悔棋", claimDraw: "判和", flipBoard: "翻转棋盘", newGame: "开始新对局",
+            redToMove: "轮到红方", drawAvailableAndReason: "可判和 · 三次重复",
+            redWinsLine: "红方胜", checkmate: "将死", redWinsNotice: "红方获胜",
+            claimTitle: "局面已三次重复", claimMessage: "可以和棋结束。",
+            keepPlaying: "继续对局", endAsDraw: "以和棋结束",
+            cannonSelectedOnB1: "b1 红 炮 已选择",
+            coreDidNotStart: "核心未能启动", gameDidNotStart: "对局未能开始")
+
+        static let english = Language(
+            code: "en", short: "en",
+            undo: "Undo", claimDraw: "Claim Draw", flipBoard: "Flip Board", newGame: "New Game",
+            redToMove: "Red to Move", drawAvailableAndReason: "Draw Available · Threefold Repetition",
+            redWinsLine: "Red Wins", checkmate: "Checkmate", redWinsNotice: "Red Wins",
+            claimTitle: "This position has occurred three times.",
+            claimMessage: "You can end the game as a draw.",
+            keepPlaying: "Keep Playing", endAsDraw: "End as a Draw",
+            cannonSelectedOnB1: "b1 Red Cannon Selected",
+            coreDidNotStart: "The core did not start", gameDidNotStart: "The game did not start")
+    }
+
     private func launch(replaying line: String? = nil,
+                        in language: Language = .chinese,
                         darkAppearance: Bool = false,
                         window: String? = nil,
                         hidingNumerals: Bool = false,
                         liftingWindowMinimum: Bool = false,
                         ignoringSavedState: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
+        // The interface language, named rather than inherited. What these
+        // tests assert is copy, and the language the machine running them
+        // happens to be set to is not evidence about either of the two the
+        // application speaks. The normative one is the default.
+        app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
         if let window { app.launchArguments += ["-mxq-window", window] }
@@ -42,13 +96,13 @@ final class PlayScreenUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
-        XCTAssertFalse(app.staticTexts["The core did not start"].exists)
+        XCTAssertFalse(app.staticTexts[language.coreDidNotStart].exists)
         // The board appearing is what settles the screen, so it is waited for
         // first: a refused replay line never shows a board, and checking for
         // the failure text before the screen settles would pass against the
         // spinner that precedes both outcomes.
         let boardUp = point(app, "d1").waitForExistence(timeout: 10)
-        XCTAssertFalse(app.staticTexts["The game did not start"].exists,
+        XCTAssertFalse(app.staticTexts[language.gameDidNotStart].exists,
                        "a replay line the core refuses arrives here")
         XCTAssertTrue(boardUp, "the board's points should be addressable")
         return app
@@ -131,7 +185,7 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(blackStrip.label, "1 2 3 4 5 6 7")
 
         // Turning the board round changes presentation only.
-        app.buttons["翻转棋盘"].click()
+        app.buttons["cluster-flip"].click()
         XCTAssertEqual(redStrip.label, "一 二 三 四 五 六 七",
                        "Red's numerals should follow the board round")
         XCTAssertEqual(blackStrip.label, "7 6 5 4 3 2 1",
@@ -154,7 +208,7 @@ final class PlayScreenUITests: XCTestCase {
 
         // One Undo removes one ply, so Black's reply leaves the list and the
         // turn goes back to Black.
-        app.buttons["悔棋"].click()
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到黑方"].waitForExistence(timeout: 5),
                       "the turn should have gone back to Black")
         XCTAssertFalse(app.staticTexts["卒1进1"].exists,
@@ -217,17 +271,17 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
                       "the status line still carries the result")
         XCTAssertTrue(reading(app, "turn-status").contains("将死"))
-        XCTAssertTrue(app.buttons["悔棋"].isEnabled,
+        XCTAssertTrue(app.buttons["cluster-undo"].isEnabled,
                       "a natural result stays undoable")
         XCTAssertTrue(app.buttons["cluster-new-game"].exists,
                       "the concluding action takes the draw claim's slot")
-        XCTAssertFalse(app.buttons["判和"].exists,
+        XCTAssertFalse(app.buttons["cluster-claim"].exists,
                        "a finished game has no draw to judge")
         attach(app, named: "11-the-finished-board-with-the-notice-closed")
 
         // Closing is final for this result: nothing the player does to the
         // board brings the notice back.
-        app.buttons["翻转棋盘"].click()
+        app.buttons["cluster-flip"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists,
                        "the notice should not return for a result already seen")
 
@@ -265,10 +319,10 @@ final class PlayScreenUITests: XCTestCase {
         // transition out rather than race it — and what says it is over is the
         // control the gate itself disables: 悔棋 is unavailable until the
         // reversal lands.
-        app.buttons["悔棋"].click()
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
-                               evaluatedWith: app.buttons["悔棋"])],
+                               evaluatedWith: app.buttons["cluster-undo"])],
              timeout: 5)
         point(app, "b3").click()
         point(app, "d3").click()
@@ -362,10 +416,10 @@ final class PlayScreenUITests: XCTestCase {
     func testTheDrawCanBeClaimed() {
         let app = launch(replaying: Self.shuffleLine)
 
-        XCTAssertTrue(app.buttons["判和"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["cluster-claim"].waitForExistence(timeout: 10))
         XCTAssertTrue(reading(app, "turn-status").contains("可判和 · 三次重复"),
                       "the status line carries the standing offer")
-        let claim = app.buttons["判和"]
+        let claim = app.buttons["cluster-claim"]
         XCTAssertTrue(claim.isEnabled, "the claim the core offers is the player's to take")
         attach(app, named: "14-the-repetition-is-claimable")
 
@@ -374,8 +428,10 @@ final class PlayScreenUITests: XCTestCase {
         claim.click()
         let notice = app.sheets.firstMatch
         XCTAssertTrue(notice.waitForExistence(timeout: 5))
-        XCTAssertEqual(notice.staticTexts.firstMatch.value as? String,
-                       "局面已三次重复，可以和棋结束。",
+        // One accepted sentence, said in the two roles an alert has: what has
+        // happened is the title, what can be done about it is the message.
+        let lines = notice.staticTexts.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(lines, ["局面已三次重复", "可以和棋结束。"],
                        "the notice says what the claim is")
         attach(app, named: "15-the-draw-claim-notice")
 
@@ -383,7 +439,7 @@ final class PlayScreenUITests: XCTestCase {
         // still standing.
         notice.buttons["继续对局"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists, "the game continues")
-        XCTAssertTrue(app.buttons["判和"].isEnabled, "the claim is still there to take")
+        XCTAssertTrue(app.buttons["cluster-claim"].isEnabled, "the claim is still there to take")
 
         claim.click()
         XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
@@ -401,9 +457,135 @@ final class PlayScreenUITests: XCTestCase {
         app.buttons["result-close"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists)
         XCTAssertTrue(app.buttons["cluster-new-game"].exists)
-        XCTAssertFalse(app.buttons["悔棋"].isEnabled,
+        XCTAssertFalse(app.buttons["cluster-undo"].isEnabled,
                        "a claimed draw cannot be taken back")
         attach(app, named: "17-a-claimed-draw-with-the-notice-closed")
+    }
+
+    // MARK: - The two languages
+
+    // docs/copy.md is the register: normative Simplified Chinese with an
+    // approved English beside it, the pair stored under one symbolic key. The
+    // String Catalog is what puts them on screen, and the only thing that can
+    // say the catalog is live is the running screen in each language. So the
+    // two tests below walk one language each over the surfaces the copy lives
+    // on — ordinary play, the result notice, the claim's alert, and the
+    // cluster at the smallest window the product allows — and photograph them.
+    //
+    // They also assert what does *not* change with the language. Traditional
+    // notation, the piece characters, and the numeral strips are game
+    // presentation rather than interface copy: the same characters in every
+    // language, and asserted here so that a future translation cannot quietly
+    // take them.
+
+    func testTheInterfaceInChinese() {
+        photographTheInterface(in: .chinese)
+    }
+
+    func testTheInterfaceInEnglish() {
+        photographTheInterface(in: .english)
+    }
+
+    private func photographTheInterface(in language: Language) {
+        // Ordinary play, mid-game: the turn status, a filled move list, and
+        // the control cluster, all carrying words at once.
+        let play = launch(replaying: Self.evidenceLine, in: language)
+        XCTAssertEqual(play.buttons["cluster-undo"].label, language.undo,
+                       "the control's label is the register's, in this language")
+        XCTAssertEqual(play.buttons["cluster-claim"].label, language.claimDraw)
+        XCTAssertEqual(play.buttons["cluster-flip"].label, language.flipBoard)
+        XCTAssertTrue(reading(play, "turn-status").contains(language.redToMove),
+                      "the turn status names the side to move")
+
+        // The move list is not copy. It reads the same either way.
+        XCTAssertTrue(play.staticTexts["卒4进1"].exists,
+                      "traditional notation is game presentation, not interface copy")
+        XCTAssertTrue(play.staticTexts["5."].exists, "and so is a row number")
+        let strips = play.windows.firstMatch.descendants(matching: .any)
+        XCTAssertEqual(strips["file-numerals-red"].label, "七 六 五 四 三 二 一",
+                       "each player's own numerals, in either language")
+        XCTAssertEqual(strips["file-numerals-black"].label, "1 2 3 4 5 6 7")
+        attach(play, named: "\(language.short)-play")
+
+        // Where the two languages part company most sharply. A screen reader
+        // hears the character in Chinese, because that is what the disc shows
+        // and what the reader is learning, and the piece's name in English.
+        point(play, "b1").click()
+        XCTAssertEqual(point(play, "b1").label, language.cannonSelectedOnB1,
+                       "the point description switches with the language")
+        attach(play, named: "\(language.short)-piece-selected")
+
+        // The result notice, and the status line that keeps saying it.
+        let finished = launch(replaying: Self.mateLine, in: language)
+        XCTAssertTrue(finished.staticTexts["result-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(reading(finished, "result-title"), language.redWinsNotice)
+        XCTAssertEqual(reading(finished, "result-reason"), language.checkmate)
+        XCTAssertEqual(finished.buttons["result-undo"].label, language.undo)
+        XCTAssertEqual(finished.buttons["result-new-game"].label, language.newGame)
+        XCTAssertTrue(reading(finished, "turn-status").contains(language.redWinsLine),
+                      "the shorter status-line form of the same result")
+        attach(finished, named: "\(language.short)-result-notice")
+
+        // The claim's alert, which is one accepted sentence said in the two
+        // roles an alert has.
+        let claimable = launch(replaying: Self.shuffleLine, in: language)
+        XCTAssertTrue(claimable.buttons["cluster-claim"].waitForExistence(timeout: 10))
+        XCTAssertTrue(reading(claimable, "turn-status").contains(language.drawAvailableAndReason),
+                      "the standing offer and its reason, joined by the metadata middot")
+        claimable.buttons["cluster-claim"].click()
+        let notice = claimable.sheets.firstMatch
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        attach(claimable, named: "\(language.short)-claim-alert")
+
+        let lines = notice.staticTexts.allElementsBoundByIndex.map { ($0.value as? String) ?? $0.label }
+        XCTAssertEqual(lines.count, 2, "a title and a message, never one recombined title")
+        XCTAssertEqual(lines.first, language.claimTitle)
+        XCTAssertEqual(lines.last, language.claimMessage)
+        XCTAssertTrue(notice.buttons[language.keepPlaying].exists)
+        XCTAssertTrue(notice.buttons[language.endAsDraw].exists)
+        notice.buttons[language.keepPlaying].click()
+
+        // The smallest window the product allows, where the English labels are
+        // materially wider than the Chinese they translate. Both states of the
+        // cluster are photographed, because the finished game's concluding
+        // action is the longest of the three and is what the flip control's
+        // fallback to its symbol exists for. Nothing here says what the
+        // cluster should look like; it says that all of it is still on screen,
+        // and the frames are what the words are read off.
+        for (line, name) in [(Self.evidenceLine, "play"), (Self.mateLine, "result")] {
+            let smallest = launch(replaying: line, in: language, window: "320x240")
+            let window = smallest.windows.firstMatch.frame
+            let cluster = ["cluster-undo",
+                           line == Self.mateLine ? "cluster-new-game" : "cluster-claim",
+                           "cluster-flip"]
+            for identifier in cluster {
+                let button = smallest.buttons[identifier]
+                XCTAssertTrue(button.exists, "\(identifier) should still be there at the minimum")
+                XCTAssertTrue(window.contains(button.frame),
+                              "\(identifier) should sit inside the minimum window, not past it")
+                print("CLUSTER-EVIDENCE \(language.short)-\(name) \(identifier) "
+                      + "label=\(button.label) width=\(button.frame.width)")
+            }
+            attach(smallest, named: "\(language.short)-\(name)-minimum-window")
+        }
+    }
+
+    /// The failure screen the play screen shows when a game will not start.
+    /// It is the one surface whose Chinese the register had to supply — the
+    /// application shipped an English literal with nothing behind it — so it
+    /// is worth seeing rather than assuming. A replay line the core refuses is
+    /// what puts it on screen.
+    func testTheGameThatDidNotStartSaysSoInBothLanguages() {
+        for language in [Language.chinese, .english] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-AppleLanguages", "(\(language.code))",
+                                   "-mxq-replay", "d1d7"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts[language.gameDidNotStart].waitForExistence(timeout: 20),
+                          "a refused replay line should say so in \(language.code)")
+            attach(app, named: "\(language.short)-game-did-not-start")
+            app.terminate()
+        }
     }
 
     // MARK: - The layout at the sizes the window can be

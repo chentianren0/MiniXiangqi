@@ -57,16 +57,31 @@ enum PieceKind: Character, CaseIterable {
         }
     }
 
-    /// Used in help, accessibility announcements, and descriptive text — never
-    /// as a board label.
-    var englishName: String {
-        switch self {
-        case .general: "General"
-        case .chariot: "Chariot"
-        case .horse: "Horse"
-        case .cannon: "Cannon"
-        case .soldier: "Soldier"
+    /// How the piece is named where words are used rather than the board's own
+    /// glyph — an accessibility label, a line of Help — and never as a board
+    /// label in any language.
+    ///
+    /// docs/copy.md, "Where the two languages deliberately do not match one to
+    /// one": the accessibility representation switches with the language.
+    /// Chinese names a piece by the character it carries, because that is what
+    /// the board shows and what the reader is learning; English names it by its
+    /// piece name and never by the character. So `b1 红 炮 已选择` is
+    /// `b1 Red Cannon Selected` and not `b1 Red 炮 Selected`.
+    ///
+    /// The character is the argument rather than the string, because the ten
+    /// piece characters are game content: they are never translated and never
+    /// enter the String Catalog. The Chinese half of each of these keys is the
+    /// placeholder that lets the character through; the English half is a name
+    /// that ignores it.
+    func name(for side: Side) -> String {
+        let name = switch self {
+        case .general: String(localized: "piece.general")
+        case .chariot: String(localized: "piece.chariot")
+        case .horse: String(localized: "piece.horse")
+        case .cannon: String(localized: "piece.cannon")
+        case .soldier: String(localized: "piece.soldier")
         }
+        return String(format: name, character(for: side))
     }
 }
 

@@ -50,20 +50,38 @@ struct TurnStatus: View {
 
     private var primaryLine: String {
         switch state {
-        case .ongoing, .claimableDraw:
-            // The token accompanies the side-to-move line rather than replacing
-            // it: whose turn it is remains true while they are in check.
-            (sideToMove == .red ? "轮到红方" : "轮到黑方") + (inCheck ? "　将军" : "")
-        case .redWins: "红方胜"
-        case .blackWins: "黑方胜"
-        case .draw: "和局"
+        case .ongoing, .claimableDraw: sideToMoveLine
+        case .redWins: String(localized: "status.redWins")
+        case .blackWins: String(localized: "status.blackWins")
+        case .draw: String(localized: "status.draw")
         }
+    }
+
+    /// Whose turn it is, and the check token where there is one.
+    ///
+    /// The token accompanies the side-to-move line rather than replacing it:
+    /// whose turn it is remains true while they are in check. The two are
+    /// joined by a format string rather than by concatenation, because what
+    /// stands between them is copy — an ideographic space in Chinese, an
+    /// ordinary one in English — and a separator hard-coded here would be one
+    /// language's punctuation wrapped around the other language's words.
+    private var sideToMoveLine: String {
+        let side = sideToMove == .red
+            ? String(localized: "status.redToMove")
+            : String(localized: "status.blackToMove")
+        guard inCheck else { return side }
+        return String(format: String(localized: "status.sideToMove.checked"),
+                      side, String(localized: "status.check"))
     }
 
     private var secondary: String? {
         switch state {
         case .ongoing: nil
-        case .claimableDraw: "可判和 · " + reason.text
+        // The metadata join, applied here to the standing offer and the reason
+        // behind it. Its middot is the same in both languages, and it is still
+        // a format string: what a language does around a separator is copy.
+        case .claimableDraw: String(format: String(localized: "metadata.join"),
+                                    String(localized: "status.drawAvailable"), reason.text)
         default: reason.text
         }
     }
@@ -75,15 +93,16 @@ extension EndReason {
     /// second copy of these strings is a second thing to keep in step.
     var text: String {
         switch self {
-        case .checkmate: "将死"
-        case .stalemate: "困毙"
-        case .threefoldRepetition: "三次重复"
-        case .perpetualCheck: "长将"
-        case .perpetualChase: "长捉"
-        case .mutualPerpetualCheck: "双方长将"
-        case .mutualPerpetualChase: "双方长捉"
-        case .resignation: "认输"
-        case .endedEarly: "提前结束"
+        case .checkmate: String(localized: "reason.checkmate")
+        case .stalemate: String(localized: "reason.stalemate")
+        case .threefoldRepetition: String(localized: "reason.threefoldRepetition")
+        case .perpetualCheck: String(localized: "reason.perpetualCheck")
+        case .perpetualChase: String(localized: "reason.perpetualChase")
+        case .mutualPerpetualCheck: String(localized: "reason.mutualPerpetualCheck")
+        case .mutualPerpetualChase: String(localized: "reason.mutualPerpetualChase")
+        case .resignation: String(localized: "reason.resignation")
+        case .endedEarly: String(localized: "reason.endedEarly")
+        // No reason is no words, in every language.
         case .none: ""
         }
     }
