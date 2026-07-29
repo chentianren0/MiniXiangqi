@@ -203,12 +203,19 @@ final class HistoryLibrary {
 /// the declared type.
 ///
 /// The created-by-a-newer-version answer is the one the data contract requires
-/// to be distinct and never to be presented as corruption, and it is.
+/// to be distinct and never to be presented as corruption, and it is. The one
+/// answer that *is* about corruption is about the library's own record rather
+/// than about the file, and says so.
 enum ImportAnswer {
     case duplicate(RecordSummary)
     case conflict
     case newerVersion
     case unreadable
+    /// The file is fine and so is the library; the record already under this
+    /// file's identity is not. Its own bytes no longer decode, or no longer
+    /// hash to what the row recorded for them, so the comparison an import has
+    /// to make cannot be made at all.
+    case damagedRecord
     /// The file was fine; the library would not take it. The bytes are held so
     /// that 重试 is a retry of the same import.
     case saveFailed(Data)
@@ -219,6 +226,14 @@ enum ImportAnswer {
             self = .conflict
         case MxqStatus(MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION):
             self = .newerVersion
+        case MxqStatus(MXQ_ERR_STORE_CORRUPT):
+            // Not a save that failed. Nothing was being saved yet: the import
+            // reached the record already holding this identity and found it
+            // damaged. A retry would find it damaged again, so offering one
+            // would be offering an action that cannot work — and calling this
+            // a failure to save would understate what is wrong and point at
+            // the wrong thing.
+            self = .damagedRecord
         default:
             // Which side refused decides which sentence is true: the archive
             // domain means the file, and anything else that reaches here means
@@ -234,6 +249,7 @@ enum ImportAnswer {
         case .conflict: "alert.importConflict.title"
         case .newerVersion: "alert.importNewerVersion.title"
         case .unreadable: "alert.importUnreadable.title"
+        case .damagedRecord: "alert.importDamagedRecord.title"
         case .saveFailed: "alert.importSaveFailed.title"
         }
     }
@@ -244,6 +260,7 @@ enum ImportAnswer {
         case .conflict: "alert.importConflict.message"
         case .newerVersion: "alert.importNewerVersion.message"
         case .unreadable: "alert.importUnreadable.message"
+        case .damagedRecord: "alert.importDamagedRecord.message"
         case .saveFailed: "alert.importSaveFailed.message"
         }
     }

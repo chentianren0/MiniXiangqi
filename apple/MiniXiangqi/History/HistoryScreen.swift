@@ -300,12 +300,22 @@ struct HistoryScreen: View {
     private func open(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let bytes = try? Data(contentsOf: url) else {
+        // The 1 MiB bound is the core's, and the core is what enforces it; this
+        // only declines to allocate what it is about to be refused for. A file
+        // whose size cannot be read at all is carried on and let the core
+        // answer, because not knowing a size is not the same as knowing a bad
+        // one.
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        guard size.map({ $0 <= Self.importByteLimit }) ?? true,
+              let bytes = try? Data(contentsOf: url) else {
             library.reportUnreadableFile()
             return
         }
         Task { await library.importGame(bytes) }
     }
+
+    /// The accepted per-file import bound of docs/game-data.md, in bytes.
+    private static let importByteLimit = 1024 * 1024
 
     @ViewBuilder
     private func actions(for answer: ImportAnswer) -> some View {
@@ -317,7 +327,11 @@ struct HistoryScreen: View {
         case .saveFailed(let bytes):
             Button("control.cancel", role: .cancel) { }
             Button("control.tryAgain") { Task { await library.importGame(bytes) } }
-        case .conflict, .unreadable, .newerVersion:
+        // A damaged record joins the three that offer only acknowledgement, and
+        // for the same reason each of them does: there is no action the app can
+        // put behind a button that would change the answer. The route out of
+        // this one is in its message, as the conflict's is.
+        case .conflict, .unreadable, .newerVersion, .damagedRecord:
             Button("control.ok", role: .cancel) { }
         }
     }

@@ -141,6 +141,41 @@
         }
       }
     },
+    "alert.importDamagedRecord.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The record in History matching this file is damaged, so it can't be compared or imported. To use this file, delete that game from History first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件对应的历史记录已损坏，无法比较或导入。如果要用这个文件，请先删除历史中的那一盘。"
+          }
+        }
+      }
+    },
+    "alert.importDamagedRecord.title": {
+      "comment": "The one import answer that is about the library rather than about the file, and the only one that may say damaged.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Game in History Is Damaged"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "历史中有一盘损坏的棋"
+          }
+        }
+      }
+    },
     "alert.importDuplicate.message": {
       "extractionState": "manual",
       "localizations": {

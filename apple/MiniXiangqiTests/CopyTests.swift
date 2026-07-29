@@ -46,6 +46,7 @@ struct CopyTests {
             "alert.importNewerVersion.title", "alert.importNewerVersion.message",
             "alert.importUnreadable.title", "alert.importUnreadable.message",
             "alert.importSaveFailed.title", "alert.importSaveFailed.message",
+            "alert.importDamagedRecord.title", "alert.importDamagedRecord.message",
             "board.a11y.red", "board.a11y.black", "board.a11y.empty",
             "board.a11y.selected", "board.a11y.legalMove", "board.a11y.capture",
             "board.a11y.inCheck",
