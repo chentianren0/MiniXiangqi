@@ -37,6 +37,40 @@
         }
       }
     },
+    "alert.saveFailed.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current game is unchanged. Please try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前对局仍然保留。请重试。"
+          }
+        }
+      }
+    },
+    "alert.saveFailed.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Save the Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存对局"
+          }
+        }
+      }
+    },
     "board.a11y.black": {
       "extractionState": "manual",
       "localizations": {
@@ -156,6 +190,23 @@
         }
       }
     },
+    "control.cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        }
+      }
+    },
     "control.claimDraw": {
       "extractionState": "manual",
       "localizations": {
@@ -237,6 +288,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "开始新对局"
+          }
+        }
+      }
+    },
+    "control.tryAgain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try Again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
           }
         }
       }
@@ -785,6 +853,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "红方胜"
+          }
+        }
+      }
+    },
+    "status.saveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't save that move. Please try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存这一步，请重试。"
           }
         }
       }

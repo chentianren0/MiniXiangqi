@@ -1,8 +1,12 @@
 // A game in progress, as the screen needs it.
 //
 // Every rule question — what is legal, whether a side is in check, whether the
-// game is over and why — is answered by the core. This type holds the history,
-// the selection, and the board orientation, and asks again after every change.
+// game is over and why, whether Undo is on offer — is answered by the core,
+// which since the move onto sessions also owns the game itself: the moves, the
+// commit of every accepted one, and the History record a finished game becomes.
+// What lives here is the screen's own reading of that session — the placement,
+// the selection, the notation, the orientation — refreshed from the core after
+// every change rather than maintained as a second truth.
 
 import Observation
 
@@ -12,18 +16,58 @@ import Observation
 /// refused, the position unchanged, the failure recorded, the transition above
 /// abandoned — and a working core will not produce one on request. A stand-in
 /// may refuse a call; it may never answer a rules question itself.
-protocol Rules {
-    func evaluate(from startFEN: String, moves: [String]) throws -> Evaluation
-    func legalMoves(from startFEN: String, moves: [String]) throws -> [String]
-}
+///
+/// The seam now speaks to a session. Mutations — beginning a game, a move, an
+/// Undo, the two terminal commits — are what a stand-in refuses, because each
+/// one is a store commit that can genuinely fail; the queries beneath them are
+/// projections of the same session and pass through untouched.
+protocol Rules: AnyObject {
+    /// Whether a session is attached. The first move of a fresh board begins
+    /// one; everything after speaks to it.
+    var hasSession: Bool { get }
 
-extension Core: Rules { }
+    /// Attach the stored active game, if the library holds one. Absence is
+    /// `false` and not an error: an untouched board has nothing to resume.
+    func resumeActive() throws -> Bool
+
+    /// Create the active game and play its first move — one user-visible
+    /// action, so a refusal of either half is one refusal of the move.
+    func begin(with move: String) throws
+
+    /// Apply one move and commit it before returning.
+    func apply(_ move: String) throws
+
+    /// Take back one decision and commit, returning the plies removed.
+    func undo() throws -> Int
+
+    /// Commit the claimable repetition as the game's draw. The terminal
+    /// commit: the record is in History when this returns.
+    func claimDraw() throws -> UInt64
+
+    /// Commit an unconfirmed natural result as what it is. The other terminal
+    /// commit, made when the player files the game rather than takes it back.
+    func confirmResult() throws -> UInt64
+
+    /// The position and state — the session's, or the frozen start's before a
+    /// session exists.
+    func evaluation() throws -> Evaluation
+
+    /// The session's complete retained line; empty before a session exists.
+    func moveHistory() throws -> [String]
+
+    /// The legal moves of the current position.
+    func legalMoves() throws -> [String]
+
+    /// The position after the first `ply` plies, for reading the line back.
+    func fen(atPly ply: Int) throws -> String
+}
 
 @Observable
 final class Game {
-    private let core: Rules
+    private let rules: Rules
 
-    let startFEN: String
+    /// The retained line, as the core holds it: read back after every
+    /// mutation, never maintained as a second copy.
     private(set) var moves: [String] = []
 
     private(set) var evaluation: Evaluation
@@ -32,33 +76,77 @@ final class Game {
     private(set) var lastMove: Move?
 
     /// Each played move as the player reads it. Recorded when the move is
-    /// played, because traditional notation depends on the placement *before*
-    /// it — including whether a second piece of the same type stood on the
-    /// same file, which the move itself may change.
+    /// played — traditional notation depends on the placement *before* it —
+    /// and recomputed the same way when a stored game resumes, so a relaunch
+    /// reads exactly as the sitting it interrupted did.
     private(set) var notation: [String] = []
 
-    /// The last attempt's failed core call, recorded rather than swallowed:
-    /// every one of them is a bug in this app or a packaging failure, never a
-    /// rules outcome. A new attempt starts clean — the action that could not
-    /// complete did not happen, so the user may simply try again.
+    /// The last attempt's failed core call, recorded rather than swallowed. A
+    /// refused ply is the accepted save-failure state: the move or Undo did
+    /// not happen, the position is unchanged, and a new attempt starts clean —
+    /// the user may simply try again.
     private(set) var failure: CoreError?
 
-    /// Whether the player has claimed the draw the core offered. The claim is
-    /// the player's, not the core's: a neutral threefold repetition leaves the
-    /// game running until somebody ends it.
+    /// The last claim or filing the store refused. Separate from `failure`
+    /// because the contract routes the two differently: a refused ply is the
+    /// transient capsule, a refused terminal commit is the blocking retry.
+    private(set) var filingFailure: CoreError?
+
+    /// Whether the player's draw claim has been committed. The claim is the
+    /// player's, not the core's — but committing it is the core's, so this is
+    /// true exactly when `claimDraw` returned with the game filed. A resumed
+    /// game is never a claimed one: the claim archived it.
     private(set) var claimedDraw = false
+
+    /// The History record the terminal commit created, once one has.
+    private(set) var filedRecordID: UInt64?
 
     var selected: Square?
     var flipped = false
 
-    init(core: Rules) throws {
-        self.core = core
-        let startFEN = Core.startFEN
-        let evaluation = try core.evaluate(from: startFEN, moves: [])
-        self.startFEN = startFEN
+    /// Resumes the stored active game if there is one, or opens the empty
+    /// board without creating anything: a session begins at the first move,
+    /// so an untouched board persists nothing.
+    init(rules: Rules) throws {
+        var moves: [String] = []
+        var notation: [String] = []
+        var lastMove: Move?
+        if try rules.resumeActive() {
+            moves = try rules.moveHistory()
+            notation = try Self.notation(reading: moves, from: rules)
+            lastMove = moves.last.flatMap { Move(text: $0) }
+        }
+        let evaluation = try rules.evaluation()
+        self.rules = rules
+        self.moves = moves
+        self.notation = notation
+        self.lastMove = lastMove
         self.evaluation = evaluation
         self.placement = Placement(fen: evaluation.fen)
         refreshLegalMoves()
+    }
+
+    /// A stored move this app cannot read, which a resumed line can never
+    /// legitimately contain: the core validated the whole of it before a
+    /// session existed.
+    private struct UnreadableStoredMove: Error, CustomStringConvertible {
+        var ply: Int
+        var description: String { "the stored line holds no move at ply \(ply)" }
+    }
+
+    /// The stored line, read as it was written: each move's notation from the
+    /// placement before it, which the session replays on request. Quadratic in
+    /// the line's length and run once, at resume, where a game's own length is
+    /// the measure of what resuming it is worth.
+    private static func notation(reading moves: [String],
+                                 from rules: Rules) throws -> [String] {
+        try moves.enumerated().map { ply, text in
+            guard let move = Move(text: text) else {
+                throw CoreError(wrapping: UnreadableStoredMove(ply: ply))
+            }
+            return MoveNotation.text(for: move,
+                                     in: Placement(fen: try rules.fen(atPly: ply)))
+        }
     }
 
     // MARK: - Derived board state
@@ -94,17 +182,16 @@ final class Game {
     /// player. Both stop input; only one of them can be taken back.
     var isFinished: Bool { evaluation.isOver || claimedDraw }
 
-    /// The result to present. A claimed draw is a draw whatever the core still
-    /// calls the position, and it needs no separate reason: the reason the core
-    /// already reports is the one the claim was available for.
+    /// The result to present. A claimed draw is a draw whatever the session
+    /// still calls the position — the committed outcome is the store's, and
+    /// the claim is what committed it — and it needs no separate reason: the
+    /// one the core reports is the one the claim was available for.
     var presentedState: GameState { claimedDraw ? .draw : evaluation.state }
 
-    /// docs/interaction-design.md, "Undo and result confirmation": Free Play
-    /// removes one move per action and can repeat back to the initial position,
-    /// and a natural result stays undoable while its presentation is
-    /// unconfirmed. A claimed draw is not a natural result — the player
-    /// confirmed it — so it is the one finish this cannot walk back.
-    var canUndo: Bool { !moves.isEmpty && !claimedDraw }
+    /// The core's own answer, which already says everything this used to work
+    /// out: a natural result stays undoable while its presentation is
+    /// unconfirmed, and a claimed draw — an archived session — offers nothing.
+    var canUndo: Bool { evaluation.undoAvailable }
 
     // MARK: - Input
 
@@ -156,23 +243,22 @@ final class Game {
         }
     }
 
-    /// Takes back one ply. The shortened history is evaluated before anything
-    /// is committed, so an Undo the core cannot complete does not happen: the
-    /// game stays exactly at the pre-action state and the failure is recorded.
+    /// Takes back one decision. The core commits the shortened game before
+    /// returning, so an Undo it cannot complete does not happen: the game
+    /// stays exactly at the pre-action committed state and the failure is
+    /// recorded.
     func undo() {
         failure = nil
         guard canUndo else { return }
-        let shortened = Array(moves.dropLast())
         do {
-            let evaluation = try core.evaluate(from: startFEN, moves: shortened)
-            moves = shortened
-            notation.removeLast()
-            self.evaluation = evaluation
-            placement = Placement(fen: evaluation.fen)
+            let removed = try rules.undo()
+            moves = try rules.moveHistory()
+            notation.removeLast(removed)
+            try refresh()
             // The brackets always mark the move that produced the position on
             // screen, so an Undo moves them to the move that is now last, and
             // an initial position carries none.
-            lastMove = shortened.last.flatMap { Move(text: $0) }
+            lastMove = moves.last.flatMap { Move(text: $0) }
             selected = nil
             refreshLegalMoves()
         } catch {
@@ -180,37 +266,76 @@ final class Game {
         }
     }
 
-    /// Ends the game as a draw on the repetition the core is offering. Only the
-    /// core decides whether the claim exists; this decides nothing but that the
-    /// player took it.
+    /// Ends the game as a draw on the repetition the core is offering, which
+    /// is the terminal commit: the record is in History when it succeeds. Only
+    /// the core decides whether the claim exists; this decides nothing but
+    /// that the player took it — and a commit the store refused leaves the
+    /// game running and claimable exactly as it stood.
     func claimDraw() {
+        filingFailure = nil
         guard evaluation.claimAvailable, !claimedDraw else { return }
-        claimedDraw = true
-        selected = nil
+        do {
+            filedRecordID = try rules.claimDraw()
+            claimedDraw = true
+            selected = nil
+            // The archived session still answers every query; what changes is
+            // the affordances, which now all read 0.
+            try refresh()
+            refreshLegalMoves()
+        } catch {
+            filingFailure = CoreError(wrapping: error)
+        }
+    }
+
+    /// Files the finished game in History, which is what 开始新对局 does
+    /// before anything resets: a claimed draw was filed by the claim itself,
+    /// and an unconfirmed natural result is committed as what it is. A refusal
+    /// leaves the game exactly as it stood, active and resumable.
+    func file() throws {
+        assert(isFinished, "only a finished game is filed here")
+        filingFailure = nil
+        guard !claimedDraw else { return }
+        do {
+            filedRecordID = try rules.confirmResult()
+        } catch {
+            let failure = CoreError(wrapping: error)
+            filingFailure = failure
+            throw failure
+        }
     }
 
     private func play(_ move: Move) {
         failure = nil
         let read = MoveNotation.text(for: move, in: placement)
-        moves.append(move.text)
-        notation.append(read)
         do {
-            evaluation = try core.evaluate(from: startFEN, moves: moves)
-            placement = Placement(fen: evaluation.fen)
+            // The session begins at the first move — creation and the move are
+            // one user-visible action — and every later move speaks to it.
+            if rules.hasSession {
+                try rules.apply(move.text)
+            } else {
+                try rules.begin(with: move.text)
+            }
+            moves = try rules.moveHistory()
+            notation.append(read)
+            try refresh()
             lastMove = move
             selected = nil
             refreshLegalMoves()
         } catch {
-            moves.removeLast()
-            notation.removeLast()
             failure = CoreError(wrapping: error)
         }
     }
 
+    /// The projection: the position and state are the core's answers for the
+    /// committed game, asked again after every change.
+    private func refresh() throws {
+        evaluation = try rules.evaluation()
+        placement = Placement(fen: evaluation.fen)
+    }
+
     private func refreshLegalMoves() {
         do {
-            legalMoves = try core.legalMoves(from: startFEN, moves: moves)
-                .compactMap(Move.init(text:))
+            legalMoves = try rules.legalMoves().compactMap(Move.init(text:))
         } catch {
             legalMoves = []
             failure = CoreError(wrapping: error)
@@ -228,7 +353,8 @@ private struct RefusedReplayMove: Error, CustomStringConvertible {
 extension Game {
     /// Plays a recorded line before the game is first shown, so a UI test can
     /// start from a position that would otherwise take a dozen clicks to reach.
-    /// It goes through the same path a person's move does — nothing here knows
+    /// It goes through the same path a person's move does — the session is
+    /// created at the first move and every ply commits — so nothing here knows
     /// a rule the core has not been asked. A refused move is a bug in the line
     /// rather than a rules outcome, so it is raised rather than skipped.
     ///
@@ -242,5 +368,66 @@ extension Game {
             if let failure { throw failure }
         }
     }
+}
+
+/// The refusal the seam exists for.
+struct RefusedByTheCore: Error { }
+
+/// The real core, with a switch that makes it refuse. Every answer here is the
+/// core's own — nothing decides a rule — and refusing is the only way to reach
+/// the state a failed commit leaves behind, which everything above has to
+/// survive: the ply refused, the position unchanged, a transition holding
+/// nothing to draw, the capsule saying so. It refuses the mutations, because
+/// those are the commits that can genuinely fail; the queries beneath them
+/// keep answering, as a live core's would while its disk does not.
+///
+/// In the app it stands behind `-mxq-refuse-saves`, so a screenshot of the
+/// save-failure state can come from the real screen; in the unit suite it is
+/// the stand-in the failure tests hold.
+final class RefusingRules: Rules {
+    private let real: Rules
+    var refuses: Bool
+
+    init(_ real: Rules, refuses: Bool = false) {
+        self.real = real
+        self.refuses = refuses
+    }
+
+    private func refuseIfAsked() throws {
+        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
+    }
+
+    var hasSession: Bool { real.hasSession }
+    func resumeActive() throws -> Bool { try real.resumeActive() }
+
+    func begin(with move: String) throws {
+        try refuseIfAsked()
+        try real.begin(with: move)
+    }
+
+    func apply(_ move: String) throws {
+        try refuseIfAsked()
+        try real.apply(move)
+    }
+
+    func undo() throws -> Int {
+        try refuseIfAsked()
+        return try real.undo()
+    }
+
+    func claimDraw() throws -> UInt64 {
+        try refuseIfAsked()
+        return try real.claimDraw()
+    }
+
+    func confirmResult() throws -> UInt64 {
+        try refuseIfAsked()
+        return try real.confirmResult()
+    }
+
+    func evaluation() throws -> Evaluation { try real.evaluation() }
+    func moveHistory() throws -> [String] { try real.moveHistory() }
+    func legalMoves() throws -> [String] { try real.legalMoves() }
+    func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
 }
 #endif

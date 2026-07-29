@@ -14,6 +14,10 @@
 // Motion runs through PlayMotion: every board input passes its gate, so input
 // during a committing transition is discarded here rather than queued, and the
 // controls that a running transition makes unavailable say so.
+//
+// The game on screen is the stored active game: launch resumes it exactly
+// where it stood, and 开始新对局 files a finished one in History before the
+// board resets — quitting the app stopped being the end of the game.
 
 import SwiftUI
 
@@ -25,8 +29,21 @@ struct PlayScreen: View {
 
     /// Whether the player has closed the result notice. It is view state and
     /// not game state: closing the notice changes nothing about the game, and
-    /// the notice does not come back for a result already seen.
+    /// the notice does not come back for a result already seen — though a
+    /// result still unconfirmed at quit presents its notice again at the next
+    /// launch, because the finished, unfiled game is exactly what resumed.
     @State private var resultDismissed = false
+
+    /// Whether the save-failure capsule is up. Raised when a ply's commit is
+    /// refused, and transient: it answers the touch and withdraws by itself.
+    @State private var saveFailureShown = false
+
+    /// The terminal commit the store refused — the draw claim, or the filing
+    /// that 开始新对局 owes — held while the accepted 无法保存对局 retry is on
+    /// screen, so Try Again repeats exactly the act that failed. The game
+    /// stays active and unchanged underneath either.
+    private enum FailedFiling { case claim, file }
+    @State private var failedFiling: FailedFiling?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -81,20 +98,27 @@ struct PlayScreen: View {
         }
     }
 
-    /// A game that will not start is shown rather than swallowed: it is a bug
+    /// Opens the game the library holds, or the empty board when it holds
+    /// none: launch is a resume, and an untouched board creates nothing. A
+    /// game that will not start is shown rather than swallowed — it is a bug
     /// in this app or a packaging failure, never a rules outcome.
     private func start(replayingLaunchLine: Bool) {
         startFailure = nil
         resultDismissed = false
+        // Whatever session the previous game held is over for this screen:
+        // filed if it finished, released either way. Release before resume is
+        // the single-session rule's precondition, not a saving act — the core
+        // committed everything as it happened.
+        core.endSession()
         do {
-            let game = try Game(core: core)
+            let game = try Game(rules: Self.rules(over: core))
             #if DEBUG
             if replayingLaunchLine { try game.replay(Self.launchReplayLine) }
             #endif
             self.game = game
             let motion = PlayMotion(game: game, policy: policy)
             self.motion = motion
-            // A replayed position may already stand in check; its rings pulse
+            // A resumed position may already stand in check; its rings pulse
             // as they first appear.
             motion.boardAppeared()
         } catch {
@@ -104,20 +128,38 @@ struct PlayScreen: View {
         }
     }
 
-    #if DEBUG
-    private static func launchArgument(after flag: String) -> String? {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: flag),
-              arguments.index(after: index) < arguments.endIndex
-        else { return nil }
-        return arguments[arguments.index(after: index)]
+    /// What 开始新对局 does on a finished board: the game is filed in History
+    /// first — a claimed draw already was, by the claim; an unconfirmed
+    /// natural result is committed as what it is — and only then does the
+    /// board reset. A filing the store refuses resets nothing: the accepted
+    /// retry presents, and the game stays exactly as it stood.
+    private func startNewGame(_ game: Game) {
+        do {
+            try game.file()
+            start(replayingLaunchLine: false)
+        } catch {
+            failedFiling = .file
+        }
     }
 
+    /// The seam the game speaks through: the core, unless a debug launch asked
+    /// for the refusing stand-in so the save-failure state can be produced on
+    /// a real screen.
+    private static func rules(over core: Core) -> Rules {
+        #if DEBUG
+        if DebugLaunch.contains("-mxq-refuse-saves") {
+            return RefusingRules(core, refuses: true)
+        }
+        #endif
+        return core
+    }
+
+    #if DEBUG
     /// The line `-mxq-replay a1a2,b7b5,…` names, played before first display so
     /// a UI test can start from a position it would otherwise have to click its
     /// way to. Debug only, and no move of it bypasses the core.
     private static var launchReplayLine: [String] {
-        (launchArgument(after: "-mxq-replay") ?? "")
+        (DebugLaunch.argument(after: "-mxq-replay") ?? "")
             .split(separator: ",")
             .map(String.init)
     }
@@ -126,7 +168,7 @@ struct PlayScreen: View {
     /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
     /// looked at in both appearances rather than reasoned about in one.
     private static var launchColorScheme: ColorScheme? {
-        launchArgument(after: "-mxq-appearance") == "dark" ? .dark : nil
+        DebugLaunch.argument(after: "-mxq-appearance") == "dark" ? .dark : nil
     }
 
     /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
@@ -135,7 +177,7 @@ struct PlayScreen: View {
     /// screenshot series about layout has to state the size each frame was
     /// taken at, and a window a test resized by dragging its corner cannot.
     private static var launchWindowSize: CGSize? {
-        guard let text = launchArgument(after: "-mxq-window") else { return nil }
+        guard let text = DebugLaunch.argument(after: "-mxq-window") else { return nil }
         let sides = text.split(separator: "x").compactMap { Double($0) }
         guard sides.count == 2, sides.allSatisfy({ $0 > 0 }) else { return nil }
         return CGSize(width: sides[0], height: sides[1])
@@ -144,7 +186,7 @@ struct PlayScreen: View {
     /// Whether `-mxq-no-minimum` was given. The window's floor is the thing
     /// under discussion, so it has to be possible to photograph below it.
     private static var liftsWindowMinimum: Bool {
-        ProcessInfo.processInfo.arguments.contains("-mxq-no-minimum")
+        DebugLaunch.contains("-mxq-no-minimum")
     }
     #endif
 
@@ -153,7 +195,7 @@ struct PlayScreen: View {
     /// a question a pair of screenshots answers and prose does not.
     private static var showsNumerals: Bool {
         #if DEBUG
-        !ProcessInfo.processInfo.arguments.contains("-mxq-hide-numerals")
+        !DebugLaunch.contains("-mxq-hide-numerals")
         #else
         true
         #endif
@@ -191,7 +233,7 @@ struct PlayScreen: View {
                                      reason: game.evaluation.reason,
                                      canUndo: motion.canUndo,
                                      undo: { motion.undo() },
-                                     startNewGame: { start(replayingLaunchLine: false) },
+                                     startNewGame: { startNewGame(game) },
                                      close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true } })
                             .transition(.opacity)
                     }
@@ -209,6 +251,40 @@ struct PlayScreen: View {
         .onChange(of: game.isFinished) { _, finished in
             if !finished { resultDismissed = false }
         }
+        // The capsule follows the recorded failure: raised when a ply's save
+        // is refused, cleared the moment a new attempt starts. Its withdrawal
+        // by timer is its own, below.
+        .onChange(of: game.failure) { _, failure in
+            withAnimation(policy.fade(Motion.stateFadeAnimation)) {
+                saveFailureShown = failure != nil
+            }
+        }
+        // The blocking retry the contract gives a refused terminal commit —
+        // one presentation for both, because it is one promise: the current
+        // game is unchanged.
+        .alert("alert.saveFailed.title",
+               isPresented: Binding(get: { failedFiling != nil },
+                                    set: { if !$0 { failedFiling = nil } })) {
+            Button("control.cancel", role: .cancel) { }
+            Button("control.tryAgain") { retryFiling(game, motion) }
+        } message: {
+            Text("alert.saveFailed.message")
+        }
+    }
+
+    private func retryFiling(_ game: Game, _ motion: PlayMotion) {
+        switch failedFiling {
+        case .claim: claimDraw(game, motion)
+        case .file: startNewGame(game)
+        case nil: break
+        }
+    }
+
+    /// The player confirmed the claim; committing it is the core's. A commit
+    /// the store refused changed nothing, and says so through the retry.
+    private func claimDraw(_ game: Game, _ motion: PlayMotion) {
+        motion.claimDraw()
+        if game.filingFailure != nil { failedFiling = .claim }
     }
 
     /// Every board tap answers through the gate first: input during a
@@ -251,6 +327,17 @@ struct PlayScreen: View {
             MoveList(notation: game.notation)
                 .padding(.horizontal, Self.panelInset)
                 .frame(maxHeight: .infinity)
+                // The transient capsule the contract anchors to the turn
+                // status: hung just beneath the element it answers for, over
+                // the list rather than in it, because it is feedback passing
+                // in front of the surface and not a row of the record.
+                .overlay(alignment: .top) {
+                    if saveFailureShown {
+                        saveFailureCapsule
+                            .padding(.top, 6)
+                            .transition(.opacity)
+                    }
+                }
 
             Divider()
 
@@ -280,7 +367,7 @@ struct PlayScreen: View {
             // ones the landings make rather than in a button here.
             .alert("alert.claimDraw.title", isPresented: $claimPresented) {
                 Button("control.keepPlaying", role: .cancel) { }
-                Button("control.endAsDraw") { motion.claimDraw() }
+                Button("control.endAsDraw") { claimDraw(game, motion) }
             } message: {
                 Text("alert.claimDraw.message")
             }
@@ -299,6 +386,37 @@ struct PlayScreen: View {
         // cancels the selection. Its controls keep their own taps.
         .contentShape(Rectangle())
         .onTapGesture { motion.cancelSelection() }
+    }
+
+    /// The transient save-failure capsule: the accepted words, a warning
+    /// symbol in place of the warning haptic a Mac does not have, and nothing
+    /// modal about it. The board shows nothing because the position did not
+    /// change; this small surface at the status element is the whole report.
+    /// It withdraws by itself, and a screen reader hears it arrive rather
+    /// than having to catch it.
+    private var saveFailureCapsule: some View {
+        Label("status.saveFailed", systemImage: "exclamationmark.triangle")
+            .font(.callout)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: .rect(cornerRadius: 14))
+            .accessibilityIdentifier("save-failure")
+            .onAppear {
+                AccessibilityNotification
+                    .Announcement(String(localized: "status.saveFailed"))
+                    .post()
+            }
+            .task {
+                // Transient by its own clock: long enough to read twice, gone
+                // without being asked. A retry that fails again re-raises it —
+                // the failure passes through nil as the new attempt starts, so
+                // a fresh capsule gets a fresh withdrawal.
+                try? await Task.sleep(for: .seconds(4))
+                withAnimation(policy.fade(Motion.stateFadeAnimation)) {
+                    saveFailureShown = false
+                }
+            }
     }
 
     /// The play control cluster: the one custom glass surface on screen during
@@ -329,7 +447,7 @@ struct PlayScreen: View {
                 // Prominent once it is the only one: while the notice stands in
                 // front of the board it carries the tinted copy of this action,
                 // and two tinted buttons for one action is one too many.
-                concludingAction(prominent: resultDismissed)
+                concludingAction(game, prominent: resultDismissed)
             } else {
                 Button("control.claimDraw") { claimPresented = true }
                     .buttonStyle(.glass)
@@ -356,8 +474,8 @@ struct PlayScreen: View {
     }
 
     @ViewBuilder
-    private func concludingAction(prominent: Bool) -> some View {
-        let action = Button("control.newGame") { start(replayingLaunchLine: false) }
+    private func concludingAction(_ game: Game, prominent: Bool) -> some View {
+        let action = Button("control.newGame") { startNewGame(game) }
             .accessibilityIdentifier("cluster-new-game")
         if prominent {
             action.buttonStyle(.glassProminent)
