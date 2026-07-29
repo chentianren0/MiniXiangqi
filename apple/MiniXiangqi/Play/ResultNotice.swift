@@ -9,17 +9,31 @@
 // the play controls still carry the actions.
 //
 // The notice has two states, and which one it is in is a fact about the game
-// rather than about this view. While the result is still the player's to undo,
-// the actions are 悔棋 and the concluding one. Once the game has been filed —
-// which a claimed draw is the moment the claim commits — the record exists, and
-// the notice says so: 已记录到历史, with 回放 to watch it back and 完成 to
-// return to the start state. There is nothing left to undo at that point, and
-// offering it would be offering to undo a History record.
+// rather than about this view. While the result is unconfirmed, both actions
+// save it: 保存 files the game and leaves the board exactly where the result
+// left it, and 保存并开始新对局 files it and resets the board in one press.
+// 保存 is the tinted one, because the owner's own use said so — after a game
+// they want the finished game kept far more often than they want the next one
+// dealt. Once the game has been filed — by either of those, or by a claimed
+// draw the moment the claim commits — the record exists, and the notice says
+// so: 已记录到历史, with 回放 to watch it back and 完成 to return to the start
+// state. So a saved natural result reads as the two-beat it is: result, save,
+// recorded.
 //
-// The concluding action is still 开始新对局 rather than the contract's 结束对局
-// because in this app it still does both things at once: it files the game and
-// resets the board in one press. Splitting the two is a flow change and not a
-// label change, and it is not this PR's.
+// 悔棋 is not here. It was offered twice for as long as the notice carried it —
+// once in front of the board and once in the cluster behind it — and offering
+// one action in two places teaches nothing about either. The cluster keeps it,
+// where every other play control lives, and closing the notice with the X
+// leaves it exactly as available as it was: closing saves nothing, so an
+// unconfirmed result is still the player's to take back. (Owner decision,
+// 2026-07-29.)
+//
+// 保存并开始新对局 is the longer label the cluster's 开始新对局 grew into, and
+// it is still 开始新对局's own act: the concluding action always filed the game
+// before it reset the board, and naming the filing is what the notice's first
+// action being 保存 makes necessary. The two sit side by side here as they did
+// on macOS before; iOS revisits whether they stack at Stage 6, where the
+// stacked layout arrives.
 //
 // Whichever state it is in, one action is tinted, which the tint rule allows a
 // moment with a single obvious next step.
@@ -29,10 +43,11 @@ import SwiftUI
 struct ResultNotice: View {
     var state: GameState
     var reason: EndReason
-    var canUndo: Bool
     /// Whether the game is already an immutable History record.
     var recorded: Bool
-    var undo: () -> Void
+    /// Files the game and leaves the board standing at the recorded result.
+    var save: () -> Void
+    /// Files the game and resets the board, in one press.
     var startNewGame: () -> Void
     var replay: () -> Void
     var close: () -> Void
@@ -53,6 +68,11 @@ struct ResultNotice: View {
                     .accessibilityIdentifier("result-reason")
             }
 
+            // The tinted action is the trailing one in both states, which is
+            // where this platform's default action stands, and it carries the
+            // Return key to match — the cancel key already closes the notice,
+            // and a moment with one obvious next step should answer to the
+            // keyboard as well as to the pointer.
             HStack(spacing: 10) {
                 if recorded {
                     Button("control.replay", action: replay)
@@ -60,16 +80,16 @@ struct ResultNotice: View {
                         .accessibilityIdentifier("result-replay")
                     Button("control.done", action: startNewGame)
                         .buttonStyle(.glassProminent)
+                        .keyboardShortcut(.defaultAction)
                         .accessibilityIdentifier("result-done")
                 } else {
-                    if canUndo {
-                        Button("control.undo", action: undo)
-                            .buttonStyle(.glass)
-                            .accessibilityIdentifier("result-undo")
-                    }
-                    Button("control.newGame", action: startNewGame)
-                        .buttonStyle(.glassProminent)
+                    Button("control.saveAndNewGame", action: startNewGame)
+                        .buttonStyle(.glass)
                         .accessibilityIdentifier("result-new-game")
+                    Button("control.save", action: save)
+                        .buttonStyle(.glassProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityIdentifier("result-save")
                 }
             }
             .padding(.top, 16)
