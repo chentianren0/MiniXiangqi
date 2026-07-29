@@ -1,0 +1,7 @@
+{
+  "class": "field validity: game_id",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "version 7 UUID",
+  "why": "The stable identity is a version 7 UUID in canonical lowercase text. This one carries version nibble 4."
+}

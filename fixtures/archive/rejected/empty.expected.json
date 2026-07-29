@@ -1,0 +1,7 @@
+{
+  "class": "transport and size",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "the archive is empty",
+  "why": "Zero bytes is not a document; the size stage answers before the parser is ever asked."
+}

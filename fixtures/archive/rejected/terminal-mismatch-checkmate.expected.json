@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: terminal pair",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH",
+  "detail_contains": "does not agree",
+  "why": "A recorded checkmate whose line is still ongoing."
+}

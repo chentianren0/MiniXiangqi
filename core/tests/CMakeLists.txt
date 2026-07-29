@@ -59,3 +59,31 @@ add_test(NAME store_foundation COMMAND mxq_store_tests)
 set_tests_properties(store_foundation PROPERTIES
   LABELS "store"
 )
+
+# The archive-codec runner: the golden and rejection corpora in
+# fixtures/archive/, walked through the public C surface only. It shares the
+# fixture runner's JSON reader for the expectation sidecars — that reader is
+# fixture-side code and is deliberately not what the codec parses archives
+# with; the core carries its own reader for that.
+#
+# It behaves in each configuration exactly as rules_fixtures does. With the
+# engine, mxq_archive_validate exists and every expectation is evaluated;
+# without it, validate is absent from the library and the runner reports its
+# expectations as NOT IMPLEMENTED rather than referencing a symbol that would
+# fail to link.
+
+add_executable(mxq_archive_tests
+  mxq_archive_tests.cpp
+  mxq_json.cpp
+)
+target_link_libraries(mxq_archive_tests PRIVATE mxq::core mxq_warnings)
+target_compile_definitions(mxq_archive_tests PRIVATE
+  MXQ_ARCHIVE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/archive"
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME archive_fixtures COMMAND mxq_archive_tests)
+set_tests_properties(archive_fixtures PROPERTIES
+  LABELS "archive;fixtures"
+)

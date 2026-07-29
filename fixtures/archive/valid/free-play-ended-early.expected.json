@@ -1,0 +1,15 @@
+{
+  "title": "Free Play, saved before another mode: ended early, no result",
+  "why": "An ordinary ongoing game archived by save-before-mode records the ended-early reason with no competitive result, and its final position must be non-terminal.",
+  "info": {
+    "archive_version": 1,
+    "move_count": 2,
+    "mode": "free-play",
+    "human_side": null,
+    "outcome": "none",
+    "end_reason": "ended-early",
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 1767225720000,
+    "game_id": "019b76da-a801-7000-8000-000000000001"
+  }
+}

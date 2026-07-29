@@ -1,0 +1,7 @@
+{
+  "class": "content: mode-to-configuration shape",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "no \"ai_level\" member",
+  "why": "A human-versus-AI game carries all four configuration members; ai_level and ai_movetime_ms are both checked for presence."
+}

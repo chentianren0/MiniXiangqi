@@ -1,0 +1,7 @@
+{
+  "class": "JSON syntax",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "trailing content",
+  "why": "A second document, or a stray byte, after the first."
+}

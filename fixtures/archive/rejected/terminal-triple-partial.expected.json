@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: the terminal triple",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "present together",
+  "why": "outcome, end_reason and ended_at commit together; two of the three is neither the active shape nor the complete one."
+}

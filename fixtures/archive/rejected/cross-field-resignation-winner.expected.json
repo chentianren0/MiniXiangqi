@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: resignation",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "opposite",
+  "why": "A resignation's winner is the side opposite human_side; here Red resigns and is recorded as winning."
+}

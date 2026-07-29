@@ -1,0 +1,7 @@
+{
+  "class": "content: mode-to-configuration shape",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "present in a Free Play game",
+  "why": "Free Play omits the four configuration members. Carrying one is the other half of the NONE-to-omitted mapping and is refused."
+}

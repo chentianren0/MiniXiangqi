@@ -1,0 +1,15 @@
+{
+  "title": "Free Play, threefold repetition claimed as a draw",
+  "why": "The claim commits the draw at the position the facade reports as claimable \u2014 claim eligibility, never a terminal state.",
+  "info": {
+    "archive_version": 1,
+    "move_count": 8,
+    "mode": "free-play",
+    "human_side": null,
+    "outcome": "draw",
+    "end_reason": "threefold-repetition",
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 1767225900000,
+    "game_id": "019b76da-a802-7000-8000-000000000002"
+  }
+}

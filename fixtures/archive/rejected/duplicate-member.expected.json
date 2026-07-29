@@ -1,0 +1,7 @@
+{
+  "class": "duplicate member name",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "duplicate member",
+  "why": "Two spellings of one member: whichever a reader chose, another reader could choose the other, so neither is read."
+}

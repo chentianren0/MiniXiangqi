@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: outcome and reason",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "exactly when",
+  "why": "outcome is none exactly when the reason is ended-early."
+}

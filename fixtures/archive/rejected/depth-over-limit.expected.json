@@ -1,0 +1,7 @@
+{
+  "class": "structural limit: nesting depth",
+  "probe": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "validate": "MXQ_ERR_ARCHIVE_TOO_LARGE",
+  "detail_contains": "nesting is deeper",
+  "why": "Five containers deep, one past the accepted nesting limit of four."
+}

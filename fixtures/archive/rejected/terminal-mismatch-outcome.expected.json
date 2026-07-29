@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: terminal pair",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH",
+  "detail_contains": "recorded outcome",
+  "why": "The line is checkmate, but it is Red's mate; the recorded winner must be the replayed one."
+}

@@ -1,0 +1,7 @@
+{
+  "class": "closed vocabulary",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "\"mode\" is not one of",
+  "why": "The serialized vocabularies are closed sets; an unknown value is rejected rather than mapped to a default."
+}

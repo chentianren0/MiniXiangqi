@@ -1,0 +1,7 @@
+{
+  "class": "unknown member in a known version",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "unknown member",
+  "why": "Provenance is local library metadata and never an archive field; a file that carries one is refused rather than believed."
+}

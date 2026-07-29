@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: resignation",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "human-versus-AI end reason",
+  "why": "Resignation exists only in human-versus-AI play."
+}

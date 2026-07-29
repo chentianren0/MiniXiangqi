@@ -1,0 +1,7 @@
+{
+  "class": "envelope: missing member",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "no \"origin\" member",
+  "why": "Every envelope member is required, origin included, even though nothing in it is ever trusted."
+}

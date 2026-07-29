@@ -1,0 +1,8 @@
+{
+  "class": "rules tier: illegal move",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "not legal",
+  "why": "Every move must be legal at its turn. b1 is empty by the third ply. The rejection carries the offending index in MxqError.detail_index.",
+  "detail_index": 2
+}

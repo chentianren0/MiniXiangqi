@@ -1,0 +1,15 @@
+{
+  "title": "Human versus AI, red mates in three plies",
+  "why": "The recorded terminal pair must agree with the replayed adjudication: this line really is checkmate, and the outcome names the same winner.",
+  "info": {
+    "archive_version": 1,
+    "move_count": 3,
+    "mode": "human-vs-ai",
+    "human_side": "red",
+    "outcome": "red-wins",
+    "end_reason": "checkmate",
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 1767225800000,
+    "game_id": "019b76da-a803-7000-8000-000000000003"
+  }
+}

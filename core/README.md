@@ -55,13 +55,25 @@ The boundary exists, and the pinned Fairy-Stockfish fork is vendored under
 static library the core links privately. The target variant `minixiangqiaxf`
 loads from [`assets/minixiangqi-variants.ini`](assets/minixiangqi-variants.ini).
 
-The implemented C functions are still only the ones the contract marks callable
-from any thread without a core instance — the status and blob helpers,
-`mxq_core_version`, `mxq_rules_start_fen`, `mxq_archive_supported_versions`, and
-`mxq_engine_plan`, whose arithmetic the contract defines precisely so that every
-budget boundary is testable without an engine. The rest of `mxq.h` is declared
-and deliberately not stubbed: the accepted error taxonomy has no
+Implemented so far: the status and blob helpers and the pure queries that need
+no core instance (`mxq_core_version`, `mxq_rules_start_fen`,
+`mxq_archive_supported_versions`, `mxq_engine_plan`); core lifecycle, with the
+SQLite library store opened at `mxq_core_init` and the clock and identity
+provider the deterministic-identity flag configures; the session-free rules
+facade (`mxq_rules_validate_fen`, `mxq_rules_evaluate`, `mxq_rules_legal_moves`);
+and the archive codec's read side, `mxq_archive_probe` and
+`mxq_archive_validate`, over the core's own canonical-JSON reader.
+
+The rest of `mxq.h` — sessions, the store surface, `mxq_archive_encode` — is
+declared and deliberately not stubbed: the accepted error taxonomy has no
 not-implemented code, and inventing one to return would be inventing contract
-vocabulary. Until the rules facade's own entry points exist — `mxq_core_init`,
-`mxq_rules_evaluate`, `mxq_rules_legal_moves` — every fixture reports
-`NOT IMPLEMENTED`, with or without the engine.
+vocabulary.
+
+Three CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
+`store_foundation`, and `archive_fixtures` over
+[`fixtures/archive/`](../fixtures/archive/). The two entry points that replay a
+history through the engine — `mxq_rules_evaluate` and its relatives, and
+`mxq_archive_validate` — exist only in a build configured with
+`-DMXQ_ENABLE_RULES_FACADE=ON`; without it they are absent from the library
+rather than stubbed, and the expectations that need them report
+`NOT IMPLEMENTED`, which is never counted as a pass.
