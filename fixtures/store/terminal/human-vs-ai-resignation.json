@@ -1,0 +1,19 @@
+{
+  "title": "Human versus AI, the human resigns as Red",
+  "why": "Resignation is human-versus-AI only, the loss is the human's, and the outcome is therefore the win for the side opposite human_side — derived from the frozen configuration rather than supplied. The final position is non-terminal, because a resignation over a natural result would lose the result the game actually has. Its bytes are the corpus's human-vs-ai-resignation golden.",
+  "config": {
+    "mode": "human-vs-ai",
+    "human_side": "red",
+    "ai_level": "fast",
+    "ai_movetime_ms": 1000,
+    "first_mover_choice": "human-first"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "end": {
+    "action": "resign",
+    "archive": "human-vs-ai-resignation.mxq",
+    "outcome": "black-wins",
+    "end_reason": "resignation",
+    "state": "ongoing"
+  }
+}

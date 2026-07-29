@@ -1,0 +1,19 @@
+{
+  "title": "Human versus AI, the checkmate confirmed as its own result",
+  "why": "An unconfirmed natural terminal state remains the active game until it is confirmed, and confirming it records its actual result and exact termination reason rather than anything the caller chose. The recorded pair must agree with the replayed adjudication, which is the archive validator's own rule. Its bytes are the corpus's human-vs-ai-checkmate golden.",
+  "config": {
+    "mode": "human-vs-ai",
+    "human_side": "red",
+    "ai_level": "standard",
+    "ai_movetime_ms": 3000,
+    "first_mover_choice": "human-first"
+  },
+  "moves": ["b1b3", "a6a5", "b3d3"],
+  "end": {
+    "action": "confirm_result",
+    "archive": "human-vs-ai-checkmate.mxq",
+    "outcome": "red-wins",
+    "end_reason": "checkmate",
+    "state": "red-wins"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Free Play, the threefold repetition claimed as a draw",
+  "why": "The claim is the immediate terminal commit: a claimable repetition is an active game until someone claims it, and claiming commits an immutable draw record with the reason the core reported. The final position is claimable rather than terminal, which is exactly what the archive requires of a threefold-repetition record. Its bytes are the corpus's free-play-draw-threefold golden.",
+  "config": {
+    "mode": "free-play"
+  },
+  "moves": ["b1b3", "b7b5", "b3b1", "b5b7", "b1b3", "b7b5", "b3b1", "b5b7"],
+  "end": {
+    "action": "claim_draw",
+    "archive": "free-play-draw-threefold.mxq",
+    "outcome": "draw",
+    "end_reason": "threefold-repetition",
+    "state": "claimable-draw"
+  }
+}

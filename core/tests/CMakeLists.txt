@@ -123,3 +123,39 @@ add_test(NAME store_sessions COMMAND mxq_session_tests)
 set_tests_properties(store_sessions PROPERTIES
   LABELS "store;fixtures"
 )
+
+# The History runner: the four archiving paths in fixtures/store/terminal/,
+# each driven end to end through the store and back out of it, plus the library
+# properties a single game cannot express — the accepted ordering and its
+# tie-break, the pagination boundaries, the revision counter, and the three
+# corruption paths.
+#
+# It links the vendored SQLite for the same two reasons the session runner does
+# and one more: the failing-ending case takes the write lock from a second
+# connection, and the corruption cases write damage a live core never could. It
+# includes the core's internal headers for the identity provider alone.
+#
+# In the engine-less configuration a game cannot be played, so none can be
+# ended and every scenario reports NOT IMPLEMENTED; the empty-library case
+# still runs there, because counting and paging an empty History needs no
+# engine.
+
+add_executable(mxq_history_tests
+  mxq_history_tests.cpp
+  mxq_json.cpp
+)
+target_link_libraries(mxq_history_tests PRIVATE mxq::core mxq::sqlite mxq_warnings)
+target_include_directories(mxq_history_tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+target_compile_definitions(mxq_history_tests PRIVATE
+  MXQ_STORE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/store"
+  MXQ_ARCHIVE_FIXTURES_DIR_DEFAULT="${MXQ_REPO_ROOT}/fixtures/archive"
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME store_history COMMAND mxq_history_tests)
+set_tests_properties(store_history PROPERTIES
+  LABELS "store;fixtures"
+)
