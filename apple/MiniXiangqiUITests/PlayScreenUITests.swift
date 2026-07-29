@@ -131,7 +131,7 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(blackStrip.label, "1 2 3 4 5 6 7")
 
         // Turning the board round changes presentation only.
-        app.buttons["翻转棋盘"].click()
+        app.buttons["cluster-flip"].click()
         XCTAssertEqual(redStrip.label, "一 二 三 四 五 六 七",
                        "Red's numerals should follow the board round")
         XCTAssertEqual(blackStrip.label, "7 6 5 4 3 2 1",
@@ -154,7 +154,7 @@ final class PlayScreenUITests: XCTestCase {
 
         // One Undo removes one ply, so Black's reply leaves the list and the
         // turn goes back to Black.
-        app.buttons["悔棋"].click()
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到黑方"].waitForExistence(timeout: 5),
                       "the turn should have gone back to Black")
         XCTAssertFalse(app.staticTexts["卒1进1"].exists,
@@ -217,17 +217,17 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
                       "the status line still carries the result")
         XCTAssertTrue(reading(app, "turn-status").contains("将死"))
-        XCTAssertTrue(app.buttons["悔棋"].isEnabled,
+        XCTAssertTrue(app.buttons["cluster-undo"].isEnabled,
                       "a natural result stays undoable")
         XCTAssertTrue(app.buttons["cluster-new-game"].exists,
                       "the concluding action takes the draw claim's slot")
-        XCTAssertFalse(app.buttons["判和"].exists,
+        XCTAssertFalse(app.buttons["cluster-claim"].exists,
                        "a finished game has no draw to judge")
         attach(app, named: "11-the-finished-board-with-the-notice-closed")
 
         // Closing is final for this result: nothing the player does to the
         // board brings the notice back.
-        app.buttons["翻转棋盘"].click()
+        app.buttons["cluster-flip"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists,
                        "the notice should not return for a result already seen")
 
@@ -265,10 +265,10 @@ final class PlayScreenUITests: XCTestCase {
         // transition out rather than race it — and what says it is over is the
         // control the gate itself disables: 悔棋 is unavailable until the
         // reversal lands.
-        app.buttons["悔棋"].click()
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
         wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
-                               evaluatedWith: app.buttons["悔棋"])],
+                               evaluatedWith: app.buttons["cluster-undo"])],
              timeout: 5)
         point(app, "b3").click()
         point(app, "d3").click()
@@ -362,10 +362,10 @@ final class PlayScreenUITests: XCTestCase {
     func testTheDrawCanBeClaimed() {
         let app = launch(replaying: Self.shuffleLine)
 
-        XCTAssertTrue(app.buttons["判和"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["cluster-claim"].waitForExistence(timeout: 10))
         XCTAssertTrue(reading(app, "turn-status").contains("可判和 · 三次重复"),
                       "the status line carries the standing offer")
-        let claim = app.buttons["判和"]
+        let claim = app.buttons["cluster-claim"]
         XCTAssertTrue(claim.isEnabled, "the claim the core offers is the player's to take")
         attach(app, named: "14-the-repetition-is-claimable")
 
@@ -383,7 +383,7 @@ final class PlayScreenUITests: XCTestCase {
         // still standing.
         notice.buttons["继续对局"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists, "the game continues")
-        XCTAssertTrue(app.buttons["判和"].isEnabled, "the claim is still there to take")
+        XCTAssertTrue(app.buttons["cluster-claim"].isEnabled, "the claim is still there to take")
 
         claim.click()
         XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
@@ -401,7 +401,7 @@ final class PlayScreenUITests: XCTestCase {
         app.buttons["result-close"].click()
         XCTAssertFalse(app.staticTexts["result-title"].exists)
         XCTAssertTrue(app.buttons["cluster-new-game"].exists)
-        XCTAssertFalse(app.buttons["悔棋"].isEnabled,
+        XCTAssertFalse(app.buttons["cluster-undo"].isEnabled,
                        "a claimed draw cannot be taken back")
         attach(app, named: "17-a-claimed-draw-with-the-notice-closed")
     }

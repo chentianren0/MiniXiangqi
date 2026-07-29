@@ -295,6 +295,10 @@ struct PlayScreen: View {
     /// A finished game has nothing to judge a draw in, so that slot carries the
     /// concluding action instead — the one obvious next action, and therefore
     /// the one thing on screen the tint rule allows.
+    ///
+    /// Each carries an identifier beside its label, in the cluster's own
+    /// namespace. A label is copy and changes with the interface language; an
+    /// identifier does not, so it is what a test addresses a control by.
     private func controls(_ game: Game, _ motion: PlayMotion, compactFlip: Bool) -> some View {
         HStack(spacing: 8) {
             // Unavailable until a running transition completes — its own
@@ -303,6 +307,7 @@ struct PlayScreen: View {
             Button("悔棋") { motion.undo() }
                 .buttonStyle(.glass)
                 .disabled(!motion.canUndo)
+                .accessibilityIdentifier("cluster-undo")
 
             if game.isFinished {
                 // Prominent once it is the only one: while the notice stands in
@@ -313,6 +318,7 @@ struct PlayScreen: View {
                 Button("判和") { claimPresented = true }
                     .buttonStyle(.glass)
                     .disabled(!game.evaluation.claimAvailable)
+                    .accessibilityIdentifier("cluster-claim")
             }
 
             Button {
@@ -327,6 +333,7 @@ struct PlayScreen: View {
             }
             .buttonStyle(.glass)
             .accessibilityLabel("翻转棋盘")
+            .accessibilityIdentifier("cluster-flip")
 
             Spacer(minLength: 0)
         }
