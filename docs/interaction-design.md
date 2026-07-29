@@ -495,7 +495,7 @@ When space is short the surrounding chrome tightens before the board does. That 
 
 **The file numerals are present at every macOS window size**, including the smallest. The move list speaks of 兵四进一 and the strips are what ground 四 on the board, so a size where the game can be played but not read about is not a size worth having. They cost about a tenth of the board block's height at the floor and proportionally less as the board grows, and at the minimum window they cost nothing at all, because that window is bound by its width.
 
-**The panel's sections begin on one edge**, 16 points in from the panel's own, and its material runs to the top of the window rather than starting below the title bar, so the panel reads as one surface for its whole height.
+**The panel's sections begin on one edge**, 16 points in from the panel's own, and its material runs to the top of the window rather than stopping below the title bar: the title bar draws its own treatment over whatever lies beneath it, and beneath it lies the panel rather than bare window.
 
 One exception: a pre-start board is a noninteractive preview with no touch targets, so it carries no size floor and yields space to the setup controls whenever they need it. The floor exists to protect interaction, and a preview has none to protect.
 

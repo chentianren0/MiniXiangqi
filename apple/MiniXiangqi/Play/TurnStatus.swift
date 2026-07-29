@@ -36,6 +36,8 @@ struct TurnStatus: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // PlayScreen counts on this 12: the panel's one left edge is its
+        // panelInset less this padding. They move together or not at all.
         .padding(12)
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)

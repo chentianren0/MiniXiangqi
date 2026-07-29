@@ -513,6 +513,12 @@ final class PlayScreenUITests: XCTestCase {
         let floor = record("min-strips", window: CGSize(width: 320, height: 240))
         XCTAssertEqual(floor.pitch, 44, accuracy: 0.5,
                        "the board should sit exactly on its floor at the smallest window")
+        // Pitch 44 alone cannot catch a minimum that shrank: below the floor
+        // the fallback pins 44 too. The accepted number itself is the pin.
+        XCTAssertEqual(floor.window.width, 616,
+                       "the minimum window is the decided 616 points wide")
+        XCTAssertEqual(floor.window.height - titleBar, 388, accuracy: 0.5,
+                       "the minimum layout is the decided 388 points under the measured title bar")
         record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
         record("min-result", window: CGSize(width: 320, height: 240), replaying: Self.mateLine)
 
