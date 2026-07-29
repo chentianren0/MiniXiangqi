@@ -181,10 +181,11 @@ set_target_properties(mxq_core PROPERTIES
 # mxq_core privately, which is what keeps it invisible through mxq.h, as
 # docs/architecture.md requires. See core/third_party/README.md.
 #
-# The pinned Fairy-Stockfish fork is vendored; SQLite is not yet. The fork is
-# additionally gated on MXQ_ENABLE_RULES_FACADE, so the default configuration
-# does not compile it: it is a multi-minute build and nothing else in the core
-# needs it.
+# Both inputs are vendored. The fork is additionally gated on
+# MXQ_ENABLE_RULES_FACADE, so the default configuration does not compile it: it
+# is a multi-minute build and nothing else in the core needs it. SQLite is not
+# gated: the store is part of the core on every configuration, and the
+# amalgamation compiles in seconds.
 
 set(MXQ_OPTIONAL_DEPS fairy-stockfish)
 foreach(mxq_dep IN ITEMS fairy-stockfish sqlite)

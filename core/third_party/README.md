@@ -10,7 +10,7 @@ both `PRIVATE` for exactly that reason, per
 | Input | Directory | Target the directory defines | State |
 |---|---|---|---|
 | The pinned `ppppvz/Fairy-Stockfish` fork | `core/third_party/fairy-stockfish/` | `mxq::fairy-stockfish` | Vendored — see its [README](fairy-stockfish/README.md) |
-| The SQLite amalgamation | `core/third_party/sqlite/` | `mxq::sqlite` | Not vendored yet |
+| The SQLite amalgamation | `core/third_party/sqlite/` | `mxq::sqlite` | Vendored — see its [README](sqlite/README.md) |
 
 Each directory carries its own `CMakeLists.txt` defining that alias. The loop at
 the end of the library section of `core/CMakeLists.txt` adds the subdirectory and
@@ -48,8 +48,11 @@ whichever target copies the assets into the bundle, and does not exist yet.
 - **SQLite.** Vendored as the amalgamation, compiled with the hardened option
   set and without extension loading, per
   [`docs/game-data.md`](../../docs/game-data.md), with a floor of 3.37.0 for
-  `STRICT` tables. The concrete define list is not yet established and the
-  manifest records it as empty rather than guessed.
+  `STRICT` tables. The concrete define list is decided and annotated in
+  [`sqlite/CMakeLists.txt`](sqlite/CMakeLists.txt) and recorded in the
+  manifest's `sqlite_defines` arrays; the connection-level pragmas the same
+  contract requires are applied and verified at open in
+  `core/src/mxq_store.cpp`.
 
 ## Assets
 

@@ -133,7 +133,7 @@
   },
   "build_flags": {
     "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
-    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established.",
+    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
     "platforms": {
       "macos": {
         "established": false,
@@ -149,7 +149,16 @@
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
-        "sqlite_defines": [],
+        "sqlite_defines": [
+          "SQLITE_OMIT_LOAD_EXTENSION",
+          "SQLITE_DQS=0",
+          "SQLITE_THREADSAFE=2",
+          "SQLITE_OMIT_DEPRECATED",
+          "SQLITE_OMIT_SHARED_CACHE",
+          "SQLITE_ENABLE_API_ARMOR",
+          "SQLITE_DEFAULT_FOREIGN_KEYS=1",
+          "SQLITE_DEFAULT_WAL_SYNCHRONOUS=2"
+        ],
         "sqlite_flags": []
       },
       "ios": {
@@ -166,7 +175,16 @@
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
-        "sqlite_defines": [],
+        "sqlite_defines": [
+          "SQLITE_OMIT_LOAD_EXTENSION",
+          "SQLITE_DQS=0",
+          "SQLITE_THREADSAFE=2",
+          "SQLITE_OMIT_DEPRECATED",
+          "SQLITE_OMIT_SHARED_CACHE",
+          "SQLITE_ENABLE_API_ARMOR",
+          "SQLITE_DEFAULT_FOREIGN_KEYS=1",
+          "SQLITE_DEFAULT_WAL_SYNCHRONOUS=2"
+        ],
         "sqlite_flags": []
       },
       "ipados": {
@@ -183,7 +201,16 @@
         "deployment_target": "26.5",
         "engine_defines": [],
         "engine_flags": [],
-        "sqlite_defines": [],
+        "sqlite_defines": [
+          "SQLITE_OMIT_LOAD_EXTENSION",
+          "SQLITE_DQS=0",
+          "SQLITE_THREADSAFE=2",
+          "SQLITE_OMIT_DEPRECATED",
+          "SQLITE_OMIT_SHARED_CACHE",
+          "SQLITE_ENABLE_API_ARMOR",
+          "SQLITE_DEFAULT_FOREIGN_KEYS=1",
+          "SQLITE_DEFAULT_WAL_SYNCHRONOUS=2"
+        ],
         "sqlite_flags": []
       },
       "windows": {
@@ -218,10 +245,32 @@
     "established": true
   },
   "sqlite": {
-    "_about": "The vendored SQLite amalgamation, pinned to the newest stable release at core landing. It has not been vendored yet, so neither the version nor the hash can be established and both are null rather than invented. docs/game-data.md fixes a floor of 3.37.0 for STRICT tables, requires the hardened option set and no extension loading, and requires write-ahead logging with full synchronous durability and foreign keys on.",
-    "version": null,
-    "sha256": null,
+    "_about": "The vendored SQLite amalgamation, pinned to the newest stable release at core landing (3.53.4, released 2026-07-24, was the newest stable release on 2026-07-28 when the store landed). docs/game-data.md fixes a floor of 3.37.0 for STRICT tables, requires the hardened option set and no extension loading, and requires write-ahead logging with full synchronous durability and foreign keys on. The compile-time half of that hardening is the sqlite_defines list under build_flags, decided and annotated in core/third_party/sqlite/CMakeLists.txt; the connection-level half is applied and verified at open in core/src/mxq_store.cpp. sha256 was computed from the downloaded release archive's bytes; sha3_256_published is the checksum sqlite.org's download page lists for the same file, and the downloaded bytes match it.",
+    "version": "3.53.4",
+    "source_id": "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+    "download_url": "https://sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+    "download_byte_length": 2946650,
+    "sha256": "1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d",
+    "sha3_256_published": "628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e",
     "minimum_version": "3.37.0",
-    "established": false
+    "established": true,
+    "vendored": {
+      "_about": "How the pinned release reaches the core: as a verbatim copy of the amalgamation's library files, compiled by a core-owned CMakeLists.txt into mxq::sqlite, which mxq_core links PRIVATE. core/third_party/sqlite/README.md records the provenance, the public-domain license status, and why the archive's other two files are excluded.",
+      "established": true,
+      "method": "copied-amalgamation",
+      "path": "core/third_party/sqlite/upstream",
+      "source_files": [
+        "sqlite3.c",
+        "sqlite3.h"
+      ],
+      "excluded_files": [
+        "shell.c",
+        "sqlite3ext.h"
+      ],
+      "_excluded_about": "The command-line shell's main() and the loadable-extension header; the build defines SQLITE_OMIT_LOAD_EXTENSION, so the mechanism sqlite3ext.h exists for is exactly what is compiled out.",
+      "file_manifest": "core/third_party/sqlite/SOURCES.sha256",
+      "file_manifest_sha256": "8cbea46a36e442432c3001ef753dacc9bc9f1c6552d75c261333196affa4a3d2",
+      "_hash_about": "file_manifest lists the SHA-256 of every file under upstream/, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify with 'shasum -a 256 -c ../SOURCES.sha256' from the upstream directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
+    }
   }
 }
