@@ -60,6 +60,15 @@ constexpr size_t kMaxDepth        = 4u;
 constexpr size_t kMaxMembers      = 32u;
 constexpr size_t kMaxStringBytes  = 256u;
 
+/*
+ * These bound the import surface and nothing else. Live local play is not
+ * length-limited, and a locally produced game that exceeds them stays fully
+ * playable and replayable — only re-importing its export is refused. Both
+ * entry points here are import-facing and apply them; the store's own path
+ * back into a game it wrote must not, or a long local game could be exported
+ * and never resumed.
+ */
+
 json::Limits limits() {
     json::Limits l{};
     l.max_depth = kMaxDepth;
@@ -484,13 +493,12 @@ bool read_envelope(const json::Value &document, const json::Value *&out_content,
                       "\"archive_version\" is not a positive integer");
     }
     if (version->integer() > MXQ_ARCHIVE_VERSION_CURRENT) {
-        Reject r;
-        reject(r, MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION,
-               "this file was created by a newer version of Mini Xiangqi "
-               "(archive version " +
-                   std::to_string(version->integer()) + ")");
-        err = r;
-        return false;
+        /* The one message the contract requires to be distinct, and never to
+         * be presented as corruption. */
+        return reject(err, MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION,
+                      "this file was created by a newer version of Mini "
+                      "Xiangqi (archive version " +
+                          std::to_string(version->integer()) + ")");
     }
     if (version->integer() < MXQ_ARCHIVE_VERSION_MIN_READABLE) {
         return reject(err, MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION,
@@ -879,11 +887,11 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
     if (decoded.end_reason == MXQ_END_REASON_RESIGNATION ||
         decoded.end_reason == MXQ_END_REASON_ENDED_EARLY) {
         if (terminal(adj.state)) {
+            /* MxqError.detail is short by contract, so it says which rule was
+             * broken rather than why the rule exists; the why is above. */
             fill_error(err, MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH,
                        ("the final position is " + replayed +
-                        ", which a game ended by the user cannot record: an "
-                        "unconfirmed natural result is recorded as its actual "
-                        "result")
+                        ", which a game the user ended cannot record")
                            .c_str());
             return MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH;
         }
