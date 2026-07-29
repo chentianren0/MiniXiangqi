@@ -2,11 +2,15 @@
 //
 // docs/interaction-design.md, "History replay": the board is read-only —
 // replay offers no move input, no Undo, and no way to start a game from the
-// displayed position — so this screen hands `BoardView` a position and the two
-// states that are facts about it, and nothing else. There is no selection, no
-// legal destination, and no held piece anywhere in it, which is why the check
-// rings alone carry check here: they are never hidden, because nothing is ever
-// in the player's hand.
+// displayed position — so this screen hands `BoardView` a position, the two
+// states that are facts about it, and the step it is drawing, and nothing
+// else. There is no selection, no legal destination, and no held piece
+// anywhere in it, which is why the check rings alone carry check here: they
+// are never hidden, because nothing is ever in the player's hand.
+//
+// The step is drawn by the same canvas that draws a played move, from the same
+// transit state, and reports its arrival on the same two wires: a replayed
+// game moves like a game.
 //
 // The same side-by-side shape play uses, with a different panel in it: what the
 // game was, where in it the board is, the list, and the transport.
@@ -47,11 +51,14 @@ struct ReplayScreen: View {
         .navigationTitle(Text(verbatim: record.whenText))
         .onAppear {
             guard replay == nil else { return }
-            switch library.replay(of: record) {
+            switch library.replay(of: record, policy: policy) {
             case .success(let opened): replay = opened
             case .failure(let error): failure = error
             }
         }
+        // Reduce Motion switched under a walk takes effect on the next step,
+        // exactly as it does on the play screen.
+        .onChange(of: policy) { _, updated in replay?.policy = updated }
         .onDisappear {
             // The detached session is the core's to hold open only for as long
             // as this screen wants it.
@@ -75,7 +82,11 @@ struct ReplayScreen: View {
                           flipped: replay.flipped,
                           lastMove: replay.lastMove,
                           checkedGeneral: replay.checkedGeneral,
-                          policy: policy)
+                          transit: replay.transit,
+                          transitFade: replay.transitFade,
+                          policy: policy,
+                          onTravelArrival: { replay.travelArrived() },
+                          onFadeArrival: { replay.fadeArrived() })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 panel(replay)

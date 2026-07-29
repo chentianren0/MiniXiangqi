@@ -15,39 +15,13 @@
 // "a committing transition is running" is a fact rather than a guess, and
 // where the tests can pin the gating without a wall clock: the animator is a
 // seam, and a test's animator completes when the test says so.
+//
+// The travelling disc itself is TransitMotion's, shared with replay: what a
+// move looks like on its way to a point is the same question wherever the move
+// came from. What stays here is everything that is only true of *play* — the
+// gate, the game the transitions mutate, and the meaning each landing carries.
 
 import SwiftUI
-
-/// Runs an animation and reports its completion. The live one is SwiftUI's;
-/// a test's holds the completion until the test fires it, so the gate can be
-/// observed mid-transition without sleeping through one.
-struct MotionAnimator {
-    var perform: (Animation, () -> Void, @escaping () -> Void) -> Void
-
-    func run(_ animation: Animation, body: () -> Void,
-             completion: @escaping () -> Void) {
-        perform(animation, body, completion)
-    }
-
-    static let live = MotionAnimator { animation, body, completion in
-        withAnimation(animation, completionCriteria: .logicallyComplete, body) {
-            MainActor.assumeIsolated(completion)
-        }
-    }
-}
-
-/// A committing transition as the board draws it: the visual move, the disc
-/// making it, and the disc fading at one end — a capture giving way at the
-/// destination, or a restored piece returning at an Undo's origin.
-struct Transit {
-    enum Kind { case move, undo }
-
-    var kind: Kind
-    var move: Move
-    var piece: Piece
-    /// The piece fading while the mover travels, and where it fades.
-    var fading: (piece: Piece, at: Square)?
-}
 
 @Observable
 final class PlayMotion {
@@ -57,11 +31,19 @@ final class PlayMotion {
     private let animator: MotionAnimator
     private let feedback: Feedback
 
+    /// The travelling disc, and the arrival that ends it. Play holds its gate
+    /// over this; the transit itself knows nothing about the gate.
+    private let transits: TransitMotion
+
+    /// The kind of the transition that took the gate. Only meaningful while
+    /// one holds it, which is what `committing` says.
+    private var transitionKind: Transit.Kind?
+
     /// The committing transition that is running, if one is. This is the gate:
     /// while it is non-nil, board input is discarded, Undo is refused, and a
     /// flip is deferred.
-    private(set) var committing: Transit.Kind?
-    var isCommitting: Bool { committing != nil }
+    var committing: Transit.Kind? { transits.isRunning ? transitionKind : nil }
+    var isCommitting: Bool { transits.isRunning }
 
     /// A flip requested while a committing transition ran, applied when it
     /// ends. Toggled, because two deferred flips are no flip at all.
@@ -78,10 +60,10 @@ final class PlayMotion {
     private(set) var isFlipping = false
 
     /// What the board is drawing for the running committing transition.
-    private(set) var transit: Transit?
+    var transit: Transit? { transits.transit }
     /// The fading disc's progress, 0 to 1 — scheduled against the mover's
     /// arrival for a capture, from its departure for an Undo.
-    private(set) var transitFade: Double = 0
+    var transitFade: Double { transits.fade }
 
     /// The check rings' one-time swell as they appear. Never raised under
     /// Reduce Motion: the pulse is removed, not converted.
@@ -93,29 +75,9 @@ final class PlayMotion {
     /// The turn status background's emphasis — the acknowledgment beat.
     private(set) var beatEmphasis: Double = 0
 
-    /// Ties a completion to the transition that scheduled it. A committing
-    /// transition abandoned in its own body — a move the core refused — still
-    /// gets its completion called, and the token keeps that stale call from
-    /// closing a gate some later transition holds. A flip's own completion is
-    /// tied the same way, since a second press replaces the turn it belonged
-    /// to.
-    private var generation = 0
+    /// A flip's own completion is tied to the turn it belonged to, since a
+    /// second press replaces that turn.
     private var flipGeneration = 0
-
-    /// The landing arrives on two wires — the board's own animation reaching
-    /// its target, and the transaction completion as its backstop — and each
-    /// event counts once, whichever wire reports it first.
-    private var travelReported = false
-    private var fadeReported = false
-
-    /// Whether this transition draws a removal at all: a capture in full
-    /// motion does, an Undo's restore and everything under Reduce Motion do
-    /// not. Resolved once, when the transit begins, and never read back off
-    /// the policy afterwards — Reduce Motion can be switched *while* a
-    /// transition runs, and a gate that asked the live policy at the arrival
-    /// what the departure had scheduled would sit waiting for a removal nobody
-    /// ever drew, discarding every tap for the rest of the game.
-    private var fadeScheduled = false
 
     /// Undo is unavailable while any committing transition runs, including the
     /// Undo it would interrupt. The cluster and notice buttons reflect this.
@@ -129,6 +91,12 @@ final class PlayMotion {
         self.policy = policy
         self.animator = animator
         self.feedback = feedback
+        self.transits = TransitMotion(animator: animator)
+        // Unowned: the transit belongs to this object and cannot outlive it,
+        // and a stored closure holding it back would be a cycle for the life
+        // of every game.
+        transits.arrived = { [unowned self] in announceLanding() }
+        transits.ended = { [unowned self] in land() }
     }
 
     /// A position that arrives already in check — a resumed or replayed game —
@@ -174,30 +142,21 @@ final class PlayMotion {
         guard canUndo, let text = game.moves.last, let played = Move(text: text),
               let mover = game.placement[played.to] else { return }
         let travel = Motion.travel(distance: Motion.distance(of: played))
-        let token = begin(.undo)
-        animator.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
+        begin(.undo)
+        transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
             game.undo()
-            guard game.failure == nil else {
-                // An Undo the core refused did not happen: nothing to draw,
-                // nothing to hold the gate for.
-                abandon(token)
-                return
-            }
-            transit = Transit(kind: .undo,
-                              move: Move(from: played.to, to: played.from),
-                              piece: mover,
-                              fading: game.placement[played.to].map { ($0, played.to) })
-        } completion: { [self] in
-            guard generation == token else { return }
-            travelArrived()
+            // An Undo the core refused did not happen: nothing to draw,
+            // nothing to hold the gate for.
+            guard game.failure == nil else { return nil }
+            return Transit(kind: .undo,
+                           move: Move(from: played.to, to: played.from),
+                           piece: mover,
+                           fading: game.placement[played.to].map { ($0, played.to) })
         }
         // The restored piece returns as the mover departs — the capture read
         // backwards — inside the travel, so one ply stays within its 250 ms.
-        if committing == .undo, transit?.fading != nil, !policy.reduceMotion {
-            animator.run(Motion.restoreFadeAnimation) { [self] in
-                transitFade = 1
-            } completion: { }
-        }
+        guard !policy.reduceMotion else { return }
+        transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
     /// The player takes the draw the core is offering. It is the one result
@@ -276,112 +235,46 @@ final class PlayMotion {
         guard let piece = game.placement[move.from] else { return }
         let captured = game.placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move))
+        begin(.move)
         // The plan, resolved once and before anything can arrive: a removal is
-        // drawn for a capture in full motion, and the gate below waits for
-        // exactly the wires this line scheduled.
-        let token = begin(.move, drawingRemoval: captured != nil && !policy.reduceMotion)
-        animator.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
+        // drawn for a capture in full motion, and the gate waits for exactly
+        // the wires this line schedules.
+        transits.run(policy.movement(Motion.travelAnimation(travel)),
+                     drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
             game.tap(move.to)
-            guard game.lastMove == move, game.failure == nil else {
-                abandon(token)
-                return
-            }
-            transit = Transit(kind: .move, move: move, piece: piece,
-                              fading: captured.map { ($0, move.to) })
-        } completion: { [self] in
-            guard generation == token else { return }
-            travelArrived()
+            guard game.lastMove == move, game.failure == nil else { return nil }
+            return Transit(kind: .move, move: move, piece: piece,
+                           fading: captured.map { ($0, move.to) })
         }
-        guard committing == .move, fadeScheduled else { return }
+        guard transits.drawsRemoval else { return }
         // The captured disc gives way under the arriving mover: its removal is
         // scheduled against the arrival, leading it by 60 ms and finishing
         // 50 ms after it, so it cannot read as a second, unrelated animation.
         // The gate holds for that tail.
-        animator.run(Motion.captureFadeAnimation(travel: travel)) { [self] in
-            transitFade = 1
-        } completion: { [self] in
-            guard generation == token else { return }
-            fadeArrived()
-        }
+        transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
+    }
+
+    /// Takes the gate, before the core is asked. Whatever the transition turns
+    /// out to be able to draw, input is refused from this instant.
+    private func begin(_ kind: Transit.Kind) {
+        transitionKind = kind
+        markerEmphasis = 0
     }
 
     // MARK: - Arrivals
 
-    /// The mover has reached its point. Reported by the board's animation on
-    /// the frame it arrives, and by the transaction completion as a backstop;
-    /// the first report is the landing, the second is nothing. The landing
-    /// feedback fires here — the event completing, never the tap that asked —
-    /// and the gate opens unless a capture's removal tail still holds it.
+    /// The mover has reached its point — see TransitMotion for the two wires
+    /// that report it. The landing feedback fires here: the event completing,
+    /// never the tap that asked.
     ///
     /// Felt and heard together, and they are not the same choice: the haptic is
     /// the alignment pattern at every landing there is, while the sound is the
-    /// one below that says what this landing was.
-    func travelArrived() {
-        guard committing != nil, !travelReported else { return }
-        travelReported = true
+    /// one that says what this landing was.
+    private func announceLanding() {
         feedback.perform(.landing)
-        feedback.play(soundOfTheLanding())
-        // A removal outlives the arrival that caused it, and the gate holds
-        // for that tail — when one is being drawn. Whether one is was settled
-        // at the departure; asking the policy again here is what would leave
-        // the gate shut across a Reduce Motion switch.
-        guard !fadeScheduled || fadeReported else { return }
-        land()
-    }
-
-    /// A capture's removal has finished, 50 ms behind the arrival it answers.
-    /// Both wires report it too; the gate opens on the later of the two
-    /// events, wherever each was heard first.
-    func fadeArrived() {
-        guard committing != nil, fadeScheduled, !fadeReported else { return }
-        fadeReported = true
-        if travelReported { land() }
-    }
-
-    /// What this landing sounds like: one sound, chosen by what has arrived
-    /// rather than by what was pressed, in the accepted order of precedence.
-    ///
-    /// - The game being over outranks everything, and replaces the landing
-    ///   sound rather than joining it: a result is the last thing that
-    ///   happened, and a tock underneath it would be the move competing with
-    ///   its own consequence.
-    /// - A capture outranks a check, because the take is the louder fact and
-    ///   the check has the rings, the 将军 token, and the status line saying it
-    ///   as well.
-    /// - Everything else is the plain tock, an Undo's return included: taking a
-    ///   move back is a disc landing on a point, and a sound played backwards
-    ///   would be a fifth thing to learn for an action the board already
-    ///   animates in reverse.
-    ///
-    /// It reads the arrived position and the transit's own plan, both of which
-    /// are settled before anything can arrive. A capture is the transit's
-    /// fading disc — but only a move's, since an Undo's fading disc is the
-    /// piece coming *back*, which is a restoration and not a take.
-    private func soundOfTheLanding() -> Feedback.Sound {
-        if game.isFinished { return .conclusion }
-        if transit?.kind == .move, transit?.fading != nil { return .capture }
-        // The same condition the rings are drawn on, so the accent and the
-        // pulse are one event: an Undo that lands back into a check is a check
-        // arriving, and it is answered as one.
-        if game.checkedGeneral != nil { return .check }
-        return .plain
-    }
-
-    private func begin(_ kind: Transit.Kind, drawingRemoval: Bool = false) -> Int {
-        committing = kind
-        markerEmphasis = 0
-        travelReported = false
-        fadeReported = false
-        fadeScheduled = drawingRemoval
-        generation += 1
-        return generation
-    }
-
-    private func abandon(_ token: Int) {
-        guard generation == token else { return }
-        committing = nil
-        transit = nil
-        transitFade = 0
+        feedback.play(.ofTheLanding(transit,
+                                    finished: game.isFinished,
+                                    inCheck: game.checkedGeneral != nil))
     }
 
     /// Every committing transition ends here: the gate opens, a deferred flip
@@ -389,15 +282,19 @@ final class PlayMotion {
     /// rings — which appear only now, because they belong to the position and
     /// the position finishes arriving at the landing.
     private func land() {
-        committing = nil
-        transit = nil
-        transitFade = 0
         pulseCheckIfNeeded()
         if flipDeferred {
             flipDeferred = false
             flip()
         }
     }
+
+    /// The board's own arrival wires, forwarded. They are the canvas's to
+    /// call, and the gate is this object's to open.
+    func travelArrived() { transits.travelArrived() }
+    func fadeArrived() { transits.fadeArrived() }
+
+    // MARK: - Pulses
 
     private func pulseCheckIfNeeded() {
         guard game.checkedGeneral != nil,

@@ -183,10 +183,20 @@ final class HistoryLibrary {
     /// over it. This is the one call here whose cost rises with the game's own
     /// length — it decodes the archive and replays every ply — and it is the
     /// one to re-measure when the exception above is re-measured on device.
-    func replay(of record: RecordSummary) -> Result<Replay, CoreError> {
+    ///
+    /// The motion the walk is shown with comes in from the caller: the screen
+    /// hands in the Reduce Motion policy it reads from the environment, and a
+    /// test hands in the seams that let it fire a landing when it chooses.
+    func replay(of record: RecordSummary,
+                policy: MotionPolicy = MotionPolicy(reduceMotion: false),
+                animator: MotionAnimator = .live,
+                feedback: Feedback = .live) -> Result<Replay, CoreError> {
         do {
             return .success(try Replay(record: record,
-                                       session: ReplaySession(try store.open(record.id))))
+                                       session: ReplaySession(try store.open(record.id)),
+                                       policy: policy,
+                                       animator: animator,
+                                       feedback: feedback))
         } catch {
             return .failure(CoreError(wrapping: error))
         }
