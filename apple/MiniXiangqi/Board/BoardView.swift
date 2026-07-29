@@ -14,6 +14,11 @@ struct BoardView: View {
     var placement: Placement
     var flipped: Bool = false
 
+    /// Whether the two file-numeral strips are drawn. Always, in the product;
+    /// a debug launch argument takes them off so the board can be looked at
+    /// both ways at the same window size.
+    var showsNumerals: Bool = true
+
     var selected: Square?
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
@@ -45,11 +50,14 @@ struct BoardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            numeralStrip(atTop: true)
+            if showsNumerals { numeralStrip(atTop: true) }
             core
-            numeralStrip(atTop: false)
+            if showsNumerals { numeralStrip(atTop: false) }
         }
-        .frame(width: geometry.blockSize.width, height: geometry.blockSize.height)
+        // The pitch is unchanged either way, so the two renderings differ by
+        // exactly the room the strips take and by nothing else.
+        .frame(width: geometry.blockSize.width,
+               height: showsNumerals ? geometry.blockSize.height : geometry.coreSide)
     }
 
     // MARK: - The board core

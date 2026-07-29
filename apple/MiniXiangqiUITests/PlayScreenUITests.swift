@@ -10,6 +10,7 @@
 // a change that stops them being a checkmate or a repetition fails there first,
 // with a better message than a click that cannot find a button.
 
+import AppKit
 import XCTest
 
 @MainActor
@@ -23,10 +24,16 @@ final class PlayScreenUITests: XCTestCase {
     private static let shuffleLine = "b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7"
 
     private func launch(replaying line: String? = nil,
-                        darkAppearance: Bool = false) -> XCUIApplication {
+                        darkAppearance: Bool = false,
+                        window: String? = nil,
+                        hidingNumerals: Bool = false,
+                        liftingWindowMinimum: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
+        if let window { app.launchArguments += ["-mxq-window", window] }
+        if hidingNumerals { app.launchArguments.append("-mxq-hide-numerals") }
+        if liftingWindowMinimum { app.launchArguments.append("-mxq-no-minimum") }
         app.launch()
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
@@ -392,5 +399,137 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertFalse(app.buttons["悔棋"].isEnabled,
                        "a claimed draw cannot be taken back")
         attach(app, named: "17-a-claimed-draw-with-the-notice-closed")
+    }
+
+    // MARK: - The layout at the sizes the window can be
+
+    // Evidence, not a verdict. Nothing here says what the layout should do at
+    // any size; it photographs what it does do at the sizes that bound it — the
+    // window's own minimum, sizes below it, an ordinary one, and the largest
+    // the display can show whole — with the strips on and off, so the decisions
+    // can be taken against frames rather than against arithmetic. Every frame
+    // is named with the window size it was taken at, and logged beside the
+    // layout area and the cell pitch measured off the running app, because a
+    // screenshot that does not say what size it was taken at is not evidence
+    // about a layout.
+    //
+    // A window taller than the screen is cropped by the screen when it is
+    // photographed, and a cropped frame is evidence about the display rather
+    // than about the layout, so the series stops at what fits. Where the
+    // display is large enough for the board to reach its ceiling, the ceiling
+    // is asserted; where it is not, that is recorded rather than asserted, and
+    // the frames stop short of it.
+
+    /// A capture and a quiet shuffle: five numbered rows in the move list, a
+    /// point that changed hands, and a game still running. It opens with the
+    /// unit suite's pinned capture line; the rest takes the two cannons out
+    /// along the empty b-file and back, then pushes the two edge soldiers, so
+    /// the position moves on rather than standing a third time and turning the
+    /// screen into a claimable draw. Every move of it goes through the core, so
+    /// a move that stopped being legal fails this test where it launches.
+    private static let evidenceLine =
+        "d2d3,d6d5,d3d4,d5d4,b1b2,b7b6,b2b1,b6b7,a2a3,a6a5"
+
+    /// The cell pitch the running app settled on. Each tap target is one cell,
+    /// placed from the same geometry that draws the board, so the board's size
+    /// is measured off the screen here rather than recomputed.
+    private func pitch(_ app: XCUIApplication) -> CGFloat {
+        point(app, "d4").frame.width
+    }
+
+    func testTheLayoutAcrossTheWindowSizes() {
+        // Sizes here are window sizes: what `-mxq-window` sets, what the window
+        // occupies on screen, and what the screenshot comes out at, all one
+        // number. The layout itself gets that height less the title bar, and
+        // the title bar is measured rather than assumed. The board fills the
+        // layout's full height and the board block is centred in it, so the
+        // board's own centre would sit on the window's centre if there were no
+        // chrome; how far below it sits is half the chrome.
+        let reference = launch(replaying: Self.evidenceLine, window: "800x480")
+        let referenceFrame = reference.windows.firstMatch.frame
+        XCTAssertEqual(referenceFrame.size, CGSize(width: 800, height: 480),
+                       "-mxq-window should set the window size it names")
+        let boardCentre = (point(reference, "d7").frame.midY
+                           + point(reference, "d1").frame.midY) / 2
+        let titleBar = 2 * (boardCentre - referenceFrame.midY)
+        XCTAssertTrue((16...64).contains(titleBar),
+                      "a measured title bar outside this range means the board moved, not the chrome")
+        XCTAssertTrue(reference.staticTexts["5."].exists,
+                      "the evidence line should fill five numbered rows")
+
+        // The largest window this display can show whole. Read off the screen
+        // rather than assumed, so the series runs as large as wherever it runs
+        // allows: a window taller than the screen is cropped when photographed.
+        let visible = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1024, height: 583)
+        let largest = CGSize(width: visible.width.rounded(.down),
+                             height: visible.height.rounded(.down))
+
+        var log = ["title-bar=\(titleBar) largest-window-on-this-display=\(largest)"]
+
+        @discardableResult
+        func record(_ label: String,
+                    window: CGSize,
+                    replaying line: String = Self.evidenceLine,
+                    hidingNumerals: Bool = false,
+                    liftingWindowMinimum: Bool = false) -> (window: CGSize, pitch: CGFloat) {
+            let requested = "\(Int(window.width))x\(Int(window.height))"
+            let app = launch(replaying: line,
+                             window: requested,
+                             hidingNumerals: hidingNumerals,
+                             liftingWindowMinimum: liftingWindowMinimum)
+            let arrived = app.windows.firstMatch.frame.size
+            let cell = pitch(app)
+            let name = "\(label)-\(Int(arrived.width))x\(Int(arrived.height))"
+            attach(app, named: name)
+            log.append("""
+                \(name) requested=\(requested) \
+                layout=\(Int(arrived.width))x\(Int(arrived.height - titleBar)) \
+                pitch=\(cell) board-core=\(cell * 7)
+                """)
+            print("LAYOUT-EVIDENCE \(log.last!)")
+            return (arrived, cell)
+        }
+
+        // The smallest window the product allows. The size asked for is far
+        // below it on both axes, so what comes back is the minimum itself.
+        let floor = record("min-strips", window: CGSize(width: 320, height: 240))
+        XCTAssertEqual(floor.pitch, 44, accuracy: 0.5,
+                       "the board should sit exactly on its floor at the smallest window")
+        record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
+        record("min-result", window: CGSize(width: 320, height: 240), replaying: Self.mateLine)
+
+        // An ordinary window, and as close to 900 by 700 as the display allows.
+        let mid = CGSize(width: min(900, largest.width), height: min(700, largest.height))
+        record("mid-strips", window: mid)
+        record("mid-nostrips", window: mid, hidingNumerals: true)
+
+        // As large as the display can show whole.
+        let large = record("large-strips", window: largest)
+        XCTAssertLessThanOrEqual(large.pitch * 7, 720,
+                                 "the board core must never pass its ceiling")
+        // Reaching the ceiling is a claim about a display with the room for it.
+        // On a smaller one the largest frame is what it is, and saying so
+        // belongs in the log rather than in a failure.
+        if largest.width >= 1030 && largest.height - titleBar >= 820 {
+            XCTAssertGreaterThan(large.pitch * 7, 700,
+                                 "a display with the room should reach the ceiling")
+        } else {
+            log.append("ceiling-not-reachable-on-this-display board-core=\(large.pitch * 7)")
+        }
+
+        // Below the floor, one axis at a time, with the floor lifted. The
+        // product cannot be driven here; the frames are what the floor is being
+        // judged against.
+        record("belowmin-narrow",
+               window: CGSize(width: floor.window.width - 56, height: floor.window.height),
+               liftingWindowMinimum: true)
+        record("belowmin-short",
+               window: CGSize(width: floor.window.width, height: floor.window.height - 48),
+               liftingWindowMinimum: true)
+
+        let measurements = XCTAttachment(string: log.joined(separator: "\n"))
+        measurements.name = "layout-measurements"
+        measurements.lifetime = .keepAlways
+        add(measurements)
     }
 }

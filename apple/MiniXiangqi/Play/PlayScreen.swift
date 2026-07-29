@@ -50,9 +50,17 @@ struct PlayScreen: View {
             }
         }
         .environment(\.motionPolicy, policy)
-        .frame(minWidth: Self.minimumWidth, minHeight: Self.minimumHeight)
         #if DEBUG
+        // The floor is the product's; `-mxq-no-minimum` takes it off so a
+        // screenshot can show what the layout does below it.
+        .frame(minWidth: Self.liftsWindowMinimum ? nil : Self.minimumWidth,
+               minHeight: Self.liftsWindowMinimum ? nil : Self.minimumHeight)
         .preferredColorScheme(Self.launchColorScheme)
+        #if os(macOS)
+        .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
+        #endif
+        #else
+        .frame(minWidth: Self.minimumWidth, minHeight: Self.minimumHeight)
         #endif
         .task {
             guard game == nil else { return }
@@ -110,7 +118,36 @@ struct PlayScreen: View {
     private static var launchColorScheme: ColorScheme? {
         launchArgument(after: "-mxq-appearance") == "dark" ? .dark : nil
     }
+
+    /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
+    /// content size — which on this window is the whole frame, title bar
+    /// included, since the content view runs the full height of it. A
+    /// screenshot series about layout has to state the size each frame was
+    /// taken at, and a window a test resized by dragging its corner cannot.
+    private static var launchWindowSize: CGSize? {
+        guard let text = launchArgument(after: "-mxq-window") else { return nil }
+        let sides = text.split(separator: "x").compactMap { Double($0) }
+        guard sides.count == 2, sides.allSatisfy({ $0 > 0 }) else { return nil }
+        return CGSize(width: sides[0], height: sides[1])
+    }
+
+    /// Whether `-mxq-no-minimum` was given. The window's floor is the thing
+    /// under discussion, so it has to be possible to photograph below it.
+    private static var liftsWindowMinimum: Bool {
+        ProcessInfo.processInfo.arguments.contains("-mxq-no-minimum")
+    }
     #endif
+
+    /// Whether the board carries its file-numeral strips. Always, except when
+    /// `-mxq-hide-numerals` takes them off: what the strips cost the layout is
+    /// a question a pair of screenshots answers and prose does not.
+    private static var showsNumerals: Bool {
+        #if DEBUG
+        !ProcessInfo.processInfo.arguments.contains("-mxq-hide-numerals")
+        #else
+        true
+        #endif
+    }
 
     private func layout(_ game: Game, _ motion: PlayMotion) -> some View {
         GeometryReader { proxy in
@@ -120,6 +157,7 @@ struct PlayScreen: View {
                     BoardView(geometry: geometry,
                               placement: game.placement,
                               flipped: game.flipped,
+                              showsNumerals: Self.showsNumerals,
                               selected: game.selected,
                               destinations: game.destinations,
                               captures: game.captures,
@@ -301,3 +339,40 @@ struct PlayScreen: View {
             + 2 * boardPadding
     }
 }
+
+#if DEBUG && os(macOS)
+/// Applies `-mxq-window`'s size to the window, once there is a window to apply
+/// it to. Debug only, and it asks AppKit for the size rather than asserting it:
+/// the window's own minimum still clamps the request, which is how a test
+/// measures what that minimum actually comes to.
+private struct LaunchWindowSizer: NSViewRepresentable {
+    var contentSize: CGSize?
+
+    func makeNSView(context: Context) -> NSView { Sizer(contentSize: contentSize) }
+    func updateNSView(_ view: NSView, context: Context) { }
+
+    private final class Sizer: NSView {
+        private let contentSize: CGSize?
+
+        init(contentSize: CGSize?) {
+            self.contentSize = contentSize
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let contentSize else { return }
+            // On the next pass, after AppKit has restored the saved frame and
+            // SwiftUI has handed the window the content's minimum: either one
+            // arriving afterwards would undo this.
+            DispatchQueue.main.async { [weak window] in
+                window?.setContentSize(contentSize)
+                window?.center()
+            }
+        }
+    }
+}
+#endif
