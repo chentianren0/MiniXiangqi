@@ -1,0 +1,5 @@
+# Copied into every new Claude worktree (gitignore syntax; only gitignored
+# paths are eligible). The prebuilt core is deterministic output of core/, so a
+# fresh worktree starts buildable; re-run apple/build-core-xcframework.sh after
+# any change under core/.
+apple/Generated/
