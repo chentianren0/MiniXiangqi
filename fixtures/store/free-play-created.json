@@ -1,0 +1,20 @@
+{
+  "title": "Free Play, just created: the row a creation writes",
+  "why": "Creation is a durable transition of its own. The active row exists before any move does, with an empty move line, no undo to offer, and the archive shape an active game has — the terminal trio omitted, and in Free Play the four configuration members omitted too.",
+  "config": {
+    "mode": "free-play"
+  },
+  "moves": [],
+  "archive": "free-play-created.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": false,
+    "undo_plies": 0,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": []
+}

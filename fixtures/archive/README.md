@@ -45,6 +45,7 @@ Every golden asserts three things:
 
 | file | shape | terminal pair |
 |---|---|---|
+| `free-play-created` | Free Play, active, no moves yet | none |
 | `free-play-active` | Free Play, active | none: the active shape omits `outcome`, `end_reason`, `ended_at` |
 | `free-play-ended-early` | Free Play, complete | `none` / `ended-early` |
 | `free-play-draw-threefold` | Free Play, complete | `draw` / `threefold-repetition` |
@@ -54,7 +55,7 @@ Every golden asserts three things:
 
 Between them they cover all four `outcome` values, the four terminal pairs a version 1 file can carry, both modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play omits `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's.
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 1 document and not an incomplete one.
 
 ### Sidecar
 
@@ -78,7 +79,16 @@ The active-game shape is the archive as the store holds it while the game is bei
 
 `info` is `MxqArchiveInfo`, in the serialized vocabulary. `null` spells a NONE constant — `human_side: null` is `MXQ_COLOR_NONE`, `end_reason: null` is `MXQ_END_REASON_NONE`. `MxqOutcome` has no absent constant, so an archive that records no end reads `outcome: "none"` with `end_reason: null` and `ended_at_ms: 0`; **`end_reason` is what separates an ended-early record from a game that has not ended**, and the two active goldens pin that.
 
-The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY` documents, and the timestamps start at the deterministic clock's epoch, so a future round-trip fixture can compare these files byte for byte against what the core writes.
+The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY` documents — one per file, so no two goldens claim the same identity — and the timestamps start at the deterministic clock's epoch, so the round-trip fixtures in [`../store/`](../store/README.md) compare these files byte for byte against what the core writes.
+
+### Provenance of the three active-shape goldens
+
+Those three files are now **produced** rather than hand-written: `fixtures/store/` names each of them from a scenario, and the runner fails unless `mxq_archive_encode` reproduces the file byte for byte. Two consequences, both deliberate:
+
+- `free-play-created` was added with the encoder, as the shape a creation writes.
+- `free-play-active` and `human-vs-ai-active` had their `origin.exported_at` restamped from `2026-01-01T00:01:00.000Z`, a hand-chosen "a minute later", to the instant of the committed change each document actually records — the second of their two moves, at `2026-01-01T00:00:02.000Z`. `game-data.md` § canonical form now states that rule for a stored active game; nothing else in either file changed, and no sidecar did, because `origin` is never part of what a file decodes to.
+
+The three completed goldens keep their hand-written export instants until the terminal commits that can produce them land, and are regenerated then.
 
 ## The rejection corpus
 
