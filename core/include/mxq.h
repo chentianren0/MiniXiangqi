@@ -225,12 +225,33 @@ enum {
     MXQ_ERR_STORE_SCHEMA_TOO_NEW    = 4008, /* written by a newer build */
 
     /* Archive domain: 5000. */
-    MXQ_ERR_ARCHIVE_MALFORMED            = 5001,
-    MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION  = 5002, /* created by a newer version;
-                                                  * never presented as
-                                                  * corruption */
-    MXQ_ERR_ARCHIVE_TOO_LARGE            = 5003,
-    MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY  = 5004,
+    MXQ_ERR_ARCHIVE_MALFORMED            = 5001, /* every well-formedness and
+                                                  * field-validity refusal:
+                                                  * encoding, syntax, envelope,
+                                                  * vocabulary, cross-field */
+    MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION  = 5002, /* version dispatch refused the
+                                                  * file: created by a newer
+                                                  * version, or older than the
+                                                  * minimum this build reads.
+                                                  * Never presented as
+                                                  * corruption, and the newer
+                                                  * case says so distinctly. An
+                                                  * archive_version that is not
+                                                  * a positive integer is no
+                                                  * version at all and is
+                                                  * MXQ_ERR_ARCHIVE_MALFORMED */
+    MXQ_ERR_ARCHIVE_TOO_LARGE            = 5003, /* a documented import bound of
+                                                  * docs/game-data.md: file
+                                                  * size, plies, JSON nesting
+                                                  * depth, members per object,
+                                                  * or string length. The file
+                                                  * may be well formed; it is
+                                                  * refused for its size */
+    MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY  = 5004, /* the initial position is not
+                                                  * the frozen one, or a move is
+                                                  * not legal at its turn and
+                                                  * MxqError.detail_index
+                                                  * carries its index */
     MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH    = 5005, /* the recorded terminal pair
                                                   * disagrees with the replayed
                                                   * adjudication */
@@ -462,8 +483,10 @@ typedef struct MxqError {
     uint32_t  reserved0;
     uint64_t  required_size;   /* meaningful for MXQ_ERR_ARG_BUFFER_TOO_SMALL:
                                 * the element or byte count the call needs */
-    uint64_t  detail_index;    /* meaningful for MXQ_ERR_RULES_INVALID_HISTORY:
-                                * the index of the first illegal move */
+    uint64_t  detail_index;    /* meaningful for MXQ_ERR_RULES_INVALID_HISTORY
+                                * and for the illegal-move case of
+                                * MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY: the
+                                * index of the first illegal move */
     char      detail[MXQ_DETAIL_CAP]; /* UTF-8, NUL-terminated */
 } MxqError;
 
@@ -625,7 +648,19 @@ typedef struct MxqRecordSummary {
                                              * lowercase */
 } MxqRecordSummary;
 
-/* The decoded summary the store indexes, from an archive's bytes. */
+/*
+ * The decoded summary the store indexes, from an archive's bytes.
+ *
+ * An archive that records no end — an active game's stored content, which omits
+ * outcome, end_reason and ended_at — reads as end_reason MXQ_END_REASON_NONE
+ * and ended_at_ms 0. MxqOutcome has no absent constant, so outcome then reads
+ * MXQ_OUTCOME_NONE, which is also the committed outcome of a game ended early:
+ * end_reason is the field that separates the two, and it is
+ * MXQ_END_REASON_ENDED_EARLY for the ended-early record.
+ *
+ * human_side is MXQ_COLOR_NONE in Free Play, matching the archive, which simply
+ * omits the member.
+ */
 typedef struct MxqArchiveInfo {
     uint32_t     struct_size;
     uint32_t     archive_version;
@@ -1261,8 +1296,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_search_wait(MxqCore *core, uint64_t ticket,
 
 /*
  * Structural probe only: transport, size, syntax, envelope, version dispatch,
- * field validity. It performs no rules replay. The bytes are borrowed for the
- * duration of the call.
+ * field validity — the closed vocabularies and the cross-field rules included.
+ * It performs no rules replay, so it accepts a file whose move line
+ * mxq_archive_validate would refuse; structural validity is all it claims. The
+ * bytes are borrowed for the duration of the call and are untrusted input.
+ *
+ * out is filled only on MXQ_OK.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: CPU-bound; keep off the UI thread.
@@ -1273,9 +1312,15 @@ MXQ_API MxqStatus MXQ_CALL mxq_archive_probe(MxqCore *core,
                                              MxqError *err);
 
 /*
- * Full validation: everything mxq_archive_probe does, then rules replay through
- * the rules facade, including that the recorded terminal pair agrees with the
+ * Full validation: everything mxq_archive_probe does — and on success it fills
+ * out identically — then rules replay through the rules facade: the initial
+ * position must be exactly the frozen starting FEN in version 1, every move
+ * must be legal in sequence, and the recorded terminal pair must agree with the
  * replayed adjudication. Touches no persistent state.
+ *
+ * An archive that records no end has no terminal pair to agree with: an
+ * unconfirmed natural terminal position remains the active game, so it is as
+ * valid there as an ongoing one.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: CPU-bound; keep off the UI thread.
