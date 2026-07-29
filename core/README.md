@@ -69,9 +69,11 @@ declared and deliberately not stubbed: the accepted error taxonomy has no
 not-implemented code, and inventing one to return would be inventing contract
 vocabulary.
 
-Three CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
-`store_foundation`, and `archive_fixtures` over
-[`fixtures/archive/`](../fixtures/archive/). The two entry points that replay a
+Five CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
+`archive_fixtures` over [`fixtures/archive/`](../fixtures/archive/), and
+`store_foundation`, `store_sessions`, and `store_history` over scratch stores
+(with [`fixtures/store/`](../fixtures/store/) holding their declarative
+expectations). The two entry points that replay a
 history through the engine — `mxq_rules_evaluate` and its relatives, and
 `mxq_archive_validate` — exist only in a build configured with
 `-DMXQ_ENABLE_RULES_FACADE=ON`; without it they are absent from the library
