@@ -110,22 +110,34 @@ enum Motion {
     // MARK: - Pulses
 
     /// The check rings' one-time stroke-weight pulse as they appear: a swell
-    /// and a settle. The extra weight grows inward, per the containment rule,
-    /// so the outer edges never leave the cell.
+    /// and a settle. The extra weight grows into the gap *between* the two
+    /// rings, which is the only room the marker band has: at rest the inner
+    /// ring's inner edge already sits on the 0.42 p floor no marker may cross
+    /// on an occupied point, and the outer ring's outer edge on the 0.50 p
+    /// cell boundary. Both of those edges are pinned through the swell.
     static let checkPulseRise: TimeInterval = 0.12
     static let checkPulseFall: TimeInterval = 0.20
-    /// Peak stroke ×1.6. The two rings nearly meet at the peak, which is the
-    /// swell reading as one emphasis before the double ring separates.
-    static let checkPulseGain: Double = 0.6
+    /// Peak stroke ×1.3, which is what the band leaves: two 0.025 p strokes in
+    /// the 0.08 p between the limits still stand 0.015 p apart at the peak —
+    /// the same near-meeting the swell has always read as, the swell reading
+    /// as one emphasis before the double ring separates again. BoardGeometry
+    /// shapes it, and MotionTests pins the peak against both limits.
+    static let checkPulseGain: Double = 0.3
 
     /// The illegal-tap answer: the legal-destination markers strengthen and
-    /// relax — the dots grow a quarter, the capture rings' stroke half, both
-    /// inward or within the cell. Under Reduce Motion the strengthened state
-    /// arrives once and stays until the selection changes.
+    /// relax — the dots grow a quarter, the capture rings' stroke by not quite
+    /// half, both inward or within the cell. Under Reduce Motion the
+    /// strengthened state arrives once and stays until the selection changes.
     static let markerPulseRise: TimeInterval = 0.10
     static let markerPulseFall: TimeInterval = 0.20
+    /// A destination dot marks an empty point, where only the cell bounds it.
     static let markerDotGain: Double = 0.25
-    static let markerRingGain: Double = 0.5
+    /// ×1.45. The capture ring's outer edge stays at the cell boundary, where
+    /// the contract fixes it, so the strengthening grows inward — and inward
+    /// it has the marker band's 0.08 p to spend against a 0.055 p stroke. Half
+    /// again would put ink 0.0025 p past the floor, onto the disc the ring is
+    /// drawn around.
+    static let markerRingGain: Double = 0.45
 
     // MARK: - The acknowledgment beat
 
@@ -134,9 +146,10 @@ enum Motion {
     /// identical under Reduce Motion.
     static let beatRise: TimeInterval = 0.10
     static let beatFall: TimeInterval = 0.30
-    /// Full emphasis. Neutral primary, never a tint: saturated colour on the
-    /// play screen means which side a piece belongs to.
-    static let beatEmphasis: Double = 0.12
+    /// The opacity full emphasis reaches — what the beat's 0-to-1 progress is
+    /// multiplied by, not the progress itself. Neutral primary, never a tint:
+    /// saturated colour on the play screen means which side a piece belongs to.
+    static let beatPeakOpacity: Double = 0.12
 
     // MARK: - Everything else
 

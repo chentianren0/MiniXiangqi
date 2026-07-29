@@ -86,17 +86,66 @@ struct MotionTests {
         #expect(Motion.flip >= 0.30 && Motion.flip <= 0.40)
     }
 
-    @Test("The pulses and the beat are brief, and their gains stay in the cell")
+    @Test("The pulses and the beat are brief, and every one of them swells")
     func pulseShapes() {
         #expect(Motion.checkPulseRise + Motion.checkPulseFall <= 0.5)
         #expect(Motion.markerPulseRise + Motion.markerPulseFall <= 0.5)
         #expect(Motion.beatRise + Motion.beatFall <= 0.5)
         #expect(Motion.checkPulseGain > 0 && Motion.markerDotGain > 0
                 && Motion.markerRingGain > 0)
-        // The strengthened destination dot stays far inside its cell.
+        // The strengthened destination dot stays far inside its cell. It marks
+        // an empty point, so the floor the two rings answer to does not apply.
         let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
-        let dot = geometry.destinationDotDiameter * (1 + Motion.markerDotGain)
-        #expect(dot / 2 < geometry.markerOuterLimit)
+        #expect(geometry.destinationDotDiameter(emphasis: 1) / 2 < geometry.markerOuterLimit)
+    }
+
+    @Test("Every swollen ring's ink stays inside the marker band")
+    func swollenRingsStayInTheMarkerBand() {
+        // Both rings are drawn around an *occupied* point — a disc the player
+        // may take, a general in check — so both are bounded at both ends: no
+        // marker's ink inside markerInnerLimit, every marker inside its own
+        // cell. The peak is where that is decided, and where both rings first
+        // got it wrong: the check swell reached 0.405 p and the strengthened
+        // capture ring 0.4175 p, both of them onto the disc.
+        //
+        // The inner edges are pinned *on* the floor by construction, so they
+        // are compared with the hair floating point leaves on an equality.
+        let hair: CGFloat = 1e-9
+        for pitch in [BoardGeometry.minimumPitch, 60, BoardGeometry.maximumPitch] {
+            let geometry = BoardGeometry(pitch: pitch)
+
+            let capture = geometry.captureRingStroke(emphasis: 1)
+            let captureRadius = geometry.captureRingRadius(stroke: capture)
+            #expect(captureRadius - capture / 2 >= geometry.markerInnerLimit - hair,
+                    "the strengthened capture ring must not reach the disc it rings")
+            #expect(captureRadius + capture / 2 <= geometry.markerOuterLimit + hair,
+                    "and its outer edge stays at the cell boundary")
+
+            let check = geometry.checkRingStroke(emphasis: 1)
+            let rings = geometry.checkRingRadii(emphasis: 1)
+            #expect(rings.inner - check / 2 >= geometry.markerInnerLimit - hair,
+                    "the swollen inner ring must not reach the general it rings")
+            #expect(rings.outer + check / 2 <= geometry.markerOuterLimit + hair,
+                    "and the outer one stays inside its cell")
+            #expect(rings.inner + check / 2 < rings.outer - check / 2,
+                    "the two must still read as two at the peak: a double ring")
+        }
+    }
+
+    @Test("At rest the swells leave the settled geometry exactly as it is")
+    func pulsesRestOnTheSettledGeometry() {
+        let geometry = BoardGeometry(pitch: 60)
+        #expect(geometry.checkRingStroke(emphasis: 0) == geometry.checkRingStroke)
+        #expect(geometry.checkRingRadii(emphasis: 0).inner == geometry.checkRingInnerRadius)
+        #expect(geometry.checkRingRadii(emphasis: 0).outer == geometry.checkRingOuterRadius)
+        #expect(geometry.captureRingStroke(emphasis: 0) == geometry.captureRingStroke)
+        #expect(geometry.destinationDotDiameter(emphasis: 0) == geometry.destinationDotDiameter)
+        // The band's two limits are where the rings already hang from at rest,
+        // which is why the swell has nowhere to grow but between them.
+        #expect(abs(geometry.checkRingInnerRadius - geometry.checkRingStroke / 2
+                    - geometry.markerInnerLimit) < 1e-9)
+        #expect(abs(geometry.checkRingOuterRadius + geometry.checkRingStroke / 2
+                    - geometry.markerOuterLimit) < 1e-9)
     }
 
     @Test("The transit lift holds the disc raised and settles it at the end")

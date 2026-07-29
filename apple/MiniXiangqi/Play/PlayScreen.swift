@@ -132,7 +132,8 @@ struct PlayScreen: View {
                               policy: motion.policy,
                               onTap: { tap($0, in: game, motion) },
                               onTravelArrival: { motion.travelArrived() },
-                              onFadeArrival: { motion.fadeArrived() })
+                              onFadeArrival: { motion.fadeArrived() },
+                              onFlipArrival: { motion.flipArrived() })
 
                     // The notice waits for the landing: a result arrives with
                     // a move, and the move has to finish being shown before
@@ -163,23 +164,20 @@ struct PlayScreen: View {
     }
 
     /// Every board tap answers through the gate first: input during a
-    /// committing transition is discarded, never queued. A finished board is
-    /// not inert — it has nothing left to play, so a tap closes the notice
-    /// standing in front of the position it produced; once the notice is away
-    /// there is nothing left for a tap to do, and the acknowledgment beat is
-    /// its answer. The notice-closing tap is an accepted input, not a rejected
-    /// one, and gets no beat.
+    /// committing transition is discarded, never queued. What is decided here
+    /// is only the one thing that is not about the position: a finished board
+    /// is not inert, so a tap closes the result notice standing in front of
+    /// the position it produced, and that tap is an accepted input rather than
+    /// a rejected one, so it gets no beat. Everything else — including that a
+    /// board with nothing left to play answers a tap with the acknowledgment
+    /// beat — goes through PlayMotion, which asks the game.
     private func tap(_ square: Square, in game: Game, _ motion: PlayMotion) {
         guard !motion.isCommitting else { return }
-        guard game.isFinished else {
-            motion.tap(square)
+        if game.isFinished, !resultDismissed {
+            withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true }
             return
         }
-        if resultDismissed {
-            motion.acknowledge()
-        } else {
-            withAnimation(policy.fade(Motion.stateFadeAnimation)) { resultDismissed = true }
-        }
+        motion.tap(square)
     }
 
     private func panel(_ game: Game, _ motion: PlayMotion) -> some View {

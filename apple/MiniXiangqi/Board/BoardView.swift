@@ -32,11 +32,14 @@ struct BoardView: View {
     var style: BoardStyle = .traditional
     var onTap: (Square) -> Void = { _ in }
 
-    /// The committing transition's two arrival wires, fired on the frame the
-    /// respective animation reaches its target — see ArrivalReporter for why
-    /// the transaction completion alone cannot be trusted with the gate.
+    /// The arrival wires, each fired on the frame its animation reaches its
+    /// target — see ArrivalReporter for why the transaction completion alone
+    /// cannot be trusted with a gate. Two belong to a committing transition;
+    /// the third says the board has finished turning round, which is when the
+    /// points below are back under the discs above them.
     var onTravelArrival: () -> Void = { }
     var onFadeArrival: () -> Void = { }
+    var onFlipArrival: () -> Void = { }
 
     private var p: CGFloat { geometry.pitch }
 
@@ -70,6 +73,7 @@ struct BoardView: View {
             .modifier(ArrivalReporter(progress: transit == nil ? 0 : 1,
                                       arrived: onTravelArrival))
             .modifier(ArrivalReporter(progress: transitFade, arrived: onFadeArrival))
+            .modifier(ArrivalReporter(progress: flipped ? 1 : 0, arrived: onFlipArrival))
             .frame(width: geometry.coreSide, height: geometry.coreSide)
             .background(style.boardSurface)
             .overlay(points)
@@ -88,8 +92,18 @@ struct BoardView: View {
     /// to divide the board evenly. A stack invites a stray inset — an earlier
     /// version had one, and it silently shifted every point by a fraction of a
     /// cell while remaining perfectly self-consistent, so clicking by name
-    /// still worked and no test could see it. Sharing the geometry makes the
-    /// two impossible to disagree.
+    /// still worked and no test could see it. Sharing the geometry is what
+    /// makes the two agree at every orientation the board settles in.
+    ///
+    /// They disagree in exactly one window: these elements jump to the flipped
+    /// positions when the flip begins, while the canvas carries each disc
+    /// along the arc of the rotation. For those 350 ms a point's element is
+    /// not under its drawn disc, so PlayMotion discards board input for the
+    /// length of the flip rather than committing a move the player did not
+    /// aim. What is accepted with it is that a screen reader's frames drift
+    /// for the same 350 ms: the labels stay true throughout — they are read
+    /// from the position, which a flip does not touch — and the frames are
+    /// right again the moment the board is.
     private var points: some View {
         ZStack {
             ForEach(0..<(Square.count * Square.count), id: \.self) { index in

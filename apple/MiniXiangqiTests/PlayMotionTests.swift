@@ -43,15 +43,40 @@ private final class FeedbackRecorder {
     }
 }
 
+private struct RefusedByTheCore: Error { }
+
+/// The real core, with a switch that makes it refuse. Every answer here is the
+/// core's own — nothing decides a rule — and refusing is the only way to reach
+/// the state a failed core call leaves behind, which the transitions above have
+/// to survive: the ply refused, the position unchanged, and a transition that
+/// took the gate holding nothing to draw.
+private final class RefusingRules: Rules {
+    private let real: Rules
+    var refuses = false
+
+    init(_ real: Rules) { self.real = real }
+
+    func evaluate(from startFEN: String, moves: [String]) throws -> Evaluation {
+        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
+        return try real.evaluate(from: startFEN, moves: moves)
+    }
+
+    func legalMoves(from startFEN: String, moves: [String]) throws -> [String] {
+        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
+        return try real.legalMoves(from: startFEN, moves: moves)
+    }
+}
+
 @Suite("The committing-transition gate")
 @MainActor
 struct PlayMotionTests {
 
     private func makeMotion(
         playing line: [String] = [],
-        reduceMotion: Bool = false
+        reduceMotion: Bool = false,
+        rules: Rules? = nil
     ) throws -> (PlayMotion, ManualAnimator, FeedbackRecorder) {
-        let game = try Game(core: Core.shared.get())
+        let game = try Game(core: rules ?? Core.shared.get())
         try game.replay(line)
         let animator = ManualAnimator()
         let recorder = FeedbackRecorder()
@@ -156,6 +181,54 @@ struct PlayMotionTests {
         #expect(!motion.isCommitting, "a flip is never a committing transition")
     }
 
+    @Test("Board input is discarded while the board is turning round")
+    func inputDuringAFlipIsDiscarded() throws {
+        // The canvas carries each disc along the arc of the rotation while the
+        // tap targets over it stand at the orientation being turned *to*, so
+        // for the length of the flip a tap would commit a move at a point the
+        // player is not looking at.
+        let (motion, animator, recorder) = try makeMotion()
+
+        motion.flip()
+        #expect(motion.isFlipping)
+        #expect(motion.game.flipped, "the orientation changes at once; the drawing catches up")
+
+        motion.tap(Square("b1")!)
+        #expect(motion.game.selected == nil, "a tap mid-flip is discarded")
+        #expect(recorder.events.isEmpty,
+                "and discarded silently: the player asked for this flip")
+
+        // The canvas's own flip phase reaching its target is what reports the
+        // arrival, with the transaction completion behind it as the backstop —
+        // the same two wires the landing arrives on.
+        motion.flipArrived()
+        #expect(!motion.isFlipping)
+        animator.completeAll()
+        #expect(!motion.isFlipping, "the backstop reports the same arrival, not another")
+
+        motion.tap(Square("b1")!)
+        #expect(motion.game.selected == Square("b1"), "and taps are ordinary input again")
+    }
+
+    @Test("A second press during a flip turns the board back")
+    func aSecondFlipRetargets() throws {
+        let (motion, animator, _) = try makeMotion()
+        motion.flip()
+        motion.flip()
+        #expect(!motion.game.flipped,
+                "a flip is presentational, so it re-targets: the board turns back")
+        #expect(motion.isFlipping, "and is still turning, so input is still discarded")
+        motion.tap(Square("b1")!)
+        #expect(motion.game.selected == nil)
+
+        animator.completeNext()   // the turn the second press replaced
+        #expect(motion.isFlipping, "the replaced turn's completion is not this one's")
+        animator.completeNext()
+        #expect(!motion.isFlipping)
+        motion.tap(Square("b1")!)
+        #expect(motion.game.selected == Square("b1"))
+    }
+
     // MARK: - Captures
 
     @Test("A capture holds the gate through the removal's tail")
@@ -178,6 +251,39 @@ struct PlayMotionTests {
         animator.completeNext()   // the removal's tail
         #expect(!motion.isCommitting)
         #expect(motion.transit == nil)
+    }
+
+    @Test("A capture lands on the plan it departed with, not the policy it lands under")
+    func aCaptureLandsOnWhatItScheduled() throws {
+        // Reduce Motion draws no removal, so the gate waits for the travel
+        // alone. Switching the setting mid-transition must not change what the
+        // arrival waits for: asking the live policy at the arrival was a gate
+        // that latched shut — every later tap discarded, 悔棋 disabled for
+        // good, the result notice unreachable.
+        let (reduced, _, _) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"],
+                                             reduceMotion: true)
+        reduced.tap(Square("d5")!)
+        reduced.tap(Square("d4")!)
+        #expect(reduced.committing == .move)
+
+        reduced.policy = MotionPolicy(reduceMotion: false)
+        reduced.travelArrived()
+        #expect(!reduced.isCommitting, "the gate opens on what was scheduled")
+        #expect(reduced.canUndo, "so 悔棋 comes back")
+        reduced.tap(Square("a2")!)
+        #expect(reduced.game.selected == Square("a2"), "and the board accepts input again")
+
+        // And the other way round: a removal that *was* scheduled still holds
+        // the gate through its tail, however the policy reads by the time it
+        // gets there.
+        let (full, _, _) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"])
+        full.tap(Square("d5")!)
+        full.tap(Square("d4")!)
+        full.policy = MotionPolicy(reduceMotion: true)
+        full.travelArrived()
+        #expect(full.isCommitting, "the removal it scheduled still holds the gate")
+        full.fadeArrived()
+        #expect(!full.isCommitting)
     }
 
     // MARK: - Undo as travel
@@ -235,6 +341,59 @@ struct PlayMotionTests {
         motion.fadeArrived()
         #expect(recorder.events == [.landing])
         #expect(!motion.isCommitting)
+    }
+
+    // MARK: - Transitions that never happened
+
+    @Test("A refused ply abandons its transition, and its late completion cannot land the next")
+    func aRefusedPlyAbandonsItsTransition() throws {
+        // A committing transition takes the gate before the core is asked, so
+        // a core that refuses leaves one holding nothing to draw. It has to
+        // let go, and without a landing: nothing arrived, so nothing sounds.
+        let rules = RefusingRules(try Core.shared.get())
+        let (refused, refusedAnimator, refusedFeedback) = try makeMotion(rules: rules)
+
+        refused.tap(Square("b1")!)
+        refusedAnimator.completeAll()
+        rules.refuses = true
+        refused.tap(Square("b4")!)
+
+        #expect(refused.game.moves.isEmpty, "the refused ply did not happen")
+        #expect(refused.game.failure != nil, "and the failure is recorded rather than swallowed")
+        #expect(!refused.isCommitting, "an abandoned transition holds no gate")
+        #expect(refused.transit == nil, "and leaves nothing on the board")
+        #expect(refusedFeedback.events.isEmpty, "nothing landed, so nothing sounded")
+
+        // Its completion was scheduled before the refusal and still arrives.
+        refusedAnimator.completeAll()
+        #expect(!refused.isCommitting)
+        #expect(refusedFeedback.events.isEmpty)
+
+        // The same guard, at the moment it earns its keep: a transition whose
+        // landing came in on the canvas's wire still has a transaction
+        // completion parked behind it, and by the time that fires the *next*
+        // move can be in flight. The token is what keeps it from being heard
+        // as that move's landing and opening a gate it does not hold.
+        let (motion, animator, recorder) = try makeMotion()
+        motion.tap(Square("b1")!)
+        animator.completeNext()          // the lift
+        motion.tap(Square("b4")!)
+        motion.travelArrived()           // the canvas reports the landing
+        #expect(!motion.isCommitting)
+        #expect(recorder.events == [.landing])
+
+        motion.tap(Square("a6")!)        // Black replies
+        motion.tap(Square("a5")!)
+        #expect(motion.committing == .move, "the second move holds the gate")
+
+        animator.completeNext()          // the first move's completion, arriving late
+        #expect(motion.committing == .move,
+                "a stale completion cannot land the move that came after it")
+        #expect(recorder.events == [.landing], "nor sound a second landing")
+
+        animator.completeAll()
+        #expect(!motion.isCommitting, "and the move it belongs to lands on its own wire")
+        #expect(recorder.events == [.landing, .landing])
     }
 
     // MARK: - The feedback moments

@@ -79,8 +79,8 @@ struct BoardGeometry {
 
     var captureRingStroke: CGFloat { 0.055 * pitch }
     /// Outer edge exactly at the cell boundary, so the centre line sits half a
-    /// stroke inside it.
-    var captureRingRadius: CGFloat { markerOuterLimit - captureRingStroke / 2 }
+    /// stroke inside it — at whatever stroke it is drawn with.
+    func captureRingRadius(stroke: CGFloat) -> CGFloat { markerOuterLimit - stroke / 2 }
     /// Twelve dashes of 18 degrees separated by 12-degree gaps. Fixing the
     /// count rather than a length keeps the pattern identical at every pitch.
     static let captureDashCount = 12
@@ -92,10 +92,62 @@ struct BoardGeometry {
 
     var lastMoveArm: CGFloat { 0.13 * pitch }
     var lastMoveStroke: CGFloat { 0.045 * pitch }
+    /// The origin's brackets: the destination's shape, ink, inset, and
+    /// containment, at 0.6 of the weight. The pair marks one move, so it should
+    /// say which way the move went and not only which two points it touched,
+    /// and weight is what can say it — a paler ink cannot, because record ink
+    /// has a contrast floor to hold, which BoardStyleTests measures, and
+    /// Increase Contrast promotes the ink while leaving weight alone. The
+    /// factor is settled against a rendered board: at 0.6 the origin reads as
+    /// the same marker, softer, and it is also where the softening runs out of
+    /// room — at the 44-point floor it comes to `1.19` points against a grid
+    /// line of `1.14`, and a marker that draws lighter than the board's own
+    /// lines has stopped being a marker.
+    var lastMoveOriginStroke: CGFloat { 0.6 * lastMoveStroke }
     var lastMoveInset: CGFloat { 0.05 * pitch }
 
     var hoverSide: CGFloat { 0.90 * pitch }
     var hoverCornerRadius: CGFloat { 0.12 * pitch }
+
+    // MARK: - Markers under emphasis
+
+    // Two markers swell: the check rings' one-time pulse as they appear, and
+    // the legal destinations' answer to an illegal tap. Both put extra ink on
+    // an occupied point, so both are bounded by the same two limits, and how
+    // far each may grow is decided here — beside the limits it may not cross,
+    // rather than in the canvas that draws it. MotionTests pins the peaks
+    // against the limits by asking these, so no test re-derives them.
+
+    /// The strengthened destination dot. It marks an *empty* point, where only
+    /// the cell bounds it, so it grows in every direction.
+    func destinationDotDiameter(emphasis: Double) -> CGFloat {
+        destinationDotDiameter * (1 + Motion.markerDotGain * emphasis)
+    }
+
+    /// The strengthened capture ring's stroke. The ring's outer edge stays at
+    /// the cell boundary, so the extra weight grows inward, towards the disc
+    /// it surrounds — and stops short of `markerInnerLimit`.
+    func captureRingStroke(emphasis: Double) -> CGFloat {
+        captureRingStroke * (1 + Motion.markerRingGain * emphasis)
+    }
+
+    /// The check rings' stroke at `emphasis` of their one-time swell.
+    func checkRingStroke(emphasis: Double) -> CGFloat {
+        checkRingStroke * (1 + Motion.checkPulseGain * emphasis)
+    }
+
+    /// The two rings' centre-line radii at `emphasis` of the swell. At rest
+    /// the inner ring's inner edge lies exactly on `markerInnerLimit` and the
+    /// outer ring's outer edge exactly on `markerOuterLimit`; the swell pins
+    /// both and grows the strokes into the gap between the rings, which is the
+    /// only room the band has. Growing each ring inward from its own outer
+    /// edge — the obvious reading of "the weight grows inward" — would carry
+    /// the inner ring across the floor and onto the general it rings.
+    func checkRingRadii(emphasis: Double) -> (inner: CGFloat, outer: CGFloat) {
+        let grown = (checkRingStroke(emphasis: emphasis) - checkRingStroke) / 2
+        return (inner: checkRingInnerRadius + grown,
+                outer: checkRingOuterRadius - grown)
+    }
 
     // MARK: - File numerals
 

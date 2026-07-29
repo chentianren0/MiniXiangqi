@@ -52,6 +52,32 @@ struct BoardGeometryTests {
         #expect(geometry.markerOuterLimit <= geometry.margin)
     }
 
+    @Test("The last move reads in the direction it was played, and stays in its cells")
+    func lastMoveBracketsAreDirectionalAndContained() {
+        // The origin's brackets are the destination's at less weight — same
+        // shape, same ink, same inset — so the pair says which way the move
+        // went. Ink is not what carries it: record ink has a contrast floor to
+        // hold, and Increase Contrast promotes ink and leaves weight alone.
+        #expect(geometry.lastMoveOriginStroke < geometry.lastMoveStroke)
+        // Softer, never fainter than the board itself: a marker that draws
+        // lighter than the grid it lies on has stopped being a marker. This is
+        // the floor under the factor, and the smallest board is where it bites.
+        for pitch in [BoardGeometry.minimumPitch, 60, BoardGeometry.maximumPitch] {
+            let board = BoardGeometry(pitch: pitch)
+            #expect(board.lastMoveOriginStroke > board.gridStroke)
+        }
+        // Both weights stay inside the cell, which is what keeps two adjacent
+        // cells' brackets visibly separate — a one-step move puts them side by
+        // side. The heavier one is the one to check.
+        let reach = geometry.pitch / 2 - geometry.lastMoveInset + geometry.lastMoveStroke / 2
+        #expect(reach < geometry.pitch / 2)
+        // And the arms stay clear of the disc: brackets are the one marker
+        // family that lives in the cell's corners.
+        let corner = geometry.pitch / 2 - geometry.lastMoveInset
+        let nearest = (pow(corner - geometry.lastMoveArm, 2) + pow(corner, 2)).squareRoot()
+        #expect(nearest - geometry.lastMoveStroke / 2 > geometry.markerInnerLimit)
+    }
+
     @Test("The flip's path starts and ends exactly on the two orientations")
     func flipPathEndsOnItsOrientations() {
         for rank in 0..<Square.count {

@@ -126,6 +126,20 @@ final class PlayScreenUITests: XCTestCase {
                        "Black's numerals should follow the board round")
         attach(app, named: "6-board-turned-round")
 
+        // Board input is discarded while the board turns, because for those
+        // 350 ms the points are not under the discs they name, and it is
+        // handed back at the arrival. That hand-back is a wire the running app
+        // has to fire for itself — a gate left holding would leave the board
+        // deaf for the rest of the game, and no unit test can see the live
+        // wiring. The screenshot above has already waited out the flip, so a
+        // click that selects is the evidence that the gate reopened.
+        point(app, "b4").click()
+        XCTAssertEqual(point(app, "b4").label, "b4 红 炮 已选择",
+                       "the board should accept input again once the flip lands")
+        point(app, "b4").click()
+        XCTAssertEqual(point(app, "b4").label, "b4 红 炮",
+                       "and the same click again puts the piece down")
+
         // One Undo removes one ply, so Black's reply leaves the list and the
         // turn goes back to Black.
         app.buttons["悔棋"].click()
@@ -234,12 +248,16 @@ final class PlayScreenUITests: XCTestCase {
                        "a click on a finished board moves nothing")
 
         // The dismissal belonged to the finished game it closed, not to every
-        // result after it: reaching the mate again announces it again. The
-        // beat: input during the Undo's reversal is discarded, so the clicks
-        // wait out the transition rather than race it.
+        // result after it: reaching the mate again announces it again. Input
+        // during the Undo's reversal is discarded, so the clicks wait the
+        // transition out rather than race it — and what says it is over is the
+        // control the gate itself disables: 悔棋 is unavailable until the
+        // reversal lands.
         app.buttons["悔棋"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
-        Thread.sleep(forTimeInterval: 0.4)
+        wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
+                               evaluatedWith: app.buttons["悔棋"])],
+             timeout: 5)
         point(app, "b3").click()
         point(app, "d3").click()
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5),
@@ -309,6 +327,12 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["result-title"].exists)
 
         point(app, "g1").click()   // nothing left to accept: the beat answers
+        // A wall clock on purpose. The beat is a background opacity rising and
+        // falling, and an opacity is nothing XCUI can wait on: no attribute
+        // carries it, no element appears while it runs, and the assertions
+        // below — which are about the board — are true before and after it.
+        // The screenshot is the only thing that needs to land inside the beat,
+        // so this waits into it rather than for it.
         Thread.sleep(forTimeInterval: 0.15)
         let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         shot.name = "20-the-beat-answering-a-refused-tap"

@@ -184,11 +184,16 @@ struct BoardCanvas: View, Animatable {
 
     private func drawLastMove(in context: inout GraphicsContext, flip: Double) {
         guard let lastMove else { return }
-        for square in [lastMove.from, lastMove.to] {
+        // One marker at two points, and the origin's half of it is drawn
+        // lighter, so the pair says which way the move went rather than only
+        // which two points it touched. Weight alone: same shape, same record
+        // ink, same inset — a paler ink would eat into the contrast the ink
+        // has to hold.
+        for (square, stroke) in [(lastMove.from, geometry.lastMoveOriginStroke),
+                                 (lastMove.to, geometry.lastMoveStroke)] {
             context.stroke(bracketPath(at: point(square, flip: flip)),
                            with: .color(style.recordInk),
-                           style: StrokeStyle(lineWidth: geometry.lastMoveStroke,
-                                              lineCap: .round))
+                           style: StrokeStyle(lineWidth: stroke, lineCap: .round))
         }
     }
 
@@ -211,8 +216,7 @@ struct BoardCanvas: View, Animatable {
     private func drawDestinations(in context: inout GraphicsContext, flip: Double) {
         // The illegal-tap answer strengthens the dot by a quarter at most —
         // still far inside its cell.
-        let diameter = geometry.destinationDotDiameter
-            * (1 + Motion.markerDotGain * phases.marker)
+        let diameter = geometry.destinationDotDiameter(emphasis: phases.marker)
         for square in destinations where !captures.contains(square) {
             let centre = point(square, flip: flip)
             let box = CGRect(x: centre.x - diameter / 2, y: centre.y - diameter / 2,
@@ -224,11 +228,11 @@ struct BoardCanvas: View, Animatable {
     private func drawRings(in context: inout GraphicsContext, flip: Double) {
         // A dashed ring around an enemy disc the player may take. Its answer
         // to an illegal tap grows the stroke inward — the outer edge stays at
-        // the cell boundary, where the contract fixes it.
+        // the cell boundary, where the contract fixes it, and the inward
+        // growth stops at the marker floor rather than reaching the disc.
         if !captures.isEmpty {
-            let stroke = geometry.captureRingStroke
-                * (1 + Motion.markerRingGain * phases.marker)
-            let radius = geometry.markerOuterLimit - stroke / 2
+            let stroke = geometry.captureRingStroke(emphasis: phases.marker)
+            let radius = geometry.captureRingRadius(stroke: stroke)
             let circumference = 2 * CGFloat.pi * radius
             let dash = circumference * BoardGeometry.captureDashDegrees / 360
             let gap = circumference / CGFloat(BoardGeometry.captureDashCount) - dash
@@ -242,14 +246,14 @@ struct BoardCanvas: View, Animatable {
         // A double ring around a checked general, hidden while it is held and
         // absent while a committing transition runs: the rings belong to the
         // position, and the position finishes arriving at the landing. The
-        // one-time pulse swells the strokes inward, so neither ring leaves
-        // its cell; at the peak the two nearly meet, one emphasis before the
-        // double ring separates again.
+        // one-time pulse swells the strokes into the gap between the rings, so
+        // the pair stays inside the marker band at both ends; at the peak the
+        // two nearly meet, one emphasis before the double ring separates
+        // again.
         if transit == nil, let checkedGeneral, phases.lifts[checkedGeneral] == 0 {
-            let stroke = geometry.checkRingStroke
-                * (1 + Motion.checkPulseGain * phases.check)
-            for base in [geometry.checkRingInnerRadius, geometry.checkRingOuterRadius] {
-                let radius = base + geometry.checkRingStroke / 2 - stroke / 2
+            let stroke = geometry.checkRingStroke(emphasis: phases.check)
+            let radii = geometry.checkRingRadii(emphasis: phases.check)
+            for radius in [radii.inner, radii.outer] {
                 context.stroke(circle(at: point(checkedGeneral, flip: flip), radius: radius),
                                with: .color(style.activeInk),
                                lineWidth: stroke)
