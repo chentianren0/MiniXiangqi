@@ -4,66 +4,13 @@
 // transition — a move, a capture, an Undo — runs to completion, and input
 // arriving during it is discarded rather than queued; a second Undo waits;
 // a flip alone is deferred and applied when the transition ends. The animator
-// is the seam that makes this observable: the manual one below holds every
-// completion until the test fires it, so "during a transition" is a state the
-// test stands in for as long as it likes.
+// is the seam that makes this observable: the manual one in TestSupport holds
+// every completion until the test fires it, so "during a transition" is a
+// state the test stands in for as long as it likes.
 
 import Foundation
 import Testing
 @testable import MiniXiangqi
-
-/// Runs animation bodies at once and parks their completions for the test to
-/// fire in order, exactly as the live animator fires them.
-@MainActor
-private final class ManualAnimator {
-    private(set) var pending: [() -> Void] = []
-
-    var animator: MotionAnimator {
-        MotionAnimator { [self] _, body, completion in
-            body()
-            pending.append(completion)
-        }
-    }
-
-    /// Fires the oldest parked completion, as time passing would.
-    func completeNext() {
-        guard !pending.isEmpty else { return }
-        pending.removeFirst()()
-    }
-
-    func completeAll() {
-        while !pending.isEmpty { completeNext() }
-    }
-}
-
-/// Records the two halves apart, because they are two decisions: every landing
-/// is felt the same way, and each one is heard according to what it was. A test
-/// that could only see one number could not tell a silenced sound from a missing
-/// landing.
-@MainActor
-private final class FeedbackRecorder {
-    private(set) var events: [Feedback.Event] = []
-    private(set) var sounds: [Feedback.Sound] = []
-
-    /// The defaults the sound gate reads. Never the standard ones: under a
-    /// hosted test bundle those are the app's own domain — the very domain the
-    /// accepted Settings toggle will write — and a suite that read it would
-    /// fall silent the day somebody switched sound off in the app.
-    private let defaults: UserDefaults
-
-    init(defaults: UserDefaults) { self.defaults = defaults }
-
-    /// Composed the way the live feedback composes it — the app's own gate in
-    /// front of the heard half — so that what these tests watch being silenced
-    /// is what the app silences.
-    var feedback: Feedback {
-        Feedback.gatingSound(by: defaults) { [self] event in
-            events.append(event)
-        } play: { [self] sound in
-            sounds.append(sound)
-        }
-    }
-}
 
 @Suite("The committing-transition gate")
 @MainActor
@@ -81,25 +28,12 @@ struct PlayMotionTests {
         try game.replay(line)
         let animator = ManualAnimator()
         let recorder = try FeedbackRecorder(
-            defaults: defaults ?? scratchDefaults(soundEnabled: true))
+            defaults: defaults ?? ScratchDefaults.make(soundEnabled: true))
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: reduceMotion),
                                 animator: animator.animator,
                                 feedback: recorder.feedback)
         return (motion, animator, recorder)
-    }
-
-    /// The preference the accepted Settings toggle will write, in a scratch
-    /// domain of this suite's own. Cleared each time, so no test inherits the
-    /// state another left, and audible by default because most of these tests
-    /// are about something the board does rather than about the toggle.
-    private static let scratchSuite = "com.chentianren.MiniXiangqi.tests.sound"
-
-    private func scratchDefaults(soundEnabled: Bool?) throws -> UserDefaults {
-        let defaults = try #require(UserDefaults(suiteName: Self.scratchSuite))
-        defaults.removePersistentDomain(forName: Self.scratchSuite)
-        if let soundEnabled { defaults.set(soundEnabled, forKey: Feedback.soundEnabledKey) }
-        return defaults
     }
 
     // MARK: - Moves
@@ -593,8 +527,8 @@ struct PlayMotionTests {
 
     @Test("With sound switched off the board is silent and still felt")
     func soundOffSilencesOnlyTheSound() throws {
-        let defaults = try scratchDefaults(soundEnabled: false)
-        defer { defaults.removePersistentDomain(forName: Self.scratchSuite) }
+        let defaults = try ScratchDefaults.make(soundEnabled: false)
+        defer { ScratchDefaults.clear() }
 
         let (_, recorder) = try landing(GameTests.captureLine, defaults: defaults)
         #expect(recorder.sounds.isEmpty, "nothing is heard")
@@ -604,8 +538,8 @@ struct PlayMotionTests {
 
     @Test("Sound is on where nobody has said otherwise, and follows the toggle back")
     func soundDefaultsToOn() throws {
-        let unset = try scratchDefaults(soundEnabled: nil)
-        defer { unset.removePersistentDomain(forName: Self.scratchSuite) }
+        let unset = try ScratchDefaults.make(soundEnabled: nil)
+        defer { ScratchDefaults.clear() }
         #expect(Feedback.soundIsEnabled(in: unset), "an absent preference is sound on")
 
         let (_, heard) = try landing(["b1b4"], defaults: unset)
@@ -614,7 +548,7 @@ struct PlayMotionTests {
         // Read at the landing rather than cached: switching it back on within
         // the life of one feedback is heard on the next landing, not the next
         // launch.
-        let toggled = try scratchDefaults(soundEnabled: false)
+        let toggled = try ScratchDefaults.make(soundEnabled: false)
         let (motion, animator, recorder) = try makeMotion(defaults: toggled)
         motion.tap(Square("b1")!)
         motion.tap(Square("b4")!)
@@ -626,7 +560,7 @@ struct PlayMotionTests {
         motion.tap(Square("a5")!)
         animator.completeAll()
         #expect(recorder.sounds == [.plain])
-        toggled.removePersistentDomain(forName: Self.scratchSuite)
+        ScratchDefaults.clear()
     }
 
     // MARK: - The check pulse

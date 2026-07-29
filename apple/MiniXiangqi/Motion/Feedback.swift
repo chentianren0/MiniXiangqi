@@ -55,6 +55,41 @@ struct Feedback {
         /// and by nothing else; the prefix keeps the four together in a
         /// resource directory that has no folders.
         var resource: String { "board-\(rawValue)" }
+
+        /// What a landing sounds like: one sound, chosen by what has arrived
+        /// rather than by what was pressed, in the accepted order of
+        /// precedence.
+        ///
+        /// - The game being over outranks everything, and replaces the landing
+        ///   sound rather than joining it: a result is the last thing that
+        ///   happened, and a tock underneath it would be the move competing
+        ///   with its own consequence.
+        /// - A capture outranks a check, because the take is the louder fact
+        ///   and the check has the rings, the 将军 token, and the status line
+        ///   saying it as well.
+        /// - Everything else is the plain tock, a move taken back included:
+        ///   reversing a move is a disc landing on a point, and a sound played
+        ///   backwards would be a fifth thing to learn for an action the board
+        ///   already animates in reverse.
+        ///
+        /// It reads the arrived position and the transit's own plan, both of
+        /// which are settled before anything can arrive. A capture is the
+        /// transit's fading disc — but only a move's, since a reversal's
+        /// fading disc is the piece coming *back*, which is a restoration and
+        /// not a take.
+        ///
+        /// One rule, and it describes a position rather than an action, which
+        /// is why replay asks it the same question: a replayed landing is a
+        /// landing, and the position it arrives at is finished or in check or
+        /// neither exactly as a played one's is.
+        static func ofTheLanding(_ transit: Transit?,
+                                 finished: Bool,
+                                 inCheck: Bool) -> Sound {
+            if finished { return .conclusion }
+            if transit?.kind == .move, transit?.fading != nil { return .capture }
+            if inCheck { return .check }
+            return .plain
+        }
     }
 
     /// The half that is felt.

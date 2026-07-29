@@ -434,6 +434,51 @@ final class HistoryScreenUITests: XCTestCase {
         XCTAssertEqual(progress.value as? String, "0 / 7")
     }
 
+    /// The same walk, one ply at a time, with the travel in it.
+    ///
+    /// A step travels for 180–240 ms and the disc is on its point when it
+    /// stops. That instant is what this waits for and photographs; mid-travel
+    /// is deliberately not photographed, because a frame 100 ms into an
+    /// animation is not something a test can ask for and get the same answer
+    /// twice. What the animation must not cost is that every ply still arrives,
+    /// exactly once, at the point the record says — and that is a claim a test
+    /// can make.
+    func testEachStepTravelsAndLandsOnItsPoint() {
+        let app = launch(history: Self.threeGames)
+        openHistory(app)
+        XCTAssertTrue(row(app, 0).waitForExistence(timeout: 10))
+        row(app, 0).click()
+
+        let progress = app.windows.firstMatch.descendants(matching: .any)["replay-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        XCTAssertEqual(progress.value as? String, "0 / 7")
+
+        // Pressed the way a person presses it: each ply is let land before the
+        // next is asked for.
+        for ply in 1...7 {
+            app.buttons["replay-next"].click()
+            let arrived = expectation(for: NSPredicate(format: "value == '\(ply) / 7'"),
+                                      evaluatedWith: progress)
+            wait(for: [arrived], timeout: 5)
+        }
+
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "the cannon settled on the mating move's point")
+        XCTAssertEqual(point(app, "b3").label, "b3 空",
+                       "and left the one it travelled from")
+        XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军")
+        attach(app, named: "31-replay-a-step-landed")
+
+        // Backwards through the take-back the same way: the mover returns and
+        // the position is the record's own again.
+        app.buttons["replay-previous"].click()
+        let back = expectation(for: NSPredicate(format: "value == '6 / 7'"),
+                               evaluatedWith: progress)
+        wait(for: [back], timeout: 5)
+        XCTAssertEqual(point(app, "b3").label, "b3 红 炮", "the cannon came back")
+        XCTAssertEqual(point(app, "d3").label, "d3 空")
+    }
+
     func testAutoplayWalksItselfAndAManualStepStopsIt() {
         let app = launch(history: Self.threeGames)
         openHistory(app)
