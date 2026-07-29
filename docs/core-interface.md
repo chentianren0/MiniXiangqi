@@ -15,7 +15,7 @@ This document is for engineers and reviewers implementing or consuming the share
 
 ## Modules and functions
 
-Six groups, 53 functions.
+Six groups, 54 functions.
 
 ### Common prelude
 
@@ -62,6 +62,8 @@ MxqStatus mxq_game_open_archive(MxqCore *core, const uint8_t *bytes, size_t len,
 void      mxq_game_release(MxqGame *game);
 
 /* queries */
+MxqStatus mxq_game_id(const MxqGame *game, char *out, size_t cap,
+                      size_t *out_len, MxqError *err);        /* the frozen v7 UUID */
 MxqStatus mxq_game_position(const MxqGame *game, MxqPosition *out, MxqError *err);
 MxqStatus mxq_game_status(const MxqGame *game, MxqGameStatus *out, MxqError *err);
 MxqStatus mxq_game_config(const MxqGame *game, MxqGameConfig *out, MxqError *err);
@@ -103,6 +105,8 @@ Core value types:
 - `MxqGameStatus` — the live game state and derived affordances: `state` (`MXQ_GAME_ONGOING`, `MXQ_GAME_CLAIMABLE_DRAW`, `MXQ_GAME_RED_WINS`, `MXQ_GAME_BLACK_WINS`, `MXQ_GAME_DRAW` — exactly the fixture state identifiers), `reason` (`MxqEndReason`), `at_occurrence` for repetition-based outcomes, and `claim_available`, `undo_available`, `undo_plies`, `resign_available`, `search_expected` flags so frontends never re-derive rules policy.
 - `MxqEndReason` — the fixture reason identifiers `CHECKMATE`, `STALEMATE`, `THREEFOLD_REPETITION`, `PERPETUAL_CHECK`, `PERPETUAL_CHASE`, the reserved mutual-violation reasons `MUTUAL_PERPETUAL_CHECK`, `MUTUAL_PERPETUAL_CHASE`, and the user-scoped `RESIGNATION`, `ENDED_EARLY`, plus `NONE`.
 - Stored records use a distinct committed-outcome enum `MxqOutcome` — `RED_WINS`, `BLACK_WINS`, `DRAW`, `NONE` — matching the archive's serialized outcome vocabulary in [game-data.md](game-data.md). Live states (`ONGOING`, `CLAIMABLE_DRAW`) are never a committed outcome, and `NONE` (ended early) is never a live state; conflating the two vocabularies in one enum is the bug this split prevents.
+
+`mxq_game_id` reports the session's stable identity — the version 7 UUID frozen at creation — because a session must be able to state it: the staleness comparison `MxqSearchResult` prescribes is against `(game_id, position_revision)`, and a detached replay or import-preview session has no other route to the value. It is an additive function, so it lands as `MXQ_API_VERSION` 1.2.0.
 
 `mxq_rules_evaluate` and `mxq_rules_legal_moves` take `(start_fen, moves[])` and are exactly the surface the approved conformance fixtures replay through; a fixture's every assertion maps onto their outputs.
 
