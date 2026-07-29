@@ -134,10 +134,15 @@ struct BoardGeometryTests {
         let tiny = BoardGeometry.fitting(CGSize(width: 320, height: 360))
         #expect(tiny == nil || tiny!.pitch >= BoardGeometry.minimumPitch)
 
+        // The ceiling is a size the board actually reaches, not a bound it
+        // stays under: given more room than it can use, the board comes back at
+        // exactly the ceiling. Asserting only `<=` here is what let the board
+        // stop six points short of it without anything noticing.
         let huge = BoardGeometry.fitting(CGSize(width: 3000, height: 3000))
         #expect(huge != nil)
-        #expect(huge!.pitch <= BoardGeometry.maximumPitch)
-        #expect(huge!.coreSide <= 720)
+        #expect(huge!.pitch == BoardGeometry.maximumPitch)
+        #expect(huge!.pitch == 102)
+        #expect(huge!.coreSide == 714)
     }
 
     @Test("A fitted board always fits what it was given",

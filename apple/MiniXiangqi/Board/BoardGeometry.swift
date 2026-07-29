@@ -23,12 +23,15 @@ struct BoardGeometry {
     /// The accepted floor on every interactive board, on every platform.
     static let minimumPitch: CGFloat = 44
 
-    /// The board core stops growing at 720 points. Beyond that the two palaces
-    /// drift far enough apart on a large display to cost more in eye movement
-    /// than the extra size returns, and a disc passes 82 points, which no
-    /// physical set resembles. Surplus space goes to the surrounding layout
-    /// rather than to the board.
-    static let maximumPitch: CGFloat = 720 / 7
+    /// The largest whole-point pitch inside the contract's 720-point bound on
+    /// the board core: 102, for a core of 714. The bound divides by seven to
+    /// 102.857, and a pitch that is not a whole number buys six points of core
+    /// at the cost of every dimension derived from it landing between points.
+    /// Beyond this the two palaces drift far enough apart on a large display to
+    /// cost more in eye movement than the extra size returns, and a disc passes
+    /// 81 points, which no physical set resembles. Surplus space goes to the
+    /// surrounding layout rather than to the board.
+    static let maximumPitch: CGFloat = 102
 
     // MARK: - The board itself
 
@@ -218,7 +221,7 @@ struct BoardGeometry {
     static func fitting(_ size: CGSize) -> BoardGeometry? {
         // stripHeight depends on the pitch, so solve by trying the width-bound
         // pitch and stepping down until the block's height fits too.
-        var pitch = min((size.width / 7).rounded(.down), maximumPitch.rounded(.down))
+        var pitch = min((size.width / 7).rounded(.down), maximumPitch)
         while pitch >= minimumPitch {
             let candidate = BoardGeometry(pitch: pitch)
             if candidate.blockSize.height <= size.height { return candidate }
