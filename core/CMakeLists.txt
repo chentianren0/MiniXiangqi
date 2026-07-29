@@ -140,6 +140,7 @@ endif()
 add_library(mxq_core STATIC
   src/mxq_abi.cpp
   src/mxq_archive.cpp
+  src/mxq_archive_json.cpp
   src/mxq_blob.cpp
   src/mxq_core.cpp
   src/mxq_engine.cpp
