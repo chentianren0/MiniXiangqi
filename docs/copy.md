@@ -33,13 +33,15 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift`, `Play/ResultNotice.swift` |
+| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the play-control cluster's, and only there |
 | `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
 | `control.flipBoard` | 翻转棋盘 | Flip Board | button; accessibility label | [interaction-design.md](interaction-design.md) § Play controls, § Board orientation; `Play/PlayScreen.swift` |
 | `control.resign` | 认输 | Resign | button | [interaction-design.md](interaction-design.md) § Play controls |
 | `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
-| `control.newGame` | 开始新对局 | New Game | button | `Play/PlayScreen.swift`, `Play/ResultNotice.swift` — the concluding action until History exists |
-| `control.endGame` | 结束对局 | End Game | button | [interaction-design.md](interaction-design.md) § Natural result presentation |
+| `control.newGame` | 开始新对局 | New Game | button | `Play/PlayScreen.swift` — the play-control cluster's concluding action |
+| `control.save` | 保存 | Save | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` — the notice's default action |
+| `control.saveAndNewGame` | 保存并开始新对局 | Save and New Game | button | same — the notice's second action, which files and resets in one press |
+| `control.endGame` | 结束对局 | End Game | button | [interaction-design.md](interaction-design.md) § Natural result presentation — retired as the notice's label, where `control.save` now names the same act; no surface reads it |
 | `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |

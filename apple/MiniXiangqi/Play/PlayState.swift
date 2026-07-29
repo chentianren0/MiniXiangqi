@@ -55,11 +55,27 @@ final class PlayState {
         start(policy: policy, replayingLaunchLine: true)
     }
 
-    /// What 开始新对局 does on a finished board: the game is filed in History
-    /// first — a claimed draw already was, by the claim; an unconfirmed natural
-    /// result is committed as what it is — and only then does the board reset.
-    /// A filing the store refuses resets nothing and answers `false`: the
-    /// accepted retry presents, and the game stays exactly as it stood.
+    /// What 保存 does on a finished board: the terminal commit and nothing
+    /// else. The game becomes a History record and the board stays exactly
+    /// where the result left it — the notice above reads the filing off the
+    /// game and becomes the recorded one, which is the whole of the change on
+    /// screen. A filing the store refuses files nothing and answers `false`:
+    /// the accepted retry presents, and the game stays active as it stood.
+    func save() -> Bool {
+        guard let game else { return true }
+        do {
+            try game.file()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// What 开始新对局 does on a finished board: the same filing first — a
+    /// claimed draw and an already-saved result were both filed before this
+    /// was pressed, and neither is filed twice — and only then does the board
+    /// reset. A filing the store refuses resets nothing and answers `false`:
+    /// the accepted retry presents, and the game stays exactly as it stood.
     func startNewGame(policy: MotionPolicy) -> Bool {
         guard let game else { return true }
         do {

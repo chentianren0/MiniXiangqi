@@ -41,11 +41,12 @@ struct PlayScreen: View {
     /// say to a screen that is not on show.
     @State private var saveFailureShown = false
 
-    /// The terminal commit the store refused — the draw claim, or the filing
-    /// that 开始新对局 owes — held while the accepted 无法保存对局 retry is on
-    /// screen, so Try Again repeats exactly the act that failed. The game
-    /// stays active and unchanged underneath either.
-    private enum FailedFiling { case claim, file }
+    /// The terminal commit the store refused — the draw claim, the notice's
+    /// 保存, or the filing that 开始新对局 owes — held while the accepted
+    /// 无法保存对局 retry is on screen, so Try Again repeats exactly the act
+    /// that failed rather than the nearest one to it. The game stays active and
+    /// unchanged underneath any of them.
+    private enum FailedFiling { case claim, save, file }
     @State private var failedFiling: FailedFiling?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -89,6 +90,13 @@ struct PlayScreen: View {
     /// decided here is only what a refusal looks like on screen.
     private func startNewGame() {
         if !play.startNewGame(policy: policy) { failedFiling = .file }
+    }
+
+    /// 保存 on a finished board: the same terminal commit, without the reset.
+    /// The board keeps the result it is standing at, and the notice becomes the
+    /// recorded one because the game it reads is now a History record.
+    private func save() {
+        if !play.save() { failedFiling = .save }
     }
 
     #if DEBUG
@@ -140,15 +148,15 @@ struct PlayScreen: View {
                     if game.isFinished, !play.resultDismissed, !motion.isCommitting {
                         ResultNotice(state: game.presentedState,
                                      reason: game.evaluation.reason,
-                                     canUndo: motion.canUndo,
                                      // A filed game is a History record, and
-                                     // the notice reads as one. Today that is
-                                     // the claimed draw, whose claim was the
-                                     // commit; everything else is filed by the
-                                     // concluding action, which resets the
-                                     // board in the same press.
+                                     // the notice reads as one: the claimed
+                                     // draw, whose claim was the commit, and
+                                     // now the natural result the notice's own
+                                     // 保存 has just filed without resetting
+                                     // anything. Which is why this is asked of
+                                     // the game rather than tracked here.
                                      recorded: game.filedRecordID != nil,
-                                     undo: { motion.undo() },
+                                     save: { save() },
                                      startNewGame: { startNewGame() },
                                      replay: { if let record = game.filedRecordID { replay(record) } },
                                      close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { play.resultDismissed = true } })
@@ -192,6 +200,7 @@ struct PlayScreen: View {
     private func retryFiling(_ game: Game, _ motion: PlayMotion) {
         switch failedFiling {
         case .claim: claimDraw(game, motion)
+        case .save: save()
         case .file: startNewGame()
         case nil: break
         }
@@ -360,8 +369,9 @@ struct PlayScreen: View {
 
             if game.isFinished {
                 // Prominent once it is the only one: while the notice stands in
-                // front of the board it carries the tinted copy of this action,
-                // and two tinted buttons for one action is one too many.
+                // front of the board it carries the moment's tinted action, and
+                // the tint rule allows a single obvious next step rather than
+                // two competing for the eye.
                 concludingAction(prominent: play.resultDismissed)
             } else {
                 Button("control.claimDraw") { claimPresented = true }

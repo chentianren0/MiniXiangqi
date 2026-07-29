@@ -200,6 +200,51 @@ struct GameSessionTests {
         #expect(try core.historyCount() == 1, "playing on files nothing further")
     }
 
+    @Test("A saved result stands on its own board as a record, with nothing to undo")
+    func savingLeavesTheGameOnTheRecordedBoard() throws {
+        let core = try TestCores.fresh()
+        let game = try Game(rules: core)
+        try game.replay(GameTests.mateLine)
+        #expect(game.canUndo, "the premise: an unconfirmed result is undoable")
+        let mated = game.evaluation.fen
+
+        // What the notice's 保存 performs: the terminal commit, and nothing
+        // about the board.
+        try game.file()
+
+        #expect(game.filedRecordID != nil, "the record exists")
+        #expect(try core.historyCount() == 1)
+        #expect(game.isFinished, "and the finished game is still the game on screen")
+        #expect(game.presentedState == .redWins, "with the result it reached")
+        #expect(game.evaluation.reason == .checkmate)
+        #expect(game.moves == GameTests.mateLine, "nothing about the line changed")
+        #expect(game.evaluation.fen == mated,
+                "and the position is the mated position still")
+        #expect(!game.canUndo,
+                "what changed is the affordance: a History record is not undoable")
+        #expect(game.failure == nil, "and the reads behind that answered")
+        #expect(game.filingFailure == nil)
+    }
+
+    @Test("A game already filed is not filed a second time")
+    func filingIsNotRepeated() throws {
+        let core = try TestCores.fresh()
+        let game = try Game(rules: core)
+        try game.replay(GameTests.mateLine)
+
+        try game.file()
+        let record = game.filedRecordID
+
+        // 开始新对局 on a game the notice has already saved files nothing: the
+        // archived session would refuse a second confirmation, and a refusal
+        // the app then has to explain is exactly what must not happen here.
+        try game.file()
+
+        #expect(game.filedRecordID == record, "the same record, not a second one")
+        #expect(try core.historyCount() == 1, "and one game is one record")
+        #expect(game.filingFailure == nil, "nothing was refused, because nothing was asked")
+    }
+
     @Test("A claimed draw needs no filing: the claim already was one")
     func aClaimedDrawIsAlreadyFiled() throws {
         let core = try TestCores.fresh()

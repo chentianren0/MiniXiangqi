@@ -269,14 +269,18 @@ final class Game {
         }
     }
 
-    /// Files the finished game in History, which is what 开始新对局 does
-    /// before anything resets: a claimed draw was filed by the claim itself,
-    /// and an unconfirmed natural result is committed as what it is. A refusal
-    /// leaves the game exactly as it stood, active and resumable.
+    /// Files the finished game in History: what the notice's 保存 does on its
+    /// own, and what 开始新对局 does before anything resets. An unconfirmed
+    /// natural result is committed as what it is; a game that is already a
+    /// record — filed by a claim, or by a 保存 the player has already pressed —
+    /// is not filed a second time, and asking the archived session to confirm
+    /// again would be asking for a refusal the app would then have to explain.
+    /// A refusal of the real thing leaves the game exactly as it stood, active
+    /// and resumable.
     func file() throws {
         assert(isFinished, "only a finished game is filed here")
         filingFailure = nil
-        guard !claimedDraw else { return }
+        guard filedRecordID == nil else { return }
         do {
             filedRecordID = try rules.confirmResult()
         } catch {
@@ -284,6 +288,18 @@ final class Game {
             filingFailure = failure
             throw failure
         }
+        // The archived session still answers every query, and what changes is
+        // the affordances: a filed game has nothing left to take back, so the
+        // controls stop offering it. The result itself is untouched — the state
+        // the core reports is still the position's own verdict. A read that
+        // fails out here is the ordinary refused-read state rather than a
+        // refused filing: the record exists either way.
+        do {
+            try refresh()
+        } catch {
+            failure = CoreError(wrapping: error)
+        }
+        refreshLegalMoves()
     }
 
     private func play(_ move: Move) {

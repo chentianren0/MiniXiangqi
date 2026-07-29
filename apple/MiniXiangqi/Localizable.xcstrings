@@ -671,6 +671,42 @@
         }
       }
     },
+    "control.save": {
+      "comment": "The result notice's default action: it files the finished game in History and leaves the board where the result left it.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        }
+      }
+    },
+    "control.saveAndNewGame": {
+      "comment": "The result notice's second action: it files the finished game and resets the board in one press.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and New Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存并开始新对局"
+          }
+        }
+      }
+    },
     "control.share": {
       "extractionState": "manual",
       "localizations": {

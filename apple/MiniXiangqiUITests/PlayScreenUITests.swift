@@ -38,6 +38,9 @@ final class PlayScreenUITests: XCTestCase {
         let short: String
 
         let undo, claimDraw, flipBoard, newGame: String
+        /// The unconfirmed notice's two actions: the default one, which files
+        /// the game and leaves the board on it, and the one that also resets.
+        let save, saveAndNewGame: String
         let redToMove, drawAvailableAndReason, redWinsLine, checkmate: String
         let redWinsNotice: String
         let claimTitle, claimMessage, keepPlaying, endAsDraw: String
@@ -54,6 +57,7 @@ final class PlayScreenUITests: XCTestCase {
         static let chinese = Language(
             code: "zh-Hans", short: "zh",
             undo: "悔棋", claimDraw: "判和", flipBoard: "翻转棋盘", newGame: "开始新对局",
+            save: "保存", saveAndNewGame: "保存并开始新对局",
             redToMove: "轮到红方", drawAvailableAndReason: "可判和 · 三次重复",
             redWinsLine: "红方胜", checkmate: "将死", redWinsNotice: "红方获胜",
             claimTitle: "局面已三次重复", claimMessage: "可以和棋结束。",
@@ -65,6 +69,7 @@ final class PlayScreenUITests: XCTestCase {
         static let english = Language(
             code: "en", short: "en",
             undo: "Undo", claimDraw: "Claim Draw", flipBoard: "Flip Board", newGame: "New Game",
+            save: "Save", saveAndNewGame: "Save and New Game",
             redToMove: "Red to Move", drawAvailableAndReason: "Draw Available · Threefold Repetition",
             redWinsLine: "Red Wins", checkmate: "Checkmate", redWinsNotice: "Red Wins",
             claimTitle: "This position has occurred three times.",
@@ -248,6 +253,13 @@ final class PlayScreenUITests: XCTestCase {
         app.windows.firstMatch.outlines.element(boundBy: 0).cells.element(boundBy: index)
     }
 
+    /// One History row, by position — the core's order, which the list never
+    /// re-sorts. What these tests want it for is counting: a store nobody else
+    /// wrote to holds exactly the games this test filed.
+    private func historyRow(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.windows.firstMatch.buttons["history-row-\(index)"]
+    }
+
     /// The game is the app's state rather than the play destination's.
     ///
     /// The container keeps one destination's content alive at a time, so
@@ -379,8 +391,9 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "22-the-notice-presented-again-after-relaunch")
 
         // Unconfirmed is unconfirmed across a relaunch: the mating move can
-        // still be taken back, and the game runs on.
-        app.buttons["result-undo"].click()
+        // still be taken back — in the cluster, which is where 悔棋 lives — and
+        // the game runs on.
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["result-title"].exists)
         wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"),
@@ -445,15 +458,21 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
         XCTAssertEqual(reading(app, "result-title"), "红方获胜")
         XCTAssertEqual(reading(app, "result-reason"), "将死")
-        XCTAssertEqual(app.buttons["result-undo"].label, "悔棋")
-        XCTAssertEqual(app.buttons["result-new-game"].label, "开始新对局")
+        XCTAssertEqual(app.buttons["result-save"].label, "保存")
+        XCTAssertEqual(app.buttons["result-new-game"].label, "保存并开始新对局")
+        XCTAssertFalse(app.buttons["result-undo"].exists,
+                       "悔棋 is the cluster's, and is not offered a second time here")
         XCTAssertTrue(reading(app, "turn-status").contains("红方胜"),
                       "the status line carries the result too")
         attach(app, named: "8-the-result-notice-over-the-mated-board")
 
         // Undo takes the mating move back, which resumes the game and takes the
-        // notice with it.
-        app.buttons["result-undo"].click()
+        // notice with it. It is reached in the cluster, which is where it lives
+        // now: the notice stands in front of the board, and the cluster is
+        // beside it rather than behind it.
+        XCTAssertTrue(app.buttons["cluster-undo"].isEnabled,
+                      "an unconfirmed result is still the player's to take back")
+        app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["result-title"].exists,
                        "a resumed game has no result to show")
@@ -464,6 +483,9 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "9-after-taking-the-mate-back")
     }
 
+    /// 保存并开始新对局: the notice's second action, which is the concluding
+    /// action it always was — the game is filed and the board resets in the one
+    /// press — now saying so in its label.
     func testTheResultNoticeStartsANewGame() {
         let app = launch(replaying: Self.mateLine)
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
@@ -476,6 +498,109 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["1."].exists, "the move list should be empty")
         XCTAssertFalse(app.staticTexts["result-title"].exists)
         attach(app, named: "10-a-new-game-from-the-notice")
+
+        // It filed the game on its way through, which is the half of it the
+        // board cannot show.
+        destination(app, 1).click()
+        XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10),
+                      "the game was filed before the board reset")
+        XCTAssertFalse(historyRow(app, 1).exists, "one game, one record")
+    }
+
+    /// The notice's default action, which is what the owner asked for after
+    /// playing on it: 保存 files the finished game and leaves the board
+    /// standing exactly where the result left it. The notice becomes the
+    /// recorded one in place — result, save, recorded — and nothing resets.
+    func testTheResultNoticeSavesWithoutStartingANewGame() {
+        let app = launch(replaying: Self.mateLine)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+        XCTAssertEqual(reading(app, "result-title"), "红方获胜")
+
+        app.buttons["result-save"].click()
+
+        // The recorded state, reached by the new path: the same notice the
+        // claimed draw has always shown, in front of the same board.
+        XCTAssertTrue(app.buttons["result-replay"].waitForExistence(timeout: 5),
+                      "the notice becomes the recorded one where it stands")
+        XCTAssertEqual(reading(app, "result-title"), "已记录到历史")
+        XCTAssertEqual(reading(app, "result-reason"), "将死",
+                       "the game's own reason is unchanged by being filed")
+        XCTAssertEqual(app.buttons["result-done"].label, "完成")
+        XCTAssertFalse(app.buttons["result-save"].exists,
+                       "a game already filed has nothing left to save")
+        XCTAssertFalse(app.buttons["result-new-game"].exists)
+
+        // Nothing reset: the mated board, its move list, and its status line
+        // are exactly what they were before the press.
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮",
+                       "the board is still the board the result was reached on")
+        XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军")
+        XCTAssertTrue(app.staticTexts["炮六平四"].exists, "the move list still reads the game")
+        XCTAssertTrue(reading(app, "turn-status").contains("红方胜"))
+        XCTAssertFalse(app.buttons["cluster-undo"].isEnabled,
+                       "a History record is not the player's to take back")
+        XCTAssertTrue(app.buttons["cluster-new-game"].exists,
+                      "the cluster keeps the concluding action while the game is finished")
+        attach(app, named: "47-the-notice-after-saving")
+
+        // The record exists the moment 保存 returns, and it reads as the game
+        // that was played.
+        destination(app, 1).click()
+        XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10),
+                      "保存 filed the game")
+        XCTAssertTrue(historyRow(app, 0).label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
+                      "the row reads the saved game — it reads \(historyRow(app, 0).label)")
+        XCTAssertFalse(historyRow(app, 1).exists, "one game was played, so one record exists")
+
+        // And the saved game is still the board to come back to.
+        destination(app, 0).click()
+        XCTAssertTrue(point(app, "d3").waitForExistence(timeout: 10))
+        XCTAssertEqual(point(app, "d3").label, "d3 红 炮")
+        XCTAssertEqual(reading(app, "result-title"), "已记录到历史",
+                       "the recorded notice is a fact about the game, so it survives the trip")
+
+        // 完成 is the way out of the recorded state: back to the Play start
+        // state, with nothing filed a second time on the way.
+        app.buttons["result-done"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["result-title"].exists, "the notice is gone")
+        XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
+                       "a game already filed is not filed again, so nothing refused it")
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮", "the starting position is back")
+        XCTAssertFalse(app.staticTexts["1."].exists, "with an empty move list")
+        XCTAssertTrue(app.buttons["cluster-claim"].exists,
+                      "and an ordinary game's cluster with it")
+
+        destination(app, 1).click()
+        XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10))
+        XCTAssertFalse(historyRow(app, 1).exists, "完成 filed nothing a second time")
+    }
+
+    /// The cluster's concluding action on a game the notice has already saved.
+    /// It is the same 开始新对局 as ever and it still resets the board; what it
+    /// must not do is offer the archived session a second filing, which the
+    /// core would refuse and the screen would then have to explain.
+    func testTheClusterStartsANewGameAfterTheResultWasSaved() {
+        let app = launch(replaying: Self.mateLine)
+        XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
+        app.buttons["result-save"].click()
+        XCTAssertTrue(app.buttons["result-replay"].waitForExistence(timeout: 5))
+
+        app.buttons["result-close"].click()
+        XCTAssertFalse(app.staticTexts["result-title"].exists,
+                       "the recorded notice puts away like any other")
+        attach(app, named: "48-the-saved-board-with-the-notice-closed")
+
+        app.buttons["cluster-new-game"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮", "the starting position is back")
+        XCTAssertFalse(app.staticTexts["1."].exists, "the move list is empty")
+        XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
+                       "nothing was filed twice, so nothing failed")
+
+        destination(app, 1).click()
+        XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10))
+        XCTAssertFalse(historyRow(app, 1).exists, "one game was played, so one record exists")
     }
 
     func testClosingTheResultNoticeLeavesTheFinishedBoard() {
@@ -670,8 +795,8 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5))
         XCTAssertEqual(reading(app, "result-title"), "已记录到历史")
         XCTAssertEqual(reading(app, "result-reason"), "三次重复")
-        XCTAssertFalse(app.buttons["result-undo"].exists,
-                       "a claimed draw is the player's own confirmed result")
+        XCTAssertFalse(app.buttons["result-save"].exists,
+                       "a claimed draw was filed by the claim: there is nothing left to save")
         XCTAssertTrue(reading(app, "turn-status").contains("和局"),
                       "the result itself is still on screen, on the status line")
         attach(app, named: "16-a-claimed-draw")
@@ -700,8 +825,8 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(app.buttons["result-done"].label, "完成")
         XCTAssertFalse(app.buttons["result-new-game"].exists,
                        "a game already filed is not filed again")
-        XCTAssertFalse(app.buttons["result-undo"].exists,
-                       "and a History record has nothing to take back")
+        XCTAssertFalse(app.buttons["result-save"].exists,
+                       "and a History record has nothing left to save")
         attach(app, named: "40-the-recorded-result-notice")
 
         // 回放 opens the record it just made, from its initial position — which
@@ -773,11 +898,24 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(finished.staticTexts["result-title"].waitForExistence(timeout: 10))
         XCTAssertEqual(reading(finished, "result-title"), language.redWinsNotice)
         XCTAssertEqual(reading(finished, "result-reason"), language.checkmate)
-        XCTAssertEqual(finished.buttons["result-undo"].label, language.undo)
-        XCTAssertEqual(finished.buttons["result-new-game"].label, language.newGame)
+        XCTAssertEqual(finished.buttons["result-save"].label, language.save)
+        XCTAssertEqual(finished.buttons["result-new-game"].label, language.saveAndNewGame)
+        // 悔棋 is the cluster's alone now, and the cluster's own concluding
+        // action keeps the shorter label: the notice is where the filing is
+        // named, because it is where the two save actions stand together.
+        XCTAssertEqual(finished.buttons["cluster-undo"].label, language.undo)
+        XCTAssertEqual(finished.buttons["cluster-new-game"].label, language.newGame)
         XCTAssertTrue(reading(finished, "turn-status").contains(language.redWinsLine),
                       "the shorter status-line form of the same result")
         attach(finished, named: "\(language.short)-result-notice")
+
+        // And the notice the default action leaves behind, in each language:
+        // the recorded state, over the board the result was reached on.
+        finished.buttons["result-save"].click()
+        XCTAssertTrue(finished.buttons["result-replay"].waitForExistence(timeout: 5))
+        XCTAssertEqual(reading(finished, "result-title"), language.recordedNotice)
+        XCTAssertEqual(finished.buttons["result-done"].label, language.done)
+        attach(finished, named: "\(language.short)-saved-result-notice")
 
         // The claim's alert, which is one accepted sentence said in the two
         // roles an alert has.
