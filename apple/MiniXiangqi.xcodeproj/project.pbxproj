@@ -34,7 +34,7 @@
 		CE259A87301668710051B648 /* MiniXiangqi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniXiangqi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259A96301668730051B648 /* MiniXiangqiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE259AA0301668730051B648 /* MiniXiangqiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiniXiangqiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = MiniXiangqiCore.xcframework; path = Generated/MiniXiangqiCore.xcframework; sourceTree = "<group>"; };
+		CE259B01301668730051B648 /* MiniXiangqiCore.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:Y2ZPV6SKBT:Kang Chen"; lastKnownFileType = wrapper.xcframework; name = MiniXiangqiCore.xcframework; path = Generated/MiniXiangqiCore.xcframework; sourceTree = "<group>"; };
 		CE259B05301668730051B648 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "usr/lib/libc++.tbd"; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -400,7 +400,10 @@
 		CE259AA9301668730051B648 /* Debug configuration for PBXNativeTarget "MiniXiangqi" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"ARCHS[sdk=iphoneos*]" = "arm64 arm64e";
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++23";
@@ -453,7 +456,10 @@
 		CE259AAA301668730051B648 /* Release configuration for PBXNativeTarget "MiniXiangqi" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"ARCHS[sdk=iphoneos*]" = "arm64 arm64e";
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++23";
