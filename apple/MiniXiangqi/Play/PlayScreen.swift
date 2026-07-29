@@ -273,9 +273,14 @@ struct PlayScreen: View {
             // said in the two roles an alert has: what has happened is the
             // title, and what can be done about it is the message. The halves
             // are separate keys and are never recombined into a single title.
+            //
+            // Confirming goes through PlayMotion, as everything that changes
+            // the game does: the claim is the one result that arrives with no
+            // piece moving, and the sound a result makes belongs beside the
+            // ones the landings make rather than in a button here.
             .alert("alert.claimDraw.title", isPresented: $claimPresented) {
                 Button("control.keepPlaying", role: .cancel) { }
-                Button("control.endAsDraw") { withAnimation(policy.fade(Motion.stateFadeAnimation)) { game.claimDraw() } }
+                Button("control.endAsDraw") { motion.claimDraw() }
             } message: {
                 Text("alert.claimDraw.message")
             }
