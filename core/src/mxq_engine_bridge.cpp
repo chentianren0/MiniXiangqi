@@ -151,7 +151,18 @@ size_t occurrences_of(const std::vector<std::string> &identities,
  * commit is a draw. So `PERPETUAL_CHECK` with a draw value IS mutual perpetual
  * check, `PERPETUAL_CHASE` with a draw value IS mutual perpetual chase, and
  * `N_FOLD` is the neutral claimable repetition. Nothing here re-derives what
- * that expression already decided. */
+ * that expression already decided.
+ *
+ * That exhaustiveness is a property of the pinned configuration and not of the
+ * engine, and exactly one thing keeps it: position.cpp applies materialCounting
+ * AFTER *rule has been set, overwriting a drawn result with a counted one. In a
+ * variant with material counting the engine would therefore report
+ * PERPETUAL_CHECK with a decisive value for a MUTUAL violation, and reading the
+ * value as "one side did it" would name the wrong loser. minixiangqiaxf has no
+ * material counting, so that path is closed here — but neither switch below
+ * guesses past what it was told, for the same reason: a wrong reason is
+ * recorded in the archive forever, while an absent one is caught by a
+ * fixture. */
 Adjudication adjudicate(Position &pos,
                         const std::vector<std::string> &identities) {
     Adjudication a{};
@@ -195,9 +206,22 @@ Adjudication adjudicate(Position &pos,
                 a.state = MXQ_GAME_DRAW;
                 a.reason = MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE;
                 break;
-            default:
+            case OPTIONAL_END_N_FOLD:
                 a.state = MXQ_GAME_CLAIMABLE_DRAW;
                 a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
+                break;
+            default:
+                /* Unreachable under the pinned configuration, and left unnamed
+                 * rather than folded into the neutral repetition: the other
+                 * drawn branches are the move-count rule, the counting rules
+                 * and the Sittuyin stalemate, none of which minixiangqiaxf
+                 * enables. A rule this build does not know is not evidence
+                 * that a repetition is claimable, and answering ONGOING is the
+                 * honest end of that: the game continues, and a fixture
+                 * catches the silence. The occurrence count goes with it —
+                 * MxqGameStatus.at_occurrence is 0 unless the outcome is
+                 * repetition-based, and this one is not an outcome at all. */
+                a.at_occurrence = 0;
                 break;
             }
             return a;

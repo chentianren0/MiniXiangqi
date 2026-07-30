@@ -233,14 +233,16 @@ MxqSearchResult make_result() {
     return result;
 }
 
-/* The first legal move in the session's current position. */
+/* The first legal move in the session's current position. 128 is the size
+ * docs/core-interface.md's capacity constants make provably sufficient for this
+ * variant; 64 is not. */
 bool first_legal_move(const MxqGame *game, std::string &out) {
-    MxqMove moves[64];
+    MxqMove moves[128];
     for (auto &m : moves) {
         m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
     }
     size_t count = 0;
-    if (mxq_game_legal_moves(game, moves, 64, &count, nullptr) != MXQ_OK ||
+    if (mxq_game_legal_moves(game, moves, 128, &count, nullptr) != MXQ_OK ||
         count == 0) {
         return false;
     }
@@ -1321,9 +1323,9 @@ void case_reconfiguration_refused_mid_search() {
 
         /* The rules bridge is untouched by the whole episode: the session
          * keeps answering. */
-        MxqMove moves[64];
+        MxqMove moves[128];
         size_t count = 0;
-        c.check_status(mxq_game_legal_moves(game, moves, 64, &count, &err),
+        c.check_status(mxq_game_legal_moves(game, moves, 128, &count, &err),
                        MXQ_OK, "legal moves after teardown");
         c.check(count > 0, "the position still has its legal moves");
         mxq_game_release(game);

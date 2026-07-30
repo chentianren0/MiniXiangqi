@@ -44,15 +44,11 @@ While it is off, third_party/fairy-stockfish is not added at all and every \
 fixture reports NOT IMPLEMENTED rather than passing."
        OFF)
 
-# Whether the facade's own entry points — mxq_core_init, mxq_rules_evaluate,
-# mxq_rules_legal_moves — exist in src/. They do not yet: the commit that
-# vendored the engine deliberately stopped at the engine. The fixture runner
-# calls them only when this is ON, because a runner that referenced them today
-# would fail to link rather than report NOT IMPLEMENTED.
-#
-# The commit that implements them sets this ON permanently and deletes this
-# comment; it is not a user-facing option, and turning it on by hand only
-# produces link errors.
+# Whether the facade's own entry points exist in src/. They do, and this has
+# been ON since the commit that implemented them; it survives only as the seam
+# the test runners' MXQ_TEST_RULES_FACADE is computed from, so that "the engine
+# is not in this build" and "the facade is not written" stay separable in the
+# generator expressions below. It is not a user-facing option.
 set(MXQ_RULES_FACADE_IMPLEMENTED ON)
 
 # --------------------------------------------------------------------------
