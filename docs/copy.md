@@ -26,8 +26,8 @@ Contract sections are cited by document and section name rather than by line num
 | `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
 | `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
 | `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
-| `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes |
-| `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
+| `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Starting and configuring a game, § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes; `Play/SetupScreen.swift` |
+| `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same; `Play/SetupScreen.swift` |
 
 ### Controls
 
@@ -36,8 +36,8 @@ Contract sections are cited by document and section name rather than by line num
 | `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the play-control cluster's, and only there |
 | `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
 | `control.flipBoard` | 翻转棋盘 | Flip Board | button; accessibility label | [interaction-design.md](interaction-design.md) § Play controls, § Board orientation; `Play/PlayScreen.swift` |
-| `control.resign` | 认输 | Resign | button | [interaction-design.md](interaction-design.md) § Play controls |
-| `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `control.resign` | 认输 | Resign | button; alert button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the cluster's, and the confirmation's destructive action |
+| `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
 | `control.newGame` | 开始新对局 | New Game | button | `Play/PlayScreen.swift` — the play-control cluster's concluding action |
 | `control.save` | 保存 | Save | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` — the notice's default action |
 | `control.saveAndNewGame` | 保存并开始新对局 | Save and New Game | button | same — the notice's second action, which files and resets in one press |
@@ -45,7 +45,8 @@ Contract sections are cited by document and section name rather than by line num
 | `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |
-| `control.tryAgain` | 重试 | Try Again | alert button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode |
+| `control.tryAgain` | 重试 | Try Again | alert button; inline button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode, § Turn status — the stalled AI activity slot's retry is the same word and the same key |
+| `control.later` | 稍后 | Later | alert button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play — the mid-game re-preparation failure's cancel action. Not 取消: nothing is being cancelled, the game is saved, and it goes on |
 | `control.saveAndContinue` | 保存并继续 | Save and Continue | alert button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Games and history |
 | `control.keepPlaying` | 继续对局 | Keep Playing | alert button | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
 | `control.endAsDraw` | 以和棋结束 | End as a Draw | alert button | same |
@@ -66,8 +67,10 @@ Contract sections are cited by document and section name rather than by line num
 | `status.check` | 将军 | Check | status token | [interaction-design.md](interaction-design.md) § Turn status, § Game-state markers; `Play/TurnStatus.swift` |
 | `status.sideToMove.checked` | `%1$@　%2$@` | `%1$@ %2$@` | status-line format | `Play/TurnStatus.swift` — the separator is an ideographic space in Chinese and an ordinary space in English |
 | `status.drawAvailable` | 可判和 | Draw Available | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Claimable threefold repetition; `Play/TurnStatus.swift` |
-| `status.controller.you` | 你 | You | secondary label | [interaction-design.md](interaction-design.md) § Turn status |
+| `status.controller.you` | 你 | You | secondary label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` |
 | `status.controller.ai` | AI | AI | secondary label | same — identical in both languages |
+| `status.aiThinking` | AI 正在思考 | AI is thinking | accessibility label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` — the activity indicator's label, never drawn on screen |
+| `status.aiUnavailable` | AI 暂时无法启动 | The AI can't start right now | status line | same — the AI activity slot's stalled state, after the mid-game notice was answered with 稍后 |
 | `status.redWins` | 红方胜 | Red Wins | status line | `Play/TurnStatus.swift` |
 | `status.blackWins` | 黑方胜 | Black Wins | status line | same |
 | `status.draw` | 和局 | Draw | status line | same |
@@ -105,7 +108,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `alert.resign.title` | 认输？ | Resign? | alert title | [interaction-design.md](interaction-design.md) § Play controls |
+| `alert.resign.title` | 认输？ | Resign? | alert title | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
 | `alert.resign.message` | 认输后本局将记为你落败。 | Resigning records this game as your loss. | alert message | same |
 | `alert.claimDraw.title` | 局面已三次重复 | This position has occurred three times. | alert title | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
 | `alert.claimDraw.message` | 可以和棋结束。 | You can end the game as a draw. | alert message | same |
@@ -115,7 +118,10 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.saveFailed.title` | 无法保存对局 | Couldn't Save the Game | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode, § Move input |
 | `alert.saveFailed.message` | 当前对局仍然保留。请重试。 | The current game is unchanged. Please try again. | alert message | same |
 | `alert.aiUnavailable.title` | 无法启动 AI 对手 | Couldn't Start the AI Opponent | alert title | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play; [engine-integration.md](engine-integration.md) |
-| `alert.aiUnavailable.message` | 当前可用内存不足。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. Please close some other apps, then try again. | alert message | same |
+| `alert.aiUnavailable.message` | 当前可用内存不足。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. Please close some other apps, then try again. | alert message | same — the pre-start form; `Play/SetupScreen.swift` |
+| `alert.aiUnavailable.resumeMessage` | 当前可用内存不足。对局已保存，可以稍后继续。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. The game is saved and you can continue later. Please close some other apps, then try again. | alert message | same — the mid-game form, under the same title; `Play/PlayScreen.swift` |
+| `alert.gameNotStarted.title` | 无法开始对局 | Couldn't Start the Game | alert title | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
+| `alert.gameNotStarted.message` | 保存这盘新对局时出错。请重试。 | Saving the new game failed. Please try again. | alert message | same |
 | `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
 | `alert.deleteFailed.title` *(proposed)* | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
@@ -137,6 +143,10 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 
 `alert.deleteGame.message` says *recovered* rather than *undone* on purpose: the application has a visible Undo control that means something else, and the target MVP has no deletion Undo.
 
+`alert.aiUnavailable.title` carries **two** messages, because the situation is one situation and the guarantee is not. Memory is not available right now, whether the game has started or not, so a second title would name a distinction the reader cannot act on. What the mid-game form adds is the one thing the pre-start case has no need of — the game is saved — and its actions are 稍后 and 重试 rather than 取消 and 重试, because there is nothing to cancel.
+
+`alert.gameNotStarted.*` is the creation failure that is **not** about memory: the game could not be persisted. It cannot borrow `alert.saveFailed.*`, whose message promises that 当前对局仍然保留 — there is no current game to keep, and a message that says there is would be worse than no message.
+
 ### Failure screens
 
 | Key | 中文 | English | Surface | Source |
@@ -151,23 +161,24 @@ Both screens carry a technical description beneath the title. That description i
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `setup.thisGame` | 本局设置 | This Game | control-group header | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `setup.thisGame` | 本局设置 | This Game | control-group header | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
+| `setup.firstMover` | 先后手 | First Mover | accessibility label | same — the segmented control's own name. 本局设置 names the group and the three options name themselves, so it is not drawn; a screen reader still has to be able to call the control something, and 默认先后手 is the Settings default's name rather than this game's |
 | `setup.iMoveFirst` | 我先手 | I Move First | option | same; [product.md](product.md) § Target-MVP play modes |
 | `setup.aiMovesFirst` | AI 先手 | AI Moves First | option | same |
 | `setup.random` | 随机 | Random | option | same |
-| `setup.aiLevel` | AI 等级 | AI Level | row label | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `setup.aiLevel` | AI 等级 | AI Level | row label | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
 | `setup.level.fast` | 快速 | Fast | option | same; [product.md](product.md) § Target-MVP play modes; [engine-integration.md](engine-integration.md) |
 | `setup.level.standard` | 标准 | Standard | option | same |
 | `setup.level.deep` | 深思 | Deep | option | same |
-| `setup.freePlayExplanation` | 你将控制红黑双方，红方先行。 | You control both Red and Black. Red moves first. | explanatory line | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `setup.freePlayExplanation` | 你将控制红黑双方，红方先行。 | You control both Red and Black. Red moves first. | explanatory line | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
 
 ### Settings
 
-The Settings destination as it stands: three groups, and every string on it below.
+The Settings destination as it stands: four groups, and every string on it below.
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `settings.section.board` | 棋盘 | Board | group header | [issue #64](https://github.com/ppppvz/MiniXiangqi/issues/64) § The Settings screen; `Settings/SettingsScreen.swift` — the one group with a header |
+| `settings.section.board` | 棋盘 | Board | group header | [issue #64](https://github.com/ppppvz/MiniXiangqi/issues/64) § The Settings screen; `Settings/SettingsScreen.swift` — one of the two groups with a header |
 | `settings.symbols.label` | 棋子符号 | Piece Symbols | row label | same; the choice itself is fixed in [interaction-design.md](interaction-design.md) § Piece symbols |
 | `settings.symbols.hanzi` | 汉字 | Chinese Characters | option | same — the accepted default |
 | `settings.symbols.icons` | 图标 | Icons | option | same |
@@ -178,14 +189,15 @@ The Settings destination as it stands: three groups, and every string on it belo
 | `settings.haptics.label` | 触感 | Haptics | toggle label | same |
 | `settings.confirmDelete.label` | 删除前确认 | Confirm Before Deleting | toggle label | same; [interaction-design.md](interaction-design.md) § History library; [product.md](product.md) § Product navigation |
 | `settings.confirmDelete.footer` | 关闭后，删除立即执行。删除无法撤销。 | When off, deletion happens immediately. A deletion cannot be undone. | group footer | same |
+| `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group header | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Settings/SettingsScreen.swift` |
+| `settings.defaults.firstMover` | 默认先后手 | Default First Mover | row label | same |
+| `settings.defaults.aiLevel` | 默认 AI 等级 | Default AI Level | row label | same |
+| `settings.defaults.footer` | 这些设置用于开始新的人机对弈，不会改变进行中的对局。 | These settings apply when you start a new Human versus AI game. They don't change a game in progress. | group footer | same — the accepted footer, which says what the two values do and what they deliberately do not |
 
-And the rows for surfaces that are not built yet, or no longer built at all:
+And the rows for surfaces no longer built at all:
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group label | [interaction-design.md](interaction-design.md) § Starting and configuring a game — the human-versus-AI defaults are not on the screen yet |
-| `settings.defaults.firstMover` | 默认先后手 | Default First Mover | row label | same |
-| `settings.defaults.aiLevel` | 默认 AI 等级 | Default AI Level | row label | same |
 | `settings.confirmBeforeDeleting` | 删除前确认 | Confirm Before Deleting | toggle label | retired in favour of `settings.confirmDelete.label`, which names the same switch beside its footer; no surface reads it |
 | `settings.pieces.group` | 棋子 | Pieces | group label | retired: the group became 棋盘 (`settings.section.board`), which is what the two choices in it are about |
 | `settings.pieces.style` | 样式 | Style | row label | retired with the piece-style control, deferred in [product.md](product.md) § Product navigation |
@@ -199,7 +211,7 @@ And the rows for surfaces that are not built yet, or no longer built at all:
 
 **中文** names the notation by the language it is written in, not by 传统, which names a piece style: a screen that offered 传统 in two groups for two unrelated things would teach the wrong word. **WXF** is a name and is never translated, like **AI** in `status.controller.ai`; it carries a key all the same, because it is a control label and both languages have to answer for it.
 
-`settings.confirmDelete.footer` is the only footer on the screen. It says what turning the switch off costs and that the cost is permanent — the permanence is [product.md](product.md)'s own rule, not a warning invented here — and it says nothing else, because a footer under every group is a screen nobody reads.
+There are two footers on the screen, and only two. `settings.confirmDelete.footer` says what turning the switch off costs and that the cost is permanent — the permanence is [product.md](product.md)'s own rule, not a warning invented here. `settings.defaults.footer` says what the two values above it are *for*, which is the one thing a reader cannot work out from the labels: they initialize the next game's setup and never reach the game already on the board. Every other group goes without, because a footer under every group is a screen nobody reads.
 
 Nothing here offers an interface language, and no key exists for one: the operating system owns the language, per the Settings scope in [product.md](product.md).
 
