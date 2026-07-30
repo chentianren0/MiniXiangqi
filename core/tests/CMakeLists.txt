@@ -222,11 +222,26 @@ target_link_libraries(mxq_search_tests PRIVATE mxq::core mxq_warnings)
 if(MXQ_ENABLE_RULES_FACADE)
   target_link_libraries(mxq_search_tests PRIVATE mxq::fairy-stockfish)
 endif()
+# The staging problem is a sentence written for a person, and it becomes a C
+# string literal on a compiler command line, which two of its characters cannot
+# survive. A semicolon is a CMake list separator wherever it appears — inside an
+# element of the COMPILE_DEFINITIONS property as much as in an argument — so a
+# value containing one is split in two and the compiler driver is handed an
+# unterminated quote. A backslash is a C escape, so a native Windows path in the
+# message would silently become whatever `\n` or `\t` it happened to spell. Both
+# are sanitised here rather than legislated about upstream: the message is prose,
+# it loses nothing by using a comma and a forward slash, and a future sentence
+# then cannot reintroduce either bug. Neither showed until CI first configured
+# without a network — until then the string is empty — and the semicolon showed
+# as a shell syntax error half a screen from its cause.
+string(REPLACE ";" "," MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM}")
+string(REPLACE "\\" "/" MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM_TEXT}")
+
 target_compile_definitions(mxq_search_tests PRIVATE
   MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
   MXQ_TEST_ASSETS_DIR="${MXQ_TEST_ASSETS_DIR}"
   MXQ_TEST_NNUE_STAGED=${MXQ_TEST_NNUE_STAGED}
-  MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM}"
+  MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM_TEXT}"
 )
 
 add_test(NAME engine_search COMMAND mxq_search_tests)

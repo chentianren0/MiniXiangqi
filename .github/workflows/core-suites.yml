@@ -21,11 +21,11 @@
 # only one that observes those codes and a debug run is the only one that
 # exercises the assertions.
 #
-# What this does NOT prove is the pinned Windows toolchain. windows-2025 carries
-# Visual Studio 2022; pinned-inputs.json pins Visual Studio 2026, because that
-# is what the machine the core suites were first run on has. Two MSVC major
-# versions compiling the same core is worth having, and it is not the same claim
-# as reproducing the pin.
+# What this does NOT prove is the pinned toolchain. The runners carry whatever
+# their images carry — on 2026-07-30 that was the same MSVC toolset the pin
+# names from a different Visual Studio edition, and an Apple clang two major
+# versions behind the developer machines. Both are worth having and neither
+# reproduces the pin. Reproducing the pin is a developer-machine claim.
 
 name: Core suites
 
