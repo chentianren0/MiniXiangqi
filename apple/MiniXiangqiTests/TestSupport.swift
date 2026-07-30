@@ -85,9 +85,12 @@ enum TestCores {
     }
 
     /// The end of one test's cores. It frees the slot only if what stands in it
-    /// is still what that test opened: a test whose core a later `open` already
-    /// retired has nothing left to do, and must not reach for a slot that by
-    /// then belongs to whatever test is running now.
+    /// is still what that test opened, so it is the backstop and never the
+    /// authority: a test that retired its own core — as the archive tests do,
+    /// because their answers arrive across a suspension they will not hold a
+    /// core through — finds nothing left to do here, and a test whose core a
+    /// later `open` already retired must not reach for a slot that by then
+    /// belongs to whatever test is running now.
     static func retire(_ opened: OpenedCores) {
         guard let core = opened.core, current?.core === core else { return }
         retire()
