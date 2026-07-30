@@ -113,10 +113,17 @@ final class PlayScreenUITests: XCTestCase {
         // application speaks. The normative one is the default.
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
-        // The 记谱法 preference, written the way a preference is: this is the
-        // real UserDefaults key the Settings picker sets, injected through the
-        // argument domain rather than through a seam of the test's own.
-        if let notation { app.launchArguments += ["-notation.style", notation] }
+        // Every preference stated, in the argument domain, which outranks every
+        // persistent one and writes nothing: the 记谱法 and 棋子符号 states these
+        // tests want are the real UserDefaults keys the Settings pickers set, and
+        // the five they do not name are stated at their accepted defaults for the
+        // same reason — a launch that named none would inherit the machine's.
+        // The scratch domain is where an accidental write would land.
+        app.launchArguments += ["-mxq-defaults-suite", LaunchPreferences.scratchSuite]
+        var preferences: [String: String] = [:]
+        if let notation { preferences["notation.style"] = notation }
+        if let symbols { preferences["pieces.symbols"] = symbols }
+        app.launchArguments += LaunchPreferences.arguments(overriding: preferences)
         if refusingSaves { app.launchArguments.append("-mxq-refuse-saves") }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
@@ -127,12 +134,6 @@ final class PlayScreenUITests: XCTestCase {
         if let window { app.launchArguments += ["-mxq-window", window] }
         if hidingNumerals { app.launchArguments.append("-mxq-hide-numerals") }
         if liftingWindowMinimum { app.launchArguments.append("-mxq-no-minimum") }
-        // Not one of ours either: `-key value` on the command line is
-        // NSUserDefaults' own argument domain, which outranks everything and
-        // persists nothing. So the 棋子符号 preference is set the way the
-        // application really reads it, without the run leaving a preference
-        // behind on the machine it ran on.
-        if let symbols { app.launchArguments += ["-pieces.symbols", symbols] }
         // AppKit's own switch, not one of ours: it makes the launch behave as
         // a first launch, with no saved frame to restore, which is the only
         // condition under which the scene's default size is what opens.

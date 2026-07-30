@@ -34,6 +34,11 @@ final class PlayHomeUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
+        // Every preference stated, and a scratch domain to write into. The
+        // metadata line and the move list read the notation preference, so a
+        // launch that named none would read the machine's.
+        app.launchArguments += ["-mxq-defaults-suite", LaunchPreferences.scratchSuite]
+        app.launchArguments += LaunchPreferences.arguments()
         // The debug stand-in that refuses every commit, which is the only way
         // to reach the accepted refusal on a real screen: a working store
         // commits. It refuses the archive along with every other mutation, so a

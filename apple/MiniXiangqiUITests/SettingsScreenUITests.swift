@@ -124,6 +124,7 @@ final class SettingsScreenUITests: XCTestCase {
                         window: String = "900x600",
                         appearance: Appearance = .light,
                         preferences: [String: String] = [:],
+                        writing written: Set<String> = [],
                         defaults: Defaults = .untouched) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
@@ -132,11 +133,15 @@ final class SettingsScreenUITests: XCTestCase {
         app.launchArguments += ["-mxq-appearance", appearance.rawValue]
         app.launchArguments += ["-mxq-defaults-suite", defaults.rawValue]
         if let history { app.launchArguments += ["-mxq-history", history] }
-        // Read-only preference states, named in the argument domain rather than
-        // written anywhere.
-        for (key, value) in preferences.sorted(by: { $0.key < $1.key }) {
-            app.launchArguments += ["-\(key)", value]
-        }
+        // Every preference stated in the argument domain: read-only states this
+        // launch wants, and the accepted default for every key it does not name.
+        // The scratch suite alone is not enough to say what a preference is,
+        // because a suite is searched *behind* the application's own domain —
+        // which is the operator's, and which one afternoon in Settings is enough
+        // to change. The exception is a key this launch is about to write: the
+        // click has to be readable afterwards, and a named key would outrank it.
+        app.launchArguments += LaunchPreferences.arguments(overriding: preferences,
+                                                           leavingToTheDomain: written)
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         // The Play destination settling is what says the seeding has finished.
@@ -341,7 +346,8 @@ final class SettingsScreenUITests: XCTestCase {
     /// reads.
     func testTurningTheConfirmationOffInSettingsMakesADeletionImmediate() {
         let language = Language.chinese
-        let app = launch(history: Self.threeGames, in: language, defaults: .written)
+        let app = launch(history: Self.threeGames, in: language,
+                         writing: ["deleteConfirmation.enabled"], defaults: .written)
         openSettings(app, in: language)
 
         // The written suite is the same file every run, so it opens holding
@@ -431,22 +437,24 @@ final class SettingsScreenUITests: XCTestCase {
     /// when the screen is opened again.
     func testAChoiceIsKeptWhereItsConsumerWillReadIt() {
         let language = Language.chinese
-        let app = launch(in: language, defaults: .written)
+        let app = launch(in: language,
+                         writing: ["notation.style", "pieces.symbols"], defaults: .written)
         openSettings(app, in: language)
 
-        // Nothing is asserted about what the pickers show on arrival: the written
-        // suite is the same file every run and holds whatever the last run chose.
-        // Both directions are taken here instead, which says more than a starting
-        // state would and leaves the file on the accepted defaults either way.
+        // Nothing is assumed about what the pickers show on arrival: what this
+        // launch does not name is whatever a persistent domain holds, and the
+        // written suite is the same file every run. So each choice is taken to
+        // the accepted default first — a click either way, from wherever it
+        // began — and the transition after it is the one under test.
         let notation = control(app, "settings-notation")
-        notation.click()
-        app.menuItems[language.wxf].click()
+        choose(language.traditional, from: notation, in: app)
+        choose(language.wxf, from: notation, in: app)
         XCTAssertEqual(notation.value as? String, language.wxf,
                        "WXF is what was chosen")
 
         let symbols = control(app, "settings-symbols")
-        symbols.click()
-        app.menuItems[language.icons].click()
+        choose(language.hanzi, from: symbols, in: app)
+        choose(language.icons, from: symbols, in: app)
         XCTAssertEqual(symbols.value as? String, language.icons)
         attach(app, named: "44-the-board-choices-taken")
 
@@ -456,6 +464,26 @@ final class SettingsScreenUITests: XCTestCase {
         openSettings(app, in: language)
         XCTAssertEqual(control(app, "settings-notation").value as? String, language.wxf)
         XCTAssertEqual(control(app, "settings-symbols").value as? String, language.icons)
+
+        // Left on the accepted defaults, so the suite's one file is not a
+        // growing pile of a previous run's decisions. The put-back above makes
+        // this a courtesy rather than a dependency.
+        choose(language.traditional, from: control(app, "settings-notation"), in: app)
+        choose(language.hanzi, from: control(app, "settings-symbols"), in: app)
+    }
+
+    /// Takes one named choice from a picker, and says so where a failure can be
+    /// read. A picker on this platform opens a menu and the choice is a menu
+    /// item in it, which is two interactions rather than one.
+    private func choose(_ name: String, from picker: XCUIElement,
+                        in app: XCUIApplication) {
+        picker.click()
+        let item = app.menuItems[name]
+        XCTAssertTrue(item.waitForExistence(timeout: 5),
+                      "the picker should offer \(name)")
+        item.click()
+        XCTAssertEqual(picker.value as? String, name,
+                       "the picker should now read \(name)")
     }
 
     // MARK: - The two languages
