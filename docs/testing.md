@@ -162,7 +162,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Verify a held piece still reads as raised under Reduce Motion, and that no piece style suppresses the lift.
 - Verify the capture ring stays distinguishable from any ring belonging to the selected piece style.
 - Verify the illegal-square haptic uses the lightest selection-weight feedback, is distinguishable from the save-failure warning, and that Undo transitions complete within their accepted durations.
-- Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
+- *(Waits with the preference itself — deferred to the post-Windows appearance pass, owner 2026-07-28/29, since a preference with one option is not a preference.)* Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
 - Verify every Settings preference persists in the platform's own preference system and survives relaunch, that none is written to the shared store, and that changing one never alters an active game or any History record.
 - Verify a game created from the pre-start draft freezes the first-mover choice and AI level supplied at creation, and that changing either Settings default afterwards leaves the created and archived game untouched.
 - Verify the app follows the operating system's language selection, including through an Apple per-app language change, and that it offers no interface-language control of its own.
