@@ -37,6 +37,16 @@ struct BoardView: View {
     var style: BoardStyle = .traditional
     var onTap: (Square) -> Void = { _ in }
 
+    /// The 棋子符号 preference, read here because this is the one place every
+    /// board comes from — play, replay, and any snapshot alike — so the switch
+    /// reaches all of them without either screen having to know about it.
+    ///
+    /// Held as the stored string rather than as `PieceSymbols` so that an
+    /// unrecognised value is the default rather than a crash, and observed
+    /// rather than merely read so that flipping the preference in Settings
+    /// repaints the board that is already on screen.
+    @AppStorage(PieceSymbols.key) private var storedSymbols: String?
+
     /// The arrival wires, each fired on the frame its animation reaches its
     /// target — see ArrivalReporter for why the transaction completion alone
     /// cannot be trusted with a gate. Two belong to a committing transition;
@@ -66,6 +76,7 @@ struct BoardView: View {
         BoardCanvas(geometry: geometry,
                     placement: placement,
                     style: style,
+                    symbols: PieceSymbols.named(storedSymbols),
                     policy: policy,
                     destinations: destinations,
                     captures: captures,

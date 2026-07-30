@@ -99,6 +99,10 @@ struct BoardCanvas: View, Animatable {
     var geometry: BoardGeometry
     var placement: Placement
     var style: BoardStyle
+    /// Which symbol set the discs carry. Characters unless told otherwise: the
+    /// accepted default, and the reason a caller that says nothing about
+    /// symbols draws exactly the board it drew before icons existed.
+    var symbols: PieceSymbols = .hanzi
     var policy: MotionPolicy
 
     var destinations: Set<Square> = []
@@ -391,11 +395,33 @@ struct BoardCanvas: View, Animatable {
         context.stroke(circle(at: centre, radius: geometry.discEdgeRadius(stroke: edge) * scale),
                        with: .color(style.discEdge(piece.side)), lineWidth: edge)
 
-        var symbol = context.resolve(
-            Text(piece.kind.character(for: piece.side))
-                .font(.system(size: geometry.symbolSize * scale, weight: .medium))
-                .foregroundStyle(style.symbol(piece.side)))
-        symbol.shading = .color(style.symbol(piece.side))
-        context.draw(symbol, at: centre)
+        drawSymbol(of: piece, at: centre, scale: scale, in: &context)
+    }
+
+    /// What the disc carries: the piece's character, or its icon.
+    ///
+    /// One place, so the two sets are drawn at the same size, on the same
+    /// centre, in the same role ink — and so every disc the board draws gets
+    /// them, the resting one, the held one, and the one in transit alike. An
+    /// icon is never rotated, exactly as a character is never rotated, so both
+    /// stand upright throughout a flip.
+    private func drawSymbol(of piece: Piece, at centre: CGPoint, scale: CGFloat,
+                            in context: inout GraphicsContext) {
+        let size = geometry.symbolSize * scale
+        let ink = style.symbol(piece.side)
+        switch symbols {
+        case .hanzi:
+            var symbol = context.resolve(
+                Text(piece.kind.character(for: piece.side))
+                    .font(.system(size: size, weight: .medium))
+                    .foregroundStyle(ink))
+            symbol.shading = .color(ink)
+            context.draw(symbol, at: centre)
+        case .icons:
+            let box = CGRect(x: centre.x - size / 2, y: centre.y - size / 2,
+                             width: size, height: size)
+            context.fill(PieceIcon.path(for: piece.kind, in: box),
+                         with: .color(ink), style: FillStyle(eoFill: true))
+        }
     }
 }
