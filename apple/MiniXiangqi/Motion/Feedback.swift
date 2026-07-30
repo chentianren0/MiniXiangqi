@@ -144,17 +144,16 @@ struct Feedback {
     /// no later than the second.
     ///
     /// `NSHapticFeedbackManager` is AppKit, so the felt half described above is
-    /// the macOS one — and the reason 触感 is offered there: the performer honours
-    /// each machine's own trackpad and does nothing where there is no trackpad to
-    /// tap, so the switch is never silently ineffective in a way the app would
-    /// have to guess at. On iOS the felt half is deliberately silent for now:
-    /// UIKit's feedback
-    /// generators are a different shape — prepared ahead of the event rather
-    /// than performed at a named time — and choosing their patterns is a
-    /// design decision about a device that vibrates in the hand, not a
-    /// translation of this one. Stage 6, which brings the iOS pass, owns it.
-    /// Nothing is lost meanwhile: no feedback here is the only channel for
-    /// anything, and the heard half is identical on both platforms.
+    /// the macOS one — and the reason 触感 is offered there: the performer
+    /// honours each machine's own trackpad and does nothing where there is no
+    /// trackpad to tap, so the switch is never silently ineffective in a way the
+    /// app would have to guess at. On iOS the felt half is deliberately silent
+    /// for now: UIKit's feedback generators are a different shape — prepared
+    /// ahead of the event rather than performed at a named time — and choosing
+    /// their patterns is a design decision about a device that vibrates in the
+    /// hand, not a translation of this one. Stage 6, which brings the iOS pass,
+    /// owns it. Nothing is lost meanwhile: no feedback here is the only channel
+    /// for anything, and the heard half is identical on both platforms.
     static let live: Feedback = {
         let sounds = BoardSounds()
         return gating { event in
