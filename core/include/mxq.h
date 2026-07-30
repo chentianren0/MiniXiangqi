@@ -94,7 +94,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 1
-#define MXQ_API_VERSION_MINOR 3
+#define MXQ_API_VERSION_MINOR 4
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -291,6 +291,17 @@ enum {
     MXQ_ERR_ENGINE_NO_MOVE               = 6006,
     MXQ_ERR_ENGINE_ILLEGAL_RESULT        = 6007,
     MXQ_ERR_ENGINE_FAULTED               = 6008,
+    MXQ_ERR_ENGINE_NOT_PREPARED          = 6009, /* the engine was torn down or
+                                                  * faulted between a search's
+                                                  * acceptance and its run, so
+                                                  * the search ran against no
+                                                  * prepared engine. The typed
+                                                  * failure a delivered
+                                                  * MXQ_SEARCH_FAILED carries is
+                                                  * engine-domain by contract;
+                                                  * the synchronous refusal at
+                                                  * mxq_search_start remains
+                                                  * MXQ_ERR_STATE_ENGINE_NOT_READY */
 
     /* Resource domain: 7000. */
     MXQ_ERR_RESOURCE_ALLOCATION_FAILED = 7001,

@@ -48,6 +48,11 @@ std::vector<MxqGame *> &registry() {
 
 void register_session(MxqGame *game) {
     std::lock_guard<std::mutex> lock(registry_mutex());
+    /* Process-unique and never reused, unlike the object's address, which the
+     * allocator may hand to a later session; 1-based so that an unregistered
+     * session's zero can never name anything. */
+    static uint64_t next_instance = 1;
+    game->instance_id = next_instance++;
     registry().push_back(game);
 }
 
@@ -639,22 +644,20 @@ void invalidate_all(const MxqCore *core) {
     }
 }
 
-bool current_revision_of(const MxqCore *core, const MxqGame *origin,
+bool current_revision_of(const MxqCore *core, uint64_t instance,
                          const char *game_id, uint64_t &out_revision) {
     std::lock_guard<std::mutex> lock(registry_mutex());
-    /* The origin pointer first, for determinism when two registered sessions
-     * carry one identity — and only ever confirmed by value: a released
-     * session's address can be reused, and the game_id equality is what makes
-     * a lucky reuse answer correctly anyway. */
+    /* Exactly the session the search was started on, or nothing. A lookup
+     * that fell back to any session carrying the game_id was the defect
+     * behind a committed wrong move: a release-and-resume registers a second
+     * session under the same id whose per-session revision restarts, so the
+     * fallback compared a search against a counter it was never started
+     * under, and equal values meant different positions. instance_id is never
+     * reused, so absence here is the fact the stale rung wants: the origin
+     * session is gone, and the result cannot be shown fresh against it. */
     for (const MxqGame *game : registry()) {
-        if (game == origin && game->core == core && game->game_id == game_id) {
-            out_revision =
-                game->position_revision.load(std::memory_order_acquire);
-            return true;
-        }
-    }
-    for (const MxqGame *game : registry()) {
-        if (game->core == core && game->game_id == game_id) {
+        if (game->instance_id == instance && game->core == core &&
+            game->game_id == game_id) {
             out_revision =
                 game->position_revision.load(std::memory_order_acquire);
             return true;

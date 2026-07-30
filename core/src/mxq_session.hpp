@@ -71,6 +71,14 @@ struct MxqGame {
     MxqGameConfig config{};
     int64_t       started_at_ms = 0;
 
+    /* This session object's own identity: process-unique, assigned at
+     * registration, never reused. Not the game's identity — that is game_id,
+     * which a released-then-resumed game carries into a second session whose
+     * revision counter restarts. Delivery-time staleness resolves the session
+     * through this, so a search can only ever be compared against the counter
+     * it was started under. */
+    uint64_t instance_id = 0;
+
     /* The instant of the committed change the stored document records, which
      * is what its origin.exported_at spells. Carried so that re-encoding a
      * session reproduces the bytes the store holds. */
@@ -80,14 +88,16 @@ struct MxqGame {
     std::vector<std::string> moves;
 
     /* Bumped by every accepted mutation; the staleness authority a search
-     * result is compared against. Per session, so a resumed session starts
-     * again at zero — a search cannot outlive the session it was started
-     * from. Atomic because the engine thread reads it at delivery, through
-     * current_revision_of, while the owner thread may be mid-mutation: the
-     * mutation that wins that race bumps the value the delivery compares, and
-     * either order is correct — a bump the delivery misses is caught by the
-     * frontend's second comparison, which the contract requires for exactly
-     * this reason. */
+     * result is compared against. Per session, restarting at zero — which is
+     * exactly why delivery resolves the session by instance_id above: two
+     * sessions of one game_id across a release-and-resume carry independent
+     * counters whose values can collide, so the counter is meaningful only
+     * beside the instance it belongs to. Atomic because the engine thread
+     * reads it at delivery, through current_revision_of, while the owner
+     * thread may be mid-mutation: the mutation that wins that race bumps the
+     * value the delivery compares, and either order is correct — a bump the
+     * delivery misses is caught by the frontend's second comparison, which
+     * the contract requires for exactly this reason. */
     std::atomic<uint64_t> position_revision{0};
 
     /* The committed ending, written by the four archiving paths and recovered
@@ -192,25 +202,28 @@ void invalidate_all(const MxqCore *core);
 
 /*
  * The delivery-time half of the staleness comparison: the current
- * position_revision of the live registered session carrying game_id, or false
- * when no such session exists.
+ * position_revision of the registered session whose instance_id is instance,
+ * or false when no such session exists.
  *
- * The comparison the contract prescribes is against values — (game_id,
- * position_revision) — never against a pointer, so the search facade asks by
- * identity and this answers from the registry. origin, the session the search
- * was started on, is preferred when it is still registered under that
- * game_id, which keeps the answer deterministic in the one corner where two
- * registered sessions could carry the same identity (an import preview opened
- * beside the live game it duplicates). A released, archived or absent session
- * resolves as the contract's invariants require: released or absent finds no
- * session and the result is rejected as stale, because a result that cannot
- * be shown fresh against a live session must not be delivered as a move; an
- * archived session is still found, and rejects by value anyway, because
- * ending a game bumped its revision. Only game_id — frozen at creation — and
- * the atomic revision are read here, because every other session field
- * belongs to the owner thread.
+ * The session is found by its instance identity and by nothing else. A
+ * game_id is not unique among sessions across time — releasing a session and
+ * resuming the same stored game registers a second session under the same
+ * game_id, whose per-session revision restarts at zero — so a lookup that
+ * answered with *any* session carrying the id could compare a search against
+ * a counter it was never started under, and equal numbers would then mean
+ * different positions: the defeat of both documented staleness checks at
+ * once, since the frontend's second comparison reads the same live counter.
+ * The instance identity is process-unique and never reused, so the only
+ * session this can answer from is the one the search was started on: released
+ * or absent finds nothing and the result is rejected as stale, because a
+ * result that cannot be shown fresh against the session it came from must not
+ * be delivered as a move; an archived session is still found, and rejects by
+ * value anyway, because ending a game bumped its revision. game_id rides
+ * along as a cross-check on the registry's own consistency. Only frozen
+ * fields and the atomic revision are read here, because every other session
+ * field belongs to the owner thread.
  */
-bool current_revision_of(const MxqCore *core, const MxqGame *origin,
+bool current_revision_of(const MxqCore *core, uint64_t instance,
                          const char *game_id, uint64_t &out_revision);
 
 /* The version 1 document this session's committed state encodes to. */

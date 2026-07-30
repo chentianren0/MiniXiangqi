@@ -244,6 +244,17 @@ set(MXQ_VARIANT_INI "${CMAKE_CURRENT_SOURCE_DIR}/assets/minixiangqi-variants.ini
 if(NOT EXISTS "${MXQ_VARIANT_INI}")
   message(FATAL_ERROR "bundled variant configuration not found at ${MXQ_VARIANT_INI}")
 endif()
+# The manifest pins the configuration's bytes as it pins the network's, and
+# the same rule applies: nothing consumed on trust. An edit to the file and
+# its pinned hash must travel together or configuration stops here.
+mxq_pinned_get(MXQ_VARIANT_INI_SHA256 variant sha256)
+file(SHA256 "${MXQ_VARIANT_INI}" mxq_variant_ini_sha256)
+if(NOT mxq_variant_ini_sha256 STREQUAL MXQ_VARIANT_INI_SHA256)
+  message(FATAL_ERROR
+          "the bundled variant configuration at ${MXQ_VARIANT_INI} does not "
+          "match the SHA-256 pinned-inputs.json pins; edit the file and its "
+          "pin in the same change")
+endif()
 
 # --------------------------------------------------------------------------
 # The staged engine test assets

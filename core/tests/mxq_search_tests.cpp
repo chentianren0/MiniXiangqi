@@ -1027,6 +1027,227 @@ void case_undo_while_thinking_is_stale() {
     c.report();
 }
 
+void case_released_origin_is_stale_even_when_identity_recurs() {
+    Case c("a search from a released session is stale even when a resumed "
+           "session reuses its game_id at a colliding revision");
+    const fs::path store = scratch_dir("stale-recur");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+                   "prepare");
+
+    /* The wrong-move shape this regression pins: search at revision 2 of one
+     * session, then release it without cancelling and resume the same stored
+     * game — a second session whose counter restarts — and walk it to
+     * revision 2 of a different position. Both documented staleness
+     * comparisons then read equal values, so only the origin session's own
+     * identity can reject the result; delivering it as a move commits the
+     * old position's move onto the new position. */
+    const uint32_t movetime = 1200;
+    const MxqGameConfig config = hvai_config(movetime);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        for (int ply = 0; ply < 2; ++ply) {
+            std::string move;
+            c.check(first_legal_move(game, move), "a legal move to apply");
+            c.check_status(mxq_game_apply_move(game, move.c_str(), nullptr,
+                                               nullptr, &err),
+                           MXQ_OK, "the move applies");
+        }
+
+        Delivered delivered;
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t ticket = 0;
+        c.check_status(mxq_search_start(core, game, &request, record_callback,
+                                        &delivered, &ticket, &err),
+                       MXQ_OK, "search start at revision 2");
+        mxq_game_release(game);
+
+        MxqGame *resumed = nullptr;
+        uint8_t exists = 0;
+        c.check_status(mxq_game_resume_active(core, &resumed, &exists, &err),
+                       MXQ_OK, "resume the same stored game");
+        c.check_eq(exists, 1, "the active game is there to resume");
+        if (resumed != nullptr) {
+            for (int ply = 0; ply < 2; ++ply) {
+                std::string move;
+                c.check(first_legal_move(resumed, move),
+                        "a legal move on the resumed session");
+                c.check_status(mxq_game_apply_move(resumed, move.c_str(),
+                                                   nullptr, nullptr, &err),
+                               MXQ_OK, "the resumed session's move applies");
+            }
+            MxqPosition now;
+            std::memset(&now, 0, sizeof(now));
+            now.struct_size = static_cast<uint32_t>(sizeof(now));
+            c.check_status(mxq_game_position(resumed, &now, &err), MXQ_OK,
+                           "the resumed position");
+            c.check_eq(now.position_revision, 2,
+                       "the resumed counter really collides with the "
+                       "searched one — the case bites only if the values "
+                       "agree");
+
+            MxqSearchResult result = make_result();
+            uint8_t ready = 0;
+            c.check_status(mxq_search_wait(core, ticket, 20000, &result,
+                                           &ready, &err),
+                           MXQ_OK, "wait");
+            c.check_eq(ready, 1, "the result was delivered");
+            c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_STALE,
+                       "the released origin makes the result stale, colliding "
+                       "counter or not");
+            c.check_eq(static_cast<int64_t>(delivered.result.outcome),
+                       MXQ_SEARCH_STALE, "the callback saw the staleness");
+
+            MxqMove history[16];
+            size_t count = 0;
+            c.check_status(mxq_game_move_history(resumed, history, 16, &count,
+                                                 &err),
+                           MXQ_OK, "the resumed history");
+            c.check_eq(count, 4,
+                       "nothing from the dead search reached the live game");
+            mxq_game_release(resumed);
+        }
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_released_origin_without_replacement_is_stale() {
+    Case c("a search whose origin session was released rejects as stale");
+    const fs::path store = scratch_dir("stale-released");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+                   "prepare");
+    const uint32_t movetime = 600;
+    const MxqGameConfig config = hvai_config(movetime);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        std::string move;
+        c.check(first_legal_move(game, move), "a legal move");
+        c.check_status(mxq_game_apply_move(game, move.c_str(), nullptr,
+                                           nullptr, &err),
+                       MXQ_OK, "the move applies");
+        Delivered delivered;
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t ticket = 0;
+        c.check_status(mxq_search_start(core, game, &request, record_callback,
+                                        &delivered, &ticket, &err),
+                       MXQ_OK, "search start");
+        /* Released without a cancel, and nothing resumes it: the origin is
+         * simply gone at delivery. */
+        mxq_game_release(game);
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the result was delivered");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_STALE,
+                   "an absent origin is the stale fact");
+        c.check_eq(static_cast<int64_t>(delivered.result.outcome),
+                   MXQ_SEARCH_STALE, "the callback saw the staleness");
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_no_move_on_a_terminal_position_is_failed() {
+    Case c("a search on a position with no legal moves delivers the typed "
+           "no-move failure and faults nothing");
+    const fs::path store = scratch_dir("no-move");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+                   "prepare");
+    const uint32_t movetime = 200;
+    const MxqGameConfig config = hvai_config(movetime);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        /* The three-ply checkmate the session suite plays: the side to move
+         * has no legal reply, so the engine has no move to return. The
+         * facade refuses nothing here — search_expected is the frontend's
+         * affordance, not a gate — and the delivery must say what the engine
+         * found, in the engine's own domain. */
+        for (const char *move : {"b1b3", "a6a5", "b3d3"}) {
+            c.check_status(mxq_game_apply_move(game, move, nullptr, nullptr,
+                                               &err),
+                           MXQ_OK, "the mating line applies");
+        }
+        MxqGameStatus over;
+        std::memset(&over, 0, sizeof(over));
+        over.struct_size = static_cast<uint32_t>(sizeof(over));
+        c.check_status(mxq_game_status(game, &over, &err), MXQ_OK,
+                       "the terminal status");
+        c.check_eq(static_cast<int64_t>(over.state), MXQ_GAME_RED_WINS,
+                   "the line really mates");
+
+        Delivered delivered;
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t ticket = 0;
+        c.check_status(mxq_search_start(core, game, &request, record_callback,
+                                        &delivered, &ticket, &err),
+                       MXQ_OK, "search start on the mated position");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the result was delivered");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_FAILED,
+                   "no move is the typed failure outcome");
+        c.check_eq(static_cast<int64_t>(result.status), MXQ_ERR_ENGINE_NO_MOVE,
+                   "and its status is the engine-domain no-move code");
+        c.check_eq(static_cast<int64_t>(delivered.result.status),
+                   MXQ_ERR_ENGINE_NO_MOVE, "the callback saw the same code");
+
+        /* NoMove is the engine answering an empty position, not a fault: the
+         * next game's search must find the engine still prepared. */
+        MxqEngineState state = MXQ_ENGINE_STATE_UNINITIALIZED;
+        char profile[128];
+        size_t profile_len = 0;
+        c.check_status(mxq_engine_query(core, &state, profile,
+                                        sizeof(profile), &profile_len, &err),
+                       MXQ_OK, "query after the no-move delivery");
+        c.check_eq(static_cast<int64_t>(state), MXQ_ENGINE_STATE_READY,
+                   "the engine is still ready");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_reconfiguration_refused_mid_search() {
     Case c("prepare and teardown refuse while a search is outstanding, and "
            "search after teardown refuses as not ready");
@@ -1286,6 +1507,9 @@ int main() {
     case_free_play_owes_no_search();
     case_cancel_before_completion();
     case_undo_while_thinking_is_stale();
+    case_released_origin_is_stale_even_when_identity_recurs();
+    case_released_origin_without_replacement_is_stale();
+    case_no_move_on_a_terminal_position_is_failed();
     case_reconfiguration_refused_mid_search();
     case_core_cancel_all_quiesces();
     case_shutdown_mid_search();

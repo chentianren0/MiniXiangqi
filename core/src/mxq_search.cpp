@@ -13,25 +13,35 @@
  * behind the bridge, not callers of anything here.
  *
  * mxq_search_start never retains the session: it snapshots the initial FEN,
- * the complete move list, the game_id, the position_revision and the frozen
- * movetime under the session's single-owner guard, and returns a ticket. The
- * engine thread later drives the engine over the snapshot and applies the
- * rejection ladder at delivery, in the contract's order:
+ * the complete move list, the game_id, the session's instance_id, the
+ * position_revision and the frozen movetime under the session's single-owner
+ * guard, and returns a ticket. The engine thread later drives the engine over
+ * the snapshot and applies the rejection ladder at delivery, in the
+ * contract's order:
  *
  *   1. cancelled — asked first, and also honoured at pickup, so a cancelled
  *      job never burns its movetime. A cancellation that follows no mutation
  *      (the platform-suspension path) leaves the revision matching, so this
  *      rung is the only one that rejects that late result.
- *   2. stale — (game_id, position_revision) against the live registered
- *      session, by value, through mxq::session::current_revision_of. A
- *      released or absent session rejects here too: a result that cannot be
- *      shown fresh against a live session is not delivered as a move. This is
- *      one of two comparisons by design; the frontend compares again before
- *      applying, because neither alone covers both race directions.
+ *   2. stale — position_revision against the origin session resolved by its
+ *      instance_id, by value, through mxq::session::current_revision_of. The
+ *      instance identity is what makes the revision comparable at all: a
+ *      game_id is shared by every session of one stored game across a
+ *      release-and-resume while each session's counter restarts at zero, so
+ *      only the counter of the very session the search was started on can
+ *      say whether the position moved. A released or absent origin rejects
+ *      here: a result that cannot be shown fresh against the session it came
+ *      from is not delivered as a move. This is one of two comparisons by
+ *      design; the frontend compares again before applying, because neither
+ *      alone covers both race directions.
  *   3. the engine's own typed failure — no move, a snapshot that stopped
  *      replaying, an engine no longer prepared — as MXQ_SEARCH_FAILED with
- *      the typed status. Slotted after stale because a failure against a
- *      position nobody is at any more is the stale fact, not the failure.
+ *      the typed engine-domain status. Slotted after stale because a failure
+ *      against a position nobody is at any more is the stale fact, not the
+ *      failure. A *fault* is recorded in the engine state ahead of the
+ *      ladder, whatever rung then classifies the result: an engine that can
+ *      no longer be trusted is a fact about the engine, not about this
+ *      result's delivery.
  *   4. malformed — the engine returned text that is not a move of this
  *      notation at all.
  *   5. illegal — the well-formed move is replayed against the snapshot
@@ -80,16 +90,18 @@ struct Task {
     enum class Kind { Search, Prepare, Teardown };
     Kind kind = Kind::Search;
 
-    /* Search: the snapshot, and nothing of the session but values. origin is
-     * compared by identity only inside the registry lock and never
-     * dereferenced here. */
+    /* Search: the snapshot, and nothing of the session but values.
+     * origin_instance names the session the search was started on — the
+     * registry's process-unique, never-reused identity, so a later session
+     * of the same game (or an allocator's reuse of the same address) can
+     * never stand in for it at delivery. */
     uint64_t                 ticket = 0;
     std::string              start_fen;
     std::vector<std::string> moves;
     std::string              game_id;
+    uint64_t                 origin_instance = 0;
     uint64_t                 position_revision = 0;
     uint32_t                 movetime_ms = 0;
-    const MxqGame           *origin = nullptr;
     MxqCore                 *core = nullptr;
     MxqSearchCallback        callback = nullptr;
     void                    *user_data = nullptr;
@@ -258,6 +270,17 @@ void run_search(Task &task) {
         engine_ran = true;
     }
 
+    /* A fault is recorded before the ladder runs, because it is a fact about
+     * the engine rather than about this result's delivery: a cancelled or
+     * stale classification below must not leave a faulted engine trusted for
+     * the next search. NoMove is the engine answering a position with no
+     * moves, not a fault. */
+    if (engine_ran && ran != engine::SearchError::None &&
+        ran != engine::SearchError::NoMove) {
+        g_engine_state.store(MXQ_ENGINE_STATE_FAULTED,
+                             std::memory_order_release);
+    }
+
     /* The rejection ladder, in the contract's order. */
     for (;;) {
         /* 1. Cancelled. The suspension path: no mutation, matching revision,
@@ -267,19 +290,24 @@ void run_search(Task &task) {
             break;
         }
 
-        /* 2. Stale, by value against the live registered session. */
+        /* 2. Stale, by value against the origin session, resolved by its
+         * never-reused instance identity — the only counter this search's
+         * revision is comparable with. */
         uint64_t current = 0;
-        if (!session::current_revision_of(task.core, task.origin,
+        if (!session::current_revision_of(task.core, task.origin_instance,
                                           task.game_id.c_str(), current) ||
             current != task.position_revision) {
             result.outcome = MXQ_SEARCH_STALE;
             break;
         }
 
-        /* 3. The engine's own typed failure. */
+        /* 3. The engine's own typed failure, engine-domain by contract. */
         if (!ready) {
+            /* Torn down or faulted between this search's acceptance and its
+             * run; the synchronous MXQ_ERR_STATE_ENGINE_NOT_READY belongs to
+             * mxq_search_start, not to a delivered result. */
             result.outcome = MXQ_SEARCH_FAILED;
-            result.status = MXQ_ERR_STATE_ENGINE_NOT_READY;
+            result.status = MXQ_ERR_ENGINE_NOT_PREPARED;
             break;
         }
         if (!engine_ran || ran != engine::SearchError::None) {
@@ -290,10 +318,9 @@ void run_search(Task &task) {
                 /* The snapshot stopped replaying under the engine: it was
                  * legal when the session accepted it, so the engine side can
                  * no longer be trusted until it is torn down and prepared
-                 * again. */
+                 * again. The state transition already happened above, ahead
+                 * of the ladder. */
                 result.status = MXQ_ERR_ENGINE_FAULTED;
-                g_engine_state.store(MXQ_ENGINE_STATE_FAULTED,
-                                     std::memory_order_release);
             }
             break;
         }
@@ -668,7 +695,7 @@ MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
     task->position_revision =
         game->position_revision.load(std::memory_order_acquire);
     task->movetime_ms = request->movetime_ms;
-    task->origin = game;
+    task->origin_instance = game->instance_id;
     task->core = core;
     task->callback = callback;
     task->user_data = user_data;
