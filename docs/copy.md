@@ -22,7 +22,7 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `nav.play` | 对局 | Play | navigation destination; screen title | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there; `Play/PlayHome.swift` |
+| `nav.play` | 对局 | Play | navigation destination; screen title; the Play back control's accessibility label | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there; `Play/PlayDestination.swift` — a back control names the page it returns to, which here is always the Play home |
 | `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
 | `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
 | `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode — English only there; `Play/PlayHome.swift` |

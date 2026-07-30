@@ -34,9 +34,10 @@ struct PlayHome: View {
             waysToPlay
         }
         // The native presentation of a grouped list of choices on this platform,
-        // and the one that gives a section its header.
+        // and the one that gives a section its header. The title is the
+        // destination's rather than this page's, because all three pages carry
+        // the same one.
         .formStyle(.grouped)
-        .navigationTitle("nav.play")
         // The accepted confirmation. A system alert, blocking until it is
         // answered, because the act does not happen until the player answers —
         // and the same one for every combination, which is why nothing in it

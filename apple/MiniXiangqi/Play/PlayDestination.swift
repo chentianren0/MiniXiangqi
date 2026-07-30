@@ -6,22 +6,28 @@
 // the home without ending anything — which is how a player reaches the mode
 // entries mid-game.
 //
-// **A navigation stack is what says that, and it is the platform's own way of
-// saying it.** The back control, the title, the keyboard and pointer gestures
-// that go with going back, and the animation between the pages are all the
-// system's; the app decides only what the pages are. It is the same container
-// History and Settings already use, so the destinations are built alike.
+// **The page on screen is `PlayState.page`, drawn directly, with a back control
+// in the toolbar over the two pages that have one.** A navigation stack driving
+// its own path was tried first and is not usable here, for a reason measured on
+// the running app rather than guessed at: a `navigationDestination` registration
+// does not survive the destination being torn down and rebuilt, which is exactly
+// what switching to another tab and back does. After that round trip a stack
+// asked for a page arrives at SwiftUI's own no-matching-destination placeholder
+// — a warning triangle on an empty page — and, worse, it then *clears its own
+// path*, which reaches the app looking exactly like the player having gone back:
+// a game walked away from and returned to came back at the home rather than at
+// its board. Rebuilding the stack per visit fixed the first symptom and not the
+// second. Drawing the page is what this destination actually needs: one window,
+// one game, three pages, and no history to keep.
 //
-// The stack's path is `PlayState.page` and nothing else, because where the
-// player is and what the app is doing are one fact: a created game *is* the
-// board, and a filed one *is* the way back to the home. A pop is the only change
-// the stack makes for itself, and it is handed back to the state to interpret —
-// leaving a pre-start page discards its draft, and leaving the board leaves the
-// game running.
+// What that costs is the system's own back button and the gestures around it,
+// and what it buys is a destination that is where the state says it is. The
+// control below is the same chevron in the same place, and it says where it goes
+// the way the platform's own does — by naming the page it returns to.
 //
 // The play content's floor is the destination's rather than the board's, and it
 // is the same number on every page, so that walking between them cannot resize
-// the window. It is stated twice for a measured reason, recorded below.
+// the window.
 
 import SwiftUI
 
@@ -39,17 +45,6 @@ struct PlayDestination: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// How many times this destination has been on screen.
-    ///
-    /// The stack is rebuilt on each visit, and it has to be: a
-    /// `navigationDestination` registration does not survive the destination
-    /// being torn down and put back. Measured on the running app — walk to
-    /// another tab, come back, and choose a mode, and the page that arrives is
-    /// SwiftUI's own no-matching-destination placeholder rather than the
-    /// pre-start page. Rebuilding costs nothing here, because a stack is created
-    /// with the page it is already on rather than walking to it.
-    @State private var visits = 0
-
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
 
     var body: some View {
@@ -61,19 +56,11 @@ struct PlayDestination: View {
                                        systemImage: "exclamationmark.triangle",
                                        description: Text(verbatim: startFailure.description).monospaced())
             } else if play.started {
-                // The page is read *here*, in the body, and handed down. A read
-                // inside the path binding's own getter is not a read the view
-                // observes — the closure runs outside the tracked evaluation —
-                // so the stack would sit on whatever page it was last built
-                // with and move only when something else happened to redraw it.
-                stack(at: play.page).id(visits)
+                pages
             } else {
-                // The frames before the launch resume has answered. The
-                // navigation is deliberately not built yet: a stack built at the
-                // home and then handed the board would *push* to it, and a launch
-                // with a game to resume opens at the board rather than travelling
-                // there. Nothing is drawn rather than something that would then
-                // have to be taken away.
+                // The frames before the launch resume has answered. Nothing is
+                // drawn rather than a home the launch is about to leave: a
+                // launch with a game to resume opens at the board.
                 Color.clear
             }
         }
@@ -81,9 +68,6 @@ struct PlayDestination: View {
         .playContentFloor()
         .task {
             play.startIfNeeded(policy: policy)
-        }
-        .onAppear {
-            visits += 1
         }
         // Leaving the destination altogether discards a pre-start draft and
         // invalidates an attempt in flight. The container tears this down on
@@ -98,44 +82,41 @@ struct PlayDestination: View {
         }
     }
 
-    private func stack(at page: PlayState.Page) -> some View {
-        NavigationStack(path: path(at: page)) {
-            PlayHome(play: play)
-                .navigationDestination(for: PlayState.Page.self) { page in
-                    pushed(page)
-                        // The floor again, because a pushed page does not
-                        // inherit the one outside the stack: measured on the
-                        // running app, a window that clamps to the minimum on
-                        // the home shrinks past it the moment the board is
-                        // pushed. Both floors are the same number, so the
-                        // window's minimum is the same on every page and
-                        // walking between them cannot resize the window.
-                        .playContentFloor()
+    private var pages: some View {
+        NavigationStack {
+            page
+                .playContentFloor()
+                .navigationTitle("nav.play")
+                .toolbar {
+                    if play.page != .home {
+                        ToolbarItem(placement: .navigation) {
+                            // Named for where it goes, which is how the
+                            // platform's own back control names itself: it
+                            // carries the previous page's title. Here that is
+                            // always the Play home.
+                            Button {
+                                play.leaveTopPage()
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                            }
+                            .accessibilityLabel(Text("nav.play"))
+                            .accessibilityIdentifier("play-back")
+                        }
+                    }
                 }
         }
     }
 
     @ViewBuilder
-    private func pushed(_ page: PlayState.Page) -> some View {
-        switch page {
+    private var page: some View {
+        switch play.page {
         case .home:
-            // Unreachable: the home is the root and never a destination over
-            // itself.
-            EmptyView()
+            PlayHome(play: play)
         case .setup(let mode):
             SetupScreen(play: play, mode: mode)
         case .board:
             PlayScreen(play: play, replay: replay)
         }
-    }
-
-    /// The path is the page, and the page is the path. It is built from the page
-    /// the body already read rather than reading it again here, for the reason
-    /// stated above. The only change the stack makes on its own is a pop, and
-    /// what a pop means is the state's to say.
-    private func path(at page: PlayState.Page) -> Binding<[PlayState.Page]> {
-        Binding(get: { page == .home ? [] : [page] },
-                set: { if $0.isEmpty { play.leaveTopPage() } })
     }
 }
 

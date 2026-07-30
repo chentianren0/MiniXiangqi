@@ -39,16 +39,13 @@ final class PlayHomeUITests: XCTestCase {
         return app
     }
 
-    /// The navigation container's own back control, which is the whole of how
-    /// the board is left for the home. Its identifier is the system's rather
-    /// than the application's, so the keyboard equivalent stands behind it.
+    /// The back control in the toolbar, which is the whole of how a page over
+    /// the home is left.
     private func goBack(_ app: XCUIApplication) {
-        let control = app.buttons["chevron.backward"]
-        if control.waitForExistence(timeout: 5) {
-            control.click()
-        } else {
-            app.typeKey("[", modifierFlags: .command)
-        }
+        let control = app.buttons["play-back"]
+        XCTAssertTrue(control.waitForExistence(timeout: 5),
+                      "a page over the home carries a way back to it")
+        control.click()
     }
 
     private func point(_ app: XCUIApplication, _ name: String) -> XCUIElement {

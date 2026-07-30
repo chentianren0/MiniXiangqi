@@ -24,7 +24,7 @@ The primary destinations are:
 
 The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
-**Play has pages of its own.** Its root is the [Play home](#the-play-home), where what to play is chosen; each mode's pre-start state and the board are pages over it, reached by choosing and left by the platform's own back affordance. Leaving the board for the home ends nothing — the game stays active and the home's own card is the way back into it — and it is how a player reaches the mode entries while a game is going. A launch with a game to resume opens **at the board**, not at the home: the accepted resume-at-launch behaviour is that the app opens where the player left it, and a home the player has to walk through is not that.
+**Play has pages of its own.** Its root is the [Play home](#the-play-home), where what to play is chosen; each mode's pre-start state and the board are pages over it, reached by choosing and left by a back control in the toolbar, which names the page it returns to as the platform's own does. Leaving the board for the home ends nothing — the game stays active and the home's own card is the way back into it — and it is how a player reaches the mode entries while a game is going. A launch with a game to resume opens **at the board**, not at the home: the accepted resume-at-launch behaviour is that the app opens where the player left it, and a home the player has to walk through is not that.
 
 ## Platform visual language
 
