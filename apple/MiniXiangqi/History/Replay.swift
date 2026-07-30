@@ -26,9 +26,11 @@ final class Replay {
 
     /// The recorded line in canonical notation, and the same line as the player
     /// reads it — recomputed exactly as a resumed active game's is, through the
-    /// one reading in `MoveNotation`.
+    /// one reading in `MoveReading`, in both notations, so that the 记谱法
+    /// preference selects a replayed game's words exactly as it selects a live
+    /// game's.
     let moves: [String]
-    let notation: [String]
+    let notation: [MoveReading]
 
     /// How many plies are shown: 0 is the initial position, `moves.count` the
     /// final one.
@@ -89,7 +91,7 @@ final class Replay {
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
         self.moves = try session.moves()
-        self.notation = try MoveNotation.line(for: moves) {
+        self.notation = try MoveReading.line(for: moves) {
             Placement(fen: try session.position(atPly: $0).fen)
         }
         let start = try session.position(atPly: 0)

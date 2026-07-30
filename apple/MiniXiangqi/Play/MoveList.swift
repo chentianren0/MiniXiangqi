@@ -1,4 +1,10 @@
-// The moves so far, in traditional notation, paired by full move.
+// The moves so far, in whichever notation the 记谱法 preference selects, paired
+// by full move.
+//
+// Each row's words are chosen here rather than upstream, so a preference changed
+// while a game is on screen re-renders that game's whole list at once — and the
+// list's structure, its numbering, its pairing and its layout, is the same
+// either way. Only the words in the two columns change.
 //
 // Where the side-by-side layout applies — ordinary Mac windows, iPad landscape
 // — the move list is permanently visible in the panel. It is presentation:
@@ -12,7 +18,7 @@
 import SwiftUI
 
 struct MoveList: View {
-    var notation: [String]
+    var notation: [MoveReading]
 
     /// The move the board is showing, as an index into `notation`. `nil` during
     /// play, and at replay's initial position, where no move has produced what
@@ -24,11 +30,15 @@ struct MoveList: View {
 
     @Environment(\.motionPolicy) private var policy
 
+    /// The 记谱法 preference, read where the words are chosen so that changing it
+    /// re-renders the list live.
+    @AppStorage(NotationStyle.key) private var style: NotationStyle = .traditional
+
     private var rows: [(number: Int, red: String, black: String?)] {
         stride(from: 0, to: notation.count, by: 2).map { index in
             (number: index / 2 + 1,
-             red: notation[index],
-             black: index + 1 < notation.count ? notation[index + 1] : nil)
+             red: notation[index].text(in: style),
+             black: index + 1 < notation.count ? notation[index + 1].text(in: style) : nil)
         }
     }
 
@@ -75,9 +85,10 @@ struct MoveList: View {
         }
     }
 
-    /// One half-move. The moves themselves are traditional notation: game
-    /// presentation rather than interface copy, the same characters in every
-    /// language.
+    /// One half-move, already rendered in the selected notation. The moves
+    /// themselves are game presentation rather than interface copy — the same
+    /// characters, or the same letters and digits, in every language — so a row
+    /// is read out as exactly what it shows, whichever notation that is.
     @ViewBuilder
     private func move(_ text: String, at index: Int) -> some View {
         let shown = index == currentMove
