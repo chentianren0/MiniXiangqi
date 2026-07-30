@@ -201,9 +201,13 @@ final class PlayState {
         engine.prepareEngine(engine.memoryBudget()) { [weak self] result in
             guard let self else { return }
             guard token == attempt else {
-                // The player left while this was in flight. The attempt is
-                // invalid, so anything prepared is released and no game exists.
-                engine.teardownEngine(then: nil)
+                // The player left while this was in flight, or pressed 重试 and
+                // a newer attempt owns the engine now. Either way this attempt
+                // creates nothing. Anything *it* prepared is released — but
+                // only when nothing newer is relying on it, because the engine
+                // is one engine and a stale completion must not pull it out
+                // from under the attempt that replaced it.
+                if !creating { engine.teardownEngine(then: nil) }
                 return
             }
             if case .failure(let error) = result {
@@ -220,13 +224,18 @@ final class PlayState {
         }
     }
 
-    /// A preparation refusal, as the page presents it. Insufficient memory and
-    /// a failed Hash allocation are the same situation to the person in front of
-    /// the screen — memory is not available right now — and the accepted notice
-    /// says so once.
+    /// A preparation refusal, as the page presents it.
+    ///
+    /// By **code**, not by domain. Insufficient memory and a failed Hash
+    /// allocation are one situation to the person in front of the screen —
+    /// memory is not available right now — and the accepted notice says so
+    /// once. Every other engine-domain failure reaches this from the same
+    /// `mxq_engine_prepare` call: a missing or mismatched network, a variant
+    /// that would not load, a faulted engine. Telling someone to close other
+    /// apps about a damaged installation is worse than telling them nothing,
+    /// so those take the cause-free creation-failure notice instead.
     private static func creationFailure(for failure: CoreError) -> CreationFailure {
-        mxq_status_domain(failure.status) == MXQ_DOMAIN_ENGINE
-            ? .aiUnavailable : .notSaved(failure)
+        failure.isInsufficientMemory ? .aiUnavailable : .notSaved(failure)
     }
 
     private func create(_ configuration: GameConfiguration, policy: MotionPolicy,

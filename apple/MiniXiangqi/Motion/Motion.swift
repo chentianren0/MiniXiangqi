@@ -94,9 +94,10 @@ enum Motion {
 
     /// Undo reverses the move visually with the same distance mapping, so one
     /// ply completes within the accepted 250 ms (the ceiling is 240 ms), and a
-    /// future decision cycle of two plies within the accepted 600 ms. The
-    /// restored piece fades back in from the mover's departure, the capture
-    /// read backwards.
+    /// decision cycle of two plies well within the accepted 600 ms — both discs
+    /// travel at once, over the longer of the two journeys, so a cycle costs one
+    /// travel rather than two. The restored pieces fade back in from the movers'
+    /// departure, the capture read backwards.
     static let restoreFade: TimeInterval = 0.11
     static var restoreFadeAnimation: Animation { .easeOut(duration: restoreFade) }
 

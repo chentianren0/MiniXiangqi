@@ -73,12 +73,18 @@ nonisolated struct EngineBudget: Sendable, Equatable {
     /// purgeable pages, which are what the kernel can hand to a process that
     /// asks for gigabytes.
     private static func availableMemory() -> UInt64 {
+        // `mach_host_self` hands out a send right per call, and the probe sits
+        // on a retry loop the user drives: every one of them is deallocated
+        // rather than left to accumulate a port per press.
+        let host = mach_host_self()
+        defer { mach_port_deallocate(mach_task_self_, host) }
+
         var statistics = vm_statistics64_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size
                                            / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &statistics) { pointer in
             pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                host_statistics64(host, HOST_VM_INFO64, $0, &count)
             }
         }
         // A probe the kernel refused reports nothing available, which the
@@ -92,7 +98,7 @@ nonisolated struct EngineBudget: Sendable, Equatable {
         // `vm_kernel_page_size`, which Swift 6 will not let a nonisolated
         // function touch and which this call answers exactly.
         var pageSize = vm_size_t(0)
-        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else { return 0 }
+        guard host_page_size(host, &pageSize) == KERN_SUCCESS else { return 0 }
         return pages * UInt64(pageSize)
     }
     #else
@@ -135,6 +141,24 @@ nonisolated struct EnginePlan: Sendable, Equatable {
         reserveBytes = plan.reserve_bytes
         usableBytes = plan.usable_bytes
         budgetBytes = plan.budget_bytes
+    }
+}
+
+nonisolated extension CoreError {
+    /// Whether this is the engine failure the accepted **无法启动 AI 对手**
+    /// notice is *about*.
+    ///
+    /// The contracts map user-visible flows by **code**, not by domain, and the
+    /// difference matters here: the engine domain also carries a missing or
+    /// mismatched network, a variant that would not load, and a faulted engine,
+    /// none of which closing other apps will fix. Only these two are the
+    /// situation the notice describes — a budget under the minimum, and an
+    /// allocation that failed at a budget that was not, which
+    /// engine-integration.md folds into the same notice deliberately, because
+    /// it is the same situation and the same action resolves it.
+    var isInsufficientMemory: Bool {
+        status == MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY)
+            || status == MxqStatus(MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED)
     }
 }
 
@@ -246,6 +270,13 @@ protocol AIEngine: AnyObject {
     func cancelSearch(_ ticket: UInt64)
 
     /// Cancels every outstanding search — the platform suspension path.
+    ///
+    /// It does not return when the cancellation is *done*: `mxq_core_cancel_all`
+    /// blocks until the engine quiesces, and the callers of this are the main
+    /// actor and, through it, the thread the platform delivered a lifecycle
+    /// event on — which the contract says must not be blocked. So it is queued
+    /// where the teardown that follows it is queued, and the serial queue is
+    /// what keeps cancel-before-release true.
     func cancelAllSearches()
 }
 
@@ -327,7 +358,19 @@ extension Core: AIEngine {
     }
 
     func cancelAllSearches() {
-        mxq_core_cancel_all(handle, nil)
+        EngineFacade(handle: handle).cancelAll()
+    }
+
+    /// Drains the engine queue. Called before shutdown so that nothing this app
+    /// enqueued is still inside the core when the core stops being live.
+    ///
+    /// It blocks, and at the one call site that is the point: shutdown is
+    /// already the deterministic blocking teardown — it joins the engine thread
+    /// itself — and what this waits for is bounded by the one prepare or
+    /// teardown that can be in flight. The "must not block the lifecycle
+    /// thread" rule is about the suspension path, which does not come here.
+    func quiesceEngineWork() {
+        EngineFacade(handle: handle).quiesce()
     }
 }
 
@@ -372,11 +415,18 @@ private nonisolated final class SearchDelivery: @unchecked Sendable {
 /// every actor.
 ///
 /// A `Sendable` value over the handle for the same reason `HistoryStore` is one:
-/// it holds no Swift state to race on, the core marshals the work onto its own
-/// engine thread, and a handle outliving its core answers
-/// `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory. The queue is
-/// serial because the two calls are, and it is a dispatch queue rather than the
-/// cooperative pool because both block for as long as allocating gigabytes takes.
+/// it holds no Swift state to race on, and the core marshals the work onto its
+/// own engine thread. The queue is serial because these calls are, and it is a
+/// dispatch queue rather than the cooperative pool because they block for as
+/// long as allocating gigabytes takes.
+///
+/// **It is drained before the core shuts down.** A handle outliving its core is
+/// *not* safe here: the interface's invalid-handle answer covers the handles a
+/// core issued, and a core handle that is no longer the live instance is a
+/// programming error the core asserts on in a debug build. This queue is the
+/// first frontend thread this app has ever had inside the core, so the one
+/// place it can be inside one that is going away — quit — drains it first.
+/// `quiesce()` is that drain.
 private nonisolated struct EngineFacade: @unchecked Sendable {
     let handle: OpaquePointer
 
@@ -411,5 +461,22 @@ private nonisolated struct EngineFacade: @unchecked Sendable {
             mxq_engine_teardown(handle, nil)
             completion()
         }
+    }
+
+    /// Cancels every outstanding search, on the queue the teardown that follows
+    /// it also runs on — so the accepted cancel-then-release order is the
+    /// queue's serialisation rather than a hope about two threads.
+    func cancelAll() {
+        Self.queue.async {
+            mxq_core_cancel_all(handle, nil)
+        }
+    }
+
+    /// Waits for whatever is already on the queue to finish, and for nothing
+    /// else. A barrier rather than a cancellation: the work in flight is a
+    /// prepare or a teardown that is already inside the core, and shutting the
+    /// core down under it is the race this exists to close.
+    func quiesce() {
+        Self.queue.sync { }
     }
 }

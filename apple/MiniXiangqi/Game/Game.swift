@@ -374,9 +374,10 @@ final class Game {
     }
 
     /// The position after the first `ply` plies, as the core replays it. The
-    /// undo of a decision cycle is what asks: the two reversals are drawn one
-    /// after the other, and the board behind the first of them stands at the
-    /// position between the two moves.
+    /// undo of a decision cycle is what asks: both plies rewind in one gesture,
+    /// and the disc that made the first of them — together with whatever the
+    /// reply took from it — is read off the position *between* the two moves,
+    /// which is this.
     func placement(atPly ply: Int) -> Placement? {
         guard let fen = try? rules.fen(atPly: ply) else { return nil }
         return Placement(fen: fen)

@@ -217,7 +217,7 @@ final class SettingsScreenUITests: XCTestCase {
     /// The seven controls the design fixes, in the four groups it fixes them
     /// in, each showing the accepted default. Nothing is clicked: this is the
     /// screen a first launch opens on.
-    func testTheSettingsTabOffersTheFiveAcceptedControls() {
+    func testTheSettingsTabOffersTheSevenAcceptedControls() {
         let app = launch()
         let language = Language.chinese
         openSettings(app, in: language)
@@ -282,14 +282,16 @@ final class SettingsScreenUITests: XCTestCase {
     /// Everything on the screen is still reachable, and nothing is clipped
     /// sideways, at the accepted minimum window.
     ///
-    /// **Reachable, not all visible at once.** With the human-versus-AI
-    /// defaults the screen is four groups, and four groups do not fit 492
-    /// points of window without scrolling. That is what a `Form` is: the
-    /// accepted floor is the *play* content's, and a preference list that
-    /// scrolls at the smallest window is the platform's own answer rather than
-    /// a layout failure. What must hold is that every control is there, that
-    /// none of them is cut off by the window's width, and that scrolling brings
-    /// each one into view.
+    /// **Present and unclipped, not all visible at once.** With the
+    /// human-versus-AI defaults the screen is four groups, and four groups do
+    /// not fit 492 points of window without scrolling. That is what a `Form`
+    /// is: the accepted floor is the *play* content's, and a preference list
+    /// that scrolls at the smallest window is the platform's own answer rather
+    /// than a layout failure. So what this asserts is what a frame series can
+    /// assert about a list that extends past the window — every control is
+    /// there, none of them is cut off by the window's *width*, and they read
+    /// down the screen in the accepted order. How far past the window the list
+    /// goes is what the logged frames and the screenshot are for.
     func testTheScreenFitsTheMinimumWindow() {
         let app = launch(window: "760x492")
         let language = Language.chinese

@@ -57,6 +57,12 @@ final class Suspension {
         #else
         observe(centre, UIApplication.didEnterBackgroundNotification, .suspend, handle)
         observe(centre, UIApplication.willEnterForegroundNotification, .resume, handle)
+        // Wired, and dormant: no iOS build ships yet. What it should do is not
+        // the desktop's answer — engine-integration.md confines the immediate
+        // re-ask to macOS and Windows, because an iOS memory warning precedes
+        // reclamation and re-allocating gigabytes in reply is the one response
+        // certain to make it worse. Stage 6 settles it with a device in hand,
+        // and the event this raises is the thing it will settle.
         observe(centre, UIApplication.didReceiveMemoryWarningNotification,
                 .memoryPressure, handle)
         #endif

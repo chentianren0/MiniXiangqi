@@ -256,17 +256,39 @@ struct OpponentTests {
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
-        // A revision the position has left behind. The core compares before
-        // delivery and this compares before applying; neither alone covers both
-        // race directions, so this one has to bite.
-        engine.answer(result(.move, move: "a6a5", game: game,
+        // The pair is checked, not one of it. The core compares before delivery
+        // and this compares before applying, because neither alone covers both
+        // race directions — and neither *half* of the pair alone covers both
+        // collisions either.
+
+        // A revision the position has left behind.
+        engine.answer(result(.move, move: "a6a5", game: game, ticket: 1,
                              revision: game.evaluation.positionRevision + 1))
         clock.advance(by: 5)
-        #expect(game.moves == ["b1b4"], "a stale result applies nothing")
+        animator.completeAll()
+        #expect(game.moves == ["b1b4"], "a result from another position applies nothing")
 
-        // Nor does a result from another game entirely.
-        motion.tap(Square("b4")!)
-        #expect(game.moves == ["b1b4"], "and the board is still the AI's turn")
+        // And an identity that is not this game's, carrying a revision that
+        // matches perfectly. A released-and-resumed session can hold the same
+        // counter, which is the collision the identity half exists for and the
+        // one the revision cannot see.
+        opponent.gameChanged()
+        #expect(engine.startedSearches == 2, "the premise: a search is running again")
+        engine.answer(result(.move, move: "a6a5", game: game, ticket: 2,
+                             identity: "00000000-0000-7000-8000-000000000000"))
+        clock.advance(by: 5)
+        animator.completeAll()
+        #expect(game.moves == ["b1b4"], "a result from another game applies nothing either")
+
+        // The same move, from the game and the position it belongs to, is
+        // played — which is what says the two refusals above were the
+        // comparison rather than anything about the move.
+        opponent.gameChanged()
+        #expect(engine.startedSearches == 3)
+        engine.answer(result(.move, move: "a6a5", game: game, ticket: 3))
+        clock.advance(by: 5)
+        animator.completeAll()
+        #expect(game.moves == ["b1b4", "a6a5"])
     }
 
     @Test("A result whose identity and revision match is played through the board")
@@ -291,13 +313,39 @@ struct OpponentTests {
         _ = opponent
         motion.tap(Square("b1")!)
         motion.tap(Square("b4")!)
-        animator.completeAll()   // the arrival the floor is measured from
 
-        // A search that returns at once, which is the case the floor exists for.
+        // The search answers **while the player's move is still travelling**,
+        // which is the case the floor is really for: a forced mate comes back in
+        // milliseconds, and there is no arrival yet to measure a floor from. It
+        // is measured from the arrival when the arrival happens.
+        engine.answer(result(.move, move: "a6a5", game: game))
+        #expect(game.moves == ["b1b4"], "nothing departs during the player's own move")
+
+        animator.completeAll()   // the arrival the floor is measured from
+        #expect(game.moves == ["b1b4"],
+                "and not at the landing either: a reply that beat the arrival still waits")
+
+        clock.advance(by: Motion.replyFloor - 0.05)
+        #expect(game.moves == ["b1b4"], "still inside the floor")
+
+        clock.advance(by: 0.1)
+        animator.completeAll()
+        #expect(game.moves == ["b1b4", "a6a5"], "and departs once the floor has passed")
+    }
+
+    @Test("A reply that arrives after the landing keeps the floor from that landing")
+    func theFloorHoldsForAReplyAfterTheArrival() throws {
+        let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
+        _ = opponent
+        motion.tap(Square("b1")!)
+        motion.tap(Square("b4")!)
+        animator.completeAll()   // the arrival first, this time
+
+        clock.advance(by: 0.1)   // a search shorter than the floor
         engine.answer(result(.move, move: "a6a5", game: game))
         #expect(game.moves == ["b1b4"], "a near-instant reply does not twitch")
 
-        clock.advance(by: Motion.replyFloor - 0.05)
+        clock.advance(by: Motion.replyFloor - 0.15)
         #expect(game.moves == ["b1b4"], "still inside the floor")
 
         clock.advance(by: 0.1)
@@ -479,10 +527,14 @@ struct OpponentTests {
         opponent.deferPreparation()
         #expect(opponent.activity == .stalled)
 
+        // Exactly what the screen does, and nothing more: the Undo control
+        // cancels the search and runs the transition. Nothing tells the
+        // opponent afterwards — PlayMotion's own committed wire is what does,
+        // and a test that called `gameChanged()` by hand would pass with that
+        // wire cut.
         opponent.cancelSearch()
         motion.undo()
         animator.completeAll()
-        opponent.gameChanged()
 
         #expect(game.moves.isEmpty, "the player's move is back in their hands")
         #expect(opponent.activity == .idle,

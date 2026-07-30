@@ -420,12 +420,19 @@ final class Core {
         self.handle = handle
     }
 
-    /// Deterministic teardown. Every handle this core issued — the session
-    /// included — answers `MXQ_ERR_ARG_INVALID_HANDLE` afterwards instead of
-    /// touching freed memory, which is exactly why nothing here has to be
-    /// released first.
+    /// Deterministic teardown. Every *session* handle this core issued answers
+    /// `MXQ_ERR_ARG_INVALID_HANDLE` afterwards instead of touching freed
+    /// memory, which is why nothing here has to be released first.
+    ///
+    /// The core handle itself is not covered by that promise: passing one that
+    /// is no longer the live instance is a programming error, and a debug build
+    /// asserts on it. So the engine queue is drained first. It is the only
+    /// frontend thread this app puts inside the core, it is where a prepare or
+    /// a teardown can still be running when the player quits, and a barrier
+    /// across it is what makes this call the last one in.
     func shutdown() {
         session = nil
+        quiesceEngineWork()
         mxq_core_shutdown(handle, nil)
     }
 
@@ -715,9 +722,13 @@ nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
 /// calls back off the main actor is a change of call site rather than of
 /// design. That is what makes the contract's "held in reserve" mean something.
 ///
-/// A handle outliving its core is safe by the interface's own promise: after
-/// `mxq_core_shutdown` every handle it issued answers
-/// `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory.
+/// A store surface outliving its core is safe by the interface's own promise:
+/// after `mxq_core_shutdown` every handle the core *issued* — a session, a blob
+/// — answers `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory.
+/// The promise does not extend to the core handle this struct carries, which
+/// after shutdown is a programming error to pass; what keeps that from
+/// happening is that shutdown is the app's last act and this surface is driven
+/// from the main actor, which is where it is called.
 ///
 /// `@unchecked` because `OpaquePointer` carries no sendability of its own and
 /// cannot: what makes this one safe to send is the C contract above it, which

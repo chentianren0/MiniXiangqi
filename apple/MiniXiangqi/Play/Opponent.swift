@@ -110,7 +110,17 @@ final class Opponent {
     /// already waiting can now be drawn, since only one committing transition
     /// runs at a time.
     func landed() {
-        if game.searchExpected { playerArrival = timer.now() }
+        if game.searchExpected {
+            let arrival = timer.now()
+            playerArrival = arrival
+            // A reply that came back *while* the player's move was still
+            // travelling has a floor to keep after all — it just had nothing to
+            // measure it from yet. A forced mate found in a few milliseconds is
+            // the case that reaches here, and without this it would depart at
+            // the landing plus nothing, which is the twitch the floor exists to
+            // prevent.
+            if pendingReply != nil { replyDue = arrival + Motion.replyFloor }
+        }
         deliver()
     }
 
@@ -223,9 +233,7 @@ final class Opponent {
             case .success:
                 ensureSearch()
             case .failure(let error):
-                // The alert first, per the accepted mid-game presentation; the
-                // stalled slot is what 稍后 leaves behind.
-                preparationFailure = error
+                report(error)
             }
         }
     }
@@ -249,7 +257,7 @@ final class Opponent {
             if error.asCoreError.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED) {
                 prepareThenSearch()
             } else {
-                preparationFailure = CoreError(wrapping: error)
+                report(error.asCoreError)
             }
             return
         }
@@ -259,6 +267,24 @@ final class Opponent {
         timer.after(Motion.thinkingIndicatorDelay) { [weak self] in
             guard let self, token == attempt, ticket != nil else { return }
             activity = .thinking
+        }
+    }
+
+    /// What the player is told about an engine failure mid-game.
+    ///
+    /// By **code**, as the contracts map these: only the memory failures are
+    /// the accepted **无法启动 AI 对手** situation, and only they get the alert
+    /// whose message asks for other apps to be closed. Everything else the
+    /// engine can refuse with — a network that is missing or does not match, a
+    /// variant that would not load, a faulted engine — is a damaged
+    /// installation rather than a busy machine, and it takes the same slot a
+    /// deferred failure takes: **AI 暂时无法启动**, with the retry beside it and
+    /// no cause named. Naming the wrong cause is worse than naming none.
+    private func report(_ failure: CoreError) {
+        if failure.isInsufficientMemory {
+            preparationFailure = failure
+        } else {
+            activity = .stalled
         }
     }
 
@@ -280,10 +306,12 @@ final class Opponent {
                   let move = Move(text: result.move) else { return }
             pendingReply = move
             // The floor: the later of now and a short interval after the
-            // player's own move finished animating.
+            // player's own move finished animating. With no arrival yet there is
+            // nothing to measure from — the AI-first opening has no move of the
+            // player's to wait for, and a move still travelling has not landed —
+            // so `landed()` sets the floor when the arrival happens.
             let now = timer.now()
-            let floor = playerArrival.map { $0 + Motion.replyFloor } ?? now
-            replyDue = max(now, floor)
+            replyDue = playerArrival.map { max(now, $0 + Motion.replyFloor) } ?? now
             deliver()
         case .cancelled, .stale:
             // Whoever cancelled decides what happens next, and a stale result
