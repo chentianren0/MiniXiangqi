@@ -15,9 +15,70 @@
 // expectation from the same catalog is what keeps this suite honest about which
 // of the two it is testing.
 
+// The archive itself is the one seam that cannot answer inside its own call:
+// docs/core-interface.md's threading contract keeps `mxq_store_archive_and_clear`
+// off the UI thread, so it answers from a queue. A test that awaited that answer
+// would suspend while holding the one core this suite shares, and the suite's
+// whole coordination is that no test ever does — an await lets the next test in,
+// and the next test's first act is to shut this one's core down. So the archive
+// is parked here and answered by the test, exactly as ManualAnimator parks an
+// animation's completion. What the parked seam proves is the wiring; that the
+// real transaction files a real 提前结束 record is proved on the running screen
+// by PlayHomeUITests, and inside the core by its own history suite.
+
 import Foundation
 import Testing
 @testable import MiniXiangqi
+
+/// The archive seam, held open. Every other question is the real core's.
+@MainActor
+final class ParkedArchive: Rules {
+    private let real: Rules
+
+    /// How many archives have been asked for. The retry asks again, and asking
+    /// twice for one press would be the bug this counts.
+    private(set) var requests = 0
+
+    private var parked: (@MainActor (Result<UInt64, CoreError>) -> Void)?
+
+    var isPending: Bool { parked != nil }
+
+    init(_ real: Rules) { self.real = real }
+
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
+    ) {
+        requests += 1
+        parked = completion
+    }
+
+    /// Answers the archive in flight, as the queue would.
+    func answer(_ result: Result<UInt64, CoreError>) {
+        let completion = parked
+        parked = nil
+        completion?(result)
+    }
+
+    /// The store-domain refusal the accepted 无法保存对局 retry is for.
+    func answerWithRefusal() {
+        answer(.failure(CoreError(wrapping: RefusedByTheCore())))
+    }
+
+    var hasSession: Bool { real.hasSession }
+    func resumeActive() throws -> Bool { try real.resumeActive() }
+    func create(_ configuration: GameConfiguration) throws { try real.create(configuration) }
+    func configuration() throws -> GameConfiguration { try real.configuration() }
+    func gameID() throws -> String { try real.gameID() }
+    func resign() throws -> UInt64 { try real.resign() }
+    func apply(_ move: String) throws { try real.apply(move) }
+    func undo() throws -> Int { try real.undo() }
+    func claimDraw() throws -> UInt64 { try real.claimDraw() }
+    func confirmResult() throws -> UInt64 { try real.confirmResult() }
+    func evaluation() throws -> Evaluation { try real.evaluation() }
+    func moveHistory() throws -> [String] { try real.moveHistory() }
+    func legalMoves() throws -> [String] { try real.legalMoves() }
+    func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
+}
 
 /// The catalog's answer in whatever language the host is running, which is the
 /// language the composition under test will have used.
@@ -166,91 +227,92 @@ struct PlayHomeTests {
         #expect(try core.historyCount() == 0, "cancelling files nothing")
     }
 
-    @Test("保存并继续 files the game as ended early and opens the chosen mode")
-    func saveAndContinueFilesTheGameAndOpensTheMode() async throws {
+    @Test("保存并继续 archives before it navigates, and opens the chosen mode")
+    func saveAndContinueArchivesThenOpensTheMode() throws {
         let core = try TestCores.fresh()
-        let state = try stateOverAGame(core)
-        try state.game?.replay(["b1b3", "b7b6"])
+        let (state, archive) = try parkedStateOverAGame(core)
 
         state.choose(.humanVersusAI)
         state.saveAndContinue()
-        await settle("the archive to commit") { state.modeSwitch == nil }
+
+        #expect(archive.requests == 1, "one press, one archive")
+        #expect(archive.isPending)
+        #expect(state.modeSwitch == .saving(.humanVersusAI))
+        #expect(state.page == .home, "nothing opens until the archive has committed")
+        // The press is answered before the archive is, and answering it must
+        // not discard the archive it started.
+        state.dismissConfirmation()
+        #expect(state.modeSwitch == .saving(.humanVersusAI))
+
+        archive.answer(.success(1))
 
         #expect(state.page == .setup(.humanVersusAI), "the selected mode's pre-start page")
+        #expect(state.modeSwitch == nil, "and the remembered destination is spent")
         #expect(state.game == nil, "the game it archived is let go of")
-        #expect(try !core.activeGameExists(), "and the active game is cleared")
-
-        let records = try core.history.all().records
-        #expect(records.count == 1)
-        let record = try #require(records.first)
-        #expect(record.outcome == .none, "an ongoing game keeps no competitive result")
-        #expect(record.reason == .endedEarly, "it is recorded as ended early")
-        #expect(record.mode == .freePlay, "the game that was filed is the one that was going")
-        #expect(record.moveCount == 2)
     }
 
-    @Test("An unconfirmed natural result keeps its own result when it is filed this way")
-    func aTerminalGameKeepsItsResult() async throws {
+    @Test("A refused archive keeps the game, and 重试 asks for the same thing again")
+    func aRefusedArchiveKeepsTheGame() throws {
         let core = try TestCores.fresh()
-        let state = try stateOverAGame(core)
-        try state.game?.replay(Self.mateLine)
-
-        state.choose(.freePlay)
-        state.saveAndContinue()
-        await settle("the archive to commit") { state.modeSwitch == nil }
-
-        let record = try #require(try core.history.all().records.first)
-        #expect(record.outcome == .redWins, "the classification is the core's, not the app's")
-        #expect(record.reason == .checkmate)
-    }
-
-    @Test("A refused archive keeps the game and offers the accepted retry")
-    func aRefusedArchiveKeepsTheGame() async throws {
-        let core = try TestCores.fresh()
-        let refusing = RefusingRules(core, refuses: true)
-        let state = PlayState(core: core, rules: refusing)
-        try core.create(.freePlay)
-        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        state.leaveTopPage()
+        let (state, archive) = try parkedStateOverAGame(core)
 
         state.choose(.humanVersusAI)
         state.saveAndContinue()
-        await settle("the refusal") { state.modeSwitch == .failed(.humanVersusAI) }
+        archive.answerWithRefusal()
 
+        #expect(state.modeSwitch == .failed(.humanVersusAI), "the accepted retry presents")
         #expect(state.page == .home, "the pre-start page did not open")
         #expect(state.activeGame != nil, "the game is still here")
         #expect(try core.activeGameExists(), "and still the store's active game")
         #expect(try core.historyCount() == 0, "nothing was filed")
 
-        // 重试 repeats the same atomic operation rather than something near it.
-        refusing.refuses = false
         state.saveAndContinue()
-        await settle("the retry to commit") { state.modeSwitch == nil }
 
-        #expect(state.page == .setup(.humanVersusAI), "the destination survived the retry flow")
-        #expect(try !core.activeGameExists())
-        #expect(try core.historyCount() == 1)
+        #expect(archive.requests == 2, "重试 repeats the same atomic operation")
+        #expect(state.modeSwitch == .saving(.humanVersusAI),
+                "over the destination the confirmation remembered")
+        archive.answer(.success(1))
+        #expect(state.page == .setup(.humanVersusAI))
     }
 
     @Test("取消 on the refusal discards the destination and leaves the game")
-    func cancellingTheRefusalDiscardsTheDestination() async throws {
+    func cancellingTheRefusalDiscardsTheDestination() throws {
         let core = try TestCores.fresh()
-        let refusing = RefusingRules(core, refuses: true)
-        let state = PlayState(core: core, rules: refusing)
-        try core.create(.freePlay)
-        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        state.leaveTopPage()
+        let (state, archive) = try parkedStateOverAGame(core)
 
         state.choose(.freePlay)
         state.saveAndContinue()
-        await settle("the refusal") { state.modeSwitch == .failed(.freePlay) }
+        archive.answerWithRefusal()
+        #expect(state.modeSwitch == .failed(.freePlay))
 
         state.dismissArchiveFailure()
 
-        #expect(state.modeSwitch == nil)
+        #expect(state.modeSwitch == nil, "the destination goes with the flow that held it")
         #expect(state.page == .home)
+        #expect(state.activeGame != nil)
         #expect(try core.activeGameExists(), "the game the retry was about is still active")
         #expect(try core.historyCount() == 0)
+
+        // And a fresh choice starts a fresh flow rather than resuming the old
+        // one: nothing was left behind to archive.
+        state.choose(.humanVersusAI)
+        #expect(state.modeSwitch == .confirming(.humanVersusAI))
+        #expect(archive.requests == 1, "the discarded flow asked for nothing more")
+    }
+
+    @Test("An archive still in flight is asked for once, however often it is pressed")
+    func anArchiveInFlightIsNotStartedTwice() throws {
+        let core = try TestCores.fresh()
+        let (state, archive) = try parkedStateOverAGame(core)
+
+        state.choose(.freePlay)
+        state.saveAndContinue()
+        state.saveAndContinue()
+        state.saveAndContinue()
+
+        #expect(archive.requests == 1)
+        archive.answer(.success(1))
+        #expect(state.page == .setup(.freePlay))
     }
 
     // MARK: - Resuming, and the game that is no longer active
@@ -302,5 +364,18 @@ struct PlayHomeTests {
         state.leaveTopPage()
         #expect(state.page == .home)
         return state
+    }
+
+    /// The same, with the archive held open so the test decides when — and
+    /// whether — it commits.
+    private func parkedStateOverAGame(_ core: Core) throws -> (PlayState, ParkedArchive) {
+        let archive = ParkedArchive(core)
+        let state = PlayState(core: core, rules: archive)
+        try core.create(.freePlay)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .board)
+        state.leaveTopPage()
+        #expect(state.page == .home)
+        return (state, archive)
     }
 }

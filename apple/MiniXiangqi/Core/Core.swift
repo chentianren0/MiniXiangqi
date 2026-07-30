@@ -433,6 +433,13 @@ final class Core {
     func shutdown() {
         session = nil
         quiesceEngineWork()
+        // The archive queue is the app's second thread inside the core, and it
+        // is drained for the same reason the engine queue is: an archive still
+        // in flight when the player quits would be inside a core that is going
+        // away, and the interface's invalid-handle promise does not cover the
+        // core handle. The caller quiesces its own threads; the core does not
+        // defend against one that does not.
+        ActiveGameArchiver.quiesce()
         mxq_core_shutdown(handle, nil)
     }
 
@@ -758,6 +765,13 @@ private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
             }
             completion(.success(recordID))
         }
+    }
+
+    /// Waits for an archive already inside the core to finish, and for nothing
+    /// else. A barrier rather than a cancellation, exactly as the engine
+    /// queue's is, and called from `Core.shutdown` for the same reason.
+    static func quiesce() {
+        queue.sync { }
     }
 }
 
