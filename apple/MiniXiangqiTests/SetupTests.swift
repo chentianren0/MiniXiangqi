@@ -11,7 +11,7 @@ import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
-@Suite("The pre-start state")
+@Suite("The pre-start state", .retiringItsCores)
 @MainActor
 struct SetupTests {
 

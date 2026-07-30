@@ -105,7 +105,7 @@ private func moves(_ count: Int) -> String {
     String(format: text("metadata.moveCount"), count)
 }
 
-@Suite("The Play home")
+@Suite("The Play home", .retiringItsCores)
 @MainActor
 struct PlayHomeTests {
 
@@ -472,7 +472,7 @@ private func archive(on core: Core, keeping directory: URL) async -> ArchiveAnsw
 /// core's own and nothing else in the app performs them. Serialized because
 /// these are the only tests here that suspend, and two of them suspending at
 /// once would be two tests reaching for the one core between them.
-@Suite("The archive the core performs", .serialized)
+@Suite("The archive the core performs", .serialized, .retiringItsCores)
 @MainActor
 struct CoreArchiveTests {
 

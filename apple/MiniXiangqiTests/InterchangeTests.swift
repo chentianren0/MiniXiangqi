@@ -25,7 +25,7 @@ import Testing
 import UniformTypeIdentifiers
 @testable import MiniXiangqi
 
-@Suite("Import and export")
+@Suite("Import and export", .retiringItsCores)
 @MainActor
 struct InterchangeTests {
 

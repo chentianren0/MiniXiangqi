@@ -10,7 +10,7 @@ import Foundation
 import Testing
 @testable import MiniXiangqi
 
-@Suite("The History library")
+@Suite("The History library", .retiringItsCores)
 @MainActor
 struct HistoryTests {
 
@@ -228,7 +228,7 @@ struct HistoryTests {
     }
 }
 
-@Suite("Replaying a History record")
+@Suite("Replaying a History record", .retiringItsCores)
 @MainActor
 struct ReplayTests {
 

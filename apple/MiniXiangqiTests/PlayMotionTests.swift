@@ -12,7 +12,7 @@ import Foundation
 import Testing
 @testable import MiniXiangqi
 
-@Suite("The committing-transition gate")
+@Suite("The committing-transition gate", .retiringItsCores)
 @MainActor
 struct PlayMotionTests {
 
