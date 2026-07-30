@@ -6,6 +6,7 @@
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
+#include "mxq_search.hpp"
 #include "mxq_session.hpp"
 #endif
 
@@ -24,6 +25,13 @@ MxqCore *live_core() {
 }
 
 MxqStatus require_core(const MxqCore *core, MxqError *err) {
+    /* Before anything else: inside a search callback the only legal calls
+     * are the status and blob helpers and the four pure queries that take no
+     * core instance, so everything passing this gate refuses there — before
+     * it could block the engine thread it is running on. */
+    if (in_search_callback()) {
+        return refuse_reentrant(err);
+    }
     if (core == nullptr) {
         assert(false && "required core handle was null");
         fill_error(err, MXQ_ERR_ARG_NULL, "required core handle was null");
@@ -48,6 +56,9 @@ extern "C" {
 
 MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core,
                                  MxqError *err) {
+    if (mxq::in_search_callback()) {
+        return mxq::refuse_reentrant(err);
+    }
     const MxqStatus rc = mxq::check_in(
         config, config != nullptr ? config->struct_size : 0u,
         static_cast<uint32_t>(sizeof(MxqCoreConfig)),
@@ -89,11 +100,21 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
     /* The engine is prepared here rather than lazily, so that a packaging
      * failure — a missing or malformed variant configuration — surfaces at
      * initialisation instead of at the first rules query, where the caller has
-     * no sensible recovery. */
+     * no sensible recovery. A configuration that is not there and one that is
+     * there but does not yield the pinned variant are different packaging
+     * failures and carry their own codes. */
     std::string detail;
-    if (!mxq::engine::ensure_initialised(core->asset_directory.c_str(), detail)) {
+    switch (mxq::engine::ensure_initialised(core->asset_directory.c_str(),
+                                            detail)) {
+    case mxq::engine::InitError::None:
+        break;
+    case mxq::engine::InitError::AssetMissing:
         mxq::fill_error(err, MXQ_ERR_ENGINE_ASSET_MISSING, detail.c_str());
         return MXQ_ERR_ENGINE_ASSET_MISSING;
+    case mxq::engine::InitError::VariantLoadFailed:
+        mxq::fill_error(err, MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED,
+                        detail.c_str());
+        return MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED;
     }
 #endif
 
@@ -106,12 +127,21 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
         return store_rc;
     }
 
+#if defined(MXQ_ENABLE_RULES_FACADE)
+    /* The engine thread, last: everything above can fail, and a failed
+     * initialisation must not leak a thread. */
+    mxq::search::startup();
+#endif
+
     mxq::g_core = std::move(core);
     *out_core = mxq::g_core.get();
     return MXQ_OK;
 }
 
 MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
+    if (mxq::in_search_callback()) {
+        return mxq::refuse_reentrant(err);
+    }
     std::lock_guard<std::mutex> lock(mxq::g_lifecycle_mutex);
     if (core == nullptr || core != mxq::g_core.get()) {
         assert(false && "shutdown of a handle that is not the live instance");
@@ -121,8 +151,13 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
     }
     core->shutting_down = true;
 #if defined(MXQ_ENABLE_RULES_FACADE)
+    /* The contract's order: cancel all work, join the engine thread, then the
+     * store. Outstanding searches deliver their callbacks with the cancelled
+     * outcome before the join; the retained result does not survive. */
+    mxq::search::shutdown();
     /* Invalidate outstanding handles before the store they are attached to
-     * goes away. They are tombstoned rather than freed: their owners still
+     * goes away — and after the engine thread joined, because delivery reads
+     * the registry. They are tombstoned rather than freed: their owners still
      * hold them and still release them, and until they do, every function on
      * one answers MXQ_ERR_ARG_INVALID_HANDLE instead of touching freed
      * memory. */
@@ -134,6 +169,24 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
     core->store.reset();
     mxq::g_core.reset();
     return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_core_cancel_all(MxqCore *core, MxqError *err) {
+    const MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+#if defined(MXQ_ENABLE_RULES_FACADE)
+    /* The backgrounding and memory-pressure path: cancel cooperatively and
+     * block until the engine quiesces. Callbacks still fire, with the
+     * cancelled outcome, before this returns. The committed game is never
+     * affected — search output never commits. */
+    return mxq::search::cancel_all_and_quiesce(err);
+#else
+    /* Without the engine no search can be outstanding, so the state this call
+     * asks for already holds. */
+    return MXQ_OK;
+#endif
 }
 
 MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err) {

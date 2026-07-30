@@ -156,4 +156,31 @@ uint64_t percent(uint64_t value, uint32_t p) {
     return (value / 100u) * pp + ((value % 100u) * pp) / 100u;
 }
 
+namespace {
+
+/* Thread-local, because only the engine thread is ever inside a callback and
+ * every other thread must keep answering normally while one runs. */
+thread_local bool tls_in_search_callback = false;
+
+} /* namespace */
+
+bool in_search_callback() {
+    return tls_in_search_callback;
+}
+
+MxqStatus refuse_reentrant(MxqError *err) {
+    fill_error(err, MXQ_ERR_ARG_REENTRANT,
+               "called from inside a search callback, where only the status "
+               "and blob helpers and the four pure queries are legal");
+    return MXQ_ERR_ARG_REENTRANT;
+}
+
+CallbackScope::CallbackScope() {
+    tls_in_search_callback = true;
+}
+
+CallbackScope::~CallbackScope() {
+    tls_in_search_callback = false;
+}
+
 } /* namespace mxq */

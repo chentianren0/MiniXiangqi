@@ -82,8 +82,13 @@ struct MxqGame {
     /* Bumped by every accepted mutation; the staleness authority a search
      * result is compared against. Per session, so a resumed session starts
      * again at zero — a search cannot outlive the session it was started
-     * from. */
-    uint64_t position_revision = 0;
+     * from. Atomic because the engine thread reads it at delivery, through
+     * current_revision_of, while the owner thread may be mid-mutation: the
+     * mutation that wins that race bumps the value the delivery compares, and
+     * either order is correct — a bump the delivery misses is caught by the
+     * frontend's second comparison, which the contract requires for exactly
+     * this reason. */
+    std::atomic<uint64_t> position_revision{0};
 
     /* The committed ending, written by the four archiving paths and recovered
      * by opening a History record. Meaningful exactly when completed is true,
@@ -184,6 +189,29 @@ MxqStatus concurrent_use(MxqError *err);
  * MXQ_ERR_ARG_INVALID_HANDLE afterwards.
  */
 void invalidate_all(const MxqCore *core);
+
+/*
+ * The delivery-time half of the staleness comparison: the current
+ * position_revision of the live registered session carrying game_id, or false
+ * when no such session exists.
+ *
+ * The comparison the contract prescribes is against values — (game_id,
+ * position_revision) — never against a pointer, so the search facade asks by
+ * identity and this answers from the registry. origin, the session the search
+ * was started on, is preferred when it is still registered under that
+ * game_id, which keeps the answer deterministic in the one corner where two
+ * registered sessions could carry the same identity (an import preview opened
+ * beside the live game it duplicates). A released, archived or absent session
+ * resolves as the contract's invariants require: released or absent finds no
+ * session and the result is rejected as stale, because a result that cannot
+ * be shown fresh against a live session must not be delivered as a move; an
+ * archived session is still found, and rejects by value anyway, because
+ * ending a game bumped its revision. Only game_id — frozen at creation — and
+ * the atomic revision are read here, because every other session field
+ * belongs to the owner thread.
+ */
+bool current_revision_of(const MxqCore *core, const MxqGame *origin,
+                         const char *game_id, uint64_t &out_revision);
 
 /* The version 1 document this session's committed state encodes to. */
 archive::Record record_of(const MxqGame &game);

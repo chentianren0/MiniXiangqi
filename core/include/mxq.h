@@ -279,9 +279,15 @@ enum {
                                                   * effective NNUE state after
                                                   * configuration */
     MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED   = 6004,
-    MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED = 6005, /* reserved: reachable only
-                                                   * once the fork's recoverable
-                                                   * Hash change lands */
+    MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED = 6005, /* the transposition table
+                                                   * could not be allocated at
+                                                   * the plan's size. Reachable
+                                                   * since the fork's
+                                                   * recoverable Hash change
+                                                   * landed; mxq_engine_prepare
+                                                   * returns it and never
+                                                   * substitutes a smaller
+                                                   * Hash */
     MXQ_ERR_ENGINE_NO_MOVE               = 6006,
     MXQ_ERR_ENGINE_ILLEGAL_RESULT        = 6007,
     MXQ_ERR_ENGINE_FAULTED               = 6008,

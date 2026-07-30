@@ -95,6 +95,33 @@ MxqStatus write_string(const char *value, char *out, size_t cap,
  * uint64_t x and any p in 0..100. */
 uint64_t percent(uint64_t value, uint32_t p);
 
+/*
+ * The search-callback reentrancy guard.
+ *
+ * The completion callback runs on the core's one engine thread, and inside it
+ * the legal calls are the status and blob helpers plus the four pure queries
+ * that take no core instance; everything else returns MXQ_ERR_ARG_REENTRANT
+ * (mxq.h, MxqSearchCallback). The guard is a thread-local flag set for the
+ * duration of the callback: the check sits at the two gates every other
+ * function passes through — require_core and the session registry's require —
+ * plus the three core-lifecycle functions that take no live core, so a
+ * callback that calls back in is refused before it can deadlock the engine
+ * thread it is running on.
+ */
+bool in_search_callback();
+
+/* Fill err and return MXQ_ERR_ARG_REENTRANT. */
+MxqStatus refuse_reentrant(MxqError *err);
+
+/* Marks this thread as inside a search callback for its own lifetime. */
+class CallbackScope {
+public:
+    CallbackScope();
+    ~CallbackScope();
+    CallbackScope(const CallbackScope &) = delete;
+    CallbackScope &operator=(const CallbackScope &) = delete;
+};
+
 } /* namespace mxq */
 
 #endif /* MXQ_INTERNAL_HPP */
