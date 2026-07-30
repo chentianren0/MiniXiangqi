@@ -13,7 +13,7 @@
 import Testing
 @testable import MiniXiangqi
 
-@Suite("Finishing a game")
+@Suite("Finishing a game", .retiringItsCores)
 @MainActor
 struct GameTests {
 

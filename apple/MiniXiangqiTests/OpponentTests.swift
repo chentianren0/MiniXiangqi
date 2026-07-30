@@ -170,7 +170,7 @@ private func result(_ outcome: SearchOutcome, move: String, game: Game,
 
 // MARK: - The opponent
 
-@Suite("The opponent")
+@Suite("The opponent", .retiringItsCores)
 @MainActor
 struct OpponentTests {
 

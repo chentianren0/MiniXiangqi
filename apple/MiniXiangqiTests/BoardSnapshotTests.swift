@@ -89,7 +89,7 @@ struct BoardSnapshotTests {
 /// arriving disc, the board mid-flip, the dissolve that stands in for travel
 /// under Reduce Motion, the check rings at the peak of their swell — can be
 /// rendered and looked at rather than reasoned about.
-@Suite("Motion frames")
+@Suite("Motion frames", .retiringItsCores)
 @MainActor
 struct MotionFrameTests {
     let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
