@@ -40,17 +40,18 @@ final class HumanVersusAIUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
-        // A scratch preference domain, so a test that reads or writes a default
-        // never touches the ones on the machine it runs on.
+        // A scratch preference domain, so a test that writes a default never
+        // touches the ones on the machine it runs on — and every preference
+        // stated in the argument domain, which is what makes *reading* one
+        // hermetic too: a suite is searched behind the application's own domain,
+        // so the scratch domain alone does not keep the machine's answers out.
         app.launchArguments += ["-mxq-defaults-suite", "com.chentianren.MiniXiangqi.uitests"]
+        var preferences: [String: String] = [:]
+        if let firstMoverDefault { preferences["defaults.firstMover"] = firstMoverDefault }
+        if let levelDefault { preferences["defaults.aiLevel"] = levelDefault }
+        app.launchArguments += LaunchPreferences.arguments(overriding: preferences)
         if let availableMemory {
             app.launchArguments += ["-mxq-available-memory", availableMemory]
-        }
-        if let firstMoverDefault {
-            app.launchArguments += ["-defaults.firstMover", firstMoverDefault]
-        }
-        if let levelDefault {
-            app.launchArguments += ["-defaults.aiLevel", levelDefault]
         }
         if let window { app.launchArguments += ["-mxq-window", window] }
         app.launch()
@@ -366,7 +367,7 @@ final class HumanVersusAIUITests: XCTestCase {
 
         destinations.element(boundBy: 0).click()   // Play
         XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 10),
-                      "leaving the page discards the draft and returns to the start state")
+                      "leaving the page discards the draft and returns to the Play home")
         app.buttons["mode-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.windows.firstMatch.descendants(matching: .any)["setup-ai-level"]

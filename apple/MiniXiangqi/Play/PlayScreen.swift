@@ -19,9 +19,11 @@
 // where it stood, and the concluding action files a finished one in History
 // before the destination returns to its pre-start state.
 //
-// The destination has three states now that there is an opponent to choose:
-// the mode entries, one mode's pre-start page, and a game. The first two are
-// SetupScreen's; everything below is the third.
+// This is the board and only the board. The Play destination's other two pages
+// are the home, where what to play is chosen, and each mode's pre-start state;
+// PlayDestination is what holds the three. Going back from here reaches the
+// home and ends nothing — the game stays active and its card there is the way
+// back in.
 
 import SwiftUI
 
@@ -54,56 +56,18 @@ struct PlayScreen: View {
     private enum FailedFiling { case claim, resign, save, file, finish }
     @State private var failedFiling: FailedFiling?
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
+    @Environment(\.motionPolicy) private var policy
 
     var body: some View {
         Group {
-            if let startFailure = play.startFailure {
-                // The description under the title is the core's own diagnostic
-                // text: not copy, and not localized.
-                ContentUnavailableView("failure.gameDidNotStart",
-                                       systemImage: "exclamationmark.triangle",
-                                       description: Text(verbatim: startFailure.description).monospaced())
+            if let game = play.game, let motion = play.motion {
+                layout(game, motion)
             } else {
-                switch play.phase {
-                case .start:
-                    SetupScreen(play: play, mode: nil)
-                case .setup(let mode):
-                    SetupScreen(play: play, mode: mode)
-                case .playing:
-                    if let game = play.game, let motion = play.motion {
-                        layout(game, motion)
-                    } else {
-                        ProgressView()
-                    }
-                }
+                // Nothing reaches the board without a game — the page and the
+                // game are set together — so this is the honest nothing rather
+                // than a state to design.
+                ProgressView()
             }
-        }
-        .environment(\.motionPolicy, policy)
-        #if DEBUG
-        // The floor is the product's; `-mxq-no-minimum` takes it off so a
-        // screenshot can show what the layout does below it. It stays on the
-        // destination's own content rather than on the container, so that the
-        // navigation chrome adds to the board's floor instead of eating it.
-        .frame(minWidth: Self.liftsWindowMinimum ? nil : BoardLayout.minimumWidth,
-               minHeight: Self.liftsWindowMinimum ? nil : BoardLayout.minimumHeight)
-        #else
-        .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
-        #endif
-        .task {
-            play.startIfNeeded(policy: policy)
-        }
-        // Leaving the destination discards the pre-start draft and invalidates
-        // an attempt in flight. The container tears this screen down on every
-        // switch away, which is exactly the event the contract means by leaving
-        // the page.
-        .onDisappear {
-            play.leavePage()
-        }
-        .onChange(of: reduceMotion) {
-            play.adopt(policy)
         }
     }
 
@@ -114,7 +78,7 @@ struct PlayScreen: View {
         if !play.startNewGame() { failedFiling = .file }
     }
 
-    /// 完成 on the recorded notice: back to the start state, filing nothing a
+    /// 完成 on the recorded notice: back to the Play home, filing nothing a
     /// second time.
     private func finish() {
         if !play.finish() { failedFiling = .finish }
@@ -126,14 +90,6 @@ struct PlayScreen: View {
     private func save() {
         if !play.save() { failedFiling = .save }
     }
-
-    #if DEBUG
-    /// Whether `-mxq-no-minimum` was given. The window's floor is the thing
-    /// under discussion, so it has to be possible to photograph below it.
-    private static var liftsWindowMinimum: Bool {
-        DebugLaunch.contains("-mxq-no-minimum")
-    }
-    #endif
 
     /// Whether the board carries its file-numeral strips. Always, except when
     /// `-mxq-hide-numerals` takes them off: what the strips cost the layout is

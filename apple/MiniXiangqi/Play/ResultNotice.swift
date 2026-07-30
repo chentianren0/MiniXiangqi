@@ -49,7 +49,7 @@ struct ResultNotice: View {
     var save: () -> Void
     /// Files the game and opens its mode's pre-start page, in one press.
     var startNewGame: () -> Void
-    /// 完成: back to the Play start state, filing nothing a second time.
+    /// 完成: back to the Play home, filing nothing a second time.
     var finish: () -> Void
     var replay: () -> Void
     var close: () -> Void

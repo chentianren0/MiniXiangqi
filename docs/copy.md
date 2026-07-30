@@ -22,12 +22,12 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `nav.play` | 对局 | Play | navigation destination | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there |
+| `nav.play` | 对局 | Play | navigation destination; screen title; the Play back control's accessibility label | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there; `Play/PlayDestination.swift` — a back control names the page it returns to, which here is always the Play home |
 | `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
 | `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
-| `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
-| `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Starting and configuring a game, § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes; `Play/SetupScreen.swift` |
-| `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same; `Play/SetupScreen.swift` |
+| `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode — English only there; `Play/PlayHome.swift` |
+| `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
+| `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
 
 ### Controls
 
@@ -47,7 +47,7 @@ Contract sections are cited by document and section name rather than by line num
 | `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |
 | `control.tryAgain` | 重试 | Try Again | alert button; inline button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode, § Turn status — the stalled AI activity slot's retry is the same word and the same key |
 | `control.later` | 稍后 | Later | alert button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play — the mid-game re-preparation failure's cancel action. Not 取消: nothing is being cancelled, the game is saved, and it goes on |
-| `control.saveAndContinue` | 保存并继续 | Save and Continue | alert button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Games and history |
+| `control.saveAndContinue` | 保存并继续 | Save and Continue | alert button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Games and history; `Play/PlayHome.swift` |
 | `control.keepPlaying` | 继续对局 | Keep Playing | alert button | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
 | `control.endAsDraw` | 以和棋结束 | End as a Draw | alert button | same |
 | `control.share` | 共享 | Share | swipe action; context menu; screen-reader action | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
@@ -62,11 +62,11 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `status.redToMove` | 轮到红方 | Red to Move | status line | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` |
-| `status.blackToMove` | 轮到黑方 | Black to Move | status line | same |
+| `status.redToMove` | 轮到红方 | Red to Move | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Saving the active game before choosing a new mode; `Play/TurnStatus.swift`, `Play/ActiveGameMetadata.swift` |
+| `status.blackToMove` | 轮到黑方 | Black to Move | status line; metadata token | same |
 | `status.check` | 将军 | Check | status token | [interaction-design.md](interaction-design.md) § Turn status, § Game-state markers; `Play/TurnStatus.swift` |
 | `status.sideToMove.checked` | `%1$@　%2$@` | `%1$@ %2$@` | status-line format | `Play/TurnStatus.swift` — the separator is an ideographic space in Chinese and an ordinary space in English |
-| `status.drawAvailable` | 可判和 | Draw Available | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Claimable threefold repetition; `Play/TurnStatus.swift` |
+| `status.drawAvailable` | 可判和 | Draw Available | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Claimable threefold repetition; `Play/TurnStatus.swift`, `Play/ActiveGameMetadata.swift` |
 | `status.controller.you` | 你 | You | secondary label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` |
 | `status.controller.ai` | AI | AI | secondary label | same — identical in both languages |
 | `status.aiThinking` | AI 正在思考 | AI is thinking | accessibility label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` — the activity indicator's label, never drawn on screen |
@@ -80,9 +80,9 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `result.redWins` | 红方获胜 | Red Wins | notice title | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
-| `result.blackWins` | 黑方获胜 | Black Wins | notice title | same |
-| `result.draw` | 和棋 | Draw | notice title | same |
+| `result.redWins` | 红方获胜 | Red Wins | notice title; metadata token | [interaction-design.md](interaction-design.md) § Natural result presentation, § Saving the active game before choosing a new mode; `Play/ResultNotice.swift`, `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
+| `result.blackWins` | 黑方获胜 | Black Wins | notice title; metadata token | same |
+| `result.draw` | 和棋 | Draw | notice title; metadata token | same |
 | `result.recorded` | 已记录到历史 | Saved to History | notice title once the game is filed | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `result.announcement` | `%1$@，%2$@` | `%1$@, %2$@` | VoiceOver announcement format | `Play/ResultNotice.swift` — the separator is an ideographic comma in Chinese and a comma-space in English |
 
@@ -112,10 +112,10 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.resign.message` | 认输后本局将记为你落败。 | Resigning records this game as your loss. | alert message | same |
 | `alert.claimDraw.title` | 局面已三次重复 | This position has occurred three times. | alert title | [interaction-design.md](interaction-design.md) § Claimable threefold repetition; `Play/PlayScreen.swift` |
 | `alert.claimDraw.message` | 可以和棋结束。 | You can end the game as a draw. | alert message | same |
-| `alert.newGame.title` | 开始新对局？ | Start a new game? | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
-| `alert.newGame.metadataHeader` | 当前对局 | Current Game | metadata header | same |
-| `alert.newGame.message` | 这盘对局将按当前状态保存到历史。 | This game will be saved to History as it is now. | alert message | same |
-| `alert.saveFailed.title` | 无法保存对局 | Couldn't Save the Game | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode, § Move input |
+| `alert.newGame.title` | 开始新对局？ | Start a new game? | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `Play/PlayHome.swift` |
+| `alert.newGame.metadataHeader` | 当前对局 | Current Game | metadata header; section header on the Play home | same, and § The Play home; `Play/PlayHome.swift` — one string over one line, wherever that line is shown |
+| `alert.newGame.message` | 这盘对局将按当前状态保存到历史。 | This game will be saved to History as it is now. | alert message | same; `Play/PlayHome.swift` |
+| `alert.saveFailed.title` | 无法保存对局 | Couldn't Save the Game | alert title | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode, § Move input; `Play/PlayScreen.swift`, `Play/PlayHome.swift` |
 | `alert.saveFailed.message` | 当前对局仍然保留。请重试。 | The current game is unchanged. Please try again. | alert message | same |
 | `alert.aiUnavailable.title` | 无法启动 AI 对手 | Couldn't Start the AI Opponent | alert title | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play; [engine-integration.md](engine-integration.md) |
 | `alert.aiUnavailable.message` | 当前可用内存不足。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. Please close some other apps, then try again. | alert message | same — the pre-start form; `Play/SetupScreen.swift` |
@@ -146,6 +146,8 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 `alert.aiUnavailable.title` carries **two** messages, because the situation is one situation and the guarantee is not. Memory is not available right now, whether the game has started or not, so a second title would name a distinction the reader cannot act on. What the mid-game form adds is the one thing the pre-start case has no need of — the game is saved — and its actions are 稍后 and 重试 rather than 取消 and 重试, because there is nothing to cancel.
 
 `alert.gameNotStarted.*` is the creation failure that is **not** about memory: the game could not be persisted. It cannot borrow `alert.saveFailed.*`, whose message promises that 当前对局仍然保留 — there is no current game to keep, and a message that says there is would be worse than no message.
+
+`alert.newGame.metadataHeader`, the active game's metadata line, and `alert.newGame.message` are composed into that alert's one message with line breaks between them, because an alert on Apple platforms is a title, a message and its actions and has no third slot for a header. **The break is not copy and carries no key**: it holds no punctuation and is the same in both languages, so no format string stands between them — unlike `metadata.join`, whose middot is a piece of writing. The same header names the current-game section on the Play home, over the same line; it is one string for one thing, not two keys for two surfaces.
 
 ### Failure screens
 
@@ -219,10 +221,10 @@ Nothing here offers an interface language, and no key exists for one: the operat
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `metadata.youRed` | 你执红 | You: Red | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
-| `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show |
-| `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode |
-| `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same |
+| `metadata.youRed` | 你执红 | You: Red | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
+| `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
+| `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `Play/ActiveGameMetadata.swift` — the live game's own state, where a filed record has a committed result instead |
+| `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
 | `metadata.imported` | 导入 | Imported | row prefix on an imported record | [interaction-design.md](interaction-design.md) § History library; `History/RecordMetadata.swift` |
 | `metadata.join` | `%1$@ · %2$@` | `%1$@ · %2$@` | metadata-line format | same; `Play/TurnStatus.swift` |
 

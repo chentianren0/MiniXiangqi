@@ -433,6 +433,21 @@ final class Core {
     func shutdown() {
         session = nil
         quiesceEngineWork()
+        // The archive queue is the app's second thread inside the core, and it
+        // is drained for the same reason the engine queue is: an archive still
+        // in flight when the player quits would be inside a core that is going
+        // away, and the interface's invalid-handle promise does not cover the
+        // core handle. The caller quiesces its own threads; the core does not
+        // defend against one that does not.
+        //
+        // The barrier waits for the transaction, not for the answer: an archive
+        // that finishes as the player quits still has its `Task { @MainActor }`
+        // to run, and on a quit that task runs after this. That is tolerable
+        // because the only handle it touches is the archived session, which the
+        // promise above covers — after shutdown the core's own sessions answer
+        // `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory — and
+        // because the process is on its way out with nothing left to tell.
+        ActiveGameArchiver.quiesce()
         mxq_core_shutdown(handle, nil)
     }
 
@@ -678,6 +693,108 @@ extension Core {
     func endSession() {
         mxq_game_release(session)
         session = nil
+    }
+
+    /// The accepted atomic archive-and-clear: the active game into History and
+    /// the active-game reference cleared, in one transaction.
+    ///
+    /// It is the fourth archiving path and the only one that may record
+    /// `ended-early`, and the classification is entirely the core's — an
+    /// ordinary ongoing game and an unclaimed claimable repetition are recorded
+    /// as ended early, and an unconfirmed natural terminal keeps its actual
+    /// result and its exact reason. Nothing here supplies any of that.
+    ///
+    /// **It runs off the UI thread**, which is where docs/core-interface.md's
+    /// threading table puts it: the main-actor exception covers the active
+    /// game's own commits and the History surface, and names import, export and
+    /// this call as the three that stay outside it. The session goes *with* the
+    /// call and is detached here first, because the same contract counts every
+    /// function taking an `MxqGame *` as being inside that session: a session
+    /// nothing on this actor can reach is a session only one thread is inside.
+    /// A refusal puts it back, the previously committed active game being
+    /// intact and unchanged.
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
+    ) {
+        guard let active = session else {
+            // On a later turn, like every other answer this call makes. The
+            // rule is the seam's own and its stand-in documents it: an answer
+            // arriving inside the press that asked for it would reach an alert
+            // still dismissing itself. A refusal that answered synchronously
+            // while the transaction answered from a queue would be two
+            // different calls wearing one signature.
+            Task { @MainActor in
+                completion(.failure(CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
+                                              detail: "no session is attached")))
+            }
+            return
+        }
+        let archiver = ActiveGameArchiver(core: handle, active: active)
+        // For as long as this window is open the core has no session, so
+        // `evaluation()` and `legalMoves()` answer for the frozen start
+        // position rather than refusing — a path that read the board across it
+        // would be handed a silently wrong position instead of a failure. What
+        // keeps that unreachable is `PlayState`: the flow stands on the Play
+        // home for the whole of the archive, and `resume()` refuses to leave it
+        // while a mode switch is in flight.
+        session = nil
+        archiver.run { [self] result in
+            Task { @MainActor in
+                switch result {
+                case .success:
+                    // The archived session is still the caller's to release.
+                    mxq_game_release(archiver.active)
+                case .failure:
+                    session = archiver.active
+                }
+                completion(result)
+            }
+        }
+    }
+}
+
+/// `mxq_store_archive_and_clear` over the core handle and the session it
+/// archives, off every actor.
+///
+/// A dispatch queue rather than the cooperative pool for the same reason the
+/// engine facade uses one: the call is a store transaction and it blocks for as
+/// long as the commit takes, and a blocking call has no business on a pool
+/// thread. It is serial because there is one active game and one archiving of
+/// it; a second while the first is in flight would be a second owner of one
+/// session, which the single-owner rule refuses.
+///
+/// `@unchecked` for the reason `HistoryStore` is: what makes the two pointers
+/// safe to send is the C contract above them, which Swift cannot read. The
+/// claim being made is exactly the header's — the session's owner, any thread
+/// except inside a search callback, off the UI thread — and the owner is this
+/// call for as long as it runs.
+private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
+    let core: OpaquePointer
+    let active: OpaquePointer
+
+    private static let queue = DispatchQueue(label: "com.chentianren.MiniXiangqi.store",
+                                             qos: .userInitiated)
+
+    func run(_ completion: @escaping @Sendable (Result<UInt64, CoreError>) -> Void) {
+        Self.queue.async {
+            var recordID: UInt64 = 0
+            var err = freshError()
+            let status = mxq_store_archive_and_clear(core, active, &recordID, &err)
+            guard status == MXQ_OK else {
+                completion(.failure(CoreError(
+                    status: status,
+                    detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))))
+                return
+            }
+            completion(.success(recordID))
+        }
+    }
+
+    /// Waits for an archive already inside the core to finish, and for nothing
+    /// else. A barrier rather than a cancellation, exactly as the engine
+    /// queue's is, and called from `Core.shutdown` for the same reason.
+    static func quiesce() {
+        queue.sync { }
     }
 }
 

@@ -24,6 +24,8 @@ The primary destinations are:
 
 The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
+**Play has pages of its own.** Its root is the [Play home](#the-play-home), where what to play is chosen; each mode's pre-start state and the board are pages over it, reached by choosing and left by a back control in the toolbar, which names the page it returns to as the platform's own does. Leaving the board for the home ends nothing — the game stays active and the home's own card is the way back into it — and it is how a player reaches the mode entries while a game is going. A launch with a game to resume opens **at the board**, not at the home: the accepted resume-at-launch behaviour is that the app opens where the player left it, and a home the player has to walk through is not that.
+
 ## Platform visual language
 
 Each platform uses its own current native visual system rather than an imitation of another platform's.
@@ -43,7 +45,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 **The AI-thinking indicator carries no material at all.** It is present for a large share of every human-versus-AI game, and a persistent glass surface beside the board would be exactly the "gratuitous" application the guidance warns against.
 
-**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **开始对局** in either pre-start state, **结束对局** on the result notice before confirmation, the concluding action the play-control cluster carries once a finished game's notice is closed, **完成** after it — and at most one tinted element is ever visible. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
+**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **回到对局** on the Play home while a game is going, **开始对局** in either pre-start state, **结束对局** on the result notice before confirmation, the concluding action the play-control cluster carries once a finished game's notice is closed, **完成** after it — and at most one tinted element is ever visible. The mode entries are not among them: they are a list of things to choose between, and neither of them is the answer. A system alert's own default action is tinted by the platform and stands above the page, so the at-most-one rule is counted in the app's own layer and never through a modal. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
 
 | Setting | System surfaces | Custom glass surfaces |
 |---|---|---|
@@ -205,9 +207,18 @@ The board is the primary content during play. Its interaction design must cover:
 - Replay controls and navigation through a history game.
 - Help that explains both game concepts and interface behavior in context.
 
+### The Play home
+
+**The Play destination's root is an independent page for choosing what to play, and there is no board anywhere on it.** *(Owner direction, 2026-07-30.)* It replaces the start state this section previously described — the mode entries standing over a noninteractive preview board — which is withdrawn. The reason is the owner's: what the player is doing on this page is choosing what to play, a preview of a board they have not chosen yet answers no question they are asking, and a page that is a chooser rather than a board is the one that can hold a second game later. Standard 9×10 Xiangqi is a recorded brainstorm rather than a decision (issue #34), and nothing here is built for it; what the home owes it is only that it would fit.
+
+- **A game is a section, and its ways to play are the rows in it.** Mini Xiangqi's section offers **人机对弈** and **自由对弈**. Selecting either opens that mode's pre-start state. A second game, if there is ever one, is a second section beside this one rather than a rearrangement of it.
+- **The section carries no header while there is one game.** A header naming the only game on a screen that is only that game labels the obvious; a second game is what would give the sections something to tell apart. This is the same rule the [History library](#history-library) applies to its own two sections, where a library with nothing pinned reads as one plain list.
+- **With an active game the page also carries that game.** A **当前对局** card shows the accepted metadata line described under [Saving the active game before choosing a new mode](#saving-the-active-game-before-choosing-a-new-mode) — the same header, over the same line — and a prominent **回到对局** that opens the board on the game exactly as it was left. Every fact on the line is read from the game the core is holding and none of it is re-derived.
+- **A game already filed is not an active game**, and the card does not describe one. Its record is immutable History and the active-game reference was cleared by the terminal commit that made it; what stands on the board afterwards is the result where it was reached, which is presentation. Leaving that board for the home lets it go.
+- The mode entries remain interactive whenever a game is active, and selecting one presents the accepted confirmation rather than opening anything. That flow is defined in full below.
+
 ### Starting and configuring a game
 
-- With no active game, the Play destination is a **start state**: the noninteractive initial-board preview and the two mode entries, **人机对弈** and **自由对弈**. Selecting either opens that mode's pre-start state on the board page.
 - A game is created by **开始对局** and by nothing else. Neither mode's first move creates one, and an untouched board persists nothing.
 - With any active game, selecting either new mode immediately presents the one save-and-continue confirmation described below. This includes an ongoing game, a claimable but unclaimed neutral repetition, and an unconfirmed natural terminal result.
 - Cancelling leaves the active game unchanged and does not enter the selected mode.
@@ -237,7 +248,7 @@ The Free Play pre-start state is also not an active game:
 
 Settings has a **人机对弈默认设置** group with **默认先后手** and **默认 AI 等级**. Its footer explains that these values initialize future human-versus-AI setup and do not change an active game. A new installation selects **我先手** and **标准**.
 
-**Where the concluding actions go.** A finished game's **开始新对局** — on the play-control cluster and, as **保存并开始新对局**, on the result notice — files the game and opens **that game's own mode's pre-start state**. It does not deal the next game: with an opponent to choose, the side and the level are chosen for each game rather than inherited from the last one, and a pre-start page is not a confirmation standing between the press and the new game. **完成**, on the recorded notice, returns to the Play start state, where the mode itself is chosen again.
+**Where the concluding actions go.** A finished game's **开始新对局** — on the play-control cluster and, as **保存并开始新对局**, on the result notice — files the game and opens **that game's own mode's pre-start state**. It does not deal the next game: with an opponent to choose, the side and the level are chosen for each game rather than inherited from the last one, and a pre-start page is not a confirmation standing between the press and the new game. **完成**, on the recorded notice, returns to the Play home, where what to play is chosen again.
 
 ### Board orientation
 
@@ -346,7 +357,7 @@ The notice's repeated-failure behavior beyond "every retry re-probes" and its ac
 
 ### Saving the active game before choosing a new mode
 
-The Play destination shows the active game's metadata and a direct **Resume Game** action. The metadata identifies at least the mode, the human's side when applicable, and the move count. It shows the side to move for an ongoing game, the result and reason for a terminal game, and claim availability when applicable.
+The [Play home](#the-play-home) shows the active game's metadata under a **当前对局** header and a direct **回到对局** action beside it. The metadata identifies at least the mode, the human's side when applicable, and the move count. It shows the side to move for an ongoing game, the result and reason for a terminal game, and claim availability when applicable. The three state classes are exclusive and each takes one shape: an ongoing game is **进行中** and whose turn it is; a claimable repetition is **进行中** and **可判和**, the standing offer taking the side-to-move slot; a terminal game is its result and the reason for it, in the same longer register the History row uses.
 
 Both mode entries remain interactive whenever an active game exists. Selecting **Human versus AI** or **Free Play** temporarily remembers that destination in memory and immediately uses one fixed confirmation for every old-mode, new-mode, and active-game-state combination:
 
@@ -365,7 +376,7 @@ Only the metadata changes; the title, message, and actions do not interpolate mo
 
 The confirmation does not add **悔棋** or **判和** actions. **取消** discards the temporarily selected destination and leaves the active game completely unchanged; the user can resume it and use the board's normal Undo or draw-claim controls.
 
-Archiving and clearing the active game must commit atomically before navigation. On success, the selected mode's pre-start state opens, and no new game exists until **开始对局** succeeds. If the user leaves that pre-start state, the archived game remains in History and no active game is created.
+Archiving and clearing the active game must commit atomically before navigation. On success, the selected mode's pre-start state opens, and no new game exists until **开始对局** succeeds. If the user leaves that pre-start state, the archived game remains in History and no active game is created. The archive is the one operation on this path that is **not** driven from the UI thread — [core-interface.md](core-interface.md)'s threading contract keeps `mxq_store_archive_and_clear` outside the main-actor exception the active game's own commits run under — so the confirmation's answer is not the same instant as the archive's.
 
 If persistence fails, the old active game remains unchanged, the selected pre-start state does not open, and no new game is created. The exceptional error uses:
 
@@ -399,7 +410,7 @@ The requested destination remains temporary only while this confirmation or retr
 - A terminal game whose notice was closed without concluding is still archived with its actual winner or draw and its exact termination reason by the save-and-continue flow above, so dismissing the notice never loses the record.
 - Resignation remains a separate confirmed action rather than being folded into the natural-result notice.
 - After **保存**, the final board remains visible, the record becomes immutable History, and the notice changes to **已记录到历史** where it stands. That is the whole of the change on screen: result, save, recorded, in one place, with the position that produced the result still under it.
-- The recorded state offers **回放**, which opens the newly created History record from its initial position, and **完成**, which returns to the Play start state.
+- The recorded state offers **回放**, which opens the newly created History record from its initial position, and **完成**, which returns to the Play home.
 - **A game already filed is never filed again.** A claimed draw arrives at its notice already recorded, and so does a result the player has saved; the concluding action on either of them resets the board and commits nothing further.
 - The target MVP does not add a Play Again action to this notice.
 - The play-control cluster's concluding action stays **开始新对局**, and no confirmation stands between it and the new game: it files the finished game and resets the board, which is exactly what the notice's second action does under a name that says so.
