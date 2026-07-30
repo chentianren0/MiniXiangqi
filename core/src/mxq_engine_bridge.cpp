@@ -108,22 +108,6 @@ const Variant *target_variant() {
     return variants.find(std::string(kVariantId))->second;
 }
 
-/* The engine reports one side-to-move-relative Value and a flag. The contract
- * wants a state and a reason. Everything this function knows, it derives:
- *
- *  - checkmate and stalemate from there being no legal move, and from whether
- *    the side to move is in check;
- *  - a neutral repetition from an optional end valued as a draw;
- *  - a decisive repetition from an optional end valued as a mate, attributed by
- *    the accepted rule that the violating side loses — never by which side
- *    happens to be to move at detection;
- *  - perpetual check against perpetual chase from whether the side that loses
- *    delivered check at every occurrence of the repeated position. The engine
- *    collapses both onto the same Value, so this is the only way to tell them
- *    apart until the fork exposes which branch fired. Where the evidence does
- *    not decide it, the reason is left unset rather than guessed: a wrong
- *    reason is recorded in the archive forever.
- */
 /* placement + side to move, which is what docs/xiangqi-rules.md makes position
  * identity: "the two counters are ignored". */
 std::string identity(const std::string &fen) {
@@ -135,40 +119,51 @@ std::string identity(const std::string &fen) {
     return fen.substr(0, sp2 == std::string::npos ? fen.size() : sp2);
 }
 
-/* Every ply after which the position now on the board stood there. */
-std::vector<size_t> occurrences_of(const std::vector<std::string> &identities,
-                                   const std::string &here) {
-    std::vector<size_t> at;
-    for (size_t i = 0; i < identities.size(); ++i) {
-        if (identities[i] == here) {
-            at.push_back(i);
+/* How many times the position now on the board has stood there. */
+size_t occurrences_of(const std::vector<std::string> &identities,
+                      const std::string &here) {
+    size_t n = 0;
+    for (const std::string &past : identities) {
+        if (past == here) {
+            ++n;
         }
     }
-    return at;
+    return n;
 }
 
-/* The first ply of the repetition adjudication actually rests on: the three
- * occurrences ending at the present one.
+/* The engine reports one side-to-move-relative Value, a flag, and — since the
+ * fork's accessor (ppppvz/Fairy-Stockfish#2) — which rule produced the end. The
+ * contract wants a state and a reason:
  *
- * Anything earlier is lead-in or an interrupted attempt, and neither says who
- * is violating now. Judging over the whole history instead gets both ends
- * wrong: every real perpetual check has a quiet lead-in, and counting those
- * quiet plies makes it read as a chase; while an interrupted violation that
- * later resumes would have its interruption held against it.
+ *  - checkmate and stalemate from there being no legal move, and from whether
+ *    the side to move is in check;
+ *  - the repetition class from the reported rule, never inferred: the value
+ *    alone cannot tell a neutral threefold from a mutual perpetual chase, and
+ *    the ply history it used to be inferred from is an inference where a direct
+ *    report is available;
+ *  - who lost a decisive repetition from the value, by the accepted rule that
+ *    the violating side loses — never by which side happens to be to move at
+ *    detection.
  *
- * This is the same window the rules contract adjudicates on. mx-chs-022 is the
- * case that pins it: a violation interrupted and resumed attaches at the fourth
- * occurrence, and it is the second, third and fourth — not the first — that
- * decide what it was. */
-size_t window_start(const std::vector<size_t> &occurrences) {
-    if (occurrences.empty()) {
-        return 0;
-    }
-    return occurrences.size() >= 3 ? occurrences[occurrences.size() - 3]
-                                   : occurrences.front();
-}
-
-Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
+ * The rule and the value together are exhaustive, because the engine derives
+ * both from the same two predicates in one expression: a perpetual violation
+ * that only one side commits is a mate value for the other, and one both
+ * commit is a draw. So `PERPETUAL_CHECK` with a draw value IS mutual perpetual
+ * check, `PERPETUAL_CHASE` with a draw value IS mutual perpetual chase, and
+ * `N_FOLD` is the neutral claimable repetition. Nothing here re-derives what
+ * that expression already decided.
+ *
+ * That exhaustiveness is a property of the pinned configuration and not of the
+ * engine, and exactly one thing keeps it: position.cpp applies materialCounting
+ * AFTER *rule has been set, overwriting a drawn result with a counted one. In a
+ * variant with material counting the engine would therefore report
+ * PERPETUAL_CHECK with a decisive value for a MUTUAL violation, and reading the
+ * value as "one side did it" would name the wrong loser. minixiangqiaxf has no
+ * material counting, so that path is closed here — but neither switch below
+ * guesses past what it was told, for the same reason: a wrong reason is
+ * recorded in the archive forever, while an absent one is caught by a
+ * fixture. */
+Adjudication adjudicate(Position &pos,
                         const std::vector<std::string> &identities) {
     Adjudication a{};
     a.state = MXQ_GAME_ONGOING;
@@ -190,84 +185,71 @@ Adjudication adjudicate(Position &pos, const std::vector<Ply> &plies,
     Value value = VALUE_DRAW;
     OptionalGameEndRule rule = OPTIONAL_END_NONE;
     if (pos.is_optional_game_end(value, 0, 0, &rule)) {
-        /* How many times the position on the board has now stood there. The
-         * engine reports that an outcome attached, not where: a violation that
-         * was interrupted and resumed attaches at the fourth occurrence, not
-         * the third, so this is counted rather than assumed. */
-        const std::string here = identity(pos.fen());
-        const std::vector<size_t> occurrences = occurrences_of(identities, here);
-        a.at_occurrence = static_cast<uint32_t>(occurrences.size());
-
-        /* Judge the violation over the repetition, never over the whole game. */
-        const size_t first = window_start(occurrences);
+        /* The engine reports that an outcome attached, not where: a violation
+         * that was interrupted and resumed attaches at the fourth occurrence,
+         * not the third, so this is counted rather than assumed. */
+        a.at_occurrence = static_cast<uint32_t>(
+            occurrences_of(identities, identity(pos.fen())));
 
         if (value == VALUE_DRAW) {
             /* A neutral threefold and a mutual same-class violation both come
-             * back as a draw value. They are different outcomes: the first is
+             * back as a draw value. They are different outcomes — the first is
              * claimable and the second is automatic, so the game does not end
-             * on its own if this is read wrongly.
-             *
-             * The fork reports which rule produced the end, which is what
-             * separates them: a draw the perpetual-chase branch produced is
-             * both sides chasing, because a unilateral chase is decisive. The
-             * check case is derived from the plies instead — the engine folds
-             * mutual perpetual check onto the same rule, and both sides having
-             * checked at every one of their own moves inside the repetition is
-             * the trace it leaves. */
-            if (rule == OPTIONAL_END_PERPETUAL_CHASE) {
-                a.state = MXQ_GAME_DRAW;
-                a.reason = MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE;
-                return a;
-            }
-            size_t red_moves = 0, black_moves = 0;
-            bool red_always_checked = true, black_always_checked = true;
-            for (size_t i = first; i < plies.size(); ++i) {
-                const Ply &p = plies[i];
-                if (p.by_red) {
-                    ++red_moves;
-                    if (!p.gives_check) red_always_checked = false;
-                } else {
-                    ++black_moves;
-                    if (!p.gives_check) black_always_checked = false;
-                }
-            }
-            if (red_moves > 0 && black_moves > 0 && red_always_checked &&
-                black_always_checked) {
+             * on its own if this is read wrongly — and the reported rule is
+             * exactly what separates them. */
+            switch (rule) {
+            case OPTIONAL_END_PERPETUAL_CHECK:
                 a.state = MXQ_GAME_DRAW;
                 a.reason = MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK;
-                return a;
+                break;
+            case OPTIONAL_END_PERPETUAL_CHASE:
+                a.state = MXQ_GAME_DRAW;
+                a.reason = MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE;
+                break;
+            case OPTIONAL_END_N_FOLD:
+                a.state = MXQ_GAME_CLAIMABLE_DRAW;
+                a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
+                break;
+            default:
+                /* Unreachable under the pinned configuration, and left unnamed
+                 * rather than folded into the neutral repetition: the other
+                 * drawn branches are the move-count rule, the counting rules
+                 * and the Sittuyin stalemate, none of which minixiangqiaxf
+                 * enables. A rule this build does not know is not evidence
+                 * that a repetition is claimable, and answering ONGOING is the
+                 * honest end of that: the game continues, and a fixture
+                 * catches the silence. The occurrence count goes with it —
+                 * MxqGameStatus.at_occurrence is 0 unless the outcome is
+                 * repetition-based, and this one is not an outcome at all. */
+                a.at_occurrence = 0;
+                break;
             }
-            a.state = MXQ_GAME_CLAIMABLE_DRAW;
-            a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
             return a;
         }
-        /* A decisive repetition is automatic, not claim-gated. */
+
+        /* A decisive repetition is automatic, not claim-gated. The loser is the
+         * violator, by the accepted rule that a violation is named by outcome
+         * and never by who is to move at detection. */
         const bool side_to_move_wins = (value > VALUE_DRAW);
         const bool red_wins = (side_to_move_is_red == side_to_move_wins);
         a.state = red_wins ? MXQ_GAME_RED_WINS : MXQ_GAME_BLACK_WINS;
 
-        /* The loser is the violator, by the accepted rule that a violation is
-         * named by outcome and never by who is to move at detection. Perpetual
-         * check is then distinguishable from perpetual chase because the
-         * violator must have given check at every one of ITS OWN moves — the
-         * victim's replies give none, so counting every ply would make every
-         * perpetual check look like a chase. */
-        const bool loser_is_red = !red_wins;
-        size_t loser_moves = 0;
-        bool loser_checked_every_move = true;
-        for (size_t i = first; i < plies.size(); ++i) {
-            const Ply &p = plies[i];
-            if (p.by_red != loser_is_red) {
-                continue;
-            }
-            ++loser_moves;
-            if (!p.gives_check) {
-                loser_checked_every_move = false;
-            }
+        switch (rule) {
+        case OPTIONAL_END_PERPETUAL_CHECK:
+            a.reason = MXQ_END_REASON_PERPETUAL_CHECK;
+            break;
+        case OPTIONAL_END_PERPETUAL_CHASE:
+            a.reason = MXQ_END_REASON_PERPETUAL_CHASE;
+            break;
+        default:
+            /* Unreachable under the pinned configuration: the other decisive
+             * branches need a move-count rule with material counting or the
+             * Janggi repetition rule, and minixiangqiaxf sets nMoveRule = 0 and
+             * inherits neither. If one ever fires, the reason is left unset
+             * rather than guessed — a wrong reason is recorded in the archive
+             * forever, and a fixture catches an absent one. */
+            break;
         }
-        a.reason = (loser_moves > 0 && loser_checked_every_move)
-                       ? MXQ_END_REASON_PERPETUAL_CHECK
-                       : MXQ_END_REASON_PERPETUAL_CHASE;
         return a;
     }
 
@@ -347,10 +329,6 @@ ReplayError replay(const char *start_fen,
     Position pos;
     pos.set(v, std::string(start_fen), false, &states->back(), Threads.main());
 
-    /* Recorded per ply so a perpetual check can be told from a perpetual chase,
-     * which the engine's return value alone does not distinguish. */
-    std::vector<Ply> plies;
-    plies.reserve(move_count);
     /* Every position the game has stood in, the start included, so an
      * occurrence count can be derived rather than assumed. */
     std::vector<std::string> identities;
@@ -372,7 +350,6 @@ ReplayError replay(const char *start_fen,
             detail = "move " + move_text + " is not legal at its turn";
             return ReplayError::IllegalMove;
         }
-        plies.push_back(Ply{pos.side_to_move() == WHITE, pos.gives_check(m)});
         states->emplace_back();
         pos.do_move(m, states->back());
         identities.push_back(identity(pos.fen()));
@@ -381,7 +358,7 @@ ReplayError replay(const char *start_fen,
     out_fen = pos.fen();
     out_in_check = (pos.checkers() != 0);
     out_ply = static_cast<uint32_t>(move_count);
-    out_adj = adjudicate(pos, plies, identities);
+    out_adj = adjudicate(pos, identities);
 
     if (out_legal_moves != nullptr) {
         out_legal_moves->clear();

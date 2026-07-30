@@ -22,19 +22,11 @@ namespace engine {
 
 /* Adjudication as the rules contract describes it, independent of how the
  * engine happens to report it. The engine returns one side-to-move-relative
- * Value plus a flag; docs/xiangqi-rules.md wants a state, a reason, and the
- * occurrence an outcome attached at. Translating once, here, keeps every caller
- * from re-deriving it — and re-deriving it inconsistently is exactly how a
- * repetition outcome gets attributed to the wrong side. */
-/* One recorded ply: who moved, and whether the move gave check. Both halves are
- * needed — a unilateral perpetual check is one side checking at every one of
- * ITS moves, and the victim's replies of course give no check. Recording only
- * "did this ply give check" makes every perpetual check look like a chase. */
-struct Ply {
-    bool by_red;
-    bool gives_check;
-};
-
+ * Value, a flag, and which optional-end rule fired; docs/xiangqi-rules.md wants
+ * a state, a reason, and the occurrence an outcome attached at. Translating
+ * once, here, keeps every caller from re-deriving it — and re-deriving it
+ * inconsistently is exactly how a repetition outcome gets attributed to the
+ * wrong side. */
 struct Adjudication {
     MxqGameState state;
     MxqEndReason reason;

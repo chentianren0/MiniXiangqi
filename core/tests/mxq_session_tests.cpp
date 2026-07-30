@@ -1320,6 +1320,74 @@ void case_tombstoned_handle() {
 }
 
 /*
+ * The measured worst case behind the legal-move capacity in
+ * docs/core-interface.md, pinned so it cannot move quietly.
+ *
+ * The contract records that a fixed MxqMove[128] is provably sufficient for
+ * this variant and MxqMove[64] is not, on a derived bound of 83 and a measured
+ * maximum of 77 found by hill-climbing over positions the core accepts. That
+ * measurement is the kind that rots: a rules change — a mobility region, a
+ * chase exclusion, a piece's move set — can swell legal-move counts toward the
+ * ceiling without failing anything else, and the fixtures would not notice,
+ * since the busiest position any of them reaches has 32 legal moves. This
+ * position is the evidence, so it is asserted: the count is exact, and the
+ * bound it sits under is checked with it.
+ */
+void case_legal_move_capacity() {
+    Case c("the measured legal-move worst case, pinned");
+    const fs::path store = scratch_dir("capacity");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, 0, &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    /* Red's full starting complement against a bare general. */
+    const char *kBusiest = "4C2/2kP1P1/2P4/3N1P1/2N4/1C1K1P1/R5R w - - 0 1";
+    const size_t kBusiestCount = 77;
+    const size_t kDerivedBound = 83;
+
+    size_t count = 0;
+    err = make_error();
+    c.check(mxq_rules_legal_moves(core, kBusiest, nullptr, 0, nullptr, 0,
+                                  &count, &err) ==
+                MXQ_ERR_ARG_BUFFER_TOO_SMALL,
+            "asking for the count alone is the routine buffer refusal");
+    c.check_eq(static_cast<int64_t>(count),
+               static_cast<int64_t>(kBusiestCount),
+               "the measured busiest position's legal-move count");
+    c.check_eq(static_cast<int64_t>(err.required_size),
+               static_cast<int64_t>(kBusiestCount),
+               "and required_size says how much room it needs");
+
+    /* The contract's claim, made twice over: the count fits the capacity it
+     * says is sufficient, and stays under the bound it derived. */
+    std::vector<MxqMove> out(128);
+    for (MxqMove &m : out) {
+        std::memset(&m, 0, sizeof(m));
+        m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
+    }
+    size_t written = 0;
+    err = make_error();
+    const MxqStatus held = mxq_rules_legal_moves(
+        core, kBusiest, nullptr, 0, out.data(), out.size(), &written, &err);
+    c.check(held == MXQ_OK,
+            std::string("a 128-element buffer holds it, got ") +
+                mxq_status_name(held));
+    c.check_eq(static_cast<int64_t>(written),
+               static_cast<int64_t>(kBusiestCount), "and it wrote them all");
+    c.check(count <= kDerivedBound,
+            "the measured maximum stays under the derived bound of " +
+                std::to_string(kDerivedBound));
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/*
  * How long one committed move takes, measured rather than asserted.
  *
  * #50 leaves open whether the one-row active-game commit may run on the main
@@ -1445,6 +1513,7 @@ int main(int argc, char **argv) {
     case_failed_commit_leaves_the_game_unchanged();
     case_concurrent_use_is_refused();
     case_tombstoned_handle();
+    case_legal_move_capacity();
     case_commit_latency();
 
     std::error_code cleanup;

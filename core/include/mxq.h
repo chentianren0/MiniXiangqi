@@ -108,8 +108,11 @@ extern "C" {
 /* A 6-field Mini Xiangqi FEN, NUL-terminated. */
 #define MXQ_FEN_CAP 96
 
-/* MxqError.detail: a short English diagnostic. Provisional; docs/core-interface.md
- * leaves the concrete capacity to be finalised against measured worst cases. */
+/* MxqError.detail: a short English diagnostic. Final, and measured: the longest
+ * fixed diagnostic in the core is 112 bytes, so every path-free diagnostic fits
+ * whole. Diagnostics that embed a caller-supplied filesystem path are unbounded
+ * by nature and are composed diagnosis-first, so what truncation costs is the
+ * path rather than the fact. See docs/core-interface.md, "Capacity constants". */
 #define MXQ_DETAIL_CAP 128
 
 /* A version 7 UUID in canonical lowercase text: 36 characters plus the NUL. */
@@ -138,11 +141,30 @@ extern "C" {
  * exact code, and must tolerate an unknown code within a known domain: every
  * switch over MxqStatus requires a default arm.
  *
- * Programming errors — the argument domain except MXQ_ERR_ARG_BUFFER_TOO_SMALL,
- * plus the not-initialised, already-initialised and read-only-session
- * violations — assert in debug builds, return their code in release builds, and
- * never change state. Every other status is ordinary control flow and leaves
- * the last committed state intact.
+ * Programming errors assert in debug builds, return their code in release
+ * builds, and never change state. What makes a status one is reachability, not
+ * its domain: a caller that had every fact it needed could not have reached it
+ * except by its own defect. Those are a null required pointer, a handle this
+ * core never issued, a struct_size this build cannot interpret, an incompatible
+ * MXQ_API_VERSION, a value outside a closed vocabulary the frontend itself owns
+ * (a square its own board does not have, a game configuration of neither
+ * accepted shape, a pinned that is not 0 or 1), a second mxq_core_init, a core
+ * handle that is not the live instance, and a mutation on a detached read-only
+ * session.
+ *
+ * Four argument-domain statuses are deliberately not programming errors and
+ * never assert, because each is an answer the core promises rather than a
+ * caller it catches: MXQ_ERR_ARG_BUFFER_TOO_SMALL, the routine way to ask for a
+ * size; MXQ_ERR_ARG_INVALID_HANDLE from a session handle outstanding across
+ * mxq_core_shutdown, which the shutdown rule requires it to answer;
+ * MXQ_ERR_ARG_CONCURRENT_USE, which reports a detected race rather than
+ * aborting on a timing accident; and MXQ_ERR_ARG_REENTRANT, which the body of a
+ * callback must be able to receive. MXQ_ERR_ARG_RANGE splits on the same test
+ * rather than by code — see mxq_game_position_at and mxq_search_start, which
+ * return it without asserting.
+ *
+ * Every other status is ordinary control flow and leaves the last committed
+ * state intact.
  */
 typedef int32_t MxqStatus;
 
@@ -749,6 +771,12 @@ typedef struct MxqEnginePlan {
  * A search request. The session supplies everything else: mxq_search_start does
  * not retain the session, it snapshots the initial FEN, the complete move list,
  * the game_id, the position_revision, and the session's frozen movetime.
+ *
+ * movetime_ms is a cross-check rather than an input, and deliberately so: the
+ * core already holds the only legal value, but the caller computes its own from
+ * the AI level the player chose, and the two disagreeing is the one bug that
+ * would otherwise be silent and permanent — a move thought for a time the
+ * archive does not record. See docs/core-interface.md, the search facade.
  */
 typedef struct MxqSearchRequest {
     uint32_t struct_size;
@@ -791,10 +819,13 @@ typedef struct MxqSearchResult {
  * helpers — mxq_status_domain, mxq_status_name, mxq_blob_bytes, mxq_blob_len,
  * mxq_blob_release — together with the four pure queries that take no core
  * instance and no lock: mxq_core_version, mxq_rules_start_fen, mxq_engine_plan
- * and mxq_archive_supported_versions. Every other core function returns
- * MXQ_ERR_ARG_REENTRANT. It must not block,
- * because the engine thread is the resource it would deadlock. Its whole job is
- * to hand the result to the frontend's dispatcher.
+ * and mxq_archive_supported_versions. Every other core function that can report
+ * returns MXQ_ERR_ARG_REENTRANT, before it judges any handle it was passed;
+ * mxq_game_release returns void and so has nothing to report with, and is
+ * forbidden here by the single-owner rule instead, a callback not being the
+ * session's owner. It must not block, because the engine thread is the resource
+ * it would deadlock. Its whole job is to hand the result to the frontend's
+ * dispatcher.
  *
  * result points into core storage and is valid only for the duration of the
  * call. user_data is the pointer passed to mxq_search_start, untouched.
@@ -1347,6 +1378,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_engine_query(MxqCore *core,
  * snapshots the initial FEN, the complete move list, the game_id, the
  * position_revision and the session's frozen movetime before returning.
  * request->movetime_ms must equal that frozen movetime, or MXQ_ERR_ARG_RANGE.
+ * That check does not assert: what it reports is a disagreement between two
+ * independently-built components, not a caller that could not have got here
+ * honestly. A Free Play session freezes no movetime and owes no search, so a
+ * zero never passes it.
  *
  * callback may be NULL, in which case mxq_search_poll or mxq_search_wait is the
  * only consumer.

@@ -43,6 +43,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 ### Shared core
 
 - Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and, once the Windows toolchain is pinned, on Windows.
+- Run that suite in **both** a debug and a release configuration. Neither is a superset of the other: the programming errors in `docs/core-interface.md`'s error taxonomy assert where `NDEBUG` is undefined and return their code where it is defined, so a release run is the only one that can observe those codes and a debug run is the only one that exercises the assertions — and the vendored engine's own assertions are live only in the first.
 - Verify the one shared core test runner executes the approved fixtures identically on every development platform, without a frontend.
 - Store changes verify the transactional invariants: single active game, atomic archive-and-clear, no partial import, and deletion rollback.
 - Archive changes verify cross-platform round-trips and version dispatch, including rejection of unsupported versions.
