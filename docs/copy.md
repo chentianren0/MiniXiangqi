@@ -222,7 +222,7 @@ Nothing here offers an interface language, and no key exists for one: the operat
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
 | `metadata.youRed` | 你执红 | You: Red | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
-| `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show |
+| `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
 | `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `Play/ActiveGameMetadata.swift` — the live game's own state, where a filed record has a committed result instead |
 | `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
 | `metadata.imported` | 导入 | Imported | row prefix on an imported record | [interaction-design.md](interaction-design.md) § History library; `History/RecordMetadata.swift` |

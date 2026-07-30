@@ -666,16 +666,16 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertEqual(reading(app, "result-title"), "已记录到历史",
                        "the recorded notice is a fact about the game, so it survives the trip")
 
-        // 完成 is the way out of the recorded state: back to the Play start
-        // state, with nothing filed a second time on the way.
+        // 完成 is the way out of the recorded state: back to the Play home,
+        // with nothing filed a second time on the way.
         app.buttons["result-done"].click()
         XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
-                      "完成 returns to the Play start state")
+                      "完成 returns to the Play home")
         XCTAssertTrue(app.buttons["mode-human-versus-ai"].exists, "with both modes on offer")
         XCTAssertFalse(app.staticTexts["result-title"].exists, "the notice is gone")
         XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
                        "a game already filed is not filed again, so nothing refused it")
-        attach(app, named: "51-the-play-start-state")
+        attach(app, named: "51-the-play-home-after-finishing")
 
         waitForBoard(app)
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮", "the starting position is back")

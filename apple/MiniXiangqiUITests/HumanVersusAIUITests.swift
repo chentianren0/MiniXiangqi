@@ -366,7 +366,7 @@ final class HumanVersusAIUITests: XCTestCase {
 
         destinations.element(boundBy: 0).click()   // Play
         XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 10),
-                      "leaving the page discards the draft and returns to the start state")
+                      "leaving the page discards the draft and returns to the Play home")
         app.buttons["mode-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.windows.firstMatch.descendants(matching: .any)["setup-ai-level"]

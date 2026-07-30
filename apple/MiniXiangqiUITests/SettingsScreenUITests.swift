@@ -141,7 +141,7 @@ final class SettingsScreenUITests: XCTestCase {
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         // The Play destination settling is what says the seeding has finished.
         // With every seeded game filed there is no active game left, so what
-        // arrives is the start state's mode entries rather than a board.
+        // arrives is the Play home's mode entries rather than a board.
         XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
         return app
     }
