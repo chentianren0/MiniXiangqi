@@ -8,9 +8,12 @@
 // move.
 //
 // Selecting a row opens its read-only replay. The row actions are Pin or Unpin,
-// 共享 and Delete, on a swipe and in the context menu. Deletion always confirms:
-// 删除前确认 is a Settings toggle that defaults on, and until a Settings screen
-// exists to turn it off, on is what it is.
+// 共享 and Delete, on a swipe and in the context menu. Deletion confirms unless
+// the player has said not to: 删除前确认 is the Settings switch that defaults on,
+// read at the moment a deletion is asked for, and with it off the record goes
+// immediately — which is a promise the switch's own footer makes and this screen
+// keeps. Every route to a deletion goes through one call, so the swipe, the
+// complete swipe, the context menu and the screen-reader action all honour it.
 //
 // This is also where a game comes in. Import is one file at a time, from the
 // toolbar, on the screen the list is already on — so the result of a successful
@@ -285,9 +288,19 @@ struct HistoryScreen: View {
         }
     }
 
+    /// Deletes the record, asking first where the preference says to ask.
+    ///
+    /// The record is held either way, because the deletion that a store refuses
+    /// offers to be retried and the retry has to name the same record — that
+    /// alert is about a deletion that did not happen and is not the confirmation
+    /// this switch governs.
     private func confirmDeletion(of record: RecordSummary) {
         deleting = record
-        confirmingDeletion = true
+        if Preferences.deleteConfirmation.value() {
+            confirmingDeletion = true
+        } else {
+            library.delete(record)
+        }
     }
 
     // MARK: - Import

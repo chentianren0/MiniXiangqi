@@ -80,8 +80,12 @@ Settings holds the persistent user preferences the target MVP accepts:
 - the default AI level;
 - **Confirm Before Deleting**, enabled by default;
 - a sound toggle and a separate haptics toggle, the latter offered only where the hardware supports haptics;
-- the **piece style**, chosen among the three accepted styles defined in `interaction-design.md`, defaulting to the traditional one;
-- the **piece symbols**, Chinese characters by default or pictorial icons, as defined in `interaction-design.md`.
+- the **piece symbols**, Chinese characters by default or pictorial icons, as defined in `interaction-design.md`;
+- the **notation**, traditional Chinese by default or WXF, as defined in `interaction-design.md`.
+
+The **piece style** is not offered in Settings. The three accepted styles in `interaction-design.md` remain the visual system's contract, but only 传统 is drawn, and a preference with one option is not a preference. The control lands when a second style does, which is after the Windows frontend. (Owner deferral, issue #64.)
+
+The piece symbols and the notation are two independent preferences rather than one: a player learning the characters may want icons on the discs while reading the Chinese move list they are learning from, and an international player wants both changed. Neither follows the interface language: a locale-driven default surprises anyone comparing two machines, and the accepted defaults are 汉字 and 中文 everywhere.
 
 Settings stores no game data, and changing a default never alters an active game. It also holds no interface-language control: the app follows the language the operating system selects for it. On Apple platforms that is already a per-app setting the system provides, so our own control would duplicate it and create a second source of truth. On Windows the app follows the system's language preference list; whether internal testers there need an in-app override is recorded as an open question rather than answered now, since it cannot be evaluated before the Windows frontend exists.
 

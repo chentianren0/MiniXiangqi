@@ -15,6 +15,11 @@
 // patterns, and every landing gets the same one. What is *heard* follows the
 // meaning of what arrived: one sound per landing, chosen by the event, silent
 // wherever the contract keeps it silent.
+//
+// Both toggles now exist: 声音 and 触感 are the second group of the Settings
+// destination, and each half is gated by its own key at the moment it would
+// fire. Neither gate knows about the other — sound off leaves a landing felt,
+// haptics off leaves it heard.
 
 #if os(macOS)
 import AppKit
@@ -97,32 +102,26 @@ struct Feedback {
     /// The half that is heard.
     var play: (Sound) -> Void
 
-    // MARK: - The sound preference
+    // MARK: - The two preferences
 
-    /// The accepted Settings toggle, per the Settings scope in product.md. The
-    /// screen that offers it comes later; the preference it will write is
-    /// honoured now, so that a user who turns sound off never has to wait for
-    /// the toggle to be built twice.
-    static let soundEnabledKey = "sound.enabled"
-
-    /// Read at the moment a sound would play rather than cached at launch: a
-    /// toggle takes effect on the next landing, not the next run. Absent — the
-    /// state of every first launch — means on, because a board that says
-    /// nothing until you visit Settings reads as a board with no sound.
-    static func soundIsEnabled(in defaults: UserDefaults) -> Bool {
-        defaults.object(forKey: soundEnabledKey) as? Bool ?? true
-    }
-
-    /// Puts the preference in front of the heard half, leaving the felt half
-    /// alone: the haptics toggle is its own setting and is not this gate's
-    /// business. The composition lives here, in front of any particular player,
-    /// so that a test can hold the real gate over a recorder and see exactly
-    /// what the app would have silenced.
-    static func gatingSound(by defaults: UserDefaults = .standard,
-                            perform: @escaping (Event) -> Void,
-                            play: @escaping (Sound) -> Void) -> Feedback {
-        Feedback(perform: perform) { sound in
-            guard soundIsEnabled(in: defaults) else { return }
+    /// Puts each accepted Settings switch in front of the half it governs, and
+    /// reads it at the moment that half would fire rather than when this was
+    /// composed: a switch takes effect on the next landing, not on the next run.
+    /// What an absent key means belongs to `Preferences`, which every consumer of
+    /// these preferences reads through — here it is enough that the answer is
+    /// asked for again each time.
+    ///
+    /// The composition lives here, in front of any particular performer or
+    /// player, so that a test can hold the app's own gates over a recorder and
+    /// see exactly what the app would have silenced or stilled.
+    static func gating(by defaults: UserDefaults = Preferences.defaults,
+                       perform: @escaping (Event) -> Void,
+                       play: @escaping (Sound) -> Void) -> Feedback {
+        Feedback { event in
+            guard Preferences.haptics.value(in: defaults) else { return }
+            perform(event)
+        } play: { sound in
+            guard Preferences.sound.value(in: defaults) else { return }
             play(sound)
         }
     }
@@ -145,16 +144,19 @@ struct Feedback {
     /// no later than the second.
     ///
     /// `NSHapticFeedbackManager` is AppKit, so the felt half described above is
-    /// the macOS one. On iOS it is deliberately silent for now: UIKit's feedback
-    /// generators are a different shape — prepared ahead of the event rather
-    /// than performed at a named time — and choosing their patterns is a
-    /// design decision about a device that vibrates in the hand, not a
-    /// translation of this one. Stage 6, which brings the iOS pass, owns it.
-    /// Nothing is lost meanwhile: no feedback here is the only channel for
-    /// anything, and the heard half is identical on both platforms.
+    /// the macOS one — and the reason 触感 is offered there: the performer
+    /// honours each machine's own trackpad and does nothing where there is no
+    /// trackpad to tap, so the switch is never silently ineffective in a way the
+    /// app would have to guess at. On iOS the felt half is deliberately silent
+    /// for now: UIKit's feedback generators are a different shape — prepared
+    /// ahead of the event rather than performed at a named time — and choosing
+    /// their patterns is a design decision about a device that vibrates in the
+    /// hand, not a translation of this one. Stage 6, which brings the iOS pass,
+    /// owns it. Nothing is lost meanwhile: no feedback here is the only channel
+    /// for anything, and the heard half is identical on both platforms.
     static let live: Feedback = {
         let sounds = BoardSounds()
-        return gatingSound { event in
+        return gating { event in
             #if os(macOS)
             let performer = NSHapticFeedbackManager.defaultPerformer
             switch event {

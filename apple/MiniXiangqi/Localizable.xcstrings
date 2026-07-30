@@ -1100,6 +1100,23 @@
         }
       }
     },
+    "nav.settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
+          }
+        }
+      }
+    },
     "piece.cannon": {
       "comment": "The piece's name where words are used rather than the board's own glyph. English names it by its piece name; Chinese names it by the character the piece carries, which is game content, is never translated, and so passes through as the argument rather than being written here.",
       "extractionState": "manual",
@@ -1546,6 +1563,197 @@
           "stringUnit": {
             "state": "translated",
             "value": "红方获胜"
+          }
+        }
+      }
+    },
+    "settings.confirmDelete.footer": {
+      "comment": "The one footer in Settings. It says what turning the switch off costs, and that the cost cannot be undone; the second sentence is the permanence the product contract fixes, not a warning added here.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, deletion happens immediately. A deletion cannot be undone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后，删除立即执行。删除无法撤销。"
+          }
+        }
+      }
+    },
+    "settings.confirmDelete.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Before Deleting"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除前确认"
+          }
+        }
+      }
+    },
+    "settings.haptics.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haptics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "触感"
+          }
+        }
+      }
+    },
+    "settings.notation.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记谱法"
+          }
+        }
+      }
+    },
+    "settings.notation.traditional": {
+      "comment": "The traditional Chinese notation, named by the language it is written in rather than by the word 传统, which names a piece style.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中文"
+          }
+        }
+      }
+    },
+    "settings.notation.wxf": {
+      "comment": "The World Xiangqi Federation notation. Identical in both languages: it is a name, and never translated.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WXF"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WXF"
+          }
+        }
+      }
+    },
+    "settings.section.board": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Board"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棋盘"
+          }
+        }
+      }
+    },
+    "settings.sound.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sound"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "声音"
+          }
+        }
+      }
+    },
+    "settings.symbols.hanzi": {
+      "comment": "The characters themselves are game content and are never translated; this is the name of the choice to show them.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese Characters"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "汉字"
+          }
+        }
+      }
+    },
+    "settings.symbols.icons": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Icons"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图标"
+          }
+        }
+      }
+    },
+    "settings.symbols.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Piece Symbols"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棋子符号"
           }
         }
       }
