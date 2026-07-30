@@ -39,6 +39,17 @@ struct PlayDestination: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// How many times this destination has been on screen.
+    ///
+    /// The stack is rebuilt on each visit, and it has to be: a
+    /// `navigationDestination` registration does not survive the destination
+    /// being torn down and put back. Measured on the running app — walk to
+    /// another tab, come back, and choose a mode, and the page that arrives is
+    /// SwiftUI's own no-matching-destination placeholder rather than the
+    /// pre-start page. Rebuilding costs nothing here, because a stack is created
+    /// with the page it is already on rather than walking to it.
+    @State private var visits = 0
+
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
 
     var body: some View {
@@ -55,7 +66,7 @@ struct PlayDestination: View {
                 // observes — the closure runs outside the tracked evaluation —
                 // so the stack would sit on whatever page it was last built
                 // with and move only when something else happened to redraw it.
-                stack(at: play.page)
+                stack(at: play.page).id(visits)
             } else {
                 // The frames before the launch resume has answered. The
                 // navigation is deliberately not built yet: a stack built at the
@@ -70,6 +81,9 @@ struct PlayDestination: View {
         .playContentFloor()
         .task {
             play.startIfNeeded(policy: policy)
+        }
+        .onAppear {
+            visits += 1
         }
         // Leaving the destination altogether discards a pre-start draft and
         // invalidates an attempt in flight. The container tears this down on
