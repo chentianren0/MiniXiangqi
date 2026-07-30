@@ -75,11 +75,13 @@ final class Game {
     private(set) var legalMoves: [Move] = []
     private(set) var lastMove: Move?
 
-    /// Each played move as the player reads it. Recorded when the move is
-    /// played — traditional notation depends on the placement *before* it —
-    /// and recomputed the same way when a stored game resumes, so a relaunch
-    /// reads exactly as the sitting it interrupted did.
-    private(set) var notation: [String] = []
+    /// Each played move as the player reads it, in both notations. Recorded when
+    /// the move is played — a reading depends on the placement *before* it — and
+    /// recomputed the same way when a stored game resumes, so a relaunch reads
+    /// exactly as the sitting it interrupted did. The 记谱法 preference selects
+    /// between the two readings where the list is drawn, not here: a preference
+    /// change re-renders the game on screen rather than recomputing it.
+    private(set) var notation: [MoveReading] = []
 
     /// The last attempt's failed core call, recorded rather than swallowed. A
     /// refused ply is the accepted save-failure state: the move or Undo did
@@ -109,7 +111,7 @@ final class Game {
     /// so an untouched board persists nothing.
     init(rules: Rules) throws {
         var moves: [String] = []
-        var notation: [String] = []
+        var notation: [MoveReading] = []
         var lastMove: Move?
         if try rules.resumeActive() {
             moves = try rules.moveHistory()
@@ -130,9 +132,9 @@ final class Game {
     /// record's replay gets, so a relaunch and a replay say the same words
     /// about the same game.
     private static func notation(reading moves: [String],
-                                 from rules: Rules) throws -> [String] {
+                                 from rules: Rules) throws -> [MoveReading] {
         do {
-            return try MoveNotation.line(for: moves) {
+            return try MoveReading.line(for: moves) {
                 Placement(fen: try rules.fen(atPly: $0))
             }
         } catch {
@@ -304,7 +306,7 @@ final class Game {
 
     private func play(_ move: Move) {
         failure = nil
-        let read = MoveNotation.text(for: move, in: placement)
+        let read = MoveReading(of: move, in: placement)
         do {
             // The session begins at the first move — creation and the move are
             // one user-visible action — and every later move speaks to it.

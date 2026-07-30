@@ -47,6 +47,12 @@ struct BoardView: View {
     /// repaints the board that is already on screen.
     @AppStorage(PieceSymbols.key) private var storedSymbols: String?
 
+    /// The 记谱法 preference, which the strips follow: the strips exist so a
+    /// player can map the move list to the board, so a WXF list beside a 一二三
+    /// edge would break the very mapping they are for. Read here so that
+    /// changing the preference re-renders them live.
+    @AppStorage(NotationStyle.key) private var notationStyle: NotationStyle = .traditional
+
     /// The arrival wires, each fired on the frame its animation reaches its
     /// target — see ArrivalReporter for why the transaction completion alone
     /// cannot be trusted with a gate. Two belong to a committing transition;
@@ -170,7 +176,8 @@ struct BoardView: View {
     // MARK: - File numerals
 
     /// One strip per side, showing the numerals of the player it faces —
-    /// Chinese for Red, Arabic for Black — following the board's orientation.
+    /// Chinese for Red and Arabic for Black under the traditional reading,
+    /// Arabic for both under WXF — following the board's orientation.
     /// A numeral cannot glide into a different numeral, so while the pieces
     /// re-lay themselves in a flip the strip crossfades in place: both
     /// orientations' renderings stand in the one strip and trade opacity in
@@ -202,7 +209,7 @@ struct BoardView: View {
                 let file = orientationFlipped ? Square.count - 1 - column : column
                 Text(numeral(file: file, forRedPlayer: isRed))
                     .font(.system(size: geometry.numeralSize,
-                                  weight: isRed ? .semibold : .bold))
+                                  weight: isChinese(forRedPlayer: isRed) ? .semibold : .bold))
                     .foregroundStyle(style.grid)
                     .frame(width: p)
             }
@@ -210,10 +217,27 @@ struct BoardView: View {
     }
 
     /// Files are numbered from each player's own right: Red's right is file g,
-    /// Black's is file a.
+    /// Black's is file a. Which way each edge counts is the board's, not the
+    /// notation's, and never changes; the script does. The traditional reading
+    /// writes Red's numbers in Chinese numerals and Black's in Arabic, and WXF
+    /// writes both sides' in Arabic, so under WXF Red's edge changes script and
+    /// nothing else.
     private func numeral(file: Int, forRedPlayer isRed: Bool) -> String {
         let index = isRed ? Square.count - 1 - file : file
-        return isRed ? ["一", "二", "三", "四", "五", "六", "七"][index]
-                     : String(index + 1)
+        return isChinese(forRedPlayer: isRed)
+            ? ["一", "二", "三", "四", "五", "六", "七"][index]
+            : String(index + 1)
+    }
+
+    /// Whether a strip is written in Chinese numerals, which only Red's is and
+    /// only under the traditional reading.
+    ///
+    /// It settles the weight as well as the script. Chinese numerals carry more
+    /// strokes than digits do at the same weight, so the digits are set one step
+    /// heavier for the two edges to read as equal in weight — the accepted
+    /// requirement — and that compensation belongs to the script rather than to
+    /// the side: two Arabic edges at different weights would read as unequal.
+    private func isChinese(forRedPlayer isRed: Bool) -> Bool {
+        isRed && notationStyle == .traditional
     }
 }

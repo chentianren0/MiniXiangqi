@@ -97,6 +97,7 @@ final class PlayScreenUITests: XCTestCase {
     private func launch(replaying line: String? = nil,
                         in language: Language = .chinese,
                         store: String? = nil,
+                        notation: String? = nil,
                         refusingSaves: Bool = false,
                         darkAppearance: Bool = false,
                         appearance: String? = nil,
@@ -112,6 +113,10 @@ final class PlayScreenUITests: XCTestCase {
         // application speaks. The normative one is the default.
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
+        // The 记谱法 preference, written the way a preference is: this is the
+        // real UserDefaults key the Settings picker sets, injected through the
+        // argument domain rather than through a seam of the test's own.
+        if let notation { app.launchArguments += ["-notation.style", notation] }
         if refusingSaves { app.launchArguments.append("-mxq-refuse-saves") }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
@@ -255,6 +260,62 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["炮六进三"].exists,
                       "Undo removes one ply, not the game")
         attach(app, named: "7-after-taking-a-move-back")
+    }
+
+    // MARK: - The notation the 记谱法 preference selects
+
+    /// The list and both strips under WXF, and the same screen at the defaults
+    /// beside it.
+    ///
+    /// The strips are the reason the preference reaches the board at all: they
+    /// exist so a player can map the list to the board, so a `C6+3` beside a
+    /// 一二三 edge would break the very mapping they are for. Under WXF both
+    /// edges are Arabic; the direction each counts in is the board's and does
+    /// not move.
+    func testTheMoveListAndStripsFollowTheNotationPreference() {
+        let app = launch(notation: "wxf")
+        let strips = app.windows.firstMatch.descendants(matching: .any)
+
+        // Nothing is played yet, so the strips answer before the list does.
+        XCTAssertEqual(strips["file-numerals-red"].label, "7 6 5 4 3 2 1",
+                       "Red's edge changes script under WXF, not direction")
+        XCTAssertEqual(strips["file-numerals-black"].label, "1 2 3 4 5 6 7",
+                       "Black's edge was already Arabic and is untouched")
+
+        point(app, "b1").click()
+        point(app, "b4").click()
+        XCTAssertTrue(app.staticTexts["C6+3"].waitForExistence(timeout: 5),
+                      "Red's cannon should read in WXF")
+        XCTAssertFalse(app.staticTexts["炮六进三"].exists,
+                       "and only in WXF — one notation is shown, not both")
+        point(app, "a6").click()
+        point(app, "a5").click()
+        XCTAssertTrue(app.staticTexts["P1+1"].waitForExistence(timeout: 5),
+                      "Black's reply too, numbered from Black's own right")
+        attach(app, named: "49-the-move-list-and-strips-in-wxf")
+
+        // Turning the board round carries both Arabic edges with it, exactly as
+        // it carries the two scripts.
+        app.buttons["cluster-flip"].click()
+        XCTAssertEqual(strips["file-numerals-red"].label, "1 2 3 4 5 6 7")
+        XCTAssertEqual(strips["file-numerals-black"].label, "7 6 5 4 3 2 1")
+
+        // And the same screen with nothing selected, which is the default: the
+        // preference absent means the traditional reading.
+        let plain = launch()
+        let plainStrips = plain.windows.firstMatch.descendants(matching: .any)
+        XCTAssertEqual(plainStrips["file-numerals-red"].label, "七 六 五 四 三 二 一")
+        XCTAssertEqual(plainStrips["file-numerals-black"].label, "1 2 3 4 5 6 7")
+
+        point(plain, "b1").click()
+        point(plain, "b4").click()
+        XCTAssertTrue(plain.staticTexts["炮六进三"].waitForExistence(timeout: 5),
+                      "the default reading is untouched")
+        XCTAssertFalse(plain.staticTexts["C6+3"].exists)
+        point(plain, "a6").click()
+        point(plain, "a5").click()
+        XCTAssertTrue(plain.staticTexts["卒1进1"].waitForExistence(timeout: 5))
+        attach(plain, named: "50-the-same-screen-at-the-defaults")
     }
 
     // MARK: - The game that survives the destinations

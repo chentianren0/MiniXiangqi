@@ -255,7 +255,7 @@ struct ReplayTests {
                         reduceMotion: Bool = false,
                         soundEnabled: Bool? = true) throws
         -> (replay: Replay, animator: ManualAnimator, heard: FeedbackRecorder,
-            notation: [String], fens: [String]) {
+            notation: [MoveReading], fens: [String]) {
         let core = try TestCores.fresh()
         let played = try Game(rules: core)
         try played.replay(line)

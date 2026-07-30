@@ -59,7 +59,7 @@ struct MoveNotationTests {
           arguments: [("d4c6", "傌四进五"), ("d4e6", "傌四进三"),
                       ("d4c2", "傌四退五"), ("d4e2", "傌四退三")])
     func horseNamesItsDestinationFile(move: String, expected: String) {
-        #expect(read(move, from: "rck1kcr/p1ppp1p/7/3N3/7/P1PPP1P/RC1K1CR w - - 0 1") == expected)
+        #expect(read(move, from: "rc1k1cr/p1ppp1p/7/3N3/7/P1PPP1P/RC1K1CR w - - 0 1") == expected)
     }
 
     @Test("The general is a line piece here: ranks after 进, a file after 平")

@@ -59,8 +59,10 @@ struct GameSessionTests {
         try played.replay(GameTests.captureLine)
         let fen = played.evaluation.fen
         let notation = played.notation
-        #expect(notation == ["兵四进一", "卒4进1", "兵四进一", "卒4进1"],
+        #expect(notation.map(\.traditional) == ["兵四进一", "卒4进1", "兵四进一", "卒4进1"],
                 "the premise: the sitting recorded these words")
+        #expect(notation.map(\.wxf) == ["P4+1", "P4+1", "P4+1", "P4+1"],
+                "and these, since a resumed game has to read the same in either")
 
         core = try TestCores.open(at: directory)
         let resumed = try Game(rules: core)

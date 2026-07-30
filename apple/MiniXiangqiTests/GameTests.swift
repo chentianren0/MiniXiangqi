@@ -56,7 +56,9 @@ struct GameTests {
         game.undo()
 
         #expect(game.notation.count == 1)
-        #expect(game.notation == ["炮六进三"])
+        #expect(game.notation.map(\.traditional) == ["炮六进三"])
+        #expect(game.notation.map(\.wxf) == ["C6+3"],
+                "both readings shorten together — a reading is one value")
         #expect(game.moves == ["b1b4"], "the line is the session's own, read back")
         #expect(game.evaluation.sideToMove == .black)
         #expect(game.lastMove == Move(text: "b1b4"))
