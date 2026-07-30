@@ -161,14 +161,16 @@ final class PlayHomeUITests: XCTestCase {
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5),
                       "a mode entry over a game confirms rather than navigating")
-        let lines = confirmation.staticTexts.allElementsBoundByIndex
-            .map { ($0.value as? String) ?? $0.label }
-        XCTAssertEqual(lines.first, "开始新对局？")
-        let message = lines.last ?? ""
-        XCTAssertTrue(message.contains("当前对局"), "the accepted metadata header")
-        XCTAssertTrue(message.contains("自由对弈 · 进行中 · 轮到红方 · 2 步"),
-                      "over the same line the card shows — it reads \(message)")
-        XCTAssertTrue(message.contains("这盘对局将按当前状态保存到历史。"))
+        // Everything the alert says, however this platform apportions it
+        // between the sheet's own label and the text inside it.
+        let said = ([confirmation.label]
+                    + confirmation.staticTexts.allElementsBoundByIndex
+                        .map { ($0.value as? String) ?? $0.label }).joined(separator: "\n")
+        XCTAssertTrue(said.contains("开始新对局？"), "the accepted title — it reads \(said)")
+        XCTAssertTrue(said.contains("当前对局"), "the accepted metadata header")
+        XCTAssertTrue(said.contains("自由对弈 · 进行中 · 轮到红方 · 2 步"),
+                      "over the same line the card shows — it reads \(said)")
+        XCTAssertTrue(said.contains("这盘对局将按当前状态保存到历史。"))
         XCTAssertTrue(confirmation.buttons["取消"].exists)
         XCTAssertTrue(confirmation.buttons["保存并继续"].exists)
         attach(app, named: "63-the-save-and-continue-confirmation")

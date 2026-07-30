@@ -19,8 +19,9 @@
 // leaving a pre-start page discards its draft, and leaving the board leaves the
 // game running.
 //
-// The window's own floor sits here rather than on any one page, so that walking
-// between them cannot resize the window.
+// The play content's floor is the destination's rather than the board's, and it
+// is the same number on every page, so that walking between them cannot resize
+// the window. It is stated twice for a measured reason, recorded below.
 
 import SwiftUI
 
@@ -49,7 +50,12 @@ struct PlayDestination: View {
                                        systemImage: "exclamationmark.triangle",
                                        description: Text(verbatim: startFailure.description).monospaced())
             } else if play.started {
-                stack
+                // The page is read *here*, in the body, and handed down. A read
+                // inside the path binding's own getter is not a read the view
+                // observes — the closure runs outside the tracked evaluation —
+                // so the stack would sit on whatever page it was last built
+                // with and move only when something else happened to redraw it.
+                stack(at: play.page)
             } else {
                 // The frames before the launch resume has answered. The
                 // navigation is deliberately not built yet: a stack built at the
@@ -78,8 +84,8 @@ struct PlayDestination: View {
         }
     }
 
-    private var stack: some View {
-        NavigationStack(path: path) {
+    private func stack(at page: PlayState.Page) -> some View {
+        NavigationStack(path: path(at: page)) {
             PlayHome(play: play)
                 .navigationDestination(for: PlayState.Page.self) { page in
                     pushed(page)
@@ -109,13 +115,14 @@ struct PlayDestination: View {
         }
     }
 
-    /// The path is the page, and the page is the path. The only change the stack
-    /// makes on its own is a pop, and what a pop means is the state's to say.
-    private var path: Binding<[PlayState.Page]> {
-        Binding(get: { play.page == .home ? [] : [play.page] },
+    /// The path is the page, and the page is the path. It is built from the page
+    /// the body already read rather than reading it again here, for the reason
+    /// stated above. The only change the stack makes on its own is a pop, and
+    /// what a pop means is the state's to say.
+    private func path(at page: PlayState.Page) -> Binding<[PlayState.Page]> {
+        Binding(get: { page == .home ? [] : [page] },
                 set: { if $0.isEmpty { play.leaveTopPage() } })
     }
-
 }
 
 private extension View {
