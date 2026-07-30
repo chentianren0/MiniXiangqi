@@ -194,3 +194,42 @@ add_test(NAME store_interchange COMMAND mxq_interchange_tests)
 set_tests_properties(store_interchange PROPERTIES
   LABELS "store;archive;fixtures"
 )
+
+# The search-facade runner: engine preparation with every typed refusal, the
+# effective-NNUE preflight in both directions, real searches over real
+# sessions with the delivery ladder, cancellation, staleness, retention,
+# reconfiguration serialisation, and shutdown mid-search.
+#
+# It links the vendored engine directly, and deliberately: "the applied
+# Threads value", "the transposition table is released whole", and "the
+# effective NNUE state is on" are claims about the engine's own globals, and a
+# runner that asked the facade to report on itself would test the report
+# rather than the state. The engine target's usage requirements carry the
+# LARGEBOARDS define set, so the runner's view of every engine struct matches
+# the library's.
+#
+# Its asset directory is the staged one in the build tree — the variant
+# configuration beside the network under its bundled name, verified against
+# pinned-inputs.json at configure time. With the engine in the build and no
+# verified network staged, the runner FAILS with the staging problem rather
+# than skipping; without the engine it degrades to NOT IMPLEMENTED exactly as
+# the session runner does.
+
+add_executable(mxq_search_tests
+  mxq_search_tests.cpp
+)
+target_link_libraries(mxq_search_tests PRIVATE mxq::core mxq_warnings)
+if(MXQ_ENABLE_RULES_FACADE)
+  target_link_libraries(mxq_search_tests PRIVATE mxq::fairy-stockfish)
+endif()
+target_compile_definitions(mxq_search_tests PRIVATE
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_TEST_ASSETS_DIR="${MXQ_TEST_ASSETS_DIR}"
+  MXQ_TEST_NNUE_STAGED=${MXQ_TEST_NNUE_STAGED}
+  MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM}"
+)
+
+add_test(NAME engine_search COMMAND mxq_search_tests)
+set_tests_properties(engine_search PROPERTIES
+  LABELS "engine;search"
+)

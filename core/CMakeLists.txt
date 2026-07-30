@@ -81,6 +81,9 @@ endfunction()
 mxq_pinned_get(MXQ_BUILD_FORK_REVISION fork revision)
 mxq_pinned_get(MXQ_BUILD_VARIANT_ID variant id)
 mxq_pinned_get(MXQ_BUILD_NNUE_SHA256 network sha256)
+mxq_pinned_get(MXQ_BUILD_NNUE_FILENAME network filename)
+mxq_pinned_get(MXQ_BUILD_NNUE_BYTE_LENGTH network byte_length)
+mxq_pinned_get(MXQ_VARIANT_INI_FILENAME variant filename)
 
 # The core's own revision. Absent a git checkout — an exported source tree, for
 # instance — it is reported as "unknown" rather than guessed.
@@ -134,21 +137,24 @@ endif()
 # clock/identity provider the deterministic-identity flag configures, the
 # archive codec's read and write sides, store-attached sessions with their
 # per-mutation commits, the four archiving paths that end a game, the History
-# read surface, and the interchange pair with the import preview. The remaining
-# declarations in mxq.h — the search facade — are deliberately left undefined
-# rather than stubbed: the accepted error taxonomy has no not-implemented code,
-# and inventing one to return would be inventing contract vocabulary.
+# read surface, the interchange pair with the import preview, and the search
+# facade — mxq_engine_prepare/teardown/query, the mxq_search_ group, and
+# mxq_core_cancel_all's quiescing half — in mxq_search.cpp.
 #
 # mxq_session.cpp is gated with the engine like mxq_engine_bridge.cpp: a
 # session answers every one of its queries by replaying its move line through
 # the rules facade, so without the facade the mxq_game_ functions cannot exist
-# and are absent from the library rather than stubbed. mxq_store_api.cpp and
-# mxq_interchange.cpp are not gated as a whole, because part of what they hold
-# is a pure store operation that can answer without an engine — export decodes
-# a row and writes it out again, and a document is not a position. The
-# functions in them that need a session or a live state, mxq_store_import
-# included, are guarded inside the file, exactly as mxq_archive_validate is
-# inside mxq_archive.cpp.
+# and are absent from the library rather than stubbed. mxq_search.cpp is gated
+# the same way and for the stronger reason — it drives the engine itself — so
+# the mxq_engine_ and mxq_search_ functions are likewise absent without it.
+# mxq_core_cancel_all alone stays in mxq_core.cpp on both configurations,
+# because a core without an engine has a true answer to it: no work is
+# outstanding. mxq_store_api.cpp and mxq_interchange.cpp are not gated as a
+# whole, because part of what they hold is a pure store operation that can
+# answer without an engine — export decodes a row and writes it out again, and
+# a document is not a position. The functions in them that need a session or a
+# live state, mxq_store_import included, are guarded inside the file, exactly
+# as mxq_archive_validate is inside mxq_archive.cpp.
 
 add_library(mxq_core STATIC
   src/mxq_abi.cpp
@@ -166,6 +172,7 @@ add_library(mxq_core STATIC
   src/mxq_store.cpp
   src/mxq_store_api.cpp
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
+  $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_search.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_session.cpp>
   src/mxq_status.cpp
 )
@@ -236,6 +243,79 @@ endforeach()
 set(MXQ_VARIANT_INI "${CMAKE_CURRENT_SOURCE_DIR}/assets/minixiangqi-variants.ini")
 if(NOT EXISTS "${MXQ_VARIANT_INI}")
   message(FATAL_ERROR "bundled variant configuration not found at ${MXQ_VARIANT_INI}")
+endif()
+# The manifest pins the configuration's bytes as it pins the network's, and
+# the same rule applies: nothing consumed on trust. An edit to the file and
+# its pinned hash must travel together or configuration stops here.
+mxq_pinned_get(MXQ_VARIANT_INI_SHA256 variant sha256)
+file(SHA256 "${MXQ_VARIANT_INI}" mxq_variant_ini_sha256)
+if(NOT mxq_variant_ini_sha256 STREQUAL MXQ_VARIANT_INI_SHA256)
+  message(FATAL_ERROR
+          "the bundled variant configuration at ${MXQ_VARIANT_INI} does not "
+          "match the SHA-256 pinned-inputs.json pins; edit the file and its "
+          "pin in the same change")
+endif()
+
+# --------------------------------------------------------------------------
+# The staged engine test assets
+# --------------------------------------------------------------------------
+#
+# The NNUE network never enters version control; it lives in the workspace at
+# MiniXiangqi/.git/minixiangqi-control/nnue/ under its source name, and enters
+# builds from there (or from wherever MXQ_NNUE_SOURCE points, which is how CI
+# supplies it). Engine-dependent tests need it under the BUNDLED name —
+# minixiangqiaxf-12c45d5da817.nnue, whose basename must begin with the variant
+# identifier or the engine silently disables NNUE — next to the variant
+# configuration, exactly as a packaged asset directory holds them. So, with the
+# engine enabled, this stages a test asset directory in the build tree: the
+# variant configuration plus the network, renamed to the bundled name, with
+# byte length and SHA-256 verified against pinned-inputs.json first. A missing
+# or mismatched network stages nothing and records why; the search tests then
+# FAIL with that message rather than skipping silently, because a suite that
+# silently skipped its engine would report green on exactly the regression it
+# exists to catch. No unverified byte is ever staged.
+
+if(MXQ_ENABLE_RULES_FACADE)
+  set(MXQ_NNUE_SOURCE
+      "${MXQ_REPO_ROOT}/.git/minixiangqi-control/nnue/minixiangqi-12c45d5da817.nnue"
+      CACHE FILEPATH
+      "The pinned NNUE network bytes staged for engine-dependent tests")
+  set(MXQ_TEST_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets")
+  set(MXQ_TEST_NNUE_STAGED 0)
+  set(MXQ_TEST_NNUE_PROBLEM "")
+  if(NOT EXISTS "${MXQ_NNUE_SOURCE}")
+    set(MXQ_TEST_NNUE_PROBLEM
+        "the NNUE network was not found at ${MXQ_NNUE_SOURCE}; point MXQ_NNUE_SOURCE at the pinned bytes")
+  else()
+    file(SIZE "${MXQ_NNUE_SOURCE}" mxq_nnue_size)
+    file(SHA256 "${MXQ_NNUE_SOURCE}" mxq_nnue_sha256)
+    if(NOT mxq_nnue_size EQUAL MXQ_BUILD_NNUE_BYTE_LENGTH)
+      set(MXQ_TEST_NNUE_PROBLEM
+          "the NNUE network at ${MXQ_NNUE_SOURCE} is ${mxq_nnue_size} bytes; pinned-inputs.json pins ${MXQ_BUILD_NNUE_BYTE_LENGTH}")
+    elseif(NOT mxq_nnue_sha256 STREQUAL MXQ_BUILD_NNUE_SHA256)
+      set(MXQ_TEST_NNUE_PROBLEM
+          "the NNUE network at ${MXQ_NNUE_SOURCE} does not match the SHA-256 pinned-inputs.json pins")
+    else()
+      file(MAKE_DIRECTORY "${MXQ_TEST_ASSETS_DIR}")
+      file(COPY_FILE "${MXQ_VARIANT_INI}"
+           "${MXQ_TEST_ASSETS_DIR}/${MXQ_VARIANT_INI_FILENAME}"
+           ONLY_IF_DIFFERENT)
+      file(COPY_FILE "${MXQ_NNUE_SOURCE}"
+           "${MXQ_TEST_ASSETS_DIR}/${MXQ_BUILD_NNUE_FILENAME}"
+           ONLY_IF_DIFFERENT)
+      set(MXQ_TEST_NNUE_STAGED 1)
+      message(STATUS "Mini Xiangqi core: NNUE staged for tests as ${MXQ_BUILD_NNUE_FILENAME}")
+    endif()
+  endif()
+  if(NOT MXQ_TEST_NNUE_STAGED)
+    message(WARNING "Mini Xiangqi core: ${MXQ_TEST_NNUE_PROBLEM}; engine-dependent search tests will FAIL")
+  endif()
+else()
+  # Referenced unconditionally by tests/CMakeLists.txt; without the engine the
+  # search runner reports NOT IMPLEMENTED and never reads these.
+  set(MXQ_TEST_ASSETS_DIR "")
+  set(MXQ_TEST_NNUE_STAGED 0)
+  set(MXQ_TEST_NNUE_PROBLEM "the engine is not in this build")
 endif()
 
 # --------------------------------------------------------------------------

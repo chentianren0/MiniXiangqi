@@ -48,6 +48,11 @@ std::vector<MxqGame *> &registry() {
 
 void register_session(MxqGame *game) {
     std::lock_guard<std::mutex> lock(registry_mutex());
+    /* Process-unique and never reused, unlike the object's address, which the
+     * allocator may hand to a later session; 1-based so that an unregistered
+     * session's zero can never name anything. */
+    static uint64_t next_instance = 1;
+    game->instance_id = next_instance++;
     registry().push_back(game);
 }
 
@@ -103,6 +108,12 @@ MxqStatus require_mutable_impl(const MxqGame *game, MxqError *err) {
 }
 
 MxqStatus require_impl(const MxqGame *game, MxqError *err) {
+    /* Before anything else, even the null check: inside a search callback no
+     * session function is legal, and the refusal must arrive before the
+     * handle is judged. */
+    if (in_search_callback()) {
+        return refuse_reentrant(err);
+    }
     if (game == nullptr) {
         assert(false && "required session handle was null");
         fill_error(err, MXQ_ERR_ARG_NULL, "required session handle was null");
@@ -266,7 +277,8 @@ void fill_status(const MxqGame &game, const Replayed &replayed,
 void fill_position(const MxqGame &game, const Replayed &replayed,
                    MxqPosition *out) {
     out->ply_count = replayed.ply;
-    out->position_revision = game.position_revision;
+    out->position_revision =
+        game.position_revision.load(std::memory_order_acquire);
     out->side_to_move = side_to_move(replayed.fen);
     out->in_check = replayed.in_check ? 1u : 0u;
     copy_bounded(out->fen, sizeof(out->fen), replayed.fen.c_str());
@@ -630,6 +642,28 @@ void invalidate_all(const MxqCore *core) {
             game->moves.shrink_to_fit();
         }
     }
+}
+
+bool current_revision_of(const MxqCore *core, uint64_t instance,
+                         const char *game_id, uint64_t &out_revision) {
+    std::lock_guard<std::mutex> lock(registry_mutex());
+    /* Exactly the session the search was started on, or nothing. A lookup
+     * that fell back to any session carrying the game_id was the defect
+     * behind a committed wrong move: a release-and-resume registers a second
+     * session under the same id whose per-session revision restarts, so the
+     * fallback compared a search against a counter it was never started
+     * under, and equal values meant different positions. instance_id is never
+     * reused, so absence here is the fact the stale rung wants: the origin
+     * session is gone, and the result cannot be shown fresh against it. */
+    for (const MxqGame *game : registry()) {
+        if (game->instance_id == instance && game->core == core &&
+            game->game_id == game_id) {
+            out_revision =
+                game->position_revision.load(std::memory_order_acquire);
+            return true;
+        }
+    }
+    return false;
 }
 
 archive::Record record_of(const MxqGame &game) {

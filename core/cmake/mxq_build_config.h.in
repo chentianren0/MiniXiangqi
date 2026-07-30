@@ -27,4 +27,11 @@
 /* pinned-inputs.json: network.sha256 */
 #define MXQ_BUILD_NNUE_SHA256 "@MXQ_BUILD_NNUE_SHA256@"
 
+/* pinned-inputs.json: network.filename — the bundled basename, which must
+ * begin with the variant identifier or the engine silently disables NNUE. */
+#define MXQ_BUILD_NNUE_FILENAME "@MXQ_BUILD_NNUE_FILENAME@"
+
+/* pinned-inputs.json: network.byte_length */
+#define MXQ_BUILD_NNUE_BYTE_LENGTH @MXQ_BUILD_NNUE_BYTE_LENGTH@u
+
 #endif /* MXQ_BUILD_CONFIG_H */
