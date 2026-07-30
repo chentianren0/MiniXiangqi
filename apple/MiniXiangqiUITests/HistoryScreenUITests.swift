@@ -104,6 +104,11 @@ final class HistoryScreenUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
         app.launchArguments += ["-mxq-store-name", "mxq-uitest-store-\(UUID().uuidString)"]
+        // Every preference stated, and a scratch domain to write into: this
+        // suite asserts the accepted defaults, and a launch that named none
+        // would be asserting whatever the machine's own preferences say.
+        app.launchArguments += ["-mxq-defaults-suite", LaunchPreferences.scratchSuite]
+        app.launchArguments += LaunchPreferences.arguments()
         app.launchArguments += ["-mxq-window", window]
         if let history { app.launchArguments += ["-mxq-history", history] }
         if !files.isEmpty {
@@ -120,7 +125,7 @@ final class HistoryScreenUITests: XCTestCase {
         // The Play destination settles the launch: the seeding runs before it,
         // so anything on screen there means every seeded game has been filed.
         // With the seeded games filed there is no active game left, so what
-        // arrives is the start state's mode entries rather than a board.
+        // arrives is the Play home's mode entries rather than a board.
         XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
         return app
     }

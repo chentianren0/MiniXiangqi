@@ -70,13 +70,13 @@ struct SetupTests {
         let (state, core, engine) = try makeState()
         state.choose(.humanVersusAI)
         state.draft = SetupDraft(firstMover: .aiFirst, level: .deep)
-        #expect(state.phase == .setup(.humanVersusAI))
+        #expect(state.page == .setup(.humanVersusAI))
 
         state.startGame(policy: MotionPolicy(reduceMotion: true))
 
         #expect(engine.preparations == 1, "preparation came first")
         #expect(engine.probes == 1, "from a fresh probe")
-        #expect(state.phase == .playing, "and the game exists")
+        #expect(state.page == .board, "and the game exists")
         let game = try #require(state.game)
         #expect(game.configuration?.humanSide == .black, "AI 先手 resolved the human as Black")
         #expect(game.configuration?.aiLevel == .deep)
@@ -99,7 +99,7 @@ struct SetupTests {
 
         #expect(state.creationFailure == .aiUnavailable,
                 "the accepted notice, for the situation the user can act on")
-        #expect(state.phase == .setup(.humanVersusAI), "the page and the draft stay")
+        #expect(state.page == .setup(.humanVersusAI), "the page and the draft stay")
         #expect(!state.creating, "and 开始对局 is on offer again")
         #expect(state.game == nil)
         #expect(try !core.activeGameExists(), "nothing was created")
@@ -115,7 +115,7 @@ struct SetupTests {
         engine.preparationRefusal = nil
         state.startGame(policy: MotionPolicy(reduceMotion: true))
         #expect(engine.probes == 2, "the retry took a fresh probe")
-        #expect(state.phase == .playing)
+        #expect(state.page == .board)
     }
 
     @Test("开始对局 cannot be invoked again while creation is in progress")
@@ -133,7 +133,7 @@ struct SetupTests {
 
         engine.holdsPreparation = false
         engine.releasePreparation()
-        #expect(state.phase == .playing)
+        #expect(state.page == .board)
         #expect(!state.creating)
     }
 
@@ -149,7 +149,7 @@ struct SetupTests {
         #expect(state.creating)
 
         state.leavePage()
-        #expect(state.phase == .start, "the page is left and the draft discarded")
+        #expect(state.page == .home, "the page is left and the draft discarded")
 
         // The preparation completes afterwards. It must create nothing, and
         // what it prepared must be released.
@@ -157,7 +157,7 @@ struct SetupTests {
         engine.releasePreparation()
 
         #expect(state.game == nil, "a late completion creates no game")
-        #expect(state.phase == .start)
+        #expect(state.page == .home)
         #expect(try !core.activeGameExists())
         #expect(engine.teardowns == 1, "and anything prepared for it is released")
 
@@ -184,7 +184,7 @@ struct SetupTests {
             Issue.record("a refused create is the not-saved failure, not the AI one")
         }
         #expect(state.game == nil, "and no game exists")
-        #expect(state.phase == .setup(.humanVersusAI))
+        #expect(state.page == .setup(.humanVersusAI))
         #expect(engine.teardowns == 1, "the engine prepared for it is released")
     }
 
@@ -195,7 +195,7 @@ struct SetupTests {
         state.startGame(policy: MotionPolicy(reduceMotion: true))
 
         #expect(engine.preparations == 0, "Free Play has no opponent to prepare")
-        #expect(state.phase == .playing)
+        #expect(state.page == .board)
         #expect(state.game?.mode == .freePlay)
         #expect(state.game?.humanSide == nil)
         #expect(try core.activeGameExists())

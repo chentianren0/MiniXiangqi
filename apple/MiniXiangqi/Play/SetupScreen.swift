@@ -1,4 +1,4 @@
-// Before there is a game: the two mode entries, and each mode's pre-start page.
+// Before there is a game: one mode's pre-start page.
 //
 // docs/interaction-design.md, "Starting and configuring a game": the pre-start
 // state is not an active game. It shows the initial board as a noninteractive
@@ -9,6 +9,10 @@
 // **开始对局** is what creates the game, and while creation is in progress it
 // cannot be invoked again.
 //
+// The preview board stays here, where it always was. What left is the mode
+// chooser that used to stand in front of it: choosing what to play is the Play
+// home's, and this page is reached having already chosen.
+//
 // 随机 remains unresolved here and previews Red at the bottom. Only a successful
 // creation flips the board, and only when Random resolved to AI 先手 — which is
 // why the preview reads the draft's own preview rule rather than a resolved
@@ -18,8 +22,8 @@ import SwiftUI
 
 struct SetupScreen: View {
     let play: PlayState
-    /// Which page this is: the mode entries, or one mode's setup.
-    var mode: PlayMode?
+    /// Which mode's pre-start page this is.
+    var mode: PlayMode
 
     @Environment(\.motionPolicy) private var policy
 
@@ -67,7 +71,6 @@ struct SetupScreen: View {
             switch mode {
             case .humanVersusAI: humanVersusAISetup
             case .freePlay: freePlaySetup
-            case nil: modeEntries
             }
             Spacer(minLength: 0)
         }
@@ -110,18 +113,7 @@ struct SetupScreen: View {
                 set: { if !$0 { play.dismissCreationFailure() } })
     }
 
-    // MARK: - The three panels
-
-    private var modeEntries: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button("mode.humanVersusAI") { play.choose(.humanVersusAI) }
-                .buttonStyle(.glassProminent)
-                .accessibilityIdentifier("mode-human-versus-ai")
-            Button("mode.freePlay") { play.choose(.freePlay) }
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("mode-free-play")
-        }
-    }
+    // MARK: - The two panels
 
     private var humanVersusAISetup: some View {
         VStack(alignment: .leading, spacing: 14) {

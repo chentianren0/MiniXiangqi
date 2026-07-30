@@ -400,6 +400,58 @@
         }
       }
     },
+    "alert.newGame.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This game will be saved to History as it is now."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这盘对局将按当前状态保存到历史。"
+          }
+        }
+      }
+    },
+    "alert.newGame.metadataHeader": {
+      "comment": "The header over the active game’s metadata: on the Play home’s card, and in the save-and-continue confirmation, which are the same words over the same line.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前对局"
+          }
+        }
+      }
+    },
+    "alert.newGame.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a new game?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始新对局？"
+          }
+        }
+      }
+    },
     "alert.resign.message": {
       "extractionState": "manual",
       "localizations": {
@@ -845,6 +897,23 @@
         }
       }
     },
+    "control.saveAndContinue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and Continue"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存并继续"
+          }
+        }
+      }
+    },
     "control.saveAndNewGame": {
       "comment": "The result notice's second action: it files the finished game and resets the board in one press.",
       "extractionState": "manual",
@@ -1105,6 +1174,23 @@
         }
       }
     },
+    "metadata.inProgress": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Progress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
+          }
+        }
+      }
+    },
     "metadata.join": {
       "comment": "Applied repeatedly to compose a metadata line. The middot and the spaces around it are the same in both languages.",
       "extractionState": "manual",
@@ -1269,6 +1355,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "对局"
+          }
+        }
+      }
+    },
+    "nav.resumeGame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到对局"
           }
         }
       }
