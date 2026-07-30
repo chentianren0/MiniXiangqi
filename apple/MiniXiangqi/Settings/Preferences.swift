@@ -21,6 +21,11 @@
 // already the rule the sound gate was written to; all five share it now, and
 // share one reader, so that "absent means the accepted default" is stated in one
 // place instead of once per consumer.
+//
+// What a preference *means* is not this file's business. The two choices are
+// stored and read as the names in the table above, and the rendering that reads
+// one maps it to its own vocabulary: the notation's own type belongs beside the
+// notation, not beside the preference that selects it.
 
 import Foundation
 
@@ -43,34 +48,19 @@ enum Preferences {
     static let deleteConfirmation = Flag(key: "deleteConfirmation.enabled",
                                          whenAbsent: true)
 
-    /// What the discs carry. Independent of how a move is written: a learner may
-    /// want icons on a board whose move list they are learning to read.
+    /// What the discs carry — the accepted symbol sets of
+    /// docs/interaction-design.md § Piece symbols: `hanzi`, the default, or
+    /// `icons`. Independent of how a move is written: a learner may want icons on
+    /// a board whose move list they are learning to read.
     static let pieceSymbols = Choice(key: "pieces.symbols",
-                                     whenAbsent: PieceSymbols.hanzi)
+                                     whenAbsent: "hanzi",
+                                     names: ["hanzi", "icons"])
 
     /// How a move is written, in the move list and in the numeral strips that
-    /// exist to map it to the board.
+    /// exist to map it to the board: `traditional`, the default, or `wxf`.
     static let notationStyle = Choice(key: "notation.style",
-                                      whenAbsent: NotationStyle.traditional)
-
-    /// The accepted symbol sets of docs/interaction-design.md § Piece symbols.
-    /// The raw values are the stored contract and are not copy: what each is
-    /// called on screen is a string in docs/copy.md.
-    enum PieceSymbols: String, CaseIterable {
-        /// 汉字 — the accepted default.
-        case hanzi
-        /// 图标 — a pictorial symbol per piece type.
-        case icons
-    }
-
-    /// The accepted notations of docs/interaction-design.md § User-visible
-    /// notation, under the same rule: raw values are stored, never shown.
-    enum NotationStyle: String, CaseIterable {
-        /// 中文 — traditional Chinese notation, the accepted default.
-        case traditional
-        /// WXF, which is identical in both interface languages.
-        case wxf
-    }
+                                      whenAbsent: "traditional",
+                                      names: ["traditional", "wxf"])
 
     // MARK: - How one is read and written
 
@@ -104,25 +94,41 @@ enum Preferences {
         }
     }
 
-    /// A preference chosen among named cases, stored as the raw string of the one
-    /// selected. A string rather than an index, because an index is a position in
-    /// a list that a later design may reorder and a raw value is not.
-    struct Choice<Value: RawRepresentable & CaseIterable> where Value.RawValue == String {
+    /// A preference chosen among a fixed set of names, stored as the name itself.
+    /// A name rather than an index, because an index is a position in a list that
+    /// a later design may reorder and a name is not.
+    ///
+    /// **The names are plain strings, and no type is declared for them here.**
+    /// Each of these is read by a different piece of work — the disc rendering
+    /// reads `pieces.symbols`, the move list and the numeral strips read
+    /// `notation.style` — and each of those has its own type for what it draws. A
+    /// type declared here as well would be a second vocabulary for the same
+    /// choice, to be kept in step by hand; the stored string is the interface, as
+    /// issue #64's key table says it is.
+    struct Choice {
         let key: String
-        let whenAbsent: Value
+        /// What an absent key means — the state of every first launch — and what
+        /// an unrecognised one means too.
+        let whenAbsent: String
+        /// Every name this preference accepts.
+        let names: [String]
 
         /// Read at the moment of use, like every other preference here. A stored
-        /// string naming no case is the default rather than a failure: a
-        /// preference file can be edited by hand, and the board still has to draw.
-        func value(in defaults: UserDefaults = Preferences.defaults) -> Value {
-            guard let raw = defaults.string(forKey: key),
-                  let stored = Value(rawValue: raw)
+        /// string that names nothing is the default rather than a failure: a
+        /// preference file can be edited by hand and is read by more than one
+        /// frontend, and the board still has to draw.
+        func value(in defaults: UserDefaults = Preferences.defaults) -> String {
+            guard let stored = defaults.string(forKey: key), names.contains(stored)
             else { return whenAbsent }
             return stored
         }
 
-        func set(_ value: Value, in defaults: UserDefaults = Preferences.defaults) {
-            defaults.set(value.rawValue, forKey: key)
+        /// Writes one of `names`. Anything else is a mistake in the caller rather
+        /// than a state to store, and it is stored anyway, because a preference
+        /// this screen writes and cannot read back is worse than one a test can
+        /// see is wrong.
+        func set(_ value: String, in defaults: UserDefaults = Preferences.defaults) {
+            defaults.set(value, forKey: key)
         }
     }
 

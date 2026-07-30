@@ -35,10 +35,11 @@ struct PreferencesTests {
         #expect(Preferences.pieceSymbols.key == "pieces.symbols")
         #expect(Preferences.notationStyle.key == "notation.style")
 
-        // The stored strings, which are as much of the contract as the keys are:
-        // another track reads these raw values without ever seeing this enum.
-        #expect(Preferences.PieceSymbols.allCases.map(\.rawValue) == ["hanzi", "icons"])
-        #expect(Preferences.NotationStyle.allCases.map(\.rawValue) == ["traditional", "wxf"])
+        // The stored names, which are as much of the contract as the keys are:
+        // the renderings that read them are separate work and see nothing of
+        // this file, only the string.
+        #expect(Preferences.pieceSymbols.names == ["hanzi", "icons"])
+        #expect(Preferences.notationStyle.names == ["traditional", "wxf"])
     }
 
     @Test("An absent key is the accepted default, which is the state of a first launch")
@@ -49,8 +50,8 @@ struct PreferencesTests {
         #expect(Preferences.sound.value(in: first), "sound on")
         #expect(Preferences.haptics.value(in: first), "haptics on")
         #expect(Preferences.deleteConfirmation.value(in: first), "and it asks before deleting")
-        #expect(Preferences.pieceSymbols.value(in: first) == .hanzi)
-        #expect(Preferences.notationStyle.value(in: first) == .traditional)
+        #expect(Preferences.pieceSymbols.value(in: first) == "hanzi")
+        #expect(Preferences.notationStyle.value(in: first) == "traditional")
 
         // Said the other way round, because "absent" is a claim about the store
         // and not only about the answer: nothing has been written at all.
@@ -99,26 +100,30 @@ struct PreferencesTests {
         }
     }
 
-    @Test("A choice round-trips as its raw string, and a string naming no case is the default")
+    @Test("A choice round-trips as its name, and a string naming nothing is the default")
     func aChoiceRoundTrips() throws {
         let defaults = try ScratchDefaults.make()
         defer { ScratchDefaults.clear() }
 
-        Preferences.pieceSymbols.set(.icons, in: defaults)
-        #expect(defaults.string(forKey: "pieces.symbols") == "icons")
-        #expect(Preferences.pieceSymbols.value(in: defaults) == .icons)
+        Preferences.pieceSymbols.set("icons", in: defaults)
+        #expect(defaults.string(forKey: "pieces.symbols") == "icons",
+                "the name is stored as itself, which is what another track reads")
+        #expect(Preferences.pieceSymbols.value(in: defaults) == "icons")
 
-        Preferences.notationStyle.set(.wxf, in: defaults)
+        Preferences.notationStyle.set("wxf", in: defaults)
         #expect(defaults.string(forKey: "notation.style") == "wxf")
-        #expect(Preferences.notationStyle.value(in: defaults) == .wxf)
+        #expect(Preferences.notationStyle.value(in: defaults) == "wxf")
 
         // A preference file is editable by hand and a key is shared with other
         // frontends, so an unrecognised value is the default rather than a
         // failure: the board still has to draw.
         defaults.set("pictograms", forKey: "pieces.symbols")
-        #expect(Preferences.pieceSymbols.value(in: defaults) == .hanzi)
+        #expect(Preferences.pieceSymbols.value(in: defaults) == "hanzi")
         defaults.set("", forKey: "notation.style")
-        #expect(Preferences.notationStyle.value(in: defaults) == .traditional)
+        #expect(Preferences.notationStyle.value(in: defaults) == "traditional")
+        defaults.set(7, forKey: "notation.style")
+        #expect(Preferences.notationStyle.value(in: defaults) == "traditional",
+                "and a value that is not even a string is the default too")
     }
 
     @Test("The app keeps its preferences in the standard database")

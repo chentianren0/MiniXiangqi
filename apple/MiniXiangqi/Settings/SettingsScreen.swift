@@ -46,20 +46,20 @@ struct SettingsScreen: View {
     var body: some View {
         NavigationStack {
             Form {
+                // The tags are the stored names themselves. A picker row is a
+                // choice being written to a preference, and the preference holds
+                // a name: a type in between would be one this screen invented for
+                // a choice whose consumer already has its own.
                 Section("settings.section.board") {
                     Picker("settings.symbols.label", selection: $symbols) {
-                        Text("settings.symbols.hanzi")
-                            .tag(Preferences.PieceSymbols.hanzi)
-                        Text("settings.symbols.icons")
-                            .tag(Preferences.PieceSymbols.icons)
+                        Text("settings.symbols.hanzi").tag("hanzi")
+                        Text("settings.symbols.icons").tag("icons")
                     }
                     .accessibilityIdentifier("settings-symbols")
 
                     Picker("settings.notation.label", selection: $notation) {
-                        Text("settings.notation.traditional")
-                            .tag(Preferences.NotationStyle.traditional)
-                        Text("settings.notation.wxf")
-                            .tag(Preferences.NotationStyle.wxf)
+                        Text("settings.notation.traditional").tag("traditional")
+                        Text("settings.notation.wxf").tag("wxf")
                     }
                     .accessibilityIdentifier("settings-notation")
                 }
