@@ -233,14 +233,16 @@ MxqSearchResult make_result() {
     return result;
 }
 
-/* The first legal move in the session's current position. */
+/* The first legal move in the session's current position. 128 is the size
+ * docs/core-interface.md's capacity constants make provably sufficient for this
+ * variant; 64 is not. */
 bool first_legal_move(const MxqGame *game, std::string &out) {
-    MxqMove moves[64];
+    MxqMove moves[128];
     for (auto &m : moves) {
         m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
     }
     size_t count = 0;
-    if (mxq_game_legal_moves(game, moves, 64, &count, nullptr) != MXQ_OK ||
+    if (mxq_game_legal_moves(game, moves, 128, &count, nullptr) != MXQ_OK ||
         count == 0) {
         return false;
     }
@@ -354,11 +356,17 @@ void case_prepare_applies_the_plan() {
         /* The accepted shared profile. */
         c.check_eq(static_cast<int64_t>(int(Stockfish::Options["Skill Level"])),
                    20, "Skill Level");
-        c.check_eq(std::string(Stockfish::Options["MultiPV"]), "1", "MultiPV");
-        c.check_eq(std::string(Stockfish::Options["UCI_LimitStrength"]),
-                   "false", "UCI_LimitStrength");
-        c.check_eq(std::string(Stockfish::Options["Ponder"]), "false",
-                   "Ponder");
+        /* Read through each option's own type, not through its string form:
+         * the engine's string conversion asserts on a spin or a check, so
+         * reading one as a string passes only where the assertion is compiled
+         * out and traps in a debug build. */
+        c.check_eq(static_cast<int64_t>(int(Stockfish::Options["MultiPV"])), 1,
+                   "MultiPV");
+        c.check_eq(static_cast<int64_t>(
+                       bool(Stockfish::Options["UCI_LimitStrength"])),
+                   0, "UCI_LimitStrength is off");
+        c.check_eq(static_cast<int64_t>(bool(Stockfish::Options["Ponder"])), 0,
+                   "Ponder is off");
 
         /* Teardown releases whole and the rules bridge keeps answering. */
         err = make_error();
@@ -817,14 +825,19 @@ void case_search_end_to_end() {
         c.check_eq(static_cast<int64_t>(second.outcome), MXQ_SEARCH_MOVE,
                    "the second outcome is a move");
 
-        /* Gone after shutdown: the handle no longer answers at all. */
+        /* Gone after shutdown: the handle no longer answers at all. A core
+         * handle that is not the live instance is one of the programming
+         * errors the contract has assert in a debug build, so the returned
+         * status is observable only where that assertion is compiled out. */
         mxq_core_shutdown(core, nullptr);
+#if defined(NDEBUG)
         ready = 1;
         MxqSearchResult gone = make_result();
         const MxqStatus dead =
             mxq_search_poll(core, second_ticket, &gone, &ready, nullptr);
         c.check(dead != MXQ_OK,
                 "after shutdown the ticket answers an error, not a result");
+#endif
         mxq_game_release(game);
     } else {
         mxq_core_shutdown(core, nullptr);
@@ -1310,9 +1323,9 @@ void case_reconfiguration_refused_mid_search() {
 
         /* The rules bridge is untouched by the whole episode: the session
          * keeps answering. */
-        MxqMove moves[64];
+        MxqMove moves[128];
         size_t count = 0;
-        c.check_status(mxq_game_legal_moves(game, moves, 64, &count, &err),
+        c.check_status(mxq_game_legal_moves(game, moves, 128, &count, &err),
                        MXQ_OK, "legal moves after teardown");
         c.check(count > 0, "the position still has its legal moves");
         mxq_game_release(game);
