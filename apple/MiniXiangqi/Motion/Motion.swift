@@ -100,6 +100,26 @@ enum Motion {
     static let restoreFade: TimeInterval = 0.11
     static var restoreFadeAnimation: Animation { .easeOut(duration: restoreFade) }
 
+    // MARK: - The opponent's reply
+
+    /// The AI's move has a floor, not a delay: its piece departs at the later
+    /// of the search returning and this long after the player's own move
+    /// finished animating. A search of a second or more is unaffected — the
+    /// floor has long since passed — and only a near-instant reply waits, so
+    /// the AI never appears to twitch rather than move.
+    ///
+    /// 300 ms: long enough that the player's landing has been seen and heard as
+    /// its own event before the answer starts, short enough that nobody waiting
+    /// for a reply reads it as hesitation. Measured from the arrival rather than
+    /// from the tap that committed it, because the arrival is when the player's
+    /// move finished being shown.
+    static let replyFloor: TimeInterval = 0.30
+
+    /// How long a search must run before its activity is worth showing. Below
+    /// this the indicator would appear and vanish inside a third of a second,
+    /// which reads as a flicker rather than as thinking.
+    static let thinkingIndicatorDelay: TimeInterval = 0.40
+
     // MARK: - Flip
 
     /// 350 ms, the middle of the accepted 300–400 ms band: one coordinated

@@ -43,7 +43,7 @@ struct GameTests {
 
     private func game(playing line: [String] = []) throws -> (game: Game, core: Core) {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(line)
         return (game, core)
     }
@@ -179,7 +179,7 @@ struct GameTests {
     @Test("A refused action leaves the game unchanged, and trying again works")
     func aFailureClearsOnTheNextAttempt() throws {
         let rules = RefusingRules(try TestCores.fresh())
-        let game = try Game(rules: rules)
+        let game = try openGame(on: rules)
         try game.replay(["b1b4", "a6a5"])
 
         rules.refuses = true

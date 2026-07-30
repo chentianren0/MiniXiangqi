@@ -24,7 +24,7 @@ struct PlayMotionTests {
     ) throws -> (PlayMotion, ManualAnimator, FeedbackRecorder) {
         // The real core over a scratch store, unless the test brought the
         // refusing stand-in — which wraps one of the same.
-        let game = try Game(rules: rules ?? TestCores.fresh())
+        let game = try openGame(on: rules ?? TestCores.fresh())
         try game.replay(line)
         let animator = ManualAnimator()
         let recorder = try FeedbackRecorder(

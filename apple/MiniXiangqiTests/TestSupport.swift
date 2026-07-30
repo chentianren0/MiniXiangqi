@@ -64,6 +64,21 @@ enum TestCores {
     }
 }
 
+/// A Free Play game, opened the way the app opens one.
+///
+/// Creation stopped being the first move's job when a pre-start state arrived in
+/// front of it: **开始对局** creates the game, and the first move is played onto
+/// a board that already exists. So a test that wants a board to play on asks for
+/// one here — created where the store holds nothing, resumed where it holds an
+/// active game, which is exactly the two cases the app itself has.
+@MainActor
+func openGame(on rules: Rules) throws -> Game {
+    if !rules.hasSession, try !rules.resumeActive() {
+        try rules.create(.freePlay)
+    }
+    return try Game(rules: rules)
+}
+
 // MARK: - The motion seams
 
 /// Runs animation bodies at once and parks their completions for the test to

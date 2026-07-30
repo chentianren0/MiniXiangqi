@@ -128,6 +128,149 @@ nonisolated enum EndReason: Sendable {
     }
 }
 
+nonisolated enum AiLevel: Sendable, Hashable, CaseIterable {
+    case fast, standard, deep
+
+    init?(_ level: MxqAiLevel) {
+        switch level {
+        case MxqAiLevel(MXQ_AI_LEVEL_FAST): self = .fast
+        case MxqAiLevel(MXQ_AI_LEVEL_STANDARD): self = .standard
+        case MxqAiLevel(MXQ_AI_LEVEL_DEEP): self = .deep
+        default: return nil
+        }
+    }
+
+    var raw: MxqAiLevel {
+        switch self {
+        case .fast: MxqAiLevel(MXQ_AI_LEVEL_FAST)
+        case .standard: MxqAiLevel(MXQ_AI_LEVEL_STANDARD)
+        case .deep: MxqAiLevel(MXQ_AI_LEVEL_DEEP)
+        }
+    }
+
+    /// The exact thinking time frozen with a created game. Read from the
+    /// core's own constants rather than written a second time here: the
+    /// accepted 1/3/5 seconds are the engine contract's, not this app's.
+    var movetimeMilliseconds: UInt32 {
+        switch self {
+        case .fast: MXQ_MOVETIME_FAST_MS
+        case .standard: MXQ_MOVETIME_STANDARD_MS
+        case .deep: MXQ_MOVETIME_DEEP_MS
+        }
+    }
+
+    /// The serialized identifier in docs/game-data.md's archive vocabulary,
+    /// which is also the name the Settings default is stored under.
+    var name: String {
+        switch self {
+        case .fast: "fast"
+        case .standard: "standard"
+        case .deep: "deep"
+        }
+    }
+
+    init?(name: String) {
+        guard let match = Self.allCases.first(where: { $0.name == name }) else { return nil }
+        self = match
+    }
+}
+
+nonisolated enum FirstMoverChoice: Sendable, Hashable, CaseIterable {
+    case humanFirst, aiFirst, random
+
+    init?(_ choice: MxqFirstMoverChoice) {
+        switch choice {
+        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_HUMAN_FIRST): self = .humanFirst
+        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_AI_FIRST): self = .aiFirst
+        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_RANDOM): self = .random
+        default: return nil
+        }
+    }
+
+    var raw: MxqFirstMoverChoice {
+        switch self {
+        case .humanFirst: MxqFirstMoverChoice(MXQ_FIRST_MOVER_HUMAN_FIRST)
+        case .aiFirst: MxqFirstMoverChoice(MXQ_FIRST_MOVER_AI_FIRST)
+        case .random: MxqFirstMoverChoice(MXQ_FIRST_MOVER_RANDOM)
+        }
+    }
+
+    /// docs/game-data.md's serialized identifiers, and the stored preference
+    /// names with them.
+    var name: String {
+        switch self {
+        case .humanFirst: "human-first"
+        case .aiFirst: "ai-first"
+        case .random: "random"
+        }
+    }
+
+    init?(name: String) {
+        guard let match = Self.allCases.first(where: { $0.name == name }) else { return nil }
+        self = match
+    }
+}
+
+/// A game's frozen configuration, as the core holds it. Free Play carries the
+/// absent constants, exactly as the archive omits the members.
+nonisolated struct GameConfiguration: Sendable, Hashable {
+    var mode: PlayMode
+    /// The *resolved* human side — set even when the choice was 随机, because
+    /// it cannot be reconstructed later.
+    var humanSide: Side?
+    var aiLevel: AiLevel?
+    var firstMoverChoice: FirstMoverChoice?
+    var movetimeMilliseconds: UInt32
+
+    static let freePlay = GameConfiguration(mode: .freePlay, humanSide: nil,
+                                            aiLevel: nil, firstMoverChoice: nil,
+                                            movetimeMilliseconds: 0)
+
+    /// A human-versus-AI game, with the first-mover choice already resolved to
+    /// a side. Resolution happens in the creation flow, after preparation
+    /// succeeds, and is committed only by a successful create.
+    static func humanVersusAI(humanSide: Side, level: AiLevel,
+                              choice: FirstMoverChoice) -> GameConfiguration {
+        GameConfiguration(mode: .humanVersusAI, humanSide: humanSide,
+                          aiLevel: level, firstMoverChoice: choice,
+                          movetimeMilliseconds: level.movetimeMilliseconds)
+    }
+
+    init(mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
+         firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32) {
+        self.mode = mode
+        self.humanSide = humanSide
+        self.aiLevel = aiLevel
+        self.firstMoverChoice = firstMoverChoice
+        self.movetimeMilliseconds = movetimeMilliseconds
+    }
+
+    init(_ config: MxqGameConfig) {
+        self.init(mode: PlayMode(config.mode),
+                  humanSide: Side(config.human_side),
+                  aiLevel: AiLevel(config.ai_level),
+                  firstMoverChoice: FirstMoverChoice(config.first_mover_choice),
+                  movetimeMilliseconds: config.ai_movetime_ms)
+    }
+
+    var raw: MxqGameConfig {
+        var config = MxqGameConfig()
+        config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
+        config.mode = mode == .humanVersusAI
+            ? MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI) : MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
+        config.human_side = switch humanSide {
+        case .red: MxqColor(MXQ_COLOR_RED)
+        case .black: MxqColor(MXQ_COLOR_BLACK)
+        case nil: MxqColor(MXQ_COLOR_NONE)
+        }
+        config.ai_level = aiLevel?.raw ?? MxqAiLevel(MXQ_AI_LEVEL_NONE)
+        config.first_mover_choice = firstMoverChoice?.raw
+            ?? MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
+        config.ai_movetime_ms = movetimeMilliseconds
+        return config
+    }
+}
+
 /// A position and the game state, exactly as the core reports them — for a
 /// session, the session's; before one exists, the frozen start position's.
 nonisolated struct Evaluation: Sendable {
@@ -135,6 +278,11 @@ nonisolated struct Evaluation: Sendable {
     var sideToMove: Side
     var inCheck: Bool
     var plyCount: Int
+    /// The per-session monotonic counter every accepted mutation bumps. It is
+    /// the staleness authority, and the frontend's own comparison against it —
+    /// the second of the two the interface requires — is what rejects a search
+    /// result the core could not have known was stale.
+    var positionRevision: UInt64
 
     var state: GameState
     var reason: EndReason
@@ -144,6 +292,17 @@ nonisolated struct Evaluation: Sendable {
     /// The core's own Undo affordance. An archived or absent session offers
     /// none, and nothing above the interface works that out for itself.
     var undoAvailable: Bool
+    /// 1 or 2, by the decision-cycle rule. The core computes it; nothing above
+    /// the interface counts plies to reach the same answer.
+    var undoPlies: Int
+    /// Exactly when `mxq_game_resign` is legal, so the affordance and the
+    /// refusal are one rule.
+    var resignAvailable: Bool
+    /// Whether the committed state expects a search — the AI to move in an
+    /// unfinished human-versus-AI game. This is what "a search is owed" means,
+    /// and it is the core's answer rather than a derivation from the mode and
+    /// the side to move.
+    var searchExpected: Bool
 
     var isOver: Bool { state.isOver }
 }
@@ -154,13 +313,18 @@ nonisolated struct Evaluation: Sendable {
 // main actor, and it speaks through exactly the same four helpers the session
 // calls do.
 
-private nonisolated func freshError() -> MxqError {
+// Internal rather than private since the engine and search veneer moved into
+// Core/Engine.swift: it is the same four helpers over the same handle, and a
+// second copy of them beside the second file would be a second place for the
+// error conversion to drift.
+
+nonisolated func freshError() -> MxqError {
     var err = MxqError()
     err.struct_size = UInt32(MemoryLayout<MxqError>.size)
     return err
 }
 
-private nonisolated func string<T>(of fixedArray: T, capacity: Int32) -> String {
+nonisolated func string<T>(of fixedArray: T, capacity: Int32) -> String {
     withUnsafePointer(to: fixedArray) {
         $0.withMemoryRebound(to: CChar.self, capacity: Int(capacity)) {
             String(cString: $0)
@@ -172,7 +336,7 @@ private nonisolated func moveTexts(_ buffer: [MxqMove], count: Int) -> [String] 
     buffer.prefix(count).map { string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP) }
 }
 
-private nonisolated func check(_ status: MxqStatus, _ err: MxqError) throws {
+nonisolated func check(_ status: MxqStatus, _ err: MxqError) throws {
     guard status != MXQ_OK else { return }
     throw CoreError(status: status, detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))
 }
@@ -186,7 +350,10 @@ private nonisolated func check(_ status: MxqStatus, _ err: MxqError) throws {
 /// what keeps the seam honest — a test core is the real core over a store
 /// nobody keeps, not a stand-in.
 final class Core {
-    private let handle: OpaquePointer
+    // Internal rather than private since Core/Engine.swift carries the search
+    // facade's half of this veneer: it is the same handle, and the split is by
+    // subject rather than by visibility.
+    let handle: OpaquePointer
 
     /// The one attached session over the one active game, while there is one.
     /// Sessions are single-owner and this app is single-window, so the screen
@@ -300,7 +467,7 @@ final class Core {
 
     /// The attached session, or the typed refusal that says the caller asked a
     /// session question with no session — an app bug, never a rules outcome.
-    private func attachedSession() throws -> OpaquePointer {
+    func attachedSession() throws -> OpaquePointer {
         guard let session else {
             throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
                             detail: "no session is attached")
@@ -319,11 +486,15 @@ final class Core {
             sideToMove: side,
             inCheck: position.in_check != 0,
             plyCount: Int(position.ply_count),
+            positionRevision: position.position_revision,
             state: GameState(status.state),
             reason: EndReason(status.reason),
             atOccurrence: Int(status.at_occurrence),
             claimAvailable: status.claim_available != 0,
-            undoAvailable: status.undo_available != 0)
+            undoAvailable: status.undo_available != 0,
+            undoPlies: Int(status.undo_plies),
+            resignAvailable: status.resign_available != 0,
+            searchExpected: status.search_expected != 0)
     }
 
 }
@@ -344,25 +515,42 @@ extension Core: Rules {
         return exists != 0
     }
 
-    func begin(with move: String) throws {
-        precondition(session == nil, "began a game over a game")
-        var config = MxqGameConfig()
-        config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-        config.mode = MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
-        config.human_side = MxqColor(MXQ_COLOR_NONE)
-        config.ai_level = MxqAiLevel(MXQ_AI_LEVEL_NONE)
-        config.first_mover_choice = MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
-        config.ai_movetime_ms = 0
-
+    func create(_ configuration: GameConfiguration) throws {
+        precondition(session == nil, "created a game over a game")
+        var config = configuration.raw
         var game: OpaquePointer?
         var err = freshError()
         try check(mxq_game_create(handle, &config, &game, &err), err)
         session = game
-        // The first move follows in the same user-visible action. If its
-        // commit is refused the session stays, holding a game of no moves:
-        // the board is unchanged, the failure is the last attempt's, and the
-        // retry applies to the session this action already created.
-        try apply(move)
+    }
+
+    func configuration() throws -> GameConfiguration {
+        let session = try attachedSession()
+        var config = MxqGameConfig()
+        config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
+        var err = freshError()
+        try check(mxq_game_config(session, &config, &err), err)
+        return GameConfiguration(config)
+    }
+
+    /// The session's stable identity — the version 7 UUID frozen at creation.
+    /// Half of the staleness comparison a search result is judged by.
+    func gameID() throws -> String {
+        let session = try attachedSession()
+        var buffer = [CChar](repeating: 0, count: Int(MXQ_GAME_ID_CAP))
+        var length = 0
+        var err = freshError()
+        try check(mxq_game_id(session, &buffer, buffer.count, &length, &err), err)
+        return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
+                      as: UTF8.self)
+    }
+
+    func resign() throws -> UInt64 {
+        let session = try attachedSession()
+        var recordID: UInt64 = 0
+        var err = freshError()
+        try check(mxq_game_resign(session, &recordID, &err), err)
+        return recordID
     }
 
     func apply(_ move: String) throws {

@@ -145,11 +145,34 @@ final class PlayScreenUITests: XCTestCase {
         // first: a refused replay line never shows a board, and checking for
         // the failure text before the screen settles would pass against the
         // spinner that precedes both outcomes.
-        let boardUp = point(app, "d1").waitForExistence(timeout: 10)
+        //
+        // A game is created by 开始对局 now rather than by its first move, so a
+        // launch with nothing to resume and no replay line arrives at the start
+        // state instead of at a board. These tests are about Free Play, so the
+        // helper walks the real path into one; a launch that resumed a game or
+        // replayed a line is already on a board and this does nothing.
+        let boardUp = waitForBoard(app)
         XCTAssertFalse(app.staticTexts[language.gameDidNotStart].exists,
                        "a replay line the core refuses arrives here")
         XCTAssertTrue(boardUp, "the board's points should be addressable")
         return app
+    }
+
+    /// Ends on a board, whichever of the two states the launch arrived at.
+    @discardableResult
+    private func waitForBoard(_ app: XCUIApplication) -> Bool {
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if point(app, "d1").exists { return true }
+            if app.buttons["mode-free-play"].exists {
+                app.buttons["mode-free-play"].click()
+                XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
+                app.buttons["setup-start"].click()
+                return point(app, "d1").waitForExistence(timeout: 15)
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
     }
 
     private func attach(_ app: XCUIApplication, named name: String) {
@@ -479,12 +502,15 @@ final class PlayScreenUITests: XCTestCase {
         point(app, "d3").click()
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 5))
         app.buttons["result-new-game"].click()
-        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
+        app.buttons["setup-start"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 10))
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮",
                        "the starting position is back")
         app.terminate()
 
-        // The filed game stays filed: this launch resumes nothing.
+        // The filed game stays filed: this launch resumes the fresh game the
+        // press above created, which has nothing in it.
         app = launch(store: store)
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
         XCTAssertFalse(app.staticTexts["result-title"].exists,
@@ -565,12 +591,20 @@ final class PlayScreenUITests: XCTestCase {
 
         app.buttons["result-new-game"].click()
 
-        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        // The concluding action files the game and opens the finished game's
+        // own mode's pre-start page: the next game's setup is chosen rather
+        // than inherited, and for Free Play that is one press away.
+        XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5),
+                      "the finished game's own mode's pre-start page opens")
+        XCTAssertTrue(app.staticTexts["你将控制红黑双方，红方先行。"].exists)
+        XCTAssertFalse(app.staticTexts["result-title"].exists)
+        attach(app, named: "10-the-pre-start-page-after-a-finished-game")
+
+        app.buttons["setup-start"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 10))
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮",
                        "the starting position should be back")
         XCTAssertFalse(app.staticTexts["1."].exists, "the move list should be empty")
-        XCTAssertFalse(app.staticTexts["result-title"].exists)
-        attach(app, named: "10-a-new-game-from-the-notice")
 
         // It filed the game on its way through, which is the half of it the
         // board cannot show.
@@ -635,10 +669,15 @@ final class PlayScreenUITests: XCTestCase {
         // 完成 is the way out of the recorded state: back to the Play start
         // state, with nothing filed a second time on the way.
         app.buttons["result-done"].click()
-        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+                      "完成 returns to the Play start state")
+        XCTAssertTrue(app.buttons["mode-human-versus-ai"].exists, "with both modes on offer")
         XCTAssertFalse(app.staticTexts["result-title"].exists, "the notice is gone")
         XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
                        "a game already filed is not filed again, so nothing refused it")
+        attach(app, named: "51-the-play-start-state")
+
+        waitForBoard(app)
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮", "the starting position is back")
         XCTAssertFalse(app.staticTexts["1."].exists, "with an empty move list")
         XCTAssertTrue(app.buttons["cluster-claim"].exists,
@@ -665,7 +704,9 @@ final class PlayScreenUITests: XCTestCase {
         attach(app, named: "48-the-saved-board-with-the-notice-closed")
 
         app.buttons["cluster-new-game"].click()
-        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
+        app.buttons["setup-start"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 10))
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮", "the starting position is back")
         XCTAssertFalse(app.staticTexts["1."].exists, "the move list is empty")
         XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
@@ -703,7 +744,9 @@ final class PlayScreenUITests: XCTestCase {
                        "the notice should not return for a result already seen")
 
         app.buttons["cluster-new-game"].click()
-        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
+        app.buttons["setup-start"].click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 10))
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮",
                        "the starting position should be back")
         XCTAssertFalse(app.staticTexts["1."].exists, "the move list should be empty")

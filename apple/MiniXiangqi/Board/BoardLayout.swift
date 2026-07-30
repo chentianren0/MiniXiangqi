@@ -33,6 +33,22 @@ enum BoardLayout {
         return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
     }
 
+    /// The smallest a preview is allowed to become. Not a contract floor —
+    /// the contract gives a preview none — but a board smaller than this stops
+    /// being a picture of a board at all.
+    static let previewFloorPitch: CGFloat = 18
+
+    /// The board a pre-start page previews. It is noninteractive and has no
+    /// touch targets, so the accepted 44-point floor does not apply to it and
+    /// the setup controls take the space they need first.
+    static func previewGeometry(in size: CGSize) -> BoardGeometry {
+        let available = CGSize(width: size.width - panelWidth - 2 * boardPadding,
+                               height: size.height - 2 * boardPadding)
+        let fitted = BoardGeometry.fitting(available, floor: previewFloorPitch)
+            ?? BoardGeometry(pitch: previewFloorPitch)
+        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
+    }
+
     /// Both the board and the chrome have floors, so the window has one too.
     /// This is what the *content* asks for; the navigation container adds its
     /// own sidebar to it, which is why the window's minimum is measured on the

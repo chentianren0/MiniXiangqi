@@ -191,5 +191,43 @@ resources="$root/apple/MiniXiangqi/Resources"
 mkdir -p "$resources"
 cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
 
+# The bundled NNUE network, staged the same way and under the same policy the
+# core's CMake staging enforces: nothing is consumed on trust.
+#
+# The repository never contains these bytes. They live in the workspace at
+# .git/minixiangqi-control/nnue/ under the source name the network was
+# published with, and they are bundled under the name the variant-matching rule
+# requires — the engine restricts NNUE to the matching variant by requiring the
+# file's basename to begin with the variant identifier, and a basename that does
+# not match disables NNUE *silently* while the Use NNUE option still reads true.
+# Only the name changes: the byte length and the SHA-256 are over content and
+# are what pinned-inputs.json pins.
+#
+# Absence or a mismatch stops here rather than producing an app whose AI is
+# quietly a different opponent. plutil reads the manifest because it is on every
+# Mac and this script is Apple-only.
+nnue_source="${MXQ_NNUE_SOURCE:-$root/.git/minixiangqi-control/nnue/minixiangqi-12c45d5da817.nnue}"
+nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+nnue_length=$(plutil -extract network.byte_length raw -o - "$root/pinned-inputs.json")
+nnue_sha256=$(plutil -extract network.sha256 raw -o - "$root/pinned-inputs.json")
+
+if [ ! -f "$nnue_source" ]; then
+  echo "error: the NNUE network was not found at $nnue_source" >&2
+  echo "note: point MXQ_NNUE_SOURCE at the pinned bytes; the repository never carries them." >&2
+  exit 1
+fi
+actual_length=$(wc -c < "$nnue_source" | tr -d ' ')
+if [ "$actual_length" != "$nnue_length" ]; then
+  echo "error: the NNUE network at $nnue_source is $actual_length bytes; pinned-inputs.json pins $nnue_length." >&2
+  exit 1
+fi
+actual_sha256=$(shasum -a 256 "$nnue_source" | cut -d' ' -f1)
+if [ "$actual_sha256" != "$nnue_sha256" ]; then
+  echo "error: the NNUE network at $nnue_source does not match the SHA-256 pinned-inputs.json pins." >&2
+  exit 1
+fi
+cp "$nnue_source" "$resources/$nnue_name"
+echo "staged the pinned network as $nnue_name"
+
 echo "built $output"
 lipo -info "$output"/*/libMiniXiangqiCore.a

@@ -15,6 +15,8 @@
 // | `deleteConfirmation.enabled` | Bool | on |
 // | `pieces.symbols` | `hanzi` \| `icons` | `hanzi` |
 // | `notation.style` | `traditional` \| `wxf` | `traditional` |
+// | `defaults.firstMover` | `human-first` \| `ai-first` \| `random` | `human-first` |
+// | `defaults.aiLevel` | `fast` \| `standard` \| `deep` | `standard` |
 //
 // **Every one is read at the moment of use** and nothing is cached at launch, so
 // a switch takes effect on the next event rather than on the next run. That was
@@ -61,6 +63,34 @@ enum Preferences {
     static let notationStyle = Choice(key: "notation.style",
                                       whenAbsent: "traditional",
                                       names: ["traditional", "wxf"])
+
+    /// Which side a new human-versus-AI game opens on — the value the pre-start
+    /// draft is initialized from, never the created game's own. The names are
+    /// docs/game-data.md's serialized first-mover vocabulary, so the preference,
+    /// the frozen configuration and the archive all say the same three words.
+    static let defaultFirstMover = Choice(key: "defaults.firstMover",
+                                          whenAbsent: "human-first",
+                                          names: ["human-first", "ai-first", "random"])
+
+    /// How long a new human-versus-AI game's opponent thinks. 标准 on a new
+    /// installation, per the accepted profiles.
+    static let defaultAiLevel = Choice(key: "defaults.aiLevel",
+                                       whenAbsent: "standard",
+                                       names: ["fast", "standard", "deep"])
+
+    /// The two above as the vocabulary the setup page speaks. A stored name
+    /// nothing recognises reads as the accepted default, exactly as `Choice`
+    /// says it does — a preference file is editable by hand and read by more
+    /// than one frontend, and the page still has to open.
+    static func defaultFirstMover(in defaults: UserDefaults = Preferences.defaults)
+        -> FirstMoverChoice {
+        FirstMoverChoice(name: defaultFirstMover.value(in: defaults)) ?? .humanFirst
+    }
+
+    static func defaultAiLevel(in defaults: UserDefaults = Preferences.defaults)
+        -> AiLevel {
+        AiLevel(name: defaultAiLevel.value(in: defaults)) ?? .standard
+    }
 
     // MARK: - How one is read and written
 

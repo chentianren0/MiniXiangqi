@@ -42,42 +42,16 @@ struct SettingsScreen: View {
     @State private var confirmsDeletion = Preferences.deleteConfirmation.value()
     @State private var symbols = Preferences.pieceSymbols.value()
     @State private var notation = Preferences.notationStyle.value()
+    @State private var firstMover = Preferences.defaultFirstMover.value()
+    @State private var aiLevel = Preferences.defaultAiLevel.value()
 
     var body: some View {
         NavigationStack {
             Form {
-                // The tags are the stored names themselves. A picker row is a
-                // choice being written to a preference, and the preference holds
-                // a name: a type in between would be one this screen invented for
-                // a choice whose consumer already has its own.
-                Section("settings.section.board") {
-                    Picker("settings.symbols.label", selection: $symbols) {
-                        Text("settings.symbols.hanzi").tag("hanzi")
-                        Text("settings.symbols.icons").tag("icons")
-                    }
-                    .accessibilityIdentifier("settings-symbols")
-
-                    Picker("settings.notation.label", selection: $notation) {
-                        Text("settings.notation.traditional").tag("traditional")
-                        Text("settings.notation.wxf").tag("wxf")
-                    }
-                    .accessibilityIdentifier("settings-notation")
-                }
-
-                Section {
-                    Toggle("settings.sound.label", isOn: $sound)
-                        .accessibilityIdentifier("settings-sound")
-                    Toggle("settings.haptics.label", isOn: $haptics)
-                        .accessibilityIdentifier("settings-haptics")
-                }
-
-                Section {
-                    Toggle("settings.confirmDelete.label", isOn: $confirmsDeletion)
-                        .accessibilityIdentifier("settings-confirm-delete")
-                } footer: {
-                    Text("settings.confirmDelete.footer")
-                        .accessibilityIdentifier("settings-confirm-delete-footer")
-                }
+                board
+                humanVersusAIDefaults
+                feedback
+                deletion
             }
             // The macOS-native presentation of a preference list, and the one
             // that gives a section its header and its footer.
@@ -94,5 +68,77 @@ struct SettingsScreen: View {
         }
         .onChange(of: symbols) { Preferences.pieceSymbols.set(symbols) }
         .onChange(of: notation) { Preferences.notationStyle.set(notation) }
+        .onChange(of: firstMover) { Preferences.defaultFirstMover.set(firstMover) }
+        .onChange(of: aiLevel) { Preferences.defaultAiLevel.set(aiLevel) }
+    }
+
+    // The four groups, each its own property: one Form body carrying all of
+    // them stopped type-checking in reasonable time, and a section is a
+    // self-contained thing anyway.
+
+    /// The tags are the stored names themselves. A picker row is a choice being
+    /// written to a preference, and the preference holds a name: a type in
+    /// between would be one this screen invented for a choice whose consumer
+    /// already has its own.
+    private var board: some View {
+        Section("settings.section.board") {
+            Picker("settings.symbols.label", selection: $symbols) {
+                Text("settings.symbols.hanzi").tag("hanzi")
+                Text("settings.symbols.icons").tag("icons")
+            }
+            .accessibilityIdentifier("settings-symbols")
+
+            Picker("settings.notation.label", selection: $notation) {
+                Text("settings.notation.traditional").tag("traditional")
+                Text("settings.notation.wxf").tag("wxf")
+            }
+            .accessibilityIdentifier("settings-notation")
+        }
+    }
+
+    /// The two values a new human-versus-AI game's setup page opens with. They
+    /// initialize a draft and nothing more: an active game's own side and level
+    /// were frozen when it was created, and changing either of these never
+    /// reaches it — which is what the footer says out loud.
+    private var humanVersusAIDefaults: some View {
+        Section {
+            Picker("settings.defaults.firstMover", selection: $firstMover) {
+                Text("setup.iMoveFirst").tag("human-first")
+                Text("setup.aiMovesFirst").tag("ai-first")
+                Text("setup.random").tag("random")
+            }
+            .accessibilityIdentifier("settings-first-mover")
+
+            Picker("settings.defaults.aiLevel", selection: $aiLevel) {
+                Text("setup.level.fast").tag("fast")
+                Text("setup.level.standard").tag("standard")
+                Text("setup.level.deep").tag("deep")
+            }
+            .accessibilityIdentifier("settings-ai-level")
+        } header: {
+            Text("settings.defaults.group")
+        } footer: {
+            Text("settings.defaults.footer")
+                .accessibilityIdentifier("settings-defaults-footer")
+        }
+    }
+
+    private var feedback: some View {
+        Section {
+            Toggle("settings.sound.label", isOn: $sound)
+                .accessibilityIdentifier("settings-sound")
+            Toggle("settings.haptics.label", isOn: $haptics)
+                .accessibilityIdentifier("settings-haptics")
+        }
+    }
+
+    private var deletion: some View {
+        Section {
+            Toggle("settings.confirmDelete.label", isOn: $confirmsDeletion)
+                .accessibilityIdentifier("settings-confirm-delete")
+        } footer: {
+            Text("settings.confirmDelete.footer")
+                .accessibilityIdentifier("settings-confirm-delete-footer")
+        }
     }
 }

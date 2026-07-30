@@ -14,6 +14,34 @@ struct TurnStatus: View {
     var sideToMove: Side
     var inCheck: Bool
 
+    /// Who controls the side to move, in human-versus-AI play. Free Play omits
+    /// it, because the same person controls both sides.
+    var controller: Controller?
+
+    /// What the AI activity slot is carrying. Issue #71's decision 3: a small
+    /// system activity indicator beside the AI controller label, appearing only
+    /// once a search has run long enough to be worth showing, never replacing
+    /// the side-to-move line, and carrying no material at all — it is present
+    /// for a large share of every human-versus-AI game, and a persistent glass
+    /// surface beside the board would be exactly the gratuitous application the
+    /// platform's own guidance warns against.
+    var activity: Opponent.Activity = .idle
+
+    /// The inline retry the stalled slot carries, per decision 2. The alert has
+    /// already been answered with 稍后 by the time this shows.
+    var retry: (() -> Void)?
+
+    enum Controller {
+        case you, ai
+
+        var text: String {
+            switch self {
+            case .you: String(localized: "status.controller.you")
+            case .ai: String(localized: "status.controller.ai")
+            }
+        }
+    }
+
     /// The acknowledgment beat's progress, 0 to 1 — how far through the beat
     /// this is, not how dark it gets; `Motion.beatPeakOpacity` is what full
     /// emphasis comes to. Input the game cannot accept is answered here, where
@@ -25,14 +53,52 @@ struct TurnStatus: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(primaryLine)
-                .font(.title3.weight(.medium))
-                .contentTransition(.identity)
+            // The description itself, combined into one element so a screen
+            // reader hears one sentence about the state rather than three
+            // fragments.
+            VStack(alignment: .leading, spacing: 6) {
+                Text(primaryLine)
+                    .font(.title3.weight(.medium))
+                    .contentTransition(.identity)
 
-            if let secondary {
-                Text(secondary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                if let secondary {
+                    HStack(spacing: 6) {
+                        Text(secondary)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+
+                        // The indicator sits beside the controller label, which
+                        // is the head of this line. The system's own, at its
+                        // smallest, drawn directly like everything else the
+                        // status says — and carrying no material at all, which
+                        // is the one thing this indicator is not allowed.
+                        if activity == .thinking {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel(Text("status.aiThinking"))
+                                .accessibilityIdentifier("ai-thinking")
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("turn-status")
+
+            // The stalled slot: the AI cannot start right now, the game is
+            // saved, and the retry lives where things about the game live. It
+            // stays *outside* the combined element above, because a control
+            // folded into one is a control a screen reader cannot reach.
+            if activity == .stalled, let retry {
+                HStack(spacing: 8) {
+                    Text("status.aiUnavailable")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("ai-stalled")
+                    Button("control.tryAgain", action: retry)
+                        .buttonStyle(.link)
+                        .accessibilityIdentifier("ai-retry")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -44,8 +110,6 @@ struct TurnStatus: View {
                 .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
                 .accessibilityHidden(true)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("turn-status")
     }
 
     private var primaryLine: String {
@@ -74,15 +138,27 @@ struct TurnStatus: View {
                       side, String(localized: "status.check"))
     }
 
+    /// The second line: who owns the turn, and what else is true of the game.
+    ///
+    /// The two are joined by the accepted metadata format rather than by
+    /// concatenation, and applied repeatedly rather than once per line length,
+    /// exactly as the metadata lines elsewhere are composed.
     private var secondary: String? {
-        switch state {
+        let claimOrReason: String? = switch state {
         case .ongoing: nil
-        // The metadata join, applied here to the standing offer and the reason
-        // behind it. Its middot is the same in both languages, and it is still
-        // a format string: what a language does around a separator is copy.
         case .claimableDraw: String(format: String(localized: "metadata.join"),
                                     String(localized: "status.drawAvailable"), reason.text)
-        default: reason.text
+        default: reason.text.isEmpty ? nil : reason.text
+        }
+        // The controller label belongs to a turn, so it stops when the turn
+        // does: a finished game is nobody's to move.
+        let owner = state.isOver ? nil : controller?.text
+        return switch (owner, claimOrReason) {
+        case (let owner?, let rest?): String(format: String(localized: "metadata.join"),
+                                             owner, rest)
+        case (let owner?, nil): owner
+        case (nil, let rest?): rest
+        case (nil, nil): nil
         }
     }
 }

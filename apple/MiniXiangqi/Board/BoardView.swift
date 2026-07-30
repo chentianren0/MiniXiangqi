@@ -29,6 +29,9 @@ struct BoardView: View {
     /// PlayMotion. A static board — a snapshot, a preview — leaves them at
     /// rest and draws exactly the states it was given.
     var transit: Transit?
+    /// The second disc of a paired transition — the two plies of a decision
+    /// cycle rewinding together.
+    var companion: Transit?
     var transitFade: Double = 0
     var checkEmphasis: Double = 0
     var markerEmphasis: Double = 0
@@ -89,6 +92,7 @@ struct BoardView: View {
                     lastMove: lastMove,
                     checkedGeneral: checkedGeneral,
                     transit: transit,
+                    companion: companion,
                     phases: BoardPhases(travel: transit == nil ? 0 : 1,
                                         fade: transitFade,
                                         flip: flipped ? 1 : 0,
