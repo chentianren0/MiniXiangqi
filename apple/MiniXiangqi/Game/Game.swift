@@ -61,6 +61,17 @@ protocol Rules: AnyObject {
     /// commit, made when the player files the game rather than takes it back.
     func confirmResult() throws -> UInt64
 
+    /// Archive the active game by its own current state and clear it, in one
+    /// transaction. The fourth archiving path, and the only one that may record
+    /// a game as ended early — what the state is worth is the core's to decide
+    /// and never this app's to supply.
+    ///
+    /// It answers rather than returns because it runs off the UI thread, unlike
+    /// every other mutation here: the threading contract keeps this one outside
+    /// the active game's main-actor exception.
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void)
+
     /// The position and state — the session's, or the frozen start's before a
     /// session exists.
     func evaluation() throws -> Evaluation
@@ -551,6 +562,21 @@ final class RefusingRules: Rules {
     func confirmResult() throws -> UInt64 {
         try refuseIfAsked()
         return try real.confirmResult()
+    }
+
+    /// The refusal answers on the next turn rather than inside the call, which
+    /// is the one thing this stand-in has to copy about the real one: the real
+    /// archive runs on a queue and can never answer before the press that asked
+    /// for it has finished being handled. An answer that arrived inside the
+    /// press would reach an alert that is still dismissing itself.
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
+    ) {
+        guard refuses else {
+            real.archiveActiveAndClear(completion: completion)
+            return
+        }
+        Task { @MainActor in completion(.failure(CoreError(wrapping: RefusedByTheCore()))) }
     }
 
     func evaluation() throws -> Evaluation { try real.evaluation() }

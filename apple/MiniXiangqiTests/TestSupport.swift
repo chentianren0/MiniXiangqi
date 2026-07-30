@@ -79,6 +79,21 @@ func openGame(on rules: Rules) throws -> Game {
     return try Game(rules: rules)
 }
 
+/// Waits for something the app does off this actor to have happened.
+///
+/// One call needs it: the accepted archive-and-clear, which the threading
+/// contract keeps off the UI thread, so it answers on a queue rather than inside
+/// the call. Everything else in the suite is synchronous by design — the seams
+/// answer on the spot — and this exists for the one that cannot be.
+@MainActor
+func settle(_ what: String, until condition: () -> Bool) async {
+    for _ in 0..<300 {
+        if condition() { return }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    Issue.record("timed out waiting for \(what)")
+}
+
 // MARK: - The motion seams
 
 /// Runs animation bodies at once and parks their completions for the test to

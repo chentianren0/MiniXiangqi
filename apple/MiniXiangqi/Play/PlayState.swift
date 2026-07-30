@@ -16,12 +16,19 @@
 // re-renders against a living object it did not create.
 //
 // docs/interaction-design.md, "Starting and configuring a game": a game is no
-// longer created by its first move. With no active game the destination offers
-// the two modes; choosing one opens that mode's pre-start state, whose controls
-// are an in-memory draft initialized afresh from the Settings defaults and
-// discarded the moment the player leaves. 开始对局 is what creates the game, and
-// for human-versus-AI it runs the accepted ordering — prepare, resolve, create,
-// search — with each step a gate on the next.
+// longer created by its first move. The Play destination's root is the home
+// page, where what to play is chosen; choosing a mode opens that mode's
+// pre-start state, whose controls are an in-memory draft initialized afresh from
+// the Settings defaults and discarded the moment the player leaves. 开始对局 is
+// what creates the game, and for human-versus-AI it runs the accepted ordering —
+// prepare, resolve, create, search — with each step a gate on the next.
+//
+// docs/interaction-design.md, "Saving the active game before choosing a new
+// mode": the mode entries stay interactive while a game is active, and choosing
+// one presents the accepted confirmation instead of navigating. 保存并继续
+// archives the active game by its own current state and clears it — one atomic
+// core call, off this actor — and only then opens the selected mode's pre-start
+// state. The destination it remembers lives no longer than that flow.
 
 import MiniXiangqiCore
 import Observation
@@ -67,23 +74,38 @@ final class PlayState {
     /// will not produce on request.
     private let engine: AIEngine
 
-    /// Which of the destination's three states is showing.
-    enum Phase: Equatable {
-        /// No active game: the two mode entries.
-        case start
+    /// Which of the destination's three pages is showing. The home is the root
+    /// and the other two are pushed over it, so this is also the navigation
+    /// path: everything that changes it is a navigation.
+    enum Page: Hashable {
+        /// The Play home: what to play, and the active game if there is one.
+        /// No board anywhere on it.
+        case home
         /// That mode's pre-start state, over a noninteractive preview.
         case setup(PlayMode)
-        /// A game.
-        case playing
+        /// The board.
+        case board
     }
 
-    private(set) var phase: Phase = .start
+    private(set) var page: Page = .home
 
     private(set) var game: Game?
     private(set) var motion: PlayMotion?
     private(set) var opponent: Opponent?
 
-    /// The pre-start controls' draft. Meaningful only while `phase` is
+    /// The game the store still holds — the one the home's card is about, and
+    /// the one the save-and-continue confirmation would archive.
+    ///
+    /// A game that has been filed is not one of them. Its record is immutable
+    /// History and the active-game reference was cleared by the terminal commit
+    /// that made it; what is left on the board is the result standing where it
+    /// was reached, which is presentation rather than an active game.
+    var activeGame: Game? {
+        guard let game, game.filedRecordID == nil else { return nil }
+        return game
+    }
+
+    /// The pre-start controls' draft. Meaningful only while `page` is
     /// `.setup`, and replaced afresh on every entry.
     var draft = SetupDraft.fromDefaults()
 
@@ -99,6 +121,29 @@ final class PlayState {
     }
 
     private(set) var creationFailure: CreationFailure?
+
+    /// The mode the player asked for while a game was active, and how far the
+    /// asking has got. The requested destination is carried *inside* the flow
+    /// rather than beside it, which is the accepted rule made structural: it is
+    /// remembered only while the confirmation or its retry exists, and there is
+    /// nowhere for it to survive them.
+    enum ModeSwitch: Equatable {
+        /// The accepted 开始新对局？ confirmation is up.
+        case confirming(PlayMode)
+        /// 保存并继续 was pressed and the archive is running.
+        case saving(PlayMode)
+        /// The store refused it. The accepted 无法保存对局 retry is up, and the
+        /// game is exactly as it stood.
+        case failed(PlayMode)
+
+        var mode: PlayMode {
+            switch self {
+            case .confirming(let mode), .saving(let mode), .failed(let mode): mode
+            }
+        }
+    }
+
+    private(set) var modeSwitch: ModeSwitch?
 
     /// Whether a creation attempt is in flight. **开始对局** cannot be invoked
     /// again while it is.
@@ -123,15 +168,22 @@ final class PlayState {
     /// is exactly what resumed.
     var resultDismissed = false
 
-    /// Whether the once-per-launch start has run.
-    private var started = false
+    /// Whether the once-per-launch start has run — and so whether `page` is yet
+    /// an answer. Read by the destination, which does not build its navigation
+    /// until it is true: a launch with a game to resume must *open* at the board
+    /// rather than push its way there, and a stack built before the resume has
+    /// answered would have to.
+    private(set) var started = false
 
     /// The platform's suspension signals, watched for as long as this lives.
     private var suspension: Suspension?
 
-    init(core: Core, engine: AIEngine? = nil) {
+    /// The seams are the two things a working core will not do on request: an
+    /// engine that refuses to prepare, and a store that refuses to commit. Both
+    /// default to the core itself, which is what the application always runs.
+    init(core: Core, engine: AIEngine? = nil, rules: Rules? = nil) {
         self.core = core
-        self.rules = Self.rules(over: core)
+        self.rules = rules ?? Self.rules(over: core)
         self.engine = engine ?? core
     }
 
@@ -147,26 +199,119 @@ final class PlayState {
         resumeAtLaunch(policy: policy)
     }
 
-    // MARK: - Before there is a game
+    // MARK: - The home
 
-    /// A mode was chosen on the start state. Its pre-start page opens with a
-    /// draft taken afresh from the persistent defaults.
+    /// A mode entry was chosen on the home.
+    ///
+    /// With no active game it opens that mode's pre-start page. With one it
+    /// opens nothing at all: the accepted confirmation presents instead, and
+    /// the destination waits inside it. A game already filed is neither — it is
+    /// a History record the board was still showing, so it is let go of here
+    /// and the pre-start page opens as it would have with no game at all.
     func choose(_ mode: PlayMode) {
-        guard phase == .start else { return }
-        draft = SetupDraft.fromDefaults()
-        creationFailure = nil
-        phase = .setup(mode)
+        guard page == .home, modeSwitch == nil else { return }
+        if activeGame != nil {
+            modeSwitch = .confirming(mode)
+            return
+        }
+        if game != nil { release() }
+        openSetup(mode)
     }
 
-    /// The player left the play destination. The draft is discarded, an attempt
-    /// in flight is invalidated, and no game is created — a completion arriving
+    /// 取消 on the confirmation, and the dismissal that follows every answer to
+    /// it. The remembered destination goes with the flow that held it, and the
+    /// active game is untouched — it can be resumed and taken back or claimed on
+    /// the board, as it always could.
+    ///
+    /// It clears the confirmation and nothing else, because the alert's own
+    /// dismissal arrives *after* the button's action: 保存并继续 would otherwise
+    /// be followed by a cancel that discarded the archive it had just started.
+    func dismissConfirmation() {
+        if case .confirming = modeSwitch { modeSwitch = nil }
+    }
+
+    /// 取消 on the accepted 无法保存对局 retry, and the dismissal that follows
+    /// every answer to it. It clears the failure and nothing else, for the
+    /// reason above: 重试 starts the same archive again and must survive its own
+    /// alert going away.
+    func dismissArchiveFailure() {
+        if case .failed = modeSwitch { modeSwitch = nil }
+    }
+
+    /// **保存并继续**, and the 重试 that repeats it.
+    ///
+    /// The archive is one atomic core call and the classification inside it is
+    /// entirely the core's: an ordinary ongoing game and an unclaimed claimable
+    /// repetition are recorded as ended early, and an unconfirmed natural
+    /// terminal keeps its actual result and its exact reason. Only when it has
+    /// committed does the selected mode's pre-start page open, and no new game
+    /// exists until 开始对局 succeeds there.
+    ///
+    /// A refusal commits nothing: the old game is still active, still exactly
+    /// as it stood, and the accepted retry presents over it.
+    func saveAndContinue() {
+        guard let mode = modeSwitch?.mode, activeGame != nil else { return }
+        guard modeSwitch != .saving(mode) else { return }
+        modeSwitch = .saving(mode)
+        // What the machine is thinking about is about to stop being the game,
+        // and a search outstanding over an archived game answers to nothing.
+        opponent?.cancelSearch()
+        rules.archiveActiveAndClear { [weak self] result in
+            guard let self, modeSwitch == .saving(mode) else { return }
+            switch result {
+            case .success:
+                release()
+                modeSwitch = nil
+                openSetup(mode)
+            case .failure:
+                modeSwitch = .failed(mode)
+                // The game is unchanged and still owes whatever it owed, so the
+                // machine picks its search back up.
+                opponent?.begin()
+            }
+        }
+    }
+
+    /// **回到对局** on the home's current-game card: the board, and the game
+    /// exactly as it was left.
+    func resume() {
+        guard page == .home, activeGame != nil else { return }
+        page = .board
+    }
+
+    private func openSetup(_ mode: PlayMode) {
+        draft = SetupDraft.fromDefaults()
+        creationFailure = nil
+        page = .setup(mode)
+    }
+
+    /// The player navigated back to the home from whichever page was over it.
+    ///
+    /// From a pre-start page that is leaving it, with everything leaving it
+    /// means. From the board it is only a navigation: the game stays active and
+    /// the card on the home is the way back to it — unless it has been filed,
+    /// in which case the record is in History and the board was showing nothing
+    /// the home has any use for.
+    func leaveTopPage() {
+        switch page {
+        case .home: break
+        case .setup: leavePage()
+        case .board:
+            if game?.filedRecordID != nil { release() }
+            page = .home
+        }
+    }
+
+    /// The player left the pre-start page — by going back to the home, or by
+    /// leaving the destination altogether. The draft is discarded, an attempt in
+    /// flight is invalidated, and no game is created: a completion arriving
     /// afterwards commits nothing.
     func leavePage() {
-        guard case .setup = phase else { return }
+        guard case .setup = page else { return }
         attempt += 1
         creating = false
         creationFailure = nil
-        phase = .start
+        page = .home
     }
 
     /// Dismisses the creation failure without leaving the page: 取消 on the
@@ -184,7 +329,7 @@ final class PlayState {
     /// a retry draws again; a persistence failure releases the prepared engine
     /// and creates nothing.
     func startGame(policy: MotionPolicy) {
-        guard case .setup(let mode) = phase, !creating else { return }
+        guard case .setup(let mode) = page, !creating else { return }
         creating = true
         creationFailure = nil
         attempt += 1
@@ -245,7 +390,7 @@ final class PlayState {
             try rules.create(configuration)
             adopt(try Game(rules: rules), policy: policy)
             creating = false
-            phase = .playing
+            page = .board
             opponent?.begin()
         } catch {
             creating = false
@@ -288,18 +433,17 @@ final class PlayState {
         let mode = game.mode
         guard file(game) else { return false }
         release()
-        phase = .start
-        choose(mode)
+        openSetup(mode)
         return true
     }
 
-    /// 完成 on the recorded notice: back to the Play start state, with nothing
-    /// filed a second time on the way.
+    /// 完成 on the recorded notice: back to the Play home, with nothing filed a
+    /// second time on the way.
     func finish() -> Bool {
         guard let game else { return true }
         guard file(game) else { return false }
         release()
-        phase = .start
+        page = .home
         return true
     }
 
@@ -336,9 +480,12 @@ final class PlayState {
 
     // MARK: - Launch
 
-    /// Opens the game the library holds, or the start state when it holds none:
-    /// launch is a resume, and a resumed human-versus-AI game owing a move
-    /// prepares and searches for it exactly as a fresh one would.
+    /// Opens the game the library holds, or the home when it holds none: launch
+    /// is a resume, and a resumed human-versus-AI game owing a move prepares and
+    /// searches for it exactly as a fresh one would. A launch that has a game to
+    /// open goes straight to the board rather than by way of the home, which is
+    /// the accepted resume-at-launch behaviour and is what the home being a
+    /// navigable root has to leave untouched.
     private func resumeAtLaunch(policy: MotionPolicy) {
         startFailure = nil
         resultDismissed = false
@@ -357,14 +504,14 @@ final class PlayState {
             #endif
             let resumed = try Game(rules: rules)
             guard resumed.identity != nil else {
-                phase = .start
+                page = .home
                 return
             }
             #if DEBUG
             try resumed.replay(Self.launchReplayLine)
             #endif
             adopt(resumed, policy: policy)
-            phase = .playing
+            page = .board
             opponent?.begin()
         } catch {
             game = nil

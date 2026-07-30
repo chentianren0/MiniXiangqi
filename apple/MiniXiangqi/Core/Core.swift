@@ -98,7 +98,7 @@ nonisolated enum Outcome: Sendable {
     }
 }
 
-nonisolated enum PlayMode: Sendable {
+nonisolated enum PlayMode: Sendable, Hashable {
     case humanVersusAI, freePlay
 
     init(_ mode: MxqPlayMode) {
@@ -678,6 +678,86 @@ extension Core {
     func endSession() {
         mxq_game_release(session)
         session = nil
+    }
+
+    /// The accepted atomic archive-and-clear: the active game into History and
+    /// the active-game reference cleared, in one transaction.
+    ///
+    /// It is the fourth archiving path and the only one that may record
+    /// `ended-early`, and the classification is entirely the core's — an
+    /// ordinary ongoing game and an unclaimed claimable repetition are recorded
+    /// as ended early, and an unconfirmed natural terminal keeps its actual
+    /// result and its exact reason. Nothing here supplies any of that.
+    ///
+    /// **It runs off the UI thread**, which is where docs/core-interface.md's
+    /// threading table puts it: the main-actor exception covers the active
+    /// game's own commits and the History surface, and names import, export and
+    /// this call as the three that stay outside it. The session goes *with* the
+    /// call and is detached here first, because the same contract counts every
+    /// function taking an `MxqGame *` as being inside that session: a session
+    /// nothing on this actor can reach is a session only one thread is inside.
+    /// A refusal puts it back, the previously committed active game being
+    /// intact and unchanged.
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
+    ) {
+        guard let active = session else {
+            completion(.failure(CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
+                                          detail: "no session is attached")))
+            return
+        }
+        let archiver = ActiveGameArchiver(core: handle, active: active)
+        session = nil
+        archiver.run { [self] result in
+            Task { @MainActor in
+                switch result {
+                case .success:
+                    // The archived session is still the caller's to release.
+                    mxq_game_release(archiver.active)
+                case .failure:
+                    session = archiver.active
+                }
+                completion(result)
+            }
+        }
+    }
+}
+
+/// `mxq_store_archive_and_clear` over the core handle and the session it
+/// archives, off every actor.
+///
+/// A dispatch queue rather than the cooperative pool for the same reason the
+/// engine facade uses one: the call is a store transaction and it blocks for as
+/// long as the commit takes, and a blocking call has no business on a pool
+/// thread. It is serial because there is one active game and one archiving of
+/// it; a second while the first is in flight would be a second owner of one
+/// session, which the single-owner rule refuses.
+///
+/// `@unchecked` for the reason `HistoryStore` is: what makes the two pointers
+/// safe to send is the C contract above them, which Swift cannot read. The
+/// claim being made is exactly the header's — the session's owner, any thread
+/// except inside a search callback, off the UI thread — and the owner is this
+/// call for as long as it runs.
+private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
+    let core: OpaquePointer
+    let active: OpaquePointer
+
+    private static let queue = DispatchQueue(label: "com.chentianren.MiniXiangqi.store",
+                                             qos: .userInitiated)
+
+    func run(_ completion: @escaping @Sendable (Result<UInt64, CoreError>) -> Void) {
+        Self.queue.async {
+            var recordID: UInt64 = 0
+            var err = freshError()
+            let status = mxq_store_archive_and_clear(core, active, &recordID, &err)
+            guard status == MXQ_OK else {
+                completion(.failure(CoreError(
+                    status: status,
+                    detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))))
+                return
+            }
+            completion(.success(recordID))
+        }
     }
 }
 

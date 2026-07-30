@@ -117,7 +117,7 @@ private struct Destinations: View {
     var body: some View {
         TabView(selection: $destination) {
             Tab("nav.play", systemImage: "square.grid.3x3", value: Destination.play) {
-                PlayScreen(play: play, replay: { record in
+                PlayDestination(play: play, replay: { record in
                     pendingReplay = record
                     destination = .history
                 })
