@@ -149,11 +149,21 @@ private struct Destinations: View {
     }
 
     #if DEBUG
-    /// The appearance `-mxq-appearance dark` names. AppKit no longer takes
-    /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
-    /// looked at in both appearances rather than reasoned about in one.
+    /// The appearance `-mxq-appearance dark` or `-mxq-appearance light` names.
+    /// AppKit no longer takes `-AppleInterfaceStyle` from a launch argument, and
+    /// glass has to be looked at in both appearances rather than reasoned about
+    /// in one.
+    ///
+    /// `light` is named as explicitly as `dark` because the alternative is the
+    /// machine's own appearance, and a Mac set to switch automatically changes it
+    /// at sunset: a series photographed without saying which appearance it wanted
+    /// is a series whose light half is light only until the evening.
     private static var launchColorScheme: ColorScheme? {
-        DebugLaunch.argument(after: "-mxq-appearance") == "dark" ? .dark : nil
+        switch DebugLaunch.argument(after: "-mxq-appearance") {
+        case "dark": .dark
+        case "light": .light
+        default: nil
+        }
     }
 
     /// The size `-mxq-window 900x700` names, handed to AppKit as the window's

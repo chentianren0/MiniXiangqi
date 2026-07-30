@@ -78,17 +78,23 @@ final class SettingsScreenUITests: XCTestCase {
         "mxq-uitest-\(what)-" + UUID().uuidString
     }
 
+    /// The appearance a frame is taken in, always named rather than inherited:
+    /// the machine's own appearance is what a Mac set to switch automatically
+    /// changes at sunset, and a screenshot series that let it decide would have a
+    /// light half only until the evening.
+    private enum Appearance: String { case light, dark }
+
     private func launch(history: String? = nil,
                         in language: Language = .chinese,
                         window: String = "900x600",
-                        darkAppearance: Bool = false,
+                        appearance: Appearance = .light,
                         preferences: [String: String] = [:],
                         defaultsSuite: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
         app.launchArguments += ["-mxq-store-name", scratchName("store")]
         app.launchArguments += ["-mxq-window", window]
-        if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
+        app.launchArguments += ["-mxq-appearance", appearance.rawValue]
         if let history { app.launchArguments += ["-mxq-history", history] }
         if let defaultsSuite { app.launchArguments += ["-mxq-defaults-suite", defaultsSuite] }
         // Read-only preference states, named in the argument domain rather than
@@ -368,8 +374,9 @@ final class SettingsScreenUITests: XCTestCase {
     /// read off the running app in the language it was launched in, so a frame
     /// and an assertion are about the same words.
     private func photographSettings(in language: Language) {
-        for dark in [false, true] {
-            let app = launch(in: language, darkAppearance: dark)
+        for appearance in [Appearance.light, .dark] {
+            let dark = appearance == .dark
+            let app = launch(in: language, appearance: appearance)
             openSettings(app, in: language)
 
             XCTAssertTrue(app.staticTexts[language.boardSection].exists)
