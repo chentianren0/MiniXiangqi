@@ -523,7 +523,7 @@ struct PlayMotionTests {
         #expect(recorder.sounds == [.check])
     }
 
-    // MARK: - The sound toggle
+    // MARK: - The two switches
 
     @Test("With sound switched off the board is silent and still felt")
     func soundOffSilencesOnlyTheSound() throws {
@@ -533,14 +533,14 @@ struct PlayMotionTests {
         let (_, recorder) = try landing(GameTests.captureLine, defaults: defaults)
         #expect(recorder.sounds.isEmpty, "nothing is heard")
         #expect(recorder.events == [.landing],
-                "and the haptic is untouched: it answers to its own toggle")
+                "and the haptic is untouched: it answers to its own switch")
     }
 
     @Test("Sound is on where nobody has said otherwise, and follows the toggle back")
     func soundDefaultsToOn() throws {
-        let unset = try ScratchDefaults.make(soundEnabled: nil)
+        let unset = try ScratchDefaults.make()
         defer { ScratchDefaults.clear() }
-        #expect(Feedback.soundIsEnabled(in: unset), "an absent preference is sound on")
+        #expect(Preferences.sound.value(in: unset), "an absent preference is sound on")
 
         let (_, heard) = try landing(["b1b4"], defaults: unset)
         #expect(heard.sounds == [.plain])
@@ -555,12 +555,78 @@ struct PlayMotionTests {
         animator.completeAll()
         #expect(recorder.sounds.isEmpty)
 
-        toggled.set(true, forKey: Feedback.soundEnabledKey)
+        Preferences.sound.set(true, in: toggled)
         motion.tap(Square("a6")!)
         motion.tap(Square("a5")!)
         animator.completeAll()
         #expect(recorder.sounds == [.plain])
         ScratchDefaults.clear()
+    }
+
+    @Test("With haptics switched off the board is unfelt and still heard")
+    func hapticsOffStillsOnlyTheHaptic() throws {
+        let defaults = try ScratchDefaults.make(hapticsEnabled: false)
+        defer { ScratchDefaults.clear() }
+
+        // A capture, so the sound that survives is a chosen one rather than the
+        // one a silenced gate would leave behind by accident.
+        let (_, recorder) = try landing(GameTests.captureLine, defaults: defaults)
+        #expect(recorder.events.isEmpty, "nothing is felt")
+        #expect(recorder.sounds == [.capture],
+                "and the sound is untouched: it answers to its own switch")
+    }
+
+    @Test("An illegal tap with haptics off answers on the board and nowhere else")
+    func hapticsOffStillsTheTouchAnswerToo() throws {
+        let defaults = try ScratchDefaults.make(hapticsEnabled: false)
+        defer { ScratchDefaults.clear() }
+        let (motion, animator, recorder) = try makeMotion(defaults: defaults)
+
+        motion.tap(Square("b1")!)
+        animator.completeAll()
+        motion.tap(Square("c3")!)   // no cannon move reaches c3
+
+        #expect(recorder.events.isEmpty, "the switch covers both patterns, not just the landing")
+        #expect(recorder.sounds.isEmpty, "an illegal tap was always silent")
+        #expect(motion.markerEmphasis == 1,
+                "and the answer the contract requires is still on the board")
+    }
+
+    @Test("Haptics are on where nobody has said otherwise, and follow the toggle back")
+    func hapticsDefaultToOn() throws {
+        let unset = try ScratchDefaults.make()
+        defer { ScratchDefaults.clear() }
+        #expect(Preferences.haptics.value(in: unset), "an absent preference is haptics on")
+
+        let (_, felt) = try landing(["b1b4"], defaults: unset)
+        #expect(felt.events == [.landing])
+
+        // Read at the event rather than cached, exactly as the sound gate is.
+        let toggled = try ScratchDefaults.make(hapticsEnabled: false)
+        let (motion, animator, recorder) = try makeMotion(defaults: toggled)
+        motion.tap(Square("b1")!)
+        motion.tap(Square("b4")!)
+        animator.completeAll()
+        #expect(recorder.events.isEmpty)
+
+        Preferences.haptics.set(true, in: toggled)
+        motion.tap(Square("a6")!)
+        motion.tap(Square("a5")!)
+        animator.completeAll()
+        #expect(recorder.events == [.landing])
+        ScratchDefaults.clear()
+    }
+
+    @Test("Both switched off leaves a move that is neither heard nor felt")
+    func bothOffLeavesTheMoveItself() throws {
+        let defaults = try ScratchDefaults.make(soundEnabled: false, hapticsEnabled: false)
+        defer { ScratchDefaults.clear() }
+
+        let (motion, recorder) = try landing(["b1b4"], defaults: defaults)
+        #expect(recorder.sounds.isEmpty)
+        #expect(recorder.events.isEmpty)
+        #expect(motion.game.moves.count == 1,
+                "the move itself is not feedback and is unaffected")
     }
 
     // MARK: - The check pulse

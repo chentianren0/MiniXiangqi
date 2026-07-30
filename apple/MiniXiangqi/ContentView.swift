@@ -6,10 +6,10 @@
 // device identity. `TabView` with the sidebar-adaptable style is exactly that
 // container: one declaration, a sidebar on a Mac, a tab bar on a phone.
 //
-// Two destinations, and Play is the one that opens. Settings is the third
-// primary destination in the product contract and holds nothing yet — a
-// preference screen with no preferences behind it would be a promise rather
-// than a destination — so it arrives with the preferences it is for.
+// Three destinations, in the product contract's own order — Play, History,
+// Settings — and Play is the one that opens. Settings waited until there were
+// preferences behind it, because a preference screen with none is a promise
+// rather than a destination; it arrives now with the five it is for.
 //
 // **The game is held here rather than inside Play.** The container keeps one
 // destination's content alive at a time, so the play screen is torn down and
@@ -106,7 +106,7 @@ private struct Destinations: View {
     /// be invisible to the copy being looked at.
     @State private var library: HistoryLibrary
 
-    private enum Destination: Hashable { case play, history }
+    private enum Destination: Hashable { case play, history, settings }
 
     init(core: Core) {
         self.core = core
@@ -127,6 +127,13 @@ private struct Destinations: View {
                 HistoryScreen(library: library, pendingReplay: $pendingReplay,
                               pendingImports: $pendingImports)
             }
+
+            // Nothing is handed down: the preferences this writes are read from
+            // the defaults database by whatever consumes them, at the moment it
+            // does, so the screen has no state to be given and none to give back.
+            Tab("nav.settings", systemImage: "gearshape", value: Destination.settings) {
+                SettingsScreen()
+            }
         }
         .tabViewStyle(.sidebarAdaptable)
         // The two launch arguments that are about the *window* rather than
@@ -142,11 +149,21 @@ private struct Destinations: View {
     }
 
     #if DEBUG
-    /// The appearance `-mxq-appearance dark` names. AppKit no longer takes
-    /// `-AppleInterfaceStyle` from a launch argument, and glass has to be
-    /// looked at in both appearances rather than reasoned about in one.
+    /// The appearance `-mxq-appearance dark` or `-mxq-appearance light` names.
+    /// AppKit no longer takes `-AppleInterfaceStyle` from a launch argument, and
+    /// glass has to be looked at in both appearances rather than reasoned about
+    /// in one.
+    ///
+    /// `light` is named as explicitly as `dark` because the alternative is the
+    /// machine's own appearance, and a Mac set to switch automatically changes it
+    /// at sunset: a series photographed without saying which appearance it wanted
+    /// is a series whose light half is light only until the evening.
     private static var launchColorScheme: ColorScheme? {
-        DebugLaunch.argument(after: "-mxq-appearance") == "dark" ? .dark : nil
+        switch DebugLaunch.argument(after: "-mxq-appearance") {
+        case "dark": .dark
+        case "light": .light
+        default: nil
+        }
     }
 
     /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
