@@ -102,7 +102,8 @@ final class PlayScreenUITests: XCTestCase {
                         window: String? = nil,
                         hidingNumerals: Bool = false,
                         liftingWindowMinimum: Bool = false,
-                        ignoringSavedState: Bool = false) -> XCUIApplication {
+                        ignoringSavedState: Bool = false,
+                        symbols: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         // The interface language, named rather than inherited. What these
         // tests assert is copy, and the language the machine running them
@@ -116,6 +117,12 @@ final class PlayScreenUITests: XCTestCase {
         if let window { app.launchArguments += ["-mxq-window", window] }
         if hidingNumerals { app.launchArguments.append("-mxq-hide-numerals") }
         if liftingWindowMinimum { app.launchArguments.append("-mxq-no-minimum") }
+        // Not one of ours either: `-key value` on the command line is
+        // NSUserDefaults' own argument domain, which outranks everything and
+        // persists nothing. So the 棋子符号 preference is set the way the
+        // application really reads it, without the run leaving a preference
+        // behind on the machine it ran on.
+        if let symbols { app.launchArguments += ["-pieces.symbols", symbols] }
         // AppKit's own switch, not one of ours: it makes the launch behave as
         // a first launch, with no saved frame to restore, which is the only
         // condition under which the scene's default size is what opens.
@@ -691,6 +698,69 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["result-title"].waitForExistence(timeout: 10))
         XCTAssertEqual(reading(app, "result-title"), "红方获胜")
         attach(app, named: "13-the-result-notice-in-dark-appearance")
+    }
+
+    // MARK: - 棋子符号
+
+    /// The 图标 set on the running board, which is the only place its acceptance
+    /// gate can be judged.
+    ///
+    /// The gate is read at the smallest window the product allows, because that
+    /// is where the pitch sits on its 44-point floor and the symbol measures
+    /// 22 points — and again at a large window, because a set that only works
+    /// small is not a set. Both appearances, because the discs and the ink
+    /// change with them. And the same two shots in 汉字, which are what say the
+    /// default is untouched.
+    ///
+    /// The chariot-against-cannon pair needs no contrivance: the starting
+    /// position puts them side by side on a1-b1 and f1-g1, on both back ranks,
+    /// which is where the gate is read from.
+    func testTheBoardWithIconSymbols() {
+        for (appearance, dark) in [("light", false), ("dark", true)] {
+            for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
+                let app = launch(in: .chinese, darkAppearance: dark,
+                                 window: window, symbols: "icons")
+                // The labels are read from the position and name the piece, not
+                // the symbol on it: 图标 is presentation, and a screen reader
+                // hears the same board either way.
+                XCTAssertEqual(point(app, "a1").label, "a1 红 俥",
+                               "the chariot's accessibility label is unchanged by the symbol set")
+                XCTAssertEqual(point(app, "b1").label, "b1 红 炮",
+                               "and so is the cannon's, on the point beside it")
+                XCTAssertEqual(point(app, "d7").label, "d7 黑 将")
+                if size == "floor" {
+                    XCTAssertEqual(pitch(app), 44, accuracy: 0.5,
+                                   "the gate is read at the pitch floor")
+                }
+                attach(app, named: "30-icons-\(size)-\(appearance)")
+            }
+        }
+    }
+
+    /// The same two shots the gate is read from, in 汉字 — the accepted default,
+    /// which this track may not have changed. Nothing is passed for the
+    /// preference here: absent is exactly the state of a machine that has never
+    /// visited Settings.
+    func testTheBoardWithCharacterSymbolsIsUnchanged() {
+        for (appearance, dark) in [("light", false), ("dark", true)] {
+            for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
+                let app = launch(in: .chinese, darkAppearance: dark, window: window)
+                XCTAssertEqual(point(app, "a1").label, "a1 红 俥")
+                XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
+                attach(app, named: "31-hanzi-\(size)-\(appearance)")
+            }
+        }
+    }
+
+    /// A held piece and a legal-move fan, with icons: the lifted disc carries
+    /// the icon too, and the markers around it are untouched by the choice —
+    /// they are outside the disc, where the board metrics keep them.
+    func testAnIconDiscLiftsAndKeepsItsMarkers() {
+        let app = launch(in: .chinese, window: "760x492", symbols: "icons")
+        point(app, "b1").click()
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮 已选择")
+        XCTAssertEqual(point(app, "b4").label, "b4 空 可走")
+        attach(app, named: "32-icons-a-piece-selected")
     }
 
     // MARK: - The motion states a still frame can carry
