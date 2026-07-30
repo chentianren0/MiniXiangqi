@@ -45,13 +45,13 @@ struct BoardView: View {
     /// unrecognised value is the default rather than a crash, and observed
     /// rather than merely read so that flipping the preference in Settings
     /// repaints the board that is already on screen.
-    @AppStorage(PieceSymbols.key) private var storedSymbols: String?
+    @AppStorage(PieceSymbols.key, store: Preferences.defaults) private var storedSymbols: String?
 
     /// The 记谱法 preference, which the strips follow: the strips exist so a
     /// player can map the move list to the board, so a WXF list beside a 一二三
     /// edge would break the very mapping they are for. Read here so that
     /// changing the preference re-renders them live.
-    @AppStorage(NotationStyle.key) private var notationStyle: NotationStyle = .traditional
+    @AppStorage(NotationStyle.key, store: Preferences.defaults) private var notationStyle: NotationStyle = .traditional
 
     /// The arrival wires, each fired on the frame its animation reaches its
     /// target — see ArrivalReporter for why the transaction completion alone

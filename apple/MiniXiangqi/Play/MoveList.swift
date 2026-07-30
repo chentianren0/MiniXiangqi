@@ -32,7 +32,7 @@ struct MoveList: View {
 
     /// The 记谱法 preference, read where the words are chosen so that changing it
     /// re-renders the list live.
-    @AppStorage(NotationStyle.key) private var style: NotationStyle = .traditional
+    @AppStorage(NotationStyle.key, store: Preferences.defaults) private var style: NotationStyle = .traditional
 
     private var rows: [(number: Int, red: String, black: String?)] {
         stride(from: 0, to: notation.count, by: 2).map { index in
