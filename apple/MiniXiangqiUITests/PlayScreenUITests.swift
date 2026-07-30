@@ -99,6 +99,7 @@ final class PlayScreenUITests: XCTestCase {
                         store: String? = nil,
                         refusingSaves: Bool = false,
                         darkAppearance: Bool = false,
+                        appearance: String? = nil,
                         window: String? = nil,
                         hidingNumerals: Bool = false,
                         liftingWindowMinimum: Bool = false,
@@ -114,6 +115,10 @@ final class PlayScreenUITests: XCTestCase {
         if refusingSaves { app.launchArguments.append("-mxq-refuse-saves") }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         if darkAppearance { app.launchArguments += ["-mxq-appearance", "dark"] }
+        // Either appearance, named rather than inherited: a run that means to
+        // photograph the light appearance has to say so, or it photographs
+        // whatever the machine happens to be set to.
+        if let appearance { app.launchArguments += ["-mxq-appearance", appearance] }
         if let window { app.launchArguments += ["-mxq-window", window] }
         if hidingNumerals { app.launchArguments.append("-mxq-hide-numerals") }
         if liftingWindowMinimum { app.launchArguments.append("-mxq-no-minimum") }
@@ -716,9 +721,9 @@ final class PlayScreenUITests: XCTestCase {
     /// position puts them side by side on a1-b1 and f1-g1, on both back ranks,
     /// which is where the gate is read from.
     func testTheBoardWithIconSymbols() {
-        for (appearance, dark) in [("light", false), ("dark", true)] {
+        for appearance in ["light", "dark"] {
             for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
-                let app = launch(in: .chinese, darkAppearance: dark,
+                let app = launch(in: .chinese, appearance: appearance,
                                  window: window, symbols: "icons")
                 // The labels are read from the position and name the piece, not
                 // the symbol on it: 图标 is presentation, and a screen reader
@@ -742,9 +747,9 @@ final class PlayScreenUITests: XCTestCase {
     /// preference here: absent is exactly the state of a machine that has never
     /// visited Settings.
     func testTheBoardWithCharacterSymbolsIsUnchanged() {
-        for (appearance, dark) in [("light", false), ("dark", true)] {
+        for appearance in ["light", "dark"] {
             for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
-                let app = launch(in: .chinese, darkAppearance: dark, window: window)
+                let app = launch(in: .chinese, appearance: appearance, window: window)
                 XCTAssertEqual(point(app, "a1").label, "a1 红 俥")
                 XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
                 attach(app, named: "31-hanzi-\(size)-\(appearance)")
