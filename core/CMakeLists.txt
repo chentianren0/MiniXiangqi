@@ -319,22 +319,6 @@ else()
 endif()
 
 # --------------------------------------------------------------------------
-# Engine probe (temporary)
-# --------------------------------------------------------------------------
-#
-# Delete this target and core/tools/ when the rules facade lands; the approved
-# fixtures then demonstrate everything it demonstrates. It is not a test, is not
-# registered with CTest, and is built only alongside the engine. See the comment
-# at the top of core/tools/mxq_engine_probe.cpp.
-
-if(MXQ_ENABLE_RULES_FACADE)
-  add_executable(mxq_engine_probe tools/mxq_engine_probe.cpp)
-  target_link_libraries(mxq_engine_probe PRIVATE mxq::core mxq::fairy-stockfish)
-  target_compile_definitions(mxq_engine_probe PRIVATE
-    MXQ_VARIANT_INI_PATH="${MXQ_VARIANT_INI}")
-endif()
-
-# --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
 
