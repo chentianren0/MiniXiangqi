@@ -356,7 +356,13 @@ ReplayError replay(const char *start_fen,
     }
 
     out_fen = pos.fen();
-    out_in_check = (pos.checkers() != 0);
+    /* Asked as a boolean rather than compared against 0: Bitboard is
+     * `unsigned __int128` where the compiler has it and a class with
+     * conversion operators to bool, unsigned and unsigned long long where it
+     * does not — MSVC — and against a literal 0 the class form makes the
+     * comparison ambiguous. Its `operator bool` is an exact match, so this
+     * reads the same on both, and it is the same question line 181 asks. */
+    out_in_check = static_cast<bool>(pos.checkers());
     out_ply = static_cast<uint32_t>(move_count);
     out_adj = adjudicate(pos, identities);
 

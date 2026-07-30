@@ -128,7 +128,14 @@ target_compile_definitions(mxq_fairy_stockfish PUBLIC
   NNUE_EMBEDDING_OFF
 )
 
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+# IS_64BIT is defined here only where the fork's Makefile defines it. types.h
+# defines it itself on the one target the Makefile never drives — `_WIN64 &&
+# _MSC_VER`, "No Makefile used", where it must also pull in <intrin.h> for
+# _BitScanForward64 — so defining it on the command line there too is a C4005
+# macro redefinition on every translation unit of the engine, ours included.
+# The condition below is the same rule read from the other side, and the two
+# halves together define it exactly once everywhere.
+if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT MSVC)
   target_compile_definitions(mxq_fairy_stockfish PUBLIC IS_64BIT)
 endif()
 
@@ -171,6 +178,11 @@ endif()
 # set, and MXQ_WARNINGS_AS_ERRORS with it, is a standard the core holds itself
 # to; applying it to a vendored snapshot we do not edit would make an upstream
 # style choice fail our build. The fork's own warning flags are used instead.
+#
+# What that leaves visible on MSVC, and deliberately: C4244 in types.h:133 and
+# C4996 for std::getenv in uci.cpp. Both are the fork's own code at the pinned
+# revision, both are read-only here, and neither can fail this build — /WX
+# never reaches this target. They are noise to scroll past, not debt to us.
 
 if(NOT MSVC)
   target_compile_options(mxq_fairy_stockfish PRIVATE

@@ -13,6 +13,13 @@
 
 #include "mxq.h"
 
+/* <atomic> for the search's cancellation flag below. It is included here
+ * rather than relied upon transitively: libc++ pulls it in behind <string>
+ * and <vector>, and the MSVC STL does not, so a header that used
+ * std::atomic without saying so compiled on Apple platforms and failed to
+ * parse at all under MSVC — taking the rest of this header's declarations
+ * down with it. */
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>

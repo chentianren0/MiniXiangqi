@@ -109,10 +109,29 @@ message(STATUS "Mini Xiangqi core: core revision ${MXQ_BUILD_CORE_REVISION}")
 # --------------------------------------------------------------------------
 # Warning configuration, shared by every target this project defines
 # --------------------------------------------------------------------------
+#
+# The settled policy, after the first MSVC build of the core:
+#
+#   - Everything MSVC reports about OUR sources is fixed in the source, not
+#     silenced. /W4 /permissive- found three real things — a shadowed `rc` and
+#     a switch that dispatched on nothing in mxq_store.cpp, and a Bitboard
+#     compared against a literal 0 in mxq_engine_bridge.cpp — and each is
+#     corrected where it is written, so both compilers read the same code.
+#   - _CRT_SECURE_NO_WARNINGS is the one exception, and it is not a
+#     suppression of anything ISO says. C4996 there is the Microsoft CRT
+#     deprecating Standard C library functions in favour of its own _s
+#     variants; the four test files reach it through std::getenv, which C++ has
+#     never deprecated and which is the only portable spelling. This macro
+#     turns off exactly that family and leaves C4996 alive for genuinely
+#     [[deprecated]] APIs, which /wd4996 would not.
+#   - The vendored engine's own warnings are not ours: third_party targets do
+#     not link this one, so MXQ_WARNINGS_AS_ERRORS cannot fail the build on
+#     upstream code we do not edit. See core/third_party/*/CMakeLists.txt.
 
 add_library(mxq_warnings INTERFACE)
 if(MSVC)
   target_compile_options(mxq_warnings INTERFACE /W4 /permissive-)
+  target_compile_definitions(mxq_warnings INTERFACE _CRT_SECURE_NO_WARNINGS)
   if(MXQ_WARNINGS_AS_ERRORS)
     target_compile_options(mxq_warnings INTERFACE /WX)
   endif()
