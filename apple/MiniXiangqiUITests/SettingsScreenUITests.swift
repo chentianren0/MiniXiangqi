@@ -71,11 +71,33 @@ final class SettingsScreenUITests: XCTestCase {
             oldestRow: "Free Play · Red Wins · Checkmate · 3 moves")
     }
 
-    /// A name for a store nobody keeps, and a name for a preferences database
-    /// nobody keeps. Both resolve inside the app's own container, so the runner
-    /// never has to reach into it and the system owns reclaiming them.
-    private func scratchName(_ what: String) -> String {
-        "mxq-uitest-\(what)-" + UUID().uuidString
+    /// A name for a store nobody keeps. It resolves inside the app's own
+    /// temporary directory, so the runner never has to reach into the container
+    /// and the system owns reclaiming it — which is why this one may be unique per
+    /// launch and the preferences suite below may not.
+    private func scratchStoreName() -> String {
+        "mxq-uitest-store-" + UUID().uuidString
+    }
+
+    /// The preferences database a launch reads and writes. **Every launch names
+    /// one**, so no test in this file ever reads or writes the player's own
+    /// preferences: a suite is searched ahead of the app's own domain, so a
+    /// machine where the owner has switched 声音 off is not a machine where this
+    /// suite goes red, and a click here can never land in the domain the shipping
+    /// app keeps.
+    ///
+    /// The names are fixed rather than unique per launch. A suite is a plist in
+    /// the app's container and nothing reclaims it — a UUID per launch would leave
+    /// two more files behind on every run, for ever — so each purpose keeps one
+    /// file and overwrites it.
+    ///
+    /// Two purposes, because they want opposite things: the frames and the
+    /// default-state assertions want a database nothing has written, and the
+    /// tests about *writing* a preference have to write one. No test using
+    /// `.untouched` clicks a control, which is what keeps it untouched.
+    private enum Defaults: String {
+        case untouched = "mxq-uitests-settings-untouched"
+        case written = "mxq-uitests-settings-written"
     }
 
     /// The appearance a frame is taken in, always named rather than inherited:
@@ -89,14 +111,14 @@ final class SettingsScreenUITests: XCTestCase {
                         window: String = "900x600",
                         appearance: Appearance = .light,
                         preferences: [String: String] = [:],
-                        defaultsSuite: String? = nil) -> XCUIApplication {
+                        defaults: Defaults = .untouched) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(\(language.code))"]
-        app.launchArguments += ["-mxq-store-name", scratchName("store")]
+        app.launchArguments += ["-mxq-store-name", scratchStoreName()]
         app.launchArguments += ["-mxq-window", window]
         app.launchArguments += ["-mxq-appearance", appearance.rawValue]
+        app.launchArguments += ["-mxq-defaults-suite", defaults.rawValue]
         if let history { app.launchArguments += ["-mxq-history", history] }
-        if let defaultsSuite { app.launchArguments += ["-mxq-defaults-suite", defaultsSuite] }
         // Read-only preference states, named in the argument domain rather than
         // written anywhere.
         for (key, value) in preferences.sorted(by: { $0.key < $1.key }) {
@@ -253,16 +275,21 @@ final class SettingsScreenUITests: XCTestCase {
     // MARK: - What a switch does
 
     /// The switch, clicked in the real screen, reaching the flow it governs
-    /// inside the same launch. Nothing is injected: the click is the only thing
-    /// that writes, and the deletion afterwards is what reads.
+    /// inside the same launch. No preference is named on the command line: the
+    /// click is the only thing that writes, and the deletion afterwards is what
+    /// reads.
     func testTurningTheConfirmationOffInSettingsMakesADeletionImmediate() {
         let language = Language.chinese
-        let app = launch(history: Self.threeGames, in: language,
-                         defaultsSuite: scratchName("defaults"))
+        let app = launch(history: Self.threeGames, in: language, defaults: .written)
         openSettings(app, in: language)
 
+        // The written suite is the same file every run, so it opens holding
+        // whatever the last run left in it. What this test is about is the
+        // transition, not the state it starts from, so the switch is put on first
+        // if it is not — and the click that turns it off is always a click.
         let confirm = control(app, "settings-confirm-delete")
-        XCTAssertEqual(confirm.value as? Int, 1, "it starts on")
+        if confirm.value as? Int == 0 { confirm.click() }
+        XCTAssertEqual(confirm.value as? Int, 1, "on, whether it began there or was put back")
         confirm.click()
         XCTAssertEqual(confirm.value as? Int, 0, "and the click turns it off")
         attach(app, named: "42-the-confirmation-switched-off")
@@ -286,7 +313,14 @@ final class SettingsScreenUITests: XCTestCase {
         // And the switch is still off when the screen is opened again: it was
         // written where it is read from, not held in the view that drew it.
         openSettings(app, in: language)
-        XCTAssertEqual(control(app, "settings-confirm-delete").value as? Int, 0)
+        let reopened = control(app, "settings-confirm-delete")
+        XCTAssertEqual(reopened.value as? Int, 0)
+
+        // Left as the accepted default, so the suite's one file is not a growing
+        // pile of a previous run's decisions. The put-back above makes this a
+        // courtesy rather than a dependency.
+        reopened.click()
+        XCTAssertEqual(reopened.value as? Int, 1)
     }
 
     /// The same deletion with the preference named off on the command line, which
@@ -336,11 +370,14 @@ final class SettingsScreenUITests: XCTestCase {
     /// when the screen is opened again.
     func testAChoiceIsKeptWhereItsConsumerWillReadIt() {
         let language = Language.chinese
-        let app = launch(in: language, defaultsSuite: scratchName("defaults"))
+        let app = launch(in: language, defaults: .written)
         openSettings(app, in: language)
 
+        // Nothing is asserted about what the pickers show on arrival: the written
+        // suite is the same file every run and holds whatever the last run chose.
+        // Both directions are taken here instead, which says more than a starting
+        // state would and leaves the file on the accepted defaults either way.
         let notation = control(app, "settings-notation")
-        XCTAssertEqual(notation.value as? String, language.traditional)
         notation.click()
         app.menuItems[language.wxf].click()
         XCTAssertEqual(notation.value as? String, language.wxf,
@@ -397,7 +434,10 @@ final class SettingsScreenUITests: XCTestCase {
             attach(app, named: "\(language.short)-settings" + (dark ? "-dark" : ""))
 
             // The two choices open: what a reader sees before deciding, in this
-            // language, and the frame that shows both options of a pair.
+            // language, and the frame that shows both options of a pair. Opened
+            // and cancelled, never chosen — which is what keeps this launch's
+            // suite one nothing has written, and the frames above the accepted
+            // defaults on every run.
             control(app, "settings-notation").click()
             XCTAssertTrue(app.menuItems[language.wxf].waitForExistence(timeout: 5))
             XCTAssertTrue(app.menuItems[language.traditional].exists)

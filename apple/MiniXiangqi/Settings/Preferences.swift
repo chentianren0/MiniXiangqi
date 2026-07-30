@@ -73,19 +73,44 @@ enum Preferences {
 
         /// Read at the moment of use, never cached.
         ///
-        /// Presence is asked first and the value second, rather than casting the
-        /// stored object to `Bool`. The switch writes a genuine Bool, but a debug
-        /// launch argument — `-haptics.enabled 0`, which is how a UI test names a
-        /// preference state without writing anybody's real preferences — arrives
-        /// in the argument domain as the *string* `"0"`, which no `as? Bool` can
-        /// recover: it would silently read as the default and a test would be
-        /// asserting against the state it thought it had replaced.
-        /// `bool(forKey:)` reads both, so the preference a test names is the
-        /// preference the app honours.
+        /// Two kinds of stored value are honoured, and everything else is the
+        /// accepted default:
+        ///
+        /// - **A Bool**, which is what the switch writes — and a 0 or 1 number,
+        ///   which is the same answer written by something that had no Bool to
+        ///   write, another frontend or a hand-edited file.
+        /// - **One of the strings that names a Bool** — `1`, `0`, `YES`, `NO`,
+        ///   `true`, `false`, in any case. A debug launch argument is how a UI
+        ///   test names a preference state without writing anybody's real
+        ///   preferences, and the argument domain delivers `-haptics.enabled 0`
+        ///   as the *string* `"0"`: a reader that only cast to `Bool` would
+        ///   silently answer the default, and the test would be asserting against
+        ///   the state it thought it had replaced.
+        ///
+        /// **Anything else answers `whenAbsent`, and that direction matters.** A
+        /// stored value of the wrong type is a preference nobody set — a
+        /// hand-edited file, another frontend's mistake, a key colliding with
+        /// something that is not this. `bool(forKey:)` would answer *false* for
+        /// almost all of it — `on`, `[1]`, a date, an empty string — and *true*
+        /// for any non-zero number, so it is not asked: false is the dangerous
+        /// answer here, because on `deleteConfirmation.enabled` it deletes a game
+        /// without asking, and true is not an answer anybody gave either. So an
+        /// unreadable preference reads as the accepted default, exactly as an
+        /// unrecognised name does in `Choice` below, and for the same reason: the
+        /// app still has to behave, and the default is what it behaves as.
         func value(in defaults: UserDefaults = Preferences.defaults) -> Bool {
-            guard defaults.object(forKey: key) != nil else { return whenAbsent }
-            return defaults.bool(forKey: key)
+            switch defaults.object(forKey: key) {
+            case let flag as Bool: flag
+            case let text as String: Self.namedFlags[text.lowercased()] ?? whenAbsent
+            default: whenAbsent
+            }
         }
+
+        /// The strings that name a Bool, lowercased. `as? Bool` already covers a
+        /// genuine Bool and a 0-or-1 number, which is why neither is here.
+        private static let namedFlags = ["1": true, "0": false,
+                                         "yes": true, "no": false,
+                                         "true": true, "false": false]
 
         /// Written as a Bool and never as a string or a number, so that anything
         /// asking `object(forKey:)` is answered with a Bool.

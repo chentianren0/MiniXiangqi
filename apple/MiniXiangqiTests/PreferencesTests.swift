@@ -93,11 +93,68 @@ struct PreferencesTests {
         let defaults = try ScratchDefaults.make()
         defer { ScratchDefaults.clear() }
 
-        for (written, expected) in [("0", false), ("1", true), ("NO", false), ("YES", true)] {
+        let named: [(String, Bool)] = [("0", false), ("1", true),
+                                       ("NO", false), ("YES", true),
+                                       ("no", false), ("yes", true),
+                                       ("false", false), ("true", true),
+                                       ("False", false), ("True", true)]
+        for (written, expected) in named {
             defaults.set(written, forKey: Preferences.haptics.key)
             #expect(Preferences.haptics.value(in: defaults) == expected,
                     "\(written) should read as \(expected)")
         }
+    }
+
+    /// A stored value that names no Bool is a preference nobody set — a
+    /// hand-edited file, another frontend's mistake, a key colliding with
+    /// something that is not this preference at all. `bool(forKey:)` answers
+    /// *false* for every one of them, and false is the dangerous direction: on
+    /// `deleteConfirmation.enabled` it deletes a game without asking. So the
+    /// unreadable ones answer the accepted default, which is the same choice
+    /// `Choice` makes about an unrecognised name.
+    @Test("A stored value that names no Bool is the accepted default, never false")
+    func anUnreadableFlagIsTheDefaultRatherThanFalse() throws {
+        let defaults = try ScratchDefaults.make()
+        defer { ScratchDefaults.clear() }
+
+        // Every one of these reads as false through `bool(forKey:)`, "on"
+        // included — which is why the reader does not ask it.
+        let unreadable: [Any] = [Data([0x01]), "on", "off", "hello", "",
+                                 ["1"], ["a": 1], Date(timeIntervalSince1970: 0)]
+        for preference in Self.switches {
+            for stored in unreadable {
+                defaults.set(stored, forKey: preference.key)
+                #expect(defaults.bool(forKey: preference.key) == false,
+                        "the premise: \(stored) reads false through bool(forKey:)")
+                #expect(preference.value(in: defaults) == preference.whenAbsent,
+                        "\(preference.key) holding \(stored) should read as its default")
+            }
+            // A number naming neither 0 nor 1 is unreadable in the same way,
+            // though it is the one case `bool(forKey:)` answers *true* to: the
+            // reader honours what a value says, not whether it is non-zero.
+            defaults.set(7, forKey: preference.key)
+            #expect(preference.value(in: defaults) == preference.whenAbsent,
+                    "\(preference.key) holding 7 should read as its default")
+            // And the readable ones still are, in the same domain, so this is a
+            // claim about the value rather than about the store.
+            defaults.set("0", forKey: preference.key)
+            #expect(!preference.value(in: defaults), "a named false is still false")
+            preference.set(false, in: defaults)
+            #expect(!preference.value(in: defaults), "and a genuine false is too")
+            defaults.removeObject(forKey: preference.key)
+            #expect(preference.value(in: defaults) == preference.whenAbsent)
+        }
+    }
+
+    @Test("A 0 or 1 stored as a number is honoured, since it names the same answer")
+    func aNumberThatNamesABoolIsRead() throws {
+        let defaults = try ScratchDefaults.make()
+        defer { ScratchDefaults.clear() }
+
+        defaults.set(0, forKey: Preferences.sound.key)
+        #expect(!Preferences.sound.value(in: defaults))
+        defaults.set(1, forKey: Preferences.sound.key)
+        #expect(Preferences.sound.value(in: defaults))
     }
 
     @Test("A choice round-trips as its name, and a string naming nothing is the default")
@@ -126,11 +183,18 @@ struct PreferencesTests {
                 "and a value that is not even a string is the default too")
     }
 
-    @Test("The app keeps its preferences in the standard database")
-    func theLivePreferencesAreTheStandardOnes() {
-        // The scratch-suite seam is a debug launch argument and nothing else: a
-        // run that names no suite reads and writes where the player's own
-        // preferences live, which is the only behaviour a release build has.
+    /// What this pins, exactly: a launch that names no suite reads and writes the
+    /// standard database, where the player's own preferences live. The unit host
+    /// is launched without arguments, so that is the whole of the claim — it says
+    /// nothing about what a *release* build does with the argument, and would pass
+    /// unchanged if the seam's `#if DEBUG` were deleted.
+    ///
+    /// Release ignoring the argument is true by construction rather than by test:
+    /// `DebugLaunch` — the only thing that reads a launch argument anywhere in the
+    /// app — is itself entirely inside `#if DEBUG`, so a release build carries no
+    /// code that can read one.
+    @Test("A launch that names no suite keeps its preferences in the standard database")
+    func withoutTheArgumentThePreferencesAreTheStandardOnes() {
         #expect(Preferences.defaults === UserDefaults.standard)
     }
 }
