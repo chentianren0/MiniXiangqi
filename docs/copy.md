@@ -24,7 +24,7 @@ Contract sections are cited by document and section name rather than by line num
 |---|---|---|---|---|
 | `nav.play` | 对局 | Play | navigation destination | [product.md](product.md) § Product navigation; [interaction-design.md](interaction-design.md) § Navigation — English only there |
 | `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
-| `nav.settings` | 设置 | Settings | navigation destination | same; 设置 is attested inside 本局设置 and 人机对弈默认设置 |
+| `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
 | `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode — English only there |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
@@ -163,23 +163,45 @@ Both screens carry a technical description beneath the title. That description i
 
 ### Settings
 
+The Settings destination as it stands: three groups, and every string on it below.
+
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group label | [interaction-design.md](interaction-design.md) § Starting and configuring a game |
+| `settings.section.board` | 棋盘 | Board | group header | [issue #64](https://github.com/ppppvz/MiniXiangqi/issues/64) § The Settings screen; `Settings/SettingsScreen.swift` — the one group with a header |
+| `settings.symbols.label` | 棋子符号 | Piece Symbols | row label | same; the choice itself is fixed in [interaction-design.md](interaction-design.md) § Piece symbols |
+| `settings.symbols.hanzi` | 汉字 | Chinese Characters | option | same — the accepted default |
+| `settings.symbols.icons` | 图标 | Icons | option | same |
+| `settings.notation.label` | 记谱法 | Notation | row label | same; the choice itself is fixed in [interaction-design.md](interaction-design.md) § User-visible notation |
+| `settings.notation.traditional` | 中文 | Chinese | option | same — the accepted default |
+| `settings.notation.wxf` | WXF | WXF | option | same — identical in both languages |
+| `settings.sound.label` | 声音 | Sound | toggle label | same; [interaction-design.md](interaction-design.md) § Sound and haptics |
+| `settings.haptics.label` | 触感 | Haptics | toggle label | same |
+| `settings.confirmDelete.label` | 删除前确认 | Confirm Before Deleting | toggle label | same; [interaction-design.md](interaction-design.md) § History library; [product.md](product.md) § Product navigation |
+| `settings.confirmDelete.footer` | 关闭后，删除立即执行。删除无法撤销。 | When off, deletion happens immediately. A deletion cannot be undone. | group footer | same |
+
+And the rows for surfaces that are not built yet, or no longer built at all:
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group label | [interaction-design.md](interaction-design.md) § Starting and configuring a game — the human-versus-AI defaults are not on the screen yet |
 | `settings.defaults.firstMover` | 默认先后手 | Default First Mover | row label | same |
 | `settings.defaults.aiLevel` | 默认 AI 等级 | Default AI Level | row label | same |
-| `settings.confirmBeforeDeleting` | 删除前确认 | Confirm Before Deleting | toggle label | [interaction-design.md](interaction-design.md) § History library; [product.md](product.md) § Product navigation |
-| `settings.pieces.group` | 棋子 | Pieces | group label | this contract — the group has no label in either language elsewhere; its options are fixed in [interaction-design.md](interaction-design.md) § Piece styles, § Piece symbols |
-| `settings.pieces.style` | 样式 | Style | row label | same |
-| `settings.pieces.symbols` | 符号 | Symbols | row label | same |
-| `settings.pieces.footer` | 棋子样式同时决定棋盘的配色。 | The piece style also sets the board colors. | group footer | this contract; the behavior it states is fixed in [interaction-design.md](interaction-design.md) § Piece styles |
-| `settings.pieces.style.traditional` | 传统 | Traditional | option | [interaction-design.md](interaction-design.md) § Piece styles |
+| `settings.confirmBeforeDeleting` | 删除前确认 | Confirm Before Deleting | toggle label | retired in favour of `settings.confirmDelete.label`, which names the same switch beside its footer; no surface reads it |
+| `settings.pieces.group` | 棋子 | Pieces | group label | retired: the group became 棋盘 (`settings.section.board`), which is what the two choices in it are about |
+| `settings.pieces.style` | 样式 | Style | row label | retired with the piece-style control, deferred in [product.md](product.md) § Product navigation |
+| `settings.pieces.symbols` | 符号 | Symbols | row label | retired in favour of `settings.symbols.label`: with the style row gone, 符号 alone no longer says what it is the symbol of |
+| `settings.pieces.footer` | 棋子样式同时决定棋盘的配色。 | The piece style also sets the board colors. | group footer | retired with the piece-style row it explained |
+| `settings.pieces.style.traditional` | 传统 | Traditional | option | retired with the piece-style control; the style itself is still the accepted default in [interaction-design.md](interaction-design.md) § Piece styles |
 | `settings.pieces.style.modern` | 现代 | Modern | option | same |
 | `settings.pieces.style.highContrast` | 高对比度 | High Contrast | option | same |
-| `settings.pieces.symbols.characters` | 汉字 | Chinese Characters | option | [interaction-design.md](interaction-design.md) § Piece symbols |
-| `settings.pieces.symbols.icons` | 图标 | Icons | option | same |
+| `settings.pieces.symbols.characters` | 汉字 | Chinese Characters | option | retired in favour of `settings.symbols.hanzi`; the word is unchanged |
+| `settings.pieces.symbols.icons` | 图标 | Icons | option | retired in favour of `settings.symbols.icons`; the word is unchanged |
 
-The footer states only that the piece style carries the board colors. It says nothing about Increase Contrast: honoring that setting is systemwide behavior fixed in [interaction-design.md](interaction-design.md) § Platform visual language, and a footer is the wrong place to promise it.
+**中文** names the notation by the language it is written in, not by 传统, which names a piece style: a screen that offered 传统 in two groups for two unrelated things would teach the wrong word. **WXF** is a name and is never translated, like **AI** in `status.controller.ai`; it carries a key all the same, because it is a control label and both languages have to answer for it.
+
+`settings.confirmDelete.footer` is the only footer on the screen. It says what turning the switch off costs and that the cost is permanent — the permanence is [product.md](product.md)'s own rule, not a warning invented here — and it says nothing else, because a footer under every group is a screen nobody reads.
+
+Nothing here offers an interface language, and no key exists for one: the operating system owns the language, per the Settings scope in [product.md](product.md).
 
 ### Game metadata
 
@@ -299,5 +321,5 @@ These are the consequences for the code that the localization pull request inher
 
 - Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
 - Approve the rows marked *(proposed)* above: the two History section headers, the empty state's two lines, the History-read failure title, the deletion-failure pair, and the replay transport's seven. They are what the History destination and its replay say, and they ship in the String Catalog behind this proposal.
-- Supply copy for the surfaces that still have no accepted string in either language: the sound and haptics toggles, the Help entry point and its contents, and autoplay speeds if they are ever offered. Import and export, and the import, duplicate, conflict and error messages, are proposed above rather than still open. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
+- Supply copy for the surfaces that still have no accepted string in either language: the Help entry point and its contents, and autoplay speeds if they are ever offered. The sound and haptics toggles are no longer among them — 声音 and 触感 are accepted above, with the rest of the Settings destination, in [issue #64](https://github.com/ppppvz/MiniXiangqi/issues/64)'s Stage 5 design. Import and export, and the import, duplicate, conflict and error messages, are proposed above rather than still open. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
 - Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.
