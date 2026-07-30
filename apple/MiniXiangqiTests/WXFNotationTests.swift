@@ -5,13 +5,18 @@
 // notation with no assertion anywhere can be replaced by a constant with the
 // whole suite staying green. Every case below names the clause it holds in place.
 //
+// Every tandem clause is asserted twice, once in each side's frame. Front means
+// nearer the opponent, so for Red it is the higher rank and for Black the lower,
+// and an index counts from there — a rule that is easy to write once and get
+// backwards for the other side, so neither side is left to inference.
+//
 // The positions are legal ones, which is not required by the renderer — it reads
 // a placement and never a rule — but is required by the machine cross-check that
 // backs this table: Fairy-Stockfish renders WXF for minixiangqi and refuses to
-// render an illegal move, so every row here was also put to it. 84 of the 86
-// rows agree exactly. The two that do not are recorded reading 4's own class,
-// where our marker is unconditional and Fairy-Stockfish's is not, and both are
-// asserted below.
+// render an illegal move, so every row here was also put to it. Of the 145 rows,
+// 141 agree exactly. The four that do not are recorded reading 4's own class,
+// where our marker is unconditional and Fairy-Stockfish's is not — two for each
+// side — and all four are asserted below.
 
 import Testing
 @testable import MiniXiangqi
@@ -97,6 +102,20 @@ struct WXFNotationTests {
         #expect(read("d1d2", from: Self.redLetters) == "K4+1")
     }
 
+    @Test("A rank count is the distance, at every distance a chariot can travel",
+          arguments: [("4k2/7/7/7/7/7/R2K3 w - - 0 1", "a1a5", "R7+4"),
+                      ("4k2/7/7/7/7/7/R2K3 w - - 0 1", "a1a6", "R7+5"),
+                      ("4k2/7/7/7/7/7/R2K3 w - - 0 1", "a1a7", "R7+6"),
+                      ("R6/3k3/7/7/7/7/2K4 w - - 0 1", "a7a3", "R7-4"),
+                      ("R6/3k3/7/7/7/7/2K4 w - - 0 1", "a7a2", "R7-5"),
+                      ("R6/3k3/7/7/7/7/2K4 w - - 0 1", "a7a1", "R7-6")])
+    func rankCountsReachTheWholeFile(fen: String, move: String, expected: String) {
+        // A short opening line only ever shows 1, 2 and 3. Six is this board's
+        // longest travel, and a value is a single character all the way up — no
+        // source discusses a multi-digit one, and on 7 ranks none arises.
+        #expect(read(move, from: fen) == expected)
+    }
+
     @Test("A move that leaves its file names the file it arrived on")
     func leavingTheFileNamesIt() {
         // Which is the traverse for a chariot, cannon, soldier or general…
@@ -165,6 +184,19 @@ struct WXFNotationTests {
                       ("b5c5", "P+=5"), ("b3a3", "P-=7")])
     func soldierPairTakesTheMarker(move: String, expected: String) {
         #expect(read(move, from: Self.soldierPair) == expected)
+    }
+
+    @Test("A pair keeps its marker when a third file carries only one",
+          arguments: [("b5b6", "P++1"), ("b3b4", "P-+1"),
+                      ("f3f4", "P2+1"), ("f3g3", "P2=1")])
+    func aPairKeepsItsMarkerBesideALoneSingle(move: String, expected: String) {
+        // The boundary of the promotion rule, from the other side: what promotes
+        // a pair to the indexed form is a *second doubled* file, not merely a
+        // third soldier somewhere. Red's pair on b with a single on f leaves one
+        // doubled file, so the pair stays in the marker form and the single stays
+        // plain — the same position shape as the 2-2 case below, one soldier short
+        // of it, and it must read differently.
+        #expect(read(move, from: "4k2/7/1P5/7/1P3P1/7/3K3 w - - 0 1") == expected)
     }
 
     // MARK: - W3 is unconditional
@@ -250,6 +282,96 @@ struct WXFNotationTests {
         #expect(read("b1a1", from: fen) == "36=7")
         #expect(read("b5a5", from: fen) == "16=7")
         #expect(read("d5c5", from: fen) == "14=5")
+    }
+
+    // MARK: - W6, every tandem clause again in Black's frame
+
+    // Black's front is the LOWER rank, because front means nearer the opponent
+    // and Black's opponent sits at rank 1. So an advance goes down the board, a
+    // retreat up it, and an index counts up from the bottom — every one of them
+    // the mirror of the rows above, and none of them derivable from those rows.
+
+    /// Black chariots doubled on file b, horses on f, cannons on g, with the
+    /// front of each pair on rank 3 and the rear on rank 6.
+    private static let blackPairs = "3k3/1r3nc/7/7/1r3nc/7/2K4 b - - 0 1"
+
+    @Test("Black's pairs take the marker, front nearer Red",
+          arguments: [("b3c3", "R+=3"), ("b3b2", "R++1"), ("b3b4", "R+-1"),
+                      ("b6b5", "R-+1"), ("b6a6", "R-=1"),
+                      ("f3e1", "H++5"), ("f3g1", "H++7"), ("f3d2", "H++4"),
+                      ("f3d4", "H+-4"),
+                      ("f6e4", "H-+5"), ("f6g4", "H-+7"), ("f6d5", "H-+4"),
+                      ("g3g2", "C++1"), ("g3g4", "C+-1"),
+                      ("g6g5", "C-+1"), ("g6g7", "C--1")])
+    func blackPairsTakeTheMarker(move: String, expected: String) {
+        // The rank-3 piece of each pair is the front one and the rank-6 piece the
+        // rear, which is the reverse of Red's arrangement on the same squares.
+        #expect(read(move, from: Self.blackPairs) == expected)
+    }
+
+    @Test("Black's soldier pair, both markers and both directions",
+          arguments: [("b3b2", "P++1"), ("b5b4", "P-+1"),
+                      ("b3c3", "P+=3"), ("b5a5", "P-=1")])
+    func blackSoldierPairTakesTheMarker(move: String, expected: String) {
+        #expect(read(move, from: "3k3/7/1p5/7/1p5/7/4K2 b - - 0 1") == expected)
+    }
+
+    @Test("Black's marker is unconditional too, and on Red's back rank")
+    func theMarkerIsUnconditionalForBlackToo() {
+        // The mirror of the Red case: Black soldiers on b1 and b3, and the front
+        // one is the one on b1 — Red's own back rank — which cannot advance,
+        // because for Black there is nowhere past rank 1. The rear soldier's
+        // advance is still 后, still `P-+1`. Fairy-Stockfish renders `P2+1` here,
+        // and this is the second of the four rows where the two disagree by
+        // design.
+        let fen = "4k2/7/7/7/1p5/7/1p1K3 b - - 0 1"
+        #expect(read("b3b2", from: fen) == "P-+1")
+        #expect(MoveNotation.text(for: Move(text: "b3b2")!, in: Placement(fen: fen)) == "后卒进1")
+
+        // And the same pair's other moves, where the two renderers agree.
+        #expect(read("b1a1", from: fen) == "P+=1")
+        #expect(read("b1c1", from: fen) == "P+=3")
+        #expect(read("b3a3", from: fen) == "P-=1")
+        #expect(read("b3c3", from: fen) == "P-=3")
+    }
+
+    @Test("Black's horse pair reaches the same divergence, retreating off the board")
+    func blackHorseReachesTheSameDivergence() {
+        // Not a soldier and not a last rank: the front horse on f3 retreating to
+        // g5 translates onto g8 for its twin on f6, which is off the board, so
+        // Fairy-Stockfish drops the marker and renders `H6-7`. The class is wider
+        // than a soldier stuck on a back rank — it is any pair whose twin's
+        // translated destination leaves the board — and our marker is written
+        // either way.
+        #expect(read("f3g5", from: Self.blackPairs) == "H+-7")
+    }
+
+    @Test("Black's three on a file are indexed from Black's own front",
+          arguments: [("c2c1", "13+1"), ("c4c3", "23+1"), ("c6c5", "33+1"),
+                      ("c2d2", "13=4"), ("c4b4", "23=2"), ("c6d6", "33=4")])
+    func blackThreeOnAFile(move: String, expected: String) {
+        // Index 1 is c2, the soldier nearest Red — the opposite end of the file
+        // from Red's index 1, on a board laid out the same way.
+        #expect(read(move, from: "4k2/2p4/7/2p4/7/2p4/3K3 b - - 0 1") == expected)
+    }
+
+    @Test("Black at 2-2: both files indexed from Black's front, the lone soldier plain",
+          arguments: [("b3b2", "12+1"), ("b5b4", "22+1"),
+                      ("d3d2", "14+1"), ("d5d4", "24+1"),
+                      ("f3f2", "P6+1"), ("f3g3", "P6=7"),
+                      ("b3a3", "12=1"), ("d3e3", "14=5")])
+    func blackTwoDoubledFiles(move: String, expected: String) {
+        #expect(read(move, from: "3k3/7/1p1p3/7/1p1p1p1/7/3K3 b - - 0 1") == expected)
+    }
+
+    @Test("Black at 3-2, every soldier on both files",
+          arguments: [("b1a1", "12=1"), ("b1c1", "12=3"),
+                      ("b3b2", "22+1"), ("b5b4", "32+1"),
+                      ("d3d2", "14+1"), ("d5d4", "24+1"), ("d5c5", "24=3")])
+    func blackThreeTwo(move: String, expected: String) {
+        // The tripled file counts b1, b3, b5 as 1, 2, 3 — and b1, being on Red's
+        // back rank, is the one that can only traverse.
+        #expect(read(move, from: "3k3/7/1p1p3/7/1p1p3/7/1p1K3 b - - 0 1") == expected)
     }
 
     // MARK: - W7, no event markers
