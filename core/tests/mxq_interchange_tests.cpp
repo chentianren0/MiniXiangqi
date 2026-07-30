@@ -1128,13 +1128,18 @@ void case_a_preview_is_a_game_and_not_a_record(const fs::path &file) {
     c.check_status(mxq_game_position_at(preview, 0, &position, &err), MXQ_OK,
                    "and can be walked from its initial position");
 
-    /* Mutations are a category error on a session that was never attached. */
+#if defined(NDEBUG)
+    /* Mutations are a category error on a session that was never attached —
+     * one of the programming errors the contract has assert in a debug build,
+     * so the returned status is observable only where the assertion is
+     * compiled out. */
     err = make_error();
     c.check_status(mxq_game_apply_move(preview, "b1b3", nullptr, nullptr, &err),
                    MXQ_ERR_STATE_SESSION_READ_ONLY, "a move on a preview");
     err = make_error();
     c.check_status(mxq_game_undo(preview, nullptr, &err),
                    MXQ_ERR_STATE_SESSION_READ_ONLY, "an undo on a preview");
+#endif
 
     MxqBlob *blob = nullptr;
     err = make_error();

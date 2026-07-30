@@ -908,7 +908,12 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
         c.check_eq(reason_text(info.end_reason), scenario.end.end_reason,
                    "the validated end reason");
 
-        /* A replay is read-only, and every mutation says so. */
+#if defined(NDEBUG)
+        /* A replay is read-only, and every mutation says so. A mutation on a
+         * detached session is one of the programming errors the contract has
+         * assert in a debug build, so the returned status is only a promise
+         * where that assertion is compiled out; asking for it in a debug build
+         * would be asking the core to break its own rule. */
         uint32_t removed = 0;
         uint64_t ignored = 0;
         const MxqStatus refusals[] = {
@@ -925,6 +930,7 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
                                 "MXQ_ERR_STATE_SESSION_READ_ONLY, got ") +
                         mxq_status_name(refusal));
         }
+#endif
         mxq_game_release(replay);
     }
 
