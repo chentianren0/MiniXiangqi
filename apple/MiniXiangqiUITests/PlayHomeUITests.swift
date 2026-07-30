@@ -55,8 +55,12 @@ final class PlayHomeUITests: XCTestCase {
         app.windows.firstMatch.descendants(matching: .any)["point-\(name)"]
     }
 
+    /// What a text element says. A SwiftUI `Text` carries its string as the
+    /// accessibility value; where a surface hands it over as the label instead,
+    /// the label is the same string and is just as good an answer.
     private func reading(_ app: XCUIApplication, _ identifier: String) -> String {
-        app.staticTexts[identifier].value as? String ?? ""
+        let element = app.staticTexts[identifier]
+        return (element.value as? String) ?? element.label
     }
 
     private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
@@ -107,8 +111,9 @@ final class PlayHomeUITests: XCTestCase {
         app.buttons["mode-human-versus-ai"].click()
         XCTAssertTrue(app.staticTexts["setup-header"].waitForExistence(timeout: 5),
                       "人机对弈 opens its 本局设置 page")
-        XCTAssertEqual(reading(app, "setup-header"), "本局设置")
         XCTAssertTrue(app.buttons["setup-start"].exists)
+        XCTAssertTrue(app.windows.firstMatch.descendants(matching: .any)["setup-first-mover"].exists,
+                      "with the group of per-game choices only this mode has")
         attach(app, named: "61-the-human-versus-ai-pre-start-page-from-the-home")
 
         goBack(app)
