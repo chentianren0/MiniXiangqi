@@ -77,7 +77,11 @@ final class PlayState {
     /// Which of the destination's three pages is showing. The home is the root
     /// and the other two are pushed over it, so this is also the navigation
     /// path: everything that changes it is a navigation.
-    enum Page: Hashable {
+    ///
+    /// `Equatable` and nothing more. It was `Hashable` while a
+    /// `NavigationStack` path carried it; the destination draws the page
+    /// directly now, and all that is left to ask of it is which page this is.
+    enum Page: Equatable {
         /// The Play home: what to play, and the active game if there is one.
         /// No board anywhere on it.
         case home
@@ -274,8 +278,16 @@ final class PlayState {
 
     /// **回到对局** on the home's current-game card: the board, and the game
     /// exactly as it was left.
+    ///
+    /// Not while a mode switch is anywhere in it. Both of that flow's alerts
+    /// belong to the home, so leaving the page with an archive in flight would
+    /// leave a refusal with no page to present the accepted 无法保存对局 retry
+    /// on — and a success would take the player off the board they had just
+    /// asked for and onto a pre-start page they never asked to see. The guard
+    /// is what makes `modeSwitch != nil` imply `page == .home` everywhere,
+    /// which is the invariant the two alerts' placement relies on.
     func resume() {
-        guard page == .home, activeGame != nil else { return }
+        guard page == .home, modeSwitch == nil, activeGame != nil else { return }
         page = .board
     }
 

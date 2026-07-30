@@ -22,11 +22,20 @@
 // whole coordination is that no test ever does — an await lets the next test in,
 // and the next test's first act is to shut this one's core down. So the archive
 // is parked here and answered by the test, exactly as ManualAnimator parks an
-// animation's completion. What the parked seam proves is the wiring; that the
-// real transaction files a real 提前结束 record is proved on the running screen
-// by PlayHomeUITests, and inside the core by its own history suite.
+// animation's completion. What the parked seam proves is the wiring.
+//
+// What the core itself does — detaching the session with the call, putting it
+// back when the archive is refused, and hopping the answer onto this actor — is
+// the second suite in this file, driven through the real
+// `Core.archiveActiveAndClear` with the seam let go of. Those tests have to
+// suspend, because the answer is a main-actor turn away and only a suspension
+// gives the actor that turn; a nested run loop does not, since the turn is a
+// main-queue block and one main-queue block cannot drain the next. So they obey
+// the rule the other way round: each shuts its own core down *before* it
+// suspends, and holds nothing while the next test runs.
 
 import Foundation
+import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
@@ -329,6 +338,35 @@ struct PlayHomeTests {
         #expect(state.game?.moves == ["b1b3"], "the same game, exactly where it was left")
     }
 
+    @Test("回到对局 is no way off the home while a mode switch is in flight")
+    func resumeIsRefusedWhileTheSwitchRuns() throws {
+        let core = try TestCores.fresh()
+        let (state, archive) = try parkedStateOverAGame(core)
+
+        state.choose(.humanVersusAI)
+        state.resume()
+        #expect(state.page == .home, "the confirmation is up and the page it is on stays")
+
+        state.saveAndContinue()
+        #expect(state.modeSwitch == .saving(.humanVersusAI))
+        state.resume()
+        #expect(state.page == .home,
+                "and an archive in flight is not something to walk away from")
+
+        // Which is the whole reason for the guard: both of this flow's alerts
+        // belong to the home, so a refusal that arrived over the board would
+        // have no page to present the accepted retry on.
+        archive.answerWithRefusal()
+        #expect(state.modeSwitch == .failed(.humanVersusAI))
+        #expect(state.page == .home)
+
+        // And once the flow is spent, 回到对局 is exactly what it always was.
+        state.dismissArchiveFailure()
+        state.resume()
+        #expect(state.page == .board)
+        #expect(state.activeGame != nil, "over the game that was never archived")
+    }
+
     @Test("A filed game is not an active game, and the home does not offer it")
     func aFiledGameIsNotOffered() throws {
         let core = try TestCores.fresh()
@@ -379,3 +417,177 @@ struct PlayHomeTests {
         return (state, archive)
     }
 }
+
+// MARK: - The archive the core really performs
+
+/// Where the answer lands. The seam's completion crosses a queue to reach this
+/// actor, so it is a sendable closure, and a sendable closure has no business
+/// writing into a test's local variable — this is the box it writes into.
+@MainActor
+final class ArchiveAnswer {
+    private(set) var result: Result<UInt64, CoreError>?
+
+    var arrived: Bool { result != nil }
+
+    func record(_ result: Result<UInt64, CoreError>) { self.result = result }
+
+    /// Lets this actor run until the answer lands. Bounded, so a hop that was
+    /// never made fails the test instead of hanging the run.
+    func arrive(within timeout: Duration = .seconds(5)) async {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while result == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+    }
+}
+
+/// Asks `core` for the archive, shuts it down, and then lets the answer arrive.
+///
+/// The order is the suite's own rule rather than tidiness. The answer is a
+/// main-actor turn away and only a suspension gives the actor that turn, so
+/// something has to be awaited; and a suspension with a live core in hand is
+/// what this suite is arranged never to do — it lets the next test in, and the
+/// next test's first act is to open a core the singleton refuses while this one
+/// lives. Shutting down first also proves what `Core.shutdown` is for: its
+/// barrier drains the archive queue, so the transaction is finished by the time
+/// `retire` returns and only the answer is still owed.
+@MainActor
+private func archive(on core: Core, keeping directory: URL) async -> ArchiveAnswer {
+    let answer = ArchiveAnswer()
+    core.archiveActiveAndClear { answer.record($0) }
+    #expect(!answer.arrived,
+            "no answer inside the call that asked for it: the store call is off this actor")
+    #expect(!core.hasSession, "and the session goes with the call")
+    TestCores.retire(keeping: directory)
+    await answer.arrive()
+    return answer
+}
+
+/// `Core.archiveActiveAndClear` itself: the transaction off this actor, the
+/// session detached with the call and put back when the core refuses it, and
+/// the answer arriving on a later turn either way.
+///
+/// The suite above holds that seam open to prove what the screen does with each
+/// answer. This one lets go of it, because the detach and the restore are the
+/// core's own and nothing else in the app performs them. Serialized because
+/// these are the only tests here that suspend, and two of them suspending at
+/// once would be two tests reaching for the one core between them.
+@Suite("The archive the core performs", .serialized)
+@MainActor
+struct CoreArchiveTests {
+
+    /// Two ordinary plies, so the record has a line in it.
+    private static let openingLine = ["b1b3", "b7b6"]
+
+    /// The shortest checkmate from the start position.
+    private static let mateLine = ["b1b3", "b7b6", "b3d3"]
+
+    @Test("It commits off this actor, files the game, and leaves the core no session")
+    func theArchiveCommitsAndClears() async throws {
+        let directory = TestCores.scratchDirectory()
+        let core = try TestCores.open(at: directory)
+        try core.create(.freePlay)
+        let game = try Game(rules: core)
+        try game.replay(Self.openingLine)
+        #expect(core.hasSession)
+
+        let answer = await archive(on: core, keeping: directory)
+
+        switch try #require(answer.result) {
+        case .success(let recordID):
+            #expect(recordID != 0, "the record the transaction wrote")
+        case .failure(let error):
+            Issue.record("the archive was refused: \(error)")
+        }
+        #expect(!core.hasSession, "a committed archive leaves no session behind")
+        #expect(throws: CoreError.self) { try core.attachedSession() }
+
+        // The store as the next core to open it finds it, which is what
+        // quitting and relaunching is.
+        let reopened = try TestCores.open(at: directory)
+        #expect(try reopened.historyCount() == 1, "the transaction committed the record")
+        #expect(try !reopened.activeGameExists(),
+                "and cleared the active-game reference in the same one")
+        TestCores.retire()
+    }
+
+    /// The refusal path, driven through the core rather than around it.
+    ///
+    /// The refusal a test can ask a working store for is the archived session:
+    /// a game filed by its own terminal commit is an immutable History record,
+    /// and the core answers `MXQ_ERR_STATE_SESSION_ARCHIVED` to anything that
+    /// would archive it again. A store that will not write is not something a
+    /// test can arrange — which is why what this proves is the branch rather
+    /// than the disk: the session the call detached is put back, nothing is
+    /// filed twice, and the next archive commits as any other would.
+    @Test("A refused archive puts the session back and commits nothing")
+    func aRefusedArchiveRestoresTheSession() async throws {
+        let directory = TestCores.scratchDirectory()
+        let core = try TestCores.open(at: directory)
+        try core.create(.freePlay)
+        let game = try Game(rules: core)
+        try game.replay(Self.mateLine)
+        try game.file()
+        #expect(try core.historyCount() == 1)
+        #expect(core.hasSession, "the filed game's session still stands, as the board does")
+
+        let answer = await archive(on: core, keeping: directory)
+
+        switch try #require(answer.result) {
+        case .success:
+            Issue.record("a game already filed is not archivable a second time")
+        case .failure(let error):
+            #expect(error.status == MxqStatus(MXQ_ERR_STATE_SESSION_ARCHIVED),
+                    "the core's own refusal rather than one composed above it — \(error)")
+        }
+        #expect(core.hasSession, "and the session the call took is put back")
+        #expect(throws: Never.self) { try core.attachedSession() }
+
+        // Nothing was filed a second time, and the next archive commits — which
+        // is what makes the accepted 重试 worth offering.
+        let reopened = try TestCores.open(at: directory)
+        #expect(try reopened.historyCount() == 1)
+        try reopened.create(.freePlay)
+        let next = try Game(rules: reopened)
+        try next.replay(Self.openingLine)
+
+        let retry = await archive(on: reopened, keeping: directory)
+        #expect(retry.result?.isSuccess == true, "the archive after a refusal commits")
+
+        let last = try TestCores.open(at: directory)
+        #expect(try last.historyCount() == 2, "and the retry's record is in History")
+        #expect(try !last.activeGameExists())
+        TestCores.retire()
+    }
+
+    @Test("With nothing to archive it refuses, and that answer is asynchronous too")
+    func theEmptyRefusalIsAsynchronousToo() async throws {
+        let directory = TestCores.scratchDirectory()
+        let core = try TestCores.open(at: directory)
+        #expect(!core.hasSession, "no game, so nothing is attached")
+
+        // The guard is the one path that could have answered inside the call,
+        // and a caller handling one answer synchronously and the other from a
+        // queue would be handling two different calls.
+        let answer = await archive(on: core, keeping: directory)
+
+        switch try #require(answer.result) {
+        case .success:
+            Issue.record("there was no active game to archive")
+        case .failure(let error):
+            #expect(error.status == MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING))
+        }
+
+        let reopened = try TestCores.open(at: directory)
+        #expect(try reopened.historyCount() == 0, "and it filed nothing on the way")
+        #expect(try !reopened.activeGameExists())
+        TestCores.retire()
+    }
+}
+
+private extension Result {
+    var isSuccess: Bool {
+        if case .success = self { true } else { false }
+    }
+}
+

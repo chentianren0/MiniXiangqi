@@ -98,7 +98,7 @@ nonisolated enum Outcome: Sendable {
     }
 }
 
-nonisolated enum PlayMode: Sendable, Hashable {
+nonisolated enum PlayMode: Sendable {
     case humanVersusAI, freePlay
 
     init(_ mode: MxqPlayMode) {
@@ -439,6 +439,14 @@ final class Core {
         // away, and the interface's invalid-handle promise does not cover the
         // core handle. The caller quiesces its own threads; the core does not
         // defend against one that does not.
+        //
+        // The barrier waits for the transaction, not for the answer: an archive
+        // that finishes as the player quits still has its `Task { @MainActor }`
+        // to run, and on a quit that task runs after this. That is tolerable
+        // because the only handle it touches is the archived session, which the
+        // promise above covers — after shutdown the core's own sessions answer
+        // `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory — and
+        // because the process is on its way out with nothing left to tell.
         ActiveGameArchiver.quiesce()
         mxq_core_shutdown(handle, nil)
     }
@@ -709,11 +717,26 @@ extension Core {
         completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
     ) {
         guard let active = session else {
-            completion(.failure(CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
-                                          detail: "no session is attached")))
+            // On a later turn, like every other answer this call makes. The
+            // rule is the seam's own and its stand-in documents it: an answer
+            // arriving inside the press that asked for it would reach an alert
+            // still dismissing itself. A refusal that answered synchronously
+            // while the transaction answered from a queue would be two
+            // different calls wearing one signature.
+            Task { @MainActor in
+                completion(.failure(CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
+                                              detail: "no session is attached")))
+            }
             return
         }
         let archiver = ActiveGameArchiver(core: handle, active: active)
+        // For as long as this window is open the core has no session, so
+        // `evaluation()` and `legalMoves()` answer for the frozen start
+        // position rather than refusing — a path that read the board across it
+        // would be handed a silently wrong position instead of a failure. What
+        // keeps that unreachable is `PlayState`: the flow stands on the Play
+        // home for the whole of the archive, and `resume()` refuses to leave it
+        // while a mode switch is in flight.
         session = nil
         archiver.run { [self] result in
             Task { @MainActor in

@@ -29,10 +29,18 @@ final class PlayHomeUITests: XCTestCase {
     }
 
     private func launch(replaying line: String? = nil,
-                        store: String? = nil) -> XCUIApplication {
+                        store: String? = nil,
+                        refusingSaves: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
+        // The debug stand-in that refuses every commit, which is the only way
+        // to reach the accepted refusal on a real screen: a working store
+        // commits. It refuses the archive along with every other mutation, so a
+        // launch that asks for it cannot also ask for a replayed line — the
+        // game it wants is created on the screen instead, by 开始对局, which
+        // the stand-in deliberately lets through.
+        if refusingSaves { app.launchArguments.append("-mxq-refuse-saves") }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
@@ -218,6 +226,69 @@ final class PlayHomeUITests: XCTestCase {
         XCTAssertTrue(historyRow(app, 0).label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
                       "its actual winner and its exact reason — it reads "
                       + historyRow(app, 0).label)
+    }
+
+    /// The refusal, on the real screen: with the store refusing the archive,
+    /// 保存并继续 files nothing and the accepted 无法保存对局 retry presents over
+    /// a game that is exactly as it stood. 取消 discards the remembered
+    /// destination and leaves the game there to go back to.
+    func testARefusedArchiveKeepsTheGameAndPresentsTheRetry() {
+        let app = launch(refusingSaves: true)
+        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 20))
+
+        // The game this is about, created on the screen: a refusing store still
+        // creates, because a stand-in that would not let a game be created
+        // could never reach a game to refuse.
+        app.buttons["mode-free-play"].click()
+        XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
+        app.buttons["setup-start"].click()
+        XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 15),
+                      "开始对局 creates the game and the board opens")
+
+        goBack(app)
+        XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 5))
+        let line = reading(app, "home-current-game")
+        XCTAssertEqual(line, "自由对弈 · 进行中 · 轮到红方 · 0 步",
+                       "the game as it stands, before anything is asked of it")
+
+        app.buttons["mode-human-versus-ai"].click()
+        let confirmation = app.sheets.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["保存并继续"].click()
+
+        // The retry, by the one button only it carries — the confirmation that
+        // is dismissing itself has 保存并继续 and this one does not.
+        let refusal = app.sheets.firstMatch
+        XCTAssertTrue(refusal.buttons["重试"].waitForExistence(timeout: 10),
+                      "a refused archive presents the accepted retry")
+        let said = ([refusal.label]
+                    + refusal.staticTexts.allElementsBoundByIndex
+                        .map { ($0.value as? String) ?? $0.label }).joined(separator: "\n")
+        XCTAssertTrue(said.contains("无法保存对局"), "the accepted title — it reads \(said)")
+        XCTAssertTrue(said.contains("当前对局仍然保留。请重试。"),
+                      "and the accepted message — it reads \(said)")
+        XCTAssertTrue(refusal.buttons["取消"].exists)
+        attach(app, named: "65-the-refused-save-and-continue")
+
+        refusal.buttons["取消"].click()
+
+        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+                      "the home is still the page")
+        XCTAssertFalse(app.buttons["setup-start"].exists,
+                       "a refusal never enters a pre-start state")
+        XCTAssertEqual(reading(app, "home-current-game"), line,
+                       "and the game is exactly as it stood")
+
+        destination(app, 1).click()
+        XCTAssertTrue(app.staticTexts["还没有历史对局"].waitForExistence(timeout: 10),
+                      "a refusal commits nothing")
+
+        destination(app, 0).click()
+        XCTAssertTrue(app.buttons["home-resume"].waitForExistence(timeout: 5))
+        app.buttons["home-resume"].click()
+        XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 10),
+                      "and the game the retry was about is still there to go back to")
+        XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
     }
 
     /// 取消 leaves everything exactly as it was: the game, the page, and an
