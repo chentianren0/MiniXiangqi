@@ -30,9 +30,22 @@ protocol Rules: AnyObject {
     /// `false` and not an error: an untouched board has nothing to resume.
     func resumeActive() throws -> Bool
 
-    /// Create the active game and play its first move — one user-visible
-    /// action, so a refusal of either half is one refusal of the move.
-    func begin(with move: String) throws
+    /// Create and persist the active game from its frozen configuration. It is
+    /// its own act: 开始对局 creates the game, and the first move follows on a
+    /// board that already exists.
+    func create(_ configuration: GameConfiguration) throws
+
+    /// The created game's frozen configuration — mode, resolved human side,
+    /// level, and exact thinking time.
+    func configuration() throws -> GameConfiguration
+
+    /// The session's stable identity, one half of the staleness comparison a
+    /// search result is judged by.
+    func gameID() throws -> String
+
+    /// Commit the human's loss. The third terminal commit, legal exactly when
+    /// `resign_available` reads 1.
+    func resign() throws -> UInt64
 
     /// Apply one move and commit it before returning.
     func apply(_ move: String) throws
@@ -89,6 +102,22 @@ final class Game {
     /// the user may simply try again.
     private(set) var failure: CoreError?
 
+    /// The same refusal, when the ply that failed was the AI's reply. Kept
+    /// apart from `failure` because the contract answers the two differently:
+    /// a refused move of the player's own raises the capsule, and a refused AI
+    /// reply raises nothing at all — the retry is the app's, not the user's, so
+    /// there is nothing to tell them and nothing for them to do.
+    private(set) var opponentFailure: CoreError?
+
+    /// The created game's frozen configuration, or nil before a session
+    /// exists. Mode, resolved human side, level and thinking time are decided
+    /// once, at creation, and never re-derived above the interface.
+    private(set) var configuration: GameConfiguration?
+
+    /// The session's stable identity, frozen at creation. Half of the pair a
+    /// search result is checked against before its move is applied.
+    private(set) var identity: String?
+
     /// The last claim or filing the store refused. Separate from `failure`
     /// because the contract routes the two differently: a refused ply is the
     /// transient capsule, a refused terminal commit is the blocking retry.
@@ -100,20 +129,33 @@ final class Game {
     /// game is never a claimed one: the claim archived it.
     private(set) var claimedDraw = false
 
+    /// Whether the player conceded. Like a claimed draw, this is an outcome no
+    /// position produces: the position the session still answers for is
+    /// ongoing, and the result is the store's. A resumed game is never a
+    /// resigned one, for the same reason — resigning archived it.
+    private(set) var resigned = false
+
     /// The History record the terminal commit created, once one has.
     private(set) var filedRecordID: UInt64?
 
     var selected: Square?
     var flipped = false
 
-    /// Resumes the stored active game if there is one, or opens the empty
-    /// board without creating anything: a session begins at the first move,
-    /// so an untouched board persists nothing.
+    /// Opens the game the session holds.
+    ///
+    /// Two callers, one initializer. A session already attached is the game
+    /// 开始对局 just created, and it is taken as it stands; no session means
+    /// launch, and the library's active game is resumed if it holds one. An
+    /// untouched board persists nothing and creates nothing.
     init(rules: Rules) throws {
         var moves: [String] = []
         var notation: [MoveReading] = []
         var lastMove: Move?
-        if try rules.resumeActive() {
+        var configuration: GameConfiguration?
+        var identity: String?
+        if try rules.hasSession || rules.resumeActive() {
+            configuration = try rules.configuration()
+            identity = try rules.gameID()
             moves = try rules.moveHistory()
             notation = try Self.notation(reading: moves, from: rules)
             lastMove = moves.last.flatMap { Move(text: $0) }
@@ -124,7 +166,13 @@ final class Game {
         self.notation = notation
         self.lastMove = lastMove
         self.evaluation = evaluation
+        self.configuration = configuration
+        self.identity = identity
         self.placement = Placement(fen: evaluation.fen)
+        // The accepted orientation rule, applied once: in human-versus-AI play
+        // the human's own side is at the bottom, and Red at the bottom is the
+        // unflipped board. Free Play opens unflipped and keeps its flip control.
+        self.flipped = configuration?.humanSide == .black
         refreshLegalMoves()
     }
 
@@ -162,20 +210,47 @@ final class Game {
 
     // MARK: - Result
 
-    /// Over one way or the other: adjudicated by the core, or claimed by the
-    /// player. Both stop input; only one of them can be taken back.
-    var isFinished: Bool { evaluation.isOver || claimedDraw }
+    /// Over one way or the other: adjudicated by the core, claimed by the
+    /// player, or conceded by them. All three stop input; only the first can be
+    /// taken back.
+    var isFinished: Bool { evaluation.isOver || claimedDraw || resigned }
 
-    /// The result to present. A claimed draw is a draw whatever the session
-    /// still calls the position — the committed outcome is the store's, and
-    /// the claim is what committed it — and it needs no separate reason: the
-    /// one the core reports is the one the claim was available for.
-    var presentedState: GameState { claimedDraw ? .draw : evaluation.state }
+    /// The result to present. A claimed draw is a draw and a resignation is the
+    /// opponent's win, whatever the session still calls the position — the
+    /// committed outcome is the store's, and the act is what committed it.
+    var presentedState: GameState {
+        if claimedDraw { return .draw }
+        if resigned { return humanSide == .red ? .blackWins : .redWins }
+        return evaluation.state
+    }
+
+    /// The reason to present. A claimed draw needs none of its own — the one
+    /// the core reports is the one the claim was available for — but a
+    /// resignation does: the position it was made in has no verdict, so the
+    /// core reports no reason, and the reason is the act.
+    var presentedReason: EndReason { resigned ? .resignation : evaluation.reason }
 
     /// The core's own answer, which already says everything this used to work
     /// out: a natural result stays undoable while its presentation is
     /// unconfirmed, and a claimed draw — an archived session — offers nothing.
     var canUndo: Bool { evaluation.undoAvailable }
+
+    // MARK: - The opponent, where there is one
+
+    var mode: PlayMode { configuration?.mode ?? .freePlay }
+    var isHumanVersusAI: Bool { mode == .humanVersusAI }
+
+    /// The side the player controls, in human-versus-AI play. Free Play has
+    /// none: the same person controls both.
+    var humanSide: Side? { isHumanVersusAI ? configuration?.humanSide : nil }
+
+    /// Whether the AI owes a move here. The core's own flag, and the whole
+    /// definition of "a search is owed": nothing above the interface works it
+    /// out from the mode and the side to move.
+    var searchExpected: Bool { evaluation.searchExpected && !isFinished }
+
+    /// Whether 认输 is on offer, which is exactly when the core will accept it.
+    var canResign: Bool { evaluation.resignAvailable }
 
     // MARK: - Input
 
@@ -207,6 +282,12 @@ final class Game {
         // by each caller: a board that has nothing left to play has nothing
         // left to offer at any point on it.
         guard !isFinished else { return .unavailable }
+        // Nor does a board waiting on the opponent. The core says whose turn it
+        // is by expecting a search, so the rule is read rather than re-derived
+        // from the mode and the side to move — and it holds for the whole time
+        // the AI owes a move, whether the search is running, still to be
+        // started, or stalled behind a preparation that has not succeeded yet.
+        guard !searchExpected else { return .unavailable }
 
         if square == selected { return .cancelSelection }
         if let selected, let move = legalMoves.first(where: {
@@ -233,6 +314,7 @@ final class Game {
     /// recorded.
     func undo() {
         failure = nil
+        opponentFailure = nil
         guard canUndo else { return }
         do {
             let removed = try rules.undo()
@@ -271,6 +353,36 @@ final class Game {
         }
     }
 
+    /// Concedes the game. The third terminal commit: the record is in History
+    /// when it succeeds, the loss recorded against the human's own side. Only
+    /// the core decides whether resignation is on offer, and a commit the store
+    /// refused leaves the game running exactly as it stood.
+    func resign() {
+        filingFailure = nil
+        guard canResign, filedRecordID == nil else { return }
+        do {
+            filedRecordID = try rules.resign()
+            resigned = true
+            selected = nil
+            // The archived session still answers every query; what changes is
+            // the affordances, which now all read 0.
+            try refresh()
+            refreshLegalMoves()
+        } catch {
+            filingFailure = CoreError(wrapping: error)
+        }
+    }
+
+    /// The position after the first `ply` plies, as the core replays it. The
+    /// undo of a decision cycle is what asks: both plies rewind in one gesture,
+    /// and the disc that made the first of them — together with whatever the
+    /// reply took from it — is read off the position *between* the two moves,
+    /// which is this.
+    func placement(atPly ply: Int) -> Placement? {
+        guard let fen = try? rules.fen(atPly: ply) else { return nil }
+        return Placement(fen: fen)
+    }
+
     /// Files the finished game in History: what the notice's 保存 does on its
     /// own, and what 开始新对局 does before anything resets. An unconfirmed
     /// natural result is committed as what it is; a game that is already a
@@ -304,17 +416,19 @@ final class Game {
         refreshLegalMoves()
     }
 
-    private func play(_ move: Move) {
-        failure = nil
+    /// The opponent's reply, played through the same legal-move boundary a
+    /// person's move goes through. A search result is never what commits a
+    /// move: this is, and the core refuses it exactly as it would refuse a bad
+    /// move of the player's own.
+    func playOpponent(_ move: Move) {
+        play(move, byOpponent: true)
+    }
+
+    private func play(_ move: Move, byOpponent: Bool = false) {
+        if byOpponent { opponentFailure = nil } else { failure = nil }
         let read = MoveReading(of: move, in: placement)
         do {
-            // The session begins at the first move — creation and the move are
-            // one user-visible action — and every later move speaks to it.
-            if rules.hasSession {
-                try rules.apply(move.text)
-            } else {
-                try rules.begin(with: move.text)
-            }
+            try rules.apply(move.text)
             moves = try rules.moveHistory()
             notation.append(read)
             try refresh()
@@ -322,7 +436,12 @@ final class Game {
             selected = nil
             refreshLegalMoves()
         } catch {
-            failure = CoreError(wrapping: error)
+            let refusal = CoreError(wrapping: error)
+            // A refused save leaves the game exactly at the pre-mutation state
+            // either way. Which of the two it is recorded as decides what the
+            // screen says: the player's own move raises the capsule, and the
+            // AI's reply raises nothing, because the retry is the app's.
+            if byOpponent { opponentFailure = refusal } else { failure = refusal }
         }
     }
 
@@ -399,10 +518,19 @@ final class RefusingRules: Rules {
 
     var hasSession: Bool { real.hasSession }
     func resumeActive() throws -> Bool { try real.resumeActive() }
+    func configuration() throws -> GameConfiguration { try real.configuration() }
+    func gameID() throws -> String { try real.gameID() }
 
-    func begin(with move: String) throws {
+    /// Creation is deliberately *not* refused. `-mxq-refuse-saves` exists to
+    /// photograph the refused-ply state, and a stand-in that would not let a
+    /// game be created could never reach a ply to refuse.
+    func create(_ configuration: GameConfiguration) throws {
+        try real.create(configuration)
+    }
+
+    func resign() throws -> UInt64 {
         try refuseIfAsked()
-        try real.begin(with: move)
+        return try real.resign()
     }
 
     func apply(_ move: String) throws {

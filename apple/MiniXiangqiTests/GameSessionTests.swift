@@ -14,37 +14,81 @@ import Testing
 @MainActor
 struct GameSessionTests {
 
-    // MARK: - Lazy creation
+    // MARK: - Creation
 
-    @Test("An untouched board persists nothing, and the first move creates the game")
-    func theFirstMoveCreatesTheGame() throws {
+    @Test("An untouched board persists nothing; 开始对局 is what creates the game")
+    func startingTheGameCreatesIt() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
 
         #expect(try !core.activeGameExists(),
                 "opening the app is not starting a game")
         #expect(!core.hasSession, "no session either: there is nothing to attach")
 
+        // What 开始对局 performs. Creation is its own act now that a pre-start
+        // state stands in front of the first move, so the game exists before a
+        // piece has been touched.
+        try core.create(.freePlay)
+        let game = try Game(rules: core)
+
+        #expect(core.hasSession)
+        #expect(try core.activeGameExists(), "the game exists before its first move")
+        #expect(game.moves.isEmpty, "and has no moves in it")
+        #expect(game.mode == .freePlay)
+        #expect(game.humanSide == nil, "Free Play has no human side: one person plays both")
+        #expect(game.identity != nil, "a created game has its frozen identity")
+
         game.tap(Square("b1")!)
         game.tap(Square("b4")!)
-
         #expect(game.moves == ["b1b4"])
-        #expect(core.hasSession)
-        #expect(try core.activeGameExists(),
-                "the first move and the game's creation are one action")
+    }
+
+    @Test("A created human-versus-AI game freezes its side, level and thinking time")
+    func creationFreezesTheConfiguration() throws {
+        let core = try TestCores.fresh()
+        try core.create(.humanVersusAI(humanSide: .black, level: .deep, choice: .random))
+        let game = try Game(rules: core)
+
+        let configuration = try #require(game.configuration)
+        #expect(configuration.mode == .humanVersusAI)
+        #expect(configuration.humanSide == .black,
+                "the resolved side, not the choice that produced it")
+        #expect(configuration.firstMoverChoice == .random,
+                "the choice is retained because it cannot be reconstructed later")
+        #expect(configuration.aiLevel == .deep)
+        #expect(configuration.movetimeMilliseconds == 5000,
+                "深思 is go movetime 5000, frozen with the game")
+        #expect(game.humanSide == .black)
+        #expect(game.flipped,
+                "the human's own side is at the bottom, so a Black human turns the board")
+        #expect(game.searchExpected,
+                "Red moves first and the human is Black, so the AI owes the opening move")
+        #expect(!game.canResign == false, "resignation is on offer in human-versus-AI play")
+    }
+
+    @Test("The three levels are the accepted thinking times, and Free Play has none")
+    func theLevelsAreTheAcceptedTimes() {
+        #expect(AiLevel.fast.movetimeMilliseconds == 1000)
+        #expect(AiLevel.standard.movetimeMilliseconds == 3000)
+        #expect(AiLevel.deep.movetimeMilliseconds == 5000)
+        #expect(GameConfiguration.freePlay.movetimeMilliseconds == 0)
+        #expect(GameConfiguration.freePlay.aiLevel == nil)
+        // The serialized vocabulary, which the preference and the archive share.
+        #expect(AiLevel.allCases.map(\.name) == ["fast", "standard", "deep"])
+        #expect(FirstMoverChoice.allCases.map(\.name)
+                == ["human-first", "ai-first", "random"])
     }
 
     @Test("A move is committed when it is accepted, with no separate save")
     func everyMoveCommits() throws {
         let directory = TestCores.scratchDirectory()
         var core = try TestCores.open(at: directory)
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(["b1b4", "a6a5"])
 
         // Quit without warning: no teardown beyond the core's own, exactly as
         // a terminated process would leave the store.
         core = try TestCores.open(at: directory)
-        let resumed = try Game(rules: core)
+        let resumed = try openGame(on: core)
         #expect(resumed.moves == ["b1b4", "a6a5"],
                 "both plies were committed as they were played")
     }
@@ -55,7 +99,7 @@ struct GameSessionTests {
     func aStoredGameResumesExactly() throws {
         let directory = TestCores.scratchDirectory()
         var core = try TestCores.open(at: directory)
-        let played = try Game(rules: core)
+        let played = try openGame(on: core)
         try played.replay(GameTests.captureLine)
         let fen = played.evaluation.fen
         let notation = played.notation
@@ -65,7 +109,7 @@ struct GameSessionTests {
                 "and these, since a resumed game has to read the same in either")
 
         core = try TestCores.open(at: directory)
-        let resumed = try Game(rules: core)
+        let resumed = try openGame(on: core)
 
         #expect(resumed.moves == GameTests.captureLine)
         #expect(resumed.evaluation.fen == fen, "the position is the same position")
@@ -102,14 +146,14 @@ struct GameSessionTests {
     func aLongGameResumesWhole() throws {
         let directory = TestCores.scratchDirectory()
         var core = try TestCores.open(at: directory)
-        let played = try Game(rules: core)
+        let played = try openGame(on: core)
         try played.replay(Self.longLine)
         #expect(played.moves.count == 40, "the premise: forty plies were committed")
         let fen = played.evaluation.fen
         let notation = played.notation
 
         core = try TestCores.open(at: directory)
-        let resumed = try Game(rules: core)
+        let resumed = try openGame(on: core)
 
         #expect(resumed.moves == Self.longLine, "the whole line came back")
         #expect(resumed.notation == notation, "and reads in the same forty words")
@@ -124,12 +168,12 @@ struct GameSessionTests {
     func twoGamesFileIntoOneStore() throws {
         let core = try TestCores.fresh()
 
-        let first = try Game(rules: core)
+        let first = try openGame(on: core)
         try first.replay(GameTests.mateLine)
         try first.file()
 
         core.endSession()
-        let second = try Game(rules: core)
+        let second = try openGame(on: core)
         try second.replay(GameTests.shuffleLine)
         second.claimDraw()
 
@@ -148,6 +192,7 @@ struct GameSessionTests {
         let core = try TestCores.fresh()
         let game = try Game(rules: core)
 
+        #expect(game.identity == nil, "there is no game to have an identity")
         #expect(game.moves.isEmpty)
         #expect(game.notation.isEmpty)
         #expect(!game.isFinished)
@@ -159,12 +204,12 @@ struct GameSessionTests {
     func anUnconfirmedResultResumesFinished() throws {
         let directory = TestCores.scratchDirectory()
         var core = try TestCores.open(at: directory)
-        let mated = try Game(rules: core)
+        let mated = try openGame(on: core)
         try mated.replay(GameTests.mateLine)
         #expect(mated.isFinished)
 
         core = try TestCores.open(at: directory)
-        let resumed = try Game(rules: core)
+        let resumed = try openGame(on: core)
 
         #expect(resumed.isFinished, "the unconfirmed result is the game's state")
         #expect(resumed.presentedState == .redWins)
@@ -183,7 +228,7 @@ struct GameSessionTests {
     @Test("Starting anew confirms the natural result into History and the next move creates fresh")
     func filingConfirmsTheResult() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(GameTests.mateLine)
 
         try game.file()
@@ -191,9 +236,10 @@ struct GameSessionTests {
         #expect(try core.historyCount() == 1, "the finished game is a History record")
         #expect(try !core.activeGameExists(), "and no longer the active game")
 
-        // The screen then releases the session and opens the empty board;
-        // the next first move begins a game of its own.
+        // The screen then releases the session and returns to the pre-start
+        // state; the next 开始对局 begins a game of its own.
         core.endSession()
+        try core.create(.freePlay)
         let next = try Game(rules: core)
         #expect(next.moves.isEmpty)
         next.tap(Square("b1")!)
@@ -205,7 +251,7 @@ struct GameSessionTests {
     @Test("A saved result stands on its own board as a record, with nothing to undo")
     func savingLeavesTheGameOnTheRecordedBoard() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(GameTests.mateLine)
         #expect(game.canUndo, "the premise: an unconfirmed result is undoable")
         let mated = game.evaluation.fen
@@ -231,7 +277,7 @@ struct GameSessionTests {
     @Test("A game already filed is not filed a second time")
     func filingIsNotRepeated() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(GameTests.mateLine)
 
         try game.file()
@@ -250,7 +296,7 @@ struct GameSessionTests {
     @Test("A claimed draw needs no filing: the claim already was one")
     func aClaimedDrawIsAlreadyFiled() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(GameTests.shuffleLine)
 
         game.claimDraw()
@@ -264,17 +310,20 @@ struct GameSessionTests {
 
     // MARK: - Refusals
 
-    @Test("A refused first move leaves no game the next launch resumes as played")
-    func aRefusedFirstMoveIsOneRefusedAction() throws {
-        let rules = RefusingRules(try TestCores.fresh(), refuses: true)
-        let game = try Game(rules: rules)
+    @Test("A refused first move leaves the created game exactly as it opened")
+    func aRefusedFirstMoveChangesNothing() throws {
+        let rules = RefusingRules(try TestCores.fresh())
+        let game = try openGame(on: rules)
 
+        rules.refuses = true
         game.tap(Square("b1")!)
         game.tap(Square("b4")!)
 
-        #expect(game.failure != nil, "creation and the first move refuse as one action")
+        #expect(game.failure != nil, "the ply was refused")
         #expect(game.moves.isEmpty, "the move did not happen")
         #expect(game.notation.isEmpty)
+        #expect(game.opponentFailure == nil,
+                "a refusal of the player's own move is the player's, and raises the capsule")
 
         rules.refuses = false
         game.tap(Square("b4")!)
@@ -282,10 +331,29 @@ struct GameSessionTests {
         #expect(game.moves == ["b1b4"])
     }
 
+    @Test("A refused AI reply raises no capsule, because the retry is the app's")
+    func aRefusedOpponentReplyIsKeptApart() throws {
+        let rules = RefusingRules(try TestCores.fresh())
+        try rules.create(.humanVersusAI(humanSide: .red, level: .fast, choice: .humanFirst))
+        let game = try Game(rules: rules)
+        game.tap(Square("b1")!)
+        game.tap(Square("b4")!)
+        #expect(game.searchExpected, "the premise: the AI owes a reply")
+
+        rules.refuses = true
+        game.playOpponent(Move(text: "a6a5")!)
+
+        #expect(game.opponentFailure != nil, "the refusal is recorded")
+        #expect(game.failure == nil,
+                "and kept off the player's own failure, which is what raises the capsule")
+        #expect(game.moves == ["b1b4"], "the reply did not happen")
+        #expect(game.searchExpected, "so the AI still owes a move from the unchanged position")
+    }
+
     @Test("A refused claim leaves the game running, claimable, and unfiled")
     func aRefusedClaimChangesNothing() throws {
         let rules = RefusingRules(try TestCores.fresh())
-        let game = try Game(rules: rules)
+        let game = try openGame(on: rules)
         try game.replay(GameTests.shuffleLine)
 
         rules.refuses = true
@@ -305,7 +373,7 @@ struct GameSessionTests {
     @Test("A refused filing leaves the finished game active to resume")
     func aRefusedFilingChangesNothing() throws {
         let rules = RefusingRules(try TestCores.fresh())
-        let game = try Game(rules: rules)
+        let game = try openGame(on: rules)
         try game.replay(GameTests.mateLine)
 
         rules.refuses = true

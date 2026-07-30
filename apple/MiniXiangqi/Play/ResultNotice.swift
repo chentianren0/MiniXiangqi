@@ -47,8 +47,10 @@ struct ResultNotice: View {
     var recorded: Bool
     /// Files the game and leaves the board standing at the recorded result.
     var save: () -> Void
-    /// Files the game and resets the board, in one press.
+    /// Files the game and opens its mode's pre-start page, in one press.
     var startNewGame: () -> Void
+    /// 完成: back to the Play start state, filing nothing a second time.
+    var finish: () -> Void
     var replay: () -> Void
     var close: () -> Void
 
@@ -78,7 +80,7 @@ struct ResultNotice: View {
                     Button("control.replay", action: replay)
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("result-replay")
-                    Button("control.done", action: startNewGame)
+                    Button("control.done", action: finish)
                         .buttonStyle(.glassProminent)
                         .keyboardShortcut(.defaultAction)
                         .accessibilityIdentifier("result-done")

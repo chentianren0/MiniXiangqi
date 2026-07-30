@@ -1,6 +1,58 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "alert.aiUnavailable.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is not enough memory available. Please close some other apps, then try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前可用内存不足。请尝试关闭一些其他 App，然后重试。"
+          }
+        }
+      }
+    },
+    "alert.aiUnavailable.resumeMessage": {
+      "comment": "The mid-game form: the same situation and the same title, plus the one guarantee the pre-start case has no need of.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is not enough memory available. The game is saved and you can continue later. Please close some other apps, then try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前可用内存不足。对局已保存，可以稍后继续。请尝试关闭一些其他 App，然后重试。"
+          }
+        }
+      }
+    },
+    "alert.aiUnavailable.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Start the AI Opponent"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法启动 AI 对手"
+          }
+        }
+      }
+    },
     "alert.claimDraw.message": {
       "comment": "See alert.claimDraw.title.",
       "extractionState": "manual",
@@ -103,6 +155,41 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除这盘棋？"
+          }
+        }
+      }
+    },
+    "alert.gameNotStarted.message": {
+      "comment": "A creation that could not be persisted. It cannot say 当前对局仍然保留, because there is no current game to keep.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving the new game failed. Please try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存这盘新对局时出错。请重试。"
+          }
+        }
+      }
+    },
+    "alert.gameNotStarted.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Start the Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法开始对局"
           }
         }
       }
@@ -309,6 +396,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取这个对局文件"
+          }
+        }
+      }
+    },
+    "alert.resign.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resigning records this game as your loss."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认输后本局将记为你落败。"
+          }
+        }
+      }
+    },
+    "alert.resign.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resign?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认输？"
           }
         }
       }
@@ -603,6 +724,24 @@
         }
       }
     },
+    "control.later": {
+      "comment": "The mid-game preparation failure's cancel action. Not 取消: nothing is being cancelled, and the game goes on.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后"
+          }
+        }
+      }
+    },
     "control.newGame": {
       "extractionState": "manual",
       "localizations": {
@@ -671,6 +810,23 @@
         }
       }
     },
+    "control.resign": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resign"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认输"
+          }
+        }
+      }
+    },
     "control.save": {
       "comment": "The result notice's default action: it files the finished game in History and leaves the board where the result left it.",
       "extractionState": "manual",
@@ -720,6 +876,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "共享"
+          }
+        }
+      }
+    },
+    "control.startGame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始对局"
           }
         }
       }
@@ -1602,6 +1775,74 @@
         }
       }
     },
+    "settings.defaults.aiLevel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default AI Level"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认 AI 等级"
+          }
+        }
+      }
+    },
+    "settings.defaults.firstMover": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default First Mover"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认先后手"
+          }
+        }
+      }
+    },
+    "settings.defaults.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These settings apply when you start a new Human versus AI game. They don't change a game in progress."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些设置用于开始新的人机对弈，不会改变进行中的对局。"
+          }
+        }
+      }
+    },
+    "settings.defaults.group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Human versus AI Defaults"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "人机对弈默认设置"
+          }
+        }
+      }
+    },
     "settings.haptics.label": {
       "extractionState": "manual",
       "localizations": {
@@ -1758,6 +1999,213 @@
         }
       }
     },
+    "setup.aiLevel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Level"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 等级"
+          }
+        }
+      }
+    },
+    "setup.aiMovesFirst": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Moves First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 先手"
+          }
+        }
+      }
+    },
+    "setup.firstMover": {
+      "comment": "The segmented control's own name. 本局设置 names the group and the three options name themselves; this is what a screen reader calls the control.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First Mover"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先后手"
+          }
+        }
+      }
+    },
+    "setup.freePlayExplanation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You control both Red and Black. Red moves first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你将控制红黑双方，红方先行。"
+          }
+        }
+      }
+    },
+    "setup.iMoveFirst": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I Move First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我先手"
+          }
+        }
+      }
+    },
+    "setup.level.deep": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deep"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深思"
+          }
+        }
+      }
+    },
+    "setup.level.fast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快速"
+          }
+        }
+      }
+    },
+    "setup.level.standard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标准"
+          }
+        }
+      }
+    },
+    "setup.random": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Random"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随机"
+          }
+        }
+      }
+    },
+    "setup.thisGame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Game"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本局设置"
+          }
+        }
+      }
+    },
+    "status.aiThinking": {
+      "comment": "The activity indicator's accessibility label. It is never drawn on screen — the indicator itself is the visible half.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI is thinking"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 正在思考"
+          }
+        }
+      }
+    },
+    "status.aiUnavailable": {
+      "comment": "The turn status's stalled AI activity slot, after the mid-game alert was answered with 稍后.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI can't start right now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 暂时无法启动"
+          }
+        }
+      }
+    },
     "status.blackToMove": {
       "extractionState": "manual",
       "localizations": {
@@ -1805,6 +2253,41 @@
           "stringUnit": {
             "state": "translated",
             "value": "将军"
+          }
+        }
+      }
+    },
+    "status.controller.ai": {
+      "comment": "Identical in both languages: AI is a name.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI"
+          }
+        }
+      }
+    },
+    "status.controller.you": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你"
           }
         }
       }

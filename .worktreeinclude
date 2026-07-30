@@ -4,3 +4,9 @@
 # any change under core/.
 apple/Generated/
 apple/MiniXiangqi/Resources/minixiangqi-variants.ini
+# The bundled network. Its bytes are never in the repository and never derived
+# from anything in it, so a worktree that did not seed it could build an app
+# whose AI cannot start. Verified against pinned-inputs.json when the build
+# script stages it; seeded here so a fresh worktree starts with a working
+# opponent rather than with a re-stage to remember.
+apple/MiniXiangqi/Resources/minixiangqiaxf-12c45d5da817.nnue

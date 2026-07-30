@@ -25,7 +25,7 @@ struct HistoryTests {
     private func file(_ lines: [[String]], into core: Core) throws -> Core {
         for line in lines {
             core.endSession()
-            let game = try Game(rules: core)
+            let game = try openGame(on: core)
             try game.replay(line)
             if game.evaluation.claimAvailable {
                 game.claimDraw()
@@ -65,7 +65,7 @@ struct HistoryTests {
 
         // A game still being played is the active game, which is not a History
         // record and must not appear.
-        let playing = try Game(rules: core)
+        let playing = try openGame(on: core)
         try playing.replay(["b1b4"])
 
         let library = library(over: core)
@@ -165,7 +165,7 @@ struct HistoryTests {
         let library = library(over: core)
         let filed = try #require(library.records.first)
 
-        let playing = try Game(rules: core)
+        let playing = try openGame(on: core)
         try playing.replay(["b1b4"])
         #expect(try core.activeGameExists())
 
@@ -257,7 +257,7 @@ struct ReplayTests {
         -> (replay: Replay, animator: ManualAnimator, heard: FeedbackRecorder,
             notation: [MoveReading], fens: [String]) {
         let core = try TestCores.fresh()
-        let played = try Game(rules: core)
+        let played = try openGame(on: core)
         try played.replay(line)
         let notation = played.notation
         // The positions the game itself stood in, ply by ply, captured while it

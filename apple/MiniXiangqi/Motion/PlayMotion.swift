@@ -59,8 +59,11 @@ final class PlayMotion {
     /// be noise.
     private(set) var isFlipping = false
 
-    /// What the board is drawing for the running committing transition.
+    /// What the board is drawing for the running committing transition, and
+    /// the second disc of a paired one — the two plies of a decision cycle
+    /// rewinding together.
     var transit: Transit? { transits.transit }
+    var transitCompanion: Transit? { transits.companion }
     /// The fading disc's progress, 0 to 1 — scheduled against the mover's
     /// arrival for a capture, from its departure for an Undo.
     var transitFade: Double { transits.fade }
@@ -82,6 +85,19 @@ final class PlayMotion {
     /// Undo is unavailable while any committing transition runs, including the
     /// Undo it would interrupt. The cluster and notice buttons reflect this.
     var canUndo: Bool { game.canUndo && !isCommitting }
+
+    /// A committing transition has landed and the gate is open again. The
+    /// opponent listens: its reply floor is measured from the player's arrival,
+    /// because the AI must not leave before the player's move has finished
+    /// being shown. Which landing this was is a question about the game, and
+    /// the listener asks the game rather than being told here.
+    var landed: (() -> Void)?
+
+    /// A committing change has been made to the game and committed by the core,
+    /// whatever is still being drawn over it. The opponent listens here rather
+    /// than at the landing: its search starts at the commit, so the machine is
+    /// already thinking while the player's own piece is still sliding.
+    var committed: (() -> Void)?
 
     init(game: Game,
          policy: MotionPolicy = MotionPolicy(reduceMotion: false),
@@ -138,25 +154,72 @@ final class PlayMotion {
         } completion: { }
     }
 
+    /// Takes back one decision, which in human-versus-AI play is a whole
+    /// exchange rather than half of one. How many plies that is, is the core's
+    /// answer — `undo_plies`, 1 or 2 — and it is consumed rather than derived.
+    ///
+    /// A cycle rewinds in one gesture: both discs travel back together, and
+    /// whatever either of them took reappears as they go. One action, one
+    /// travel, one arrival — which is also what keeps a cycle inside the
+    /// accepted 600 ms with room to spare, since a single ply's travel is
+    /// bounded by 240.
     func undo() {
-        guard canUndo, let text = game.moves.last, let played = Move(text: text),
-              let mover = game.placement[played.to] else { return }
-        let travel = Motion.travel(distance: Motion.distance(of: played))
+        guard canUndo else { return }
+        let plies = max(game.evaluation.undoPlies, 1)
+        let played = game.moves.suffix(plies).compactMap { Move(text: $0) }
+        guard played.count == plies, let last = played.last,
+              let mover = game.placement[last.to] else { return }
+
+        // The cycle's first ply, and the piece that made it. Both are read off
+        // the position *between* the two moves, which is the core's answer
+        // rather than a placement worked out here.
+        let between = plies == 2 ? game.placement(atPly: game.moves.count - 1) : nil
+        let first = plies == 2 ? played.first : nil
+        let firstMover = first.flatMap { between?[$0.to] }
+
+        // Two discs travelling at once share one duration, taken from the
+        // longer of the two journeys so neither is hurried.
+        let distance = max(Motion.distance(of: last),
+                           first.map(Motion.distance(of:)) ?? 0)
+        let travel = Motion.travel(distance: distance)
+
         begin(.undo)
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
             game.undo()
             // An Undo the core refused did not happen: nothing to draw,
             // nothing to hold the gate for.
             guard game.failure == nil else { return nil }
+            committed?()
+            // What the reply took is read off the position it was played into.
+            // Where the reply took the very piece that invited it, the two
+            // reversals share a square, and it belongs to the one carrying
+            // that piece home rather than to both.
+            let restored = plies == 2
+                ? (first?.to == last.to ? nil : between?[last.to])
+                : game.placement[last.to]
             return Transit(kind: .undo,
-                           move: Move(from: played.to, to: played.from),
+                           move: Move(from: last.to, to: last.from),
                            piece: mover,
-                           fading: game.placement[played.to].map { ($0, played.to) })
+                           fading: restored.map { ($0, last.to) })
         }
-        // The restored piece returns as the mover departs — the capture read
+        if let first, let firstMover {
+            transits.pair(with: Transit(kind: .undo,
+                                        move: Move(from: first.to, to: first.from),
+                                        piece: firstMover,
+                                        fading: game.placement[first.to].map { ($0, first.to) }))
+        }
+        // The restored pieces return as the movers depart — the capture read
         // backwards — inside the travel, so one ply stays within its 250 ms.
         guard !policy.reduceMotion else { return }
         transits.raiseFade(Motion.restoreFadeAnimation)
+    }
+
+    /// The opponent's reply, drawn in the same move language a person's move
+    /// is drawn in and leaving the same last-move brackets behind. The floor
+    /// that decides *when* it departs is the opponent's, not this file's: by
+    /// the time this is called the move is due.
+    func playOpponent(_ move: Move) {
+        commit(move) { [self] in game.playOpponent(move) }
     }
 
     /// The player takes the draw the core is offering. It is the one result
@@ -170,6 +233,19 @@ final class PlayMotion {
             game.claimDraw()
         } completion: { }
         guard game.claimedDraw else { return }
+        feedback.play(.conclusion)
+    }
+
+    /// The player concedes. The other result that arrives with nothing moving,
+    /// and it sounds the same way for the same reason: the conclusion is heard
+    /// at the commit, which is the moment the game ends. Whether resignation is
+    /// on offer is the game's to say, and it says so by whether it took it.
+    func resign() {
+        guard !game.resigned else { return }
+        animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
+            game.resign()
+        } completion: { }
+        guard game.resigned else { return }
         feedback.play(.conclusion)
     }
 
@@ -232,6 +308,14 @@ final class PlayMotion {
     }
 
     private func commit(_ move: Move) {
+        commit(move) { [self] in game.tap(move.to) }
+    }
+
+    /// One move travelling to its point, whoever is making it. What differs
+    /// between a person's move and the opponent's is only how it is committed;
+    /// everything drawn is the same, which is what the accepted motion language
+    /// asks for.
+    private func commit(_ move: Move, apply: () -> Void) {
         guard let piece = game.placement[move.from] else { return }
         let captured = game.placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move))
@@ -240,9 +324,11 @@ final class PlayMotion {
         // drawn for a capture in full motion, and the gate waits for exactly
         // the wires this line schedules.
         transits.run(policy.movement(Motion.travelAnimation(travel)),
-                     drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
-            game.tap(move.to)
-            guard game.lastMove == move, game.failure == nil else { return nil }
+                     drawingRemoval: captured != nil && !policy.reduceMotion) {
+            apply()
+            guard game.lastMove == move, game.failure == nil,
+                  game.opponentFailure == nil else { return nil }
+            committed?()
             return Transit(kind: .move, move: move, piece: piece,
                            fading: captured.map { ($0, move.to) })
         }
@@ -283,6 +369,7 @@ final class PlayMotion {
     /// the position finishes arriving at the landing.
     private func land() {
         pulseCheckIfNeeded()
+        landed?()
         if flipDeferred {
             flipDeferred = false
             flip()

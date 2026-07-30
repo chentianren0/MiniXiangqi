@@ -53,6 +53,13 @@ final class TransitMotion {
     /// What the board is drawing for the running transition.
     private(set) var transit: Transit?
 
+    /// A second disc travelling in the same transition. One transition means
+    /// one travel and one arrival, so a pair is drawn together rather than one
+    /// after the other: taking back a decision cycle is one action, and the
+    /// exchange rewinds in one gesture. Nothing else pairs, and replay never
+    /// does.
+    private(set) var companion: Transit?
+
     /// The fading disc's progress, 0 to 1 — scheduled against the mover's
     /// arrival for a capture, from its departure for a restoration.
     private(set) var fade: Double = 0
@@ -129,8 +136,13 @@ final class TransitMotion {
     /// at the departure: a removal's tail holds the transition open past the
     /// arrival it answers, while a restoration finishes inside the travel and
     /// nothing waits for it. Does nothing where there is no disc to fade.
+    func pair(with second: Transit) {
+        guard isRunning, transit != nil else { return }
+        companion = second
+    }
+
     func raiseFade(_ animation: Animation) {
-        guard isRunning, transit?.fading != nil else { return }
+        guard isRunning, transit?.fading != nil || companion?.fading != nil else { return }
         let token = generation
         animator.run(animation) { [self] in
             fade = 1
@@ -190,6 +202,7 @@ final class TransitMotion {
         isRunning = false
         drawsRemoval = false
         transit = nil
+        companion = nil
         fade = 0
     }
 }

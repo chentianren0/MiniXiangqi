@@ -207,7 +207,8 @@ The board is the primary content during play. Its interaction design must cover:
 
 ### Starting and configuring a game
 
-- With no active game, selecting **Human versus AI** or **Free Play** opens that mode's pre-start state on the board page.
+- With no active game, the Play destination is a **start state**: the noninteractive initial-board preview and the two mode entries, **人机对弈** and **自由对弈**. Selecting either opens that mode's pre-start state on the board page.
+- A game is created by **开始对局** and by nothing else. Neither mode's first move creates one, and an untouched board persists nothing.
 - With any active game, selecting either new mode immediately presents the one save-and-continue confirmation described below. This includes an ongoing game, a claimable but unclaimed neutral repetition, and an unconfirmed natural terminal result.
 - Cancelling leaves the active game unchanged and does not enter the selected mode.
 - **保存并继续** first archives the active game according to its factual current state, then opens the selected mode's pre-start state. It does not create the new game.
@@ -223,6 +224,7 @@ The human-versus-AI pre-start state is not an active game:
 - **开始对局** creates no active game unless the required AI resources are available and the game can be persisted successfully. A Random first-mover choice is resolved only as part of successful game creation; if the resolved first mover is AI, search then begins.
 - While creation is in progress, **开始对局** cannot be invoked again. Leaving invalidates the attempt, creates no game, and prevents a late completion from committing after the draft is discarded.
 - Failed AI availability or active-game persistence keeps the page and draft available for retry, shows the applicable error, and re-enables **开始对局**. Leaving still discards the draft.
+- There are exactly two applicable errors, and they are different messages under different titles. Insufficient memory — including an allocation that failed at a sufficient budget — is the accepted **无法启动 AI 对手** notice below. A creation the store would not persist is **无法开始对局** / **保存这盘新对局时出错。请重试。**, with **取消** and **重试**; it cannot borrow the **无法保存对局** wording, whose message promises that the current game is unchanged, because there is no current game to keep.
 
 The Free Play pre-start state is also not an active game:
 
@@ -234,6 +236,8 @@ The Free Play pre-start state is also not an active game:
 - A creation failure retains the pre-start page, presents an error, and re-enables **开始对局**. It creates no new Free Play game or further persistent change; an older game already archived through **保存并继续** remains in History.
 
 Settings has a **人机对弈默认设置** group with **默认先后手** and **默认 AI 等级**. Its footer explains that these values initialize future human-versus-AI setup and do not change an active game. A new installation selects **我先手** and **标准**.
+
+**Where the concluding actions go.** A finished game's **开始新对局** — on the play-control cluster and, as **保存并开始新对局**, on the result notice — files the game and opens **that game's own mode's pre-start state**. It does not deal the next game: with an opponent to choose, the side and the level are chosen for each game rather than inherited from the last one, and a pre-start page is not a confirmation standing between the press and the new game. **完成**, on the recorded notice, returns to the Play start state, where the mode itself is chosen again.
 
 ### Board orientation
 
@@ -311,7 +315,9 @@ Confirming records a human loss and moves the game to immutable History. Cancell
 A persistent status element near the board is one coherent description of the current play state:
 
 - Its primary line always identifies the side to move, using the localized equivalent of **轮到红方** or **轮到黑方**.
-- In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line.
+- In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line. The controller label belongs to a turn and stops when the turn does: a finished game is nobody's to move, and the secondary line then carries the result's reason instead.
+- **The AI activity slot is a small system activity indicator beside the AI controller label.** It appears only once a search has run long enough to be worth showing — an indicator that arrives and leaves inside a third of a second reads as a flicker rather than as thinking — it never replaces the side-to-move line, it carries no material at all, and it is gone when the reply lands. *(Issue #71 decision, 2026-07-30.)*
+- The same slot carries the stalled state when the engine could not be prepared mid-game and the player answered **稍后**: **AI 暂时无法启动** with **重试** beside it. See [Insufficient memory for AI play](#insufficient-memory-for-ai-play).
 - Free Play omits a human/AI controller label because the same person controls both sides.
 - While the side to move is in check, a **将军** token accompanies the side-to-move line for as long as that remains true. Replay has no side-to-move line and therefore no token; there the board's own check treatment carries it, which is sound because replay never holds a piece.
 - The element carries the two transient board-state messages that are not facts about the position: the save-failure capsule, and the acknowledgment beat that answers input the game cannot accept. Both are defined under [Game-state markers](#game-state-markers). In Free Play the element's **可判和** line is half of the standing draw-claim offer, alongside the enabled **判和** control; how the pair fits the stacked layout remains open below.
@@ -334,7 +340,9 @@ Turn ownership, activity, and input availability must not be communicated by col
 - Any active game being resumed remains saved and unchanged while the AI opponent is unavailable.
 - The notice may suggest closing other apps, but it does not promise that the operating system will terminate them or that a retry will succeed.
 
-The notice's exact presentation, repeated-failure behavior, and accessibility announcement remain to be designed.
+**Mid-game, the same situation keeps its name and gains a guarantee.** When the app returns from suspension owing a search and preparation fails, the alert keeps the title **无法启动 AI 对手** — the situation is the same one, memory is not available right now, and a second title would name a distinction the reader cannot act on — but its message adds the one thing the pre-start case has no need of: **当前可用内存不足。对局已保存，可以稍后继续。请尝试关闭一些其他 App，然后重试。** Its actions are **稍后** and **重试**, not **取消** and **重试**, because there is nothing to cancel. After **稍后** the stalled state lives where things about the game live — the turn status's AI activity slot, with an inline **重试** — and every retry re-probes fresh. Undo remains available throughout and is itself a way out: removing the human's last move returns the game to their decision point, where no search is owed and the stalled state has nothing left to be about. *(Issue #71 decision, 2026-07-30.)*
+
+The notice's repeated-failure behavior beyond "every retry re-probes" and its accessibility announcement remain to be designed.
 
 ### Saving the active game before choosing a new mode
 
@@ -371,7 +379,8 @@ The requested destination remains temporary only while this confirmation or retr
 
 - Free Play removes one move per Undo action and can repeat back to the initial position.
 - In human-versus-AI play, Undo while the AI is thinking cancels the search and removes the human move that triggered it.
-- After the AI has replied, one Undo action removes the AI reply and the preceding human move, returning to the previous human decision point. The action can be repeated by complete decision cycles.
+- After the AI has replied, one Undo action removes the AI reply and the preceding human move, returning to the previous human decision point. The action can be repeated by complete decision cycles. How many plies a decision is, is the core's answer and never a count taken above it.
+- **A decision cycle rewinds as one gesture**: both discs travel back together in a single transition, and whatever either of them took reappears as they go. It is one action, so it is one travel and one arrival; drawn as two reversals in sequence it would be two, and the second would have to be stopped from being read as a separate Undo. Where the reply took the very piece that invited it, the two reversals share a square, and the restored piece belongs to the one carrying that piece home rather than to both.
 - If a human move itself reaches a natural terminal state, Undo removes that human move while the result presentation remains unconfirmed.
 - If the AI moved first, its opening move alone cannot be undone.
 - Redo is not available. A new move after Undo permanently replaces the discarded continuation.
@@ -402,6 +411,8 @@ The requested destination remains temporary only while this confirmation or retr
 - The claim is the player's to invoke. **判和** presents the blocking notice, which says **局面已三次重复，可以和棋结束。** and offers **继续对局** and **以和棋结束**.
 - **以和棋结束** confirms an immutable draw record in History. Until History exists it presents the claimed draw through the result notice instead, without **悔棋**: the claim is the player's own confirmed act, and it is the one finish that cannot be walked back.
 - After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice. In Free Play the standing offer is the enabled **判和** control together with the turn status's **可判和** line, and nothing blocks the board.
+- **The notice never presents itself unbidden, in either mode.** It is the confirmation of the player's own act — **判和** — and a confirmation that presents itself inverts the accepted announcement/confirmation grammar under [Platform visual language](#platform-visual-language): announcements self-present and are dismissible; confirmations follow an act and block until answered. So human-versus-AI play uses exactly what Free Play already accepted — the enabled **判和** control and the turn status's **可判和** line — even though there the repetition can arrive on a move the player did not choose. One vocabulary across both modes, and the claim stays the player's to invoke. *(Issue #71 decision, 2026-07-30.)*
+- Claiming while the AI is thinking is legal exactly when the core reports the claim available. Where it is, the search is cancelled before the terminal commit: a search outstanding over a game that has just ended answers to nothing.
 
 ### History replay
 
@@ -615,13 +626,11 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Fix the minimum window size for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
 - Fix what size a macOS window opens at when there is nothing to restore. The minimum is settled and the opening size is not: today a window whose content is flexible in both directions opens at the whole visible area of whatever display it lands on, and the scene's declared default size does not change that on the current toolchain.
 - Resolve how the result notice, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the board behind the notice has to stay worth looking at and the chrome has its own floor.
-- Decide whether the claimable-draw notice also presents itself the first time a claim becomes available in human-versus-AI play, where the repetition can arrive on a move the player did not choose. Free Play settles it without one: the player made every move, and the **判和** control and the **可判和** line are already on screen.
 - Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, its own board surface, and its marker ink at both accepted strengths — within the constraints the accepted styles and board metrics impose.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
-- Define the turn status's exact AI activity treatment, the 将军 token's form, remaining transient announcements, and VoiceOver behavior, and its placement within the side-by-side panel.
-- Define the insufficient-memory notice presentation, repeated-failure behavior, and accessibility announcement.
-- Define what a player sees when the engine cannot be re-prepared mid-game, after the app was suspended and the AI is due to move. The accepted **无法启动 AI 对手** notice assumes a game that has not started, so neither its wording nor its **取消** action fits; the game itself remains active, saved, and resumable throughout.
+- Define the 将军 token's form, the remaining transient announcements, the turn status's VoiceOver behavior, and its placement within the side-by-side panel. The AI activity treatment is settled above.
+- Define the insufficient-memory notice's repeated-failure behavior beyond a fresh probe per retry, and its accessibility announcement. Its presentation, in both the pre-start and the mid-game case, is settled above.
 - Define help entry points, content organization, and illustrations within the accepted read-only rules-reference scope.
 - Confirm the accepted motion timings and the compose-beat floor on physical iPhone, iPad, and Mac hardware, and refine easing and feedback strength there. A change to an accepted duration is a contract change rather than a tuning pass.
 - Confirm the numeral-strip measurements on iOS and iPadOS, which were taken on macOS, and define the exact accessibility text size at which the strips are hidden.
@@ -629,4 +638,4 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 - Define the haptic events outside board play. Board play's haptic set is defined under [Sound and haptics](#sound-and-haptics), and each half now follows its own accepted preference wherever it would fire. Where and how the two toggles are presented is settled there too, macOS's answer to the hardware question included.
 - Define accessibility acceptance criteria and the board’s VoiceOver interaction model.
 - Define the Windows navigation presentation, Fluent material usage, accessibility equivalents (Narrator, high contrast), and touch behavior when Windows implementation begins.
-- Define the loading and AI-thinking states. History's empty state, its unreadable-library state, and its destructive-action confirmation are settled above; History's own loading state is deliberately nothing, because a local paged read of a library that cannot exceed a few thousand rows does not reach the threshold at which an indicator helps.
+- Define the loading states. The AI-thinking state is settled under [Turn status](#turn-status). History's empty state, its unreadable-library state, and its destructive-action confirmation are settled above; History's own loading state is deliberately nothing, because a local paged read of a library that cannot exceed a few thousand rows does not reach the threshold at which an indicator helps.

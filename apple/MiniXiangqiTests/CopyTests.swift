@@ -39,6 +39,10 @@ struct CopyTests {
         let keys = [
             "alert.claimDraw.title", "alert.claimDraw.message",
             "alert.saveFailed.title", "alert.saveFailed.message",
+            "alert.aiUnavailable.title", "alert.aiUnavailable.message",
+            "alert.aiUnavailable.resumeMessage",
+            "alert.gameNotStarted.title", "alert.gameNotStarted.message",
+            "alert.resign.title", "alert.resign.message",
             "alert.deleteGame.title", "alert.deleteGame.message",
             "alert.deleteFailed.title", "alert.deleteFailed.message",
             "alert.importDuplicate.title", "alert.importDuplicate.message",
@@ -53,7 +57,8 @@ struct CopyTests {
             "control.undo", "control.claimDraw", "control.flipBoard",
             "control.newGame", "control.save", "control.saveAndNewGame",
             "control.keepPlaying", "control.endAsDraw",
-            "control.cancel", "control.tryAgain", "control.ok", "control.view",
+            "control.cancel", "control.tryAgain", "control.later",
+            "control.ok", "control.view", "control.resign", "control.startGame",
             "control.delete", "control.pin", "control.unpin",
             "control.share", "control.import", "control.replay", "control.done",
             "failure.coreDidNotStart", "failure.gameDidNotStart",
@@ -70,6 +75,12 @@ struct CopyTests {
             "settings.notation.wxf",
             "settings.sound.label", "settings.haptics.label",
             "settings.confirmDelete.label", "settings.confirmDelete.footer",
+            "settings.defaults.group", "settings.defaults.firstMover",
+            "settings.defaults.aiLevel", "settings.defaults.footer",
+            "setup.thisGame", "setup.firstMover", "setup.iMoveFirst",
+            "setup.aiMovesFirst", "setup.random", "setup.aiLevel",
+            "setup.level.fast", "setup.level.standard", "setup.level.deep",
+            "setup.freePlayExplanation",
             "replay.progress", "replay.first", "replay.previous",
             "replay.next", "replay.last", "replay.autoplay", "replay.pause",
             "piece.general", "piece.chariot", "piece.horse", "piece.cannon", "piece.soldier",
@@ -83,6 +94,8 @@ struct CopyTests {
             "status.sideToMove.checked", "status.drawAvailable",
             "status.redWins", "status.blackWins", "status.draw",
             "status.saveFailed",
+            "status.controller.you", "status.controller.ai",
+            "status.aiThinking", "status.aiUnavailable",
         ]
         for language in ["en", "zh-Hans"] {
             for key in keys {

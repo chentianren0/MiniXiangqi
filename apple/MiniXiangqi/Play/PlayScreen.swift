@@ -16,8 +16,12 @@
 // controls that a running transition makes unavailable say so.
 //
 // The game on screen is the stored active game: launch resumes it exactly
-// where it stood, and 开始新对局 files a finished one in History before the
-// board resets — quitting the app stopped being the end of the game.
+// where it stood, and the concluding action files a finished one in History
+// before the destination returns to its pre-start state.
+//
+// The destination has three states now that there is an opponent to choose:
+// the mode entries, one mode's pre-start page, and a game. The first two are
+// SetupScreen's; everything below is the third.
 
 import SwiftUI
 
@@ -34,6 +38,7 @@ struct PlayScreen: View {
     var replay: (UInt64) -> Void
 
     @State private var claimPresented = false
+    @State private var resignPresented = false
 
     /// Whether the save-failure capsule is up. Raised when a ply's commit is
     /// refused, and transient: it answers the touch and withdraws by itself.
@@ -41,12 +46,12 @@ struct PlayScreen: View {
     /// say to a screen that is not on show.
     @State private var saveFailureShown = false
 
-    /// The terminal commit the store refused — the draw claim, the notice's
-    /// 保存, or the filing that 开始新对局 owes — held while the accepted
-    /// 无法保存对局 retry is on screen, so Try Again repeats exactly the act
-    /// that failed rather than the nearest one to it. The game stays active and
-    /// unchanged underneath any of them.
-    private enum FailedFiling { case claim, save, file }
+    /// The terminal commit the store refused — the draw claim, 认输, the
+    /// notice's 保存, or the filing that the concluding action owes — held
+    /// while the accepted 无法保存对局 retry is on screen, so Try Again repeats
+    /// exactly the act that failed rather than the nearest one to it. The game
+    /// stays active and unchanged underneath any of them.
+    private enum FailedFiling { case claim, resign, save, file, finish }
     @State private var failedFiling: FailedFiling?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,16 +60,25 @@ struct PlayScreen: View {
 
     var body: some View {
         Group {
-            if let game = play.game, let motion = play.motion {
-                layout(game, motion)
-            } else if let startFailure = play.startFailure {
+            if let startFailure = play.startFailure {
                 // The description under the title is the core's own diagnostic
                 // text: not copy, and not localized.
                 ContentUnavailableView("failure.gameDidNotStart",
                                        systemImage: "exclamationmark.triangle",
                                        description: Text(verbatim: startFailure.description).monospaced())
             } else {
-                ProgressView()
+                switch play.phase {
+                case .start:
+                    SetupScreen(play: play, mode: nil)
+                case .setup(let mode):
+                    SetupScreen(play: play, mode: mode)
+                case .playing:
+                    if let game = play.game, let motion = play.motion {
+                        layout(game, motion)
+                    } else {
+                        ProgressView()
+                    }
+                }
             }
         }
         .environment(\.motionPolicy, policy)
@@ -81,15 +95,29 @@ struct PlayScreen: View {
         .task {
             play.startIfNeeded(policy: policy)
         }
+        // Leaving the destination discards the pre-start draft and invalidates
+        // an attempt in flight. The container tears this screen down on every
+        // switch away, which is exactly the event the contract means by leaving
+        // the page.
+        .onDisappear {
+            play.leavePage()
+        }
         .onChange(of: reduceMotion) {
             play.adopt(policy)
         }
     }
 
-    /// 开始新对局 on a finished board. The filing is the state's; what is
-    /// decided here is only what a refusal looks like on screen.
+    /// The concluding action on a finished board: the filing, then the
+    /// finished game's own mode's pre-start page. The filing is the state's;
+    /// what is decided here is only what a refusal looks like on screen.
     private func startNewGame() {
-        if !play.startNewGame(policy: policy) { failedFiling = .file }
+        if !play.startNewGame() { failedFiling = .file }
+    }
+
+    /// 完成 on the recorded notice: back to the start state, filing nothing a
+    /// second time.
+    private func finish() {
+        if !play.finish() { failedFiling = .finish }
     }
 
     /// 保存 on a finished board: the same terminal commit, without the reset.
@@ -133,6 +161,7 @@ struct PlayScreen: View {
                               lastMove: game.lastMove,
                               checkedGeneral: game.checkedGeneral,
                               transit: motion.transit,
+                              companion: motion.transitCompanion,
                               transitFade: motion.transitFade,
                               checkEmphasis: motion.checkEmphasis,
                               markerEmphasis: motion.markerEmphasis,
@@ -147,7 +176,7 @@ struct PlayScreen: View {
                     // an announcement stands in front of it.
                     if game.isFinished, !play.resultDismissed, !motion.isCommitting {
                         ResultNotice(state: game.presentedState,
-                                     reason: game.evaluation.reason,
+                                     reason: game.presentedReason,
                                      // A filed game is a History record, and
                                      // the notice reads as one: the claimed
                                      // draw, whose claim was the commit, and
@@ -158,6 +187,7 @@ struct PlayScreen: View {
                                      recorded: game.filedRecordID != nil,
                                      save: { save() },
                                      startNewGame: { startNewGame() },
+                                     finish: { finish() },
                                      replay: { if let record = game.filedRecordID { replay(record) } },
                                      close: { withAnimation(policy.fade(Motion.stateFadeAnimation)) { play.resultDismissed = true } })
                             .transition(.opacity)
@@ -178,15 +208,18 @@ struct PlayScreen: View {
         }
         // The capsule follows the recorded failure: raised when a ply's save
         // is refused, cleared the moment a new attempt starts. Its withdrawal
-        // by timer is its own, below.
+        // by timer is its own, below. Only the player's own ply raises it: a
+        // refused AI reply shows nothing at all, because the retry is the
+        // app's rather than the user's, which is why the game keeps the two
+        // refusals apart.
         .onChange(of: game.failure) { _, failure in
             withAnimation(policy.fade(Motion.stateFadeAnimation)) {
                 saveFailureShown = failure != nil
             }
         }
         // The blocking retry the contract gives a refused terminal commit —
-        // one presentation for both, because it is one promise: the current
-        // game is unchanged.
+        // one presentation for all of them, because it is one promise: the
+        // current game is unchanged.
         .alert("alert.saveFailed.title",
                isPresented: Binding(get: { failedFiling != nil },
                                     set: { if !$0 { failedFiling = nil } })) {
@@ -195,22 +228,61 @@ struct PlayScreen: View {
         } message: {
             Text("alert.saveFailed.message")
         }
+        // Issue #71's decision 2: the mid-game preparation failure keeps the
+        // situation's name — memory is not available right now — and adds the
+        // one guarantee the pre-start case has no need of. 稍后 leaves the
+        // stalled state in the turn status's own activity slot, with the retry
+        // beside it; every retry re-probes fresh.
+        .alert("alert.aiUnavailable.title",
+               isPresented: Binding(get: { play.opponent?.preparationFailure != nil },
+                                    set: { if !$0 { play.opponent?.deferPreparation() } })) {
+            Button("control.later", role: .cancel) { play.opponent?.deferPreparation() }
+            Button("control.tryAgain") { play.opponent?.retryPreparation() }
+        } message: {
+            Text("alert.aiUnavailable.resumeMessage")
+        }
     }
 
     private func retryFiling(_ game: Game, _ motion: PlayMotion) {
         switch failedFiling {
         case .claim: claimDraw(game, motion)
+        case .resign: resign(game, motion)
         case .save: save()
         case .file: startNewGame()
+        case .finish: finish()
         case nil: break
         }
     }
 
     /// The player confirmed the claim; committing it is the core's. A commit
     /// the store refused changed nothing, and says so through the retry.
+    ///
+    /// The claim is legal exactly when the core says it is, whatever the
+    /// machine happens to be doing: if the state allows it, the search is
+    /// cancelled before the terminal commit, because a search outstanding over
+    /// a game that has just ended answers to nothing.
     private func claimDraw(_ game: Game, _ motion: PlayMotion) {
+        play.opponent?.cancelSearch()
         motion.claimDraw()
         if game.filingFailure != nil { failedFiling = .claim }
+    }
+
+    /// 认输, confirmed. The terminal commit that records the loss against the
+    /// player's own side, with the search stopped first for the same reason the
+    /// claim stops it.
+    private func resign(_ game: Game, _ motion: PlayMotion) {
+        play.opponent?.cancelSearch()
+        motion.resign()
+        if game.filingFailure != nil { failedFiling = .resign }
+    }
+
+    /// 悔棋. In human-versus-AI play an Undo while the machine is thinking
+    /// cancels the search and removes the human move that triggered it, and
+    /// after a reply it removes the whole exchange — how many plies that is, is
+    /// the core's answer, consumed rather than counted here.
+    private func undo(_ motion: PlayMotion) {
+        play.opponent?.cancelSearch()
+        motion.undo()
     }
 
     /// Every board tap answers through the gate first: input during a
@@ -239,9 +311,12 @@ struct PlayScreen: View {
     private func panel(_ game: Game, _ motion: PlayMotion) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             TurnStatus(state: game.presentedState,
-                       reason: game.evaluation.reason,
+                       reason: game.presentedReason,
                        sideToMove: game.evaluation.sideToMove,
                        inCheck: game.evaluation.inCheck,
+                       controller: controller(of: game),
+                       activity: play.opponent?.activity ?? .idle,
+                       retry: { play.opponent?.retryPreparation() },
                        beatEmphasis: motion.beatEmphasis)
                 .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
@@ -277,8 +352,11 @@ struct PlayScreen: View {
             .padding(BoardLayout.panelInset)
             // The blocking notice the contract gives the claim, presented when
             // the player invokes it rather than the moment it becomes
-            // available: in Free Play the enabled control and the status line's
-            // 可判和 already stand for the offer.
+            // available. Issue #71's decision 1 settles that this holds in
+            // human-versus-AI play too: a confirmation that presents itself
+            // inverts the accepted announcement/confirmation grammar, so the
+            // standing offer stays the enabled 判和 control and the status
+            // line's 可判和 — one vocabulary across both modes.
             //
             // The accepted sentence is one sentence and stays one, but it is
             // said in the two roles an alert has: what has happened is the
@@ -295,6 +373,15 @@ struct PlayScreen: View {
             } message: {
                 Text("alert.claimDraw.message")
             }
+            // 认输 ends the game against the player and cannot be undone, so it
+            // is confirmed — a system alert, blocking until it is answered,
+            // because the act itself does not happen until they answer.
+            .alert("alert.resign.title", isPresented: $resignPresented) {
+                Button("control.cancel", role: .cancel) { }
+                Button("control.resign", role: .destructive) { resign(game, motion) }
+            } message: {
+                Text("alert.resign.message")
+            }
         }
         .frame(maxHeight: .infinity)
         // The material runs to the window's top edge, behind the title bar, so
@@ -310,6 +397,13 @@ struct PlayScreen: View {
         // cancels the selection. Its controls keep their own taps.
         .contentShape(Rectangle())
         .onTapGesture { motion.cancelSelection() }
+    }
+
+    /// Who owns the turn. Free Play has no answer and shows none: the same
+    /// person controls both sides.
+    private func controller(of game: Game) -> TurnStatus.Controller? {
+        guard let humanSide = game.humanSide else { return nil }
+        return game.evaluation.sideToMove == humanSide ? .you : .ai
     }
 
     /// The transient save-failure capsule: the accepted words, a warning
@@ -345,10 +439,14 @@ struct PlayScreen: View {
 
     /// The play control cluster: the one custom glass surface on screen during
     /// ordinary play. It carries no tint during play, because saturated colour
-    /// on the play screen means which side a piece belongs to. Free Play's
-    /// three, in the accepted order — it cannot resign, having no opponent to
-    /// resign to, and it is the mode the accepted orientation behaviour gives a
-    /// flip control.
+    /// on the play screen means which side a piece belongs to.
+    ///
+    /// The accepted compositions, by mode. Human versus AI is 悔棋, 判和, 认输,
+    /// and there is no board-flip control here: the orientation behaviour
+    /// already puts the human's own side at the bottom, and moving one's own
+    /// side to the top is disorienting rather than useful when the player
+    /// controls one side. Free Play is 悔棋, 判和, 翻转棋盘 — it cannot resign,
+    /// having no opponent to resign to.
     ///
     /// A finished game has nothing to judge a draw in, so that slot carries the
     /// concluding action instead — the one obvious next action, and therefore
@@ -362,7 +460,7 @@ struct PlayScreen: View {
             // Unavailable until a running transition completes — its own
             // Undo's included, which is what makes a second Undo wait its
             // turn rather than queue.
-            Button("control.undo") { motion.undo() }
+            Button("control.undo") { undo(motion) }
                 .buttonStyle(.glass)
                 .disabled(!motion.canUndo)
                 .accessibilityIdentifier("cluster-undo")
@@ -380,19 +478,26 @@ struct PlayScreen: View {
                     .accessibilityIdentifier("cluster-claim")
             }
 
-            Button {
-                motion.flip()
-            } label: {
-                if compactFlip {
-                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-                        .labelStyle(.iconOnly)
-                } else {
-                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+            if game.isHumanVersusAI {
+                Button("control.resign") { resignPresented = true }
+                    .buttonStyle(.glass)
+                    .disabled(!game.canResign)
+                    .accessibilityIdentifier("cluster-resign")
+            } else {
+                Button {
+                    motion.flip()
+                } label: {
+                    if compactFlip {
+                        Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                            .labelStyle(.iconOnly)
+                    } else {
+                        Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                    }
                 }
+                .buttonStyle(.glass)
+                .accessibilityLabel(Text("control.flipBoard"))
+                .accessibilityIdentifier("cluster-flip")
             }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("control.flipBoard"))
-            .accessibilityIdentifier("cluster-flip")
 
             Spacer(minLength: 0)
         }

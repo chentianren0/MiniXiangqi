@@ -33,7 +33,7 @@ struct InterchangeTests {
     @discardableResult
     private func file(_ line: [String], into core: Core) throws -> UInt64 {
         core.endSession()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(line)
         if game.evaluation.claimAvailable {
             game.claimDraw()
@@ -91,7 +91,7 @@ struct InterchangeTests {
     @Test("The active game is not a History record, and is not exportable")
     func theActiveGameCannotBeExported() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        let game = try openGame(on: core)
         try game.replay(["b1b3"])
 
         #expect(throws: CoreError.self) {
@@ -191,7 +191,7 @@ struct InterchangeTests {
         let exported = try source.history.export(record)
 
         let core = try TestCores.fresh()
-        let playing = try Game(rules: core)
+        let playing = try openGame(on: core)
         try playing.replay(["b1b3", "b7b5"])
         #expect(try core.activeGameExists())
 

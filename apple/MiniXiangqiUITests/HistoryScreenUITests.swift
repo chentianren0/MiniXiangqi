@@ -117,10 +117,11 @@ final class HistoryScreenUITests: XCTestCase {
         }
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
-        // The board settles the launch: the seeding runs before it, so a board
-        // on screen means every seeded game has been filed.
-        XCTAssertTrue(app.windows.firstMatch.descendants(matching: .any)["point-d1"]
-            .waitForExistence(timeout: 15))
+        // The Play destination settles the launch: the seeding runs before it,
+        // so anything on screen there means every seeded game has been filed.
+        // With the seeded games filed there is no active game left, so what
+        // arrives is the start state's mode entries rather than a board.
+        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
         return app
     }
 

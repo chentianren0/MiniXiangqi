@@ -95,7 +95,7 @@ struct MotionFrameTests {
     let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
 
     private func game(playing line: [String]) throws -> Game {
-        let game = try Game(rules: TestCores.fresh())
+        let game = try openGame(on: TestCores.fresh())
         try game.replay(line)
         return game
     }

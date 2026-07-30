@@ -110,6 +110,8 @@ struct BoardCanvas: View, Animatable {
     var lastMove: Move?
     var checkedGeneral: Square?
     var transit: Transit?
+    /// The second disc of a paired transition — a decision cycle's Undo.
+    var companion: Transit?
     var phases: BoardPhases
 
     var animatableData: BoardPhases {
@@ -272,11 +274,17 @@ struct BoardCanvas: View, Animatable {
 
     // MARK: - Pieces
 
-    /// The squares whose discs the transit draws itself.
+    /// The transits being drawn: one ordinarily, two while a decision cycle is
+    /// being taken back.
+    private var transits: [Transit] { [transit, companion].compactMap { $0 } }
+
+    /// The squares whose discs the transits draw themselves.
     private var transitSquares: Set<Square> {
-        guard let transit else { return [] }
-        var squares: Set<Square> = [transit.move.to]
-        if let fading = transit.fading { squares.insert(fading.at) }
+        var squares: Set<Square> = []
+        for transit in transits {
+            squares.insert(transit.move.to)
+            if let fading = transit.fading { squares.insert(fading.at) }
+        }
         return squares
     }
 
@@ -300,7 +308,13 @@ struct BoardCanvas: View, Animatable {
     /// The disc in transit and the disc giving way to it — or, for an Undo,
     /// returning as it departs.
     private func drawTransit(in context: inout GraphicsContext, flip: Double) {
-        guard let transit else { return }
+        for transit in transits {
+            draw(transit, in: &context, flip: flip)
+        }
+    }
+
+    private func draw(_ transit: Transit, in context: inout GraphicsContext,
+                      flip: Double) {
         let progress = phases.travel
 
         if let fading = transit.fading {

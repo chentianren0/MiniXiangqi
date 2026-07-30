@@ -47,3 +47,16 @@ if [ ! -f "$root/apple/MiniXiangqi/Resources/minixiangqi-variants.ini" ]; then
   mkdir -p "$root/apple/MiniXiangqi/Resources"
   cp "$root/core/assets/minixiangqi-variants.ini" "$root/apple/MiniXiangqi/Resources/"
 fi
+
+# The bundled network is the third. It is not recreated here: its bytes are not
+# in the repository and are not derived from anything the digest covers, so the
+# only honest thing to do about an absent one is to say where it comes from.
+# A build without it produces an app whose AI cannot start — contained at
+# runtime, but a surprise nobody asked for, and the build is where it is cheap
+# to notice.
+nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+if [ ! -f "$root/apple/MiniXiangqi/Resources/$nnue_name" ]; then
+  echo "error: the bundled NNUE network $nnue_name has not been staged." >&2
+  echo "note: run ./apple/build-core-xcframework.sh, which verifies and stages it." >&2
+  exit 1
+fi

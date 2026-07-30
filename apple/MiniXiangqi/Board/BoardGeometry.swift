@@ -218,11 +218,16 @@ struct BoardGeometry {
 
     /// The largest pitch whose board block fits `size`, or nil when even the
     /// floor does not fit.
-    static func fitting(_ size: CGSize) -> BoardGeometry? {
+    ///
+    /// `floor` is the accepted interactive floor by default. A pre-start
+    /// preview passes a lower one: the floor exists to protect interaction, and
+    /// a preview has none to protect, so it yields space to the setup controls
+    /// whenever they need it.
+    static func fitting(_ size: CGSize, floor: CGFloat = minimumPitch) -> BoardGeometry? {
         // stripHeight depends on the pitch, so solve by trying the width-bound
         // pitch and stepping down until the block's height fits too.
         var pitch = min((size.width / 7).rounded(.down), maximumPitch)
-        while pitch >= minimumPitch {
+        while pitch >= floor {
             let candidate = BoardGeometry(pitch: pitch)
             if candidate.blockSize.height <= size.height { return candidate }
             pitch -= 1

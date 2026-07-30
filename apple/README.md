@@ -17,7 +17,9 @@ The core is a prebuilt dependency, not something the app build produces. Build i
 ./apple/build-core-xcframework.sh
 ```
 
-That compiles the core for every platform and architecture the app runs on — see [Architectures](#architectures) — packages the three as `apple/Generated/MiniXiangqiCore.xcframework`, stages the bundled variant configuration into the app's resources, and records a digest of what it built from. Then build or run the `MiniXiangqi` scheme as usual.
+That compiles the core for every platform and architecture the app runs on — see [Architectures](#architectures) — packages the three as `apple/Generated/MiniXiangqiCore.xcframework`, stages the bundled variant configuration and the pinned NNUE network into the app's resources, and records a digest of what it built from. Then build or run the `MiniXiangqi` scheme as usual.
+
+**The network never enters version control.** Its bytes live in the workspace at `.git/minixiangqi-control/nnue/`, or wherever `MXQ_NNUE_SOURCE` points, and the script verifies their byte length and SHA-256 against `pinned-inputs.json` before staging them — under the name the engine's variant-matching rule requires, which is not the name they are stored under. Absence or a mismatch stops the script rather than producing an app whose AI is quietly a different opponent. The app's `Check the shared core is current` phase refuses a build whose network has not been staged, for the same reason.
 
 The framework is signed with this machine's first Apple Development identity if it has one, because Xcode stops at an unsigned framework with a trust prompt. On a machine with no identity it is left unsigned and the script says so; the prompt's `Accept Unsigned` is the right answer for an artifact you just built yourself.
 
