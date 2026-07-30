@@ -21,7 +21,7 @@ This document is for product designers, engineers, testers, and reviewers who ne
 - iPadOS 26.5 or later.
 - macOS 26.5 or later.
 - macOS targets Apple silicon. `x86_64` is not supported on macOS.
-- Windows 11, and Windows 10 version 1809 or later, on `x64` and `ARM64`.
+- Windows 11 on `x64`. Windows 10 is not a target: it left Microsoft support in October 2025, and a floor the vendor no longer patches is not a floor this product can promise. `ARM64` is not in the MVP either; it returns when there is real hardware to test it on, since an architecture nobody has run is a claim rather than a target. Both are owner decisions, 2026-07-30, and both narrow what this document previously promised.
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
 - Apple platforms are implemented and distributed first; Windows follows on the same shared core and product contract.
 - The application has one main window; multiple main windows are not supported.
@@ -111,4 +111,4 @@ Detailed navigation behavior and presentation belong in `interaction-design.md`.
 
 - Reconsider starting from a historical position only after estimating its implementation and interaction complexity; the current target MVP excludes it. It may later serve the education purpose by letting a teacher set up a position.
 - Decide whether the Windows build needs an in-app interface-language override, once the Windows frontend exists and internal testers there can be asked.
-- Define the exact Windows internal-distribution mechanism, packaging format, and minimum tested Windows configuration before Windows implementation begins.
+- Define the exact Windows internal-distribution mechanism and packaging format before the Windows frontend begins. The minimum tested Windows configuration is no longer part of this question: the floor is Windows 11 on `x64`, above.

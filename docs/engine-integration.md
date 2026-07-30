@@ -38,7 +38,7 @@ The pinned fork carries only focused changes this contract or [xiangqi-rules.md]
 
 - **Soldier chase-target exclusion**, which the approved fixture `mx-chs-003` requires. Landed; it introduces a variant property whose default preserves every existing variant's adjudication.
 - **Recoverable Hash allocation and release**, replacing the process exits on transposition-table allocation failure and on the Windows large-page free path, which the accepted error contract forbids.
-- **A static library target**, per the build requirement below.
+- **A static library target**, per the build requirement below. Landed, and the one change in this list the core does not consume: it compiles the vendored snapshot itself, on every platform.
 - **Correction of two adjudication defects that produce false terminal losses** — a chaser counted as chasing while pinned, and a flying-general pin test that counts only the victim's own pieces on the shared file, so a chaser standing between the two generals is invisible to it and a demonstrably free piece is marked pinned. Both are wrong-result defects rather than judgement calls.
 - **Completion of the chase-target exemption in the discovered-check classifier path**, so the accepted exclusion of generals and soldiers holds in every path rather than in two of three.
 - **A read-only accessor reporting which repetition branch fired**, so the reserved `mutual-perpetual-chase` reason can be recorded. It changes no adjudication.
@@ -176,7 +176,9 @@ The build verifies every hash before packaging and fails on a mismatch rather th
 
 ### Accepted library build requirement
 
-The fork must expose a **static library target** for every supported platform, which the core links. Its Makefile currently produces an executable and a Python module, neither of which the core can consume. The target's implementation belongs to the fork repository; what this contract requires is that the artifact exists, is built from the pinned revision and flags above, and is what the core links against.
+The core links the pinned revision as a static library on every supported platform, and never as an executable or a Python module — which is what the fork's Makefile otherwise produces, and neither of which the core can consume.
+
+**How that library is produced is a build decision, not a contract requirement, and it is not the fork's target.** The core compiles the vendored source snapshot through its own CMake, on macOS and on Windows alike; nothing in either build consumes an artifact the fork built. The reason is the same on both platforms and predates either: the app needs several architectures out of one build system, and the fork's Makefile is a second one — `make lib` at the pinned revision takes an `ARCH` and produces one. So the fork's static-library target exists, as `pinned-inputs.json` records, and satisfies the fork's side of this contract; whether the core ever switches to consuming its artifact is a separate decision, and `core/third_party/fairy-stockfish/README.md` records what would change. This paragraph replaces an earlier requirement that the fork's artifact "is what the core links against", which no build has ever done and which the first Windows build made visibly dead rather than merely unexercised.
 
 ### Build and packaging requirements
 

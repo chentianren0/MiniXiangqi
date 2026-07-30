@@ -27,8 +27,9 @@ Do not change global `xcode-select`, and do not silently validate with another X
 ### Shared core and Windows targets
 
 - The shared core builds and its tests run on every development platform without a frontend.
-- The Windows toolchain — Visual Studio version, Windows App SDK version, .NET version, and the core's Windows compiler — is unpinned draft state and must be pinned and verified before Windows validation claims are made.
+- The core's Windows compiler is pinned in `pinned-inputs.json`, established by a build that produced it: Visual Studio 2026 Community with the MSVC v14.51 toolset and the Windows 11 SDK, on `x64`. The frontend's half of that toolchain — Windows App SDK version, .NET version, and the packaging flags — is still unpinned draft state and must be pinned and verified before any Windows *frontend* or packaging validation claim. Core validation claims on Windows are now available, and the entry below records what was run.
 - GitHub Actions CI is the recommended place for long or multi-platform builds and test runs, with pinned inputs; CI results supplement, and do not replace, the release gates below.
+- `.github/workflows/core-suites.yml` is that CI: the core suites in both configurations, on a pinned macOS runner and a pinned Windows runner. It runs the GitHub-hosted Windows toolchain rather than the pinned one — Visual Studio 2022 on the `windows-2025` image, against Visual Studio 2026 on the machine the pin was measured on — so what it proves is that the core compiles and passes under both, not that it reproduces the pinned build. Reproducing the pin is a developer-machine claim.
 
 ## Validation principles
 
@@ -42,7 +43,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 
 ### Shared core
 
-- Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and, once the Windows toolchain is pinned, on Windows.
+- Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and on Windows.
 - Run that suite in **both** a debug and a release configuration. Neither is a superset of the other: the programming errors in `docs/core-interface.md`'s error taxonomy assert where `NDEBUG` is undefined and return their code where it is defined, so a release run is the only one that can observe those codes and a debug run is the only one that exercises the assertions — and the vendored engine's own assertions are live only in the first.
 - Verify the one shared core test runner executes the approved fixtures identically on every development platform, without a frontend.
 - Store changes verify the transactional invariants: single active game, atomic archive-and-clear, no partial import, and deletion rollback.
@@ -213,8 +214,8 @@ An internal distribution candidate — TestFlight on Apple platforms, or the int
 
 - Verify and record the exact simulator and macOS build/test commands.
 - Select the supported simulator, physical-device, macOS, and Windows validation matrix.
-- Pin the Windows toolchain and record verified Windows build/test commands.
-- Define the GitHub Actions workflows, their pinned inputs, and which artifacts they retain.
+- Pin the Windows *frontend* toolchain — Windows App SDK, .NET, packaging flags — and record verified packaging commands. The core's half is pinned and its commands are in the README.
+- Decide which artifacts the GitHub Actions workflows retain. The workflows and their pinned inputs are defined in `.github/`; nothing is retained today beyond the run log.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
 - Define which critical flows require UI automation versus structured manual review.
 - Define how the accepted import validation time budget is measured and enforced on each platform.

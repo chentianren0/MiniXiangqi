@@ -1,0 +1,119 @@
+# The core suites, on a macOS runner and a Windows runner.
+#
+# docs/architecture.md fixes what this workflow is for: "GitHub Actions CI
+# covers BOTH a macOS runner and a Windows runner, so neither platform is ever
+# reproducible only on one machine." It is a convenience rather than a merge
+# gate; what it guarantees is that every platform is buildable somewhere other
+# than one developer's machine.
+#
+# It also inherits that document's input rule — "CI must not receive
+# undocumented inputs: pinned revisions and asset hashes come from the
+# repository's manifests." Nothing here restates a hash or a revision. The
+# engine revision, the variant configuration's SHA-256, and the network's byte
+# length and SHA-256 all reach the build from pinned-inputs.json through
+# core/CMakeLists.txt, which stages no byte it has not verified. The one value
+# this file names that is not in the repository is the runner image, pinned to
+# an exact label rather than to `-latest` for the same reason.
+#
+# Both configurations run on both platforms. docs/testing.md requires it and
+# says why: the error taxonomy's programming errors assert where NDEBUG is
+# undefined and return their code where it is defined, so a release run is the
+# only one that observes those codes and a debug run is the only one that
+# exercises the assertions.
+#
+# What this does NOT prove is the pinned Windows toolchain. windows-2025 carries
+# Visual Studio 2022; pinned-inputs.json pins Visual Studio 2026, because that
+# is what the machine the core suites were first run on has. Two MSVC major
+# versions compiling the same core is worth having, and it is not the same claim
+# as reproducing the pin.
+
+name: Core suites
+
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'fixtures/**'
+      - 'pinned-inputs.json'
+      - '.github/workflows/core-suites.yml'
+      - '.github/scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'fixtures/**'
+      - 'pinned-inputs.json'
+      - '.github/workflows/core-suites.yml'
+      - '.github/scripts/**'
+
+# A docs-only or apple-only change cannot move these suites, so it does not
+# start them; the paths filters above are what say so, and they are written
+# twice because GitHub Actions does not read YAML anchors. A superseded push to
+# a pull request cancels the run it superseded, because the engine is a
+# multi-minute build on every runner and the older answer is worthless the
+# moment a newer commit exists. Pushes to main are never cancelled: main's
+# history is the record.
+concurrency:
+  group: core-suites-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (Apple clang, arm64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Record the toolchain
+        run: |
+          sw_vers
+          uname -m
+          cmake --version
+          cc --version
+
+      # The network never enters version control, in any form
+      # (docs/engine-integration.md, "Accepted NNUE handling policy"), and this
+      # repository is public, so it is not attached to a release here either.
+      # See .github/scripts/fetch-network.sh for why, and for what happens when
+      # no location is configured: the one suite that needs a network does not
+      # run, every other suite does, and the job summary says so.
+      - name: Fetch the pinned network
+        id: network
+        env:
+          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
+        run: .github/scripts/fetch-network.sh
+
+      - name: Configure, build and run both configurations
+        env:
+          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
+          MXQ_CTEST_EXCLUDE: ${{ steps.network.outputs.exclude }}
+        run: .github/scripts/run-suites.sh single-config build
+
+  windows:
+    name: Windows (MSVC, x64)
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Record the toolchain
+        run: |
+          cmake --version
+          cmd //c ver
+
+      - name: Fetch the pinned network
+        id: network
+        env:
+          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
+        run: .github/scripts/fetch-network.sh
+
+      - name: Configure, build and run both configurations
+        env:
+          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
+          MXQ_CTEST_EXCLUDE: ${{ steps.network.outputs.exclude }}
+        run: .github/scripts/run-suites.sh multi-config build

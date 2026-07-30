@@ -2,7 +2,7 @@
   "manifest_format": "minixiangqi-pinned-inputs",
   "manifest_version": 1,
   "_about": "The single source of truth for every input a reproducible Mini Xiangqi build consumes, per docs/engine-integration.md. The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The Fairy-Stockfish fork repository owns how its patches are implemented and how its own artifacts are built; this file records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.",
-  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. Nothing here has been consumed by a packaging build yet, so the names below are a proposal, not a frozen schema. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented.",
+  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. Nothing here has been consumed by a packaging build yet, so the names below are a proposal, not a frozen schema. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. One field has been added under that licence rather than by fixing the schema: build_flags.platforms.windows.toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times on Windows, and one boolean over one 'toolchain' object cannot say that half of it is measured. manifest_version stays 1: nothing existing changed shape, and the reader in core/CMakeLists.txt asks for none of this.",
   "fork": {
     "repository": "https://github.com/ppppvz/Fairy-Stockfish",
     "revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
@@ -132,8 +132,8 @@
     }
   },
   "build_flags": {
-    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists yet and docs/architecture.md records the Windows toolchain as deliberately unpinned, so no flag set is established on any platform. The toolchain and architecture entries below are established by docs/testing.md and are recorded so that the unestablished parts are visibly the flags alone.",
-    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
+    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build exists on any platform, so no flag set is established on any platform. The toolchain and architecture entries below are established — by docs/testing.md on the Apple platforms, and on Windows by the build recorded under windows.toolchain_core — and are recorded so that the unestablished parts are visibly the flags alone.",
+    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set, on macOS/arm64 and now on Windows/x64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt — which is also where the one place the two platforms differ is written down: IS_64BIT reaches the compiler from the command line under Clang and from types.h under MSVC, so it is defined exactly once on each. It is deliberately not copied here: these fields describe the packaging build, which does not exist, and recording a developer build's flags under them would make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
     "platforms": {
       "macos": {
         "established": false,
@@ -215,10 +215,33 @@
       },
       "windows": {
         "established": false,
-        "_note": "docs/architecture.md and docs/testing.md record the Windows toolchain — Visual Studio version, Windows App SDK version, .NET version, and the core's Windows compiler — as unpinned draft state that must be pinned and verified before any Windows validation claim.",
+        "_note": "'established' still reads false here for the same reason it does on the three Apple entries: it is about the packaging build these flag fields describe, and no Windows packaging build exists. What a real build did establish is under toolchain_core — measured on 2026-07-30 by the first build of the core on Windows that compiled the engine and passed every suite, in both the debug and the release configuration. The rest waits for the Windows frontend: the Windows App SDK and .NET versions have nothing to pin until a frontend uses them, and engine_flags and sqlite_flags belong to a packaging build, exactly as on the Apple platforms. sqlite_defines stays empty rather than copying the Apple list: that list is hardening policy every build of the core applies, so it would be true here, but this entry records what a Windows packaging build applied and no Windows packaging build has applied anything.",
         "toolchain": null,
-        "architectures": [],
-        "deployment_target": null,
+        "_toolchain_note": "Deliberately still null. This field is the packaging toolchain — the Windows App SDK version, the .NET version, and what builds the WinUI 3 frontend — and naming the core's compiler here would make an unestablished value look established. toolchain_core below is the established part, kept in its own field rather than folded in.",
+        "toolchain_core": {
+          "established": true,
+          "_about": "The core's Windows toolchain, pinned from the machine that built it rather than from intent. docs/engine-integration.md calls this manifest's field names provisional until a build consumes them; this field is new, and it is separate from 'toolchain' because the core's compiler and the frontend's packaging stack are established at different times and one being known says nothing about the other.",
+          "visual_studio": "2026 Community 18.8.12009.203",
+          "vs_developer_command_prompt": "18.8.0",
+          "msvc_toolset": "14.51.36231",
+          "msvc_compiler": "19.51.36248",
+          "windows_sdk": "10.0.26100.0",
+          "cmake": "4.4.0",
+          "generator": "Ninja 1.13.2",
+          "target_architecture": "x64",
+          "measured_on": "2026-07-30",
+          "measured_host": "Windows 11, build 10.0.26100.33158",
+          "configurations_verified": [
+            "RelWithDebInfo",
+            "Debug"
+          ]
+        },
+        "architectures": [
+          "x64"
+        ],
+        "_architectures_note": "x64 only. ARM64 came off the promised architectures on 2026-07-30 (owner decision) and returns when there is real hardware to test it on; the value here is what a build has actually produced, which is the only thing this file records.",
+        "deployment_target": "Windows 11",
+        "_deployment_target_note": "Windows 11 is the floor (owner decision, 2026-07-30): Windows 10 left Microsoft support in October 2025. The value is the product floor from docs/product.md, not a measurement — no packaging build has expressed it as a manifest or an SDK setting yet, and when one does this field takes that form.",
         "engine_defines": [],
         "engine_flags": [],
         "sqlite_defines": [],
@@ -242,6 +265,7 @@
     "byte_length": 4333499,
     "sha256": "12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce",
     "committed_to_version_control": false,
+    "_ci_delivery": "How the bytes reach a CI runner, since they are in no repository and this one is public: from a location named by the MXQ_NNUE_URL repository secret, downloaded by .github/scripts/fetch-network.sh and verified by core/CMakeLists.txt against the byte_length and sha256 above before anything is staged. The location is deliberately not recorded here — a manifest pins content, and a URL is not content. Attaching the network to a release of this repository was considered and rejected: this repository is public, and docs/engine-integration.md makes establishing the network's origin and redistribution licence a mandatory gate for distribution beyond internal testing, which no one has passed. With no secret set the engine_search suite does not run in CI and the run says so; every other suite does.",
     "established": true
   },
   "sqlite": {
