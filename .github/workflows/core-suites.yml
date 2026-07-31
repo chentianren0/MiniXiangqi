@@ -95,13 +95,19 @@ jobs:
 
       # The network never enters version control, in any form
       # (docs/engine-integration.md, "Accepted NNUE handling policy"), and this
-      # repository is public, so it is not attached to a release here either.
-      # See .github/scripts/fetch-network.sh for why, and for what happens when
-      # no location is configured: the one suite that needs a network does not
-      # run, every other suite does, and the job summary says so.
+      # repository is public, so it is not attached to a release here either. It
+      # is cloned instead from the private ppppvz/minixiangqi-assets repository,
+      # with the read-only deploy key below. See
+      # .github/scripts/fetch-network.sh for why, for the URL alternative it
+      # also accepts, and for what happens when neither is configured: the one
+      # suite that needs a network does not run, every other suite does, and the
+      # job summary says so. Both secrets are named on both jobs, because a
+      # suite that runs on one platform and is skipped on the other proves
+      # nothing about the platform that skipped it.
       - name: Fetch the pinned network
         id: network
         env:
+          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
           MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
         run: .github/scripts/fetch-network.sh
 
@@ -131,6 +137,7 @@ jobs:
       - name: Fetch the pinned network
         id: network
         env:
+          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
           MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
         run: .github/scripts/fetch-network.sh
 
