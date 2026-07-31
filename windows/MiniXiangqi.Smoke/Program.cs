@@ -11,13 +11,14 @@
 // than the wrapper types beside them. A wrapper proves the wrapper; this proves
 // the ABI.
 //
-// Sections 17 to 19 are the play screen's. A WinUI 3 process cannot be launched
-// from an SSH session, so the Windows frontend's behaviour would otherwise be
-// runnable on no machine this project owns. The screen's logic lives in
-// MiniXiangqi.Play with no window attached to it, and this plays whole games
-// through it: every move committed by clicking a point and then another point,
-// the AI answering through the same marshalled callback the window uses, and
-// the strings it shows checked against docs/copy.md.
+// Sections 17 to 28 are the Play destination's. A WinUI 3 process cannot be
+// launched from an SSH session, so the Windows frontend's behaviour would
+// otherwise be runnable on no machine this project owns. Its logic lives in
+// MiniXiangqi.Play with no window attached to it — PlayFlow and PlaySession —
+// and this drives all of it: every move committed by clicking a point and then
+// another point, the AI answering through the same marshalled callback the
+// window uses, every page reached the way a person reaches it, and the strings
+// shown along the way checked against docs/copy.md.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -745,22 +746,15 @@ internal static unsafe class Program
         play.Tap(opening);
         Check("tapping the selected piece again cancels the selection", play.Scene.Selected is null);
 
-        // **One click is one call.** The window makes exactly one of Tap and
-        // CancelSelection for one click on the board, and what a click that made
-        // both would cost is stated here: the selection it had just taken is
-        // gone again. That is precisely the reported Windows defect — selecting
-        // a piece appeared to need a double click, because a point's tap reached
-        // the board's background handler behind its own Click — and the fix for
-        // it is in BoardView, where the pointer routing lives. No headless
-        // process can reach that routing, since a WinUI 3 window cannot be
-        // launched without an interactive desktop; this is the half of the
-        // statement that can be made here, and it is the half that says what the
-        // defect costs.
-        play.Tap(opening);
-        Check("one click selects", play.Scene.Selected == opening);
-        play.CancelSelection();
-        Check("and a cancel behind it in the same click undoes that selection",
-            play.Scene.Selected is null);
+        // The reported Windows defect — selecting a piece appeared to need a
+        // double click — was a point's tap reaching the board's background
+        // handler behind its own Click, so a cancel arrived behind the selection
+        // the same click had made. Its fix is in BoardView, where the pointer
+        // routing lives, and **nothing here can run it**: a WinUI 3 window
+        // cannot be launched without an interactive desktop, and the two calls
+        // this file could make are already checked above as the separate acts
+        // they are. Restating them as a pair would be a check about this file
+        // rather than about the defect. The owner's re-test is the evidence.
 
         Random rng = new(20260731);
         int plies = 0;
@@ -1141,6 +1135,7 @@ internal static unsafe class Program
         SaveAndContinue(core, scheduler);
         TheConcludingActions(core, scheduler);
         NoMemoryForTheAi(core, scheduler);
+        TheCreationTheStoreRefused(core, scheduler);
     }
 
     /// <summary>
@@ -1186,8 +1181,21 @@ internal static unsafe class Program
         // successful creation can flip the board.
         SetupDraft random = new(FirstMoverChoice.Random, AiLevel.Fast);
         Check("随机 previews Red at the bottom", !random.PreviewsHumanAsBlack);
-        Check("随机 resolves to one of the two sides",
-            random.ResolveHumanSide() is Side.Red or Side.Black);
+
+        // That it draws *both* sides is the claim worth making — a resolution
+        // that always answered Red would satisfy every type in the program and
+        // silently give the player one side forever.
+        HashSet<Side> drawn = [];
+        for (int draw = 0; draw < 200; draw++)
+        {
+            drawn.Add(random.ResolveHumanSide());
+        }
+
+        Check("随机 draws both sides", drawn.Count == 2);
+
+        // The product path: the JSON file every pre-start entry actually reads.
+        // The three stores above are stand-ins for a reader; this is the reader.
+        TheStoredFile();
 
         Console.WriteLine(
             $"    movetimes           {AiLevel.Fast.MovetimeMs()} / "
@@ -1198,6 +1206,76 @@ internal static unsafe class Program
             && AiLevel.Deep.MovetimeMs() == Mxq.MXQ_MOVETIME_DEEP_MS);
         Check("the serialized names are the archive's vocabulary",
             FirstMoverChoice.Random.Name() == "random" && AiLevel.Deep.Name() == "deep");
+    }
+
+    /// <summary>
+    /// The preferences file itself: <c>FilePreferenceStore</c> over a real file
+    /// on disk, which is what every entry to a pre-start page reads through.
+    ///
+    /// The stores above are stand-ins for a reader and prove the fallbacks; this
+    /// proves the reader. Every claim windows/README.md makes about it is one
+    /// line here — a stored name is read, an absent file is nothing stored, a
+    /// malformed one is nothing stored, and a value of the wrong kind is not a
+    /// value. The last three matter because a preferences file is editable by
+    /// hand and read by more than one frontend, and the page still has to open.
+    /// </summary>
+    private static void TheStoredFile()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(), "mxq-prefs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "preferences.json");
+        FilePreferenceStore store = new(path);
+
+        try
+        {
+            Console.WriteLine($"    preferences file    {path}");
+
+            Check("an absent file is nothing stored",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && Preferences.DefaultFirstMover(store) == FirstMoverChoice.HumanFirst
+                && Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+
+            File.WriteAllText(
+                path,
+                """{"defaults.firstMover":"random","defaults.aiLevel":"fast"}""");
+            SetupDraft stored = SetupDraft.FromDefaults(store);
+            Console.WriteLine($"    stored              {stored.FirstMover} / {stored.Level}");
+            Check("a stored file is what the draft opens on",
+                stored is { FirstMover: FirstMoverChoice.Random, Level: AiLevel.Fast });
+
+            File.WriteAllText(path, "{ this is not json");
+            Check("a malformed file is nothing stored",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && Preferences.DefaultFirstMover(store) == FirstMoverChoice.HumanFirst);
+
+            // A key holding something that is not a string is not a preference
+            // this reader has: a number, an object and an array all read as
+            // absent rather than as text somebody could coerce them into.
+            File.WriteAllText(
+                path,
+                """{"defaults.firstMover":2,"defaults.aiLevel":{"level":"deep"},"other":[1]}""");
+            Check("a value of the wrong kind is not a value",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && store.Read(Preferences.DefaultAiLevelKey) is null
+                && Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+
+            // A file that is fine but holds nothing this build knows.
+            File.WriteAllText(path, """{"defaults.aiLevel":"glacial"}""");
+            Check("a name nothing recognises in a real file reads as the default",
+                Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch directory; failing to remove it is not a result.
+            }
+        }
     }
 
     /// <summary>
@@ -1316,14 +1394,20 @@ internal static unsafe class Program
             && line.Contains(Strings.Get("metadata.inProgress"), StringComparison.Ordinal));
 
         // 步 is invariant and *move* is not, and a one-ply line is exactly the
-        // case the plural pattern exists for.
+        // case the plural pattern exists for — the one this frontend selects
+        // itself, because it has no String Catalog to select for it.
         foreach (bool chinese in (bool[])[true, false])
         {
             Strings.PrefersChinese = chinese;
             Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                {flow.ActiveGameLine}");
         }
 
+        Strings.PrefersChinese = false;
+        Check("one ply takes the English singular",
+            flow.ActiveGameLine?.EndsWith("1 move", StringComparison.Ordinal) == true);
         Strings.PrefersChinese = true;
+        Check("and 步 is invariant beside it",
+            flow.ActiveGameLine?.EndsWith("1 步", StringComparison.Ordinal) == true);
 
         flow.Resume();
         Check("回到对局 opens the board on the game exactly as it was left",
@@ -1403,6 +1487,27 @@ internal static unsafe class Program
                 flow.ActiveGameLine is { } line
                 && !line.Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
                 && !line.Contains(Strings.Get("metadata.youBlack"), StringComparison.Ordinal));
+
+            // The plural's other side, at both ends of the one-ply case: none
+            // played, and two played.
+            Strings.PrefersChinese = false;
+            Check("no plies takes the English plural",
+                flow.ActiveGameLine?.EndsWith("0 moves", StringComparison.Ordinal) == true);
+
+            Random rng = new(20260731);
+            for (int ply = 0; ply < 2; ply++)
+            {
+                if (Choose(play, rng) is { } step)
+                {
+                    play.Tap(step.From);
+                    play.Tap(step.To);
+                }
+            }
+
+            Console.WriteLine($"    two plies           {flow.ActiveGameLine}");
+            Check("two plies takes it too",
+                flow.ActiveGameLine?.EndsWith("2 moves", StringComparison.Ordinal) == true);
+            Strings.PrefersChinese = true;
         }
 
         // Leave the store with no active game, so the next section starts from
@@ -1638,6 +1743,73 @@ internal static unsafe class Program
         }
 
         return page[0];
+    }
+
+    /// <summary>
+    /// 28. 无法开始对局 — the creation failure that is not about memory.
+    ///
+    /// **The refusal is the core's own, and the route to it is one the app
+    /// cannot take.** `mxq_game_create` answers
+    /// MXQ_ERR_STATE_ACTIVE_GAME_EXISTS when the library already holds an active
+    /// game, and PlayFlow's own release-before-OpenSetup invariant means it
+    /// never asks in that state. So this puts a game there behind a flow's back
+    /// and drives the flow into the refusal. What is under test is the
+    /// **answer** rather than the cause — `Create`'s catch does not discriminate
+    /// between MxqExceptions, so the flow behaves identically whichever store or
+    /// state refusal arrives — and the answer is what had no run at all.
+    ///
+    /// Its sibling, the accepted 无法保存对局 retry after a refused archive, has
+    /// no such route: making `mxq_store_archive_and_clear` fail needs the store
+    /// itself to fail, and there is no honest seam for that short of a stand-in
+    /// replacing the call under test. It is stated as unrun in the pull request
+    /// and in windows/README.md rather than dressed up.
+    /// </summary>
+    private static void TheCreationTheStoreRefused(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("28. 无法开始对局 — a creation the core would not make");
+
+        // A game standing in the library, held open, so the flow's own create
+        // has something to collide with. Deliberately not through the flow: the
+        // flow cannot reach this state, which is the point.
+        using GameSession standing = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        // Start() is deliberately not called: it would resume the game above and
+        // open the board on it, and what this needs is a destination on its home
+        // page that does not know the library is occupied.
+        using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
+        flow.Choose(PlayMode.FreePlay);
+        Check("the pre-start page opened", flow.Page == PlayPage.Setup);
+
+        flow.StartGame();
+        Console.WriteLine($"    after 开始对局       alert {flow.Alert}, page {flow.Page}");
+        Check("a creation the core refuses is the accepted 无法开始对局 notice",
+            flow.Alert == FlowAlert.GameNotStarted);
+        Check("it created nothing", flow.Session is null);
+        Check("the page and the draft remain, and 开始对局 is enabled again",
+            flow is { Page: PlayPage.Setup, Creating: false });
+        Console.WriteLine($"    message             {Strings.Get("alert.gameNotStarted.message")}");
+        Check("its message does not promise that a current game is unchanged",
+            Strings.Get("alert.gameNotStarted.message")
+                != Strings.Get("alert.saveFailed.message"));
+
+        flow.DismissAlert();
+        Check("取消 dismisses without leaving the page",
+            flow is { Alert: FlowAlert.None, Page: PlayPage.Setup });
+
+        // The same refusal again through 重试, which repeats the whole attempt.
+        flow.StartGame();
+        Check("重试 repeats the attempt and meets the same refusal",
+            flow.Alert == FlowAlert.GameNotStarted && flow.Session is null);
+        flow.DismissAlert();
+        flow.LeaveTopPage();
+
+        core.ArchiveAndClear(standing);
+        Console.WriteLine("    (the standing game filed; the library is empty again)");
     }
 
     /// <summary>

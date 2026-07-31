@@ -138,14 +138,17 @@ internal static class Program
 
         // The pre-start state's preview, both ways round.
         //
-        // These are the same position as start-large and start-flipped, and
-        // deliberately so — a pre-start preview *is* the frozen initial board.
-        // What they evidence is not a new picture but a different claim: that
-        // the pre-start page draws the real board at the real position, and that
-        // the draft's own orientation rule reaches the same picture Free Play's
-        // flip control reaches. The Play home has no picture here at all,
-        // because it has no board on it: that is the contract's own direction
-        // for it, and its evidence is what the smoke harness composes.
+        // **These are drawn and uploaded, and they are deliberately not
+        // committed as evidence.** A pre-start preview *is* the frozen initial
+        // board, so each comes out byte-identical to start-large and
+        // start-flipped above — the run proves the claim, which is that the
+        // pre-start page draws the real board at the real position and that the
+        // draft's orientation rule reaches the same picture Free Play's flip
+        // control reaches, and committing a second copy of a file already in the
+        // repository would add bytes rather than pixels. The Play home has no
+        // picture at all, because it has no board on it: that is the contract's
+        // own direction for it, and its evidence is what the smoke harness
+        // composes.
         studio.Preview("setup-preview", 84, PlayMode.HumanVersusAi, FirstMoverChoice.HumanFirst);
         studio.Preview("setup-preview-ai-first", 84, PlayMode.HumanVersusAi, FirstMoverChoice.AiFirst);
     }

@@ -520,6 +520,18 @@ public sealed partial class MainWindow : Window
             Middle.IsEnabled = play.CanClaimDraw;
         }
 
+        // **The concluding action is a tint moment, once the notice is closed.**
+        // The tint rule lists it by name — "the concluding action the
+        // play-control cluster carries once a finished game's notice is closed"
+        // — and the closing is the whole condition: while the notice stands, its
+        // own default action is the tinted one, and at most one tinted element is
+        // ever visible. So the accent lands on 开始新对局 exactly when the game is
+        // finished and nothing is standing in front of the board, and comes off
+        // again the moment the slot goes back to carrying 判和.
+        Middle.Style = play.IsOver && play.Notice == ResultNotice.None
+            ? (Style)Application.Current.Resources["AccentButtonStyle"]
+            : null;
+
         if (play.CanFlip)
         {
             // Free Play cannot resign, having no opponent to resign to, and it

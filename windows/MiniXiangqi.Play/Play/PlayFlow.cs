@@ -107,7 +107,31 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     private int _attempt;
 
-    private Task? _preparation;
+    /// <summary>
+    /// The archive in flight, and the invalidation of it. Disposal bumps it, so
+    /// a completion posted after this object has let go of its game decides
+    /// nothing — which is the check the Apple frontend makes by re-reading its
+    /// own mode-switch state inside the same callback.
+    /// </summary>
+    private int _archiveAttempt;
+
+    /// <summary>
+    /// Every engine preparation still in flight, not merely the newest.
+    ///
+    /// A single field would be wrong, and reachably so: leaving the pre-start
+    /// page mid-preparation, re-entering it and pressing **开始对局** again puts
+    /// two <c>mxq_engine_prepare</c> calls in flight at once — the first
+    /// attempt's is not cancelled, only disowned — and a field would leave
+    /// disposal waiting on the newer one alone. Closing the window then shuts
+    /// the core down with the older call still inside it, which is precisely
+    /// what docs/core-interface.md's shutdown promise says the core does not
+    /// defend against: "the caller quiesces its own threads before shutting the
+    /// core down".
+    ///
+    /// Only ever touched on this object's own thread: added to in
+    /// <see cref="StartGame"/> and drained in <see cref="Dispose"/>.
+    /// </summary>
+    private readonly List<Task> _preparations = [];
 
     private bool _started;
 
@@ -309,6 +333,7 @@ public sealed class PlayFlow : IDisposable
 
         _saving = true;
         Alert = FlowAlert.None;
+        int token = ++_archiveAttempt;
         Publish();
 
         // Off the UI thread, because docs/core-interface.md's threading contract
@@ -318,6 +343,17 @@ public sealed class PlayFlow : IDisposable
         // above are about.
         live.ArchiveAndClear(failure =>
         {
+            // The state this answer is about has to still be the state, exactly
+            // as the Apple frontend re-reads its own mode-switch inside this
+            // same callback. Disposal is what invalidates it here: a window
+            // closed while the archive was in flight would otherwise have this
+            // open a pre-start page on a destination that has let go of
+            // everything.
+            if (token != _archiveAttempt)
+            {
+                return;
+            }
+
             _saving = false;
             if (failure is null)
             {
@@ -395,9 +431,13 @@ public sealed class PlayFlow : IDisposable
         MxqEngineBudget budget = _probe();
 
         // mxq_engine_prepare blocks — it allocates Hash and loads the network —
-        // and the threading contract keeps it off the UI thread. The task is
-        // kept because the same contract puts quiescence on the caller.
-        _preparation = Task.Run(() =>
+        // and the threading contract keeps it off the UI thread. Every task is
+        // kept, not just the newest, because the same contract puts quiescence
+        // on the caller and an abandoned attempt is still a call inside the
+        // core. Finished ones are dropped here rather than from the completion,
+        // so the list is only ever touched on this thread.
+        _preparations.RemoveAll(finished => finished.IsCompleted);
+        _preparations.Add(Task.Run(() =>
         {
             MxqException? failure = null;
             try
@@ -440,7 +480,7 @@ public sealed class PlayFlow : IDisposable
                 // window in which a completion could arrive late and commit.
                 Create(PlayMode.HumanVersusAi, Draft.ResolveHumanSide());
             });
-        });
+        }));
     }
 
     /// <summary>
@@ -677,18 +717,28 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     public void Dispose()
     {
-        try
+        // Nothing this object started may still be inside the core when whoever
+        // owns the core shuts it down. An archive answering after this decides
+        // nothing, and every preparation still running is waited for — every
+        // one, including an attempt the player walked out of.
+        _archiveAttempt++;
+        _saving = false;
+
+        foreach (Task preparation in _preparations)
         {
-            _preparation?.Wait();
-        }
-        catch (AggregateException)
-        {
-            // The preparation's own failure was already reported through the
-            // scheduler, or will never be delivered because the window is
-            // closing. Either way there is nobody left to tell.
+            try
+            {
+                preparation.Wait();
+            }
+            catch (AggregateException)
+            {
+                // The preparation's own failure was already reported through the
+                // scheduler, or will never be delivered because the window is
+                // closing. Either way there is nobody left to tell.
+            }
         }
 
-        _preparation = null;
+        _preparations.Clear();
         if (_session is { } live)
         {
             live.Changed -= Publish;

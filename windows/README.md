@@ -214,17 +214,32 @@ into a threefold repetition and claims it. **21** is the pair of races a confirm
 a search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed
 with a 深思 search genuinely in flight.
 
-Sections 22 to 27 are the destination's. **22** reads the two Settings defaults from the
-keys they are stored under and checks the fallbacks. **23** walks the home to a mode
-entry to the pre-start state to a created game, and checks what leaving the pre-start
-page discards and what an abandoned attempt commits. **24** presents the
-save-and-continue confirmation over an active game, cancels it, answers it, and reads the
-filed record's classification back. **25** finishes a game and takes both concluding
+Sections 22 to 28 are the destination's. **22** reads the two Settings defaults, both
+through stand-in stores that prove the fallbacks and through `FilePreferenceStore` over a
+real file on disk, which is the reader every pre-start entry actually runs: a stored name
+read back, an absent file, a malformed one, and a value of the wrong kind. **23** walks
+the home to a mode entry to the pre-start state to a created game, and checks what
+leaving the pre-start page discards and what an abandoned attempt commits. **24** presents
+the save-and-continue confirmation over an active game, cancels it, answers it, and reads
+the filed record's classification back. **25** finishes a game and takes both concluding
 actions — 开始新对局 opening that game's own mode's pre-start state, 完成 returning to the
 home. **26** and **27** are the insufficient-memory refusal in both of its forms,
 pre-start and mid-game, reached by handing the frontend a probe that reports a starved
 machine so that the core's own budget arithmetic answers the refusal rather than a stub
-standing in for it.
+standing in for it. **28** is 无法开始对局, reached the same way in spirit: a game left
+standing in the library so that `mxq_game_create` answers
+`MXQ_ERR_STATE_ACTIVE_GAME_EXISTS`, which is a route the flow's own
+release-before-open invariant makes unreachable in the app — what it runs is the
+**answer** to a refused creation, which had no run at all, and `Create`'s catch does not
+discriminate between refusals.
+
+**One blocking answer is still unrun, and is named rather than dressed up.** The accepted
+**无法保存对局** retry after a refused archive — `FlowAlert.ArchiveFailed` — needs
+`mxq_store_archive_and_clear` itself to fail, and there is no honest seam for that: the
+memory probe seam feeds a real input to real code, and a store seam would be a stand-in
+replacing the call under test. What is checked instead is that the path around it is
+right — the game stays active, the search is picked back up, the retry repeats the same
+atomic archive — by reading, not by running.
 
 ```powershell
 windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
@@ -252,6 +267,15 @@ pixels in them and no gate would notice. They say what the board looked like on 
 that produced them, which is what a reviewer with no desktop needs; a comparison gate
 would be a different thing, and it would need a tolerance and a rule about what a
 legitimate change looks like before it was worth having.
+
+**Every render is drawn on every run; only new pixels are committed.** A pull request
+that adds a scene adds a picture under `docs/evidence/pr<number>/`, and one that draws the
+same board a committed picture already shows commits nothing — the run is what proves the
+scene, and a second byte-identical copy of a file already in the repository would be
+weight rather than evidence. The pre-start previews are exactly that case: a pre-start
+preview is the frozen initial board, so they come out identical to `start-large` and
+`start-flipped`, and the claim they carry is about which code produced them rather than
+about what they look like.
 
 **It does not run over SSH either, and for a different reason.** Win2D needs a Direct2D
 device, and Direct2D refuses in session 0: every way into `CanvasDevice` answers
