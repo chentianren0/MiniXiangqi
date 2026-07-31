@@ -1342,6 +1342,24 @@
         }
       }
     },
+    "nav.moveList": {
+      "comment": "The stacked layout's on-demand move list: the toolbar item that reaches it and the title of the sheet it opens.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moves"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棋谱"
+          }
+        }
+      }
+    },
     "nav.play": {
       "extractionState": "manual",
       "localizations": {

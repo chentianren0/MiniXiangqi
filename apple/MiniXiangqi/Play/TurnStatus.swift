@@ -95,8 +95,7 @@ struct TurnStatus: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("ai-stalled")
-                    Button("control.tryAgain", action: retry)
-                        .buttonStyle(.link)
+                    inlineRetry(retry)
                         .accessibilityIdentifier("ai-retry")
                 }
             }
@@ -110,6 +109,23 @@ struct TurnStatus: View {
                 .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
                 .accessibilityHidden(true)
         }
+    }
+
+    /// The stalled slot's 重试, in each platform's own inline-action weight.
+    ///
+    /// It sits inside a sentence about the game rather than in a control
+    /// cluster, so it takes the style the platform gives an action written into
+    /// text: AppKit's link style on macOS, which UIKit has no counterpart for,
+    /// and the borderless style on iOS and iPadOS, which is the accent-tinted
+    /// text button the platform puts beside a line of prose. Same control, same
+    /// identifier, same words; only the weight is the platform's.
+    @ViewBuilder
+    private func inlineRetry(_ retry: @escaping () -> Void) -> some View {
+        #if os(macOS)
+        Button("control.tryAgain", action: retry).buttonStyle(.link)
+        #else
+        Button("control.tryAgain", action: retry).buttonStyle(.borderless)
+        #endif
     }
 
     private var primaryLine: String {

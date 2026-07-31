@@ -414,7 +414,7 @@ The requested destination remains temporary only while this confirmation or retr
 - **A game already filed is never filed again.** A claimed draw arrives at its notice already recorded, and so does a result the player has saved; the concluding action on either of them resets the board and commits nothing further.
 - The target MVP does not add a Play Again action to this notice.
 - The play-control cluster's concluding action stays **开始新对局**, and no confirmation stands between it and the new game: it files the finished game and resets the board, which is exactly what the notice's second action does under a name that says so.
-- On macOS the two actions sit side by side, with the default one trailing, where this platform puts a default action. Stacking them is allowed where the longer label would crowd the notice, and iOS revisits that when the stacked layout arrives.
+- On macOS the two actions sit side by side, with the default one trailing, where this platform puts a default action. **iOS keeps them side by side too**, which is what the stacked layout's arrival was to decide: photographed on an iPhone in both languages, **保存并开始新对局** and the longer English *Save and New Game* both sit beside **保存** without crowding the notice or reaching the screen's edges. The permission to stack them is therefore unused rather than withdrawn — it stands for a size that has not been met. *(Stage 6.)*
 
 ### Claimable threefold repetition
 
@@ -585,10 +585,16 @@ Piece characters are game content and are excluded from localization, as defined
 
 ### Layout shapes
 
-Two arrangements cover every device and window size, chosen by available width rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
+Two arrangements cover every device and window size, chosen by the available **space** rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
 
-- **Stacked**, used by iPhone portrait and by narrow windows including iPad portrait: turn status above the board, play controls below it, and the board centred between them.
+- **Stacked**, used by iPhone portrait and by iPad portrait and narrow windows: turn status above the board, play controls below it, and the board centred between them.
 - **Side by side**, used by iPad landscape, wide iPad window sizes, and ordinary Mac windows: the board on one side with a panel beside it carrying the turn status, the move list, game metadata, and controls that do not need to sit under the thumb.
+
+**The rule is which arrangement gives the board more.** Both shapes fit the same square into the same rectangle and differ only in what they take out of it first: side by side takes the panel's width, stacked takes the chrome's height. Whichever leaves the larger board is the one used, and a tie goes to side by side, which costs the board nothing and shows the move list for free. A shape that cannot be drawn at all — the panel on a phone, the chrome's height at the minimum Mac window — loses to the shape that can. *(Settled at Stage 6, against iPhone and iPad screens.)*
+
+**It is the available space and not a width threshold, and that is a correction.** This section said *width* before any iOS screen existed, and one width cannot express it: the two shapes' costs are on different axes. The accepted macOS minimum window is bound by its **height**, and takes side by side at 616 points of content; an iPad in portrait is bound by nothing, and takes stacked at 834. A single threshold would have to be both below 616 and above 834. What the width wording was reaching for — *the space decides, never the device* — is unchanged and is what the rule above states.
+
+The two shapes the contract already named are exactly what the rule produces, iPad portrait included: on an iPad Pro 11-inch in portrait the stacked board reaches the 102-point maximum while the panel beside it would have held the board to 75, and the same device in landscape is the other way round. On the smallest Mac window the stacked shape cannot reach the 44-point floor at all, so side by side stands.
 
 The board is square and is sized to the largest square fitting **both** the available width and the height left after the surrounding chrome, so it never overflows a short window. Within that, a point of the grid is never smaller than 44 points on **every** platform. On iOS and iPadOS that is the platform's default control size. macOS shares it rather than taking the smaller figure a pointer would allow, because the marker vocabulary in [Board metrics](#board-metrics) has one worst case instead of two, and because its finest distinctions — the air gap between a disc and its markers, and the gap between the two check rings — are fractions of a point at a smaller pitch.
 
@@ -602,18 +608,23 @@ When space is short the surrounding chrome tightens before the board does. That 
 
 **macOS stops at 760 by 492 points**, which is that floor plus the navigation container: 144 points of sidebar beside it and 52 of toolbar above it, both measured on the running app rather than derived. The 616 by 388 the play content gets inside that window is unchanged, which is the point — the destination structure was added around the layout rather than out of it. The number moved when the navigation arrived and is expected to move again if the container's presentation changes.
 
+**That floor belongs to the platform with a resizable window, so it is macOS's alone.** A minimum size is a thing that stops a resize, and iOS and iPadOS have no resize to stop: the screen is the size it is, and a multitasking iPad is sized by the system rather than by the app. A 616-point minimum on a 440-point phone would not widen anything — it would only declare content wider than the screen, which is what the stacked shape exists to avoid. *(Stage 6.)*
+
 **The file numerals are present at every macOS window size**, including the smallest. The move list speaks of 兵四进一 and the strips are what ground 四 on the board, so a size where the game can be played but not read about is not a size worth having. They cost about a tenth of the board block's height at the floor and proportionally less as the board grows, and at the minimum window they cost nothing at all, because that window is bound by its width.
 
 **The panel's sections begin on one edge**, 16 points in from the panel's own, and its material runs to the top of the window rather than stopping below the title bar: the title bar draws its own treatment over whatever lies beneath it, and beneath it lies the panel rather than bare window.
 
 One exception: a pre-start board is a noninteractive preview with no touch targets, so it carries no size floor and yields space to the setup controls whenever they need it. The floor exists to protect interaction, and a preview has none to protect.
 
-Navigation uses one adaptive container, presenting as a tab bar at narrow widths and as a sidebar at wide ones. It follows the same width-driven rule as the layout shapes rather than device identity, so an iPad in a narrow window gets the same navigation as an iPhone.
+Navigation uses one adaptive container, presenting as a tab bar at narrow widths and as a sidebar at wide ones. It follows the same space-driven principle as the layout shapes rather than device identity, so an iPad in a narrow window gets the same navigation as an iPhone.
+
+**On Apple platforms that container is the platform's own**, and it settles the question of whether the user may switch between the two presentations: it presents as a tab bar on iPhone, as a sidebar on a Mac, and on iPad as a tab bar carrying the platform's own control for expanding it into a sidebar. The switch is therefore offered where the platform offers it and nowhere else, which is a better answer than one the app invented, and the app adds no control of its own. *(Stage 6, from the running app.)*
 
 ### The move list during play
 
 - Where the side-by-side layout applies, the move list is permanently visible in the panel.
 - In the stacked layout during ordinary play it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
+- **What reaches it is a toolbar item over a sheet.** The item sits in the same toolbar the page's own back control is in — the platform's place for something about this page that is not on it — and the sheet opens at half height, because the other half is the board the list is being consulted about. It is dismissible by the platform's own means and by a **完成**; it is a transient the player asked for, which is exactly the surface [Platform visual language](#platform-visual-language) already allows to cover the board. The list inside it is the same list the panel carries, and it stays a record rather than becoming a control: during play no move is selectable, as in the panel. *(Stage 6.)*
 - Replay is the exception: its accepted behaviour requires the move list to highlight the current move and to allow jumping to a selected one, so replay in the stacked layout shows the move list rather than hiding it, and the surrounding chrome is what tightens to make room.
 
 ### Captured pieces
@@ -633,11 +644,10 @@ Captured pieces are not displayed. Each side begins with twelve pieces, so what 
 
 > The items below are questions, not requirements or implementation authorization.
 
-- Define the exact widths at which the layout shape and the navigation presentation change, whether the navigation offers the user a switch between tab bar and sidebar where the platform supports one, and how the on-demand move list is presented in the stacked layout. Replay's own answer is settled — its list is part of the screen rather than reached from it, because its accepted behaviour needs the list to indicate the shown move — so what remains open is ordinary play's.
-- Fix the minimum window size for iPadOS windowing, which the board and chrome floors together determine, and name the narrowest supported iPhone the stacked layout is verified against.
+- Fix the minimum window size for iPadOS windowing, which the board and chrome floors together determine. The app declares none today: iPadOS sizes a multitasking window itself, the shape rule answers whatever size it hands over, and what remains open is whether there is a size below which the app should decline rather than adapt.
 - Fix what size a macOS window opens at when there is nothing to restore. The minimum is settled and the opening size is not: today a window whose content is flexible in both directions opens at the whole visible area of whatever display it lands on, and the scene's declared default size does not change that on the current toolchain.
-- Resolve how the result notice, the retained draw-claim affordance, and accessibility text sizes fit the stacked layout's remaining space, given that the board behind the notice has to stay worth looking at and the chrome has its own floor.
-- Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, how that metadata relates to the Play destination's own active-game metadata, and what the stacked layout does with the controls that panel would otherwise hold.
+- Resolve how the retained draw-claim affordance and the accessibility text sizes fit the stacked layout's remaining space, given that the chrome has its own floor. The result notice's own answer is settled above — it fits, in both languages, with the board behind it still worth looking at — and the stacked chrome yields to the board rather than the other way round, so what remains open is what happens at the largest accessibility sizes, which no screenshot has been taken at yet.
+- Define what the side-by-side panel contains beyond the turn status, move list, game metadata, and controls, and how that metadata relates to the Play destination's own active-game metadata. What the stacked layout does with the panel's contents is settled: the turn status goes above the board, the play controls below it, and the move list is reached on demand.
 - Fix each piece style's concrete values — role colours and disc fills, ring weights, grid stroke, its own board surface, and its marker ink at both accepted strengths — within the constraints the accepted styles and board metrics impose.
 - Define board themes beyond the three accepted piece styles, if any are wanted.
 - Define the 将军 token's form, the remaining transient announcements, the turn status's VoiceOver behavior, and its placement within the side-by-side panel. The AI activity treatment is settled above.

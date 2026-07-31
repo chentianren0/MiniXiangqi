@@ -49,6 +49,13 @@ struct ReplayScreen: View {
         // which game this is. The words are the system's date formatting rather
         // than copy, so they are verbatim.
         .navigationTitle(Text(verbatim: record.whenText))
+        // A page walked into from the list is titled beside the control that
+        // walks back out, which is what iOS does with a pushed page — and what
+        // the board on a phone can afford, since a large title is most of the
+        // height the stacked shape spends on the board.
+        #if !os(macOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .onAppear {
             guard replay == nil else { return }
             switch library.replay(of: record, policy: policy) {
@@ -75,28 +82,58 @@ struct ReplayScreen: View {
 
     private func layout(_ replay: Replay) -> some View {
         GeometryReader { proxy in
-            let geometry = BoardLayout.geometry(in: proxy.size)
-            HStack(spacing: 0) {
-                BoardView(geometry: geometry,
-                          placement: replay.placement,
-                          flipped: replay.flipped,
-                          lastMove: replay.lastMove,
-                          checkedGeneral: replay.checkedGeneral,
-                          transit: replay.transit,
-                          transitFade: replay.transitFade,
-                          policy: policy,
-                          onTravelArrival: { replay.travelArrived() },
-                          onFadeArrival: { replay.fadeArrived() })
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                panel(replay)
-                    .frame(width: BoardLayout.panelWidth)
+            switch BoardLayout.shape(in: proxy.size) {
+            case .sideBySide:
+                HStack(spacing: 0) {
+                    board(replay, BoardLayout.geometry(in: proxy.size))
+                    panel(replay, edge: .top)
+                        .frame(width: BoardLayout.panelWidth)
+                }
+            case .stacked:
+                // Replay is the exception to the on-demand move list: its
+                // accepted behaviour needs the list to indicate the shown move
+                // and to let one be selected, so in this shape the list is on
+                // screen too and the surrounding chrome is what tightens to
+                // make room. The board takes its half of the height and the
+                // panel takes the rest.
+                VStack(spacing: 0) {
+                    board(replay, BoardLayout.stackedGeometry(in: proxy.size,
+                                                              chrome: panelHeight))
+                    panel(replay, edge: .bottom)
+                        .frame(height: panelHeight)
+                }
             }
         }
+        #if os(macOS)
         .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
+        #endif
     }
 
-    private func panel(_ replay: Replay) -> some View {
+    /// What the stacked shape gives the panel beneath the board: the header,
+    /// the list, and the transport, in the height the two ends of it need plus
+    /// room for four or five rows of the game. Above the board's own floor the
+    /// board takes the rest; below it the chrome is what has already tightened.
+    private var panelHeight: CGFloat { 260 }
+
+    private func board(_ replay: Replay, _ geometry: BoardGeometry) -> some View {
+        BoardView(geometry: geometry,
+                  placement: replay.placement,
+                  flipped: replay.flipped,
+                  lastMove: replay.lastMove,
+                  checkedGeneral: replay.checkedGeneral,
+                  transit: replay.transit,
+                  transitFade: replay.transitFade,
+                  policy: policy,
+                  onTravelArrival: { replay.travelArrived() },
+                  onFadeArrival: { replay.fadeArrived() })
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The panel, beside the board or beneath it. `edge` is the window edge its
+    /// material runs to — the top beside the board, where the title bar draws
+    /// over it, and the bottom beneath the board, which is the edge this shape
+    /// puts it on.
+    private func panel(_ replay: Replay, edge: Edge.Set) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             header(replay)
                 .padding(.horizontal, BoardLayout.panelInset)
@@ -133,7 +170,7 @@ struct ReplayScreen: View {
         .background {
             Rectangle()
                 .fill(.regularMaterial)
-                .ignoresSafeArea(.container, edges: .top)
+                .ignoresSafeArea(.container, edges: edge)
         }
     }
 

@@ -6,7 +6,7 @@
 // caches and attach the same image to the result bundle, and assert the
 // render's size.
 
-import AppKit
+import Foundation
 import SwiftUI
 import Testing
 @testable import MiniXiangqi
@@ -22,13 +22,7 @@ private var snapshotDirectory: URL {
 
 @MainActor
 private func render(_ view: some View, scale: CGFloat = 2, named name: String) throws -> CGSize {
-    let renderer = ImageRenderer(content: view)
-    renderer.scale = scale
-    guard let image = renderer.nsImage,
-          let data = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: data),
-          let png = bitmap.representation(using: .png, properties: [:])
-    else {
+    guard let (image, png) = renderPNG(view, scale: scale) else {
         Issue.record("the board did not render")
         return .zero
     }

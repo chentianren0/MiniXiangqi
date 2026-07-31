@@ -253,7 +253,18 @@ struct SetupTests {
         #expect(huge.threads == 16, "Threads is the processor count the frontend reported")
     }
 
-    @Test("The macOS probe reports two plausible numbers")
+    /// docs/engine-integration.md names a different probe per platform —
+    /// `host_statistics64` on macOS, `os_proc_available_memory()` on iOS and
+    /// iPadOS — and docs/testing.md asks for each to be verified on its own
+    /// platform. This is one test rather than two because what has to hold of
+    /// the answer is the same either way, and because the bundle now runs on
+    /// both: whichever probe the platform compiled in is the one this exercises.
+    ///
+    /// What it cannot do is stand in for the on-device re-measurement the phase
+    /// still owes. A Simulator's process limit is the host Mac's memory, not a
+    /// phone's, so this says the probe answers plausibly rather than that it
+    /// answers the right number on an 8 GB device.
+    @Test("The platform's own probe reports two plausible numbers")
     func theProbeAnswers() {
         let budget = EngineBudget.probe()
         #expect(budget.physicalBytes > 0, "the machine has memory")

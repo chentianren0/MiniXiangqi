@@ -87,6 +87,16 @@ struct PlayDestination: View {
             page
                 .playContentFloor()
                 .navigationTitle("nav.play")
+                // The root carries the platform's large title and the two pages
+                // over it carry the inline one, which is what iOS does with a
+                // stack: a large title announces a destination you have arrived
+                // at, and a page you walked into is titled beside the control
+                // that walks back out. It is also what the board can afford —
+                // a large title is most of a phone's spare height, and the
+                // stacked shape spends that height on the board.
+                #if !os(macOS)
+                .navigationBarTitleDisplayMode(play.page == .home ? .large : .inline)
+                #endif
                 .toolbar {
                     if play.page != .home {
                         ToolbarItem(placement: .navigation) {
@@ -128,7 +138,15 @@ private extension View {
     /// that clips the board, so every page carries the same number and the
     /// minimum never changes underneath the player. `-mxq-no-minimum` takes it
     /// off so a screenshot can show what the layout does below it.
+    ///
+    /// **It is a window's floor, so it is macOS's.** What a minimum does is stop
+    /// a resize; iOS and iPadOS have no resize to stop — the screen is the size
+    /// it is, and a multitasking iPad is sized by the system rather than by the
+    /// app. A 616-point minimum on a 440-point phone would not widen anything.
+    /// It would only tell SwiftUI the content is wider than the screen, and the
+    /// stacked shape exists precisely so that it is not.
     func playContentFloor() -> some View {
+        #if os(macOS)
         #if DEBUG
         let lifted = DebugLaunch.contains("-mxq-no-minimum")
         return frame(minWidth: lifted ? nil : BoardLayout.minimumWidth,
@@ -136,6 +154,9 @@ private extension View {
         #else
         return frame(minWidth: BoardLayout.minimumWidth,
                      minHeight: BoardLayout.minimumHeight)
+        #endif
+        #else
+        return self
         #endif
     }
 }

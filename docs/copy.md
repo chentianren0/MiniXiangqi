@@ -26,6 +26,7 @@ Contract sections are cited by document and section name rather than by line num
 | `nav.history` | 历史 | History | navigation destination | same; 历史 is attested inside 保存到历史 and 已记录到历史 |
 | `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
 | `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode — English only there; `Play/PlayHome.swift` |
+| `nav.moveList` | 棋谱 | Moves | toolbar item; sheet title | [interaction-design.md](interaction-design.md) § The move list during play — the stacked layout reaches the list on demand, and this names both the item that reaches it and the sheet it opens; `Play/PlayScreen.swift`. 谱 is attested inside 记谱法 |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Target-MVP play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
 

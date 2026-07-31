@@ -261,3 +261,38 @@ enum ScratchDefaults {
         UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
     }
 }
+
+// MARK: - Rendering a view to a PNG
+
+#if canImport(AppKit)
+import AppKit
+#else
+import UIKit
+#endif
+import SwiftUI
+
+/// The platform image `ImageRenderer` produces here. The two snapshot suites
+/// render the same views on both platforms and write the same PNGs; only the
+/// framework holding the pixels differs, and it differs in exactly two calls.
+#if canImport(AppKit)
+typealias PlatformImage = NSImage
+#else
+typealias PlatformImage = UIImage
+#endif
+
+/// One rendered view, as a platform image and as PNG bytes.
+@MainActor
+func renderPNG(_ view: some View, scale: CGFloat) -> (image: PlatformImage, png: Data)? {
+    let renderer = ImageRenderer(content: view)
+    renderer.scale = scale
+    #if canImport(AppKit)
+    guard let image = renderer.nsImage,
+          let tiff = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff),
+          let png = bitmap.representation(using: .png, properties: [:])
+    else { return nil }
+    #else
+    guard let image = renderer.uiImage, let png = image.pngData() else { return nil }
+    #endif
+    return (image, png)
+}
