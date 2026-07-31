@@ -91,6 +91,16 @@ public sealed class PlaySession : IDisposable
     private readonly IPlayScheduler _scheduler;
     private readonly SearchService _search;
 
+    /// <summary>
+    /// Where the engine budget comes from. The platform probe in the app —
+    /// <c>GlobalMemoryStatusEx</c>, per docs/engine-integration.md — and a
+    /// supplied one in the harness, which is how the accepted mid-game
+    /// insufficient-memory presentation is exercised on a machine that has
+    /// plenty of memory. It is a probe rather than a plan, so the arithmetic
+    /// under test is still the core's own.
+    /// </summary>
+    private readonly Func<MxqEngineBudget> _probe;
+
     private GameSession _game;
     private string _gameId;
     private GameConfiguration _configuration;
@@ -106,6 +116,7 @@ public sealed class PlaySession : IDisposable
 
     private IDisposable? _indicator;
     private Task? _preparation;
+    private Task? _archive;
     private int _attempt;
     private bool _preparing;
     private bool _recorded;
@@ -113,11 +124,16 @@ public sealed class PlaySession : IDisposable
     private bool _noticeDismissed;
     private Action? _failedCommit;
 
-    public PlaySession(MiniXiangqiCore core, GameSession game, IPlayScheduler scheduler)
+    public PlaySession(
+        MiniXiangqiCore core,
+        GameSession game,
+        IPlayScheduler scheduler,
+        Func<MxqEngineBudget>? probe = null)
     {
         _core = core;
         _game = game;
         _scheduler = scheduler;
+        _probe = probe ?? WindowsMemoryProbe.Current;
         _search = new SearchService(core, scheduler);
         _gameId = game.Id;
         _configuration = game.Configuration();
@@ -204,6 +220,15 @@ public sealed class PlaySession : IDisposable
 
     public bool IsOver => ResultState
         is Mxq.MXQ_GAME_RED_WINS or Mxq.MXQ_GAME_BLACK_WINS or Mxq.MXQ_GAME_DRAW;
+
+    /// <summary>
+    /// Whether this game has been filed. A filed game is immutable History and
+    /// the active-game reference was cleared by the terminal commit that made
+    /// it, so it is **not** an active game: the Play home's card does not
+    /// describe it, and choosing a mode while it stands on the board presents no
+    /// confirmation, because there is nothing left to save.
+    /// </summary>
+    public bool IsFiled => _recorded;
 
     /// <summary>
     /// In human-versus-AI play the human's own side is at the bottom and there
@@ -438,44 +463,77 @@ public sealed class PlaySession : IDisposable
     }
 
     /// <summary>
-    /// The concluding action: 开始新对局 on the play-control cluster, and
-    /// 保存并开始新对局 on the notice. It files the finished game and resets the
-    /// board, and no confirmation stands between it and the new game.
+    /// What every concluding action does first: file the game if it is not
+    /// filed already, and answer whether it is filed now.
+    ///
+    /// A claimed draw arrives already recorded and so does a result the player
+    /// has saved, and neither is filed twice — that is what the guard inside
+    /// <see cref="SaveResult"/> is. A filing the store refuses answers false
+    /// with the accepted 无法保存对局 retry up, and the caller does nothing
+    /// further: the game stays active and exactly as it stood.
+    ///
+    /// What happens *after* the filing is the destination's, not this screen's.
+    /// docs/interaction-design.md, "Where the concluding actions go": 开始新对局
+    /// opens that game's own mode's pre-start state and 完成 returns to the Play
+    /// home, and neither of those is something a board knows how to do.
     /// </summary>
-    public void NewGame()
+    public bool FileIfNeeded()
     {
-        // Filing it first, through the same guarded path 保存 takes: the search
-        // is cancelled, the state is read again, and a game that has stopped
-        // being finishable is not finished twice.
         if (!_recorded)
         {
             SaveResult();
         }
 
-        if (!_recorded)
-        {
-            return;
-        }
+        return _recorded;
+    }
 
-        GameSession replacement = _core.Create(
-            _configuration.Mode,
-            _configuration.HumanSide,
-            _configuration.AiLevel,
-            _configuration.FirstMoverChoice,
-            _configuration.MovetimeMs);
-
-        _game.Dispose();
-        _game = replacement;
-        _gameId = replacement.Id;
-        _configuration = replacement.Configuration();
-        _recorded = false;
-        _committed = null;
-        _noticeDismissed = false;
-        MoveNotSaved = false;
-        Select(null);
-        Read();
+    /// <summary>
+    /// Stop the machine thinking, because what it is thinking about is about to
+    /// stop being true. Public because 保存并继续 is a decision taken on another
+    /// page about this game: a search outstanding over a game that is being
+    /// archived answers to nothing.
+    /// </summary>
+    public void CancelSearch()
+    {
+        _search.Cancel();
+        StopIndicator();
+        Activity = AiActivity.Idle;
         Publish();
-        EnsureSearch();
+    }
+
+    /// <summary>
+    /// **保存并继续**'s archive: the active game filed by its factual current
+    /// state and the active-game reference cleared, atomically.
+    ///
+    /// It is the one operation on this path that is **not** driven from the UI
+    /// thread — docs/core-interface.md's threading contract keeps
+    /// <c>mxq_store_archive_and_clear</c> outside the main-actor exception the
+    /// active game's own commits run under — so the session goes to a pool
+    /// thread and the answer comes back through the scheduler. Nothing may enter
+    /// this session in between, which is what the caller's own guard is for: a
+    /// session is single-owner by contract, and a detected race is
+    /// MXQ_ERR_ARG_CONCURRENT_USE rather than a silent serialisation.
+    ///
+    /// The search is cancelled first, here, so that the caller cannot forget to.
+    /// </summary>
+    public void ArchiveAndClear(Action<MxqException?> answered)
+    {
+        CancelSearch();
+        GameSession game = _game;
+        _archive = Task.Run(() =>
+        {
+            MxqException? failure = null;
+            try
+            {
+                _core.ArchiveAndClear(game);
+            }
+            catch (MxqException caught)
+            {
+                failure = caught;
+            }
+
+            _scheduler.Post(() => answered(failure));
+        });
     }
 
     /// <summary>
@@ -522,30 +580,35 @@ public sealed class PlaySession : IDisposable
     /// every call that *begins* after <c>mxq_core_shutdown</c> returns, and
     /// explicitly not one already in flight on another thread — "the caller
     /// quiesces its own threads before shutting the core down; the core does
-    /// not defend against one that does not." An engine preparation is this
-    /// session's only call on another thread, so it is waited for here. The
-    /// wait is bounded by the preparation's own completion and cannot deadlock:
-    /// it runs on a pool thread, marshals onto the engine thread, and depends
-    /// on nothing this thread holds.
+    /// not defend against one that does not." An engine preparation and an
+    /// archive are this session's only calls on another thread, so both are
+    /// waited for here. Each wait is bounded by that call's own completion and
+    /// cannot deadlock: they run on pool threads and depend on nothing this
+    /// thread holds.
     /// </summary>
     public void Dispose()
     {
         StopIndicator();
         _search.Dispose();
+        Quiesce(_preparation);
+        Quiesce(_archive);
+        _preparation = null;
+        _archive = null;
+        _game.Dispose();
+    }
 
+    private static void Quiesce(Task? work)
+    {
         try
         {
-            _preparation?.Wait();
+            work?.Wait();
         }
         catch (AggregateException)
         {
-            // The preparation's own failure was already reported through the
-            // scheduler, or will never be delivered because the window is
-            // closing. Either way there is nobody left to tell.
+            // The call's own failure was already reported through the scheduler,
+            // or will never be delivered because the window is closing. Either
+            // way there is nobody left to tell.
         }
-
-        _preparation = null;
-        _game.Dispose();
     }
 
     // Reading the core.
@@ -785,7 +848,7 @@ public sealed class PlaySession : IDisposable
         // A fresh probe at every attempt: a retry that follows a refusal has to
         // see the memory the user just freed, and a cached value would answer
         // with the state that produced the refusal.
-        MxqEngineBudget budget = WindowsMemoryProbe.Current();
+        MxqEngineBudget budget = _probe();
 
         // mxq_engine_prepare blocks — it allocates Hash and loads the network,
         // marshalled onto the engine thread — and the threading contract keeps

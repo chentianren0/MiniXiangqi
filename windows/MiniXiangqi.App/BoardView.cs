@@ -12,8 +12,10 @@
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using MiniXiangqi.Board;
 using MiniXiangqi.Play;
 
@@ -28,12 +30,27 @@ public sealed partial class BoardView : Grid
     private BoardScene _scene = BoardScene.Of(Placement.Empty);
     private BoardGeometry _geometry = new(BoardGeometry.MinimumPitch);
 
-    public BoardView()
+    /// <param name="interactive">
+    /// Whether the board has points at all. The pre-start preview does not: it
+    /// "shows the initial board as a noninteractive preview", and a preview has
+    /// nothing to interact with — saying so is what keeps a screen reader from
+    /// offering forty-nine points that answer to nothing, and what keeps a click
+    /// on it from meaning anything.
+    /// </param>
+    public BoardView(bool interactive = true)
     {
         _canvas.Draw += OnDraw;
         _canvas.ClearColor = Microsoft.UI.Colors.Transparent;
         Children.Add(_canvas);
         Children.Add(_points);
+
+        if (!interactive)
+        {
+            IsHitTestVisible = false;
+            AutomationProperties.SetAccessibilityView(this, AccessibilityView.Raw);
+            Loaded += (_, _) => Place();
+            return;
+        }
 
         for (int rank = 0; rank < Square.Count; rank++)
         {
@@ -46,6 +63,20 @@ public sealed partial class BoardView : Grid
                     Style = (Style)Application.Current.Resources["BoardPointStyle"],
                 };
                 button.Click += (_, _) => PointTapped?.Invoke(square);
+
+                // A point's tap is answered by its own Click and stops here.
+                //
+                // This is the fix for a reported defect: selecting a piece
+                // appeared to need a *double* click. What was wrong is below, in
+                // OnTapped — the filter that was supposed to let a point's tap
+                // pass unanswered could not match — and the effect of the tap
+                // reaching the board's own handler is a background cancel
+                // arriving immediately behind the selection the same click had
+                // just made. The double click worked because the second tap of a
+                // double tap raises DoubleTapped rather than Tapped, so no
+                // cancel followed it and the selection stood.
+                button.Tapped += (_, tapped) => tapped.Handled = true;
+
                 button.PointerEntered += (_, _) => PointerOverChanged?.Invoke(square);
                 button.PointerExited += (_, _) => PointerOverChanged?.Invoke(null);
                 AutomationProperties.SetAutomationId(button, $"point-{square.Name}");
@@ -116,17 +147,52 @@ public sealed partial class BoardView : Grid
     private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args) =>
         BoardPainter.Draw(args.DrawingSession, _scene, _geometry, PieceStyle);
 
+    /// <summary>
+    /// A tap on the board that was not a point's. Anything else on the board —
+    /// the coordinate strips, the margin, the space between points — is outside
+    /// the points, and tapping outside the board cancels the selection.
+    ///
+    /// **The test below used to ask the wrong element.** A point's Button is
+    /// templated down to a bare <c>Border</c> with no <c>Tag</c>, so the element
+    /// a tap originates on is that Border and never the Button:
+    /// <c>OriginalSource is FrameworkElement { Tag: Square }</c> could not match
+    /// for any tap on any point, and every one of them fell through to the
+    /// cancel below. Walking to the Button is what the test meant, and the
+    /// handler above is what stops the tap before it ever reaches here.
+    ///
+    /// Both are kept. Which of the two is load-bearing depends on whether this
+    /// platform routes a tap past a Button that has already handled the pointer
+    /// press, and that is a question no headless process can answer — a WinUI 3
+    /// window cannot be launched over SSH. Each is a correct statement about the
+    /// interaction on its own, so the interaction does not depend on the answer.
+    /// </summary>
     private void OnTapped(object sender, TappedRoutedEventArgs args)
     {
-        // A point's own button has already answered for itself; anything else
-        // on the board — the coordinate strips, the margin — is outside, and
-        // tapping outside the board cancels the selection.
-        if (args.OriginalSource is FrameworkElement { Tag: Square })
+        if (IsPointTap(args.OriginalSource as DependencyObject))
         {
             return;
         }
 
         BackgroundTapped?.Invoke();
+    }
+
+    /// <summary>
+    /// Whether an element is a point, or is inside one. It walks the visual tree
+    /// rather than testing the element itself, because a control's own template
+    /// stands between a tap and the control it belongs to.
+    /// </summary>
+    private static bool IsPointTap(DependencyObject? source)
+    {
+        for (DependencyObject? node = source; node is not null;
+             node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is FrameworkElement { Tag: Square })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Place()

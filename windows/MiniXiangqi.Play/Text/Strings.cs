@@ -71,8 +71,18 @@ public static class Strings
     public static readonly ImmutableDictionary<string, LocalizedString> Table =
         new Dictionary<string, LocalizedString>(StringComparer.Ordinal)
         {
+            // Navigation and modes. 对局 names the destination, the Play home's
+            // own title, and the back control that returns to it — one string
+            // for one page, as docs/copy.md keys it.
+            ["nav.play"] = new("对局", "Play"),
+            ["nav.resumeGame"] = new("回到对局", "Resume Game"),
+            ["mode.humanVersusAI"] = new("人机对弈", "Human versus AI"),
+            ["mode.freePlay"] = new("自由对弈", "Free Play"),
+
             // Controls.
             ["control.undo"] = new("悔棋", "Undo"),
+            ["control.startGame"] = new("开始对局", "Start Game"),
+            ["control.saveAndContinue"] = new("保存并继续", "Save and Continue"),
             ["control.claimDraw"] = new("判和", "Claim Draw"),
             ["control.flipBoard"] = new("翻转棋盘", "Flip Board"),
             ["control.resign"] = new("认输", "Resign"),
@@ -130,6 +140,14 @@ public static class Strings
             ["alert.resign.message"] = new("认输后本局将记为你落败。", "Resigning records this game as your loss."),
             ["alert.claimDraw.title"] = new("局面已三次重复", "This position has occurred three times."),
             ["alert.claimDraw.message"] = new("可以和棋结束。", "You can end the game as a draw."),
+            ["alert.newGame.title"] = new("开始新对局？", "Start a new game?"),
+            // One string over one line, wherever that line is shown: the
+            // confirmation's metadata header, and the current-game section on
+            // the Play home.
+            ["alert.newGame.metadataHeader"] = new("当前对局", "Current Game"),
+            ["alert.newGame.message"] = new(
+                "这盘对局将按当前状态保存到历史。",
+                "This game will be saved to History as it is now."),
             ["alert.saveFailed.title"] = new("无法保存对局", "Couldn't Save the Game"),
             ["alert.saveFailed.message"] = new("当前对局仍然保留。请重试。", "The current game is unchanged. Please try again."),
             ["alert.aiUnavailable.title"] = new("无法启动 AI 对手", "Couldn't Start the AI Opponent"),
@@ -140,6 +158,41 @@ public static class Strings
                 "当前可用内存不足。对局已保存，可以稍后继续。请尝试关闭一些其他 App，然后重试。",
                 "There is not enough memory available. The game is saved and you can continue later. "
                 + "Please close some other apps, then try again."),
+            // The creation failure that is not about memory: the game could not
+            // be persisted. It cannot borrow alert.saveFailed's wording, whose
+            // message promises that the current game is unchanged — there is no
+            // current game to keep.
+            ["alert.gameNotStarted.title"] = new("无法开始对局", "Couldn't Start the Game"),
+            ["alert.gameNotStarted.message"] = new(
+                "保存这盘新对局时出错。请重试。",
+                "Saving the new game failed. Please try again."),
+
+            // Pre-start setup. 本局设置 names the group and the three options
+            // name themselves, so 先后手 is drawn nowhere and is the segmented
+            // control's screen-reader name.
+            ["setup.thisGame"] = new("本局设置", "This Game"),
+            ["setup.firstMover"] = new("先后手", "First Mover"),
+            ["setup.iMoveFirst"] = new("我先手", "I Move First"),
+            ["setup.aiMovesFirst"] = new("AI 先手", "AI Moves First"),
+            ["setup.random"] = new("随机", "Random"),
+            ["setup.aiLevel"] = new("AI 等级", "AI Level"),
+            ["setup.level.fast"] = new("快速", "Fast"),
+            ["setup.level.standard"] = new("标准", "Standard"),
+            ["setup.level.deep"] = new("深思", "Deep"),
+            ["setup.freePlayExplanation"] = new(
+                "你将控制红黑双方，红方先行。",
+                "You control both Red and Black. Red moves first."),
+
+            // Game metadata: the tokens the active game's line is composed of.
+            ["metadata.youRed"] = new("你执红", "You: Red"),
+            ["metadata.youBlack"] = new("你执黑", "You: Black"),
+            ["metadata.inProgress"] = new("进行中", "In Progress"),
+            // 步 is invariant and *move* is not. On Apple this is one String
+            // Catalog plural pattern and the platform selects the variant; this
+            // frontend has no catalog, so the *one* variant carries its own key
+            // and PlayText selects between them.
+            ["metadata.moveCount"] = new("{0} 步", "{0} moves"),
+            ["metadata.moveCount.one"] = new("{0} 步", "{0} move"),
 
             // Failure screens. The technical description beneath each title is
             // the core's own diagnostic, which is never localized.

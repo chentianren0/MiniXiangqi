@@ -227,10 +227,13 @@ Nothing here offers an interface language, and no key exists for one: the operat
 | `metadata.youBlack` | 你执黑 | You: Black | metadata token | this contract — the mirror of 你执红, which is the form the contracts happen to show; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
 | `metadata.inProgress` | 进行中 | In Progress | metadata token | [interaction-design.md](interaction-design.md) § Saving the active game before choosing a new mode; `Play/ActiveGameMetadata.swift` — the live game's own state, where a filed record has a committed result instead |
 | `metadata.moveCount` | `%lld 步` | `%lld moves` | metadata token | same; `History/RecordMetadata.swift`, `Play/ActiveGameMetadata.swift` |
+| `metadata.moveCount.one` | `%lld 步` | `%lld move` | metadata token | same — the plural pattern's **one** variant, spelled as a key of its own for a frontend with no String Catalog; `windows/MiniXiangqi.Play/Play/PlayText.cs` |
 | `metadata.imported` | 导入 | Imported | row prefix on an imported record | [interaction-design.md](interaction-design.md) § History library; `History/RecordMetadata.swift` |
 | `metadata.join` | `%1$@ · %2$@` | `%1$@ · %2$@` | metadata-line format | same; `Play/TurnStatus.swift` |
 
 `metadata.moveCount` is a plural pattern in English and a literal in Chinese: 步 is invariant, *move* is not, and a one-ply game is reachable in Free Play. English *move* counts one player's move, mirroring the number the Chinese shows; Help defines the term, and that definition is owed by the Help stage.
+
+**`metadata.moveCount.one` is that pattern's other half, for a platform that has no pattern.** A String Catalog holds one key with plural variants and the platform selects between them, which is what the Apple frontend reads; the Windows frontend's string table is a table of pairs and has no such mechanism, so the **one** variant is a key and the frontend selects. It is one row rather than a full CLDR set because English has exactly two forms here and Chinese has one — a `zero`, `two`, `few` or `many` row would be a variant no supported language distinguishes. Both rows carry the same Chinese, deliberately: 步 does not change, and a row that pretended otherwise would be a translation nobody asked for. The key is only read where there is no catalog; nothing on Apple platforms looks it up.
 
 `metadata.join` composes the accepted metadata lines — 人机对弈 · 你执红, 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步, 进行中 · 可判和 · 42 步 — and is applied repeatedly rather than once per line length. The middot and its surrounding spaces are the same in both languages.
 

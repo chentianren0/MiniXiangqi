@@ -2,11 +2,11 @@
 
 The WinUI 3 frontend, over the same shared core as the Apple frontend. What is here
 is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
-play screen — the board, the pieces, and a live game against the AI — and two
-headless harnesses that are how any of it is verified on a machine nobody is logged
-into. The Play home, the pre-start states, History and replay, the stacked layout that
-narrow windows take on the other platforms, and the packaging build are later pull
-requests.
+Play destination — the home where what to play is chosen, each mode's pre-start state,
+and the board with a live game against the AI — and two headless harnesses that are how
+any of it is verified on a machine nobody is logged into. History and replay, the
+Settings screen, the stacked layout that narrow windows take on the other platforms, and
+the packaging build are later pull requests.
 
 The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
 it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
@@ -20,7 +20,7 @@ materials, navigation and context menus rather than recreated Apple styling.
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
-| `MiniXiangqi.Play/` | the board's vocabulary and geometry, the play screen's logic, and the string table — no UI framework at all |
+| `MiniXiangqi.Play/` | the board's vocabulary and geometry, the destination's flows and the play screen's logic, and the string table — no UI framework at all |
 | `MiniXiangqi.Board/` | the board picture, in Win2D |
 | `MiniXiangqi.Smoke/` | the headless harness — this project's evidence |
 | `MiniXiangqi.Shots/` | the offscreen board renders |
@@ -29,11 +29,18 @@ materials, navigation and context menus rather than recreated Apple styling.
 The split between `MiniXiangqi.Play` and `MiniXiangqi.App` is the load-bearing one, and
 it exists for the reason [Verifying without a screen](#verifying-without-a-screen)
 gives: a WinUI 3 process cannot be launched over SSH, so anything that lives in the
-window can be run on no machine this project owns. What a click on a point means,
+window can be run on no machine this project owns. Which page is showing, what a mode
+entry does, what `开始对局` creates and in which order, what a click on a point means,
 which controls each mode offers, when the machine thinks and what happens when it
-answers are therefore a plain object with no window attached, and `MiniXiangqi.Smoke`
-plays whole games through it. The window turns that state into XAML and turns XAML's
-events back into calls on it, and holds nothing else.
+answers are therefore plain objects with no window attached — `PlayFlow` and
+`PlaySession` — and `MiniXiangqi.Smoke` drives all of it. The window turns that state
+into XAML and turns XAML's events back into calls on it, and holds nothing else.
+
+`PlayFlow` is the Play destination: the home, the two pre-start states, the board, and
+every path between them, including the one save-and-continue confirmation, the accepted
+creation ordering, and both forms of the insufficient-memory refusal. The game lives on
+it rather than on the board page, so walking to the home and back neither resumes the
+game again nor brings back a result notice the player has already put away.
 
 ## Building
 
@@ -201,12 +208,23 @@ checked before then rather than checked against a number somebody has to keep ad
 **18** plays a whole game against the AI through `PlaySession` — every move committed by
 clicking a point and then another point, exactly as the window's board does it, the AI
 answering through the same marshalled callback — to a conclusion or a move cap, and then
-takes the concluding action. **19** plays Free Play through the same session, because
-Free Play has no entry point yet and this is where it is exercised, and taps an illegal
-point to confirm it moves nothing and cancels nothing. **20** shuffles two cannons into a
-threefold repetition and claims it. **21** is the pair of races a confirmation and a
-search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed with
-a 深思 search genuinely in flight.
+takes the concluding action. **19** plays Free Play through the same session and taps an
+illegal point to confirm it moves nothing and cancels nothing. **20** shuffles two cannons
+into a threefold repetition and claims it. **21** is the pair of races a confirmation and
+a search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed
+with a 深思 search genuinely in flight.
+
+Sections 22 to 27 are the destination's. **22** reads the two Settings defaults from the
+keys they are stored under and checks the fallbacks. **23** walks the home to a mode
+entry to the pre-start state to a created game, and checks what leaving the pre-start
+page discards and what an abandoned attempt commits. **24** presents the
+save-and-continue confirmation over an active game, cancels it, answers it, and reads the
+filed record's classification back. **25** finishes a game and takes both concluding
+actions — 开始新对局 opening that game's own mode's pre-start state, 完成 returning to the
+home. **26** and **27** are the insufficient-memory refusal in both of its forms,
+pre-start and mid-game, reached by handing the frontend a probe that reports a starved
+machine so that the core's own budget arithmetic answers the refusal rather than a stub
+standing in for it.
 
 ```powershell
 windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
@@ -251,6 +269,37 @@ there, which is why the CI job is what produces the committed pictures under
 The XAML, and the wiring between it and the session: the layout, the alerts, the result
 notice's surface, the Fluent materials, and the pointer and Narrator behaviour of the
 forty-nine point elements. Seeing those needs an RDP session.
+
+**That is where the one reported interaction defect lived.** Selecting a piece appeared
+to need a double click, where the contract's board selects in one. A point's tap reached
+the board's own background handler behind the point's `Click`, so the cancel arrived
+immediately behind the selection the same click had made; the filter that should have
+stopped it tested `OriginalSource.Tag`, and a point's `Button` is templated down to a
+bare `Border` with no `Tag`, so it could never match. The double click worked because the
+second tap of a double tap raises `DoubleTapped` rather than `Tapped` — no cancel
+followed it. `BoardView` now stops the tap at the point that owns it and walks the visual
+tree in the filter besides. Which of those two is load-bearing depends on whether this
+platform routes a tap past a `Button` that has already handled the pointer press, which
+is exactly the class of question this section is about.
+
+## Preferences
+
+The pre-start controls are initialized afresh from the persistent Settings defaults on
+every entry to the page, so this frontend reads two of them —
+`defaults.firstMover` and `defaults.aiLevel`, with the vocabularies and the
+absent-means-this fallbacks `apple/MiniXiangqi/Settings/Preferences.swift` records. It
+**writes none of them**: the Settings screen is the next pull request and it owns
+writing.
+
+Where they are kept on Windows is the smallest answer that works — a JSON object of
+string values at `%LOCALAPPDATA%\MiniXiangqi\preferences.json`, read at the moment of use
+and never cached, absent or malformed reading as "nothing is stored". The Apple frontend
+has `UserDefaults`; an unpackaged Win32 app has no equivalent it can reach without
+deciding the packaging question this repository has parked. The Settings pull request may
+keep that storage or replace it. What it may not change is the key or the vocabulary:
+those are the interface between the screen that writes a preference and the surface that
+reads one, and they are what lets a preference set in one frontend mean the same thing in
+the other.
 
 ## Continuous integration
 

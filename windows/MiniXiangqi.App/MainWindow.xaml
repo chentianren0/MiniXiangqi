@@ -8,171 +8,348 @@
     mc:Ignorable="d">
 
     <!--
-        The side-by-side layout shape: the board on one side with a panel beside
-        it carrying the turn status, the move record and the controls. It is the
-        shape docs/interaction-design.md gives ordinary Mac windows and wide
-        iPad ones, and an ordinary desktop window is that. The stacked shape,
-        which narrow windows take, arrives with the layout work the appearance
-        pass carries.
+        The Play destination and its three pages: the home where what to play is
+        chosen, each mode's pre-start state, and the board. One of them is
+        visible at a time, and PlayFlow is what says which — the page is drawn
+        rather than pushed, so there is no navigation history to keep in step
+        with the state.
 
-        Nothing resident intersects the board block: the panel sits beside it
-        and the air around the board is an allowance taken off the space the
-        board is fitted into. The result notice is a transient, and it may stand
-        in front of the board precisely because the player can put it away.
+        Over them sits the one navigation row: the back control, which appears
+        on the two pages that have somewhere to go back to and names the page it
+        returns to, and the destination's own title, which all three pages
+        share.
+
+        Nothing resident intersects the board block on either page that has a
+        board: the panel sits beside it and the air around the board is an
+        allowance taken off the space the board is fitted into. The result notice
+        is a transient, and it may stand in front of the board precisely because
+        the player can put it away.
     -->
 
     <Grid x:Name="Root">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <!-- The board, centred in whatever the panel leaves. -->
-        <Grid x:Name="BoardHost" Padding="24" SizeChanged="OnBoardHostSizeChanged" />
+        <!-- The navigation row. -->
+        <Grid x:Name="NavigationBar" Padding="8,4" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="Back"
+                    Click="OnBack"
+                    Visibility="Collapsed"
+                    Width="40"
+                    Height="36"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Content="&#xE72B;"
+                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                    FontSize="14"
+                    AutomationProperties.AutomationId="play-back" />
+            <TextBlock x:Name="PageTitle"
+                       Grid.Column="1"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       VerticalAlignment="Center"
+                       Margin="4,0,0,0" />
+        </Grid>
 
-        <!-- The result notice: a transient over the board, dismissible. -->
-        <Border x:Name="Notice"
-                Visibility="Collapsed"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                MinWidth="320"
-                MaxWidth="420"
-                Padding="20"
-                CornerRadius="12"
-                BorderThickness="1"
-                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
-            <StackPanel Spacing="8">
-                <Grid>
-                    <TextBlock x:Name="NoticeTitle"
-                               Style="{StaticResource SubtitleTextBlockStyle}"
-                               TextWrapping="Wrap" />
-                    <Button x:Name="NoticeClose"
-                            Click="OnDismissNotice"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            Padding="4"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Content="&#xE711;"
-                            FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                </Grid>
-                <TextBlock x:Name="NoticeReason"
-                           Style="{StaticResource BodyTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           TextWrapping="Wrap" />
+        <!-- ============================================================= -->
+        <!-- The Play home: an independent page for choosing what to play,  -->
+        <!-- and there is no board anywhere on it.                          -->
+        <!-- ============================================================= -->
+        <ScrollViewer x:Name="HomePage" Grid.Row="1" Visibility="Collapsed">
+            <StackPanel MaxWidth="560"
+                        HorizontalAlignment="Stretch"
+                        Padding="24,16,24,24"
+                        Spacing="20">
+
                 <!--
-                    The default action leads. On Apple platforms it trails,
-                    which is where that platform puts one; Fluent puts the
-                    primary first, and the contract's rule is the ordering
-                    decision itself — 保存 is the default and the only tinted
-                    element on the screen — rather than which end of the row it
-                    sits at. So the platform's own order stands.
+                    The active game: what it is, and the way back into it. The
+                    header is the same 当前对局 the save-and-continue
+                    confirmation puts over the same line.
                 -->
-                <StackPanel x:Name="NoticeActions"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            Spacing="8"
-                            Margin="0,8,0,0">
-                    <Button x:Name="NoticePrimary" Click="OnNoticePrimary" Style="{StaticResource AccentButtonStyle}" />
-                    <Button x:Name="NoticeSecondary" Click="OnNoticeSecondary" />
+                <StackPanel x:Name="CurrentGame" Spacing="8" Visibility="Collapsed">
+                    <TextBlock x:Name="CurrentGameHeader"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Border Padding="16"
+                            CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="12">
+                            <!-- Every token on the line is content the contract
+                                 asks for, so it wraps rather than truncating. -->
+                            <TextBlock x:Name="CurrentGameLine"
+                                       TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="home-current-game" />
+                            <!-- The one obvious next action on this page while a
+                                 game is going, and therefore the one thing on it
+                                 the tint rule allows. -->
+                            <Button x:Name="ResumeGame"
+                                    Click="OnResume"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.AutomationId="home-resume" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </StackPanel>
-        </Border>
 
-        <!-- The panel. Its sections begin on one edge, 16 in from its own. -->
-        <Grid x:Name="Panel"
-              Grid.Column="1"
-              Width="260"
-              Padding="16"
-              Background="{ThemeResource LayerFillColorDefaultBrush}"
-              BorderThickness="1,0,0,0"
-              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <!-- Turn status: one coherent description of the current play state. -->
-            <StackPanel Spacing="6" Margin="0,0,0,16">
-                <StackPanel x:Name="TurnStatus"
-                            Spacing="6"
-                            AutomationProperties.AutomationId="turn-status">
-                    <TextBlock x:Name="StatusPrimary"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"
-                               TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock x:Name="StatusSecondary"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap" />
-                        <ProgressRing x:Name="Thinking"
-                                      Width="16"
-                                      Height="16"
-                                      IsActive="False"
-                                      Visibility="Collapsed"
-                                      AutomationProperties.AutomationId="ai-thinking" />
+                <!--
+                    The game's ways to play. One section, and it carries no
+                    header while there is one game: a header naming the only game
+                    on a screen that is only that game labels the obvious. A
+                    second game would be a second section beside this one rather
+                    than a rearrangement of it.
+                -->
+                <Border CornerRadius="8"
+                        BorderThickness="1"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel>
+                        <Button x:Name="ModeHumanVersusAi"
+                                Click="OnChooseHumanVersusAi"
+                                Style="{StaticResource ModeEntryStyle}"
+                                AutomationProperties.AutomationId="mode-human-versus-ai" />
+                        <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <Button x:Name="ModeFreePlay"
+                                Click="OnChooseFreePlay"
+                                Style="{StaticResource ModeEntryStyle}"
+                                AutomationProperties.AutomationId="mode-free-play" />
                     </StackPanel>
-                </StackPanel>
-
-                <!-- The stalled slot, outside the combined element above,
-                     because a control folded into one is a control a screen
-                     reader cannot reach. -->
-                <StackPanel x:Name="Stalled"
-                            Orientation="Horizontal"
-                            Spacing="8"
-                            Visibility="Collapsed"
-                            VerticalAlignment="Center">
-                    <TextBlock x:Name="StalledText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               VerticalAlignment="Center"
-                               AutomationProperties.AutomationId="ai-stalled" />
-                    <HyperlinkButton x:Name="StalledRetry"
-                                     Padding="0"
-                                     Click="OnRetryEngine"
-                                     AutomationProperties.AutomationId="ai-retry" />
-                </StackPanel>
-
-                <!-- The save-failure capsule, anchored to the turn status. -->
-                <Border x:Name="SaveFailure"
-                        Visibility="Collapsed"
-                        Padding="8,4"
-                        CornerRadius="4"
-                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
-                    <TextBlock x:Name="SaveFailureText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap"
-                               AutomationProperties.AutomationId="save-failed" />
                 </Border>
             </StackPanel>
+        </ScrollViewer>
 
-            <!-- The move record: the core's own canonical coordinate text. -->
-            <ScrollViewer x:Name="RecordScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="RecordRows" Spacing="2" AutomationProperties.AutomationId="move-record" />
-            </ScrollViewer>
+        <!-- ============================================================= -->
+        <!-- The pre-start state: the initial board as a noninteractive     -->
+        <!-- preview, and the controls this game is configured with.        -->
+        <!-- ============================================================= -->
+        <Grid x:Name="SetupPage" Grid.Row="1" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-            <!-- The play-control cluster. -->
-            <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
-                <Button x:Name="Undo"
-                        HorizontalAlignment="Stretch"
-                        Click="OnUndo"
-                        AutomationProperties.AutomationId="control-undo" />
-                <Button x:Name="Middle"
-                        HorizontalAlignment="Stretch"
-                        Click="OnMiddle"
-                        AutomationProperties.AutomationId="control-middle" />
-                <Button x:Name="Trailing"
-                        HorizontalAlignment="Stretch"
-                        Click="OnTrailing"
-                        AutomationProperties.AutomationId="control-trailing" />
-            </StackPanel>
+            <Grid x:Name="PreviewHost" Padding="24" SizeChanged="OnPreviewHostSizeChanged" />
+
+            <Grid x:Name="SetupPanel"
+                  Grid.Column="1"
+                  Width="260"
+                  Padding="16"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}"
+                  BorderThickness="1,0,0,0"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                <StackPanel Spacing="14" VerticalAlignment="Top">
+
+                    <!-- 人机对弈's 本局设置 group. Absent in Free Play, which
+                         has no side selector, no AI controls and no pre-start
+                         flip control. -->
+                    <StackPanel x:Name="ThisGame" Spacing="14">
+                        <TextBlock x:Name="ThisGameHeader"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   AutomationProperties.AutomationId="setup-header" />
+
+                        <RadioButtons x:Name="FirstMover"
+                                      MaxColumns="1"
+                                      SelectionChanged="OnFirstMoverChanged"
+                                      AutomationProperties.AutomationId="setup-first-mover">
+                            <RadioButton x:Name="FirstMoverHuman" />
+                            <RadioButton x:Name="FirstMoverAi" />
+                            <RadioButton x:Name="FirstMoverRandom" />
+                        </RadioButtons>
+
+                        <ComboBox x:Name="Level"
+                                  HorizontalAlignment="Stretch"
+                                  SelectionChanged="OnLevelChanged"
+                                  AutomationProperties.AutomationId="setup-ai-level">
+                            <ComboBoxItem x:Name="LevelFast" />
+                            <ComboBoxItem x:Name="LevelStandard" />
+                            <ComboBoxItem x:Name="LevelDeep" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Free Play's one line, which says what Free Play is. -->
+                    <TextBlock x:Name="FreePlayExplanation"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"
+                               AutomationProperties.AutomationId="setup-explanation" />
+
+                    <!-- The one obvious next action on this page, and therefore
+                         the one thing on it the tint rule allows. It cannot be
+                         invoked again while creation is in progress, and a
+                         failure re-enables it with the draft untouched. -->
+                    <Button x:Name="StartGame"
+                            Click="OnStartGame"
+                            Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.AutomationId="setup-start" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ============================================================= -->
+        <!-- The board.                                                     -->
+        <!-- ============================================================= -->
+        <Grid x:Name="BoardPage" Grid.Row="1" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- The board, centred in whatever the panel leaves. -->
+            <Grid x:Name="BoardHost" Padding="24" SizeChanged="OnBoardHostSizeChanged" />
+
+            <!-- The result notice: a transient over the board, dismissible. -->
+            <Border x:Name="Notice"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MinWidth="320"
+                    MaxWidth="420"
+                    Padding="20"
+                    CornerRadius="12"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+                <StackPanel Spacing="8">
+                    <Grid>
+                        <TextBlock x:Name="NoticeTitle"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <Button x:Name="NoticeClose"
+                                Click="OnDismissNotice"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Padding="4"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Content="&#xE711;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                    </Grid>
+                    <TextBlock x:Name="NoticeReason"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                    <!--
+                        The default action leads. On Apple platforms it trails,
+                        which is where that platform puts one; Fluent puts the
+                        primary first, and the contract's rule is the ordering
+                        decision itself — 保存 is the default and the only tinted
+                        element on the screen — rather than which end of the row it
+                        sits at. So the platform's own order stands.
+                    -->
+                    <StackPanel x:Name="NoticeActions"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8"
+                                Margin="0,8,0,0">
+                        <Button x:Name="NoticePrimary" Click="OnNoticePrimary" Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Name="NoticeSecondary" Click="OnNoticeSecondary" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- The panel. Its sections begin on one edge, 16 in from its own. -->
+            <Grid x:Name="Panel"
+                  Grid.Column="1"
+                  Width="260"
+                  Padding="16"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}"
+                  BorderThickness="1,0,0,0"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Turn status: one coherent description of the current play state. -->
+                <StackPanel Spacing="6" Margin="0,0,0,16">
+                    <StackPanel x:Name="TurnStatus"
+                                Spacing="6"
+                                AutomationProperties.AutomationId="turn-status">
+                        <TextBlock x:Name="StatusPrimary"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatusSecondary"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <ProgressRing x:Name="Thinking"
+                                          Width="16"
+                                          Height="16"
+                                          IsActive="False"
+                                          Visibility="Collapsed"
+                                          AutomationProperties.AutomationId="ai-thinking" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- The stalled slot, outside the combined element above,
+                         because a control folded into one is a control a screen
+                         reader cannot reach. -->
+                    <StackPanel x:Name="Stalled"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Visibility="Collapsed"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="StalledText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="ai-stalled" />
+                        <HyperlinkButton x:Name="StalledRetry"
+                                         Padding="0"
+                                         Click="OnRetryEngine"
+                                         AutomationProperties.AutomationId="ai-retry" />
+                    </StackPanel>
+
+                    <!-- The save-failure capsule, anchored to the turn status. -->
+                    <Border x:Name="SaveFailure"
+                            Visibility="Collapsed"
+                            Padding="8,4"
+                            CornerRadius="4"
+                            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                        <TextBlock x:Name="SaveFailureText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="save-failed" />
+                    </Border>
+                </StackPanel>
+
+                <!-- The move record: the core's own canonical coordinate text. -->
+                <ScrollViewer x:Name="RecordScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="RecordRows" Spacing="2" AutomationProperties.AutomationId="move-record" />
+                </ScrollViewer>
+
+                <!-- The play-control cluster. -->
+                <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
+                    <Button x:Name="Undo"
+                            HorizontalAlignment="Stretch"
+                            Click="OnUndo"
+                            AutomationProperties.AutomationId="control-undo" />
+                    <Button x:Name="Middle"
+                            HorizontalAlignment="Stretch"
+                            Click="OnMiddle"
+                            AutomationProperties.AutomationId="control-middle" />
+                    <Button x:Name="Trailing"
+                            HorizontalAlignment="Stretch"
+                            Click="OnTrailing"
+                            AutomationProperties.AutomationId="control-trailing" />
+                </StackPanel>
+            </Grid>
         </Grid>
 
         <!-- What is shown instead when the core or the game did not start. -->
         <StackPanel x:Name="Failure"
-                    Grid.ColumnSpan="2"
+                    Grid.Row="1"
                     Visibility="Collapsed"
                     Padding="32"
                     Spacing="8"
