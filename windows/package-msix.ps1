@@ -108,6 +108,29 @@ $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | Conver
 # Studio — the zip's build and the core's build depend on that today — so an
 # action that puts MSBuild on PATH would add a third-party dependency to obtain
 # something already present.
+#
+# THE TWO RUNNERS DO NOT CARRY THE SAME VISUAL STUDIO, AND ONE OF THEM SAYS SO
+#
+# windows-2025 has Visual Studio 2026 and MSBuild 18; windows-11-arm has Visual
+# Studio 2022 Enterprise 17.14 and MSBuild 17.14, which is old enough that the
+# .NET SDK warns on every project it builds here:
+#
+#   NETSDK1233: Targeting .NET 10.0 or higher in Visual Studio 2022 17.14 is
+#   not supported.
+#
+# It is a warning and the build is not one: MSBuild 17.14 restores, compiles and
+# packages this project, and the ARM64 package it produced passed every
+# assertion below — the manifest the Store reads, the payload, and the PE
+# machine type of every binary in it. So this is recorded rather than worked
+# around. What the warning says is that Microsoft does not support the
+# combination, not that anything measurable is wrong with the output, and the
+# distance between those two is exactly why the assertions below are made
+# against the package rather than against the build's exit code.
+#
+# If it ever becomes an error, the fallbacks in order are `vswhere -prerelease`
+# for a newer Visual Studio on that runner, and then a global.json pinning the
+# SDK feature band. Neither is here, because neither is needed yet and an unused
+# fallback is a configuration nobody has tested.
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (-not (Test-Path $vswhere)) {
@@ -159,12 +182,29 @@ Write-Host "Building the package ($Configuration, $platform)"
     "-p:AppxPackageDir=$appxDir\"
 if ($LASTEXITCODE -ne 0) { throw 'The package build failed.' }
 
-$produced = @(Get-ChildItem -Path $appxDir -Filter '*.msix' -File -Recurse)
+# More than one .msix is written here and only one of them is ours. The
+# packaging build also stages the Windows App Runtime framework package — the
+# very dependency WindowsAppSDKSelfContained=false traded the private copy for —
+# once per architecture it could be sideloaded onto, so that Add-AppxPackage has
+# something to satisfy the dependency with on a machine that has never seen it.
+#
+# A Store submission carries none of them: the Store resolves the dependency the
+# generated manifest declares, which is the whole point of declaring it. So the
+# app's own package is the one named after the project, and the rest are named
+# and left where they are.
+$packageName = [System.IO.Path]::GetFileNameWithoutExtension($project)
+$allPackages = @(Get-ChildItem -Path $appxDir -Filter '*.msix' -File -Recurse)
+$produced = @($allPackages | Where-Object { $_.BaseName -like "$packageName`_*" })
+$staged = @($allPackages | Where-Object { $_.BaseName -notlike "$packageName`_*" })
+if ($staged.Count -gt 0) {
+    $names = ($staged | ForEach-Object { $_.Name } | Sort-Object -Unique) -join ', '
+    Write-Host "Framework packages staged for sideloading and not submitted: $names"
+}
 if ($produced.Count -ne 1) {
     $found = if ($produced.Count -eq 0) { 'none' } else { ($produced | ForEach-Object { $_.Name }) -join ', ' }
-    throw ("Expected exactly one .msix under $appxDir; found $($produced.Count) ($found). More than one " +
-           'usually means bundling produced per-architecture packages beside the bundle, which AppxBundle ' +
-           'Never is set to prevent.')
+    throw ("Expected exactly one $packageName package under $appxDir; found $($produced.Count) ($found). " +
+           'More than one usually means bundling produced per-architecture packages beside the bundle, ' +
+           'which AppxBundle Never is set to prevent.')
 }
 
 $msixPath = Join-Path $OutputDirectory "MiniXiangqi-windows-$Architecture.msix"
