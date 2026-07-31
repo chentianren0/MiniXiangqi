@@ -114,7 +114,22 @@ public sealed unsafe class MiniXiangqiCore : IDisposable
     /// is resolved into <paramref name="humanSide"/> before this call, because
     /// only successful creation commits a resolved side.
     /// </summary>
-    public GameSession ResumeOrCreate(int humanSide, int aiLevel, int firstMoverChoice, uint movetimeMs)
+    public GameSession ResumeOrCreate(
+        int humanSide,
+        int aiLevel,
+        int firstMoverChoice,
+        uint movetimeMs,
+        int mode = Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI)
+    {
+        return ResumeActive() ?? Create(mode, humanSide, aiLevel, firstMoverChoice, movetimeMs);
+    }
+
+    /// <summary>
+    /// The single active game, or null when there is none. Its own session:
+    /// resuming twice while the first is live is
+    /// <c>MXQ_ERR_ARG_CONCURRENT_USE</c> by contract.
+    /// </summary>
+    public GameSession? ResumeActive()
     {
         MxqGame* game;
         byte exists;
@@ -123,22 +138,7 @@ public sealed unsafe class MiniXiangqiCore : IDisposable
             Mxq.mxq_game_resume_active(Live, &game, &exists, &err),
             in err,
             nameof(Mxq.mxq_game_resume_active));
-        if (exists != 0)
-        {
-            return new GameSession(game);
-        }
-
-        MxqGameConfig config = default;
-        config.struct_size = (uint)sizeof(MxqGameConfig);
-        config.mode = Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI;
-        config.human_side = humanSide;
-        config.ai_level = aiLevel;
-        config.first_mover_choice = firstMoverChoice;
-        config.ai_movetime_ms = movetimeMs;
-
-        err = MxqCall.Error();
-        MxqCall.Check(Mxq.mxq_game_create(Live, &config, &game, &err), in err, nameof(Mxq.mxq_game_create));
-        return new GameSession(game);
+        return exists != 0 ? new GameSession(game) : null;
     }
 
     /// <summary>
@@ -155,6 +155,102 @@ public sealed unsafe class MiniXiangqiCore : IDisposable
             in err,
             nameof(Mxq.mxq_engine_prepare));
         return Describe(applied);
+    }
+
+    /// <summary>
+    /// Release the engine's resources. Refuses with
+    /// <c>MXQ_ERR_STATE_SEARCH_IN_PROGRESS</c> rather than stalling if a search
+    /// is outstanding, so the caller cancels first.
+    /// </summary>
+    public void TeardownEngine()
+    {
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(Mxq.mxq_engine_teardown(Live, &err), in err, nameof(Mxq.mxq_engine_teardown));
+    }
+
+    /// <summary>
+    /// Whether the engine is prepared, and which build answered — the profile
+    /// identifier a saved diagnostic has to be able to name.
+    /// </summary>
+    public (int State, string Profile) Engine
+    {
+        get
+        {
+            int state;
+            sbyte* buffer = stackalloc sbyte[Mxq.MXQ_PROFILE_ID_CAP];
+            nuint length;
+            MxqError err = MxqCall.Error();
+            MxqCall.Check(
+                Mxq.mxq_engine_query(Live, &state, buffer, (nuint)Mxq.MXQ_PROFILE_ID_CAP, &length, &err),
+                in err,
+                nameof(Mxq.mxq_engine_query));
+            return (state, Utf8.Read(new ReadOnlySpan<sbyte>(buffer, (int)length)));
+        }
+    }
+
+    /// <summary>
+    /// Create a game with the supplied frozen configuration. A
+    /// <c>MXQ_FIRST_MOVER_RANDOM</c> choice is resolved into
+    /// <paramref name="humanSide"/> before this call, because only successful
+    /// creation commits a resolved side.
+    /// </summary>
+    public GameSession Create(int mode, int humanSide, int aiLevel, int firstMoverChoice, uint movetimeMs)
+    {
+        MxqGameConfig config = default;
+        config.struct_size = (uint)sizeof(MxqGameConfig);
+        config.mode = mode;
+        config.human_side = humanSide;
+        config.ai_level = aiLevel;
+        config.first_mover_choice = firstMoverChoice;
+        config.ai_movetime_ms = movetimeMs;
+
+        MxqGame* game;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(Mxq.mxq_game_create(Live, &config, &game, &err), in err, nameof(Mxq.mxq_game_create));
+        return new GameSession(game);
+    }
+
+    /// <summary>
+    /// Archive the active game according to its factual current state and clear
+    /// the active-game reference, atomically. Outside the UI-thread exception
+    /// the active game's own calls enjoy: this one stays off it.
+    /// </summary>
+    public ulong ArchiveAndClear(GameSession game)
+    {
+        ulong record;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_store_archive_and_clear(Live, game.Handle, &record, &err),
+            in err,
+            nameof(Mxq.mxq_store_archive_and_clear));
+        return record;
+    }
+
+    /// <summary>
+    /// One History record's committed classification.
+    ///
+    /// This is the only place a resignation or a claimed draw can be read from:
+    /// <c>mxq.h</c> says so in as many words — "MxqGameStatus.state is still the
+    /// replayed position's verdict, which for a resignation or an ended-early
+    /// record is not the committed outcome at all: that is MxqOutcome, and
+    /// mxq_store_history_get is where it is read."
+    /// </summary>
+    public RecordSummary HistoryRecord(ulong recordId)
+    {
+        MxqRecordSummary summary = default;
+        summary.struct_size = (uint)sizeof(MxqRecordSummary);
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_store_history_get(Live, recordId, &summary, &err),
+            in err,
+            nameof(Mxq.mxq_store_history_get));
+
+        return new RecordSummary(
+            summary.record_id,
+            summary.outcome,
+            summary.end_reason,
+            summary.move_count,
+            Utf8.Read(summary.game_id));
     }
 
     /// <summary>The raw handle, for the calls this wrapper does not cover.</summary>

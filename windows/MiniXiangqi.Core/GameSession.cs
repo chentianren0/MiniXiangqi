@@ -69,10 +69,63 @@ public sealed unsafe class GameSession : IDisposable
             status.search_expected != 0);
     }
 
+    /// <summary>The frozen configuration this game was created with.</summary>
+    public GameConfiguration Configuration()
+    {
+        MxqGameConfig config = default;
+        config.struct_size = (uint)sizeof(MxqGameConfig);
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(Mxq.mxq_game_config(Live, &config, &err), in err, nameof(Mxq.mxq_game_config));
+
+        return new GameConfiguration(
+            config.mode,
+            config.human_side,
+            config.ai_level,
+            config.first_mover_choice,
+            config.ai_movetime_ms);
+    }
+
     /// <summary>The complete legal-move set in the current position.</summary>
     public IReadOnlyList<string> LegalMoves() =>
         ReadMoves(static (game, buffer, cap, count, err) =>
             Mxq.mxq_game_legal_moves(game, buffer, cap, count, err));
+
+    /// <summary>
+    /// The legal moves originating at one point, which is the board's
+    /// selection affordance. The core answers it; nothing above the C interface
+    /// filters the complete set down to a square, because doing so would be
+    /// re-deriving an affordance the core owns.
+    /// </summary>
+    public IReadOnlyList<string> LegalMovesFrom(string square)
+    {
+        MxqGame* game = Live;
+        byte[] encoded = Utf8.Encode(square);
+        fixed (byte* from = encoded)
+        {
+            nuint count;
+            MxqError err = MxqCall.Error();
+            MxqCall.CheckCountProbe(
+                Mxq.mxq_game_legal_moves_from(game, (sbyte*)from, null, 0, &count, &err),
+                in err,
+                nameof(Mxq.mxq_game_legal_moves_from));
+            if (count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            MxqMove[] moves = new MxqMove[(int)count];
+            fixed (MxqMove* buffer = moves)
+            {
+                err = MxqCall.Error();
+                MxqCall.Check(
+                    Mxq.mxq_game_legal_moves_from(game, (sbyte*)from, buffer, count, &count, &err),
+                    in err,
+                    nameof(Mxq.mxq_game_legal_moves_from));
+            }
+
+            return Text(moves, (int)count);
+        }
+    }
 
     /// <summary>The complete retained main line, index 0 first.</summary>
     public IReadOnlyList<string> MoveHistory() =>
@@ -108,6 +161,51 @@ public sealed unsafe class GameSession : IDisposable
             after.in_check != 0);
     }
 
+    /// <summary>
+    /// Take back one ply or one decision cycle, and commit. How many plies a
+    /// decision is, is the core's answer and never a count taken above it: the
+    /// returned figure is what it removed.
+    /// </summary>
+    public uint Undo()
+    {
+        uint removed;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(Mxq.mxq_game_undo(Live, &removed, &err), in err, nameof(Mxq.mxq_game_undo));
+        return removed;
+    }
+
+    /// <summary>
+    /// Claim the neutral threefold repetition as a draw. One atomic
+    /// transaction: the outcome is committed, the History record inserted, and
+    /// the active-game reference cleared. The session is archived afterwards
+    /// and still answers every query, which is what leaves the finished board
+    /// on screen.
+    /// </summary>
+    public ulong ClaimDraw() =>
+        Commit(static (game, record, err) => Mxq.mxq_game_claim_draw(game, record, err),
+            nameof(Mxq.mxq_game_claim_draw));
+
+    /// <summary>Resign for the human side. Same transaction and consequence.</summary>
+    public ulong Resign() =>
+        Commit(static (game, record, err) => Mxq.mxq_game_resign(game, record, err),
+            nameof(Mxq.mxq_game_resign));
+
+    /// <summary>
+    /// Commit an unconfirmed natural terminal state as its actual result and
+    /// exact termination reason. Same transaction and consequence.
+    /// </summary>
+    public ulong ConfirmResult() =>
+        Commit(static (game, record, err) => Mxq.mxq_game_confirm_result(game, record, err),
+            nameof(Mxq.mxq_game_confirm_result));
+
+    /// <summary>
+    /// The raw handle, for the calls this wrapper does not cover — of which
+    /// <c>mxq_search_start</c> is the one the play screen makes. Every function
+    /// taking an <c>MxqGame *</c> counts as being inside the session for the
+    /// single-owner rule, so a caller of this owes the same context.
+    /// </summary>
+    public MxqGame* Handle => Live;
+
     /// <summary>Release the session. Required after a terminal commit too.</summary>
     public void Dispose()
     {
@@ -125,6 +223,20 @@ public sealed unsafe class GameSession : IDisposable
         _game is null ? throw new ObjectDisposedException(nameof(GameSession)) : _game;
 
     private delegate int MoveReader(MxqGame* game, MxqMove* buffer, nuint cap, nuint* count, MxqError* err);
+
+    private delegate int TerminalCommit(MxqGame* game, ulong* record, MxqError* err);
+
+    // The three terminal commits differ only in which one they are: the same
+    // atomic transaction, the same archived-session consequence, the same
+    // record identifier out. Writing that once is what stops the third one from
+    // quietly acquiring a fourth behaviour.
+    private ulong Commit(TerminalCommit commit, string operation)
+    {
+        ulong record;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(commit(Live, &record, &err), in err, operation);
+        return record;
+    }
 
     // The core's buffer protocol, both halves: a NULL buffer with cap 0 asks for
     // the count, and the second call fills. There is no legal-move capacity
@@ -147,8 +259,13 @@ public sealed unsafe class GameSession : IDisposable
             MxqCall.Check(read(game, buffer, count, &count, &err), in err, "move readback");
         }
 
-        string[] text = new string[(int)count];
-        for (int i = 0; i < text.Length; i++)
+        return Text(moves, (int)count);
+    }
+
+    private static string[] Text(MxqMove[] moves, int count)
+    {
+        string[] text = new string[count];
+        for (int i = 0; i < count; i++)
         {
             MxqMove move = moves[i];
             text[i] = Utf8.Read(move.text);

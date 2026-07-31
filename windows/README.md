@@ -1,10 +1,12 @@
 # Windows frontend
 
 The WinUI 3 frontend, over the same shared core as the Apple frontend. What is here
-is the walking skeleton: the core built as a DLL, C# declarations generated from
-`core/include/mxq.h`, a headless harness that exercises the whole boundary, and one
-plain window that shows the readback. The designed screens, the Fluent work, the
-packaging build and localization are later pull requests.
+is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
+play screen — the board, the pieces, and a live game against the AI — and two
+headless harnesses that are how any of it is verified on a machine nobody is logged
+into. The Play home, the pre-start states, History and replay, the stacked layout that
+narrow windows take on the other platforms, and the packaging build are later pull
+requests.
 
 The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
 it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
@@ -18,8 +20,20 @@ materials, navigation and context menus rather than recreated Apple styling.
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
+| `MiniXiangqi.Play/` | the board's vocabulary and geometry, the play screen's logic, and the string table — no UI framework at all |
+| `MiniXiangqi.Board/` | the board picture, in Win2D |
 | `MiniXiangqi.Smoke/` | the headless harness — this project's evidence |
+| `MiniXiangqi.Shots/` | the offscreen board renders |
 | `MiniXiangqi.App/` | the WinUI 3 window |
+
+The split between `MiniXiangqi.Play` and `MiniXiangqi.App` is the load-bearing one, and
+it exists for the reason [Verifying without a screen](#verifying-without-a-screen)
+gives: a WinUI 3 process cannot be launched over SSH, so anything that lives in the
+window can be run on no machine this project owns. What a click on a point means,
+which controls each mode offers, when the machine thinks and what happens when it
+answers are therefore a plain object with no window attached, and `MiniXiangqi.Smoke`
+plays whole games through it. The window turns that state into XAML and turns XAML's
+events back into calls on it, and holds nothing else.
 
 ## Building
 
@@ -30,8 +44,7 @@ the repository root, and again after any change under `core/`:
 
 ```powershell
 pwsh windows\build-core-dll.ps1 -NnueSource <path to the pinned network>
-dotnet build windows\MiniXiangqi.Smoke\MiniXiangqi.Smoke.csproj -c Release
-dotnet build windows\MiniXiangqi.App\MiniXiangqi.App.csproj    -c Release
+dotnet build windows\MiniXiangqi.slnx -c Release
 ```
 
 The network's bytes are in no repository ([`docs/engine-integration.md`](../docs/engine-integration.md));
@@ -129,37 +142,142 @@ vendored Fairy-Stockfish fork and the whole SQLite amalgamation — components
 `docs/architecture.md` requires to stay invisible through `mxq.h`. `dumpbin /exports`
 on the built DLL reports 54 symbols and no others.
 
+## The board
+
+The board is drawn with **Win2D** — `Microsoft.Graphics.Canvas` — rather than with XAML
+shapes, and `MiniXiangqi.Board`'s `BoardPainter` is the whole of it: one function of a
+`BoardScene`, a `BoardGeometry` and a `BoardStyle`, which the window's `CanvasControl`
+and the offscreen render harness call alike.
+
+Three reasons, the third decisive. The board is a picture rather than forty-nine views:
+a grid, two palaces, up to twenty-four discs and four families of state marker, every
+dimension of them derived from one cell pitch, and
+[`docs/interaction-design.md`](../docs/interaction-design.md) states the marker
+vocabulary in strokes, radii and dash patterns rather than in elements — immediate-mode
+drawing takes that description literally. A retained XAML tree would instead have to be
+diffed against the position on every change, and would put the geometry in two places.
+And Win2D can draw offscreen, in a process with no window, which is the only way this
+repository can show what the Windows board looks like at all.
+
+Everything the picture is made of — the pitch, the disc diameter, every stroke and
+radius, the 传统 colours — is `apple/MiniXiangqi/Board/`'s, to the digit. The contract
+fixes the relationships and the contrast gates and says plainly that the exact
+dimensions are settled against a rendered board; they were settled once, on one, and the
+board is one shared visual identity across platforms.
+
+Two things differ from the Mac, both consequences of the Windows MVP's move record being
+the core's canonical coordinate text: the edges carry the canonical coordinates rather
+than the file-numeral strips, and there are four strips rather than two. The contract
+carries that as a Windows clause under **User-visible notation**.
+
 ## Verifying without a screen
-
-`MiniXiangqi.Smoke` is this project's evidence. It runs headlessly, so it runs over SSH
-on a machine nobody is logged into, and it exercises every shape the boundary has: the
-queries callable before initialisation, the memory probe and the engine plan, a game
-created and played, both halves of the buffer protocol, the error taxonomy with its
-detail strings, a real search delivered through the `[UnmanagedCallersOnly]` callback,
-the archive blob, the History readback, and the wrapper the window itself uses.
-
-```powershell
-windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe
-```
-
-It prints a checked line per claim, a count, and `MXQ_SMOKE_OK`, and it exits non-zero
-if anything failed.
 
 **A WinUI 3 process cannot be launched over SSH.** An SSH session lands in session 0,
 which has no interactive desktop. The process starts and then fail-fasts: exception
 `0xc0000602`, `STATUS_FAIL_FAST_EXCEPTION`, faulting module `Microsoft.UI.Input.dll` —
 the Windows App SDK's own input stack, not this repository's code.
 
-What the evidence carries exactly: no store directory is created, so execution never
-reached `mxq_core_init`. It does not rule out `MainWindow`'s constructor, which reads
-`MiniXiangqiCore.Version` across the P/Invoke boundary before it calls `Start`. The
-inference — that the fault precedes every line in this repository, since a UI framework
-that fail-fasts in its input stack does so while starting up — is likely and is not
-proved by the store's absence alone.
+That is the constraint the whole frontend is shaped around, and it has two answers.
 
-The window's own evidence is therefore that it builds. Everything in it except the XAML
-is the wrapper in `MiniXiangqi.Core`, which the harness drives directly for that reason.
-Seeing the window needs an RDP session.
+### The harness plays the game
+
+`MiniXiangqi.Smoke` runs headlessly, so it runs over SSH on a machine nobody is logged
+into. It exercises every shape the boundary has — the queries callable before
+initialisation, the memory probe and the engine plan, both halves of the buffer
+protocol, the error taxonomy with its detail strings, a real search delivered through
+the `[UnmanagedCallersOnly]` callback, the archive blob, the History readback, and the
+wrapper the window uses — and then it plays.
+
+Sections 17 to 21 are the play screen's.
+
+**17** checks the string table against [`docs/copy.md`](../docs/copy.md): every key this
+frontend shows is a row of the contract, and both languages of it match. That is one
+direction of the agreement check the localization process asks for, and only one — the
+reverse, that no user-facing key in the contract is absent here, cannot apply while
+Windows implements sixty-six of the contract's rows and the Apple frontend implements
+the rest. It becomes checkable when the Windows frontend is complete, and it is not
+checked before then rather than checked against a number somebody has to keep adjusting.
+
+**18** plays a whole game against the AI through `PlaySession` — every move committed by
+clicking a point and then another point, exactly as the window's board does it, the AI
+answering through the same marshalled callback — to a conclusion or a move cap, and then
+takes the concluding action. **19** plays Free Play through the same session, because
+Free Play has no entry point yet and this is where it is exercised, and taps an illegal
+point to confirm it moves nothing and cancels nothing. **20** shuffles two cannons into a
+threefold repetition and claims it. **21** is the pair of races a confirmation and a
+search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed with
+a 深思 search genuinely in flight.
+
+```powershell
+windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
+```
+
+It prints a checked line per claim, a count, and `MXQ_SMOKE_OK`, and it exits non-zero
+if anything failed.
+
+### The renders show the board
+
+`MiniXiangqi.Shots` draws the board to PNG files, offscreen, with no window. The picture
+is `BoardPainter.Draw` — the window's own — and the scene is `PlaySession`'s, reached by
+clicking points through the same `Tap` the window calls, so every marker in every
+picture is the core's own answer about a real position. No placement, legal-move set or
+check state is written out by hand: a board picture that showed a destination the rules
+do not offer would be worse than no picture.
+
+```powershell
+windows\MiniXiangqi.Shots\bin\Release\net10.0-windows10.0.26100.0\win-x64\MiniXiangqi.Shots.exe --out shots
+```
+
+**The committed renders are evidence, not goldens.** Nothing compares them to anything:
+a runner-image font update, a Direct2D change, or a different WARP version would move
+pixels in them and no gate would notice. They say what the board looked like on the run
+that produced them, which is what a reviewer with no desktop needs; a comparison gate
+would be a different thing, and it would need a tolerance and a rule about what a
+legitimate change looks like before it was worth having.
+
+**It does not run over SSH either, and for a different reason.** Win2D needs a Direct2D
+device, and Direct2D refuses in session 0: every way into `CanvasDevice` answers
+`DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` (`0x887A0022`) there — the parameterless one, the
+forced-software one, the shared one, and `CreateFromDirect3D11Device` over a device the
+same process just made — while raw `D3D11CreateDevice` on WARP succeeds in that same
+process at feature level 11_0. So it is the graphics stack's session rule rather than
+the absence of a GPU, and the harness says `MXQ_SHOTS_UNAVAILABLE` and exits 2 rather
+than pretending. A GitHub Actions Windows runner has a console session, and Win2D works
+there, which is why the CI job is what produces the committed pictures under
+`docs/evidence/`.
+
+### What is still only proved by building
+
+The XAML, and the wiring between it and the session: the layout, the alerts, the result
+notice's surface, the Fluent materials, and the pointer and Narrator behaviour of the
+forty-nine point elements. Seeing those needs an RDP session.
+
+## Continuous integration
+
+[`.github/workflows/windows-frontend.yml`](../.github/workflows/windows-frontend.yml)
+builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, fetches the pinned network with the
+same script the core suites use, regenerates the bindings and fails on any difference
+from what is committed, builds every project, runs the smoke harness against
+`docs/copy.md`, and renders the board. It uploads the renders on every run.
+
+The bindings check is the obligation issue #80 carried from #85's verify: a `Mxq.g.cs`
+that differs from what the generator writes is a transcription of the header rather than
+the header, and the DLL export path and the bindings can no longer drift silently.
+
+## Strings
+
+`MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, keyed exactly
+as [`docs/copy.md`](../docs/copy.md) keys it, with the normative Chinese and its approved
+English side by side. The language is the operating system's — the app offers no
+interface-language control of its own — which .NET resolves as `CurrentUICulture` from
+the system's language preference list.
+
+It is a table in C# rather than a `.resw` and a PRI because resource packaging belongs to
+the packaging build, which does not exist yet and which this pull request should not
+answer for twice; because an unpackaged app's resource lookup is a deployment question
+rather than a copy question; and because the render harness has to read the table without
+a XAML resource context. The smoke harness checks it against the contract, so it cannot
+drift from `docs/copy.md` silently either.
 
 ## Not pinned yet
 

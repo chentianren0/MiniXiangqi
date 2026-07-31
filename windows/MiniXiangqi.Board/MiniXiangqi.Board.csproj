@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The board picture, in Win2D. One drawing function over a BoardScene, shared
+    by the window's CanvasControl and by the offscreen render harness, which is
+    what makes the committed evidence a picture of the real board rather than a
+    second drawing of it.
+
+    It references Win2D but no XAML: Microsoft.Graphics.Canvas carries the
+    drawing session, the render target and the text layout, and only
+    Microsoft.Graphics.Canvas.UI.Xaml carries the control. Keeping that line
+    here is what lets a console process draw a board.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RootNamespace>MiniXiangqi.Board</RootNamespace>
+    <AssemblyName>MiniXiangqi.Board</AssemblyName>
+
+    <!-- Win2D ships a native Microsoft.Graphics.Canvas.dll per architecture and
+         refuses to pick one for an AnyCPU project. Windows 11 on x64 is the
+         target (owner decision, 2026-07-30); ARM64 returns when there is real
+         hardware to test it on. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniXiangqi.Play\MiniXiangqi.Play.csproj" />
+  </ItemGroup>
+
+</Project>
