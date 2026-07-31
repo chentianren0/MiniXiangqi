@@ -1,6 +1,12 @@
 # Mini Xiangqi
 
-Mini Xiangqi is a native, fully offline Mini Xiangqi application for iOS, iPadOS, macOS, and Windows, built for Mini Xiangqi education inside a small internal group. This README is an introduction for developers, testers, and reviewers; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/ppppvz/MiniXiangqi/issues).
+Mini Xiangqi is a native, fully offline Mini Xiangqi application for iOS, iPadOS, macOS, and Windows, built for Mini Xiangqi education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/ppppvz/MiniXiangqi/issues).
+
+## Get the app
+
+- **Windows 11 (x64 or ARM):** download the zip for your machine from [the latest release](https://github.com/ppppvz/MiniXiangqi/releases/latest) — `MiniXiangqi-windows-x64.zip` for Intel/AMD machines, `MiniXiangqi-windows-arm64.zip` for ARM machines — unzip it anywhere, open the folder, and run `MiniXiangqi.App.exe`. If Windows SmartScreen warns about an unrecognized app the first time, choose **More info**, then **Run anyway**. There is no installer and no administrator prompt, and deleting the folder removes the app completely. The Microsoft Store is the intended future public channel.
+- **macOS, iPhone, and iPad:** the app ships to internal testers through TestFlight. There is no public Apple download: the project's GPL-3.0 licence and the App Store's terms are incompatible, and the project ships internally rather than papering over that.
+- The app is fully offline and collects nothing. The source is this repository — every release is built by CI from the tagged revision — and the licence is the [GNU General Public License version 3](LICENSE); the Windows zip carries `LICENSE` and `NOTICE.md` beside the app.
 
 ## Target MVP
 
@@ -65,7 +71,7 @@ ctest --test-dir build --output-on-failure
 
 ## Distribution and license
 
-Distribution is internal only: TestFlight internal testing on Apple platforms and, on Windows, a zip built by CI that somebody unpacks and runs — one per architecture, with no installer and no store (owner decision, 2026-07-30; MSIX and its signing-certificate story are the post-MVP upgrade). The project is licensed under the [GNU General Public License version 3](LICENSE), matching its Fairy-Stockfish dependency, and the Windows zip carries that licence and an attribution note beside the app.
+Distribution: Apple platforms ship through TestFlight internal testing, indefinitely — the honest side of the GPL/App-Store conflict (owner decision, 2026-07-31). Windows ships as a CI-built zip published on this repository's [releases](https://github.com/ppppvz/MiniXiangqi/releases) — one per architecture, unpacked and run, with no installer — and the Microsoft Store is the intended public channel (owner decision, 2026-07-31): the Store signs submissions itself, so the signing-certificate concern that once deferred MSIX does not apply. The project is licensed under the [GNU General Public License version 3](LICENSE), matching its Fairy-Stockfish dependency, and the Windows zip carries that licence and an attribution note beside the app.
 
 The NNUE network the AI evaluates with is **this project's own**, trained from zero by the public pipeline at [`ppppvz/minixiangqi-nnue`](https://github.com/ppppvz/minixiangqi-nnue) with no other network as a teacher or a seed. It lives in this repository at `core/assets/`, pinned by byte length and SHA-256 in [`pinned-inputs.json`](pinned-inputs.json) along with its provenance, and every build verifies it before staging it. Every distribution carries it, the Windows zip included: there is one artifact and it is the complete application.
 
