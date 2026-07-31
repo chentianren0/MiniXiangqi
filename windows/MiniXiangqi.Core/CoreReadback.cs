@@ -42,6 +42,37 @@ public readonly record struct GameState(
     bool ResignAvailable,
     bool SearchExpected);
 
+/// <summary>
+/// A game's frozen configuration. <c>HumanSide</c>, <c>AiLevel</c>,
+/// <c>FirstMoverChoice</c> and <c>MovetimeMs</c> are meaningful only in
+/// human-versus-AI play; in Free Play they read as the NONE constants and zero,
+/// matching the archive, which simply omits them.
+/// </summary>
+public readonly record struct GameConfiguration(
+    int Mode,
+    int HumanSide,
+    int AiLevel,
+    int FirstMoverChoice,
+    uint MovetimeMs);
+
+/// <summary>
+/// One search's answer, copied out of core storage. An inert value: applying
+/// the move is a separate explicit call, and no path exists from here to
+/// committed state.
+/// </summary>
+public readonly record struct SearchAnswer(
+    int Outcome,
+    string Move,
+    ulong Ticket,
+    string GameId,
+    ulong PositionRevision,
+    int Status,
+    uint Depth,
+    ulong Nodes,
+    int ScoreCp,
+    uint ElapsedMs,
+    string ProfileId);
+
 /// <summary>The plan the accepted Hash-budget arithmetic yields.</summary>
 public readonly record struct EnginePlan(
     uint Threads,
