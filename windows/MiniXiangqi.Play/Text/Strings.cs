@@ -76,6 +76,12 @@ public static class Strings
             // for one page, as docs/copy.md keys it.
             ["nav.play"] = new("对局", "Play"),
             ["nav.history"] = new("历史", "History"),
+            // The third destination's own name, on the shell's settings item and
+            // as the page's title. NavigationView supplies its own word there in
+            // whatever language it resolved; the app says its own, because this
+            // row is the string of record for it and a platform's word for a
+            // destination this contract names would be a second source of truth.
+            ["nav.settings"] = new("设置", "Settings"),
             ["nav.resumeGame"] = new("回到对局", "Resume Game"),
             ["mode.humanVersusAI"] = new("人机对弈", "Human versus AI"),
             ["mode.freePlay"] = new("自由对弈", "Free Play"),
@@ -246,6 +252,32 @@ public static class Strings
             ["setup.freePlayExplanation"] = new(
                 "你将控制红黑双方，红方先行。",
                 "You control both Red and Black. Red moves first."),
+
+            // The Settings destination. Three of the Mac's four groups ship here
+            // and every absence is issue #80's owner-decided Windows trim, so
+            // 棋盘 and its two rows carry no key below and neither does 触感:
+            // the notation has nothing to choose between while the record is the
+            // core's own coordinate text, only the 汉字 symbol set is drawn, and
+            // the felt half is not for the MVP. The two footers are
+            // both here, which is the whole of the accepted two-footer rule —
+            // "there are two footers on the screen, and only two" — surviving the
+            // trim rather than being restated by it.
+            //
+            // The six option words below carry no rows of their own: 默认先后手
+            // and 默认 AI 等级 offer exactly the choices the pre-start page
+            // offers, and docs/copy.md keys them once, under `setup.`, for both.
+            ["settings.defaults.group"] = new("人机对弈默认设置", "Human versus AI Defaults"),
+            ["settings.defaults.firstMover"] = new("默认先后手", "Default First Mover"),
+            ["settings.defaults.aiLevel"] = new("默认 AI 等级", "Default AI Level"),
+            ["settings.defaults.footer"] = new(
+                "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
+                "These settings apply when you start a new Human versus AI game. "
+                + "They don't change a game in progress."),
+            ["settings.sound.label"] = new("声音", "Sound"),
+            ["settings.confirmDelete.label"] = new("删除前确认", "Confirm Before Deleting"),
+            ["settings.confirmDelete.footer"] = new(
+                "关闭后，删除立即执行。删除无法撤销。",
+                "When off, deletion happens immediately. A deletion cannot be undone."),
 
             // Game metadata: the tokens the active game's line is composed of.
             ["metadata.youRed"] = new("你执红", "You: Red"),

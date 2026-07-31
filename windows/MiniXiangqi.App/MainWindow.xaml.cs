@@ -79,6 +79,15 @@ public sealed partial class MainWindow : Window
     private readonly MiniXiangqiCore? _core;
     private readonly PlayFlow? _flow;
     private readonly HistoryFlow? _history;
+    private readonly SettingsScreen? _settings;
+
+    /// <summary>
+    /// The four voices, primed at this window's construction so that the first
+    /// tock is no later than the second. It is built whether or not a game is
+    /// ever played: four small buffers is less than the first landing would cost
+    /// to read them.
+    /// </summary>
+    private readonly BoardSoundPlayer _sounds = new();
 
     /// <summary>
     /// The system's own accessibility and appearance settings, of which this
@@ -86,8 +95,16 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private readonly Windows.UI.ViewManagement.UISettings _system = new();
 
+    /// <summary>The shell's three top-level destinations.</summary>
+    private enum Destination
+    {
+        Play,
+        History,
+        Settings,
+    }
+
     /// <summary>Which top-level destination the shell is showing.</summary>
-    private bool _onHistory;
+    private Destination _destination = Destination.Play;
 
     /// <summary>
     /// The History state this window has already drawn rows for.
@@ -140,7 +157,24 @@ public sealed partial class MainWindow : Window
         DestinationHistory.Content = Strings.Get("nav.history");
         Shell.SelectedItem = DestinationPlay;
 
+        // The container's own settings item is realized when its template is
+        // applied, which has not happened yet in a constructor — so the one thing
+        // the app supplies about it, its word, is supplied when it exists. If it
+        // somehow does not, the framework's own word stands and the destination
+        // still works; a missing label is not worth a launch failure.
+        Shell.Loaded += (_, _) =>
+        {
+            if (Shell.SettingsItem is NavigationViewItem item)
+            {
+                item.Content = Strings.Get("nav.settings");
+            }
+        };
+
         string assets = Path.Combine(AppContext.BaseDirectory, "assets");
+        string preferences = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MiniXiangqi",
+            "preferences.json");
         string store = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MiniXiangqi",
@@ -159,16 +193,37 @@ public sealed partial class MainWindow : Window
 
         _core = core;
         WindowScheduler scheduler = new(DispatcherQueue);
-        PlayFlow flow = new(core, scheduler);
+
+        // One store for all three destinations, so that a preference the Settings
+        // screen writes is the same preference the pre-start page, the deletion
+        // gate and the sound gate read — and so that "read at the moment of use"
+        // is one file's behaviour rather than three objects' agreement. The path
+        // is named here rather than left to the parameterless constructor because
+        // it is this window that decides where this app keeps things.
+        FilePreferenceStore stored = new(preferences);
+
+        PlayFlow flow = new(
+            core,
+            scheduler,
+            stored,
+            probe: null,
+            feedback: Feedback.Gating(stored, _sounds.Play));
         _flow = flow;
         flow.Changed += Refresh;
 
         // The History destination is built now and read when it is first shown:
         // its list is two store queries and there is no reason to make them at
         // launch, when the app opens on the board or on the Play home.
-        HistoryFlow history = new(core, scheduler);
+        HistoryFlow history = new(core, scheduler, stored);
         _history = history;
         history.Changed += Refresh;
+
+        // Settings holds no state of its own beyond the file, so it is built here
+        // and never reloaded: every value it shows is read from the store as it
+        // draws.
+        SettingsScreen settings = new(stored);
+        _settings = settings;
+        settings.Changed += Refresh;
 
         try
         {
@@ -296,13 +351,18 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnDestinationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        _onHistory = ReferenceEquals(args.SelectedItem, DestinationHistory);
+        // The settings item is the container's own rather than one of the menu
+        // items, so it is what `IsSettingsSelected` reports rather than something
+        // to compare against.
+        _destination = args.IsSettingsSelected ? Destination.Settings
+            : ReferenceEquals(args.SelectedItem, DestinationHistory) ? Destination.History
+            : Destination.Play;
 
         // The library is read when the destination is first shown, and re-read on
         // every later visit — a game finished on the Play destination is a new
         // row, and the revision check makes the re-read two cheap queries when
         // nothing changed.
-        if (_onHistory)
+        if (_destination == Destination.History)
         {
             _history?.LoadIfChanged();
         }
@@ -312,11 +372,12 @@ public sealed partial class MainWindow : Window
 
     private void OnBack(object sender, RoutedEventArgs args)
     {
-        if (_onHistory)
+        // Settings has one page and no back control, so it never reaches here.
+        if (_destination == Destination.History)
         {
             _history?.CloseViewer();
         }
-        else
+        else if (_destination == Destination.Play)
         {
             _flow?.LeaveTopPage();
         }
@@ -351,6 +412,37 @@ public sealed partial class MainWindow : Window
         });
 
     private void OnStartGame(object sender, RoutedEventArgs args) => _flow?.StartGame();
+
+    // Settings. Every control writes as it changes: a preference screen has no
+    // Save button, and the next landing or the next deletion is entitled to the
+    // new answer rather than to the one the app launched with.
+    //
+    // Each handler also fires when a refresh *sets* its control, which is what a
+    // XAML selector does when it is given a value. SettingsScreen writes nothing
+    // when the value it is handed is the value already stored, so a redraw is not
+    // a write and cannot loop through Changed.
+
+    private void OnDefaultFirstMoverChanged(object sender, SelectionChangedEventArgs args) =>
+        _settings?.ChooseDefaultFirstMover(DefaultFirstMover.SelectedIndex switch
+        {
+            1 => FirstMoverChoice.AiFirst,
+            2 => FirstMoverChoice.Random,
+            _ => FirstMoverChoice.HumanFirst,
+        });
+
+    private void OnDefaultAiLevelChanged(object sender, SelectionChangedEventArgs args) =>
+        _settings?.ChooseDefaultAiLevel(DefaultAiLevel.SelectedIndex switch
+        {
+            0 => AiLevel.Fast,
+            2 => AiLevel.Deep,
+            _ => AiLevel.Standard,
+        });
+
+    private void OnSoundToggled(object sender, RoutedEventArgs args) =>
+        _settings?.SetSound(Sound.IsOn);
+
+    private void OnConfirmDeleteToggled(object sender, RoutedEventArgs args) =>
+        _settings?.SetDeleteConfirmation(ConfirmDelete.IsOn);
 
     // Board input.
 
@@ -601,31 +693,36 @@ public sealed partial class MainWindow : Window
         }
 
         ShowPage(flow, history);
-        if (_onHistory)
+        switch (_destination)
         {
-            if (history.Page == HistoryPageKind.Viewer && history.Viewer is { } viewer)
-            {
+            case Destination.History when history.Page == HistoryPageKind.Viewer
+                && history.Viewer is { } viewer:
                 ShowViewer(viewer);
-            }
-            else
-            {
+                break;
+
+            case Destination.History:
                 ShowHistory(history);
-            }
-        }
-        else
-        {
-            switch (flow.Page)
-            {
-                case PlayPage.Home:
-                    ShowHome(flow);
-                    break;
-                case PlayPage.Setup:
-                    ShowSetup(flow);
-                    break;
-                case PlayPage.Board when flow.Session is { } play:
-                    ShowBoard(play);
-                    break;
-            }
+                break;
+
+            case Destination.Settings when _settings is { } settings:
+                ShowSettings(settings);
+                break;
+
+            case Destination.Play:
+                switch (flow.Page)
+                {
+                    case PlayPage.Home:
+                        ShowHome(flow);
+                        break;
+                    case PlayPage.Setup:
+                        ShowSetup(flow);
+                        break;
+                    case PlayPage.Board when flow.Session is { } play:
+                        ShowBoard(play);
+                        break;
+                }
+
+                break;
         }
 
         ShowDialog(flow, history);
@@ -633,15 +730,18 @@ public sealed partial class MainWindow : Window
 
     private void ShowPage(PlayFlow flow, HistoryFlow history)
     {
-        bool viewing = _onHistory && history.Page == HistoryPageKind.Viewer && history.Viewer is not null;
-        bool listing = _onHistory && !viewing;
+        bool onHistory = _destination == Destination.History;
+        bool onPlay = _destination == Destination.Play;
+        bool viewing = onHistory && history.Page == HistoryPageKind.Viewer && history.Viewer is not null;
+        bool listing = onHistory && !viewing;
 
-        HomePage.Visibility = Shown(!_onHistory && flow.Page == PlayPage.Home);
-        SetupPage.Visibility = Shown(!_onHistory && flow.Page == PlayPage.Setup);
+        HomePage.Visibility = Shown(onPlay && flow.Page == PlayPage.Home);
+        SetupPage.Visibility = Shown(onPlay && flow.Page == PlayPage.Setup);
         BoardPage.Visibility =
-            Shown(!_onHistory && flow.Page == PlayPage.Board && flow.Session is not null);
+            Shown(onPlay && flow.Page == PlayPage.Board && flow.Session is not null);
         HistoryPage.Visibility = Shown(listing && history.LoadFailure is null);
         ViewerPage.Visibility = Shown(viewing);
+        SettingsPage.Visibility = Shown(_destination == Destination.Settings);
 
         // A library that cannot be read says *that*, in the failure-screen
         // family, rather than showing an empty list it has no evidence for. It is
@@ -658,9 +758,16 @@ public sealed partial class MainWindow : Window
 
         // The back control appears on the pages that have somewhere to go back
         // to, and names the page it returns to. The title is the destination's
-        // rather than any one page's, because its pages carry the same one.
-        string destination = Strings.Get(_onHistory ? "nav.history" : "nav.play");
-        Back.Visibility = Shown(_onHistory ? viewing : flow.Page != PlayPage.Home);
+        // rather than any one page's, because its pages carry the same one —
+        // Settings having exactly one, and no back control, because there is
+        // nowhere under it to be.
+        string destination = Strings.Get(_destination switch
+        {
+            Destination.History => "nav.history",
+            Destination.Settings => "nav.settings",
+            _ => "nav.play",
+        });
+        Back.Visibility = Shown(onHistory ? viewing : onPlay && flow.Page != PlayPage.Home);
         AutomationProperties.SetName(Back, destination);
         PageTitle.Text = destination;
     }
@@ -1059,6 +1166,64 @@ public sealed partial class MainWindow : Window
         StartGame.IsEnabled = !flow.Creating;
     }
 
+    /// <summary>
+    /// The Settings destination: three groups, and every control showing what is
+    /// **stored** rather than what was last asked for.
+    ///
+    /// The two pickers' options are the pre-start page's own words — 我先手,
+    /// AI 先手, 随机 and the three levels — because they are the same choices,
+    /// keyed once in docs/copy.md under `setup.`, and a second set of rows for
+    /// the same three options would be two things to keep in step. The two row
+    /// labels are the Settings rows' own: 默认先后手 says what this one is that
+    /// 先后手 does not.
+    ///
+    /// Each control's accessibility name is its row label, because the label is a
+    /// separate element on the row and a screen reader arriving at the switch
+    /// would otherwise have nothing but its state to read. That is the basic
+    /// Narrator labelling issue #80 settles this platform at — parity with the
+    /// Mac's actual VoiceOver level — and no more.
+    /// </summary>
+    private void ShowSettings(SettingsScreen settings)
+    {
+        DefaultsHeader.Text = Strings.Get("settings.defaults.group");
+        DefaultsFooter.Text = Strings.Get("settings.defaults.footer");
+
+        DefaultFirstMoverLabel.Text = Strings.Get("settings.defaults.firstMover");
+        AutomationProperties.SetName(
+            DefaultFirstMover, Strings.Get("settings.defaults.firstMover"));
+        DefaultFirstMoverHuman.Content = Strings.Get("setup.iMoveFirst");
+        DefaultFirstMoverAi.Content = Strings.Get("setup.aiMovesFirst");
+        DefaultFirstMoverRandom.Content = Strings.Get("setup.random");
+        DefaultFirstMover.SelectedIndex = settings.DefaultFirstMover switch
+        {
+            FirstMoverChoice.AiFirst => 1,
+            FirstMoverChoice.Random => 2,
+            _ => 0,
+        };
+
+        DefaultAiLevelLabel.Text = Strings.Get("settings.defaults.aiLevel");
+        AutomationProperties.SetName(DefaultAiLevel, Strings.Get("settings.defaults.aiLevel"));
+        DefaultLevelFast.Content = Strings.Get("setup.level.fast");
+        DefaultLevelStandard.Content = Strings.Get("setup.level.standard");
+        DefaultLevelDeep.Content = Strings.Get("setup.level.deep");
+        DefaultAiLevel.SelectedIndex = settings.DefaultAiLevel switch
+        {
+            AiLevel.Fast => 0,
+            AiLevel.Deep => 2,
+            _ => 1,
+        };
+
+        SoundLabel.Text = Strings.Get("settings.sound.label");
+        AutomationProperties.SetName(Sound, Strings.Get("settings.sound.label"));
+        Sound.IsOn = settings.Sound;
+
+        ConfirmDeleteLabel.Text = Strings.Get("settings.confirmDelete.label");
+        AutomationProperties.SetName(
+            ConfirmDelete, Strings.Get("settings.confirmDelete.label"));
+        ConfirmDelete.IsOn = settings.ConfirmsDeletion;
+        ConfirmDeleteFooter.Text = Strings.Get("settings.confirmDelete.footer");
+    }
+
     private void ShowBoard(PlaySession play)
     {
         _board.Scene = play.Scene;
@@ -1287,13 +1452,22 @@ public sealed partial class MainWindow : Window
         // otherwise arrive over a board it says nothing about; it waits, and the
         // History destination presents it when they come back to it — which is
         // the same rule the board's own alerts already follow.
-        if (_onHistory)
+        if (_destination == Destination.History)
         {
             if (history.Alert != HistoryAlert.None)
             {
                 ShowHistoryAlert(history, history.Alert);
             }
 
+            return;
+        }
+
+        // Settings raises no alert of its own — a preference the file system
+        // refused is a control that visibly did not move, which is the truth and
+        // has no accepted copy behind it — and it presents nobody else's either,
+        // by the same rule the two destinations above follow.
+        if (_destination == Destination.Settings)
+        {
             return;
         }
 

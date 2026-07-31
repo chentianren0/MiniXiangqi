@@ -58,6 +58,25 @@
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             </Style>
+
+            <!--
+                One row of the Settings destination: a label on the left, the
+                control that changes it on the right, inside the card its group
+                is drawn as. The minimum height is what keeps a row carrying a
+                switch and a row carrying a pop-up the same height, so a group
+                reads as a list rather than as controls of assorted sizes; the
+                padding is the mode entry's, because both are rows inside the
+                same kind of card and there is no reason for two answers.
+
+                Only the geometry is here. What the columns are is each row's,
+                because a style cannot carry column definitions, and every row on
+                that screen has the same two.
+            -->
+            <Style x:Key="SettingsRowStyle" TargetType="Grid">
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="MinHeight" Value="60" />
+                <Setter Property="ColumnSpacing" Value="16" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

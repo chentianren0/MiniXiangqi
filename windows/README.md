@@ -4,10 +4,10 @@ The WinUI 3 frontend, over the same shared core as the Apple frontend. What is h
 is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
 Play destination — the home where what to play is chosen, each mode's pre-start state,
 and the board with a live game against the AI — the History destination with its
-step-through viewer and its import, and two headless harnesses that are how any of it is
-verified on a machine nobody is logged into. The Settings screen, the stacked layout that
-narrow windows take on the other platforms, and the packaging build are later pull
-requests.
+step-through viewer and its import, the Settings destination and the board's four
+voices, and two headless harnesses that are how any of it is verified on a machine
+nobody is logged into. The stacked layout that narrow windows take on the other
+platforms, and the packaging build, are later pull requests.
 
 The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
 it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
@@ -21,7 +21,7 @@ materials, navigation and context menus rather than recreated Apple styling.
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
-| `MiniXiangqi.Play/` | the board's vocabulary and geometry, both destinations' flows, the play screen's and the viewer's logic, and the string table — no UI framework at all |
+| `MiniXiangqi.Play/` | the board's vocabulary and geometry, every destination's logic, the sound decision and the four samples, and the string table — no UI framework at all |
 | `MiniXiangqi.Board/` | the board picture, in Win2D |
 | `MiniXiangqi.Smoke/` | the headless harness — this project's evidence |
 | `MiniXiangqi.Shots/` | the offscreen board renders |
@@ -45,9 +45,14 @@ game again nor brings back a result notice the player has already put away.
 
 `HistoryFlow` is its counterpart: the list of filed games in the core's own order, one
 record's read-only `ReplayViewer`, the deletion gate, pin and unpin, and both interchange
-paths. The two destinations share a core and nothing else — a game stays active whichever
-one is on screen — and the shell above them is a `NavigationView` in its Auto display
-mode, which is this platform's own adaptation rather than one the app selected.
+paths. `SettingsScreen` is the third and the smallest: the preferences the app keeps, read
+from and written to one file. The three destinations share a core and a preference store
+and nothing else — a game stays active whichever one is on screen — and the shell above
+them is a `NavigationView` in its Auto display mode, which is this platform's own
+adaptation rather than one the app selected. Its **settings item is the container's own**,
+turned on with `IsSettingsVisible`: the platform's gear, in the platform's place at the
+foot of the pane. The one thing the app supplies about it is its word, from `nav.settings`,
+because that row is the string of record for this destination's name.
 
 ## History, the viewer, and interchange
 
@@ -77,8 +82,8 @@ it is made.
 The 删除前确认 preference is read from `deleteConfirmation.enabled`, which is
 `apple/MiniXiangqi/Settings/Preferences.swift`'s key and its Bool vocabulary. Absent means
 on, and so does anything this reader cannot make sense of: **false is the dangerous answer
-on this key**, because it deletes a game without asking. The Settings screen is the next
-rung and owns writing it.
+on this key**, because it deletes a game without asking. The Settings destination writes
+it, and the harness closes that circle over one file on disk.
 
 ## Building
 
@@ -294,6 +299,26 @@ the file written before it went, which is the interchange promise end to end. **
 one branch a small library never reaches, and one that would otherwise first execute on
 somebody's real library.
 
+Sections 36 and 37 are the Settings destination's and the board's four voices'. **36 closes
+the preference circle over one file on disk**: the screen writes, the raw JSON is read back
+so that the *key* and the *vocabulary* rather than an agreement between two of our own types
+are what is checked, and then the reader section 22 proved opens a pre-start draft on it —
+first directly, then through a real `PlayFlow` walking the home to a mode entry to a
+pre-start page. It also states the two things a shared preference file makes possible to get
+wrong: a preference this platform has no surface for is left exactly as it was by a write,
+and a preference changed underneath the screen is what the screen shows next. It also
+drives the no-alert design rather than describing it — a file standing where the directory
+should be refuses every write deterministically, and both halves of the snap-back are
+checked. **37 states
+the sound event-mapping seam**: the precedence rule over its whole truth table, the 声音
+gate honoured at the moment of use and flipped between two landings on one object, and then
+a real Free Play game in which every landing is checked against what the board itself says
+happened — the piece that was standing on the destination, and the position that arrived —
+rather than against the rule under test. A move taken back, a claimed draw and a
+resignation are asked separately, because the played game cannot ask for them. What the
+harness cannot say is whether the four voices *sound* right; that is an ear's answer and it
+is the owner's tour, and section 37 prints as much.
+
 **Two import answers have no seam, and are stated as the mapping they are.** 历史中有一盘
 损坏的棋 needs a stored record whose own bytes no longer decode, and 无法保存导入的对局 needs
 the store to refuse a write; producing either would mean reaching around the core into its
@@ -380,9 +405,16 @@ there, which is why the CI job is what produces the committed pictures under
 ### What is still only proved by building
 
 The XAML, and the wiring between it and the session: the layout, the alerts, the result
-notice's surface, the Fluent materials, the shell's own pane, the History list's rows and
-their context menus, and the pointer and Narrator behaviour of the forty-nine point
-elements. Seeing those needs an RDP session.
+notice's surface, the Fluent materials, the shell's own pane and its settings item, the
+History list's rows and their context menus, the Settings destination's three cards, and
+the pointer and Narrator behaviour of the forty-nine point elements. Seeing those needs an
+RDP session.
+
+**The four voices are the same case with a second reason.** Which voice a landing asks for
+is run headlessly in section 37; whether it is *heard*, and whether what is heard is right,
+needs an audio endpoint and an ear. The development VM has neither — an SSH session lands
+in session 0, and nothing there renders audio — so the audible half is the owner's tour,
+stated as such rather than dressed up.
 
 **The two file pickers are the same case, and are the one part of the import and export
 paths a harness cannot drive.** `FileOpenPicker` and `FileSavePicker` need the window's
@@ -402,35 +434,133 @@ tree in the filter besides. Which of those two is load-bearing depends on whethe
 platform routes a tap past a `Button` that has already handled the pointer press, which
 is exactly the class of question this section is about.
 
-## Preferences
+## Settings, and the preferences it writes
 
-The pre-start controls are initialized afresh from the persistent Settings defaults on
-every entry to the page, and the History destination reads one preference before every
-deletion, so this frontend reads three of them — `defaults.firstMover`,
-`defaults.aiLevel` and `deleteConfirmation.enabled`, with the vocabularies and the
-absent-means-this fallbacks `apple/MiniXiangqi/Settings/Preferences.swift` records. It
-**writes none of them**: the Settings screen is the next pull request and it owns
-writing.
+The Settings destination draws **three of the Mac's four groups**, and every absence is
+issue #80's owner-decided trim rather than a design change — `docs/product.md` § Product
+navigation carries the Windows Settings scope with the reasoning for each. 棋盘 is absent
+with both of its rows: the move record here is the core's own coordinate text in both
+languages so 记谱法 has nothing to choose between, and only the 汉字 set is drawn so
+棋子符号 is a preference with one option. 触感 is absent because it is **not for the MVP**,
+which is a narrower claim than it looks and is worth stating exactly: Windows *does* have a
+touchpad counterpart to the Mac's system haptic performer —
+`Windows.Devices.Haptics.InputHapticsManager`, UniversalApiContract 19 with Windows 11
+24H2, whose `HapticDeviceType` names Touchpad and Mouse and which answers `IsSupported()`
+and `IsHapticDevicePresent()` before `TrySendHapticWaveform` plays anything. It is
+experimental, gated to 24H2 and later, and the hardware is rare, so shipping the switch now
+would ship one that does nothing on nearly every machine — which the contract forbids for
+the same reason it forbids a switch with no API behind it. The row is removed rather than
+greyed out, exactly as it is on an iPad, and if it is ever offered here iOS's ask-the-device
+rule carries over unchanged: `IsSupported()` plus `IsHapticDevicePresent()` is that question
+in Windows' own words. **Both accepted footers survive**, so the two-footer rule reads the
+same here as it does on the Mac.
+
+The Fluent adaptation is one rule applied three times: **a group is a card**. A grouped
+`Form` section on macOS supplies a header above and a footer below; Windows has no grouped
+Form and its own settings idiom is a caption-weight header, a card carrying the rows, and
+a caption beneath — so one section becomes one header, one card, one footer, and the rows
+inside a card are divided by the same hairline the Play home puts between its two mode
+entries. The Community Toolkit's `SettingsCard` is the packaged form of exactly this and
+was declined as a dependency for four rows, since the vocabulary it would bring is the
+theme resources this window already draws from. The two switches carry no On/Off content:
+a bare switch is what Windows 11's own Settings shows, and the words the framework would
+otherwise put there are copy `docs/copy.md` does not own. Narrator is unaffected — a
+toggle reports its state through the toggle pattern, in the screen reader's own words —
+and each control's accessibility name is its row label, which is the basic labelling
+issue #80 settles this platform at.
+
+**Every control shows what is *stored*, not what was last asked for.** `SettingsScreen`
+holds no state: its four properties read the store each time they are asked. Two things
+fall out of that and both are wanted. A write the file system refused leaves the control
+where it was, which is the truth and needs no alert — there is no accepted copy for one,
+and inventing a preference-failure alert would be inventing a contract. And a preference
+changed underneath the screen is picked up on the next refresh without a relaunch, which
+is the same read-at-the-moment-of-use rule the sound gate and the deletion gate run under.
+
+**That is a deliberate divergence from the Mac**, which mirrors each value into `@State`
+and so shows what was *asked for*. It is confined to a failure mode the two platforms do
+not share equally — a `UserDefaults` write barely has one, a file write has disk, quota and
+permissions behind it. The snap-back has two halves and both are load-bearing: the screen
+reads the stored value, and `Changed` is raised **whether or not the write landed**, which
+is the only thing that redraws the control back to it. Announcing only on success would
+leave a switch showing a value nobody stored, silently, so §36 drives a refused write —
+a file standing where the directory should be — rather than describing one.
+
+This frontend now reads **four** preferences and writes those same four —
+`defaults.firstMover`, `defaults.aiLevel`, `sound.enabled` and
+`deleteConfirmation.enabled` — with the vocabularies and the absent-means-this fallbacks
+`apple/MiniXiangqi/Settings/Preferences.swift` records. The three it has no surface for —
+`notation.style`, `pieces.symbols`, `haptics.enabled` — are neither read nor written, and
+a write here **preserves them**: the file is read, modified and written back, so a
+preference set on another machine is not deleted by a screen that draws four rows.
 
 Where they are kept on Windows is the smallest answer that works — a JSON object at
-`%LOCALAPPDATA%\MiniXiangqi\preferences.json`, read at the moment of use
-and never cached, absent or malformed reading as "nothing is stored". A flag is read as a
-JSON boolean first and as the string spelling of one after that, because a file a Settings
-screen writes and a person may edit can honestly hold either. The Apple frontend
-has `UserDefaults`; an unpackaged Win32 app has no equivalent it can reach without
-deciding the packaging question this repository has parked. The Settings pull request may
-keep that storage or replace it. What it may not change is the key or the vocabulary:
-those are the interface between the screen that writes a preference and the surface that
-reads one, and they are what lets a preference set in one frontend mean the same thing in
-the other.
+`%LOCALAPPDATA%\MiniXiangqi\preferences.json`, read at the moment of use and never cached,
+absent or malformed reading as "nothing is stored". A flag is read as a JSON boolean first
+and as the string spelling of one after that, because a file a Settings screen writes and
+a person may edit can honestly hold either. The Apple frontend has `UserDefaults`; an
+unpackaged Win32 app has no equivalent it can reach without deciding the packaging
+question this repository has parked. The Settings pull request kept that storage rather
+than replacing it: it is the reader three surfaces already run against and the harness
+already proves, and a packaging build changing where preferences live is a change to one
+class rather than to a contract. A write lands atomically — a sibling temporary file moved
+over the old one — so a process that dies mid-write leaves the previous preferences rather
+than a truncated object every later read would answer "nothing is stored" to. What has not
+changed is the key or the vocabulary: those are the interface between the screen that
+writes a preference and the surface that reads one, and they are what lets a preference set
+in one frontend mean the same thing in the other.
+
+## The four voices
+
+The board plays one sound per landing, chosen by what the landing means, in the accepted
+order of precedence — conclusion, then capture, then check, then the plain landing. The
+samples are `apple/Sounds/generate.py`'s own, the project's four generated voices from
+Stage 2: no third-party audio, nothing to attribute, and re-tuning is a parameter edit and
+one run of that script. The four files under `MiniXiangqi.Play/Sounds/` are byte-identical
+to the four under `apple/MiniXiangqi/Sounds/`, and the CI job compares their hashes so the
+two bundles cannot drift apart quietly. They are copied rather than referenced across the
+trees because a cross-tree csproj reference would make this build depend on the Apple app's
+own directory layout, and the two frontends are deliberately disjoint.
+
+**The decision and the playing are split**, exactly as everything else here is.
+`MiniXiangqi.Play/Motion/Feedback.cs` holds the rule — a pure function of the position that
+arrived, so the harness can play a game and state which event asked for which voice on a
+machine with no audio device — and `MiniXiangqi.App/BoardSoundPlayer.cs` holds the thing
+that makes a noise. **The audible half is the owner's tour**: a harness can say *which*
+voice, and only an ear can say the voices are right.
+
+The playing is **winmm's `PlaySound` over an image of the WAV already in memory**, which
+is what `System.Media.SoundPlayer` does underneath — taken directly because the package
+that carries `SoundPlayer` drags `System.Drawing` behind it into an app that draws with
+Win2D, and because hand-written platform P/Invokes are already this frontend's established
+shape (`WindowsMemoryProbe`). The samples are 16-bit PCM by construction, so there is no
+file to open, no source to resolve and no decoder to build at the landing; the buffers live
+in the pinned object heap, because `SND_ASYNC` returns before the sound has finished and
+the pointer has to stay good. `MediaPlayer` was the alternative and is the wrong shape — a
+full media pipeline per instance for a 110 ms uncompressed knock — and `AudioGraph` is the
+right answer for audio that overlaps, which by contract this never does: one sound per
+landing, and a committing transition runs to completion. `SND_NODEFAULT` is not optional:
+without it a sample the driver would not play falls back to the *system default sound*, so
+a missing file would answer a move with Windows' own ding.
+
+**Two silences are decisions.** Settings itself is silent — sound is an event of the board,
+and a screen that clicked back at every switch would be the app talking about itself — and
+the step-through viewer is silent because a Windows step is the presentational cut a jump
+already is, and `docs/interaction-design.md` § History replay's own Windows clause says a
+cut has no landing. Neither type holds a `Feedback` at all, which is how that is enforced
+rather than remembered. **Backgrounding needs no code**: an unpackaged desktop app has no
+platform suspension, losing focus is not one — which is what
+`apple/MiniXiangqi/Play/Suspension.swift` says about macOS — and a game still being played
+is still heard, with the volume mixer where somebody who wants it quieter goes.
 
 ## Continuous integration
 
 [`.github/workflows/windows-frontend.yml`](../.github/workflows/windows-frontend.yml)
 builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, fetches the pinned network with the
 same script the core suites use, regenerates the bindings and fails on any difference
-from what is committed, builds every project, runs the smoke harness against
-`docs/copy.md`, and renders the board. It uploads the renders on every run.
+from what is committed, compares the four sound samples against the Apple bundle's,
+builds every project, runs the smoke harness against `docs/copy.md`, and renders the
+board. It uploads the renders on every run.
 
 The bindings check is the obligation issue #80 carried from #85's verify: a `Mxq.g.cs`
 that differs from what the generator writes is a transcription of the header rather than
@@ -445,9 +575,15 @@ contract: every string they say was already a row of it, including the ones it m
 *(proposed)* — the two section headers, the empty state's pair, the deletion-failure pair,
 the History-read failure title, and the transport's labels — which this frontend now ships
 and which `docs/copy.md` § Need to discuss asks the owner to approve. The two rows it does
-not ship are `replay.autoplay` and `replay.pause`, whose control the trim removed. The language is the operating system's — the app offers no
-interface-language control of its own — which .NET resolves as `CurrentUICulture` from
-the system's language preference list.
+not ship are `replay.autoplay` and `replay.pause`, whose control the trim removed. **The
+Settings destination added none either, and shipped no proposed row**: its eight strings —
+`nav.settings`, the four `settings.defaults.*`, `settings.sound.label` and the two
+`settings.confirmDelete.*` — are all accepted, and the six option words its two pickers
+offer are the pre-start page's own `setup.` rows, keyed once for both screens. The four
+rows it does not ship are the ones its trim removed: `settings.section.board`,
+`settings.symbols.*`, `settings.notation.*` and `settings.haptics.label`. The language is
+the operating system's — the app offers no interface-language control of its own — which
+.NET resolves as `CurrentUICulture` from the system's language preference list.
 
 It is a table in C# rather than a `.resw` and a PRI because resource packaging belongs to
 the packaging build, which does not exist yet and which this pull request should not

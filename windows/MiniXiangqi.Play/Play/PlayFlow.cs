@@ -81,6 +81,16 @@ public sealed class PlayFlow : IDisposable
     private readonly IPreferenceStore _preferences;
     private readonly Func<MxqEngineBudget> _probe;
 
+    /// <summary>
+    /// The heard half of the board, handed to every session this destination
+    /// adopts. It lives here rather than on a session because a session is
+    /// created and released for every game while the player and their preferences
+    /// are the same throughout, and because the thing behind it is primed once —
+    /// the samples are loaded at the window's construction so that the first tock
+    /// is no later than the second.
+    /// </summary>
+    private readonly Feedback _feedback;
+
     private PlaySession? _session;
     private Placement? _preview;
 
@@ -139,12 +149,14 @@ public sealed class PlayFlow : IDisposable
         MiniXiangqiCore core,
         IPlayScheduler scheduler,
         IPreferenceStore? preferences = null,
-        Func<MxqEngineBudget>? probe = null)
+        Func<MxqEngineBudget>? probe = null,
+        Feedback? feedback = null)
     {
         _core = core;
         _scheduler = scheduler;
         _preferences = preferences ?? new FilePreferenceStore();
         _probe = probe ?? WindowsMemoryProbe.Current;
+        _feedback = feedback ?? Feedback.Silent;
         Draft = SetupDraft.FromDefaults(_preferences);
     }
 
@@ -644,7 +656,7 @@ public sealed class PlayFlow : IDisposable
 
     private void Adopt(GameSession game)
     {
-        _session = new PlaySession(_core, game, _scheduler, _probe);
+        _session = new PlaySession(_core, game, _scheduler, _probe, _feedback);
         _session.Changed += Publish;
     }
 
