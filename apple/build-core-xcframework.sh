@@ -228,6 +228,26 @@ if [ "$actual_sha256" != "$nnue_sha256" ]; then
   echo "error: the NNUE network at $nnue_source does not match the SHA-256 pinned-inputs.json pins." >&2
   exit 1
 fi
+# Exactly one network ends up in Resources, so any other one goes first.
+#
+# This matters the moment the bundled network's NAME changes, which it did when
+# the project's own network replaced the community one. Copying the new name
+# beside the old leaves two, and apple/MiniXiangqi is a file-system-synchronized
+# group: both would be bundled into the .app and both would ship. The runtime
+# would not notice — the bridge prefers the pinned basename — which is exactly
+# why nothing else would catch it.
+#
+# An unmatched glob expands to the pattern itself in a POSIX shell, so the
+# existence test is what makes "no networks here" a no-op rather than an attempt
+# to delete a file called *.nnue.
+for stale in "$resources"/*.nnue; do
+  [ -e "$stale" ] || continue
+  if [ "$(basename "$stale")" != "$nnue_name" ]; then
+    rm -f "$stale"
+    echo "removed a network that is no longer the bundled one: $(basename "$stale")"
+  fi
+done
+
 cp "$nnue_source" "$resources/$nnue_name"
 echo "staged the pinned network as $nnue_name"
 

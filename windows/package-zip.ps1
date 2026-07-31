@@ -221,13 +221,20 @@ Write-Host ''
 Write-Host 'Checking the network the zip carries'
 $networks = @(Get-ChildItem -Path $stagedAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue)
 if ($networks.Count -ne 1) {
-    throw ("Expected exactly one .nnue in $stagedAssets; found $($networks.Count). The published tree " +
-           "takes its assets from the staging windows/build-core-dll.ps1 produced, which holds the " +
-           "network beside the variant configuration and refuses to finish without it. Something changed " +
-           "upstream of this script; stop rather than shipping a zip whose AI may not start.")
+    $found = if ($networks.Count -eq 0) { 'none' } else { ($networks | ForEach-Object { $_.Name }) -join ', ' }
+    throw ("Expected exactly one .nnue in $stagedAssets; found $($networks.Count) ($found). More than one " +
+           "usually means windows/artifacts/assets kept a network from an earlier build after the bundled " +
+           "name changed — delete windows/artifacts and re-run windows/build-core-dll.ps1, which now clears " +
+           "them itself. None means the core staged no network at all, which that script refuses to finish " +
+           "without. Either way, stop rather than shipping a zip whose AI may not start.")
 }
 $stagedNetwork = $networks[0]
-if ($stagedNetwork.Name -ne $network.filename) {
+# -cne, not -ne: PowerShell's string comparison is case-insensitive by default,
+# and the rule this gate defends is not. The engine matches the file's basename
+# against the variant identifier case-sensitively, so a network whose name
+# differs only in case passes -ne and is then ignored in silence at runtime,
+# which is the one failure this whole check exists to catch.
+if ($stagedNetwork.Name -cne $network.filename) {
     throw ("The staged network is named $($stagedNetwork.Name); pinned-inputs.json pins $($network.filename). " +
            "The engine restricts NNUE to the matching variant by this basename, and a name that does not " +
            "match disables NNUE silently while the app still reports it in use.")

@@ -511,6 +511,26 @@ void case_wrong_basename_network() {
     const std::string bytes =
         read_file(fs::path(staged_assets()) / kBundledNetworkName);
     const std::string wrong_name = wrong_prefix_network_name();
+
+    /* What is staged has to be the mistake this case is about, and it is
+     * composed from two build definitions rather than written out — so a
+     * definition that arrived empty or wrong would compose something like
+     * "-ad52b8658c9e.nnue", which fails the prefix rule for a reason nobody
+     * intended and would let this case pass while testing nothing it claims to.
+     * These three make that loud instead. */
+    c.check(std::strlen(kBaseVariantId) > 0,
+            "MXQ_TEST_BASE_VARIANT_ID reached this build: the staged name is "
+            "composed from it and means nothing when it is empty");
+    c.check(wrong_name.starts_with(kBaseVariantId) &&
+                wrong_name.size() > std::strlen(kBaseVariantId),
+            "the staged name is the parent variant's identifier followed by the "
+            "rest of the bundled name, got: " + wrong_name);
+    c.check(!wrong_name.starts_with(kVariantId),
+            std::string("the staged name does NOT begin with the configured "
+                        "variant identifier, which is the whole provocation, "
+                        "got: ") +
+                wrong_name);
+
     const fs::path assets =
         stage_assets("wrong-basename", wrong_name.c_str(), &bytes);
     const fs::path store = scratch_dir("wrong-basename-store");

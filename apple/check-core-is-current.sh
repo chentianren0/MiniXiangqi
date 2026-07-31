@@ -49,18 +49,33 @@ if [ ! -f "$root/apple/MiniXiangqi/Resources/minixiangqi-variants.ini" ]; then
 fi
 
 # The bundled network is the third, and it now derives from core/assets exactly
-# as the variant configuration does — the digest above covers both. It is still
-# demanded rather than recreated, and the reason is Xcode rather than provenance:
-# the app's resources are a file-system-synchronized group, whose contents are
-# enumerated when the build is planned, so a file this phase creates is picked up
-# by the *next* build. Recreating it here would produce one build with no network
-# in the bundle and no complaint about it, which is precisely the silence this
-# check exists to break. The variant configuration is recreated above because a
-# seeded worktree always arrives with it; the network arrives the same way, and
-# an absent one means the staging did not happen and should be said out loud.
+# as the variant configuration does. It is nonetheless demanded rather than
+# recreated, and the reason is what can be wrong with it rather than where it
+# comes from: recreating answers "absent", and absent is no longer the only bad
+# state. Since the bundled network's name changed, Resources can also hold the
+# PREVIOUS network, or two networks, and a recreate would leave both there.
+# apple/MiniXiangqi is a file-system-synchronized group, so both would be bundled
+# and both would ship — dead weight at best, and at worst a network this project
+# has no licence to distribute. The runtime would not complain, because the
+# bridge prefers the pinned basename. So this asserts the Windows packaging
+# build's rule on the app's own resources: exactly one network, under the name
+# pinned-inputs.json pins, and anything else stops the build and says which.
 nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
-if [ ! -f "$root/apple/MiniXiangqi/Resources/$nnue_name" ]; then
+resources="$root/apple/MiniXiangqi/Resources"
+staged_networks=""
+for network in "$resources"/*.nnue; do
+  [ -e "$network" ] || continue
+  staged_networks="$staged_networks $(basename "$network")"
+done
+staged_networks=${staged_networks# }
+
+if [ -z "$staged_networks" ]; then
   echo "error: the bundled NNUE network $nnue_name has not been staged." >&2
   echo "note: run ./apple/build-core-xcframework.sh, which verifies it against pinned-inputs.json and stages it from core/assets." >&2
+  exit 1
+fi
+if [ "$staged_networks" != "$nnue_name" ]; then
+  echo "error: the app's resources hold [$staged_networks]; pinned-inputs.json pins exactly one, $nnue_name." >&2
+  echo "note: run ./apple/build-core-xcframework.sh, which removes any other network before staging the pinned one." >&2
   exit 1
 fi

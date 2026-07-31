@@ -146,6 +146,18 @@ $artifacts = Join-Path $repoRoot 'windows\artifacts'
 $artifactAssets = Join-Path $artifacts 'assets'
 $null = New-Item -ItemType Directory -Force -Path $artifactAssets
 
+# Any network already here goes before the staged one is copied in. This
+# directory accumulates rather than being rebuilt, so when the bundled network's
+# name changes — as it did when the project's own network replaced the community
+# one — a copy beside the old one leaves two, and windows/package-zip.ps1 would
+# refuse the publish that came from it. Removing them here means the refusal
+# never has to happen; the count check there stays as the guarantee.
+Get-ChildItem -Path $artifactAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        Write-Host "Removing a previously staged network: $($_.Name)"
+        Remove-Item $_.FullName -Force
+    }
+
 $dll = Join-Path $BuildDirectory 'shared\mxqcore.dll'
 if (-not (Test-Path $dll)) { throw "mxqcore.dll was not produced at $dll." }
 Copy-Item $dll $artifacts -Force

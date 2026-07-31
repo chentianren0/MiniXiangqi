@@ -183,9 +183,9 @@ There is no fallback to the engine's classical evaluation. The accepted levels a
 
 The core preflights the network against the engine's observable load state before any search, so this is detected during preparation and the engine's own fatal verification path is never reached.
 
-### Every build bundles the network, including the Windows zip
+### Accepted bundling in every distribution
 
-*(Restored 2026-07-31, with the project's own network. Between the CI-built zip and the network swap, this section recorded an accepted exception: the Windows distribution deliberately omitted the network, because a CI artifact on a public repository is a distribution beyond internal testing and the bytes were not ours to publish. The bytes are now ours, so the exception has nothing left to except and is deleted rather than kept as history.)*
+*(2026-07-31, with the project's own network. This section previously recorded an accepted exception: the Windows distribution deliberately omitted the network, because a CI artifact on a public repository is a distribution beyond internal testing and the bytes were not ours to publish. The bytes are now ours, so the exception has nothing left to except; what it said is replaced by what follows rather than kept beside it.)*
 
 - **The Windows zip carries the network**, in `assets/` beside the variant configuration, and is the complete application. There is no second, more complete package: the artifact CI publishes is the whole thing.
 - **The clauses above therefore cover every distribution again.** An absent or mismatched network is damage in all of them, reinstalling is what fixes it, and no distribution has a case in which absence is expected.
