@@ -1,0 +1,29 @@
+# Line endings are not a matter of local configuration in this repository.
+#
+# Several of its trees are pinned by SHA-256, so a checkout that rewrote their
+# line endings does not produce a variant of the file — it produces a build that
+# refuses to configure. That is not hypothetical: the first CI run on a GitHub
+# Windows runner, whose git defaults to core.autocrlf=true, stopped at
+# "the bundled variant configuration does not match the SHA-256
+# pinned-inputs.json pins". The same rewrite would break
+# `shasum -a 256 -c SOURCES.sha256`, which pinned-inputs.json documents as the
+# way to verify the vendored snapshots, on every text file in them.
+
+# Stored and checked out with LF on every platform, so a working tree is
+# byte-identical everywhere and hashes taken on one machine mean something on
+# another. Nothing here is a Windows file format that wants CRLF; when the
+# Windows frontend brings one, it gets its own line below.
+* text=auto eol=lf
+
+# The pinned trees are not normalised at all. Their bytes ARE the pin, so git
+# hands them over exactly as they were committed whatever anyone's configuration
+# says: the vendored engine and SQLite snapshots against their SOURCES.sha256
+# manifests, the variant configuration against pinned-inputs.json, and the
+# fixtures against the golden bytes the codec suites compare. `eol` is unset
+# here as well as `text`, and not only for tidiness — git documents `eol` as
+# enabling conversion "without any content checks, effectively setting the text
+# attribute", so leaving it inherited from the line above would leave these
+# paths saying two things at once.
+core/assets/** -text -eol
+core/third_party/** -text -eol
+fixtures/** -text -eol

@@ -128,7 +128,14 @@ target_compile_definitions(mxq_fairy_stockfish PUBLIC
   NNUE_EMBEDDING_OFF
 )
 
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+# IS_64BIT is defined here only where the fork's Makefile defines it. types.h
+# defines it itself on the one target the Makefile never drives — `_WIN64 &&
+# _MSC_VER`, "No Makefile used", where it must also pull in <intrin.h> for
+# _BitScanForward64 — so defining it on the command line there too is a C4005
+# macro redefinition on every translation unit of the engine, ours included.
+# The condition below is the same rule read from the other side, and the two
+# halves together define it exactly once everywhere.
+if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT MSVC)
   target_compile_definitions(mxq_fairy_stockfish PUBLIC IS_64BIT)
 endif()
 
@@ -171,6 +178,30 @@ endif()
 # set, and MXQ_WARNINGS_AS_ERRORS with it, is a standard the core holds itself
 # to; applying it to a vendored snapshot we do not edit would make an upstream
 # style choice fail our build. The fork's own warning flags are used instead.
+#
+# What that leaves visible on MSVC when the ENGINE'S OWN sources compile —
+# C4244, C4267, and C4996 for std::getenv in uci.cpp — is the fork's code at
+# the pinned revision, read-only here, and unable to fail this build because
+# /WX never reaches this target. Noise to scroll past, not debt to us.
+#
+# A different set lands on OUR translation units, because they include engine
+# headers, and their targets DO link mxq_warnings. Reading the Windows CI log
+# by the project each warning is attributed to, rather than by the file it
+# points at, is what separates the two, and it is the only way to tell: every
+# one of these is reported against types.h, bitboard.h or an nnue header
+# whichever target is compiling. Ours get C4244 and C4324. They also got C5054
+# until the INTERFACE suppression below grew its MSVC spelling, which is what
+# removed it.
+#
+# The two that remain are left deliberately, and are the reason
+# MXQ_WARNINGS_AS_ERRORS is not simply switched on. C4244 is a narrowing
+# conversion rather than a deprecation: silencing it on the interface would
+# blind our own code to narrowing in every file that includes an engine
+# header. C4324 — padding added for an alignment specifier — is upstream's
+# NNUE structures, and no rule says a future aligned struct of ours should be
+# silent too. With the option off, which it is everywhere including CI, both
+# cost nothing. Turning it on is the decision that would have to settle them,
+# and this file does not settle it.
 
 if(NOT MSVC)
   target_compile_options(mxq_fairy_stockfish PRIVATE
@@ -187,11 +218,21 @@ endif()
 # and with MXQ_WARNINGS_AS_ERRORS it would fail to compile because of it. The
 # engine's own sources never see the warning; they are built as C++17.
 #
-# This is scoped to the specific deprecation, not a blanket -w, so a core file
-# that includes an engine header keeps every other warning the project sets.
+# This is scoped to the specific deprecation, not a blanket -w or /w, so a core
+# file that includes an engine header keeps every other warning the project
+# sets.
+#
+# Both spellings of the same suppression are listed, because the same
+# deprecation has two names: Clang and GCC call it
+# -Wdeprecated-enum-enum-conversion, MSVC calls it C5054. Only the Clang
+# spelling was here at first, so MSVC was left reporting the fork's C++17
+# headers at our own translation units — which the first green Windows CI run
+# showed and nobody had looked for. The probe below is what keeps the list
+# safe: a compiler that does not know a flag never receives it.
 include(CheckCXXCompilerFlag)
 foreach(mxq_fs_flag -Wno-deprecated-enum-enum-conversion
-                    -Wno-deprecated-anon-enum-enum-conversion)
+                    -Wno-deprecated-anon-enum-enum-conversion
+                    /wd5054)
   string(MAKE_C_IDENTIFIER "MXQ_FS_HAVE${mxq_fs_flag}" mxq_fs_flag_var)
   check_cxx_compiler_flag("${mxq_fs_flag}" ${mxq_fs_flag_var})
   if(${mxq_fs_flag_var})

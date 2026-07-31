@@ -69,6 +69,7 @@ MiniXiangqi/
 ├── apple/      # Xcode project and SwiftUI frontend
 ├── windows/    # WinUI 3 frontend
 ├── fixtures/   # approved rules conformance fixtures
+├── .github/    # the CI workflows and their scripts
 └── docs/
 ```
 
@@ -76,11 +77,12 @@ MiniXiangqi/
 
 - The Apple frontend's Xcode project sits under `apple/`. It was relocated there while it was still the generated scaffold. Every reference inside the project is relative to the project directory, so moving the project and its sources together changed nothing about the build.
 - Core tests must run on every development platform without a frontend, and they standardize on **one shared C++ test runner** rather than per-platform harnesses. The approved rules fixtures are the project's independent authority, so they must be executed by one harness producing identical results everywhere; two harnesses would make a discrepancy between them possible. Platform binding tests — the Swift and C# layers over the C interface — stay in each platform's native framework, because what they test is the binding rather than the core.
-- Builds run on developer machines while the project is Apple-only, since CI setup would otherwise block the first work and Windows cannot be built here at all. When Windows implementation begins, GitHub Actions CI covers **both** a macOS runner and a Windows runner, so neither platform is ever reproducible only on one machine.
+- Builds ran on developer machines alone while the project was Apple-only, since CI setup would otherwise have blocked the first work and no Windows machine was reachable from it. Both halves of that have changed: a Windows development machine now builds and runs the core suites, and GitHub Actions CI covers **both** a macOS runner and a Windows runner, in `.github/workflows/core-suites.yml`, so neither platform is reproducible only on one machine. Developer-machine runs remain the evidence a change is validated by; CI is the second place each platform builds.
 - CI must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests. It remains a convenience rather than a merge gate; what it guarantees is that every platform is buildable somewhere other than one developer's machine.
+- The NNUE network is the one build input CI cannot take from the repository, because [engine-integration.md](engine-integration.md) keeps its bytes out of version control in any form. It reaches a runner from a location the repository names but does not contain, and the build verifies it against the manifest's byte length and SHA-256 before staging it — so the *bytes* are a documented input even though their *location* is not. Where no location is configured, the one suite that needs a network does not run and the run says so; every other suite still does, with the engine compiled and the rules facade answering.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Windows toolchain pinning for the core and frontend, and the concrete CI matrix and runner images.
+- Windows toolchain pinning for the **frontend** — Windows App SDK, .NET, and the packaging flags — which waits for a packaging build to establish it. The core's Windows toolchain is pinned in `pinned-inputs.json`, and the CI matrix and runner images are fixed in `.github/workflows/core-suites.yml`.

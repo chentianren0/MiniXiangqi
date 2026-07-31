@@ -19,7 +19,7 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 
 - iOS and iPadOS 26.5 or later.
 - macOS 26.5 or later on Apple silicon; `x86_64` is not supported on macOS.
-- Windows 11, and Windows 10 version 1809 or later, on `x64` and `ARM64`.
+- Windows 11 on `x64`. Windows 10 left Microsoft support in October 2025, and `ARM64` returns when there is real hardware to test it on (owner decisions, 2026-07-30).
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
 - Apple platforms are implemented and distributed first; Windows follows on the same shared core.
 
@@ -36,7 +36,20 @@ export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 xcodebuild -version
 ```
 
-Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/testing.md) for the draft validation contract, the verified toolchain check, and the build/test commands that still need to be approved. The Windows toolchain is not yet pinned.
+Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/testing.md) for the draft validation contract, the verified toolchain check, and the build/test commands that still need to be approved.
+
+## Windows toolchain
+
+The core's Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by a build that produced it rather than by intent: Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja. The frontend's half — Windows App SDK, .NET, and the packaging flags — is still unestablished and waits for the Windows frontend, which is where a packaging build will first exist to establish it.
+
+Build and run the core suites the same way as on macOS, from a shell with the Visual Studio environment loaded:
+
+```bat
+call "%ProgramFiles%\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
+cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMXQ_ENABLE_RULES_FACADE=ON -DMXQ_NNUE_SOURCE=<path to the pinned network>
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
 ## Documentation
 

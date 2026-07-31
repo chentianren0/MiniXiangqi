@@ -1356,9 +1356,11 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
     /* Checked like the pragmas below: a connection that silently declined the
      * defensive regime would be exactly the kind of quiet weakening this
      * open sequence exists to refuse. */
-    if (int rc = sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, nullptr);
-        rc != SQLITE_OK) {
-        return fail_sqlite(err, rc, "cannot enable the defensive regime");
+    if (int config_rc = sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1,
+                                          nullptr);
+        config_rc != SQLITE_OK) {
+        return fail_sqlite(err, config_rc,
+                           "cannot enable the defensive regime");
     }
 
     /* The accepted connection regime, applied and read back. */
@@ -1421,16 +1423,21 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
                         std::to_string(MXQ_STORE_SCHEMA_VERSION) + ")");
     } else {
         /* Forward-only migration dispatch. Version 1 is the first schema ever
-         * shipped, so no step exists yet; each future step migrates N to N+1
-         * inside one transaction and lands as a case below. */
+         * shipped, so no step exists yet and this loop cannot run; each future
+         * step migrates N to N+1 inside one transaction and lands as a branch
+         * here, before the refusal:
+         *
+         *     if (version == 1) { st = migrate_1_to_2(db, err); ... continue; }
+         *
+         * A switch is not what carries that, and deliberately: with no step
+         * written its only label would be `default`, which is a switch that
+         * dispatches on nothing — MSVC reports exactly that as C4065 — and the
+         * first real step would have to introduce the switch anyway. */
         while (version < static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
-            switch (version) {
-            default:
-                return fail(err, MXQ_ERR_STORE_MIGRATION_FAILED,
-                            static_cast<int>(version),
-                            "no migration path from schema version " +
-                                std::to_string(version));
-            }
+            return fail(err, MXQ_ERR_STORE_MIGRATION_FAILED,
+                        static_cast<int>(version),
+                        "no migration path from schema version " +
+                            std::to_string(version));
         }
     }
 
