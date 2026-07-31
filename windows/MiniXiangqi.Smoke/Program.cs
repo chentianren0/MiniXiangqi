@@ -7,8 +7,17 @@
 // an array of value structs, and an [UnmanagedCallersOnly] callback delivered
 // on the core's own engine thread.
 //
-// It deliberately calls the generated declarations directly rather than the
-// wrapper types beside them. A wrapper proves the wrapper; this proves the ABI.
+// Sections 1 to 16 deliberately call the generated declarations directly rather
+// than the wrapper types beside them. A wrapper proves the wrapper; this proves
+// the ABI.
+//
+// Sections 17 to 19 are the play screen's. A WinUI 3 process cannot be launched
+// from an SSH session, so the Windows frontend's behaviour would otherwise be
+// runnable on no machine this project owns. The screen's logic lives in
+// MiniXiangqi.Play with no window attached to it, and this plays whole games
+// through it: every move committed by clicking a point and then another point,
+// the AI answering through the same marshalled callback the window uses, and
+// the strings it shows checked against docs/copy.md.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -18,6 +27,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
+using MiniXiangqi.Play;
 
 namespace MiniXiangqi.Smoke;
 
@@ -32,6 +42,7 @@ internal static unsafe class Program
         string store = Argument(args, "--store")
             ?? Path.Combine(Path.GetTempPath(), "mxq-smoke-" + Guid.NewGuid().ToString("N"));
         bool keepStore = Argument(args, "--store") is not null;
+        string? copyTable = Argument(args, "--copy-table");
 
         Console.OutputEncoding = Encoding.UTF8;
         Console.WriteLine("Mini Xiangqi — Windows core interface smoke harness");
@@ -49,6 +60,8 @@ internal static unsafe class Program
             MxqEngineBudget budget = Probe();
             Run(store, assets, budget);
             WhatTheWindowDoes(store, assets);
+            CopyTable(copyTable);
+            ThePlayScreen(store, assets);
         }
         catch (Exception ex)
         {
@@ -557,6 +570,345 @@ internal static unsafe class Program
         // MXQ_ERR_ARG_CONCURRENT_USE by contract, so the resume path is what
         // the window exercises at its second launch.
         Console.WriteLine("    (the resume half of resume-or-create belongs to a second launch)");
+    }
+
+    // ---------------------------------------------------------------------
+    // 17. The string table against docs/copy.md.
+    //
+    // docs/copy.md's localization process asks for "one check that this table
+    // and the String Catalog agree in both languages — the same key set, the
+    // same values, and no user-facing key in the catalog that is absent here",
+    // and says it joins CI when CI exists. CI exists. This is that check for
+    // the Windows frontend's own table, and the Windows workflow passes it the
+    // path to the contract.
+    // ---------------------------------------------------------------------
+    private static void CopyTable(string? path)
+    {
+        Section("17. The string table against docs/copy.md");
+        if (path is null)
+        {
+            Console.WriteLine("    (no --copy-table given; the contract was not read)");
+            return;
+        }
+
+        Dictionary<string, (string Chinese, string English)> contract = ReadCopyTable(path);
+        Console.WriteLine($"    contract rows       {contract.Count}");
+        Console.WriteLine($"    frontend keys       {Strings.Table.Count}");
+
+        List<string> missing = [];
+        List<string> disagreeing = [];
+        foreach ((string key, LocalizedString row) in Strings.Table)
+        {
+            if (!contract.TryGetValue(key, out (string Chinese, string English) approved))
+            {
+                missing.Add(key);
+                continue;
+            }
+
+            // The piece names are the one row shape whose Chinese cell is a
+            // description rather than a value — docs/copy.md writes
+            // "帅 (red) / 将 (black)", because the string itself is the
+            // placeholder that lets the character through, and the ten piece
+            // characters are game content that never enters a string table.
+            // Its English half is a value like any other.
+            bool chineseIsDescription = key.StartsWith("piece.", StringComparison.Ordinal);
+
+            if (row.English != Placeholders(approved.English)
+                || (!chineseIsDescription && row.Chinese != Placeholders(approved.Chinese)))
+            {
+                disagreeing.Add(key);
+            }
+        }
+
+        foreach (string key in missing)
+        {
+            Console.WriteLine($"    absent from copy.md {key}");
+        }
+
+        foreach (string key in disagreeing)
+        {
+            Console.WriteLine($"    disagrees           {key}");
+            Console.WriteLine($"      contract          {contract[key].Chinese} / {contract[key].English}");
+            Console.WriteLine($"      frontend          {Strings.Table[key].Chinese} / {Strings.Table[key].English}");
+        }
+
+        Check("every string the screen shows is a row of docs/copy.md", missing.Count == 0);
+        Check("every row agrees with the contract in both languages", disagreeing.Count == 0);
+    }
+
+    /// <summary>
+    /// docs/copy.md's format specifiers are the platform's — <c>%1$@</c>,
+    /// <c>%lld</c> — because the Apple frontend is where they are live. .NET
+    /// composes with <c>{0}</c>. The check translates rather than either side
+    /// pretending the other's spelling.
+    /// </summary>
+    private static string Placeholders(string value) => value
+        .Replace("%1$@", "{0}", StringComparison.Ordinal)
+        .Replace("%2$@", "{1}", StringComparison.Ordinal)
+        .Replace("%1$lld", "{0}", StringComparison.Ordinal)
+        .Replace("%2$lld", "{1}", StringComparison.Ordinal)
+        .Replace("%lld", "{0}", StringComparison.Ordinal)
+        .Replace("%@", "{0}", StringComparison.Ordinal);
+
+    private static Dictionary<string, (string Chinese, string English)> ReadCopyTable(string path)
+    {
+        Dictionary<string, (string, string)> rows = new(StringComparer.Ordinal);
+        foreach (string line in File.ReadLines(path))
+        {
+            string trimmed = line.Trim();
+            if (!trimmed.StartsWith('|'))
+            {
+                continue;
+            }
+
+            string[] cells = trimmed.Trim('|').Split('|');
+            if (cells.Length < 5)
+            {
+                continue;
+            }
+
+            string key = Cell(cells[0]).Replace("*(proposed)*", string.Empty, StringComparison.Ordinal).Trim();
+            key = key.Trim('`');
+            if (key.Length == 0 || key == "Key" || key.StartsWith('-'))
+            {
+                continue;
+            }
+
+            rows[key] = (Cell(cells[1]), Cell(cells[2]));
+        }
+
+        return rows;
+
+        static string Cell(string value) => value.Trim().Trim('`').Trim();
+    }
+
+    // ---------------------------------------------------------------------
+    // 18. The play screen itself: a whole game against the AI, and a game of
+    //     Free Play, driven through the same session the window drives.
+    //
+    // A WinUI 3 process cannot be launched from an SSH session, so this is
+    // where the Windows play screen's behaviour is actually run. Every move
+    // below is committed by clicking a point and then another point, through
+    // PlaySession.Tap — the same call the window's board makes — and every
+    // answer comes back through the same scheduler the window supplies.
+    // ---------------------------------------------------------------------
+    private static void ThePlayScreen(string store, string assets)
+    {
+        Section("18. A game against the AI, through the play screen's own session");
+
+        using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+        PumpScheduler scheduler = new();
+
+        // Section 16 left its game active, and one game is active at a time, so
+        // it is filed before this one is created — which is the same
+        // archive-and-clear the save-and-continue flow performs.
+        using (GameSession? standing = core.ResumeActive())
+        {
+            if (standing is not null)
+            {
+                Console.WriteLine($"    filed the standing  {core.ArchiveAndClear(standing)}");
+            }
+        }
+
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
+            Mxq.MXQ_COLOR_RED,
+            Mxq.MXQ_AI_LEVEL_FAST,
+            Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+            Mxq.MXQ_MOVETIME_FAST_MS);
+
+        using PlaySession play = new(core, game, scheduler);
+        Console.WriteLine($"    game id             {play.GameId}");
+        Console.WriteLine($"    mode                human versus AI, human red, 快速");
+        Console.WriteLine($"    status              {play.PrimaryStatus()} / {play.SecondaryStatus()}");
+
+        Check("the human moves first, so the board accepts input", play.AcceptsInput);
+        Check("the board starts with Red at the bottom", !play.Scene.Flipped);
+        Check("no board-flip control in human-versus-AI play", !play.CanFlip);
+        Check("resignation is offered", play.CanResign);
+        Check("there is nothing to undo yet", !play.CanUndo);
+
+        play.Begin();
+
+        // A selection, and what it reveals. The set is the core's answer about
+        // one point; nothing here filters a complete set down to a square.
+        Square opening = FirstMover(play);
+        play.Tap(opening);
+        Console.WriteLine(
+            $"    selected {opening.Name}         {play.Scene.Destinations.Count} destination(s), "
+            + $"{play.Scene.Captures.Count} capture(s)");
+        Check("selecting a piece reveals its legal destinations",
+            play.Scene.Selected == opening
+            && play.Scene.Destinations.Count + play.Scene.Captures.Count > 0);
+
+        play.Tap(opening);
+        Check("tapping the selected piece again cancels the selection", play.Scene.Selected is null);
+
+        Random rng = new(20260731);
+        int plies = 0;
+        int humanMoves = 0;
+        int aiMoves = 0;
+        bool sawThinking = false;
+        bool sawClaimable = false;
+        const int cap = 80;
+
+        while (!play.IsOver && plies < cap)
+        {
+            if (play.AcceptsInput)
+            {
+                if (Choose(play, rng) is not { } move)
+                {
+                    break;
+                }
+
+                play.Tap(move.From);
+                play.Tap(move.To);
+                humanMoves++;
+            }
+            else
+            {
+                int before = play.MoveRecord.Count;
+                bool answered = scheduler.PumpUntil(
+                    () =>
+                    {
+                        sawThinking |= play.Activity == AiActivity.Thinking;
+                        return play.MoveRecord.Count > before || play.IsOver
+                            || play.Activity == AiActivity.Stalled
+                            || play.Alert != PlayAlert.None;
+                    },
+                    TimeSpan.FromSeconds(30));
+
+                if (!answered || play.Activity == AiActivity.Stalled || play.Alert != PlayAlert.None)
+                {
+                    Console.WriteLine($"    the AI stopped      activity {play.Activity}, alert {play.Alert}");
+                    break;
+                }
+
+                aiMoves++;
+            }
+
+            sawClaimable |= play.CanClaimDraw;
+            plies = play.MoveRecord.Count;
+        }
+
+        Console.WriteLine($"    plies played        {plies} ({humanMoves} human, {aiMoves} AI)");
+        Console.WriteLine($"    record              {string.Join(' ', play.MoveRecord)}");
+        Console.WriteLine($"    final status        {play.PrimaryStatus()} / {play.SecondaryStatus()}");
+        Console.WriteLine($"    notice              {play.Notice}");
+        Console.WriteLine($"    claim seen          {sawClaimable}");
+
+        Check("the AI answered every human move", aiMoves > 0 && aiMoves >= humanMoves - 1);
+        Check("the record is the core's own canonical coordinate text",
+            play.MoveRecord.Count == plies && play.MoveRecord.All(IsCanonicalMove));
+        Check("the record is what the core retained",
+            play.MoveRecord.SequenceEqual(game.MoveHistory()));
+        Check("a search ran long enough to show the thinking indicator", sawThinking);
+        Check("the game reached a conclusion or the move cap", play.IsOver || plies >= cap);
+
+        // Both languages, for the lines the screen actually composes. Nothing
+        // on the board itself is copy — the coordinates are ASCII and the piece
+        // characters are game content — so the panel is where the two languages
+        // are visible, and this is where they are read.
+        foreach (bool chinese in (bool[])[true, false])
+        {
+            Strings.PrefersChinese = chinese;
+            Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                "
+                + $"{play.PrimaryStatus()} / {play.SecondaryStatus()} · "
+                + $"{Strings.Get("control.undo")} · {Strings.Get("control.claimDraw")} · "
+                + $"{Strings.Get("control.resign")} · {play.NoticeTitle()}");
+        }
+
+        Strings.PrefersChinese = true;
+
+        if (play.IsOver)
+        {
+            Check("a finished game shows the result notice", play.Notice == ResultNotice.Result);
+            play.SaveResult();
+            Console.WriteLine($"    after 保存           {play.NoticeTitle()}");
+            Check("保存 files the game and the notice says so", play.Notice == ResultNotice.Recorded);
+            Check("a filed game can no longer be taken back", !play.CanUndo);
+        }
+        else
+        {
+            // The game is unfinished, so it is filed the way an unfinished game
+            // is filed, leaving the store with no active game for the next
+            // section.
+            core.ArchiveAndClear(game);
+            Console.WriteLine("    (unfinished at the cap; archived as ended early)");
+        }
+
+        FreePlay(core, scheduler);
+    }
+
+    /// <summary>
+    /// Free Play, which falls out of the same board: two humans at one screen,
+    /// no AI, and the flip control the accepted orientation behaviour gives it.
+    /// It has no entry point until the flows pull request builds one, so this
+    /// is where it is exercised.
+    /// </summary>
+    private static void FreePlay(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("19. Free Play, through the same session");
+
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        using PlaySession play = new(core, game, scheduler);
+        play.Begin();
+
+        Check("Free Play offers a board-flip control", play.CanFlip);
+        Check("Free Play has no controller label", play.SecondaryStatus() is null);
+        Check("Free Play never owes a search", !play.Status.SearchExpected);
+
+        Random rng = new(20260731);
+        for (int ply = 0; ply < 6; ply++)
+        {
+            if (Choose(play, rng) is not { } move)
+            {
+                break;
+            }
+
+            play.Tap(move.From);
+            play.Tap(move.To);
+        }
+
+        Console.WriteLine($"    record              {string.Join(' ', play.MoveRecord)}");
+        Console.WriteLine($"    status              {play.PrimaryStatus()}");
+        Check("both sides moved", play.MoveRecord.Count == 6);
+        Check("the same person controls both sides", play.AcceptsInput);
+
+        bool flipped = play.Scene.Flipped;
+        play.FlipBoard();
+        Check("the flip control changes the orientation", play.Scene.Flipped != flipped);
+        Check("flipping changes presentation only",
+            play.Position.SideToMove == game.Position().SideToMove
+            && play.MoveRecord.Count == 6);
+
+        uint before = play.Position.PlyCount;
+        play.Undo();
+        Console.WriteLine($"    after 悔棋           {play.Position.PlyCount} ply");
+        Check("Free Play removes one move per Undo", play.Position.PlyCount == before - 1);
+
+        core.ArchiveAndClear(game);
+    }
+
+    /// <summary>A legal move, chosen with a fixed seed so the game is the same game every run.</summary>
+    private static Move? Choose(PlaySession play, Random rng)
+    {
+        List<string> legal = [.. play.LegalMoves()];
+        legal.Sort(StringComparer.Ordinal);
+        return legal.Count == 0 ? null : Move.Parse(legal[rng.Next(legal.Count)]);
+    }
+
+    private static Square FirstMover(PlaySession play)
+    {
+        List<string> legal = [.. play.LegalMoves()];
+        legal.Sort(StringComparer.Ordinal);
+        return Move.Parse(legal[0])!.Value.From;
     }
 
     // ---------------------------------------------------------------------

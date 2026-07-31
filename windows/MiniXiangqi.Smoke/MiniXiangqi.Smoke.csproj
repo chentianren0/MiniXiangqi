@@ -1,10 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The headless proof that the C# frontend really talks to the real core. It
-    has no window and no framework beyond the runtime, so it runs over SSH on a
-    machine nobody is logged into, which is where this project's Windows
-    evidence is produced.
+    The headless proof that the C# frontend really talks to the real core, and
+    that the play screen really plays. It has no window and no framework beyond
+    the runtime, so it runs over SSH on a machine nobody is logged into, which
+    is where this project's Windows evidence is produced.
+
+    It references MiniXiangqi.Play but nothing that draws: the play screen's
+    logic is a plain object, so a whole game against the AI can be played
+    through the same session the window drives, headlessly. It deliberately does
+    not reference the Windows App SDK, which would put a bootstrapper in front
+    of Main on a machine with no desktop.
   -->
 
   <PropertyGroup>
@@ -16,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+    <ProjectReference Include="..\MiniXiangqi.Play\MiniXiangqi.Play.csproj" />
   </ItemGroup>
 
   <Import Project="..\CoreArtifacts.targets" />

@@ -1,0 +1,144 @@
+# The Windows frontend: the core as a DLL, the bindings, the C# projects, the
+# headless harness, and pictures of the board.
+#
+# The obligation is issue #80's, carried from #85's verify: "the next
+# Windows-frontend PR owes CI an `mxq_core_shared` build and a `generate.ps1`
+# diff check, so the DLL export path and the bindings cannot drift silently."
+# Both are here, and two more things came with them:
+#
+#   * the smoke harness, which is where this frontend's behaviour is actually
+#     run — a WinUI 3 process cannot be launched without an interactive desktop,
+#     so a whole game against the AI is played through the play screen's own
+#     session logic headlessly instead;
+#   * the offscreen board renders, which are how anybody sees what the board
+#     looks like. Win2D needs a Direct2D device and Direct2D refuses in session
+#     0, so the development VM cannot draw one over SSH; a hosted runner has a
+#     console session and can. The PNGs committed under
+#     docs/evidence/pr-windows-play/ came from this job, and it uploads a fresh
+#     set on every run.
+#
+# It does not touch core-suites.yml, whose job is the core's own suites on both
+# platforms, and it starts on a disjoint set of paths. The one file both care
+# about is pinned-inputs.json, deliberately: it carries the network's hash and
+# the Windows toolchain block, and a change to either should be seen by both.
+#
+# This workflow names two versions the repository does not: the runner image and
+# the .NET SDK feature band. Both are for the reason core-suites.yml gives about
+# its own image pin — an exact label rather than a floating one, so the inputs
+# are visible — and neither is a pin in pinned-inputs.json's sense. The frontend
+# half of the Windows toolchain is still unpinned there, and the packaging build
+# is what will settle it.
+
+name: Windows frontend
+
+on:
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'core/**'
+      - 'pinned-inputs.json'
+      - 'docs/copy.md'
+      - '.github/workflows/windows-frontend.yml'
+      - '.github/scripts/fetch-network.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'core/**'
+      - 'pinned-inputs.json'
+      - 'docs/copy.md'
+      - '.github/workflows/windows-frontend.yml'
+      - '.github/scripts/fetch-network.sh'
+
+# A superseded push to a pull request cancels the run it superseded: the core is
+# a multi-minute C++ build on every runner and the older answer is worthless the
+# moment a newer commit exists. Pushes to main are never cancelled, because
+# main's history is the record.
+concurrency:
+  group: windows-frontend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Windows frontend (MSVC + .NET, x64)
+    runs-on: windows-2025
+    steps:
+      # Pinned to a commit, not to the v5 tag: a tag is mutable.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Record the toolchain
+        shell: pwsh
+        run: |
+          cmake --version
+          dotnet --info | Select-Object -First 6
+          Write-Host "session id: $((Get-Process -Id $PID).SessionId)"
+
+      # The network never enters version control and this repository is public,
+      # so it is fetched exactly the way the core suites fetch it, by the same
+      # script. Nothing here restates a hash: core/CMakeLists.txt verifies the
+      # bytes against pinned-inputs.json and stages nothing that fails.
+      - name: Fetch the pinned network
+        id: network
+        shell: bash
+        env:
+          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
+          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
+        run: .github/scripts/fetch-network.sh
+
+      # MXQ_BUILD_SHARED_LIBRARY=ON, which is the export path #85 added and the
+      # thing this job exists to keep from breaking silently.
+      - name: Build the core as a DLL
+        shell: pwsh
+        env:
+          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
+        run: |
+          if (-not $env:MXQ_NNUE_SOURCE) {
+            throw 'No NNUE network reached this runner. The frontend cannot stage its assets without one; set MXQ_NNUE_DEPLOY_KEY or MXQ_NNUE_URL.'
+          }
+          pwsh windows/build-core-dll.ps1 -NnueSource $env:MXQ_NNUE_SOURCE
+
+      # A Mxq.g.cs that differs from what the generator writes is a
+      # transcription of the header rather than the header.
+      - name: Regenerate the bindings and fail on any difference
+        shell: pwsh
+        run: |
+          pwsh windows/bindings/generate.ps1
+          git diff --exit-code -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The committed bindings differ from what ClangSharp generates from core/include/mxq.h. Run windows/bindings/generate.ps1 and commit the result.'
+          }
+
+      - name: Build every project
+        shell: pwsh
+        run: dotnet build windows/MiniXiangqi.slnx -c Release --nologo
+
+      # The frontend's own evidence: the whole boundary, the wrapper, the string
+      # table against docs/copy.md, and a game against the AI played through the
+      # play screen's session.
+      - name: Run the smoke harness
+        shell: pwsh
+        run: |
+          $exe = 'windows/MiniXiangqi.Smoke/bin/Release/net10.0-windows/MiniXiangqi.Smoke.exe'
+          & $exe --copy-table docs/copy.md
+          if ($LASTEXITCODE -ne 0) { throw "The smoke harness failed with $LASTEXITCODE." }
+
+      - name: Render the board
+        shell: pwsh
+        run: |
+          $exe = 'windows/MiniXiangqi.Shots/bin/Release/net10.0-windows10.0.26100.0/win-x64/MiniXiangqi.Shots.exe'
+          & $exe --out shots
+          if ($LASTEXITCODE -ne 0) { throw "The render harness failed with $LASTEXITCODE." }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: board-renders
+          path: shots/*.png
+          if-no-files-found: error

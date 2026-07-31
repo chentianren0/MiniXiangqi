@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="MiniXiangqi.App/MiniXiangqi.App.csproj" />
+  <Project Path="MiniXiangqi.Board/MiniXiangqi.Board.csproj" />
   <Project Path="MiniXiangqi.Core/MiniXiangqi.Core.csproj" />
+  <Project Path="MiniXiangqi.Play/MiniXiangqi.Play.csproj" />
+  <Project Path="MiniXiangqi.Shots/MiniXiangqi.Shots.csproj" />
   <Project Path="MiniXiangqi.Smoke/MiniXiangqi.Smoke.csproj" />
 </Solution>

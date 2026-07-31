@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The offscreen board renders. A console process that draws the same picture
+    the window's CanvasControl draws, from the same painter, over scenes the
+    real play session produced — which is how this repository shows what the
+    Windows board looks like without a machine anybody is logged into.
+
+    It carries the Windows App SDK because Win2D does, unpackaged and
+    self-contained for the same reason the window is: a machine that has never
+    installed the Windows App Runtime should still run what it built.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RootNamespace>MiniXiangqi.Shots</RootNamespace>
+    <AssemblyName>MiniXiangqi.Shots</AssemblyName>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+    <ProjectReference Include="..\MiniXiangqi.Play\MiniXiangqi.Play.csproj" />
+    <ProjectReference Include="..\MiniXiangqi.Board\MiniXiangqi.Board.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\CoreArtifacts.targets" />
+
+</Project>
