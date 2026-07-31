@@ -121,6 +121,31 @@ $staging = Join-Path $OutputDirectory $productName
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $staging
 
+# What architecture a binary actually is, read from its PE header rather than
+# inferred from where it was found. Used twice below: once to decide which
+# Visual C++ runtime files belong in this zip, and once to check that every
+# binary in it does.
+function Get-PeMachine([string] $path) {
+    $stream = [System.IO.File]::OpenRead($path)
+    try {
+        $reader = New-Object System.IO.BinaryReader($stream)
+        if ($stream.Length -lt 0x40) { return $null }
+        $stream.Position = 0
+        if ($reader.ReadUInt16() -ne 0x5A4D) { return $null }   # MZ
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadUInt32()
+        if ($peOffset + 6 -gt $stream.Length) { return $null }
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) { return $null } # PE\0\0
+        return $reader.ReadUInt16()
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+$expectedMachine = if ($Architecture -eq 'arm64') { 0xAA64 } else { 0x8664 }
+$machineNames = @{ 0x014C = 'x86'; 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x01C4 = 'ARM' }
+
 # ---------------------------------------------------------------------------
 # Publish
 # ---------------------------------------------------------------------------
@@ -184,6 +209,15 @@ if ($removed.Count -eq 0) {
 # Copied only where the publish did not already produce them, and what happened
 # is printed either way, because "the Windows App SDK brought its own" and "we
 # added them" are different facts about the same directory.
+#
+# Each candidate's own PE machine type decides whether it is copied, rather than
+# the folder it sits in. That is not belt and braces — the arm64 redistributable
+# folder really does contain an x64 binary. `vcruntime140_1.dll` implements the
+# x64 exception unwinder, ARM64 has no use for it, and Microsoft ships an x64
+# copy under VC\Redist\MSVC\<version>\arm64\Microsoft.VC143.CRT anyway for the
+# emulation and ARM64EC cases. Trusting the folder name put it in an ARM64 zip;
+# the machine-type check further down caught it. Reading each file is what stops
+# it being caught rather than avoided.
 
 $crtNames = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll',
               'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll',
@@ -218,10 +252,15 @@ if ($missing.Count -eq 0) {
         # The set differs by architecture and by toolset version. Anything the
         # redistributable does not carry for this architecture is something this
         # architecture does not need.
-        if (Test-Path $source) {
-            Copy-Item $source $staging -Force
-            Write-Host "  added $name"
+        if (-not (Test-Path $source)) { continue }
+        $machine = Get-PeMachine $source
+        if ($machine -ne $expectedMachine) {
+            $named = if ($machineNames.ContainsKey([int]$machine)) { $machineNames[[int]$machine] } else { "0x{0:X4}" -f $machine }
+            Write-Host "  skipped $name — it is $named in the $Architecture redistributable, so it is not this architecture's"
+            continue
         }
+        Copy-Item $source $staging -Force
+        Write-Host "  added $name"
     }
     if (-not (Test-Path (Join-Path $staging 'vcruntime140.dll'))) {
         throw "vcruntime140.dll reached neither the publish nor the redistributable copy; the zip would not run."
@@ -270,26 +309,6 @@ Write-Host '  no .nnue file, and nothing with the pinned network''s length or by
 # test loads: Win2D's and the Windows App SDK's natives are in the zip because
 # the window needs them, and nothing headless would notice their absence.
 
-function Get-PeMachine([string] $path) {
-    $stream = [System.IO.File]::OpenRead($path)
-    try {
-        $reader = New-Object System.IO.BinaryReader($stream)
-        if ($stream.Length -lt 0x40) { return $null }
-        $stream.Position = 0
-        if ($reader.ReadUInt16() -ne 0x5A4D) { return $null }   # MZ
-        $stream.Position = 0x3C
-        $peOffset = $reader.ReadUInt32()
-        if ($peOffset + 6 -gt $stream.Length) { return $null }
-        $stream.Position = $peOffset
-        if ($reader.ReadUInt32() -ne 0x00004550) { return $null } # PE\0\0
-        return $reader.ReadUInt16()
-    } finally {
-        $stream.Dispose()
-    }
-}
-
-$expectedMachine = if ($Architecture -eq 'arm64') { 0xAA64 } else { 0x8664 }
-$machineNames = @{ 0x014C = 'x86'; 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x01C4 = 'ARM' }
 Write-Host ''
 Write-Host "Checking that every native binary is $Architecture"
 $native = 0
