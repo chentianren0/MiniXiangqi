@@ -43,7 +43,7 @@ Contract sections are cited by document and section name rather than by line num
 | `control.save` | 保存 | Save | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` — the notice's default action |
 | `control.saveAndNewGame` | 保存并开始新对局 | Save and New Game | button | same — the notice's second action, which files and resets in one press |
 | `control.endGame` | 结束对局 | End Game | button | [interaction-design.md](interaction-design.md) § Natural result presentation — retired as the notice's label, where `control.save` now names the same act; no surface reads it |
-| `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
+| `control.done` | 完成 | Done | button | [interaction-design.md](interaction-design.md) § Natural result presentation, § The move list during play — the same word closes the recorded notice and the stacked layout's move-list sheet; `Play/ResultNotice.swift`, `Play/PlayScreen.swift` |
 | `control.replay` | 回放 | Replay | button | [interaction-design.md](interaction-design.md) § Natural result presentation; `Play/ResultNotice.swift` |
 | `control.cancel` | 取消 | Cancel | alert button | [interaction-design.md](interaction-design.md) § Play controls and every alert below |
 | `control.tryAgain` | 重试 | Try Again | alert button; inline button | [interaction-design.md](interaction-design.md) § Insufficient memory for AI play, § Saving the active game before choosing a new mode, § Turn status — the stalled AI activity slot's retry is the same word and the same key |

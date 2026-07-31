@@ -28,12 +28,13 @@ It cannot be folded into the app's build. Xcode plans its build graph before any
 ## Architectures
 
 Physical platforms carry both `arm64` and `arm64e`; the Simulator carries `arm64` alone. That holds
-everywhere — the app, the test bundles, and every slice of the prebuilt core.
+for the app and for every slice of the prebuilt core. The unit bundle is the exception, and the table
+records what the project actually resolves rather than what the policy asks for.
 
 | Target | macOS | iOS device | iOS Simulator |
 | --- | --- | --- | --- |
 | `MiniXiangqi` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
-| `MiniXiangqiTests` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
+| `MiniXiangqiTests` | `arm64` `arm64e` | `arm64` | `arm64` |
 | `MiniXiangqiUITests` | `arm64` `arm64e` | — | — |
 | `MiniXiangqiCore.xcframework` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
 
@@ -45,6 +46,14 @@ such runtime. Test bundles get no Enhanced Security, so their `ARCHS_STANDARD` i
 cannot express the policy; both set `ARCHS[sdk=macosx*]` explicitly. The unit bundle needs its
 `arm64e` slice to run at all, because the host app launches `arm64e` on Apple silicon and can only
 inject a bundle whose architecture matches.
+
+**That `arm64e` slice is macOS's alone, because the override that produces it is keyed to
+`sdk=macosx*`.** On `iphoneos` the unit bundle resolves to `ARCHS = arm64` while the app it hosts in
+resolves to `arm64 arm64e`, so the same host/bundle mismatch the macOS override exists to prevent is
+live on a physical iPhone or iPad: the bundle cannot inject into an `arm64e` host there. It does not
+bite today, because the iOS runs are on the Simulator, where the app is `arm64` too. The fix belongs
+to whichever PR first runs this suite on a device — the on-device measurement the probe still owes —
+because that is where it can be seen to work rather than argued to.
 
 The remaining dash is a platform limit, not an architecture one, and it is the only one left.
 

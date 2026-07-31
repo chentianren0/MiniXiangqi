@@ -17,9 +17,9 @@ This document is for product designers, engineers, testers, and reviewers who ne
 
 ## Target platforms
 
-- iOS 26.5 or later.
-- iPadOS 26.5 or later.
-- macOS 26.5 or later.
+- iOS 26.6 or later.
+- iPadOS 26.6 or later.
+- macOS 26.6 or later.
 - macOS targets Apple silicon. `x86_64` is not supported on macOS.
 - Windows 11 on `x64`. Windows 10 is not a target: it left Microsoft support in October 2025, and a floor the vendor no longer patches is not a floor this product can promise. `ARM64` is not in the MVP either; it returns when there is real hardware to test it on, since an architecture nobody has run is a claim rather than a target. Both are owner decisions, 2026-07-30, and both narrow what this document previously promised.
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.

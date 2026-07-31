@@ -120,6 +120,35 @@ enum BoardLayout {
                height: size.height - chrome - 2 * boardPadding)
     }
 
+    /// The least height a board block can be handed, its air included: a
+    /// floor-sized board plus the allowance around it.
+    ///
+    /// It is the same quantity a resizable window's own height floor is, and
+    /// for the same reason — below it there is no smaller board to draw, only
+    /// a floor-sized one drawn over whatever is beneath it.
+    static var minimumBoardHeight: CGFloat {
+        BoardGeometry(pitch: BoardGeometry.minimumPitch).blockSize.height + 2 * boardPadding
+    }
+
+    /// What the stacked shape *grants* chrome asking for `wanted` points of
+    /// height beneath the board.
+    ///
+    /// Granted rather than taken, and this is the mechanism that keeps the
+    /// board inside the space it is drawn in. `stackedGeometry` honours the
+    /// board's floor whatever it is handed, so a slot shorter than that floor
+    /// does not produce a smaller board — it produces a board drawn over the
+    /// chrome and off the bottom of the screen. Reserving the floor here,
+    /// before the chrome is given anything, is what makes that impossible:
+    /// above it the chrome gets what it asks for, and below it the chrome is
+    /// what tightens, which is the contract's own order.
+    ///
+    /// Only a space shorter than a floor-sized board leaves the board larger
+    /// than its slot, and no division of such a space avoids that. A window
+    /// that reaches this shape is never that short.
+    static func stackedChrome(in size: CGSize, asking wanted: CGFloat) -> CGFloat {
+        max(0, min(wanted, size.height - minimumBoardHeight))
+    }
+
     /// The largest board that fits between the status above it and the controls
     /// below it, bounded by the same floor and ceiling.
     ///
@@ -175,8 +204,8 @@ enum BoardLayout {
             + panelWidth + 2 * boardPadding
     }
 
-    static var minimumHeight: CGFloat {
-        BoardGeometry(pitch: BoardGeometry.minimumPitch).blockSize.height
-            + 2 * boardPadding
-    }
+    /// The same quantity the stacked shape reserves for the board above its
+    /// chrome: what a window stops shrinking at is what a board block cannot
+    /// be given less than.
+    static var minimumHeight: CGFloat { minimumBoardHeight }
 }

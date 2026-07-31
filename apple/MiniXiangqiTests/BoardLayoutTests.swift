@@ -74,6 +74,21 @@ struct BoardLayoutTests {
         }
     }
 
+    @Test("The boundary between the two shapes, one point of height apart")
+    func theShapeBoundary() {
+        // What the two tests above cannot say: where the answer changes. Both
+        // of them name a size and assert the shape it takes, so between them
+        // lies a region neither describes; this is the one place in that
+        // region where a change to the rule shows up as a changed answer.
+        //
+        // 656 points of content width holds the side-by-side board to 49 —
+        // it is bound by the width there, so no extra height helps it — while
+        // one more point of height is exactly what buys the stacked board a
+        // 50th, and 50 beats 49.
+        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 573)) == .sideBySide)
+        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 574)) == .stacked)
+    }
+
     @Test("A tie goes to side by side, which costs the board nothing and shows the list")
     func aTieGoesToSideBySide() {
         // Wide enough and tall enough for both shapes to reach the ceiling.
@@ -113,6 +128,58 @@ struct BoardLayoutTests {
         let grown = BoardLayout.stackedGeometry(in: space,
                                                 chrome: 2 * BoardLayout.stackedChromeHeight)
         #expect(grown.pitch < ordinary.pitch)
+    }
+
+    // MARK: - The board fits the slot it is given
+
+    @Test("The drawn board fits the slot the chrome leaves it, at every size")
+    func theStackedBoardFitsItsSlot() {
+        // The one invariant a stacked screen depends on, swept rather than
+        // sampled at the sizes that happen to have been photographed. The
+        // board's floor means `stackedGeometry` can return a block larger than
+        // the space it was asked about; what makes that safe is that the
+        // chrome is *granted* its height rather than taking it, so the slot
+        // the board is left is never smaller than the block it draws.
+        //
+        // Every width a screen or window reaches, against every height from a
+        // floor-sized board up.
+        let widths: [CGFloat] = [320, 402, 440, 616, 656, 676, 744, 834, 1024, 1210, 1566]
+        let asking: [CGFloat] = [0, 116, 140, 260, 400]
+        var overflowing: [String] = []
+        for width in widths {
+            for height in stride(from: BoardLayout.minimumBoardHeight, through: 1400, by: 1) {
+                let size = CGSize(width: width, height: height)
+                for wanted in asking {
+                    let chrome = BoardLayout.stackedChrome(in: size, asking: wanted)
+                    let block = BoardLayout.stackedGeometry(in: size, chrome: chrome)
+                        .blockSize.height
+                    if block > size.height - chrome {
+                        overflowing.append("\(width)×\(height) asking \(wanted): "
+                                           + "\(block) drawn into \(size.height - chrome)")
+                    }
+                }
+            }
+        }
+        #expect(overflowing.isEmpty,
+                "the board is drawn over the chrome at: \(overflowing.prefix(5))")
+    }
+
+    @Test("The chrome yields where the board's floor needs the height, and the board fits")
+    func theStackedChromeYieldsToTheBoardsFloor() {
+        // 616 by 535 is the narrowest ordinary Mac window that takes the
+        // stacked shape, and replay's panel is a fixed 260-point block of
+        // chrome. Taken whole it would leave the board 275 points to draw a
+        // block that cannot go below 340 — 65 points of board over the panel
+        // and off the bottom of the window.
+        let window = CGSize(width: 616, height: 535)
+        #expect(BoardLayout.shape(in: window) == .stacked)
+        let chrome = BoardLayout.stackedChrome(in: window, asking: 260)
+        #expect(chrome < 260, "the chrome is what tightens, not the board")
+        #expect(BoardLayout.stackedGeometry(in: window, chrome: chrome).blockSize.height
+                <= window.height - chrome)
+        // And where there is room for both, the chrome asks and receives.
+        let ample = CGSize(width: 834, height: 1130)
+        #expect(BoardLayout.stackedChrome(in: ample, asking: 260) == 260)
     }
 
     @Test("A preview yields to the controls under it, below the interactive floor")

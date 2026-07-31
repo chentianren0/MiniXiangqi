@@ -24,8 +24,19 @@ private func sRGB(_ color: Color) -> (red: CGFloat, green: CGFloat, blue: CGFloa
     let components = NSColor(color).usingColorSpace(.sRGB)!
     return (components.redComponent, components.greenComponent, components.blueComponent)
     #else
+    // UIKit has no `usingColorSpace`, so the conversion is CoreGraphics's and
+    // the components are read back through `UIColor`. Both steps are checked:
+    // `getRed` reports whether it could answer at all, and a colour that could
+    // not be expressed in sRGB or read out of it has no ratio to measure — a
+    // silent zero would be measured as black and would pass ratios it fails.
+    let converted = UIColor(color).cgColor.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                     intent: .defaultIntent,
+                                                     options: nil)
+    guard let converted else { preconditionFailure("a style colour that has no sRGB form") }
     var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-    UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+    guard UIColor(cgColor: converted).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+        preconditionFailure("a style colour whose sRGB components cannot be read")
+    }
     return (red, green, blue)
     #endif
 }

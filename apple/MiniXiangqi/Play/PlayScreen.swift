@@ -207,6 +207,14 @@ struct PlayScreen: View {
         } message: {
             Text("alert.aiUnavailable.resumeMessage")
         }
+        // The move list's sheet belongs to the screen for the same reason the
+        // alerts do, and for one more: `moveListShown` is the screen's state,
+        // so a sheet declared inside the stacked branch alone is a sheet that
+        // is re-presented every time the layout comes back to that branch. An
+        // iPad opened to the list, rotated to landscape and rotated back would
+        // find it up again, in a shape whose toolbar has nothing to raise it
+        // and nothing to say it should be there.
+        .sheet(isPresented: $moveListShown) { moveListSheet(game) }
     }
 
     // MARK: - The two shapes
@@ -282,7 +290,6 @@ struct PlayScreen: View {
                 .accessibilityIdentifier("play-move-list")
             }
         }
-        .sheet(isPresented: $moveListShown) { moveListSheet(game) }
     }
 
     /// The on-demand move list, on the surface the contract already allows to
@@ -456,7 +463,7 @@ struct PlayScreen: View {
             // Where all three fit at their full width they keep it; where the
             // other two's labels leave no room — the concluding action in
             // Chinese, every cluster state in English at the minimum window —
-            // the flip control falls back to its symbol, which carries the
+            // the trailing control falls back to its symbol, which carries the
             // same accessibility label either way.
             controlCluster(game, motion)
                 .padding(BoardLayout.panelInset)
@@ -533,7 +540,15 @@ struct PlayScreen: View {
     /// Each carries an identifier beside its label, in the cluster's own
     /// namespace. A label is copy and changes with the interface language; an
     /// identifier does not, so it is what a test addresses a control by.
-    private func controls(_ game: Game, _ motion: PlayMotion, compactFlip: Bool) -> some View {
+    ///
+    /// `compact` is the cluster's one concession to a width that will not hold
+    /// it: the **trailing** control falls back to its symbol, keeping the same
+    /// accessibility label either way. It is the trailing one in every
+    /// composition — 翻转棋盘 in Free Play, 认输 against the machine — because
+    /// the two ahead of it are what the cluster is for and the concluding
+    /// action is the longest label it ever carries. One control gives up its
+    /// word so that the other two keep theirs.
+    private func controls(_ game: Game, _ motion: PlayMotion, compact: Bool) -> some View {
         HStack(spacing: 8) {
             // Unavailable until a running transition completes — its own
             // Undo's included, which is what makes a second Undo wait its
@@ -557,15 +572,31 @@ struct PlayScreen: View {
             }
 
             if game.isHumanVersusAI {
-                Button("control.resign") { resignPresented = true }
-                    .buttonStyle(.glass)
-                    .disabled(!game.canResign)
-                    .accessibilityIdentifier("cluster-resign")
+                Button {
+                    resignPresented = true
+                } label: {
+                    // Uncompacted this is the word alone, which is what the
+                    // accepted look was settled at: the symbol arrives only
+                    // when the width takes the word away. 认输 ends the game
+                    // and cannot be undone, so the symbol is the one every
+                    // board game uses for it, and the alert still stands
+                    // between the control and the act.
+                    if compact {
+                        Label("control.resign", systemImage: "flag.fill")
+                            .labelStyle(.iconOnly)
+                    } else {
+                        Text("control.resign")
+                    }
+                }
+                .buttonStyle(.glass)
+                .disabled(!game.canResign)
+                .accessibilityLabel(Text("control.resign"))
+                .accessibilityIdentifier("cluster-resign")
             } else {
                 Button {
                     motion.flip()
                 } label: {
-                    if compactFlip {
+                    if compact {
                         Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
                             .labelStyle(.iconOnly)
                     } else {
@@ -585,10 +616,16 @@ struct PlayScreen: View {
     /// because both shapes carry the same cluster: the panel puts it under the
     /// move list, the stacked shape puts it under the board, and neither of
     /// them decides what is in it.
+    ///
+    /// The two candidates differ in every composition the cluster has — both
+    /// modes, and a finished board as well as a running one — which is what
+    /// makes the fallback worth measuring. Two candidates that rendered the
+    /// same would leave `ViewThatFits` measuring nothing and the cluster
+    /// simply overflowing wherever it did not fit.
     private func controlCluster(_ game: Game, _ motion: PlayMotion) -> some View {
         ViewThatFits(in: .horizontal) {
-            controls(game, motion, compactFlip: false)
-            controls(game, motion, compactFlip: true)
+            controls(game, motion, compact: false)
+            controls(game, motion, compact: true)
         }
     }
 

@@ -90,18 +90,7 @@ struct ReplayScreen: View {
                         .frame(width: BoardLayout.panelWidth)
                 }
             case .stacked:
-                // Replay is the exception to the on-demand move list: its
-                // accepted behaviour needs the list to indicate the shown move
-                // and to let one be selected, so in this shape the list is on
-                // screen too and the surrounding chrome is what tightens to
-                // make room. The board takes its half of the height and the
-                // panel takes the rest.
-                VStack(spacing: 0) {
-                    board(replay, BoardLayout.stackedGeometry(in: proxy.size,
-                                                              chrome: panelHeight))
-                    panel(replay, edge: .bottom)
-                        .frame(height: panelHeight)
-                }
+                stacked(replay, in: proxy.size)
             }
         }
         #if os(macOS)
@@ -109,10 +98,36 @@ struct ReplayScreen: View {
         #endif
     }
 
-    /// What the stacked shape gives the panel beneath the board: the header,
-    /// the list, and the transport, in the height the two ends of it need plus
-    /// room for four or five rows of the game. Above the board's own floor the
-    /// board takes the rest; below it the chrome is what has already tightened.
+    /// The board above, the panel beneath it.
+    ///
+    /// Replay is the exception to the on-demand move list: its accepted
+    /// behaviour needs the list to indicate the shown move and to let one be
+    /// selected, so in this shape the list is on screen too and the
+    /// surrounding chrome is what tightens to make room.
+    ///
+    /// The panel's height is what it is *granted* rather than what it asks
+    /// for. This panel is a fixed block of chrome — it wants the same 260
+    /// points wherever it is drawn, unlike the play screen's, which is a
+    /// measured line of status above the board and a row of controls below —
+    /// and a fixed block taken whole out of a short space leaves the board a
+    /// slot its own floor does not fit in, which is a board drawn over the
+    /// panel rather than a smaller one. `BoardLayout.stackedChrome(in:asking:)`
+    /// reserves the board's floor first and hands the panel the rest, on every
+    /// platform: the reachable Mac windows that take this shape start at 535
+    /// points of content height, and an iPadOS window is sized by the system
+    /// with no floor of the app's to stop it.
+    private func stacked(_ replay: Replay, in size: CGSize) -> some View {
+        let chrome = BoardLayout.stackedChrome(in: size, asking: panelHeight)
+        return VStack(spacing: 0) {
+            board(replay, BoardLayout.stackedGeometry(in: size, chrome: chrome))
+            panel(replay, edge: .bottom)
+                .frame(height: chrome)
+        }
+    }
+
+    /// What the panel beneath the board asks for: the header, the list, and
+    /// the transport, in the height the two ends of it need plus room for four
+    /// or five rows of the game.
     private var panelHeight: CGFloat { 260 }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry) -> some View {
