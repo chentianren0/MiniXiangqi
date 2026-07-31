@@ -35,7 +35,7 @@ records what the project actually resolves rather than what the policy asks for.
 | --- | --- | --- | --- |
 | `MiniXiangqi` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
 | `MiniXiangqiTests` | `arm64` `arm64e` | `arm64` | `arm64` |
-| `MiniXiangqiUITests` | `arm64` `arm64e` | — | — |
+| `MiniXiangqiUITests` | `arm64` `arm64e` | `arm64` | `arm64` |
 | `MiniXiangqiCore.xcframework` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
 
 `arm64e` is the pointer-authentication architecture, and the app asks for it by asking for Enhanced
@@ -55,7 +55,8 @@ bite today, because the iOS runs are on the Simulator, where the app is `arm64` 
 to whichever PR first runs this suite on a device — the on-device measurement the probe still owes —
 because that is where it can be seen to work rather than argued to.
 
-The remaining dash is a platform limit, not an architecture one, and it is the only one left.
+There are no dashes left in the table: both bundles now declare
+`iphoneos iphonesimulator macosx`.
 
 The **unit bundle** was AppKit-bound — `NSColor` for the contrast measurements, `NSBitmapImageRep` for
 the rendered snapshots — and Stage 6's iOS pass made those three call sites cross-platform, so it now
@@ -63,10 +64,17 @@ declares `iphoneos iphonesimulator macosx` and runs on an iOS Simulator. That is
 memory probe and the layout-shape rule testable on the platform they are about, rather than only on
 the one the app was first written for.
 
-The **UI bundle** still declares `SUPPORTED_PLATFORMS = macosx`, deliberately. Its AppKit dependency
-is not a few call sites but the shape of the suite: it drives windows — `-mxq-window`, `NSScreen`,
-the measured minimum window size — and window geometry is the thing iOS does not have. Making it
-merely *compile* on iOS would produce a bundle that declares a platform and runs almost nothing on
-it, which is a worse claim than the dash. An honest iOS UI suite is a different suite, about the
-stacked shape and touch, and it is the next piece of Stage 6's iOS work rather than a port of this
-one.
+The **UI bundle** declared `macosx` alone until the iOS suite existed to justify widening it, and the
+reason it did is still true of its five original suites: they drive windows — `-mxq-window`,
+`NSScreen`, the measured minimum window size — and window geometry is the thing iOS has not got.
+What changed is that an honest iOS suite now exists beside them rather than instead of them. The
+platform is declared **per file**: the five window suites are `#if os(macOS)`, the two phone suites —
+`PhonePlayUITests` and `PhoneSettingsUITests`, about the stacked shape and touch — are
+`#if os(iOS)`, and each destination runs its own and nothing else. Widening the one bundle rather
+than adding a second target is what keeps `LaunchPreferences` a single file: it carries the
+hermetic-launch table both sets of suites read, and two copies of that table would drift. See
+[`docs/testing.md`](../docs/testing.md) for what each set covers and the command each is run with.
+
+The `arm64e` question above does not arise for this bundle. A UI-test bundle is not injected into the
+app: Xcode builds it a runner app of its own and drives the app under test from a separate process,
+so there is no host whose architecture it has to match.

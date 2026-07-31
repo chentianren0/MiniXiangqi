@@ -24,6 +24,16 @@
 // The seven keys are docs/copy.md's and `Settings/Preferences.swift`'s: this list
 // is that table, and a preference added there without being added here is a
 // preference the tests would go back to inheriting.
+//
+// **This file is the one thing both platforms' suites share, and it is
+// deliberately the only one.** The bundle now builds for an iOS Simulator as
+// well as for macOS — the Mac's suites are `#if os(macOS)` and the phone's are
+// `#if os(iOS)`, because a window and a finger have almost nothing to say to
+// each other — but the lesson above is not a macOS lesson. A Simulator's
+// persistent domains belong to the machine the tests run on exactly as a Mac's
+// do, so a phone launch that named no preference would inherit whatever the last
+// run left behind, and there would then be two tables to keep in step instead of
+// one. Nothing here is platform-specific, and nothing here may become so.
 
 import Foundation
 

@@ -10,6 +10,14 @@
 // catalog, exactly as PlayScreenUITests writes them: what needs proving is that
 // the accepted words reach the screen.
 
+// **macOS only.** The bundle this file lives in builds for an iOS Simulator too
+// now, and this suite does not go there: it drives a window — naming a size,
+// reading the frame back, clicking and right-clicking a pointer, typing keys —
+// and a window is what iOS has not got. The phone's own evidence is the
+// `Phone…UITests` files beside this one, which are a different suite rather than
+// a port of this one.
+#if os(macOS)
+
 import AppKit
 import XCTest
 
@@ -644,3 +652,5 @@ final class HistoryScreenUITests: XCTestCase {
         app.windows.firstMatch.descendants(matching: .any)["point-\(name)"]
     }
 }
+
+#endif  // os(macOS)
