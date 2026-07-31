@@ -438,6 +438,7 @@ $machineNames = @{ 0x014C = 'x86'; 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x01C4 = 'A
 Write-Host ''
 Write-Host "Checking that every native binary is $Architecture"
 $native = 0
+$hybrid = @()
 $wrong = @()
 $binaries = @(Get-ChildItem -Path $staging -Recurse -File |
     Where-Object { $_.Extension -eq '.dll' -or $_.Extension -eq '.exe' })
@@ -448,6 +449,19 @@ foreach ($file in $binaries) {
     # native binary; only the ones that report a 64-bit machine are the question,
     # and every native this ships is 64-bit.
     if ($machine -eq 0x014C) { continue }
+
+    # ARM64EC companions. The Windows App SDK publishes a handful of `_ec` DLLs
+    # into its win-x64 output — this build's is
+    # Microsoft.Windows.Workloads.Resources_ec.dll — and an ARM64EC image
+    # declares machine ARM64 while being the thing that lets an x64 process run
+    # efficiently on an ARM64 machine. They are Microsoft's to ship beside their
+    # x64 binaries, so they are counted and named rather than removed or failed
+    # on; what would be wrong is an ARM64 binary that is not one of these.
+    if ($file.BaseName.EndsWith('_ec')) {
+        $hybrid += $file.Name
+        continue
+    }
+
     $native++
     if ($machine -ne $expectedMachine) {
         $name = if ($machineNames.ContainsKey([int]$machine)) { $machineNames[[int]$machine] } else { "0x{0:X4}" -f $machine }
@@ -459,6 +473,9 @@ if ($wrong.Count -gt 0) {
            ($wrong -join '; '))
 }
 Write-Host "  $native binaries, all $Architecture"
+if ($hybrid.Count -gt 0) {
+    Write-Host "  $($hybrid.Count) ARM64EC companion(s) from the Windows App SDK: $($hybrid -join ', ')"
+}
 
 # ---------------------------------------------------------------------------
 # The zip

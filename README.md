@@ -19,7 +19,7 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 
 - iOS and iPadOS 26.5 or later.
 - macOS 26.5 or later on Apple silicon; `x86_64` is not supported on macOS.
-- Windows 11 on `x64`. Windows 10 left Microsoft support in October 2025, and `ARM64` returns when there is real hardware to test it on (owner decisions, 2026-07-30).
+- Windows 11 on `x64` and `ARM64`. Windows 10 left Microsoft support in October 2025 (owner decision, 2026-07-30). `ARM64` came off the list the same day for want of hardware to test it on and returned on 2026-07-31, when that condition was met: it is built, tested and distributed on the same terms as `x64`.
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
 - Apple platforms are implemented and distributed first; Windows follows on the same shared core.
 
@@ -40,7 +40,7 @@ Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](d
 
 ## Windows toolchain
 
-The core's Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by a build that produced it rather than by intent: Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja. The frontend's half — Windows App SDK, .NET, and the packaging flags — is still unestablished and waits for a packaging build, which is where it will first exist to establish it; the frontend skeleton under [`windows/`](windows/README.md) builds unpackaged and pins nothing.
+The Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by builds that produced it rather than by intent. The core's half is Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja, measured once per architecture. The frontend's half — the Windows App SDK version, the .NET version, and the packaging flags — was recorded by the first packaging build, which is [`windows/package-zip.ps1`](windows/package-zip.ps1) running in CI. What that build did not measure is still recorded as unestablished: the engine and SQLite compile flags stay empty, because the packaging build publishes the frontend over a prebuilt core rather than choosing the core's flags.
 
 Build and run the core suites the same way as on macOS, from a shell with the Visual Studio environment loaded:
 
@@ -65,4 +65,6 @@ ctest --test-dir build --output-on-failure
 
 ## Distribution and license
 
-Distribution is internal only: TestFlight internal testing on Apple platforms and direct internal installation on Windows, with no public release plan. The project is licensed under the [GNU General Public License version 3](LICENSE), matching its Fairy-Stockfish dependency. The NNUE network used by the AI is never committed to this repository; internal builds bundle it from a pinned, hash-verified local or CI-provided input, as defined in [Engine integration](docs/engine-integration.md).
+Distribution is internal only: TestFlight internal testing on Apple platforms and, on Windows, a zip built by CI that somebody unpacks and runs — one per architecture, with no installer and no store (owner decision, 2026-07-30; MSIX and its signing-certificate story are the post-MVP upgrade). The project is licensed under the [GNU General Public License version 3](LICENSE), matching its Fairy-Stockfish dependency, and the Windows zip carries that licence and an attribution note beside the app.
+
+The NNUE network used by the AI is never committed to this repository; internal builds bundle it from a pinned, hash-verified local or CI-provided input, as defined in [Engine integration](docs/engine-integration.md). **The Windows zip is the one build that does not bundle it.** A GitHub Actions artifact on a public repository can be downloaded by any logged-in GitHub account, which would make bundling it a public distribution of bytes whose redistribution licence has never been established — the gate that document sets. So the zip ships everything else and carries a `NETWORK.md` naming the file, its byte length, its SHA-256 and where it goes; whoever has the bytes adds them after unpacking, and the self-check in the zip says whether they got it right.

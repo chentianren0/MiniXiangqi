@@ -5,20 +5,24 @@ is the core built as a DLL, C# declarations generated from `core/include/mxq.h`,
 Play destination — the home where what to play is chosen, each mode's pre-start state,
 and the board with a live game against the AI — the History destination with its
 step-through viewer and its import, the Settings destination and the board's four
-voices, and two headless harnesses that are how any of it is verified on a machine
-nobody is logged into. The stacked layout that narrow windows take on the other
-platforms, and the packaging build, are later pull requests.
+voices, two headless harnesses that are how any of it is verified on a machine
+nobody is logged into, and the packaging build that turns all of it into the zip
+somebody is given. The stacked layout that narrow windows take on the other platforms
+is a later pull request.
 
-The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
-it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
-identical to the Apple frontend; only presentation follows the platform, using Fluent
-materials, navigation and context menus rather than recreated Apple styling.
+The target is Windows 11 on `x64` and `ARM64`. `ARM64` came off the list on 2026-07-30
+for want of hardware to test it on and returned on 2026-07-31 when that condition was
+met; both are built, exercised and distributed on the same terms, each on its own native
+CI runner. Product behaviour and persisted meaning are identical to the Apple frontend;
+only presentation follows the platform, using Fluent materials, navigation and context
+menus rather than recreated Apple styling.
 
 ## Layout
 
 | | |
 |---|---|
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
+| `package-zip.ps1` | the packaging build: publishes, strips the network, and writes the distribution zip |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
 | `MiniXiangqi.Play/` | the board's vocabulary and geometry, every destination's logic, the sound decision and the four samples, and the string table — no UI framework at all |
@@ -102,6 +106,23 @@ The network's bytes are in no repository ([`docs/engine-integration.md`](../docs
 against [`pinned-inputs.json`](../pinned-inputs.json) before staging anything. Building
 the C# projects without having run the script first fails with a message that says so
 rather than producing an executable that cannot find its core.
+
+**Both commands build for the machine they are run on**, which is the whole of the
+architecture story on a developer machine. `build-core-dll.ps1` takes `-Architecture`
+and `Directory.Build.props` derives `MxqRuntimeIdentifier` from `PROCESSOR_ARCHITECTURE`,
+so an x64 machine produces an x64 core and an x64 frontend with no argument, and an
+ARM64 machine produces ARM64 ones. To build for the other architecture:
+
+```powershell
+pwsh windows\build-core-dll.ps1 -Architecture arm64 -NnueSource <path to the pinned network>
+dotnet build windows\MiniXiangqi.slnx -c Release -p:MxqRuntimeIdentifier=win-arm64
+```
+
+The second half of that cross-builds happily; the first half needs the ARM64 MSVC
+toolset installed, and produces a DLL the machine that built it cannot load. `artifacts/`
+holds one architecture's core at a time — whichever the script last built — while the
+CMake build trees are per-architecture, so switching back does not recompile. In CI the
+question does not arise: each runner is the architecture it builds for.
 
 ## Regenerating the bindings
 
@@ -499,11 +520,11 @@ Where they are kept on Windows is the smallest answer that works — a JSON obje
 absent or malformed reading as "nothing is stored". A flag is read as a JSON boolean first
 and as the string spelling of one after that, because a file a Settings screen writes and
 a person may edit can honestly hold either. The Apple frontend has `UserDefaults`; an
-unpackaged Win32 app has no equivalent it can reach without deciding the packaging
-question this repository has parked. The Settings pull request kept that storage rather
-than replacing it: it is the reader three surfaces already run against and the harness
-already proves, and a packaging build changing where preferences live is a change to one
-class rather than to a contract. A write lands atomically — a sibling temporary file moved
+unpackaged Win32 app has no equivalent, and the packaging build settled that this app
+stays unpackaged — a zip of a `WindowsPackageType` `None` build has no package identity
+and so no `ApplicationData` to reach — rather than changing the answer. If MSIX is ever
+taken up, moving preferences into the packaged store is a change to one class rather than
+to a contract, because the key and the vocabulary are the interface, not the file. A write lands atomically — a sibling temporary file moved
 over the old one — so a process that dies mid-write leaves the previous preferences rather
 than a truncated object every later read would answer "nothing is stored" to. What has not
 changed is the key or the vocabulary: those are the interface between the screen that
@@ -559,8 +580,24 @@ is still heard, with the volume mixer where somebody who wants it quieter goes.
 builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, fetches the pinned network with the
 same script the core suites use, regenerates the bindings and fails on any difference
 from what is committed, compares the four sound samples against the Apple bundle's,
-builds every project, runs the smoke harness against `docs/copy.md`, and renders the
-board. It uploads the renders on every run.
+builds every project, runs the smoke harness against `docs/copy.md`, renders the board,
+and builds the distribution zip. It uploads the renders and both zips on every run.
+
+**It is a matrix over two architectures**, each on its own native runner: `windows-2025`
+for `x64` and `windows-11-arm` for `ARM64`. Three steps run on `x64` only, and the
+workflow says why where they are — the bindings check and the sound comparison are
+source-level checks that a second architecture would repeat rather than extend, and the
+renders are pictures of a board no dimension of which depends on the instruction set.
+Everything that could differ by architecture — the C++ build, every managed build, the
+harness, the publish and the zip — runs on both. `fail-fast` is off on both matrices:
+one architecture failing is a finding about that architecture, and the other's result
+beside it is what says whether it is architecture-specific.
+
+The core's own suites on `ARM64` are in [`core-suites.yml`](../.github/workflows/core-suites.yml)
+rather than here. What decides a job's home is which changes should start it: that
+workflow starts on `core/`, `fixtures/` and `.gitattributes`, and this one does not, so a
+fixtures change that broke the engine on `ARM64` and nowhere else would have gone unseen
+if the job had lived here.
 
 The bindings check is the obligation issue #80 carried from #85's verify: a `Mxq.g.cs`
 that differs from what the generator writes is a transcription of the header rather than
@@ -585,20 +622,86 @@ rows it does not ship are the ones its trim removed: `settings.section.board`,
 the operating system's — the app offers no interface-language control of its own — which
 .NET resolves as `CurrentUICulture` from the system's language preference list.
 
-It is a table in C# rather than a `.resw` and a PRI because resource packaging belongs to
-the packaging build, which does not exist yet and which this pull request should not
-answer for twice; because an unpackaged app's resource lookup is a deployment question
-rather than a copy question; and because the render harness has to read the table without
-a XAML resource context. The smoke harness checks it against the contract, so it cannot
-drift from `docs/copy.md` silently either.
+It is a table in C# rather than a `.resw` and a PRI, and the packaging build did not
+change that. A `.resw` compiles to a PRI, which is a resource system for a *packaged*
+app; the distribution is a zip of an unpackaged one, so resource lookup here is a
+deployment question rather than a copy question either way. The render harness also has
+to read the table with no XAML resource context. The smoke harness checks it against the
+contract, so it cannot drift from `docs/copy.md` silently either.
 
-## Not pinned yet
+## The distribution
 
-The frontend's half of the Windows toolchain — the Windows App SDK version, the .NET
-version, and the packaging flags — is still unpinned in
-[`pinned-inputs.json`](../pinned-inputs.json), and `docs/architecture.md` keeps that
-question open until a packaging build establishes it. The versions this skeleton names
-(Windows App SDK 2.3.1, .NET 10) are what it was built with, not a pin: the app is
-unpackaged (`WindowsPackageType` `None`) and carries the Windows App SDK
-self-contained, so that a machine which has never installed the Windows App Runtime can
-still run what it built. A packaging build will decide all of that properly.
+[`package-zip.ps1`](package-zip.ps1) is the packaging build, and one zip per architecture
+is the accepted MVP distribution (issue #80, owner decision, 2026-07-30; MSIX and its
+signing-certificate story are the post-MVP upgrade). It publishes `MiniXiangqi.App` and
+`MiniXiangqi.Smoke` self-contained into one directory — they share every runtime file,
+this app's own assemblies, the core DLL and the asset directory, so publishing them
+apart would ship two .NET runtimes to prove one works — writes the licence and the
+notes, and zips the result under one top-level folder.
+
+**Self-contained means three things, and the third is the one people forget.**
+`--self-contained` carries the .NET runtime. `WindowsAppSDKSelfContained`, which the
+projects already set, carries the Windows App Runtime. Neither carries the *Visual C++*
+runtime, and `mxqcore.dll` is MSVC's output linked against it dynamically — so the script
+ensures `vcruntime140*.dll` and `msvcp140*.dll` are in the directory, taking them from
+the Visual Studio redistributable if the publish did not already produce them, and says
+which of the two happened. App-local deployment of those DLLs is what the Visual Studio
+redistributable terms permit, and the zip's `NOTICE.md` records it. With all three in
+place, "unpack and run" needs no install of any kind; what the machine still needs is
+Windows 11 and the matching architecture.
+
+**The network is not in the zip, and that is the decision the design turns on.** This
+repository is public and a GitHub Actions artifact on a public repository can be
+downloaded by any logged-in GitHub account, so an artifact carrying the NNUE network
+would be a public distribution of bytes whose redistribution licence
+[`docs/engine-integration.md`](../docs/engine-integration.md) has never let anybody
+establish. The publish copies the verified asset directory, the script removes the
+network from it, and then checks three ways that none survived: no `.nnue` by extension,
+nothing with the pinned byte length, and — for anything that matches the length — nothing
+with the pinned SHA-256. Removing it from the *verified* staging rather than staging
+assets a second time is deliberate: the variant configuration in the zip is the same
+bytes CMake checked against the manifest, not a second uncontrolled copy.
+
+`NETWORK.md` in the zip names the file, the byte length, the SHA-256 and the folder,
+generated from [`pinned-inputs.json`](../pinned-inputs.json) rather than transcribed, so
+the instruction and the manifest cannot disagree. `NOTICE.md` names Fairy-Stockfish with
+the pinned fork revision, SQLite's public-domain dedication, and the Microsoft
+redistributables — also from the manifest. `LICENSE` is the repository's own GPL-3.0.
+
+**The zip is proved runnable rather than assumed to be.** The workflow unpacks the
+artifact it just built into a directory of its own, drops the network into the unpacked
+`assets` folder from the same fetch the build used — the way `NETWORK.md` asks a person
+to — and runs the `MiniXiangqi.Smoke.exe` that came out of the zip against the zip's own
+layout: its own core DLL, its own assets, its own runtime, at the paths somebody who
+unpacked it would have, with nothing from the build tree on that path. The network copied
+in never leaves the runner, because the artifact was zipped before that step and is not
+rebuilt after it. That harness is in the zip for the same reason: it is how a person who
+has just placed the network file finds out whether they placed it correctly.
+
+The script also reads the PE machine type of every binary in the tree and fails if one is
+not the target architecture. A `win-arm64` publish that quietly resolved an x64 native
+package would otherwise produce a zip that builds, uploads and fails on the only machines
+it is for — and nothing headless would notice, because the natives it would be wrong
+about are Win2D's and the Windows App SDK's, which only a window loads.
+
+`actions/upload-artifact` wraps whatever it is given in a zip of its own, so the download
+is a zip containing `MiniXiangqi-windows-<arch>.zip`. That is the cost of the artifact
+being byte-for-byte the file the job proved, rather than a repackaging of the directory
+it proved; the alternative uploads a tree and proves a different thing than it ships.
+
+## What the packaging build pinned, and what it did not
+
+[`pinned-inputs.json`](../pinned-inputs.json)'s Windows entry has two toolchain fields
+because the core's compiler and the frontend's packaging stack become known at different
+times. `toolchain_core` was filled on 2026-07-30 by the first Windows core build, and now
+has an `ARM64` sibling filled by the first one on that architecture. `toolchain` was null
+until this packaging build ran, and now carries what it measured: the Windows App SDK and
+Win2D versions, the .NET SDK and runtime, the target framework, the deployment flags, and
+the runtime identifiers.
+
+What it did **not** establish stays unestablished, and the entry's `established` flag
+stays `false` because of them: `engine_defines`, `engine_flags`, `sqlite_defines` and
+`sqlite_flags` describe how the *core* is compiled, and the packaging build publishes a
+frontend over a core somebody else already built. Filling them from
+`build-core-dll.ps1`'s command line would record a developer build's flags in fields that
+describe a packaging build, which is exactly the confusion that entry is shaped to avoid.

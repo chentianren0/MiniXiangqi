@@ -154,7 +154,40 @@ if(CMAKE_OSX_ARCHITECTURES)
   set(MXQ_FS_ARCH "${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-if(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$")
+if(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$" AND MSVC)
+  # arm64, but not the fork's apple-silicon profile, because USE_POPCNT means
+  # something different under MSVC than it does under Clang.
+  #
+  # types.h reaches for a header rather than an instruction, and which header
+  # depends on the compiler rather than on the target:
+  #
+  #   types.h:73   USE_POPCNT  && _MSC_VER  ->  #include <nmmintrin.h>
+  #   types.h:77   !NO_PREFETCH && _MSC_VER ->  #include <xmmintrin.h>
+  #
+  # Both are x86 headers. Under Apple clang the same defines take the
+  # __builtin_popcountll and __builtin_prefetch paths instead and are correct;
+  # under MSVC on ARM64 the first is a hard stop —
+  #
+  #   nmmintrin.h(17): fatal error C1189: #error: This header is specific to
+  #   X86, X64, ARM64, and ARM64EC targets
+  #
+  # — measured on 2026-07-31, MSVC 19.44.35228 targeting arm64, the first time
+  # this engine had ever been compiled by MSVC for anything but x64. The header
+  # names ARM64 in its own message and refuses it anyway.
+  #
+  # So this profile is the one the fork's own Makefile would call general-64
+  # with NEON added: popcount falls back to types.h's 16-bit table and prefetch
+  # becomes a no-op, both of which are correct and both of which cost search
+  # speed. NEON is kept, because <arm_neon.h> is a real MSVC ARM64 header and
+  # the NNUE code's NEON path compiles against it.
+  #
+  # MSVC does have _CountOneBits64 and __prefetch2 for ARM64. Reaching them
+  # would mean editing the vendored snapshot, which is a verbatim copy nothing
+  # here may touch; a focused change in the fork is where that belongs, in the
+  # same place the MSVC thread-stack change went.
+  target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_NEON NO_PREFETCH)
+  set(MXQ_FS_ARCH_PROFILE "arm64/MSVC (neon; no popcnt and no prefetch — both are x86 headers on this compiler)")
+elseif(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$")
   # The fork's ARCH=apple-silicon profile: popcnt and neon, no SSE.
   target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_POPCNT USE_NEON)
   set(MXQ_FS_ARCH_PROFILE "apple-silicon (arm64: popcnt, neon)")
