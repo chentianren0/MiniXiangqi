@@ -21,7 +21,7 @@ public static class PlayText
     /// and a finished game says its result instead, because a finished game is
     /// nobody's to move.
     /// </summary>
-    public static string PrimaryStatus(this PlaySession play) => play.Status.State switch
+    public static string PrimaryStatus(this PlaySession play) => play.ResultState switch
     {
         Mxq.MXQ_GAME_RED_WINS => Strings.Get("status.redWins"),
         Mxq.MXQ_GAME_BLACK_WINS => Strings.Get("status.blackWins"),
@@ -37,7 +37,7 @@ public static class PlayText
     /// </summary>
     public static string? SecondaryStatus(this PlaySession play)
     {
-        string? claimOrReason = play.Status.State switch
+        string? claimOrReason = play.ResultState switch
         {
             Mxq.MXQ_GAME_ONGOING => null,
             Mxq.MXQ_GAME_CLAIMABLE_DRAW => Compose(
@@ -55,7 +55,7 @@ public static class PlayText
     }
 
     /// <summary>How a result reads. One home for the vocabulary.</summary>
-    public static string? Reason(this PlaySession play) => play.Status.EndReason switch
+    public static string? Reason(this PlaySession play) => play.ResultReason switch
     {
         Mxq.MXQ_END_REASON_CHECKMATE => Strings.Get("reason.checkmate"),
         Mxq.MXQ_END_REASON_STALEMATE => Strings.Get("reason.stalemate"),
@@ -75,7 +75,7 @@ public static class PlayText
     public static string? NoticeTitle(this PlaySession play) => play.Notice switch
     {
         ResultNotice.Recorded => Strings.Get("result.recorded"),
-        ResultNotice.Result => play.Status.State switch
+        ResultNotice.Result => play.ResultState switch
         {
             Mxq.MXQ_GAME_RED_WINS => Strings.Get("result.redWins"),
             Mxq.MXQ_GAME_BLACK_WINS => Strings.Get("result.blackWins"),

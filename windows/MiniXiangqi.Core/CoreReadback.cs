@@ -73,6 +73,17 @@ public readonly record struct SearchAnswer(
     uint ElapsedMs,
     string ProfileId);
 
+/// <summary>
+/// What a filed game committed. The outcome and the reason are the core's
+/// classification, derived from committed state and never from a caller.
+/// </summary>
+public readonly record struct RecordSummary(
+    ulong RecordId,
+    int Outcome,
+    int EndReason,
+    uint MoveCount,
+    string GameId);
+
 /// <summary>The plan the accepted Hash-budget arithmetic yields.</summary>
 public readonly record struct EnginePlan(
     uint Threads,

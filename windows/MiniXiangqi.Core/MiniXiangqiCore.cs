@@ -226,6 +226,33 @@ public sealed unsafe class MiniXiangqiCore : IDisposable
         return record;
     }
 
+    /// <summary>
+    /// One History record's committed classification.
+    ///
+    /// This is the only place a resignation or a claimed draw can be read from:
+    /// <c>mxq.h</c> says so in as many words — "MxqGameStatus.state is still the
+    /// replayed position's verdict, which for a resignation or an ended-early
+    /// record is not the committed outcome at all: that is MxqOutcome, and
+    /// mxq_store_history_get is where it is read."
+    /// </summary>
+    public RecordSummary HistoryRecord(ulong recordId)
+    {
+        MxqRecordSummary summary = default;
+        summary.struct_size = (uint)sizeof(MxqRecordSummary);
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_store_history_get(Live, recordId, &summary, &err),
+            in err,
+            nameof(Mxq.mxq_store_history_get));
+
+        return new RecordSummary(
+            summary.record_id,
+            summary.outcome,
+            summary.end_reason,
+            summary.move_count,
+            Utf8.Read(summary.game_id));
+    }
+
     /// <summary>The raw handle, for the calls this wrapper does not cover.</summary>
     public MxqCore* Handle => Live;
 

@@ -105,9 +105,11 @@ public sealed class PlaySession : IDisposable
     private bool _userFlipped;
 
     private IDisposable? _indicator;
+    private Task? _preparation;
     private int _attempt;
     private bool _preparing;
     private bool _recorded;
+    private RecordSummary? _committed;
     private bool _noticeDismissed;
     private Action? _failedCommit;
 
@@ -130,6 +132,25 @@ public sealed class PlaySession : IDisposable
     public BoardPosition Position { get; private set; }
 
     public GameState Status { get; private set; }
+
+    /// <summary>
+    /// The game's result, in <c>MxqGameState</c>'s vocabulary: the committed one
+    /// once the game has been filed, and the position's own verdict before that.
+    ///
+    /// The two are not the same question and cannot be read from one place.
+    /// <c>MxqGameStatus.state</c> is what the position on the board comes to,
+    /// which is exactly right for a checkmate and says nothing at all about a
+    /// resignation or a claimed draw — neither of those is a property of a
+    /// position, and a game that ends by one of them stands on a board that is
+    /// still somebody's to move. <c>mxq.h</c> names the second place: the
+    /// committed outcome is <c>MxqOutcome</c>, and <c>mxq_store_history_get</c>
+    /// is where it is read. So a terminal commit reads its own record back and
+    /// this is what the screen says afterwards.
+    /// </summary>
+    public int ResultState { get; private set; }
+
+    /// <summary>The reason beside it, from whichever of the two answered.</summary>
+    public int ResultReason { get; private set; }
 
     public GameConfiguration Configuration => _configuration;
 
@@ -181,7 +202,7 @@ public sealed class PlaySession : IDisposable
 
     public Side SideToMove => Position.SideToMove == Mxq.MXQ_COLOR_BLACK ? Side.Black : Side.Red;
 
-    public bool IsOver => Status.State
+    public bool IsOver => ResultState
         is Mxq.MXQ_GAME_RED_WINS or Mxq.MXQ_GAME_BLACK_WINS or Mxq.MXQ_GAME_DRAW;
 
     /// <summary>
@@ -352,26 +373,60 @@ public sealed class PlaySession : IDisposable
         Publish();
     }
 
-    public void ConfirmResign() => Terminal(() => _game.Resign());
+    /// <summary>
+    /// 认输, confirmed. It records a human loss and moves the game to immutable
+    /// History.
+    /// </summary>
+    public void ConfirmResign() => Confirmed(() => CanResign, () => _game.Resign());
 
-    public void ConfirmClaimDraw()
-    {
-        // Claiming while the AI is thinking is legal exactly when the core
-        // reports the claim available; the search is cancelled before the
-        // terminal commit, because a search outstanding over a game that has
-        // just ended answers to nothing.
-        _search.Cancel();
-        StopIndicator();
-        Activity = AiActivity.Idle;
-        Terminal(() => _game.ClaimDraw());
-    }
+    /// <summary>以和棋结束, confirmed. The one finish that cannot be walked back.</summary>
+    public void ConfirmClaimDraw() => Confirmed(() => CanClaimDraw, () => _game.ClaimDraw());
 
     /// <summary>
     /// 保存 — the result notice's default action. It confirms the result, files
     /// the game in History, and leaves the board standing exactly at the result
     /// it reached.
     /// </summary>
-    public void SaveResult() => Terminal(() => _game.ConfirmResult());
+    public void SaveResult() => Confirmed(() => IsOver && !_recorded, () => _game.ConfirmResult());
+
+    /// <summary>
+    /// What every confirmed terminal act does before it acts: stop the machine
+    /// thinking, and ask the core again whether the act it was asked about is
+    /// still the act available.
+    ///
+    /// Both halves are necessary and neither is a precaution. The cancellation
+    /// is a correctness requirement rather than a promptness one — a search
+    /// outstanding over a game that has just ended answers to nothing, and a
+    /// reply that survived to be applied would be applied to a detached,
+    /// archived session, which is the programming-error class the core asserts
+    /// on. And the re-check is necessary because a confirmation is not a
+    /// barrier: a system dialog does not block the dispatcher, so between the
+    /// question and the answer the AI's reply can land, the game can reach its
+    /// own natural result, and the act can stop being available at all.
+    /// Answering then is not a failure to report to anybody — the game ended
+    /// while the player was reading — so it is a quiet return with the board
+    /// brought up to date.
+    /// </summary>
+    private void Confirmed(Func<bool> stillAvailable, Func<ulong> commit)
+    {
+        _search.Cancel();
+        StopIndicator();
+        Activity = AiActivity.Idle;
+        Read();
+
+        if (Alert is PlayAlert.Resign or PlayAlert.ClaimDraw)
+        {
+            Alert = PlayAlert.None;
+        }
+
+        if (!stillAvailable())
+        {
+            Publish();
+            return;
+        }
+
+        Terminal(commit);
+    }
 
     /// <summary>重试, for a terminal commit the store refused.</summary>
     public void RetryFailedCommit()
@@ -389,9 +444,12 @@ public sealed class PlaySession : IDisposable
     /// </summary>
     public void NewGame()
     {
-        if (!_recorded && IsOver && !Terminal(() => _game.ConfirmResult()))
+        // Filing it first, through the same guarded path 保存 takes: the search
+        // is cancelled, the state is read again, and a game that has stopped
+        // being finishable is not finished twice.
+        if (!_recorded)
         {
-            return;
+            SaveResult();
         }
 
         if (!_recorded)
@@ -411,6 +469,7 @@ public sealed class PlaySession : IDisposable
         _gameId = replacement.Id;
         _configuration = replacement.Configuration();
         _recorded = false;
+        _committed = null;
         _noticeDismissed = false;
         MoveNotSaved = false;
         Select(null);
@@ -458,10 +517,34 @@ public sealed class PlaySession : IDisposable
         Publish();
     }
 
+    /// <summary>
+    /// Quiesce and release. docs/core-interface.md's shutdown promise covers
+    /// every call that *begins* after <c>mxq_core_shutdown</c> returns, and
+    /// explicitly not one already in flight on another thread — "the caller
+    /// quiesces its own threads before shutting the core down; the core does
+    /// not defend against one that does not." An engine preparation is this
+    /// session's only call on another thread, so it is waited for here. The
+    /// wait is bounded by the preparation's own completion and cannot deadlock:
+    /// it runs on a pool thread, marshals onto the engine thread, and depends
+    /// on nothing this thread holds.
+    /// </summary>
     public void Dispose()
     {
         StopIndicator();
         _search.Dispose();
+
+        try
+        {
+            _preparation?.Wait();
+        }
+        catch (AggregateException)
+        {
+            // The preparation's own failure was already reported through the
+            // scheduler, or will never be delivered because the window is
+            // closing. Either way there is nobody left to tell.
+        }
+
+        _preparation = null;
         _game.Dispose();
     }
 
@@ -471,6 +554,8 @@ public sealed class PlaySession : IDisposable
     {
         Position = _game.Position();
         Status = _game.State();
+        ResultState = _committed is { } record ? StateOf(record.Outcome) : Status.State;
+        ResultReason = _committed is { } filed ? filed.EndReason : Status.EndReason;
         _placement = new Placement(Position.Fen);
         MoveRecord = _game.MoveHistory();
         _lastMove = MoveRecord.Count > 0 ? Move.Parse(MoveRecord[^1]) : null;
@@ -591,9 +676,10 @@ public sealed class PlaySession : IDisposable
     /// </summary>
     private bool Terminal(Func<ulong> commit)
     {
+        ulong record;
         try
         {
-            commit();
+            record = commit();
         }
         catch (MxqException failure) when (failure.Domain == Mxq.MXQ_DOMAIN_STORE)
         {
@@ -602,8 +688,33 @@ public sealed class PlaySession : IDisposable
             Publish();
             return false;
         }
+        catch (MxqException failure) when (failure.Domain == Mxq.MXQ_DOMAIN_STATE)
+        {
+            // A state-domain refusal here says the act is no longer the act
+            // available — the game already has a result, or the session is
+            // already archived. The guard above asked a moment ago and the core
+            // said yes; whatever changed between then and now is not the
+            // player's mistake and there is nothing to tell them that the board
+            // will not say. So the board is brought up to date and nothing else
+            // happens. It is deliberately not an escape: this runs under a
+            // dialog's completion, and an exception from there would reach the
+            // application's own unhandled handler rather than any caller.
+            Read();
+            Publish();
+            return false;
+        }
 
         _recorded = true;
+
+        // Read the record back, because the committed classification is the
+        // core's and this is where the core keeps it. It is one row by
+        // identifier — strictly less work than the terminal commit that just
+        // ran under the active game's own UI-thread exception, committing
+        // nothing and touching one index — so it is read here rather than
+        // marshalled, which would leave the screen showing the wrong result for
+        // a frame.
+        _committed = _core.HistoryRecord(record);
+
         _noticeDismissed = false;
         Alert = PlayAlert.None;
         Select(null);
@@ -611,6 +722,22 @@ public sealed class PlaySession : IDisposable
         Publish();
         return true;
     }
+
+    /// <summary>
+    /// A committed outcome, said in the vocabulary the screen already speaks.
+    /// It is a translation between two of the core's own parallel vocabularies,
+    /// both frozen in game-data.md, and not an adjudication: nothing here
+    /// decides who won, it only says the same answer in the other set of words.
+    /// <c>MXQ_OUTCOME_NONE</c> belongs to a game ended early, which this screen
+    /// never files.
+    /// </summary>
+    private static int StateOf(int outcome) => outcome switch
+    {
+        Mxq.MXQ_OUTCOME_RED_WINS => Mxq.MXQ_GAME_RED_WINS,
+        Mxq.MXQ_OUTCOME_BLACK_WINS => Mxq.MXQ_GAME_BLACK_WINS,
+        Mxq.MXQ_OUTCOME_DRAW => Mxq.MXQ_GAME_DRAW,
+        _ => Mxq.MXQ_GAME_ONGOING,
+    };
 
     // The machine on the other side of the board.
 
@@ -663,8 +790,11 @@ public sealed class PlaySession : IDisposable
         // mxq_engine_prepare blocks — it allocates Hash and loads the network,
         // marshalled onto the engine thread — and the threading contract keeps
         // it off the UI thread. So it goes to a pool thread and the answer
-        // comes back through the scheduler.
-        Task.Run(() =>
+        // comes back through the scheduler. The task is kept, because the same
+        // contract puts quiescence on the caller: a core shut down with a
+        // prepare still in flight is a call already inside the core when the
+        // gate closes, and the core does not defend against one.
+        _preparation = Task.Run(() =>
         {
             MxqException? failure = null;
             try
@@ -748,6 +878,15 @@ public sealed class PlaySession : IDisposable
         StopIndicator();
         Activity = AiActivity.Idle;
 
+        // A game that has been filed is nobody's to answer. A terminal commit
+        // archives the session without changing the position, so the staleness
+        // comparison below would let this reply through; this is what stops it.
+        if (_recorded)
+        {
+            Publish();
+            return;
+        }
+
         switch (answer.Outcome)
         {
             case Mxq.MXQ_SEARCH_MOVE:
@@ -807,6 +946,19 @@ public sealed class PlaySession : IDisposable
             // from it rather than the same result being pushed again.
             Publish();
             EnsureSearch();
+            return;
+        }
+        catch (MxqException failure) when (failure.Domain == Mxq.MXQ_DOMAIN_STATE)
+        {
+            // The game stopped being this reply's to answer — it was resigned,
+            // claimed or confirmed while the reply was in the air. The staleness
+            // comparison above cannot see that, because a terminal commit is not
+            // a position change: it archives the session at the same revision.
+            // So the board is brought up to date and the reply is dropped, which
+            // is what a search outstanding over a game that has just ended is
+            // worth.
+            Read();
+            Publish();
             return;
         }
 
