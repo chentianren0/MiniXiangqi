@@ -1,10 +1,10 @@
 # The Windows frontend: the core as a DLL, the bindings, the C# projects, the
-# headless harness, and pictures of the board.
+# headless harness, pictures of the board, and the zip anybody is given.
 #
 # The obligation is issue #80's, carried from #85's verify: "the next
 # Windows-frontend PR owes CI an `mxq_core_shared` build and a `generate.ps1`
 # diff check, so the DLL export path and the bindings cannot drift silently."
-# Both are here, and two more things came with them:
+# Both are here, and three more things came with them:
 #
 #   * the smoke harness, which is where this frontend's behaviour is actually
 #     run — a WinUI 3 process cannot be launched without an interactive desktop,
@@ -15,19 +15,37 @@
 #     0, so the development VM cannot draw one over SSH; a hosted runner has a
 #     console session and can. Every set of PNGs committed under
 #     docs/evidence/pr<number>/ came from this job, and it uploads a fresh set on
-#     every run.
+#     every run;
+#   * the distribution, which is a zip somebody unpacks and runs (issue #80,
+#     owner decision, 2026-07-30). This workflow is where it is built, because
+#     it is the only place both architectures exist.
 #
-# It does not touch core-suites.yml, whose job is the core's own suites on both
-# platforms, and it starts on a disjoint set of paths. The one file both care
-# about is pinned-inputs.json, deliberately: it carries the network's hash and
-# the Windows toolchain block, and a change to either should be seen by both.
+# TWO ARCHITECTURES, AND WHY THE CORE'S OWN ARM64 SUITES ARE NOT HERE
 #
-# This workflow names two versions the repository does not: the runner image and
+# The matrix below builds, runs and packages the frontend on x64 and on ARM64,
+# each on its own native runner. The core's ARM64 *suites* are in
+# core-suites.yml instead, beside the x64 ones, and that file says why: what
+# decides a job's home is which changes should start it, and a fixtures change
+# starts core-suites.yml and not this workflow.
+#
+# THE NETWORK IS NOT IN THE ARTIFACT
+#
+# This repository is public, and a GitHub Actions artifact on a public
+# repository can be downloaded by any logged-in GitHub account. The NNUE network
+# is bytes docs/engine-integration.md keeps out of version control in any form,
+# whose redistribution licence has never been established. So the zip excludes
+# it and carries a NETWORK.md naming what is missing; windows/package-zip.ps1
+# removes it and then proves it is gone three ways. The packaging-proof step
+# below puts the network back — into a copy of the unpacked zip that never
+# leaves the runner — because that is the only way to run the harness against
+# the zip's own layout.
+#
+# WHAT THIS WORKFLOW NAMES THAT THE REPOSITORY DOES NOT: the runner images and
 # the .NET SDK feature band. Both are for the reason core-suites.yml gives about
 # its own image pin — an exact label rather than a floating one, so the inputs
-# are visible — and neither is a pin in pinned-inputs.json's sense. The frontend
-# half of the Windows toolchain is still unpinned there, and the packaging build
-# is what will settle it.
+# are visible. What the packaging build measured about the frontend's toolchain
+# is now recorded in pinned-inputs.json's Windows entry, which is what that
+# entry was waiting for.
 
 name: Windows frontend
 
@@ -39,6 +57,7 @@ on:
       - 'pinned-inputs.json'
       - 'docs/copy.md'
       - 'apple/MiniXiangqi/Sounds/**'
+      - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
       - '.github/scripts/fetch-network.sh'
   push:
@@ -49,6 +68,7 @@ on:
       - 'pinned-inputs.json'
       - 'docs/copy.md'
       - 'apple/MiniXiangqi/Sounds/**'
+      - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
       - '.github/scripts/fetch-network.sh'
 
@@ -65,8 +85,31 @@ permissions:
 
 jobs:
   frontend:
-    name: Windows frontend (MSVC + .NET, x64)
-    runs-on: windows-2025
+    name: Windows frontend (MSVC + .NET, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    # Neither architecture's answer is worth cancelling for the other's. An
+    # ARM64 failure is a finding about ARM64, and the x64 result beside it is
+    # what says whether it is architecture-specific.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+            rid: win-x64
+            # The bindings check, the sound-sample comparison and the board
+            # renders run on one architecture only, and this is it. The first
+            # two are source-level checks — ClangSharp reads a header and
+            # Get-FileHash reads a .wav — and running them twice would prove
+            # nothing the first run did not. The renders are pictures of a board
+            # whose every dimension is architecture-independent, and Win2D over
+            # Direct2D on a hosted ARM64 VM is an unknown this rung has no need
+            # to spend a job on.
+            source_checks: true
+          - arch: arm64
+            runner: windows-11-arm
+            rid: win-arm64
+            source_checks: false
     steps:
       # Pinned to a commit, not to the v5 tag: a tag is mutable.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -78,8 +121,14 @@ jobs:
       - name: Record the toolchain
         shell: pwsh
         run: |
-          cmake --version
-          dotnet --info | Select-Object -First 6
+          Write-Host "processor architecture: $env:PROCESSOR_ARCHITECTURE"
+          cmd /c ver
+          if (Get-Command cmake -ErrorAction SilentlyContinue) {
+            cmake --version
+          } else {
+            Write-Host 'cmake is not on PATH; build-core-dll.ps1 falls back to the one Visual Studio ships.'
+          }
+          dotnet --info | Select-Object -First 8
           Write-Host "session id: $((Get-Process -Id $PID).SessionId)"
 
       # The network never enters version control and this repository is public,
@@ -95,7 +144,9 @@ jobs:
         run: .github/scripts/fetch-network.sh
 
       # MXQ_BUILD_SHARED_LIBRARY=ON, which is the export path #85 added and the
-      # thing this job exists to keep from breaking silently.
+      # thing this job exists to keep from breaking silently. The script builds
+      # for the machine it is on, so this line is the same on both runners and
+      # the architecture comes from the runner.
       - name: Build the core as a DLL
         shell: pwsh
         env:
@@ -104,11 +155,12 @@ jobs:
           if (-not $env:MXQ_NNUE_SOURCE) {
             throw 'No NNUE network reached this runner. The frontend cannot stage its assets without one; set MXQ_NNUE_DEPLOY_KEY or MXQ_NNUE_URL.'
           }
-          pwsh windows/build-core-dll.ps1 -NnueSource $env:MXQ_NNUE_SOURCE
+          pwsh windows/build-core-dll.ps1 -Architecture ${{ matrix.arch }} -NnueSource $env:MXQ_NNUE_SOURCE
 
       # A Mxq.g.cs that differs from what the generator writes is a
       # transcription of the header rather than the header.
       - name: Regenerate the bindings and fail on any difference
+        if: matrix.source_checks
         shell: pwsh
         run: |
           pwsh windows/bindings/generate.ps1
@@ -130,6 +182,7 @@ jobs:
       #
       # It reads apple/ and writes nothing there.
       - name: The four voices are the same four voices
+        if: matrix.source_checks
         shell: pwsh
         run: |
           $mismatched = @()
@@ -150,7 +203,9 @@ jobs:
 
       # The frontend's own evidence: the whole boundary, the wrapper, the string
       # table against docs/copy.md, and a game against the AI played through the
-      # play screen's session.
+      # play screen's session. On the ARM64 runner this is also the first time
+      # anything above the C interface has run on that architecture at all, so
+      # the harness's own "process" line is part of what the run reports.
       - name: Run the smoke harness
         shell: pwsh
         run: |
@@ -159,15 +214,77 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The smoke harness failed with $LASTEXITCODE." }
 
       - name: Render the board
+        if: matrix.source_checks
         shell: pwsh
         run: |
-          $exe = 'windows/MiniXiangqi.Shots/bin/Release/net10.0-windows10.0.26100.0/win-x64/MiniXiangqi.Shots.exe'
+          $exe = 'windows/MiniXiangqi.Shots/bin/Release/net10.0-windows10.0.26100.0/${{ matrix.rid }}/MiniXiangqi.Shots.exe'
           & $exe --out shots
           if ($LASTEXITCODE -ne 0) { throw "The render harness failed with $LASTEXITCODE." }
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: always() && matrix.source_checks
         with:
           name: board-renders
           path: shots/*.png
           if-no-files-found: error
+
+      # ---------------------------------------------------------------------
+      # The distribution
+      # ---------------------------------------------------------------------
+      #
+      # windows/package-zip.ps1 publishes the app and the self-check
+      # self-contained into one directory, removes the network, adds the licence
+      # and the two notes, checks three ways that no network byte survived and
+      # that every native binary is this architecture, and zips it. Everything
+      # it decides is argued there rather than here.
+      - name: Build the distribution zip
+        shell: pwsh
+        run: pwsh windows/package-zip.ps1 -Architecture ${{ matrix.arch }}
+
+      # The proof that the zip runs, rather than the assumption that it does.
+      #
+      # The artifact is unpacked into a directory of its own, the network is
+      # dropped into the unpacked assets folder from the same fetch the build
+      # used, and the harness that came out of the zip is run against the zip's
+      # own layout — its own mxqcore.dll, its own assets, its own runtime, at the
+      # paths a person who unpacked it would have. Nothing from the build tree is
+      # on that path. The network copied here never leaves the runner: the
+      # artifact was zipped before this step and is not rebuilt after it.
+      - name: Run the harness from inside the unpacked zip
+        shell: pwsh
+        env:
+          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
+        run: |
+          $zip = "windows/dist/MiniXiangqi-windows-${{ matrix.arch }}.zip"
+          $proof = Join-Path $env:RUNNER_TEMP 'zip-proof'
+          if (Test-Path $proof) { Remove-Item $proof -Recurse -Force }
+          Expand-Archive -Path $zip -DestinationPath $proof
+          $unpacked = Join-Path $proof "MiniXiangqi-windows-${{ matrix.arch }}"
+
+          Write-Host 'As unpacked, before the network is added:'
+          Get-ChildItem (Join-Path $unpacked 'assets') | ForEach-Object {
+            Write-Host ("  assets\{0}  {1:N0} bytes" -f $_.Name, $_.Length)
+          }
+
+          # The name is the one NETWORK.md tells a person to use, taken from the
+          # manifest exactly as that file takes it, so this step and the
+          # instruction cannot disagree.
+          $manifest = Get-Content pinned-inputs.json -Raw | ConvertFrom-Json
+          Copy-Item $env:MXQ_NNUE_SOURCE (Join-Path $unpacked "assets\$($manifest.network.filename)") -Force
+          Write-Host "Added $($manifest.network.filename), as NETWORK.md asks a person to."
+
+          # No --copy-table: docs/copy.md is not in the zip and has no business
+          # being. The string table is checked against the contract by the build
+          # tree's run above; what this run is for is the layout.
+          & (Join-Path $unpacked 'MiniXiangqi.Smoke.exe')
+          if ($LASTEXITCODE -ne 0) { throw "The harness failed inside the unpacked zip with $LASTEXITCODE." }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MiniXiangqi-windows-${{ matrix.arch }}
+          path: windows/dist/MiniXiangqi-windows-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          # The default is 90 days. A fortnight is what an internal build is
+          # worth keeping: it is reproducible from the commit it was built at,
+          # and a stale zip somebody finds later is a build nobody chose.
+          retention-days: 14

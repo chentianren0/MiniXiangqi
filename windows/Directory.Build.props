@@ -1,9 +1,10 @@
 <Project>
 
   <!--
-    Settings shared by every project under windows/. Windows 11 on x64 is the
-    target (owner decisions, 2026-07-30, recorded in pinned-inputs.json), and
-    .NET 10 is the SDK the machine that builds this carries.
+    Settings shared by every project under windows/. Windows 11 on x64 and
+    ARM64 is the target (owner decisions, 2026-07-30 and 2026-07-31, recorded
+    in pinned-inputs.json), and .NET 10 is the SDK the machine that builds this
+    carries.
 
     AllowUnsafeBlocks is not a convenience: the core's C interface is pointers
     and fixed-capacity buffers, and docs/core-interface.md's binding rule is
@@ -15,7 +16,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PlatformTarget>x64</PlatformTarget>
 
     <!--
       Globalization is on. It was off in the walking skeleton, which showed one
@@ -29,9 +29,39 @@
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
+  <!--
+    The one architecture switch. Every project that needs a runtime identifier
+    reads MxqRuntimeIdentifier rather than naming one, so a whole-tree build for
+    the other architecture is one property on the command line:
+
+      dotnet build windows\MiniXiangqi.slnx -c Release -p:MxqRuntimeIdentifier=win-arm64
+
+    It defaults to the architecture of the machine running the build, which is
+    what makes both CI runners and both kinds of developer machine correct with
+    no argument at all. Cross-building is possible for the managed half but not
+    for the core, which is MSVC's; windows/build-core-dll.ps1 builds for its own
+    host too, and the two agreeing by default is the point. The default is read
+    from PROCESSOR_ARCHITECTURE rather than from the SDK's own
+    NETCoreSdkRuntimeIdentifier because this file is imported before the .NET
+    SDK's props, where that property does not exist yet.
+
+    PlatformTarget follows from it rather than being set beside it. The two must
+    agree — the SDK refuses a win-arm64 RuntimeIdentifier under an x64
+    PlatformTarget outright (NETSDK1032) — and deriving one from the other is
+    what makes that impossible to get wrong.
+  -->
+  <PropertyGroup>
+    <MxqRuntimeIdentifier Condition="'$(MxqRuntimeIdentifier)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">win-arm64</MxqRuntimeIdentifier>
+    <MxqRuntimeIdentifier Condition="'$(MxqRuntimeIdentifier)' == ''">win-x64</MxqRuntimeIdentifier>
+    <PlatformTarget Condition="'$(MxqRuntimeIdentifier)' == 'win-arm64'">ARM64</PlatformTarget>
+    <PlatformTarget Condition="'$(MxqRuntimeIdentifier)' == 'win-x64'">x64</PlatformTarget>
+  </PropertyGroup>
+
   <PropertyGroup>
     <!-- Where windows/build-core-dll.ps1 leaves mxqcore.dll and the staged
-         asset directory. Executables copy both beside themselves. -->
+         asset directory. Executables copy both beside themselves. It holds one
+         architecture's core at a time, which is the architecture that script
+         last built for. -->
     <MxqArtifactsDir>$(MSBuildThisFileDirectory)artifacts\</MxqArtifactsDir>
   </PropertyGroup>
 

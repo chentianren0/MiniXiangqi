@@ -6,16 +6,14 @@
     same core, so that the interface is proved in a process that also runs a
     UI framework.
 
-    The play screen is here; the Play home, the pre-start states and the
-    navigation container are the next pull request's, and the packaging build
-    is later still. docs/architecture.md's Need-to-discuss entry for the Windows
-    frontend toolchain stays open until a packaging build establishes it;
-    nothing below is a pin.
-
-    Unpackaged and self-contained: WindowsPackageType None because no packaging
-    build exists yet and this one decides nothing about the one that will, and
-    WindowsAppSDKSelfContained because a machine that has never installed the
-    Windows App Runtime should still be able to run what it built.
+    Unpackaged and self-contained, which is now the shipped shape rather than a
+    convenience: WindowsPackageType None because the accepted MVP distribution
+    is a zip somebody unpacks and runs (issue #80, owner decision, 2026-07-30 —
+    MSIX and its signing story are the post-MVP upgrade), and
+    WindowsAppSDKSelfContained so that a machine which has never installed the
+    Windows App Runtime can run what it unpacked. windows/package-zip.ps1
+    publishes this project self-contained on top of both, and
+    pinned-inputs.json's Windows entry records what that build measured.
   -->
 
   <PropertyGroup>
@@ -26,7 +24,7 @@
     <RootNamespace>MiniXiangqi.App</RootNamespace>
     <AssemblyName>MiniXiangqi.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier>$(MxqRuntimeIdentifier)</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
