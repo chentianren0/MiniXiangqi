@@ -530,10 +530,13 @@ application is under, and the reason it is under it.
 | Upstream | <$($fork.upstream_repository)> |
 | Upstream base | ``$($fork.upstream_base_revision)`` |
 
-The exact sources this binary was built from are in the source repository above,
-under ``core/third_party/fairy-stockfish/upstream``, together with the file
-hashes that identify them. That copy, rather than a link to somebody else's
-server, is what makes the corresponding source available offline.
+The exact sources this binary was built from are **in this project's own
+repository**, named at the top of this file, under
+``core/third_party/fairy-stockfish/upstream`` — a verbatim copy of the fork
+revision above, with ``SOURCES.sha256`` beside it listing the SHA-256 of every
+file in it. The fork URL above is where that copy came from; the path is this
+project's. Carrying the sources rather than only linking to somebody else's
+server is what makes the corresponding source available even if the fork moves.
 
 $(if ($internal) {
 "The neural network the evaluation loads is a separate input with its own
@@ -557,7 +560,11 @@ app rather than requiring them to be installed:
 
 - the **.NET runtime**, MIT licensed;
 - the **Windows App SDK** and **WinUI 3**, redistributed under the Microsoft
-  Software Licence terms that accompany them;
+  Software Licence terms that accompany them. Its self-contained deployment also
+  brings the machine-learning components it depends on — ``onnxruntime.dll``,
+  ``DirectML.dll`` and their companions — which this application never loads;
+  they are covered by those same accompanying terms and are listed here because
+  they are large, present, and would otherwise go unexplained;
 - **Win2D** (``Microsoft.Graphics.Win2D``), MIT licensed;
 - the **Microsoft Visual C++ runtime** (``vcruntime140*.dll``,
   ``msvcp140*.dll``), redistributed under the Visual Studio licence terms that

@@ -322,6 +322,13 @@ jobs:
       # which its output could be picked up. And the check afterwards is
       # mechanical rather than a convention: windows/dist is re-examined for the
       # network by name and by exact byte length, and a hit fails the job.
+      #
+      # RUNNER_TEMP now holds the network twice — the fetch put it there, and
+      # this package contains it — and neither copy can reach an artifact,
+      # because nothing in this repository uploads from RUNNER_TEMP or from a
+      # glob that could reach it. There are exactly two upload steps, both in
+      # this workflow: the board renders, from shots/*.png, and the distribution
+      # zip, named in full. Adding a third is the thing to look at twice.
       - name: Prove the internal packaging path, and upload none of it
         shell: pwsh
         env:

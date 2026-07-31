@@ -45,6 +45,20 @@
     NETCoreSdkRuntimeIdentifier because this file is imported before the .NET
     SDK's props, where that property does not exist yet.
 
+    PROCESSOR_ARCHITECTURE IS THE ARCHITECTURE OF THE PROCESS, NOT THE MACHINE.
+    It reads what the process asking is, so an emulated x64 process on an ARM64
+    machine answers AMD64 — which is exactly what git-bash does on the ARM64
+    runner, and why .github/scripts/run-suites.sh is passed its target platform
+    rather than inferring one. MSBuild and pwsh are native here and read ARM64
+    correctly, so this default is right for both; a 32-bit or emulated host
+    running the build would silently produce an x64 frontend on an ARM64
+    machine. CI never relies on it — both workflows pass -Architecture explicitly
+    and the packaging build re-reads every binary's PE machine type — so the one
+    consumer of this default is a developer running `dotnet build` by hand, and
+    it fails loudly rather than subtly: an x64 frontend cannot load an ARM64
+    mxqcore.dll, so the first call across the C interface is a DllNotFoundException
+    naming the file.
+
     PlatformTarget follows from it rather than being set beside it. The two must
     agree — the SDK refuses a win-arm64 RuntimeIdentifier under an x64
     PlatformTarget outright (NETSDK1032) — and deriving one from the other is

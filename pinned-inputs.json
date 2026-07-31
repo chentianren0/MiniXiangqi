@@ -244,7 +244,7 @@
           "packaged_by": "windows/package-zip.ps1",
           "measured_on": "2026-07-31",
           "measured_host": "GitHub-hosted runners windows-2025 and windows-11-arm",
-          "_measured_note": "dotnet_runtime is the runtime the published self-contained app actually carried, reported by the smoke harness running from inside the unpacked zip. target_framework and target_platform_min_version are the frontend projects' own; the Windows App SDK and Win2D versions are the package references the publish resolved."
+          "_measured_note": "dotnet_runtime is the runtime the published self-contained app actually carried, reported by the smoke harness running from inside the unpacked zip. The Windows App SDK and Win2D versions are the package references the publish resolved. target_framework and target_platform_min_version are the frontend projects' own, and they are not one value across the tree: MiniXiangqi.App, MiniXiangqi.Board and MiniXiangqi.Shots target net10.0-windows10.0.26100.0, because they use WinUI 3 and Win2D and so need the Windows SDK projection; MiniXiangqi.Core, MiniXiangqi.Play and MiniXiangqi.Smoke target plain net10.0-windows, because they deliberately reference no UI framework — which is what lets the harness run where a WinUI process cannot. The version recorded here is the first group's, the one the app itself is built against; the second group is named because MiniXiangqi.Smoke ships in the zip beside the app and target_platform_min_version therefore does not describe every executable in it. Both groups run on the same runtime."
         },
         "packaging_flags": {
           "established": true,
@@ -255,12 +255,24 @@
           "windows_app_sdk_self_contained": true,
           "distribution": "zip",
           "_distribution_note": "One zip per architecture, unpacked and run, with no installer and no runtime install on the target machine (owner decision, 2026-07-30; MSIX and its signing-certificate story are the post-MVP upgrade). The zip published by CI deliberately excludes the NNUE network — a CI artifact on a public repository is publicly downloadable, and the network's redistribution licence has never been established — and carries a NETWORK.md naming the filename, byte length and SHA-256 recorded under 'network' below. windows/package-internal.ps1 builds the same zip with the network placed, for internal testers only.",
-          "app_local_runtimes": [
-            "dotnet",
-            "windows-app-sdk",
-            "msvc-crt"
-          ],
-          "_app_local_note": "The three runtimes the zip carries beside the app so that unpacking installs nothing. The Visual C++ CRT is app-local because mxqcore.dll links it dynamically and neither self-contained mode carries it; the files are taken from the Visual Studio redistributable for the target architecture, each checked against its own PE machine type rather than trusted for sitting in that architecture's folder.",
+          "app_local_runtimes": {
+            "_about": "The three runtimes the zip carries beside the app so that unpacking installs nothing, and where each one's version is recorded. The first two are package references whose versions are toolchain.dotnet_runtime and toolchain.windows_app_sdk above, and are not restated here. The third is not a package reference at all: mxqcore.dll links the C++ runtime dynamically, neither self-contained mode carries it, and windows/package-zip.ps1 copies it from whichever Visual Studio redistributable the build machine happens to carry for the target architecture — so what shipped is recorded here, per architecture, and the two differ because the two CI runners carry different Visual Studio versions.",
+            "dotnet": "toolchain.dotnet_runtime",
+            "windows_app_sdk": "toolchain.windows_app_sdk",
+            "msvc_crt": {
+              "x64": {
+                "redistributable": "Microsoft.VC145.CRT",
+                "msvc_toolset": "14.51.36231",
+                "from": "Visual Studio 2026 Enterprise on the windows-2025 runner"
+              },
+              "arm64": {
+                "redistributable": "Microsoft.VC143.CRT",
+                "msvc_toolset": "14.44.35112",
+                "from": "Visual Studio 2022 Enterprise on the windows-11-arm runner"
+              },
+              "_note": "Each file is taken only if its own PE machine type is the target architecture, rather than trusted for sitting in that architecture's folder — which is not a formality: the arm64 redistributable contains an x64 vcruntime140_1.dll, the x64 exception unwinder that ARM64 has no use for, and it is the one file present in the x64 zip and absent from the arm64 one. The msvc_toolset here is the redistributable's own version and is not the toolset that compiled the core; on x64 they coincide, and on arm64 they do not, because the runner's redistributable and its compiler ship on separate schedules. toolchain_core records what compiled it."
+            }
+          },
           "measured_on": "2026-07-31"
         },
         "toolchain_core": {
