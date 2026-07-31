@@ -622,6 +622,14 @@ public sealed class PlayFlow : IDisposable
 
         bool wasHumanVersusAi = live.IsHumanVersusAi;
         live.Changed -= Publish;
+
+        // Cancel before release, and cancel rather than abandon. A session's own
+        // disposal only abandons what is in flight, because it was written for
+        // the window closing — where the core's shutdown cancels everything a
+        // moment later. Here the core lives on, and a search still outstanding
+        // over a game nobody is playing is what makes the next preparation
+        // answer MXQ_ERR_STATE_SEARCH_IN_PROGRESS.
+        live.CancelSearch();
         live.Dispose();
         _session = null;
         if (wasHumanVersusAi)
@@ -684,6 +692,7 @@ public sealed class PlayFlow : IDisposable
         if (_session is { } live)
         {
             live.Changed -= Publish;
+            live.CancelSearch();
             live.Dispose();
             _session = null;
         }

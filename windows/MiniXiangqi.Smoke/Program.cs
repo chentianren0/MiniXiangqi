@@ -1223,9 +1223,19 @@ internal static unsafe class Program
         Check("the pre-start state is not an active game", flow.Session is null);
         Check("the draft is the Settings defaults",
             flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
-        Check("the preview is the frozen initial position, Red at the bottom",
-            flow.PreviewScene.Placement[new Square(0, 0)] is { Kind: PieceKind.Chariot, Side: Side.Red }
-            && !flow.PreviewScene.Flipped);
+        Placement frozen = new(MiniXiangqiCore.StartFen);
+        bool previewsTheStart = true;
+        for (int rank = 0; rank < Square.Count && previewsTheStart; rank++)
+        {
+            for (int file = 0; file < Square.Count && previewsTheStart; file++)
+            {
+                Square point = new(file, rank);
+                previewsTheStart = flow.PreviewScene.Placement[point] == frozen[point];
+            }
+        }
+
+        Check("the preview is the frozen initial position", previewsTheStart);
+        Check("and it shows Red at the bottom", !flow.PreviewScene.Flipped);
 
         flow.ChooseFirstMover(FirstMoverChoice.AiFirst);
         Check("AI 先手 flips the preview", flow.PreviewScene.Flipped);
