@@ -34,8 +34,12 @@ repository root, which is the single source of truth for the fork's repository
 and revision, the ordered patch list, the per-platform build flags, the variant
 configuration, the network, and the SQLite version. The build must verify every
 hash in that manifest before packaging and fail on a mismatch rather than ship
-unverified bytes; that verification belongs in the packaging step, alongside
-whichever target copies the assets into the bundle, and does not exist yet.
+unverified bytes. That verification belongs beside whichever target copies the
+assets into the bundle, and that is where it is: `core/CMakeLists.txt` stages the
+variant configuration and the network only after checking both against the
+manifest, and the Windows packaging build — `windows/package-zip.ps1`, the first
+one on any platform — ships that verified staging rather than making a second
+uncontrolled copy of it.
 
 - **Fairy-Stockfish.** Vendored as a copied source snapshot of the pinned
   revision, built by a core-owned `CMakeLists.txt`. The contract requires the

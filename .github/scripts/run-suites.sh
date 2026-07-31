@@ -5,14 +5,22 @@
 #
 #   $1  single-config | multi-config
 #   $2  the build directory, relative to $RUNNER_TEMP
+#   $3  multi-config only: the generator platform for -A. x64 by default.
 #
 # The macOS runner takes the first: its default generator is single-config, so
 # each configuration is its own build tree and its own configure. The Windows
-# runner takes the second: CMake's default there is the newest installed Visual
+# runners take the second: CMake's default there is the newest installed Visual
 # Studio, which is multi-config, so one configure serves both and the network is
 # staged once. Naming no generator is deliberate — CMake locates the toolset
 # itself, nothing hardcodes an edition path or an environment script, and no
 # third-party action sets one up.
+#
+# The generator platform is a parameter rather than a constant because there are
+# now two Windows runners, x64 and ARM64, and the Visual Studio generator does
+# not follow the host: without -A it targets whatever the generator's own
+# default is, which is not the same question as "what machine is this". Naming
+# it makes each job's target architecture readable in the job rather than
+# inferred from the runner label.
 #
 # MXQ_NNUE_SOURCE and MXQ_CTEST_EXCLUDE come from the fetch-network step, and
 # are both empty when no network reached the runner.
@@ -21,6 +29,7 @@ set -euo pipefail
 
 generator_kind="$1"
 build_directory="${RUNNER_TEMP//\\//}/$2"
+generator_platform="${3:-x64}"
 
 configure_options=(-DMXQ_ENABLE_RULES_FACADE=ON)
 if [ -n "${MXQ_NNUE_SOURCE:-}" ]; then
@@ -44,8 +53,9 @@ single-config)
 	done
 	;;
 multi-config)
-	cmake -S core -B "${build_directory}" -A x64 "${configure_options[@]}"
-	grep -E '^CMAKE_(CXX_COMPILER|GENERATOR):' \
+	cmake -S core -B "${build_directory}" -A "${generator_platform}" \
+		"${configure_options[@]}"
+	grep -E '^CMAKE_(CXX_COMPILER|GENERATOR|GENERATOR_PLATFORM|SYSTEM_PROCESSOR):' \
 		"${build_directory}/CMakeCache.txt"
 	for configuration in RelWithDebInfo Debug; do
 		cmake --build "${build_directory}" --config "${configuration}"

@@ -173,11 +173,23 @@ The core's rules facade is the authoritative runtime rules component, as accepte
 
 ### Accepted network failure policy
 
-The network is bundled and hash-verified at build time, so a verification failure at runtime means a damaged installation rather than a configuration the user chose. In that case **the AI does not start**, and the frontend reports it through the accepted engine-unavailable path.
+The network is bundled and hash-verified at build time on every build that bundles it, so a verification failure at runtime means a damaged installation rather than a configuration the user chose. In that case **the AI does not start**, and the frontend reports it through the accepted engine-unavailable path.
 
 There is no fallback to the engine's classical evaluation. The accepted levels are defined as sharing one strongest configuration and differing only in thinking time; substituting a different evaluation would silently make the opponent a different opponent, which the user would have no way to detect. Free Play, History, replay, import, and export are unaffected, and reinstalling restores the AI.
 
 The core preflights the network against the engine's observable load state before any search, so this is detected during preparation and the engine's own fatal verification path is never reached.
+
+### Accepted absence for the Windows distribution
+
+*(Amended 2026-07-31, with the CI-built zip. The clauses above were written when every build bundled the network, and they treat its absence as damage; one distribution now omits it on purpose, and this says what that means rather than leaving the two to contradict each other.)*
+
+The Windows distribution is a zip built by CI, and **it does not contain the network**. [architecture.md](architecture.md) gives the reason and it is not a preference: this repository is public, a CI artifact on a public repository can be downloaded by any logged-in account, so an artifact carrying those bytes would be a distribution beyond internal testing — the exact expansion the last clause of the handling policy makes a licensing gate for, and which nobody has passed. The zip therefore carries the network's filename, byte length, SHA-256 and destination folder, generated from the manifest rather than transcribed, and its holder places the file after unpacking.
+
+Three consequences, stated so that nothing above is read as still covering this case.
+
+- **Absence in this distribution is expected rather than damage**, and reinstalling does not fix it. What fixes it is placing the file. The zip's own instructions say so, and the headless self-check it carries is how somebody confirms they placed it correctly.
+- **The runtime behaviour is unchanged and remains correct**: the core reports its typed engine-asset error, the AI does not start, no fallback evaluation is substituted, and every other feature works. The build-time hash verification still happens — the zip's asset directory is the verified staging with the network removed from it, not a second unverified one — and the placed file's hash is checkable by hand and by the self-check.
+- **The frontend's messages were written for damage and are not yet right for this case.** A new human-versus-AI game refuses through the cause-free creation-failure notice, whose approved copy names a save failure; resuming one shows the engine-unavailable caption, which is true but names nothing actionable. Neither is wrong about *what happened*, and one is wrong about *why*. Correcting it means a new approved string pair in [copy.md](copy.md) and its twin on the Apple platforms, so it is recorded as owed rather than done here, and the zip's instructions carry the burden in the meantime.
 
 ### Accepted pinned-input manifest
 

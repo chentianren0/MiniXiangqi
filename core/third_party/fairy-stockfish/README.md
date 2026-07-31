@@ -116,13 +116,20 @@ the app's back.
 the core links. That change landed at `86dad87e`, and `pinned-inputs.json`
 records the artifact and its build command under `fork.static_library`.
 
-The core does not consume that artifact. The app needs `arm64` and `arm64e`, and
-producing both means driving the fork's Makefile twice and joining the results —
-a second build system to keep correct alongside the one the core already has.
-What it does instead: `CMakeLists.txt` in this directory is a **core-owned**
-build of the snapshot. It compiles the same sources with the same defines the
-fork's `make ARCH=apple-silicon nnue=no` would use, each one cited back to a line
-of the fork's `Makefile` at the pinned revision.
+The core does not consume that artifact. Several architectures come out of one
+build system here — `arm64` and `arm64e` on the Apple platforms, `x64` and
+`arm64` on Windows — and producing them from the fork's Makefile means driving it
+once per `ARCH` and joining the results, a second build system to keep correct
+alongside the one the core already has. What it does instead: `CMakeLists.txt` in
+this directory is a **core-owned** build of the snapshot. It compiles the same
+sources with the same defines the fork's own `make ARCH=… nnue=no` would use,
+each one cited back to a line of the fork's `Makefile` at the pinned revision.
+Which `ARCH` profile each target gets is decided there too, and Windows on
+`arm64` is the one place the answer is not the obvious one: it takes the fork's
+portable `general-64` profile rather than `apple-silicon`, because `USE_POPCNT`
+and prefetch select x86 headers under `_MSC_VER` and the fork's NEON code is
+written in GCC and Clang vector-extension syntax that MSVC does not provide. The
+file carries the compiler's own error text for both.
 
 If the core ever switches to consuming the fork's own artifact:
 
@@ -136,9 +143,14 @@ If the core ever switches to consuming the fork's own artifact:
 3. Move the flag set out of this file and into
    `build_flags.platforms.<platform>.engine_defines` and `engine_flags`, which
    are recorded as unestablished today precisely because no build had produced
-   them. A build now produces them for macOS/arm64; they are still not recorded
-   there, because those fields describe the *packaging* build and no packaging
-   build exists yet.
+   them. Builds now produce them for macOS/arm64 and for Windows on both
+   architectures, and they are still not recorded there. A Windows packaging
+   build exists as of 2026-07-31 and did not change that: it publishes the
+   frontend over a core somebody else already built and chooses none of these
+   flags, so filling those fields from a developer build's command line would
+   record the wrong build's answer. Establishing them means first deciding that
+   the core build *is* part of the packaging build, which is a separate
+   question — `docs/architecture.md` carries it as an open one.
 
 Until then, the source list here has to be maintained by hand whenever the
 snapshot is re-cut. `CMakeLists.txt` fails configuration with an explicit message

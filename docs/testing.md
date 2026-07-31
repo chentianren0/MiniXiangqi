@@ -56,9 +56,10 @@ Name the destination by UDID rather than by device name: two simulators of the s
 ### Shared core and Windows targets
 
 - The shared core builds and its tests run on every development platform without a frontend.
-- The core's Windows compiler is pinned in `pinned-inputs.json`, established by a build that produced it: Visual Studio 2026 Community with the MSVC v14.51 toolset and the Windows 11 SDK, on `x64`. The frontend's half of that toolchain — Windows App SDK version, .NET version, and the packaging flags — is still unpinned draft state and must be pinned and verified before any Windows *frontend* or packaging validation claim. Core validation claims on Windows are now available, and the entry below records what was run.
+- The core's Windows compiler is pinned in `pinned-inputs.json`, established by builds that produced it, one per architecture: Visual Studio 2026 Community with the MSVC v14.51 toolset and the Windows 11 SDK on `x64`, and the CI runner's own MSVC v14.44 on `ARM64`. The frontend's half of that toolchain — Windows App SDK version, .NET version, and the deployment flags — was pinned by the first packaging build, `windows/package-zip.ps1`, and the manifest records what that build measured rather than what it intends. What it did not measure stays unestablished, and the entry says which fields those are.
+- **`ARM64` is a CI-only build.** The owner's ARM64 Windows machine runs the product and does not develop it, so no developer machine compiles that architecture; the workflow is the only place it exists. A validation claim about `ARM64` therefore cites a CI run rather than a developer run, which is the one place this document's developer-runs-are-the-evidence rule does not reach, and it says so rather than pretending the two are the same.
 - GitHub Actions CI is the recommended place for long or multi-platform builds and test runs, with pinned inputs; CI results supplement, and do not replace, the release gates below.
-- `.github/workflows/core-suites.yml` is that CI: the core suites in both configurations, on a pinned macOS runner and a pinned Windows runner, each pinned to the newest image GitHub hosts rather than the oldest that still works, so that CI tracks this project's toolchain instead of trailing it. That is still not the same claim as reproducing the pin: an image carries what its maintainers put in it and moves on their schedule, not ours. What CI proves is that the core compiles and its suites pass on a machine other than the one the change was written on. Reproducing the pinned build is a developer-machine claim.
+- `.github/workflows/core-suites.yml` is that CI: the core suites in both configurations, on a pinned macOS runner and two pinned Windows runners, `x64` and `ARM64`, each pinned to the newest image GitHub hosts rather than the oldest that still works, so that CI tracks this project's toolchain instead of trailing it. That is still not the same claim as reproducing the pin: an image carries what its maintainers put in it and moves on their schedule, not ours. What CI proves is that the core compiles and its suites pass on a machine other than the one the change was written on. Reproducing the pinned build is a developer-machine claim on `x64`, and on `ARM64` there is no developer machine for it to be one on.
 
 ## Validation principles
 
@@ -229,21 +230,22 @@ Name the destination by UDID rather than by device name: two simulators of the s
 
 ## Build and internal-distribution gates
 
-An internal distribution candidate — TestFlight on Apple platforms, or the internal Windows package — requires:
+An internal distribution candidate — TestFlight on Apple platforms, or the Windows distribution zip — requires:
 
-- successful builds for every supported configuration on the distributed platform;
+- successful builds for every supported configuration on the distributed platform, which on Windows means **both architectures**, since each is a separate zip that a separate machine runs;
 - passing shared-core tests plus targeted unit, integration, persistence, import/export, rules, engine, and critical UI tests;
 - no unresolved data-loss, illegal-move, rules-result, engine-termination, or migration failure;
-- verified GPLv3 and third-party source and license inputs, and the bundled network's verified pinned hash per the accepted NNUE handling policy;
+- verified GPLv3 and third-party source and license inputs, carried in the artifact where the artifact is one somebody is handed: the Windows zip contains the project's own `LICENSE` and an attribution note naming Fairy-Stockfish with the pinned fork revision, SQLite's public-domain dedication, and the Microsoft redistributables it carries;
+- the bundled network's verified pinned hash per the accepted NNUE handling policy — **or, where the network is deliberately not bundled, the instructions that let its holder place and verify it**, which is the Windows zip's case and only its case;
+- for the Windows zip, a run of the headless harness against the **unpacked zip's own layout** with the network placed as those instructions describe, rather than against the build tree the zip was made from;
 - manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each distributed platform.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on.
-- Pin the Windows *frontend* toolchain — Windows App SDK, .NET, packaging flags — and record verified packaging commands. The core's half is pinned and its commands are in the README.
-- Decide which artifacts the GitHub Actions workflows retain. The workflows and their pinned inputs are defined in `.github/`; nothing is retained today beyond the run log.
+- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on. The Windows half now has a shape: two architectures, one of which — `ARM64` — exists on a machine that runs the product and does not build it, so what a candidate is exercised on there is the zip rather than a build tree.
+- Decide how long the workflows should retain their artifacts, and whether a candidate's zip should be kept beyond that. Two kinds are produced today: the board renders, at the ninety-day default, and the distribution zips, at a fortnight because a zip is reproducible from the commit it was built at and a stale one somebody finds later is a build nobody chose. Neither figure was chosen against a stated retention policy, because there is not one.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
 - Define which critical flows require UI automation versus structured manual review.
 - Define how the accepted import validation time budget is measured and enforced on each platform.

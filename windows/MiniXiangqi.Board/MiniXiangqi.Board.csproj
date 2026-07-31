@@ -20,10 +20,11 @@
     <AssemblyName>MiniXiangqi.Board</AssemblyName>
 
     <!-- Win2D ships a native Microsoft.Graphics.Canvas.dll per architecture and
-         refuses to pick one for an AnyCPU project. Windows 11 on x64 is the
-         target (owner decision, 2026-07-30); ARM64 returns when there is real
-         hardware to test it on. -->
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+         refuses to pick one for an AnyCPU project. Windows 11 on x64 and ARM64
+         are both targets (owner decisions, 2026-07-30 and 2026-07-31), so the
+         architecture is windows/Directory.Build.props's one switch rather than
+         a constant here. -->
+    <RuntimeIdentifier>$(MxqRuntimeIdentifier)</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>

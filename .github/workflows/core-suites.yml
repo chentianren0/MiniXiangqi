@@ -1,10 +1,23 @@
-# The core suites, on a macOS runner and a Windows runner.
+# The core suites, on a macOS runner and two Windows runners.
 #
 # docs/architecture.md fixes what this workflow is for: "GitHub Actions CI
 # covers BOTH a macOS runner and a Windows runner, so neither platform is ever
 # reproducible only on one machine." It is a convenience rather than a merge
 # gate; what it guarantees is that every platform is buildable somewhere other
 # than one developer's machine.
+#
+# Windows now has two entries rather than one, x64 and ARM64, and the ARM64 one
+# is here rather than in windows-frontend.yml deliberately. What decides which
+# workflow a job belongs to is which changes should start it: this workflow
+# starts on core/, fixtures/, .gitattributes and .github/scripts/, and the
+# frontend workflow does not. A fixtures change that broke the engine on ARM64
+# and only ARM64 would, if the job lived over there, run the suites on macOS and
+# Windows x64 and say nothing — which is the hole the architecture was added to
+# close. The ARM64 *frontend* build, the harness on that architecture and the
+# zip are windows-frontend.yml's, because those start on windows/.
+#
+# The ARM64 runner label is `windows-11-arm`, a GitHub-hosted Windows 11 ARM64
+# machine, and it is free on public repositories exactly as the other two are.
 #
 # It also inherits that document's input rule — "CI must not receive
 # undocumented inputs: pinned revisions and asset hashes come from the
@@ -118,8 +131,19 @@ jobs:
         run: .github/scripts/run-suites.sh single-config build
 
   windows:
-    name: Windows (MSVC, x64)
-    runs-on: windows-2025
+    name: Windows (MSVC, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    # Neither architecture's answer is worth cancelling for the other's: a
+    # failure on one is a finding about that one, and the other's result is the
+    # thing that says whether it is architecture-specific.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+          - arch: ARM64
+            runner: windows-11-arm
     defaults:
       run:
         shell: bash
@@ -129,10 +153,18 @@ jobs:
       # repository saying so.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+      # PROCESSOR_ARCHITECTURE here is the *shell's* rather than the machine's,
+      # and on the ARM64 runner it reads AMD64 because git-bash is an x64 build
+      # running under Windows' emulation. That is worth seeing rather than
+      # hiding — it is why the generator platform is passed to the script
+      # explicitly below instead of being inferred from the environment. What
+      # the build actually targeted is CMAKE_GENERATOR_PLATFORM, which
+      # run-suites.sh prints from the cache.
       - name: Record the toolchain
         run: |
           cmake --version
           cmd //c ver
+          echo "shell's own architecture: ${PROCESSOR_ARCHITECTURE:-unknown}"
 
       - name: Fetch the pinned network
         id: network
@@ -145,4 +177,4 @@ jobs:
         env:
           MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
           MXQ_CTEST_EXCLUDE: ${{ steps.network.outputs.exclude }}
-        run: .github/scripts/run-suites.sh multi-config build
+        run: .github/scripts/run-suites.sh multi-config build ${{ matrix.arch }}
