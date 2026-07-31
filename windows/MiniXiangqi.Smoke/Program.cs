@@ -3399,9 +3399,17 @@ internal static unsafe class Program
             + $"{WindowFloor.ContentAtExpandedThreshold} of content");
         Check("the expanded pane cannot take the content below its floor",
             WindowFloor.ContentAtExpandedThreshold >= WindowFloor.ContentWidth);
-        Check("and the rail the floor does pay for is the narrower arrangement",
-            WindowFloor.CompactRailWidth < WindowFloor.OpenPaneLength
-            && WindowFloor.CompactModeThresholdWidth < WindowFloor.ExpandedModeThresholdWidth);
+
+        // And the floor pays for the arrangement it actually lands in. The
+        // thresholds are measured against the container's own width, which at
+        // the floor is the client area — which is the whole reason the window's
+        // minimum allows for its frame separately. Below the compact threshold
+        // the pane would not be a rail at all and the 48 would be the wrong
+        // number; at or above the expanded one it would be an inline pane and
+        // the 48 would be too small. The floor sits between them.
+        Check("the window's own floor lands in the arrangement its 48 pays for",
+            WindowFloor.WindowWidth >= WindowFloor.CompactModeThresholdWidth
+            && WindowFloor.WindowWidth < WindowFloor.ExpandedModeThresholdWidth);
 
         // One point under the block is where the refusal begins, and the refusal
         // is what the notice answers. The board is not drawn small; it is not
