@@ -18,6 +18,7 @@
 // where our marker is unconditional and Fairy-Stockfish's is not — two for each
 // side — and all four are asserted below.
 
+import Foundation
 import Testing
 @testable import MiniXiangqi
 
@@ -459,13 +460,67 @@ struct WXFNotationTests {
         // The key is the interface between the renderers and the Settings screen
         // that offers them, so the two spellings are part of the contract rather
         // than an implementation detail: `traditional` and `wxf`, under
-        // `notation.style`, with absent meaning the traditional reading.
+        // `notation.style`. What an absent key means is the test below.
         #expect(NotationStyle.key == "notation.style")
         #expect(NotationStyle.traditional.rawValue == "traditional")
         #expect(NotationStyle.wxf.rawValue == "wxf")
         #expect(NotationStyle(rawValue: "traditional") == .traditional)
         #expect(NotationStyle(rawValue: "wxf") == .wxf)
         #expect(NotationStyle(rawValue: "中文") == nil)
+    }
+
+    /// The owner's decision of 2026-07-30, amended into
+    /// docs/interaction-design.md § User-visible notation: where nobody has
+    /// chosen, the reading follows the interface language. Pinned in both
+    /// directions, because a rule with one side tested is a rule that reads
+    /// correctly for whoever wrote it.
+    ///
+    /// The identifiers are the ones the platform actually hands over — the
+    /// bundle's own localization names, plus the region-qualified and script-
+    /// qualified forms a preference list can carry — rather than the two the
+    /// project happens to ship, so the rule cannot be satisfied by matching a
+    /// pair of literal strings.
+    @Test("An unchosen 记谱法 follows the interface language",
+          arguments: [("zh-Hans", NotationStyle.traditional),
+                      ("zh-Hant", .traditional),
+                      ("zh", .traditional),
+                      ("zh-Hans-CN", .traditional),
+                      ("zh_CN", .traditional),
+                      ("en", .wxf),
+                      ("en-GB", .wxf),
+                      ("en-US", .wxf)])
+    func theUnchosenReadingFollowsTheLanguage(identifier: String,
+                                              expected: NotationStyle) {
+        #expect(NotationStyle.resolved(forInterfaceLanguage: identifier) == expected)
+    }
+
+    /// A language that is neither reads WXF, and that is the rule rather than a
+    /// fallback: the traditional rendering is for a reader of Chinese, and
+    /// somebody reading the interface in a third language is not one. A missing
+    /// answer is treated the same way — `preferredLocalizations` cannot in
+    /// practice be empty for the main bundle, and a default that crashes or
+    /// guesses Chinese for the case that cannot happen would still be wrong.
+    @Test("A language that is neither reads WXF, absent or unrecognised alike",
+          arguments: ["fr", "ja", "ko-KR", "und", "", "nonsense"])
+    func anyOtherLanguageReadsWXF(identifier: String) {
+        #expect(NotationStyle.resolved(forInterfaceLanguage: identifier) == .wxf)
+        #expect(NotationStyle.resolved(forInterfaceLanguage: nil) == .wxf)
+    }
+
+    /// The live reading is one of the two and is the one the language rule gives
+    /// for whatever language this bundle is running in. Asserted against the rule
+    /// rather than against a literal, because the host's own language is not this
+    /// suite's to fix — and the point being held is that the property reads the
+    /// *app's* resolved localization rather than the machine's region or its
+    /// first-choice language, which for a Chinese speaker on an English phone are
+    /// different answers.
+    @Test("The live default is the language rule applied to this bundle's own language")
+    func theLiveDefaultIsTheRuleApplied() {
+        let language = Bundle.main.preferredLocalizations.first
+        #expect(NotationStyle.resolvedForInterfaceLanguage
+                == NotationStyle.resolved(forInterfaceLanguage: language))
+        #expect(["zh-Hans", "en"].contains(language ?? ""),
+                "the app ships two localizations and resolves to one of them")
     }
 
     @Test("It is presentation: the canonical notation is untouched")

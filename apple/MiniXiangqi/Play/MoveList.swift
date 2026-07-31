@@ -34,8 +34,10 @@ struct MoveList: View {
     @Environment(\.motionPolicy) private var policy
 
     /// The 记谱法 preference, read where the words are chosen so that changing it
-    /// re-renders the list live.
-    @AppStorage(NotationStyle.key, store: Preferences.defaults) private var style: NotationStyle = .traditional
+    /// re-renders the list live. Unchosen, it is the interface language's own
+    /// reading — `NotationStyle.resolvedForInterfaceLanguage`.
+    @AppStorage(NotationStyle.key, store: Preferences.defaults)
+    private var style: NotationStyle = .resolvedForInterfaceLanguage
 
     private var rows: [(number: Int, red: String, black: String?)] {
         stride(from: 0, to: notation.count, by: 2).map { index in

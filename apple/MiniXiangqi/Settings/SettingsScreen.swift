@@ -127,12 +127,23 @@ struct SettingsScreen: View {
         }
     }
 
+    /// The two switches, of equal standing and neither conditioned on the other
+    /// — except by the hardware, which conditions one of them out of existence.
+    ///
+    /// 触感 is **absent** on a device with no engine to drive, rather than
+    /// present and dead: "on a device without them the toggle is unavailable
+    /// rather than silently ineffective". `Haptics` owns the question and the
+    /// reasoning for answering it by removal; what matters here is that the group
+    /// survives losing a row — it has no header to be left stranded, and 声音
+    /// stands alone without meaning anything different.
     private var feedback: some View {
         Section {
             Toggle("settings.sound.label", isOn: $sound)
                 .accessibilityIdentifier("settings-sound")
-            Toggle("settings.haptics.label", isOn: $haptics)
-                .accessibilityIdentifier("settings-haptics")
+            if Haptics.isOffered {
+                Toggle("settings.haptics.label", isOn: $haptics)
+                    .accessibilityIdentifier("settings-haptics")
+            }
         }
     }
 

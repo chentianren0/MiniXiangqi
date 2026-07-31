@@ -14,14 +14,58 @@
 import Foundation
 
 /// The 记谱法 preference. UserDefaults, standard domain, read at the moment of
-/// use; absent — or anything unrecognized — means the traditional reading, which
-/// is the accepted default. The key is the interface between this and the
-/// Settings screen that offers it.
+/// use; absent — or anything unrecognized — means the default `resolved` below
+/// names. The key is the interface between this and the Settings screen that
+/// offers it.
 enum NotationStyle: String, CaseIterable {
     case traditional
     case wxf
 
     static let key = "notation.style"
+
+    /// The reading a launch shows where nobody has chosen one.
+    ///
+    /// **The default follows the interface language** — owner decision,
+    /// 2026-07-30, recorded in issue #80 and amended into
+    /// docs/interaction-design.md § User-visible notation. Chinese reads the
+    /// traditional rendering, which is what Xiangqi instruction in Chinese
+    /// actually uses; every other language reads WXF, which the contract
+    /// introduces as the rendering "for a reader who has learned Xiangqi in the
+    /// international notation rather than in Chinese" — and a reader of the
+    /// English interface is that reader by definition.
+    ///
+    /// Stated as *Chinese, or else WXF* rather than as a pair, so a third
+    /// localization would arrive with an answer already: a reader who is not
+    /// reading Chinese is not reading a Chinese move list either.
+    ///
+    /// **This is a default and never a migration.** It answers only where the
+    /// key is absent, so a player who has been in Settings keeps whatever they
+    /// chose, including a choice that agrees with the other language's default.
+    static func resolved(forInterfaceLanguage identifier: String?) -> NotationStyle {
+        guard let identifier,
+              Locale.Language(identifier: identifier).languageCode == .chinese
+        else { return .wxf }
+        return .traditional
+    }
+
+    /// The same, for the language this launch is actually drawn in.
+    ///
+    /// `Bundle.main.preferredLocalizations` and not `Locale.current`: the
+    /// question is which words are on the screen, and that is the localization
+    /// the bundle resolved from the system's preference list rather than the
+    /// user's region or their first-choice language. A Chinese speaker whose
+    /// phone is in English reads an English app, and an English move list is what
+    /// matches it. The contract's own localization clause says the app follows
+    /// the language the operating system selects *for it*, which is this list's
+    /// definition.
+    ///
+    /// Read at the moment of use like every other preference. The language cannot
+    /// change without a relaunch, so this is a constant in practice; it is not
+    /// cached because nothing else here is, and a cached one would be one more
+    /// thing to be wrong at launch.
+    static var resolvedForInterfaceLanguage: NotationStyle {
+        resolved(forInterfaceLanguage: Bundle.main.preferredLocalizations.first)
+    }
 }
 
 /// A move as the player reads it, in both notations at once.

@@ -20,15 +20,16 @@
 // destination, and each half is gated by its own key at the moment it would
 // fire. Neither gate knows about the other — sound off leaves a landing felt,
 // haptics off leaves it heard.
+//
+// The two events below are the whole of the felt vocabulary; which pattern each
+// one takes on each platform, and whether the hardware is there to take it, are
+// `Motion/Haptics.swift`'s.
 
-#if os(macOS)
-import AppKit
-#endif
 import Foundation
 
 struct Feedback {
     /// What is felt.
-    enum Event: Equatable {
+    enum Event: Equatable, CaseIterable {
         /// A disc arriving on its point — a move's or an Undo's.
         case landing
         /// The answer to a touch the game cannot act on: an illegal tap, or
@@ -128,44 +129,29 @@ struct Feedback {
 
     // MARK: - The live feedback
 
-    /// The hardware feedback, pattern chosen by what the event means:
+    /// Both halves against real hardware, built once and held for the life of
+    /// the app.
     ///
-    /// - `.alignment` for the landing, because Apple defines it for the moment
-    ///   a dragged or moved object snaps into alignment — which is exactly a
-    ///   disc settling onto a grid intersection. Performed at `.drawCompleted`
-    ///   so the tap under the finger coincides with the drawn arrival.
-    /// - `.generic` for the touch answer: the platform's unmarked, lightest
-    ///   pattern, with none of `.levelChange`'s pressure semantics. Performed
-    ///   `.now`, because the touch is what the player is waiting to feel
-    ///   answered.
+    /// Everything here is loaded and primed as this is built — at the play
+    /// screen's construction, long before the first landing — so that the first
+    /// tock is no later than the second and the first tap no later than the
+    /// second. That is the whole reason the two performers are objects rather
+    /// than calls: an `AVAudioPlayer` opened at the landing has its file to read
+    /// first, and a feedback generator made at the landing has never been
+    /// prepared.
     ///
-    /// The sounds are loaded and primed as this is built — at the play screen's
-    /// construction, long before the first landing — so that the first tock is
-    /// no later than the second.
-    ///
-    /// `NSHapticFeedbackManager` is AppKit, so the felt half described above is
-    /// the macOS one — and the reason 触感 is offered there: the performer
-    /// honours each machine's own trackpad and does nothing where there is no
-    /// trackpad to tap, so the switch is never silently ineffective in a way the
-    /// app would have to guess at. On iOS the felt half is deliberately silent
-    /// for now: UIKit's feedback generators are a different shape — prepared
-    /// ahead of the event rather than performed at a named time — and choosing
-    /// their patterns is a design decision about a device that vibrates in the
-    /// hand, not a translation of this one. Stage 6, which brings the iOS pass,
-    /// owns it. Nothing is lost meanwhile: no feedback here is the only channel
-    /// for anything, and the heard half is identical on both platforms.
+    /// **The felt half is now real on both platforms.** It was macOS only until
+    /// Stage 6, because UIKit's generators are a different shape from AppKit's
+    /// performer — prepared ahead of the event rather than performed at a named
+    /// time — and choosing their patterns was a design decision about a device
+    /// that vibrates in the hand rather than a translation of this one. That
+    /// decision is made in `Motion/Haptics.swift`, along with the question of
+    /// whether the hardware is there at all.
     static let live: Feedback = {
         let sounds = BoardSounds()
+        let haptics = HapticPerformer()
         return gating { event in
-            #if os(macOS)
-            let performer = NSHapticFeedbackManager.defaultPerformer
-            switch event {
-            case .landing:
-                performer.perform(.alignment, performanceTime: .drawCompleted)
-            case .acknowledgement:
-                performer.perform(.generic, performanceTime: .now)
-            }
-            #endif
+            haptics.perform(event)
         } play: { sound in
             sounds.play(sound)
         }

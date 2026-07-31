@@ -32,6 +32,15 @@ enum LaunchPreferences {
     /// `Settings/Preferences.swift`'s table, in the vocabulary the keys are
     /// stored in; the two flags are `1`, which is what the argument domain can
     /// carry and what `Preferences.Flag` reads as a Bool.
+    ///
+    /// One of them is a *stated* state rather than the new-installation one, and
+    /// deliberately: `notation.style` has no fixed default any more — it follows
+    /// the interface language, WXF under English and the traditional reading
+    /// under Chinese, by the owner's decision of 2026-07-30. Naming it here keeps
+    /// every launch on one reading in both languages, which is what makes a
+    /// screenshot comparable across them; a suite that wants to see the
+    /// language's own answer has to leave the key to the domain, as the writing
+    /// tests already do for other reasons.
     static let accepted = [
         "sound.enabled": "1",
         "haptics.enabled": "1",

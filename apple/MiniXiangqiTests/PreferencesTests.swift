@@ -51,7 +51,13 @@ struct PreferencesTests {
         #expect(Preferences.haptics.value(in: first), "haptics on")
         #expect(Preferences.deleteConfirmation.value(in: first), "and it asks before deleting")
         #expect(Preferences.pieceSymbols.value(in: first) == "hanzi")
-        #expect(Preferences.notationStyle.value(in: first) == "traditional")
+        // The one default that is not a constant: the interface language's own,
+        // by the owner's decision of 2026-07-30. Asserted against the rule rather
+        // than against `traditional` or `wxf`, because which one a first launch
+        // shows depends on the language the host is running in, and pinning
+        // either literal here would be pinning this machine.
+        #expect(Preferences.notationStyle.value(in: first)
+                == NotationStyle.resolvedForInterfaceLanguage.rawValue)
 
         // Said the other way round, because "absent" is a claim about the store
         // and not only about the answer: nothing has been written at all.
@@ -176,11 +182,35 @@ struct PreferencesTests {
         // failure: the board still has to draw.
         defaults.set("pictograms", forKey: "pieces.symbols")
         #expect(Preferences.pieceSymbols.value(in: defaults) == "hanzi")
+        let unchosen = NotationStyle.resolvedForInterfaceLanguage.rawValue
         defaults.set("", forKey: "notation.style")
-        #expect(Preferences.notationStyle.value(in: defaults) == "traditional")
+        #expect(Preferences.notationStyle.value(in: defaults) == unchosen)
         defaults.set(7, forKey: "notation.style")
-        #expect(Preferences.notationStyle.value(in: defaults) == "traditional",
+        #expect(Preferences.notationStyle.value(in: defaults) == unchosen,
                 "and a value that is not even a string is the default too")
+    }
+
+    /// A default and never a migration: the language decides only where nobody
+    /// has. Both stored names are put in, so the case that matters — a player who
+    /// chose the *other* language's reading and must keep it — is asserted rather
+    /// than assumed, and neither direction depends on which language the host
+    /// happens to be running.
+    @Test("An explicit 记谱法 choice outranks the language's default")
+    func anExplicitChoiceOutranksTheLanguage() throws {
+        let defaults = try ScratchDefaults.make()
+        defer { ScratchDefaults.clear() }
+
+        for chosen in NotationStyle.allCases {
+            Preferences.notationStyle.set(chosen.rawValue, in: defaults)
+            #expect(Preferences.notationStyle.value(in: defaults) == chosen.rawValue,
+                    "a stored \(chosen.rawValue) stands whatever the language reads")
+        }
+
+        // And taking the choice away hands the question back to the language,
+        // rather than leaving the last chosen answer behind in some cache.
+        defaults.removeObject(forKey: NotationStyle.key)
+        #expect(Preferences.notationStyle.value(in: defaults)
+                == NotationStyle.resolvedForInterfaceLanguage.rawValue)
     }
 
     /// What this pins, exactly: a launch that names no suite reads and writes the
