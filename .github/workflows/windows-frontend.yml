@@ -14,7 +14,7 @@
 #     looks like. Win2D needs a Direct2D device and Direct2D refuses in session
 #     0, so the development VM cannot draw one over SSH; a hosted runner has a
 #     console session and can. The PNGs committed under
-#     docs/evidence/pr-windows-play/ came from this job, and it uploads a fresh
+#     docs/evidence/pr87/ came from this job, and it uploads a fresh
 #     set on every run.
 #
 # It does not touch core-suites.yml, whose job is the core's own suites on both
@@ -110,6 +110,7 @@ jobs:
         shell: pwsh
         run: |
           pwsh windows/bindings/generate.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'The bindings generator did not run.' }
           git diff --exit-code -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
           if ($LASTEXITCODE -ne 0) {
             throw 'The committed bindings differ from what ClangSharp generates from core/include/mxq.h. Run windows/bindings/generate.ps1 and commit the result.'

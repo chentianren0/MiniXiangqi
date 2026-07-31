@@ -827,6 +827,21 @@ internal static unsafe class Program
             Console.WriteLine($"    after 保存           {play.NoticeTitle()}");
             Check("保存 files the game and the notice says so", play.Notice == ResultNotice.Recorded);
             Check("a filed game can no longer be taken back", !play.CanUndo);
+
+            // The concluding action, which has no other run: it files the
+            // finished game — already filed here — and deals another with the
+            // same frozen configuration, because there is no pre-start page to
+            // open yet.
+            string filed = play.GameId;
+            GameConfiguration was = play.Configuration;
+            play.NewGame();
+            Console.WriteLine($"    after 开始新对局      {play.GameId}");
+            Check("开始新对局 deals a different game", play.GameId != filed);
+            Check("the new game starts from the initial position",
+                play.MoveRecord.Count == 0 && play.Position.PlyCount == 0 && !play.IsOver);
+            Check("the new game keeps the finished game's configuration",
+                play.Configuration == was);
+            Check("the new game is playable", play.AcceptsInput || play.Status.SearchExpected);
         }
         else
         {
@@ -837,7 +852,19 @@ internal static unsafe class Program
             Console.WriteLine("    (unfinished at the cap; archived as ended early)");
         }
 
+        // Release the session and leave the store with no active game, so the
+        // sections below can create their own.
+        play.Dispose();
+        using (GameSession? standing = core.ResumeActive())
+        {
+            if (standing is not null)
+            {
+                core.ArchiveAndClear(standing);
+            }
+        }
+
         FreePlay(core, scheduler);
+        Races(core, scheduler);
     }
 
     /// <summary>
@@ -893,7 +920,222 @@ internal static unsafe class Program
         Console.WriteLine($"    after 悔棋           {play.Position.PlyCount} ply");
         Check("Free Play removes one move per Undo", play.Position.PlyCount == before - 1);
 
+        // An illegal point: it moves nothing and it cancels nothing. The
+        // question a learner is asking is where this piece may go, and taking
+        // the piece out of their hand does not answer it.
+        Square held = Busiest(play);
+        play.Tap(held);
+        int recorded = play.MoveRecord.Count;
+        Square illegal = Illegal(play);
+        play.Tap(illegal);
+        Console.WriteLine($"    tapped {illegal.Name} holding {held.Name}");
+        Check("an illegal point moves nothing", play.MoveRecord.Count == recorded);
+        Check("an illegal point cancels nothing", play.Scene.Selected == held);
+        play.Tap(held);
+        Check("tapping the held piece again does cancel", play.Scene.Selected is null);
+
         core.ArchiveAndClear(game);
+        play.Dispose();
+
+        Repetition(core, scheduler);
+    }
+
+    /// <summary>
+    /// The claimable threefold repetition, which is cheap to reach: two cannons
+    /// step off their own file and back twice, so the starting position stands
+    /// on the board for the third time. Free Play, because the claim is the same
+    /// claim in both modes and this one needs no engine.
+    /// </summary>
+    private static void Repetition(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("20. A repetition, claimed");
+
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        using PlaySession play = new(core, game, scheduler);
+        play.Begin();
+
+        string[] shuffle = ["b1b2", "b7b6", "b2b1", "b6b7"];
+        bool reached = false;
+        for (int cycle = 0; cycle < 2 && !reached; cycle++)
+        {
+            foreach (string text in shuffle)
+            {
+                if (Move.Parse(text) is not { } move || !play.LegalMoves().Contains(text))
+                {
+                    Console.WriteLine($"    {text} is not legal here; the shuffle does not reach a repetition");
+                    core.ArchiveAndClear(game);
+                    Check("the repetition shuffle is playable", false);
+                    return;
+                }
+
+                play.Tap(move.From);
+                play.Tap(move.To);
+                reached = play.CanClaimDraw;
+            }
+        }
+
+        Console.WriteLine($"    record              {string.Join(' ', play.MoveRecord)}");
+        Console.WriteLine($"    status              {play.PrimaryStatus()} / {play.SecondaryStatus()}");
+        Check("a threefold repetition becomes claimable", play.CanClaimDraw);
+        Check("the turn status carries the standing offer",
+            play.SecondaryStatus()?.Contains(Strings.Get("status.drawAvailable"), StringComparison.Ordinal) == true);
+        Check("the repetition does not end the game by itself", !play.IsOver);
+
+        // The claim is the player's to invoke, and its notice never presents
+        // itself unbidden.
+        play.RequestClaimDraw();
+        Check("判和 presents the confirmation", play.Alert == PlayAlert.ClaimDraw);
+        play.ConfirmClaimDraw();
+
+        Console.WriteLine($"    after 以和棋结束      {play.PrimaryStatus()} / {play.SecondaryStatus()} / {play.NoticeTitle()}");
+        Check("the claim ends the game as a draw", play.ResultState == Mxq.MXQ_GAME_DRAW);
+
+        // The committed outcome is not a property of the position — the board a
+        // claimed draw stands on is still somebody's to move — so the screen has
+        // to read it from the record rather than from the session's status.
+        Check("the turn status says the result rather than whose turn it is",
+            play.PrimaryStatus() == Strings.Get("status.draw"));
+        Check("the reason beside it is the claim's own",
+            play.ResultReason == Mxq.MXQ_END_REASON_THREEFOLD_REPETITION);
+        Check("it is recorded on the way, not afterwards", play.Notice == ResultNotice.Recorded);
+        Check("a claimed draw offers nothing further", !play.CanClaimDraw && !play.CanUndo);
+    }
+
+    /// <summary>
+    /// The two places a confirmation and a search can arrive in either order.
+    ///
+    /// A system dialog does not block the dispatcher, so the AI's reply can land
+    /// while the player is reading the confirmation — and an act confirmed after
+    /// that lands on a game that has moved on, or on a session a terminal commit
+    /// has already archived. Both are exercised here rather than reasoned about,
+    /// because the first version of this screen reasoned about them and was
+    /// wrong.
+    /// </summary>
+    private static void Races(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("21. Undo and 认输 against a search in flight");
+
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
+            Mxq.MXQ_COLOR_RED,
+            Mxq.MXQ_AI_LEVEL_DEEP,
+            Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+            Mxq.MXQ_MOVETIME_DEEP_MS);
+
+        using PlaySession play = new(core, game, scheduler);
+        play.Begin();
+
+        Random rng = new(20260731);
+
+        // 1. Undo while the AI is thinking. It cancels the search and removes
+        //    the human move that triggered it, and the indicator stops with it.
+        Move opening = Choose(play, rng)!.Value;
+        play.Tap(opening.From);
+        play.Tap(opening.To);
+        Check("the human's move is expected to be answered", play.Status.SearchExpected);
+
+        scheduler.PumpUntil(() => play.Activity == AiActivity.Thinking, TimeSpan.FromSeconds(3));
+        Console.WriteLine($"    while thinking      activity {play.Activity}, ply {play.Position.PlyCount}");
+        Check("the indicator appears while a 深思 search runs", play.Activity == AiActivity.Thinking);
+
+        play.Undo();
+        Console.WriteLine($"    after 悔棋           activity {play.Activity}, ply {play.Position.PlyCount}");
+        Check("Undo removes the move that triggered the search", play.Position.PlyCount == 0);
+        Check("Undo stops the indicator with it", play.Activity == AiActivity.Idle);
+        Check("nothing is owed at the player's own decision point", !play.Status.SearchExpected);
+
+        // The cancelled search's callback still fires. Pump for long enough to
+        // receive it and confirm it decided nothing.
+        scheduler.PumpUntil(() => false, TimeSpan.FromSeconds(2));
+        Check("the cancelled search's answer changes nothing", play.Position.PlyCount == 0);
+        Check("and starts nothing", !play.Status.SearchExpected && play.Alert == PlayAlert.None);
+
+        // 2. 认输 confirmed with a search genuinely in flight. What must not
+        //    happen is an escape: the resignation either commits, or the core
+        //    refuses it because the game moved on and the refusal is absorbed.
+        Move again = Choose(play, rng)!.Value;
+        play.Tap(again.From);
+        play.Tap(again.To);
+        scheduler.PumpUntil(() => play.Activity == AiActivity.Thinking, TimeSpan.FromSeconds(3));
+        Check("a search is in flight again", play.Activity == AiActivity.Thinking);
+
+        play.RequestResign();
+        Check("认输 presents the confirmation", play.Alert == PlayAlert.Resign);
+        play.ConfirmResign();
+
+        Console.WriteLine($"    after 认输           {play.PrimaryStatus()} / {play.SecondaryStatus()}");
+        Console.WriteLine($"    notice              {play.Notice}, alert {play.Alert}");
+        Check("认输 records the human's loss by resignation",
+            play.ResultState == Mxq.MXQ_GAME_BLACK_WINS
+            && play.ResultReason == Mxq.MXQ_END_REASON_RESIGNATION);
+        Check("the turn status says the result rather than whose turn it is",
+            play.PrimaryStatus() == Strings.Get("status.blackWins"));
+        Check("the notice arrives already recorded", play.Notice == ResultNotice.Recorded);
+        Check("the confirmation is gone", play.Alert == PlayAlert.None);
+
+        // 3. The same acts again, on a session the commit has already archived.
+        //    This is the shape of the answer that arrives after the situation
+        //    moved on — the core refuses it, and the refusal must be absorbed
+        //    where it happens rather than thrown out of a dialog's completion,
+        //    which has no caller to catch it.
+        play.ConfirmResign();
+        play.ConfirmClaimDraw();
+        play.SaveResult();
+        Console.WriteLine($"    confirmed again     {play.PrimaryStatus()}, alert {play.Alert}");
+        Check("confirming a filed game again is absorbed rather than thrown",
+            play.ResultState == Mxq.MXQ_GAME_BLACK_WINS && play.Alert == PlayAlert.None);
+
+        // The search that was in flight is still going to answer. It must find
+        // an archived session and do nothing with it.
+        uint plies = play.Position.PlyCount;
+        scheduler.PumpUntil(() => false, TimeSpan.FromSeconds(8));
+        Console.WriteLine($"    after the reply     ply {play.Position.PlyCount}, result {play.ResultState}");
+        Check("the reply to a resigned game moves nothing", play.Position.PlyCount == plies);
+        Check("and nothing is left thinking", play.Activity == AiActivity.Idle);
+    }
+
+    /// <summary>A point with no legal move to it from the piece the player holds.</summary>
+    private static Square Illegal(PlaySession play)
+    {
+        for (int rank = 0; rank < Square.Count; rank++)
+        {
+            for (int file = 0; file < Square.Count; file++)
+            {
+                Square square = new(file, rank);
+                if (!play.Scene.Destinations.Contains(square)
+                    && !play.Scene.Captures.Contains(square)
+                    && play.Scene.Placement[square] is null)
+                {
+                    return square;
+                }
+            }
+        }
+
+        return new Square(0, 0);
+    }
+
+    /// <summary>The mover's own piece with the most legal moves.</summary>
+    private static Square Busiest(PlaySession play)
+    {
+        Dictionary<Square, int> counts = [];
+        foreach (string text in play.LegalMoves())
+        {
+            if (Move.Parse(text) is { } move)
+            {
+                counts[move.From] = counts.GetValueOrDefault(move.From) + 1;
+            }
+        }
+
+        return counts.OrderByDescending(entry => entry.Value)
+            .ThenBy(entry => entry.Key.Name, StringComparer.Ordinal)
+            .First()
+            .Key;
     }
 
     /// <summary>A legal move, chosen with a fixed seed so the game is the same game every run.</summary>

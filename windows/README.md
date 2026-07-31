@@ -4,8 +4,9 @@ The WinUI 3 frontend, over the same shared core as the Apple frontend. What is h
 is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
 play screen — the board, the pieces, and a live game against the AI — and two
 headless harnesses that are how any of it is verified on a machine nobody is logged
-into. The Play home, the pre-start states, History and replay, and the packaging
-build are later pull requests.
+into. The Play home, the pre-start states, History and replay, the stacked layout that
+narrow windows take on the other platforms, and the packaging build are later pull
+requests.
 
 The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
 it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
@@ -187,14 +188,25 @@ protocol, the error taxonomy with its detail strings, a real search delivered th
 the `[UnmanagedCallersOnly]` callback, the archive blob, the History readback, and the
 wrapper the window uses — and then it plays.
 
-Sections 17 to 19 are the play screen's. The string table is checked against
-[`docs/copy.md`](../docs/copy.md), key by key and in both languages, which is the
-mechanical agreement check that document's localization process asks CI for. A whole
-game against the AI is played through `PlaySession` — every move committed by clicking a
-point and then another point, exactly as the window's board does it, the AI answering
-through the same marshalled callback — to a conclusion or a move cap. And a game of Free
-Play is played through the same session, because Free Play has no entry point yet and
-this is where it is exercised.
+Sections 17 to 21 are the play screen's.
+
+**17** checks the string table against [`docs/copy.md`](../docs/copy.md): every key this
+frontend shows is a row of the contract, and both languages of it match. That is one
+direction of the agreement check the localization process asks for, and only one — the
+reverse, that no user-facing key in the contract is absent here, cannot apply while
+Windows implements sixty-six of the contract's rows and the Apple frontend implements
+the rest. It becomes checkable when the Windows frontend is complete, and it is not
+checked before then rather than checked against a number somebody has to keep adjusting.
+
+**18** plays a whole game against the AI through `PlaySession` — every move committed by
+clicking a point and then another point, exactly as the window's board does it, the AI
+answering through the same marshalled callback — to a conclusion or a move cap, and then
+takes the concluding action. **19** plays Free Play through the same session, because
+Free Play has no entry point yet and this is where it is exercised, and taps an illegal
+point to confirm it moves nothing and cancels nothing. **20** shuffles two cannons into a
+threefold repetition and claims it. **21** is the pair of races a confirmation and a
+search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed with
+a 深思 search genuinely in flight.
 
 ```powershell
 windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
@@ -215,6 +227,13 @@ do not offer would be worse than no picture.
 ```powershell
 windows\MiniXiangqi.Shots\bin\Release\net10.0-windows10.0.26100.0\win-x64\MiniXiangqi.Shots.exe --out shots
 ```
+
+**The committed renders are evidence, not goldens.** Nothing compares them to anything:
+a runner-image font update, a Direct2D change, or a different WARP version would move
+pixels in them and no gate would notice. They say what the board looked like on the run
+that produced them, which is what a reviewer with no desktop needs; a comparison gate
+would be a different thing, and it would need a tolerance and a rule about what a
+legitimate change looks like before it was worth having.
 
 **It does not run over SSH either, and for a different reason.** Win2D needs a Direct2D
 device, and Direct2D refuses in session 0: every way into `CanvasDevice` answers
