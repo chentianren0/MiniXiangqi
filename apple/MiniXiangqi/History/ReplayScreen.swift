@@ -46,6 +46,12 @@ struct ReplayScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    #if os(iOS)
+    /// Whether the navigation container is presenting as a bar across the
+    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
+    @Environment(\.horizontalSizeClass) private var widthClass
+    #endif
+
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
 
     var body: some View {
@@ -74,6 +80,14 @@ struct ReplayScreen: View {
         // height the stacked shape spends on the board.
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
+        // docs/interaction-design.md, "Navigation": a board screen hides the
+        // destination bar where that bar is a bar across the bottom, and this
+        // is one of the two. It is the owner's own recommendation from the
+        // device pass (2026-07-31), made for this screen first: the bar's rows
+        // are worth more to the page than the bar is under it.
+        #if os(iOS)
+        .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
         #endif
         .onAppear {
             guard replay == nil else { return }
