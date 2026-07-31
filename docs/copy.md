@@ -187,10 +187,10 @@ The Settings destination as it stands: four groups, and every string on it below
 | `settings.symbols.hanzi` | 汉字 | Chinese Characters | option | same — the accepted default |
 | `settings.symbols.icons` | 图标 | Icons | option | same |
 | `settings.notation.label` | 记谱法 | Notation | row label | same; the choice itself is fixed in [interaction-design.md](interaction-design.md) § User-visible notation |
-| `settings.notation.traditional` | 中文 | Chinese | option | same — the accepted default |
-| `settings.notation.wxf` | WXF | WXF | option | same — identical in both languages |
+| `settings.notation.traditional` | 中文 | Chinese | option | same — the default under the Chinese interface, where the default follows the interface language (owner decision, 2026-07-30) |
+| `settings.notation.wxf` | WXF | WXF | option | same — identical in both languages, and the default under the English interface |
 | `settings.sound.label` | 声音 | Sound | toggle label | same; [interaction-design.md](interaction-design.md) § Sound and haptics |
-| `settings.haptics.label` | 触感 | Haptics | toggle label | same |
+| `settings.haptics.label` | 触感 | Haptics | toggle label | same; the row is absent where the device has no haptic hardware, per the same section |
 | `settings.confirmDelete.label` | 删除前确认 | Confirm Before Deleting | toggle label | same; [interaction-design.md](interaction-design.md) § History library; [product.md](product.md) § Product navigation |
 | `settings.confirmDelete.footer` | 关闭后，删除立即执行。删除无法撤销。 | When off, deletion happens immediately. A deletion cannot be undone. | group footer | same |
 | `settings.defaults.group` | 人机对弈默认设置 | Human versus AI Defaults | group header | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Settings/SettingsScreen.swift` |

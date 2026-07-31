@@ -53,8 +53,11 @@ struct BoardView: View {
     /// The 记谱法 preference, which the strips follow: the strips exist so a
     /// player can map the move list to the board, so a WXF list beside a 一二三
     /// edge would break the very mapping they are for. Read here so that
-    /// changing the preference re-renders them live.
-    @AppStorage(NotationStyle.key, store: Preferences.defaults) private var notationStyle: NotationStyle = .traditional
+    /// changing the preference re-renders them live — and unchosen, it is the
+    /// interface language's own reading, so the strips and the list agree from
+    /// the first launch in either language.
+    @AppStorage(NotationStyle.key, store: Preferences.defaults)
+    private var notationStyle: NotationStyle = .resolvedForInterfaceLanguage
 
     /// The arrival wires, each fired on the frame its animation reaches its
     /// target — see ArrivalReporter for why the transaction completion alone

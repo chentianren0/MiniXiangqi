@@ -14,7 +14,7 @@
 // | `haptics.enabled` | Bool | on |
 // | `deleteConfirmation.enabled` | Bool | on |
 // | `pieces.symbols` | `hanzi` \| `icons` | `hanzi` |
-// | `notation.style` | `traditional` \| `wxf` | `traditional` |
+// | `notation.style` | `traditional` \| `wxf` | the interface language's own |
 // | `defaults.firstMover` | `human-first` \| `ai-first` \| `random` | `human-first` |
 // | `defaults.aiLevel` | `fast` \| `standard` \| `deep` | `standard` |
 //
@@ -23,6 +23,13 @@
 // already the rule the sound gate was written to; all five share it now, and
 // share one reader, so that "absent means the accepted default" is stated in one
 // place instead of once per consumer.
+//
+// One default is no longer a constant: `notation.style`'s is the interface
+// language's — WXF in English, the traditional rendering in Chinese — by the
+// owner's decision of 2026-07-30. That is why a `Choice`'s default is a closure
+// below rather than a string. Nothing about the *storage* changed: the resolved
+// answer is what an absent key reads as, and the moment somebody chooses in
+// Settings a name is written and the language stops being asked.
 //
 // What a preference *means* is not this file's business. The two choices are
 // stored and read as the names in the table above, and the rendering that reads
@@ -59,9 +66,12 @@ enum Preferences {
                                      names: ["hanzi", "icons"])
 
     /// How a move is written, in the move list and in the numeral strips that
-    /// exist to map it to the board: `traditional`, the default, or `wxf`.
+    /// exist to map it to the board: `traditional` or `wxf`, and where nobody
+    /// has chosen, whichever one the interface language reads — see
+    /// `NotationStyle.resolved(forInterfaceLanguage:)`, which owns that rule and
+    /// the reasoning for it.
     static let notationStyle = Choice(key: "notation.style",
-                                      whenAbsent: "traditional",
+                                      whenAbsent: NotationStyle.resolvedForInterfaceLanguage.rawValue,
                                       names: ["traditional", "wxf"])
 
     /// Which side a new human-versus-AI game opens on — the value the pre-start
@@ -164,9 +174,24 @@ enum Preferences {
         let key: String
         /// What an absent key means — the state of every first launch — and what
         /// an unrecognised one means too.
-        let whenAbsent: String
+        ///
+        /// **Asked rather than stored**, because one of these defaults is not a
+        /// constant: `notation.style`'s is the interface language's answer, and a
+        /// default captured when this table was built would be a different kind
+        /// of thing from a default read at the moment of use, which is what every
+        /// other value here is. The other three choices pass a literal and read
+        /// exactly as they did.
+        let whenAbsent: () -> String
         /// Every name this preference accepts.
         let names: [String]
+
+        init(key: String,
+             whenAbsent: @autoclosure @escaping () -> String,
+             names: [String]) {
+            self.key = key
+            self.whenAbsent = whenAbsent
+            self.names = names
+        }
 
         /// Read at the moment of use, like every other preference here. A stored
         /// string that names nothing is the default rather than a failure: a
@@ -174,7 +199,7 @@ enum Preferences {
         /// frontend, and the board still has to draw.
         func value(in defaults: UserDefaults = Preferences.defaults) -> String {
             guard let stored = defaults.string(forKey: key), names.contains(stored)
-            else { return whenAbsent }
+            else { return whenAbsent() }
             return stored
         }
 

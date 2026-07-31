@@ -22,7 +22,13 @@ final class BoardSounds {
     /// conveyed, so a board that cannot find its samples is a quiet board and
     /// not a broken one. `missing` is what the tests read, so a sample that
     /// fell out of the bundle is caught there rather than by silence.
+    ///
+    /// The session is configured first, on the platform that has one, because
+    /// what these players are to the rest of the phone — silenced with the ring,
+    /// mixed with whatever was already playing — is a property of the session
+    /// rather than of any player. `BoardAudioSession` carries the reasoning.
     init(bundle: Bundle = .main) {
+        BoardAudioSession.configure()
         for sound in Feedback.Sound.allCases {
             guard let url = bundle.url(forResource: sound.resource, withExtension: "wav"),
                   let player = try? AVAudioPlayer(contentsOf: url) else { continue }
