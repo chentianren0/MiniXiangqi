@@ -49,12 +49,13 @@ fixture reports NOT IMPLEMENTED rather than passing."
        OFF)
 
 option(MXQ_BUILD_SHARED_LIBRARY
-       "Also build the C ABI as a shared library — mxqcore.dll on Windows, \
-libmxqcore.dylib or libmxqcore.so elsewhere — for a frontend that loads the \
-core at runtime instead of linking it. The Windows frontend is C# and reaches \
-the core through P/Invoke, which needs one. Off by default: the Apple frontend \
-links the static library, the test runners link the static library, and \
-building both compiles every source twice."
+       "Also build the C ABI as a shared library, for a frontend that loads the \
+core at runtime instead of linking it: mxqcore.dll on Windows, which the C# \
+frontend reaches through P/Invoke, and libmxqcore.dylib on macOS, where it is \
+built as the portability check on the export surface. No other platform's \
+shared library has been built, so none is claimed. Off by default: the Apple \
+frontend links the static library, the test runners link the static library, \
+and building both compiles every source twice."
        OFF)
 
 # Whether the facade's own entry points exist in src/. They do, and this has
@@ -303,9 +304,9 @@ endforeach()
 # components are compiled as their own targets: hiding mxq_core_shared's own
 # symbols says nothing about theirs. On Windows nothing is exported without
 # __declspec(dllexport), so the DLL is already exactly mxq.h's 54 functions and
-# this changes nothing there. On ELF and Mach-O the default is the opposite,
-# and without this the library would also publish every sqlite3_ entry point
-# and much of the engine — components docs/architecture.md requires to stay
+# this changes nothing there. Where the default is the opposite — Mach-O, and
+# ELF by the same rule — the library also publishes every sqlite3_ entry point
+# and much of the engine, components docs/architecture.md requires to stay
 # invisible through mxq.h. Applied only while building a shared library, so
 # that the Apple frontend's static build compiles the same objects it always
 # did. Measured with nm on macOS: without it the library exported the whole

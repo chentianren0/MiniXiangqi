@@ -11,10 +11,10 @@
     toolchain stays open until a packaging build establishes it; nothing below
     is a pin.
 
-    Unpackaged and self-contained: WindowsPackageType None because MSIX is a
-    later PR, and WindowsAppSDKSelfContained because a machine that has never
-    installed the Windows App Runtime should still be able to run what it
-    built.
+    Unpackaged and self-contained: WindowsPackageType None because no packaging
+    build exists yet and this one decides nothing about the one that will, and
+    WindowsAppSDKSelfContained because a machine that has never installed the
+    Windows App Runtime should still be able to run what it built.
   -->
 
   <PropertyGroup>

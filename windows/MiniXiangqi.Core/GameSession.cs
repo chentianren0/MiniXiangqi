@@ -108,9 +108,6 @@ public sealed unsafe class GameSession : IDisposable
             after.in_check != 0);
     }
 
-    /// <summary>The raw handle, for the calls this wrapper does not cover.</summary>
-    public MxqGame* Handle => Live;
-
     /// <summary>Release the session. Required after a terminal commit too.</summary>
     public void Dispose()
     {

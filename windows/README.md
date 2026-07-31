@@ -146,11 +146,20 @@ It prints a checked line per claim, a count, and `MXQ_SMOKE_OK`, and it exits no
 if anything failed.
 
 **A WinUI 3 process cannot be launched over SSH.** An SSH session lands in session 0,
-which has no interactive desktop, and the app fail-fasts inside `Microsoft.UI.Input.dll`
-(exception `0xc0000602`) before any of this project's code runs. The window's own
-evidence is therefore that it builds; everything in it except the XAML is the wrapper in
-`MiniXiangqi.Core`, which the harness drives directly for that reason. Seeing the window
-needs an RDP session.
+which has no interactive desktop. The process starts and then fail-fasts: exception
+`0xc0000602`, `STATUS_FAIL_FAST_EXCEPTION`, faulting module `Microsoft.UI.Input.dll` —
+the Windows App SDK's own input stack, not this repository's code.
+
+What the evidence carries exactly: no store directory is created, so execution never
+reached `mxq_core_init`. It does not rule out `MainWindow`'s constructor, which reads
+`MiniXiangqiCore.Version` across the P/Invoke boundary before it calls `Start`. The
+inference — that the fault precedes every line in this repository, since a UI framework
+that fail-fasts in its input stack does so while starting up — is likely and is not
+proved by the store's absence alone.
+
+The window's own evidence is therefore that it builds. Everything in it except the XAML
+is the wrapper in `MiniXiangqi.Core`, which the harness drives directly for that reason.
+Seeing the window needs an RDP session.
 
 ## Not pinned yet
 

@@ -356,15 +356,14 @@ internal static unsafe class Program
         ExpectRefusal(game, moveText[0], Mxq.MXQ_ERR_RULES_ILLEGAL_MOVE);
 
         Section("10. mxq_engine_prepare");
-        MxqEnginePlan applied = default;
-        applied.struct_size = (uint)sizeof(MxqEnginePlan);
-        err = MxqCall.Error();
-        MxqCall.Check(
-            Mxq.mxq_engine_prepare(core.Handle, &budget, &applied, &err),
-            in err,
-            nameof(Mxq.mxq_engine_prepare));
-        Console.WriteLine($"    applied threads     {applied.threads}");
-        Console.WriteLine($"    applied hash        {applied.hash_mib} MiB");
+
+        // Through the wrapper rather than through the generated declaration
+        // directly. The wrapper shadows this call exactly, so calling the raw
+        // one here would leave the helper the frontend will actually use with
+        // no run behind it.
+        EnginePlan applied = core.PrepareEngine(budget);
+        Console.WriteLine($"    applied threads     {applied.Threads}");
+        Console.WriteLine($"    applied hash        {applied.HashMib} MiB");
 
         int engineState;
         sbyte* profileBuffer = stackalloc sbyte[Mxq.MXQ_PROFILE_ID_CAP];
@@ -518,6 +517,40 @@ internal static unsafe class Program
 
         Check("the wrapper applied a move", after.PlyCount == 1);
         Check("the retained line holds it", historyAfter.Count == 1 && historyAfter[0] == legal[0]);
+
+        // The wrapper's refusal path, which is the window's only error surface:
+        // its catch reads StatusName, Status, Domain and Detail straight onto
+        // the view. All four have to arrive populated and agreeing with each
+        // other, and the detail has to survive MxqError's caller-supplied-out
+        // guard, so the refusal is taken through the wrapper rather than around
+        // it.
+        MxqException? refusal = null;
+        try
+        {
+            session.ApplyMove("zzzz");
+        }
+        catch (MxqException ex)
+        {
+            refusal = ex;
+        }
+
+        Console.WriteLine($"    refused             {refusal?.StatusName} ({refusal?.Status}), domain {refusal?.Domain}");
+        Console.WriteLine($"    detail              {refusal?.Detail}");
+        Console.WriteLine($"    message             {refusal?.Message}");
+
+        Check("a malformed move through the wrapper throws MxqException", refusal is not null);
+        Check("the exception carries the typed status",
+            refusal?.Status == Mxq.MXQ_ERR_RULES_MALFORMED_MOVE);
+        Check("the exception carries the status name",
+            refusal?.StatusName == "MXQ_ERR_RULES_MALFORMED_MOVE");
+        Check("the exception carries the domain", refusal?.Domain == Mxq.MXQ_DOMAIN_RULES);
+        Check("the exception carries the core's own diagnostic",
+            refusal is not null && refusal.Detail.Length > 0);
+        Check("the message names the operation and the diagnostic",
+            refusal is not null
+            && refusal.Message.Contains(nameof(Mxq.mxq_game_apply_move), StringComparison.Ordinal)
+            && refusal.Message.Contains(refusal.Detail, StringComparison.Ordinal));
+        Check("the refused move committed nothing", session.MoveHistory().Count == 1);
 
         // The other half of resume-or-create is not reachable in one process:
         // a second mxq_game_resume_active while the first session is live is
