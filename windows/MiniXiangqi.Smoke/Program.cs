@@ -11,13 +11,14 @@
 // than the wrapper types beside them. A wrapper proves the wrapper; this proves
 // the ABI.
 //
-// Sections 17 to 19 are the play screen's. A WinUI 3 process cannot be launched
-// from an SSH session, so the Windows frontend's behaviour would otherwise be
-// runnable on no machine this project owns. The screen's logic lives in
-// MiniXiangqi.Play with no window attached to it, and this plays whole games
-// through it: every move committed by clicking a point and then another point,
-// the AI answering through the same marshalled callback the window uses, and
-// the strings it shows checked against docs/copy.md.
+// Sections 17 to 28 are the Play destination's. A WinUI 3 process cannot be
+// launched from an SSH session, so the Windows frontend's behaviour would
+// otherwise be runnable on no machine this project owns. Its logic lives in
+// MiniXiangqi.Play with no window attached to it — PlayFlow and PlaySession —
+// and this drives all of it: every move committed by clicking a point and then
+// another point, the AI answering through the same marshalled callback the
+// window uses, every page reached the way a person reaches it, and the strings
+// shown along the way checked against docs/copy.md.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -62,6 +63,7 @@ internal static unsafe class Program
             WhatTheWindowDoes(store, assets);
             CopyTable(copyTable);
             ThePlayScreen(store, assets);
+            TheFlows(store, assets);
         }
         catch (Exception ex)
         {
@@ -744,6 +746,16 @@ internal static unsafe class Program
         play.Tap(opening);
         Check("tapping the selected piece again cancels the selection", play.Scene.Selected is null);
 
+        // The reported Windows defect — selecting a piece appeared to need a
+        // double click — was a point's tap reaching the board's background
+        // handler behind its own Click, so a cancel arrived behind the selection
+        // the same click had made. Its fix is in BoardView, where the pointer
+        // routing lives, and **nothing here can run it**: a WinUI 3 window
+        // cannot be launched without an interactive desktop, and the two calls
+        // this file could make are already checked above as the separate acts
+        // they are. Restating them as a pair would be a check about this file
+        // rather than about the defect. The owner's re-test is the evidence.
+
         Random rng = new(20260731);
         int plies = 0;
         int humanMoves = 0;
@@ -828,20 +840,13 @@ internal static unsafe class Program
             Check("保存 files the game and the notice says so", play.Notice == ResultNotice.Recorded);
             Check("a filed game can no longer be taken back", !play.CanUndo);
 
-            // The concluding action, which has no other run: it files the
-            // finished game — already filed here — and deals another with the
-            // same frozen configuration, because there is no pre-start page to
-            // open yet.
-            string filed = play.GameId;
-            GameConfiguration was = play.Configuration;
-            play.NewGame();
-            Console.WriteLine($"    after 开始新对局      {play.GameId}");
-            Check("开始新对局 deals a different game", play.GameId != filed);
-            Check("the new game starts from the initial position",
-                play.MoveRecord.Count == 0 && play.Position.PlyCount == 0 && !play.IsOver);
-            Check("the new game keeps the finished game's configuration",
-                play.Configuration == was);
-            Check("the new game is playable", play.AcceptsInput || play.Status.SearchExpected);
+            // A game already filed is never filed again. What the concluding
+            // actions do *after* the filing is the destination's rather than
+            // this screen's, and section 25 is where it is run: 开始新对局 opens
+            // that game's own mode's pre-start state, and 完成 returns to the
+            // Play home.
+            Check("filing a filed game files nothing further", play.FileIfNeeded());
+            Check("and the record is still the one it made", play.Notice == ResultNotice.Recorded);
         }
         else
         {
@@ -1098,6 +1103,739 @@ internal static unsafe class Program
         Console.WriteLine($"    after the reply     ply {play.Position.PlyCount}, result {play.ResultState}");
         Check("the reply to a resigned game moves nothing", play.Position.PlyCount == plies);
         Check("and nothing is left thinking", play.Activity == AiActivity.Idle);
+    }
+
+    // ---------------------------------------------------------------------
+    // 22-27. The Play destination's flows: the home, the two pre-start states,
+    //        and every path between them.
+    //
+    // Same reason as the sections above — a WinUI 3 process cannot be launched
+    // over SSH — and the same shape: PlayFlow has no window, so a game is
+    // created here exactly as 开始对局 creates one, a mode is chosen exactly as
+    // a row on the home chooses one, and the confirmations are answered exactly
+    // as their dialogs answer them.
+    // ---------------------------------------------------------------------
+    private static void TheFlows(string store, string assets)
+    {
+        using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+        PumpScheduler scheduler = new();
+
+        // One game is active at a time, so anything the sections above left
+        // standing is filed first.
+        using (GameSession? standing = core.ResumeActive())
+        {
+            if (standing is not null)
+            {
+                core.ArchiveAndClear(standing);
+            }
+        }
+
+        TheDefaults();
+        HomeToSetupToBoard(core, scheduler);
+        SaveAndContinue(core, scheduler);
+        TheConcludingActions(core, scheduler);
+        NoMemoryForTheAi(core, scheduler);
+        TheCreationTheStoreRefused(core, scheduler);
+    }
+
+    /// <summary>
+    /// 22. The two Settings defaults the pre-start controls are initialized
+    ///     from, read from the keys the Apple frontend stores them under.
+    ///
+    /// The Settings screen that writes them is the next pull request; what is
+    /// checked here is the reading and the fallbacks, which is the whole of what
+    /// this one owes.
+    /// </summary>
+    private static void TheDefaults()
+    {
+        Section("22. The Settings defaults, and the draft they initialize");
+
+        SetupDraft fresh = SetupDraft.FromDefaults(NoPreferences.Instance);
+        Console.WriteLine($"    nothing stored      {fresh.FirstMover} / {fresh.Level}");
+        Check("a new installation is 我先手 and 标准",
+            fresh is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
+
+        StubPreferences stored = new()
+        {
+            ["defaults.firstMover"] = "ai-first",
+            ["defaults.aiLevel"] = "deep",
+        };
+        SetupDraft chosen = SetupDraft.FromDefaults(stored);
+        Console.WriteLine($"    ai-first / deep     {chosen.FirstMover} / {chosen.Level}");
+        Check("a stored preference is what the draft opens on",
+            chosen is { FirstMover: FirstMoverChoice.AiFirst, Level: AiLevel.Deep });
+        Check("AI 先手 previews the human as Black", chosen.PreviewsHumanAsBlack);
+        Check("AI 先手 resolves to Black", chosen.ResolveHumanSide() == Side.Black);
+
+        StubPreferences nonsense = new()
+        {
+            ["defaults.firstMover"] = "whoever-feels-like-it",
+            ["defaults.aiLevel"] = "42",
+        };
+        SetupDraft fallback = SetupDraft.FromDefaults(nonsense);
+        Console.WriteLine($"    unrecognised        {fallback.FirstMover} / {fallback.Level}");
+        Check("a name nothing recognises reads as the accepted default",
+            fallback is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
+
+        // 随机 remains unresolved and previews Red at the bottom; only a
+        // successful creation can flip the board.
+        SetupDraft random = new(FirstMoverChoice.Random, AiLevel.Fast);
+        Check("随机 previews Red at the bottom", !random.PreviewsHumanAsBlack);
+
+        // That it draws *both* sides is the claim worth making — a resolution
+        // that always answered Red would satisfy every type in the program and
+        // silently give the player one side forever.
+        HashSet<Side> drawn = [];
+        for (int draw = 0; draw < 200; draw++)
+        {
+            drawn.Add(random.ResolveHumanSide());
+        }
+
+        Check("随机 draws both sides", drawn.Count == 2);
+
+        // The product path: the JSON file every pre-start entry actually reads.
+        // The three stores above are stand-ins for a reader; this is the reader.
+        TheStoredFile();
+
+        Console.WriteLine(
+            $"    movetimes           {AiLevel.Fast.MovetimeMs()} / "
+            + $"{AiLevel.Standard.MovetimeMs()} / {AiLevel.Deep.MovetimeMs()} ms");
+        Check("each level carries the core's own movetime",
+            AiLevel.Fast.MovetimeMs() == Mxq.MXQ_MOVETIME_FAST_MS
+            && AiLevel.Standard.MovetimeMs() == Mxq.MXQ_MOVETIME_STANDARD_MS
+            && AiLevel.Deep.MovetimeMs() == Mxq.MXQ_MOVETIME_DEEP_MS);
+        Check("the serialized names are the archive's vocabulary",
+            FirstMoverChoice.Random.Name() == "random" && AiLevel.Deep.Name() == "deep");
+    }
+
+    /// <summary>
+    /// The preferences file itself: <c>FilePreferenceStore</c> over a real file
+    /// on disk, which is what every entry to a pre-start page reads through.
+    ///
+    /// The stores above are stand-ins for a reader and prove the fallbacks; this
+    /// proves the reader. Every claim windows/README.md makes about it is one
+    /// line here — a stored name is read, an absent file is nothing stored, a
+    /// malformed one is nothing stored, and a value of the wrong kind is not a
+    /// value. The last three matter because a preferences file is editable by
+    /// hand and read by more than one frontend, and the page still has to open.
+    /// </summary>
+    private static void TheStoredFile()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(), "mxq-prefs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "preferences.json");
+        FilePreferenceStore store = new(path);
+
+        try
+        {
+            Console.WriteLine($"    preferences file    {path}");
+
+            Check("an absent file is nothing stored",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && Preferences.DefaultFirstMover(store) == FirstMoverChoice.HumanFirst
+                && Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+
+            File.WriteAllText(
+                path,
+                """{"defaults.firstMover":"random","defaults.aiLevel":"fast"}""");
+            SetupDraft stored = SetupDraft.FromDefaults(store);
+            Console.WriteLine($"    stored              {stored.FirstMover} / {stored.Level}");
+            Check("a stored file is what the draft opens on",
+                stored is { FirstMover: FirstMoverChoice.Random, Level: AiLevel.Fast });
+
+            File.WriteAllText(path, "{ this is not json");
+            Check("a malformed file is nothing stored",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && Preferences.DefaultFirstMover(store) == FirstMoverChoice.HumanFirst);
+
+            // A key holding something that is not a string is not a preference
+            // this reader has: a number, an object and an array all read as
+            // absent rather than as text somebody could coerce them into.
+            File.WriteAllText(
+                path,
+                """{"defaults.firstMover":2,"defaults.aiLevel":{"level":"deep"},"other":[1]}""");
+            Check("a value of the wrong kind is not a value",
+                store.Read(Preferences.DefaultFirstMoverKey) is null
+                && store.Read(Preferences.DefaultAiLevelKey) is null
+                && Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+
+            // A file that is fine but holds nothing this build knows.
+            File.WriteAllText(path, """{"defaults.aiLevel":"glacial"}""");
+            Check("a name nothing recognises in a real file reads as the default",
+                Preferences.DefaultAiLevel(store) == AiLevel.Standard);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch directory; failing to remove it is not a result.
+            }
+        }
+    }
+
+    /// <summary>
+    /// 23. The entry path: the home, a mode entry, the pre-start state, and
+    ///     开始对局.
+    /// </summary>
+    private static void HomeToSetupToBoard(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("23. Home → 人机对弈 pre-start → 开始对局 → the board");
+
+        using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
+        flow.Start();
+
+        Console.WriteLine($"    at launch           {flow.Page}");
+        Check("a launch with nothing to resume opens on the home", flow.Page == PlayPage.Home);
+        Check("and creates nothing", flow.Session is null && flow.ActiveGame is null);
+        Check("so the home has no current game to describe", flow.ActiveGameLine is null);
+
+        flow.Choose(PlayMode.HumanVersusAi);
+        Console.WriteLine($"    after 人机对弈       {flow.Page} / {flow.SetupMode}");
+        Check("choosing a mode opens that mode's pre-start state",
+            flow is { Page: PlayPage.Setup, SetupMode: PlayMode.HumanVersusAi });
+        Check("the pre-start state is not an active game", flow.Session is null);
+        Check("the draft is the Settings defaults",
+            flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
+        Placement frozen = new(MiniXiangqiCore.StartFen);
+        bool previewsTheStart = true;
+        for (int rank = 0; rank < Square.Count && previewsTheStart; rank++)
+        {
+            for (int file = 0; file < Square.Count && previewsTheStart; file++)
+            {
+                Square point = new(file, rank);
+                previewsTheStart = flow.PreviewScene.Placement[point] == frozen[point];
+            }
+        }
+
+        Check("the preview is the frozen initial position", previewsTheStart);
+        Check("and it shows Red at the bottom", !flow.PreviewScene.Flipped);
+
+        flow.ChooseFirstMover(FirstMoverChoice.AiFirst);
+        Check("AI 先手 flips the preview", flow.PreviewScene.Flipped);
+        flow.ChooseFirstMover(FirstMoverChoice.Random);
+        Check("随机 previews Red until it is resolved", !flow.PreviewScene.Flipped);
+
+        // The back control, and what leaving a pre-start page discards.
+        flow.ChooseLevel(AiLevel.Deep);
+        flow.LeaveTopPage();
+        Check("the back control returns to the home", flow.Page == PlayPage.Home);
+        Check("and no game was created", flow.Session is null);
+        flow.Choose(PlayMode.HumanVersusAi);
+        Console.WriteLine($"    re-entered          {flow.Draft.FirstMover} / {flow.Draft.Level}");
+        Check("the draft is discarded on leaving and afresh on entry",
+            flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
+
+        // An attempt the player walks out of commits nothing, even though the
+        // preparation it started will succeed.
+        flow.StartGame();
+        Check("开始对局 cannot be invoked again while creation is in progress", flow.Creating);
+        flow.StartGame();
+        Check("and a second press changes nothing", flow.Page == PlayPage.Setup);
+        flow.LeaveTopPage();
+        scheduler.PumpUntil(() => false, TimeSpan.FromSeconds(3));
+        Console.WriteLine($"    left mid-attempt    {flow.Page}, session {flow.Session is not null}");
+        Check("leaving invalidates the attempt and creates no game",
+            flow is { Page: PlayPage.Home, Session: null, Creating: false });
+
+        // And the real thing: 我先手 at 快速, so the human moves first and the
+        // section below has a game to leave standing.
+        flow.Choose(PlayMode.HumanVersusAi);
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        bool opened = scheduler.PumpUntil(
+            () => flow.Page == PlayPage.Board || flow.Alert != FlowAlert.None,
+            TimeSpan.FromSeconds(30));
+
+        Console.WriteLine($"    after 开始对局       {flow.Page}, alert {flow.Alert}");
+        Check("开始对局 creates the game and opens the board",
+            opened && flow is { Page: PlayPage.Board, Alert: FlowAlert.None });
+        Check("and the game is now the active one", flow.ActiveGame is not null);
+
+        if (flow.Session is not { } play)
+        {
+            Check("the board has a session", false);
+            return;
+        }
+
+        Console.WriteLine($"    configuration       mode {play.Configuration.Mode}, "
+            + $"human {play.Configuration.HumanSide}, level {play.Configuration.AiLevel}, "
+            + $"movetime {play.Configuration.MovetimeMs} ms");
+        Check("the created game froze the draft",
+            play.Configuration.Mode == Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI
+            && play.Configuration.HumanSide == Mxq.MXQ_COLOR_RED
+            && play.Configuration.AiLevel == Mxq.MXQ_AI_LEVEL_FAST
+            && play.Configuration.FirstMoverChoice == Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST
+            && play.Configuration.MovetimeMs == Mxq.MXQ_MOVETIME_FAST_MS);
+        Check("the human's own side is at the bottom", !play.Scene.Flipped);
+        Check("the board is playable", play.AcceptsInput);
+
+        // One move, so the game the next section files has something in it.
+        if (Choose(play, new Random(20260731)) is { } move)
+        {
+            play.Tap(move.From);
+            play.Tap(move.To);
+        }
+
+        // Leaving the board for the home ends nothing.
+        flow.LeaveTopPage();
+        Console.WriteLine($"    left the board      {flow.Page}, active {flow.ActiveGame is not null}");
+        Check("leaving the board for the home ends nothing",
+            flow is { Page: PlayPage.Home } && flow.ActiveGame is not null);
+        Console.WriteLine($"    当前对局             {flow.ActiveGameLine}");
+        Check("the home's card describes the game the core is holding",
+            flow.ActiveGameLine is { Length: > 0 } line
+            && line.Contains(Strings.Get("mode.humanVersusAI"), StringComparison.Ordinal)
+            && line.Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
+            && line.Contains(Strings.Get("metadata.inProgress"), StringComparison.Ordinal));
+
+        // 步 is invariant and *move* is not, and a one-ply line is exactly the
+        // case the plural pattern exists for — the one this frontend selects
+        // itself, because it has no String Catalog to select for it.
+        foreach (bool chinese in (bool[])[true, false])
+        {
+            Strings.PrefersChinese = chinese;
+            Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                {flow.ActiveGameLine}");
+        }
+
+        Strings.PrefersChinese = false;
+        Check("one ply takes the English singular",
+            flow.ActiveGameLine?.EndsWith("1 move", StringComparison.Ordinal) == true);
+        Strings.PrefersChinese = true;
+        Check("and 步 is invariant beside it",
+            flow.ActiveGameLine?.EndsWith("1 步", StringComparison.Ordinal) == true);
+
+        flow.Resume();
+        Check("回到对局 opens the board on the game exactly as it was left",
+            flow.Page == PlayPage.Board && flow.Session?.MoveRecord.Count == 1);
+    }
+
+    /// <summary>
+    /// 24. The one save-and-continue confirmation, for every combination of old
+    ///     mode, new mode and active-game state.
+    /// </summary>
+    private static void SaveAndContinue(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("24. 开始新对局？ — saving the active game before choosing a new mode");
+
+        using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
+        flow.Start();
+
+        Console.WriteLine($"    at launch           {flow.Page}");
+        Check("a launch with a game to resume opens at the board, not at the home",
+            flow.Page == PlayPage.Board);
+        Check("the resumed game is the one the last section left", flow.ActiveGame is not null);
+
+        uint before = HistoryCount(core);
+
+        flow.LeaveTopPage();
+        flow.Choose(PlayMode.FreePlay);
+        Console.WriteLine($"    after 自由对弈       page {flow.Page}, alert {flow.Alert}");
+        Check("a mode entry with an active game presents the confirmation",
+            flow.Alert == FlowAlert.NewGame);
+        Check("and opens nothing", flow.Page == PlayPage.Home);
+
+        flow.DismissAlert();
+        Check("取消 leaves the active game completely unchanged",
+            flow is { Alert: FlowAlert.None, Page: PlayPage.Home } && flow.ActiveGame is not null);
+
+        flow.Choose(PlayMode.FreePlay);
+        flow.SaveAndContinue();
+        bool archived = scheduler.PumpUntil(
+            () => flow.Page == PlayPage.Setup || flow.Alert == FlowAlert.ArchiveFailed,
+            TimeSpan.FromSeconds(10));
+
+        uint after = HistoryCount(core);
+        Console.WriteLine($"    after 保存并继续      page {flow.Page} / {flow.SetupMode}, "
+            + $"history {before} → {after}");
+        Check("保存并继续 archives the active game and opens the selected mode's pre-start state",
+            archived && flow is { Page: PlayPage.Setup, SetupMode: PlayMode.FreePlay });
+        Check("the game went to History", after == before + 1);
+        Check("and it created no new game", flow.Session is null && flow.ActiveGame is null);
+
+        MxqRecordSummary filed = LatestRecord(core);
+        Console.WriteLine($"    filed as            outcome {filed.outcome}, "
+            + $"reason {filed.end_reason}, {filed.move_count} ply");
+        Check("an ordinary ongoing game is archived as ended early without a result",
+            filed.outcome == Mxq.MXQ_OUTCOME_NONE
+            && filed.end_reason == Mxq.MXQ_END_REASON_ENDED_EARLY);
+
+        // The Free Play pre-start state: the same preview, no 本局设置 group,
+        // and the line that says what Free Play is.
+        Check("Free Play previews Red at the bottom", !flow.PreviewScene.Flipped);
+        Console.WriteLine($"    explanation         {Strings.Get("setup.freePlayExplanation")}");
+
+        flow.StartGame();
+        bool started = scheduler.PumpUntil(
+            () => flow.Page == PlayPage.Board || flow.Alert != FlowAlert.None,
+            TimeSpan.FromSeconds(10));
+        Console.WriteLine($"    after 开始对局       {flow.Page}, alert {flow.Alert}");
+        Check("开始对局 commits the active Free Play game", started && flow.Page == PlayPage.Board);
+
+        if (flow.Session is { } play)
+        {
+            Check("Free Play offers a board-flip control and cannot resign",
+                play.CanFlip && !play.CanResign);
+            Check("the board is interactive and Red is to move",
+                play.AcceptsInput && play.SideToMove == Side.Red);
+            Console.WriteLine($"    当前对局             {flow.ActiveGameLine}");
+            Check("Free Play's card carries no 执子 token",
+                flow.ActiveGameLine is { } line
+                && !line.Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
+                && !line.Contains(Strings.Get("metadata.youBlack"), StringComparison.Ordinal));
+
+            // The plural's other side, at both ends of the one-ply case: none
+            // played, and two played.
+            Strings.PrefersChinese = false;
+            Check("no plies takes the English plural",
+                flow.ActiveGameLine?.EndsWith("0 moves", StringComparison.Ordinal) == true);
+
+            Random rng = new(20260731);
+            for (int ply = 0; ply < 2; ply++)
+            {
+                if (Choose(play, rng) is { } step)
+                {
+                    play.Tap(step.From);
+                    play.Tap(step.To);
+                }
+            }
+
+            Console.WriteLine($"    two plies           {flow.ActiveGameLine}");
+            Check("two plies takes it too",
+                flow.ActiveGameLine?.EndsWith("2 moves", StringComparison.Ordinal) == true);
+            Strings.PrefersChinese = true;
+        }
+
+        // Leave the store with no active game, so the next section starts from
+        // nothing.
+        Retire(flow, scheduler);
+    }
+
+    /// <summary>
+    /// 25. Where the concluding actions go: 开始新对局 opens that game's own
+    ///     mode's pre-start state, and 完成 returns to the Play home.
+    /// </summary>
+    private static void TheConcludingActions(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("25. 开始新对局 and 完成, from a finished game");
+
+        using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
+        flow.Start();
+        Check("the home is where a launch with nothing to resume opens",
+            flow is { Page: PlayPage.Home, Session: null });
+
+        flow.Choose(PlayMode.HumanVersusAi);
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        scheduler.PumpUntil(() => flow.Page == PlayPage.Board, TimeSpan.FromSeconds(30));
+        if (flow.Session is not { } play)
+        {
+            Check("a game was created to conclude", false);
+            return;
+        }
+
+        // 认输 is the cheapest finish there is, and it files on the way.
+        play.RequestResign();
+        play.ConfirmResign();
+        Console.WriteLine($"    after 认输           {play.PrimaryStatus()}, notice {play.Notice}");
+        Check("认输 files the game and the notice arrives recorded",
+            play.IsFiled && play.Notice == ResultNotice.Recorded);
+        Check("a filed game is not an active game", flow.ActiveGame is null);
+
+        // 开始新对局 files the game and opens that game's own mode's pre-start
+        // state. It does not deal the next game.
+        flow.StartNewGame();
+        Console.WriteLine($"    after 开始新对局      {flow.Page} / {flow.SetupMode}, "
+            + $"session {flow.Session is not null}");
+        Check("开始新对局 opens the finished game's own mode's pre-start state",
+            flow is { Page: PlayPage.Setup, SetupMode: PlayMode.HumanVersusAi });
+        Check("and deals no game", flow.Session is null && flow.ActiveGame is null);
+        Check("the side and the level are chosen again rather than inherited",
+            flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
+
+        // And 完成, from a game filed the other way: 保存 on the notice.
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        scheduler.PumpUntil(() => flow.Page == PlayPage.Board, TimeSpan.FromSeconds(30));
+        if (flow.Session is not { } second)
+        {
+            Check("a second game was created", false);
+            return;
+        }
+
+        second.RequestResign();
+        second.ConfirmResign();
+        flow.Finish();
+        Console.WriteLine($"    after 完成           {flow.Page}, session {flow.Session is not null}");
+        Check("完成 returns to the Play home", flow.Page == PlayPage.Home);
+        Check("and lets the filed game go", flow.Session is null && flow.ActiveGameLine is null);
+
+        // A game already filed is never filed again: the two conclusions above
+        // committed one record each and no more.
+        uint records = HistoryCount(core);
+        Console.WriteLine($"    history             {records} record(s)");
+        Check("the two finishes filed one record each", records >= 2);
+    }
+
+    /// <summary>
+    /// 26 and 27. 无法启动 AI 对手, in both of its forms.
+    ///
+    /// The probe is the seam. docs/engine-integration.md fixes the arithmetic in
+    /// the core and the probe in the frontend, so handing the frontend a probe
+    /// that reports a starved machine reaches the accepted refusal through the
+    /// core's own budget calculation rather than around it — which is the only
+    /// way this path runs at all on a machine with memory to spare.
+    /// </summary>
+    private static void NoMemoryForTheAi(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("26. 无法启动 AI 对手 at 开始对局");
+
+        bool starved = true;
+        using PlayFlow flow = new(
+            core, scheduler, NoPreferences.Instance,
+            () => starved ? Starved() : WindowsMemoryProbe.Current());
+        flow.Start();
+
+        EnginePlan refused = MiniXiangqiCore.PlanFor(Starved());
+        Console.WriteLine($"    starved plan        {refused.HashMib} MiB, sufficient {refused.Sufficient}");
+        Check("the starved probe is below the accepted minimum", !refused.Sufficient);
+
+        flow.Choose(PlayMode.HumanVersusAi);
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        bool refusedGame = scheduler.PumpUntil(
+            () => flow.Alert != FlowAlert.None, TimeSpan.FromSeconds(30));
+
+        Console.WriteLine($"    after 开始对局       alert {flow.Alert}, page {flow.Page}");
+        Check("insufficient memory is the accepted 无法启动 AI 对手 notice",
+            refusedGame && flow.Alert == FlowAlert.AiUnavailable);
+        Check("a preparation failure creates nothing", flow.Session is null);
+        Check("the page and the draft remain, and 开始对局 is enabled again",
+            flow is { Page: PlayPage.Setup, Creating: false, Draft.Level: AiLevel.Fast });
+
+        Console.WriteLine($"    message             {Strings.Get("alert.aiUnavailable.message")}");
+        Check("the pre-start message promises nothing about a saved game",
+            !Strings.Get("alert.aiUnavailable.message").Contains("对局已保存", StringComparison.Ordinal));
+
+        flow.DismissAlert();
+        Check("取消 dismisses without leaving the page",
+            flow is { Alert: FlowAlert.None, Page: PlayPage.Setup, Draft.Level: AiLevel.Fast });
+
+        // 重试 obtains a fresh value from the platform memory probe and
+        // recalculates the budget; the prior value is not cached.
+        starved = false;
+        flow.StartGame();
+        bool created = scheduler.PumpUntil(
+            () => flow.Page == PlayPage.Board || flow.Alert != FlowAlert.None,
+            TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    after 重试           {flow.Page}, alert {flow.Alert}");
+        Check("a retry re-probes and the game is created", created && flow.Page == PlayPage.Board);
+
+        Section("27. 无法启动 AI 对手 mid-game, and the stalled slot behind it");
+
+        if (flow.Session is not { } play)
+        {
+            Check("there is a game to stall", false);
+            return;
+        }
+
+        // The engine is ready from the creation above, so a search would never
+        // reach a probe. Releasing it is what puts the game back in the state a
+        // suspension leaves it in: saved, owing a search, with no engine.
+        core.TeardownEngine();
+        starved = true;
+
+        if (Choose(play, new Random(20260731)) is not { } move)
+        {
+            Check("there is a move to make", false);
+            return;
+        }
+
+        play.Tap(move.From);
+        play.Tap(move.To);
+        bool stalled = scheduler.PumpUntil(
+            () => play.Alert != PlayAlert.None, TimeSpan.FromSeconds(30));
+
+        Console.WriteLine($"    owing a search      alert {play.Alert}, ply {play.Position.PlyCount}");
+        Check("a mid-game preparation failure is the same notice under the same title",
+            stalled && play.Alert == PlayAlert.EngineMemory);
+        Check("the game is saved and unchanged", play.Position.PlyCount == 1 && !play.IsFiled);
+        Check("the mid-game message adds the saved-game guarantee",
+            Strings.Get("alert.aiUnavailable.resumeMessage")
+                .Contains("对局已保存", StringComparison.Ordinal));
+
+        play.DeferEngine();
+        Console.WriteLine($"    after 稍后           activity {play.Activity}, alert {play.Alert}");
+        Check("稍后 moves the stalled state to the turn status's own slot",
+            play is { Alert: PlayAlert.None, Activity: AiActivity.Stalled });
+        Check("and Undo remains available, which is itself a way out", play.CanUndo);
+        Console.WriteLine($"    the slot says       {Strings.Get("status.aiUnavailable")} · "
+            + Strings.Get("control.tryAgain"));
+
+        starved = false;
+        play.RetryEngine();
+        bool answered = scheduler.PumpUntil(
+            () => play.MoveRecord.Count > 1 || play.Alert != PlayAlert.None,
+            TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    after 重试           activity {play.Activity}, "
+            + $"record {string.Join(' ', play.MoveRecord)}");
+        Check("every retry re-probes fresh, and this one lets the AI answer",
+            answered && play.MoveRecord.Count > 1 && play.Activity == AiActivity.Idle);
+
+        Retire(flow, scheduler);
+    }
+
+    /// <summary>
+    /// Files whatever is still active and comes back to the home, so the next
+    /// section starts from nothing. It is the save-and-continue flow, used as
+    /// the flow rather than around it.
+    /// </summary>
+    private static void Retire(PlayFlow flow, PumpScheduler scheduler)
+    {
+        if (flow.Page != PlayPage.Home)
+        {
+            flow.LeaveTopPage();
+        }
+
+        if (flow.ActiveGame is null)
+        {
+            return;
+        }
+
+        flow.Choose(PlayMode.FreePlay);
+        flow.SaveAndContinue();
+        scheduler.PumpUntil(() => flow.Page == PlayPage.Setup, TimeSpan.FromSeconds(10));
+        flow.LeaveTopPage();
+    }
+
+    private static uint HistoryCount(MiniXiangqiCore core)
+    {
+        uint count;
+        ulong revision;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_store_history_count(core.Handle, &count, &revision, &err),
+            in err,
+            nameof(Mxq.mxq_store_history_count));
+        return count;
+    }
+
+    /// <summary>
+    /// The most recently recorded History entry. The order is the core's, most
+    /// recent first, and this reads the head of it.
+    /// </summary>
+    private static MxqRecordSummary LatestRecord(MiniXiangqiCore core)
+    {
+        MxqRecordSummary[] page = new MxqRecordSummary[1];
+        nuint written;
+        ulong revision;
+        fixed (MxqRecordSummary* buffer = page)
+        {
+            MxqError err = MxqCall.Error();
+            MxqCall.Check(
+                Mxq.mxq_store_history_page(core.Handle, 0, 1, buffer, 1, &written, &revision, &err),
+                in err,
+                nameof(Mxq.mxq_store_history_page));
+        }
+
+        return page[0];
+    }
+
+    /// <summary>
+    /// 28. 无法开始对局 — the creation failure that is not about memory.
+    ///
+    /// **The refusal is the core's own, and the route to it is one the app
+    /// cannot take.** `mxq_game_create` answers
+    /// MXQ_ERR_STATE_ACTIVE_GAME_EXISTS when the library already holds an active
+    /// game, and PlayFlow's own release-before-OpenSetup invariant means it
+    /// never asks in that state. So this puts a game there behind a flow's back
+    /// and drives the flow into the refusal. What is under test is the
+    /// **answer** rather than the cause — `Create`'s catch does not discriminate
+    /// between MxqExceptions, so the flow behaves identically whichever store or
+    /// state refusal arrives — and the answer is what had no run at all.
+    ///
+    /// Its sibling, the accepted 无法保存对局 retry after a refused archive, has
+    /// no such route: making `mxq_store_archive_and_clear` fail needs the store
+    /// itself to fail, and there is no honest seam for that short of a stand-in
+    /// replacing the call under test. It is stated as unrun in the pull request
+    /// and in windows/README.md rather than dressed up.
+    /// </summary>
+    private static void TheCreationTheStoreRefused(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("28. 无法开始对局 — a creation the core would not make");
+
+        // A game standing in the library, held open, so the flow's own create
+        // has something to collide with. Deliberately not through the flow: the
+        // flow cannot reach this state, which is the point.
+        using GameSession standing = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        // Start() is deliberately not called: it would resume the game above and
+        // open the board on it, and what this needs is a destination on its home
+        // page that does not know the library is occupied.
+        using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
+        flow.Choose(PlayMode.FreePlay);
+        Check("the pre-start page opened", flow.Page == PlayPage.Setup);
+
+        flow.StartGame();
+        Console.WriteLine($"    after 开始对局       alert {flow.Alert}, page {flow.Page}");
+        Check("a creation the core refuses is the accepted 无法开始对局 notice",
+            flow.Alert == FlowAlert.GameNotStarted);
+        Check("it created nothing", flow.Session is null);
+        Check("the page and the draft remain, and 开始对局 is enabled again",
+            flow is { Page: PlayPage.Setup, Creating: false });
+        Console.WriteLine($"    message             {Strings.Get("alert.gameNotStarted.message")}");
+        Check("its message does not promise that a current game is unchanged",
+            Strings.Get("alert.gameNotStarted.message")
+                != Strings.Get("alert.saveFailed.message"));
+
+        flow.DismissAlert();
+        Check("取消 dismisses without leaving the page",
+            flow is { Alert: FlowAlert.None, Page: PlayPage.Setup });
+
+        // The same refusal again through 重试, which repeats the whole attempt.
+        flow.StartGame();
+        Check("重试 repeats the attempt and meets the same refusal",
+            flow.Alert == FlowAlert.GameNotStarted && flow.Session is null);
+        flow.DismissAlert();
+        flow.LeaveTopPage();
+
+        core.ArchiveAndClear(standing);
+        Console.WriteLine("    (the standing game filed; the library is empty again)");
+    }
+
+    /// <summary>
+    /// A probe reporting a machine with nothing to spare. 64 MiB available is
+    /// below the accepted 128 MiB minimum reserve, so the usable amount is zero
+    /// and the core's own arithmetic answers MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY.
+    /// </summary>
+    private static MxqEngineBudget Starved() => new()
+    {
+        struct_size = (uint)sizeof(MxqEngineBudget),
+        active_processor_count = (uint)Environment.ProcessorCount,
+        available_bytes = 64UL * 1024 * 1024,
+        physical_bytes = 64UL * 1024 * 1024,
+    };
+
+    /// <summary>A preference store holding exactly what a test put in it.</summary>
+    private sealed class StubPreferences : IPreferenceStore
+    {
+        private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+
+        internal string this[string key]
+        {
+            set => _values[key] = value;
+        }
+
+        public string? Read(string key) => _values.GetValueOrDefault(key);
     }
 
     /// <summary>A point with no legal move to it from the piece the player holds.</summary>

@@ -135,6 +135,22 @@ internal static class Program
         // A general in check: the double ring, which the turn status's 将军
         // token accompanies during play.
         studio.Shot("check", 84, play => Reach(play, 24, () => play.Position.InCheck));
+
+        // The pre-start state's preview, both ways round.
+        //
+        // **These are drawn and uploaded, and they are deliberately not
+        // committed as evidence.** A pre-start preview *is* the frozen initial
+        // board, so each comes out byte-identical to start-large and
+        // start-flipped above — the run proves the claim, which is that the
+        // pre-start page draws the real board at the real position and that the
+        // draft's orientation rule reaches the same picture Free Play's flip
+        // control reaches, and committing a second copy of a file already in the
+        // repository would add bytes rather than pixels. The Play home has no
+        // picture at all, because it has no board on it: that is the contract's
+        // own direction for it, and its evidence is what the smoke harness
+        // composes.
+        studio.Preview("setup-preview", 84, PlayMode.HumanVersusAi, FirstMoverChoice.HumanFirst);
+        studio.Preview("setup-preview-ai-first", 84, PlayMode.HumanVersusAi, FirstMoverChoice.AiFirst);
     }
 
     /// <summary>
@@ -165,6 +181,26 @@ internal static class Program
                 core.ArchiveAndClear(game);
             }
 
+            Save(name, scene, pitch, plies);
+        }
+
+        /// <summary>
+        /// A pre-start preview, reached the way the page reaches it: a mode
+        /// chosen on the Play home, a first-mover choice made in the draft, and
+        /// the scene the page then draws. No game is created — a pre-start state
+        /// is not an active game — so nothing here is filed and nothing is
+        /// played.
+        /// </summary>
+        internal void Preview(string name, double pitch, PlayMode mode, FirstMoverChoice choice)
+        {
+            using PlayFlow flow = new(core, new PumpScheduler(), NoPreferences.Instance);
+            flow.Choose(mode);
+            flow.ChooseFirstMover(choice);
+            Save(name, flow.PreviewScene, pitch, plies: 0);
+        }
+
+        private void Save(string name, BoardScene scene, double pitch, int plies)
+        {
             BoardGeometry geometry = new(pitch);
             float side = (float)geometry.BlockSide;
             using CanvasRenderTarget target = new(device, side, side, 96);

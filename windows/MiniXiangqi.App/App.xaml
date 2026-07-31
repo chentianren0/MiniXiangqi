@@ -39,6 +39,25 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!--
+                One way to play, on the Play home. A row rather than a
+                button-shaped control, because the two modes are a list of things
+                to choose between and neither of them is the answer — the tint
+                rule names them explicitly as not among the things that may be
+                tinted. What says where choosing one goes is the chevron the
+                window puts on it, and where it goes is a page rather than a
+                game: a game is created by 开始对局 on the page it opens, and by
+                nothing else.
+            -->
+            <Style x:Key="ModeEntryStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Padding" Value="16,14" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

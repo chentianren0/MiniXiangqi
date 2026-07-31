@@ -1,21 +1,18 @@
-// The play screen: the board, the pieces, and a live game against the AI.
+// The Play destination on screen: the home, the two pre-start states, and the
+// board.
 //
-// Everything below is presentation and wiring. What a click means, which
-// controls the mode offers, when the machine thinks, and what happens when it
-// answers all live in MiniXiangqi.Play's PlaySession, which has no window and
-// can therefore be run on a machine nobody is logged into. This file turns that
+// Everything below is presentation and wiring. Which page is showing, what a
+// mode entry does, what 开始对局 creates and in which order, what a click on a
+// point means, when the machine thinks and what happens when it answers all live
+// in MiniXiangqi.Play — PlayFlow and PlaySession — which have no window and can
+// therefore be run on a machine nobody is logged into. This file turns that
 // state into XAML and turns XAML's events back into calls on it.
 //
-// **The temporary seam.** The setup screen and the Play home arrive in the next
-// pull request. Until they do, this window resumes the single active game or
-// creates one exactly as the walking skeleton did — human versus AI, the human
-// Red and moving first, at 快速 — with no way to choose. That is the whole of
-// what the flows pull request replaces here: it owns the Play home, the two
-// pre-start states, 开始对局, the save-and-continue confirmation, and the
-// navigation container around all of them. Free Play needs none of this file's
-// help: PlaySession already plays it, the play-control cluster already composes
-// for it, and MiniXiangqi.Smoke already drives a game of it — it has no entry
-// point, and that entry point is the flows pull request's.
+// **The temporary seam is gone.** Until this pull request the window resumed the
+// single active game or created one exactly as the walking skeleton did — human
+// versus AI, the human Red and moving first, at 快速 — with no way to choose.
+// PlayFlow replaces the whole of that: a game is created by 开始对局 and by
+// nothing else, and a launch with nothing to resume opens on the home.
 
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -23,6 +20,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
 using MiniXiangqi.Play;
@@ -31,10 +29,24 @@ namespace MiniXiangqi.App;
 
 public sealed partial class MainWindow : Window
 {
+    /// <summary>
+    /// The navigation row's height, which the window's own floor has to allow
+    /// for on top of the board block and the air around it.
+    /// </summary>
+    private const double NavigationBarHeight = 44;
+
     private readonly BoardView _board = new();
+    private readonly BoardView _preview = new(interactive: false);
     private readonly MiniXiangqiCore? _core;
-    private readonly PlaySession? _play;
-    private PlayAlert _showing = PlayAlert.None;
+    private readonly PlayFlow? _flow;
+
+    /// <summary>
+    /// Whether a <c>ContentDialog</c> is up. One at a time, because a
+    /// <c>ContentDialog</c> is: a second <c>ShowAsync</c> over the same
+    /// <c>XamlRoot</c> throws rather than queueing.
+    /// </summary>
+    private bool _dialogUp;
+
     private ResultNotice _announced = ResultNotice.None;
     private int _recordLength = -1;
 
@@ -52,15 +64,20 @@ public sealed partial class MainWindow : Window
         _board.PointerOverChanged += OnPointerOver;
         Root.KeyDown += OnKeyDown;
 
+        PreviewHost.Children.Add(_preview);
+        _preview.HorizontalAlignment = HorizontalAlignment.Center;
+        _preview.VerticalAlignment = VerticalAlignment.Center;
+
         string assets = Path.Combine(AppContext.BaseDirectory, "assets");
         string store = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MiniXiangqi",
             "store");
 
+        MiniXiangqiCore core;
         try
         {
-            _core = MiniXiangqiCore.Start(store, assets);
+            core = MiniXiangqiCore.Start(store, assets);
         }
         catch (MxqException failure)
         {
@@ -68,15 +85,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        _core = core;
+        PlayFlow flow = new(core, new WindowScheduler(DispatcherQueue));
+        _flow = flow;
+        flow.Changed += Refresh;
+
         try
         {
-            // The seam. One game, the skeleton's configuration, no choice.
-            GameSession game = _core.ResumeOrCreate(
-                humanSide: Mxq.MXQ_COLOR_RED,
-                aiLevel: Mxq.MXQ_AI_LEVEL_FAST,
-                firstMoverChoice: Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
-                movetimeMs: Mxq.MXQ_MOVETIME_FAST_MS);
-            _play = new PlaySession(_core, game, new WindowScheduler(DispatcherQueue));
+            // A resume, and only a resume: a launch with a game to open goes
+            // straight to the board, and a launch with none opens on the home.
+            flow.Start();
         }
         catch (MxqException failure)
         {
@@ -84,14 +102,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _play.Changed += Refresh;
-        Refresh();
-        _play.Begin();
-
         Closed += (_, _) =>
         {
             _board.Release();
-            _play?.Dispose();
+            _preview.Release();
+            _flow?.Dispose();
             _core?.Dispose();
         };
     }
@@ -129,10 +144,15 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Both the board and the chrome have floors, so the window has one too,
-    /// and it stops resizing there rather than either becoming unusable. The
-    /// board block at the accepted 44-point pitch is 340 square, the air around
-    /// it is 24 a side, and the panel beside it is 260.
+    /// Both the board and the chrome have floors, so the window has one too, and
+    /// it stops resizing there rather than either becoming unusable. The board
+    /// block at the accepted 44-point pitch is 340 square, the air around it is
+    /// 24 a side, the panel beside it is 260, and the navigation row above every
+    /// page is 44.
+    ///
+    /// It is the destination's floor rather than the board page's, and the same
+    /// number on every page: a window that could be shrunk on the home and then
+    /// walked to the board is a window that clips the board.
     /// </summary>
     private void StopShrinkingAtTheFloors(double scale)
     {
@@ -143,17 +163,24 @@ public sealed partial class MainWindow : Window
 
         BoardGeometry floor = new(BoardGeometry.MinimumPitch);
         presenter.PreferredMinimumWidth = (int)Math.Ceiling((floor.BlockSide + 48 + 260) * scale);
-        presenter.PreferredMinimumHeight = (int)Math.Ceiling((floor.BlockSide + 48) * scale);
+        presenter.PreferredMinimumHeight =
+            (int)Math.Ceiling((floor.BlockSide + 48 + NavigationBarHeight) * scale);
     }
 
-    private void OnBoardHostSizeChanged(object sender, SizeChangedEventArgs args)
+    private void OnBoardHostSizeChanged(object sender, SizeChangedEventArgs args) =>
+        Fit(_board, BoardHost, args.NewSize);
+
+    private void OnPreviewHostSizeChanged(object sender, SizeChangedEventArgs args) =>
+        Fit(_preview, PreviewHost, args.NewSize);
+
+    private static void Fit(BoardView view, Grid host, Windows.Foundation.Size available)
     {
         // The board is square and is sized to the largest square fitting both
         // the available width and the height left after the surrounding chrome,
         // so it never overflows a short window.
         double side = Math.Min(
-            args.NewSize.Width - BoardHost.Padding.Left - BoardHost.Padding.Right,
-            args.NewSize.Height - BoardHost.Padding.Top - BoardHost.Padding.Bottom);
+            available.Width - host.Padding.Left - host.Padding.Right,
+            available.Height - host.Padding.Top - host.Padding.Bottom);
         if (side <= 0)
         {
             return;
@@ -166,9 +193,42 @@ public sealed partial class MainWindow : Window
         // the window's own minimum should have made this unreachable, and if a
         // scale change beats it there, an oversized board that can still be
         // played beats a board that is not drawn.
-        _board.Geometry = BoardGeometry.Fitting(side)
-            ?? new BoardGeometry(BoardGeometry.MinimumPitch);
+        view.Geometry = BoardGeometry.Fitting(side) ?? new BoardGeometry(BoardGeometry.MinimumPitch);
     }
+
+    // The navigation row.
+
+    private void OnBack(object sender, RoutedEventArgs args) => _flow?.LeaveTopPage();
+
+    // The Play home.
+
+    private void OnResume(object sender, RoutedEventArgs args) => _flow?.Resume();
+
+    private void OnChooseHumanVersusAi(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(PlayMode.HumanVersusAi);
+
+    private void OnChooseFreePlay(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(PlayMode.FreePlay);
+
+    // The pre-start page.
+
+    private void OnFirstMoverChanged(object sender, SelectionChangedEventArgs args) =>
+        _flow?.ChooseFirstMover(FirstMover.SelectedIndex switch
+        {
+            1 => FirstMoverChoice.AiFirst,
+            2 => FirstMoverChoice.Random,
+            _ => FirstMoverChoice.HumanFirst,
+        });
+
+    private void OnLevelChanged(object sender, SelectionChangedEventArgs args) =>
+        _flow?.ChooseLevel(Level.SelectedIndex switch
+        {
+            0 => AiLevel.Fast,
+            2 => AiLevel.Deep,
+            _ => AiLevel.Standard,
+        });
+
+    private void OnStartGame(object sender, RoutedEventArgs args) => _flow?.StartGame();
 
     // Board input.
 
@@ -179,7 +239,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _play?.Tap(square);
+        _flow?.Session?.Tap(square);
     }
 
     private void OnBackgroundTapped()
@@ -189,10 +249,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _play?.CancelSelection();
+        _flow?.Session?.CancelSelection();
     }
 
-    private void OnPointerOver(Square? square) => _play?.Hover(square);
+    private void OnPointerOver(Square? square) => _flow?.Session?.Hover(square);
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs args)
     {
@@ -209,12 +269,12 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private bool Dismissed()
     {
-        if (_play is null || _play.Notice == ResultNotice.None)
+        if (_flow?.Session is not { } play || play.Notice == ResultNotice.None)
         {
             return false;
         }
 
-        _play.DismissNotice();
+        play.DismissNotice();
         return true;
     }
 
@@ -222,97 +282,226 @@ public sealed partial class MainWindow : Window
     // finished there is no draw left to judge, so that slot carries the
     // concluding action instead.
 
-    private void OnUndo(object sender, RoutedEventArgs args) => _play?.Undo();
+    private void OnUndo(object sender, RoutedEventArgs args) => _flow?.Session?.Undo();
 
     private void OnMiddle(object sender, RoutedEventArgs args)
     {
-        if (_play is null)
+        if (_flow?.Session is not { } play)
         {
             return;
         }
 
-        if (_play.IsOver)
+        if (play.IsOver)
         {
-            _play.NewGame();
+            // 开始新对局 files the finished game and opens that game's own
+            // mode's pre-start state, which is the destination's to do.
+            _flow.StartNewGame();
         }
         else
         {
-            _play.RequestClaimDraw();
+            play.RequestClaimDraw();
         }
     }
 
     private void OnTrailing(object sender, RoutedEventArgs args)
     {
-        if (_play is null)
+        if (_flow?.Session is not { } play)
         {
             return;
         }
 
-        if (_play.CanFlip)
+        if (play.CanFlip)
         {
-            _play.FlipBoard();
+            play.FlipBoard();
         }
         else
         {
-            _play.RequestResign();
+            play.RequestResign();
         }
     }
 
-    private void OnRetryEngine(object sender, RoutedEventArgs args) => _play?.RetryEngine();
+    private void OnRetryEngine(object sender, RoutedEventArgs args) => _flow?.Session?.RetryEngine();
 
-    private void OnDismissNotice(object sender, RoutedEventArgs args) => _play?.DismissNotice();
+    private void OnDismissNotice(object sender, RoutedEventArgs args) =>
+        _flow?.Session?.DismissNotice();
 
     private void OnNoticePrimary(object sender, RoutedEventArgs args)
     {
-        if (_play is null)
+        if (_flow?.Session is not { } play)
         {
             return;
         }
 
-        if (_play.Notice == ResultNotice.Recorded)
+        if (play.Notice == ResultNotice.Recorded)
         {
-            _play.DismissNotice();
+            // 完成 returns to the Play home, where what to play is chosen again.
+            _flow.Finish();
         }
         else
         {
-            _play.SaveResult();
+            play.SaveResult();
         }
     }
 
-    private void OnNoticeSecondary(object sender, RoutedEventArgs args) => _play?.NewGame();
+    private void OnNoticeSecondary(object sender, RoutedEventArgs args) => _flow?.StartNewGame();
 
     // Presentation.
 
     private void Refresh()
     {
-        if (_play is not { } play)
+        if (_flow is not { } flow)
         {
             return;
         }
 
+        ShowPage(flow);
+        switch (flow.Page)
+        {
+            case PlayPage.Home:
+                ShowHome(flow);
+                break;
+            case PlayPage.Setup:
+                ShowSetup(flow);
+                break;
+            case PlayPage.Board when flow.Session is { } play:
+                ShowBoard(play);
+                break;
+        }
+
+        ShowDialog(flow);
+    }
+
+    private void ShowPage(PlayFlow flow)
+    {
+        HomePage.Visibility = Shown(flow.Page == PlayPage.Home);
+        SetupPage.Visibility = Shown(flow.Page == PlayPage.Setup);
+        BoardPage.Visibility = Shown(flow.Page == PlayPage.Board && flow.Session is not null);
+
+        // The back control appears on the two pages that have somewhere to go
+        // back to, and names the page it returns to — which here is always the
+        // Play home. The title is the destination's rather than any one page's,
+        // because all three pages carry the same one.
+        Back.Visibility = Shown(flow.Page != PlayPage.Home);
+        AutomationProperties.SetName(Back, Strings.Get("nav.play"));
+        PageTitle.Text = Strings.Get("nav.play");
+    }
+
+    private void ShowHome(PlayFlow flow)
+    {
+        bool active = flow.ActiveGameLine is { Length: > 0 };
+        CurrentGame.Visibility = Shown(active);
+        CurrentGameHeader.Text = Strings.Get("alert.newGame.metadataHeader");
+        CurrentGameLine.Text = flow.ActiveGameLine ?? string.Empty;
+        ResumeGame.Content = Strings.Get("nav.resumeGame");
+
+        // Both mode entries remain interactive whenever a game is active:
+        // selecting one presents the accepted confirmation rather than opening
+        // anything.
+        ModeEntry(ModeHumanVersusAi, "mode.humanVersusAI");
+        ModeEntry(ModeFreePlay, "mode.freePlay");
+    }
+
+    /// <summary>
+    /// One way to play: its name, and the chevron that says choosing it opens a
+    /// page rather than dealing a game.
+    /// </summary>
+    private static void ModeEntry(Button entry, string key)
+    {
+        string title = Strings.Get(key);
+        AutomationProperties.SetName(entry, title);
+        entry.Content = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = GridLength.Auto },
+            },
+            Children =
+            {
+                new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center },
+                Chevron(),
+            },
+        };
+    }
+
+    private static TextBlock Chevron()
+    {
+        TextBlock chevron = new()
+        {
+            Text = "\uE76C", // ChevronRight, from the system's own symbol font.
+            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+            FontSize = 12,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(chevron, 1);
+        return chevron;
+    }
+
+    private void ShowSetup(PlayFlow flow)
+    {
+        _preview.Scene = flow.PreviewScene;
+
+        bool versusAi = flow.SetupMode == PlayMode.HumanVersusAi;
+        ThisGame.Visibility = Shown(versusAi);
+        FreePlayExplanation.Visibility = Shown(!versusAi);
+        FreePlayExplanation.Text = Strings.Get("setup.freePlayExplanation");
+
+        ThisGameHeader.Text = Strings.Get("setup.thisGame");
+
+        // 本局设置 names the group and the three options name themselves, so
+        // 先后手 is not drawn; a screen reader still has to be able to call the
+        // control something.
+        AutomationProperties.SetName(FirstMover, Strings.Get("setup.firstMover"));
+        FirstMoverHuman.Content = Strings.Get("setup.iMoveFirst");
+        FirstMoverAi.Content = Strings.Get("setup.aiMovesFirst");
+        FirstMoverRandom.Content = Strings.Get("setup.random");
+        FirstMover.SelectedIndex = flow.Draft.FirstMover switch
+        {
+            FirstMoverChoice.AiFirst => 1,
+            FirstMoverChoice.Random => 2,
+            _ => 0,
+        };
+
+        Level.Header = Strings.Get("setup.aiLevel");
+        AutomationProperties.SetName(Level, Strings.Get("setup.aiLevel"));
+        LevelFast.Content = Strings.Get("setup.level.fast");
+        LevelStandard.Content = Strings.Get("setup.level.standard");
+        LevelDeep.Content = Strings.Get("setup.level.deep");
+        Level.SelectedIndex = flow.Draft.Level switch
+        {
+            AiLevel.Fast => 0,
+            AiLevel.Deep => 2,
+            _ => 1,
+        };
+
+        StartGame.Content = Strings.Get("control.startGame");
+        StartGame.IsEnabled = !flow.Creating;
+    }
+
+    private void ShowBoard(PlaySession play)
+    {
         _board.Scene = play.Scene;
 
         StatusPrimary.Text = play.PrimaryStatus();
         StatusSecondary.Text = play.SecondaryStatus() ?? string.Empty;
-        StatusSecondary.Visibility = StatusSecondary.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        StatusSecondary.Visibility = Shown(StatusSecondary.Text.Length > 0);
 
         bool thinking = play.Activity == AiActivity.Thinking;
         Thinking.IsActive = thinking;
-        Thinking.Visibility = thinking ? Visibility.Visible : Visibility.Collapsed;
+        Thinking.Visibility = Shown(thinking);
         AutomationProperties.SetName(Thinking, Strings.Get("status.aiThinking"));
 
-        bool stalled = play.Activity == AiActivity.Stalled;
-        Stalled.Visibility = stalled ? Visibility.Visible : Visibility.Collapsed;
+        Stalled.Visibility = Shown(play.Activity == AiActivity.Stalled);
         StalledText.Text = Strings.Get("status.aiUnavailable");
         StalledRetry.Content = Strings.Get("control.tryAgain");
 
-        SaveFailure.Visibility = play.MoveNotSaved ? Visibility.Visible : Visibility.Collapsed;
+        SaveFailure.Visibility = Shown(play.MoveNotSaved);
         SaveFailureText.Text = Strings.Get("status.saveFailed");
 
         ShowControls(play);
         ShowRecord(play);
         ShowNotice(play);
-        ShowAlert();
     }
 
     private void ShowControls(PlaySession play)
@@ -331,6 +520,18 @@ public sealed partial class MainWindow : Window
             Middle.IsEnabled = play.CanClaimDraw;
         }
 
+        // **The concluding action is a tint moment, once the notice is closed.**
+        // The tint rule lists it by name — "the concluding action the
+        // play-control cluster carries once a finished game's notice is closed"
+        // — and the closing is the whole condition: while the notice stands, its
+        // own default action is the tinted one, and at most one tinted element is
+        // ever visible. So the accent lands on 开始新对局 exactly when the game is
+        // finished and nothing is standing in front of the board, and comes off
+        // again the moment the slot goes back to carrying 判和.
+        Middle.Style = play.IsOver && play.Notice == ResultNotice.None
+            ? (Style)Application.Current.Resources["AccentButtonStyle"]
+            : null;
+
         if (play.CanFlip)
         {
             // Free Play cannot resign, having no opponent to resign to, and it
@@ -347,7 +548,7 @@ public sealed partial class MainWindow : Window
             // disorienting rather than useful.
             Trailing.Content = Strings.Get("control.resign");
             Trailing.IsEnabled = play.CanResign;
-            Trailing.Visibility = play.IsOver ? Visibility.Collapsed : Visibility.Visible;
+            Trailing.Visibility = Shown(!play.IsOver);
         }
     }
 
@@ -414,7 +615,7 @@ public sealed partial class MainWindow : Window
         TextBlock cell = new()
         {
             Text = text,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+            FontFamily = new FontFamily("Consolas"),
         };
         Grid.SetColumn(cell, column);
         return cell;
@@ -435,7 +636,7 @@ public sealed partial class MainWindow : Window
 
         bool recorded = play.Notice == ResultNotice.Recorded;
         NoticeReason.Text = recorded ? string.Empty : play.Reason() ?? string.Empty;
-        NoticeReason.Visibility = NoticeReason.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        NoticeReason.Visibility = Shown(NoticeReason.Text.Length > 0);
 
         // Before confirmation both actions save, and the default one only
         // saves: when a game ends, keeping the game that was just played is
@@ -444,7 +645,7 @@ public sealed partial class MainWindow : Window
         // with the pull request that builds it.
         NoticePrimary.Content = Strings.Get(recorded ? "control.done" : "control.save");
         NoticeSecondary.Content = Strings.Get("control.saveAndNewGame");
-        NoticeSecondary.Visibility = recorded ? Visibility.Collapsed : Visibility.Visible;
+        NoticeSecondary.Visibility = Shown(!recorded);
 
         Announce(play);
     }
@@ -482,15 +683,124 @@ public sealed partial class MainWindow : Window
             "MiniXiangqi.Result");
     }
 
-    private async void ShowAlert()
+    // The alerts. A confirmation of a consequential act is a system alert,
+    // presented wherever the platform puts one and blocking until it is
+    // answered, because the act itself does not happen until the player answers.
+    //
+    // One at a time, because a ContentDialog is: the destination's own alerts
+    // take precedence, and the board's are presented only while the board is the
+    // page. A mid-game engine failure that arrives while the player is on the
+    // home therefore waits for them to come back to the board, which is where
+    // its stalled state and its retry live anyway.
+
+    private void ShowDialog(PlayFlow flow)
     {
-        if (_play is not { } play || _showing != PlayAlert.None || play.Alert == PlayAlert.None)
+        if (_dialogUp)
         {
             return;
         }
 
-        PlayAlert alert = play.Alert;
-        _showing = alert;
+        if (flow.Alert != FlowAlert.None)
+        {
+            ShowFlowAlert(flow, flow.Alert);
+        }
+        else if (flow.Page == PlayPage.Board && flow.Session is { Alert: not PlayAlert.None } play)
+        {
+            ShowPlayAlert(play, play.Alert);
+        }
+    }
+
+    private async void ShowFlowAlert(PlayFlow flow, FlowAlert alert)
+    {
+        _dialogUp = true;
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = Root.XamlRoot,
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        switch (alert)
+        {
+            case FlowAlert.NewGame:
+                // The one fixed confirmation for every combination of old mode,
+                // new mode and active-game state. Only the metadata changes; the
+                // title, message and actions interpolate nothing.
+                //
+                // The metadata header and the metadata line ride in the content,
+                // separated from the sentence by a blank line and by nothing
+                // else: a line break carries no punctuation and is the same in
+                // both languages, so no format string stands between them.
+                dialog.Title = Strings.Get("alert.newGame.title");
+                dialog.Content = string.Join(
+                    '\n',
+                    Strings.Get("alert.newGame.metadataHeader"),
+                    flow.ActiveGameLine ?? string.Empty,
+                    string.Empty,
+                    Strings.Get("alert.newGame.message"));
+                dialog.PrimaryButtonText = Strings.Get("control.saveAndContinue");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+
+            case FlowAlert.ArchiveFailed:
+                dialog.Title = Strings.Get("alert.saveFailed.title");
+                dialog.Content = Strings.Get("alert.saveFailed.message");
+                dialog.PrimaryButtonText = Strings.Get("control.tryAgain");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+
+            case FlowAlert.AiUnavailable:
+                // 无法启动 AI 对手 in its pre-start form: no game exists, so the
+                // message carries no saved-game guarantee and the way out is
+                // 取消 rather than 稍后.
+                dialog.Title = Strings.Get("alert.aiUnavailable.title");
+                dialog.Content = Strings.Get("alert.aiUnavailable.message");
+                dialog.PrimaryButtonText = Strings.Get("control.tryAgain");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+
+            default:
+                dialog.Title = Strings.Get("alert.gameNotStarted.title");
+                dialog.Content = Strings.Get("alert.gameNotStarted.message");
+                dialog.PrimaryButtonText = Strings.Get("control.tryAgain");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+        }
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        _dialogUp = false;
+        if (flow.Alert != alert)
+        {
+            // The situation moved on while the player was reading. Whatever
+            // replaced it will present itself; this answer is about a question
+            // that is no longer being asked.
+            return;
+        }
+
+        bool confirmed = result == ContentDialogResult.Primary;
+        switch (alert)
+        {
+            case FlowAlert.NewGame when confirmed:
+            case FlowAlert.ArchiveFailed when confirmed:
+                // 重试 repeats exactly the same atomic archive rather than
+                // something near it.
+                flow.SaveAndContinue();
+                break;
+            case FlowAlert.AiUnavailable when confirmed:
+            case FlowAlert.GameNotStarted when confirmed:
+                // The page and the draft are still there, and 重试 repeats the
+                // whole attempt, probe and all.
+                flow.StartGame();
+                break;
+            default:
+                flow.DismissAlert();
+                break;
+        }
+    }
+
+    private async void ShowPlayAlert(PlaySession play, PlayAlert alert)
+    {
+        _dialogUp = true;
 
         ContentDialog dialog = new()
         {
@@ -540,7 +850,7 @@ public sealed partial class MainWindow : Window
         }
 
         ContentDialogResult result = await dialog.ShowAsync();
-        _showing = PlayAlert.None;
+        _dialogUp = false;
         if (play.Alert != alert)
         {
             return;
@@ -570,6 +880,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private static Visibility Shown(bool shown) =>
+        shown ? Visibility.Visible : Visibility.Collapsed;
+
     private void ShowFailure(string titleKey, MxqException failure) =>
         ShowFailure(
             titleKey,
@@ -582,9 +895,10 @@ public sealed partial class MainWindow : Window
         FailureTitle.Text = Strings.Get(titleKey);
         FailureDetail.Text = diagnostic;
         Failure.Visibility = Visibility.Visible;
-        Notice.Visibility = Visibility.Collapsed;
-        Panel.Visibility = Visibility.Collapsed;
-        BoardHost.Visibility = Visibility.Collapsed;
+        HomePage.Visibility = Visibility.Collapsed;
+        SetupPage.Visibility = Visibility.Collapsed;
+        BoardPage.Visibility = Visibility.Collapsed;
+        Back.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>

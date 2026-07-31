@@ -86,6 +86,104 @@ public static class PlayText
     };
 
     /// <summary>
+    /// The active game's metadata line: mode, the human's side where there is
+    /// one, what is true of the game now, and the move count.
+    ///
+    /// docs/interaction-design.md, "Saving the active game before choosing a new
+    /// mode": it identifies at least the mode, the human's side when applicable,
+    /// and the move count; it shows the side to move for an ongoing game, the
+    /// result and reason for a terminal one, and claim availability where it
+    /// applies. The accepted example lines are 人机对弈 · 你执红,
+    /// 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步 and
+    /// 进行中 · 可判和 · 42 步.
+    ///
+    /// One line, two surfaces: the Play home's 当前对局 card, and the
+    /// save-and-continue confirmation, which puts the same header over the same
+    /// line. **Every fact on it is read, not worked out** — the mode and the
+    /// human side from the configuration frozen at creation, the state, the
+    /// reason and the ply count from the core's own status.
+    /// </summary>
+    public static string MetadataLine(this PlaySession play)
+    {
+        List<string> parts =
+        [
+            Strings.Get(play.IsHumanVersusAi ? "mode.humanVersusAI" : "mode.freePlay"),
+        ];
+
+        if (play.HumanSide is { } side)
+        {
+            parts.Add(Strings.Get(side == Side.Red ? "metadata.youRed" : "metadata.youBlack"));
+        }
+
+        parts.AddRange(play.StateParts());
+        parts.Add(play.MoveCountText());
+
+        // Applied repeatedly rather than once per line length, because the
+        // middot and its spacing are a piece of writing rather than punctuation
+        // this file may hard-code around a translated fragment.
+        string line = parts[0];
+        for (int index = 1; index < parts.Count; index++)
+        {
+            line = Strings.Join(line, parts[index]);
+        }
+
+        return line;
+    }
+
+    /// <summary>
+    /// What is true of the game right now, in the three exclusive classes the
+    /// accepted examples give.
+    ///
+    /// An ongoing game is 进行中 and whose turn it is. A claimable repetition is
+    /// still ongoing — that is the whole point of it being a claim — and what it
+    /// adds is the standing offer, in the same words the turn status uses for
+    /// it; the side to move gives way to it, as the accepted example line does.
+    /// A terminal game is its result and the reason for it, in the longer
+    /// register the metadata composition uses everywhere: 红方获胜, not the
+    /// status line's 红方胜.
+    /// </summary>
+    private static string[] StateParts(this PlaySession play)
+    {
+        string? reason = play.Reason();
+        return play.ResultState switch
+        {
+            Mxq.MXQ_GAME_ONGOING =>
+            [
+                Strings.Get("metadata.inProgress"),
+                Strings.Get(play.SideToMove == Side.Red ? "status.redToMove" : "status.blackToMove"),
+            ],
+            Mxq.MXQ_GAME_CLAIMABLE_DRAW =>
+            [
+                Strings.Get("metadata.inProgress"),
+                Strings.Get("status.drawAvailable"),
+            ],
+            Mxq.MXQ_GAME_RED_WINS => Result("result.redWins", reason),
+            Mxq.MXQ_GAME_BLACK_WINS => Result("result.blackWins", reason),
+            Mxq.MXQ_GAME_DRAW => Result("result.draw", reason),
+            _ => [],
+        };
+
+        // No reason is no words, so it contributes no segment rather than an
+        // empty one.
+        static string[] Result(string key, string? reason) =>
+            reason is { Length: > 0 } said ? [Strings.Get(key), said] : [Strings.Get(key)];
+    }
+
+    /// <summary>
+    /// Plies, which is what 步 counts, and the core's own count of them.
+    ///
+    /// docs/copy.md authors <c>metadata.moveCount</c> as a String Catalog plural
+    /// pattern, which is the Apple platform's own mechanism and not one this
+    /// frontend has. So the pattern's *one* variant carries its own key here,
+    /// <c>metadata.moveCount.one</c>, and this is the selection the catalog
+    /// would have made. A one-ply game is reachable in Free Play, which is why
+    /// it is not a case that can be skipped.
+    /// </summary>
+    private static string MoveCountText(this PlaySession play) => Strings.Format(
+        play.Position.PlyCount == 1 ? "metadata.moveCount.one" : "metadata.moveCount",
+        play.Position.PlyCount);
+
+    /// <summary>
     /// What a screen reader says about a point: its name, what stands there,
     /// and any state that is on it.
     ///
