@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Settings shared by every project under windows/. Windows 11 on x64 is the
+    target (owner decisions, 2026-07-30, recorded in pinned-inputs.json), and
+    .NET 10 is the SDK the machine that builds this carries.
+
+    AllowUnsafeBlocks is not a convenience: the core's C interface is pointers
+    and fixed-capacity buffers, and docs/core-interface.md's binding rule is
+    that every struct crosses blittable. Marshalling them would mean copying
+    them.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Where windows/build-core-dll.ps1 leaves mxqcore.dll and the staged
+         asset directory. Executables copy both beside themselves. -->
+    <MxqArtifactsDir>$(MSBuildThisFileDirectory)artifacts\</MxqArtifactsDir>
+  </PropertyGroup>
+
+</Project>

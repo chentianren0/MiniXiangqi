@@ -1,0 +1,49 @@
+# The ClangSharp option set that turns core/include/mxq.h into the committed C#
+# declarations in MiniXiangqi.Core/Generated/Mxq.g.cs. The generator version is
+# pinned in windows/.config/dotnet-tools.json and is stamped into the output's
+# [assembly: GeneratedCode]. Input and output paths are not here: generate.ps1
+# passes them absolute, so this file is a recipe rather than a location.
+#
+# One option per line. Lines beginning with # are comments.
+
+# mxq.h is plain C by contract, and reading it as C++ would change name
+# mangling assumptions and admit C++ constructs the header promises not to use.
+--language
+c
+
+# The C# side of the boundary.
+--namespace
+MiniXiangqi.Core.Interop
+
+# The static class the 54 functions and every named constant land on.
+--method-class-name
+Mxq
+
+# The DllImport library name. This resolves mxqcore.dll beside the consuming
+# assembly on Windows, and is deliberately undecorated: the loader appends the
+# platform's own prefix and suffix.
+--library-path
+mxqcore
+
+# .NET 10 / C# 14 output: C# 12 InlineArray for the header's fixed-capacity char
+# arrays, and unmanaged function pointers for MxqSearchCallback. The older
+# codegen levels spell both as `fixed` buffers and delegates, which are the two
+# places a hand-written binding would stop being blittable.
+--config
+codegen=latest
+--config
+file=single
+--generate
+file-scoped-namespaces
+
+# The capacity, version and budget constants mxq.h defines as macros —
+# MXQ_FEN_CAP, MXQ_API_VERSION_MAJOR, MXQ_ENGINE_MIN_HASH_MIB and the rest —
+# rather than leaving the C# side to restate numbers the header owns.
+--generate
+macro-bindings
+
+# [assembly: DisableRuntimeMarshalling]. The interface is blittable by
+# construction; this says so to the runtime, so no P/Invoke in the bindings
+# assembly can quietly acquire a marshalling stub.
+--generate
+disable-runtime-marshalling

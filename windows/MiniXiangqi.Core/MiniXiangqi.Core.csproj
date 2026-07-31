@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The C# side of the core's C interface: the ClangSharp-generated
+    declarations, and the thin helpers that make them usable without restating
+    anything the header owns. No rules, no adjudication, no archive parsing —
+    docs/architecture.md forbids a frontend re-deriving any of them, and this
+    assembly is the frontend's only route to the core.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MiniXiangqi.Core</RootNamespace>
+    <AssemblyName>MiniXiangqi.Core</AssemblyName>
+  </PropertyGroup>
+
+</Project>

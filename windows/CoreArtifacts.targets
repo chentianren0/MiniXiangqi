@@ -1,0 +1,34 @@
+<Project>
+
+  <!--
+    Imported by every executable under windows/. The core is consumed as a
+    prebuilt DLL beside a prebuilt asset directory, exactly as the Apple app
+    consumes a prebuilt XCFramework, and for the same reason: producing it
+    during the build would mean a multi-minute C++ compile inside every C#
+    build. Run windows/build-core-dll.ps1 first, and again after any change
+    under core/.
+  -->
+
+  <Target Name="MxqRequireCoreArtifacts" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(MxqArtifactsDir)mxqcore.dll')"
+           Text="The shared core was not found at $(MxqArtifactsDir)mxqcore.dll. Run windows/build-core-dll.ps1 before building the Windows frontend, and again after any change under core/." />
+    <Error Condition="!Exists('$(MxqArtifactsDir)assets')"
+           Text="The staged asset directory was not found at $(MxqArtifactsDir)assets. Run windows/build-core-dll.ps1, which stages the pinned variant configuration and the verified NNUE network there." />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(MxqArtifactsDir)mxqcore.dll" Condition="Exists('$(MxqArtifactsDir)mxqcore.dll')">
+      <Link>mxqcore.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(MxqArtifactsDir)mxqcore.pdb" Condition="Exists('$(MxqArtifactsDir)mxqcore.pdb')">
+      <Link>mxqcore.pdb</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(MxqArtifactsDir)assets\**\*">
+      <Link>assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
