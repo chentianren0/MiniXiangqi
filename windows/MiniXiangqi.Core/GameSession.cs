@@ -127,6 +127,35 @@ public sealed unsafe class GameSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// The position after <paramref name="ply"/> plies of the retained line —
+    /// ply 0 being the initial position. This is replay scrubbing: every step
+    /// asks the core what the position *was*, and nothing above the interface
+    /// applies or unapplies a move to work it out.
+    ///
+    /// A ply beyond the retained line is <c>MXQ_ERR_ARG_RANGE</c> and is
+    /// deliberately **not** a programming error — a scrubber may legitimately
+    /// probe an end — so it arrives as an ordinary <c>MxqException</c> rather
+    /// than as an assertion.
+    /// </summary>
+    public BoardPosition PositionAt(uint ply)
+    {
+        MxqPosition position = default;
+        position.struct_size = (uint)sizeof(MxqPosition);
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_game_position_at(Live, ply, &position, &err),
+            in err,
+            nameof(Mxq.mxq_game_position_at));
+
+        return new BoardPosition(
+            Utf8.Read(position.fen),
+            position.side_to_move,
+            position.ply_count,
+            position.position_revision,
+            position.in_check != 0);
+    }
+
     /// <summary>The complete retained main line, index 0 first.</summary>
     public IReadOnlyList<string> MoveHistory() =>
         ReadMoves(static (game, buffer, cap, count, err) =>

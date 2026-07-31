@@ -11,7 +11,7 @@ namespace MiniXiangqi.Core;
 /// <c>MXQ_ERR_STATE_ALREADY_INITIALIZED</c>, because the embedded engine's
 /// process-global state admits one instance.
 /// </summary>
-public sealed unsafe class MiniXiangqiCore : IDisposable
+public sealed unsafe partial class MiniXiangqiCore : IDisposable
 {
     private MxqCore* _core;
 
@@ -245,12 +245,7 @@ public sealed unsafe class MiniXiangqiCore : IDisposable
             in err,
             nameof(Mxq.mxq_store_history_get));
 
-        return new RecordSummary(
-            summary.record_id,
-            summary.outcome,
-            summary.end_reason,
-            summary.move_count,
-            Utf8.Read(summary.game_id));
+        return Describe(summary);
     }
 
     /// <summary>The raw handle, for the calls this wrapper does not cover.</summary>

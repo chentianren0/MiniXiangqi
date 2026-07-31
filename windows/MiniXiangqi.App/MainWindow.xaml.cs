@@ -24,6 +24,10 @@ using Microsoft.UI.Xaml.Media;
 using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
 using MiniXiangqi.Play;
+using Windows.Foundation;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace MiniXiangqi.App;
 
@@ -35,10 +39,70 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private const double NavigationBarHeight = 44;
 
+    /// <summary>
+    /// What the shell's pane takes off the width at the app's own floor.
+    ///
+    /// <c>NavigationView</c> in its Auto display mode — which is the platform's
+    /// own adaptation and not one this app chose — shows a 48-wide compact rail
+    /// between 641 and 1008 effective pixels. **That rail is what this number
+    /// pays for**: the content beside it needs its own floor whole, so the
+    /// window's floor is that floor plus 48.
+    ///
+    /// The content floor on Windows is **648**, not the 616 that
+    /// docs/interaction-design.md § Layout shapes states for the play content:
+    /// this board block is 340 wide rather than 308, because the Windows board
+    /// carries the canonical coordinates on four edges rather than the file
+    /// numerals on two. 340 plus 48 of air plus the 260 panel is 648, and the
+    /// window floor is 696. Every one of those figures is derived below rather
+    /// than written down, so a geometry change moves them.
+    ///
+    /// **It is not an argument about which display mode the window lands in.**
+    /// A first version of this comment claimed the 48 kept the window out of the
+    /// overlay band below 641 — which is false twice over: 648 is already above
+    /// 641, so the content alone would have cleared it, and the mode the window
+    /// lands in is the platform's business either way. What the rail costs is
+    /// width, and this is that width.
+    /// </summary>
+    private const double ShellPaneWidth = 48;
+
     private readonly BoardView _board = new();
     private readonly BoardView _preview = new(interactive: false);
+
+    /// <summary>
+    /// The viewer's board: noninteractive, exactly as the pre-start preview is.
+    /// Replay is read-only — it offers no move input, no Undo, and no way to
+    /// start a game from the displayed position — so it has no points for a
+    /// pointer to hit or a screen reader to offer.
+    /// </summary>
+    private readonly BoardView _replayBoard = new(interactive: false);
+
     private readonly MiniXiangqiCore? _core;
     private readonly PlayFlow? _flow;
+    private readonly HistoryFlow? _history;
+
+    /// <summary>
+    /// The system's own accessibility and appearance settings, of which this
+    /// window reads one: whether animations are wanted.
+    /// </summary>
+    private readonly Windows.UI.ViewManagement.UISettings _system = new();
+
+    /// <summary>Which top-level destination the shell is showing.</summary>
+    private bool _onHistory;
+
+    /// <summary>
+    /// The History state this window has already drawn rows for.
+    ///
+    /// Everything on either destination publishes through one event — including
+    /// the play session's own thinking indicator, which ticks while a search runs
+    /// — and rebuilding a list of rows in answer to something that happened on
+    /// the other destination is the class of waste the play screen's move record
+    /// already guards against. So the rows are rebuilt when History changed and
+    /// not otherwise.
+    /// </summary>
+    private int _renderedHistory = -1;
+
+    /// <summary>Whether the window is showing a failure it cannot come back from.</summary>
+    private bool _fatal;
 
     /// <summary>
     /// Whether a <c>ContentDialog</c> is up. One at a time, because a
@@ -68,6 +132,14 @@ public sealed partial class MainWindow : Window
         _preview.HorizontalAlignment = HorizontalAlignment.Center;
         _preview.VerticalAlignment = VerticalAlignment.Center;
 
+        ReplayHost.Children.Add(_replayBoard);
+        _replayBoard.HorizontalAlignment = HorizontalAlignment.Center;
+        _replayBoard.VerticalAlignment = VerticalAlignment.Center;
+
+        DestinationPlay.Content = Strings.Get("nav.play");
+        DestinationHistory.Content = Strings.Get("nav.history");
+        Shell.SelectedItem = DestinationPlay;
+
         string assets = Path.Combine(AppContext.BaseDirectory, "assets");
         string store = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -81,14 +153,22 @@ public sealed partial class MainWindow : Window
         }
         catch (MxqException failure)
         {
-            ShowFailure("failure.coreDidNotStart", failure);
+            ShowFatalFailure("failure.coreDidNotStart", failure);
             return;
         }
 
         _core = core;
-        PlayFlow flow = new(core, new WindowScheduler(DispatcherQueue));
+        WindowScheduler scheduler = new(DispatcherQueue);
+        PlayFlow flow = new(core, scheduler);
         _flow = flow;
         flow.Changed += Refresh;
+
+        // The History destination is built now and read when it is first shown:
+        // its list is two store queries and there is no reason to make them at
+        // launch, when the app opens on the board or on the Play home.
+        HistoryFlow history = new(core, scheduler);
+        _history = history;
+        history.Changed += Refresh;
 
         try
         {
@@ -98,7 +178,7 @@ public sealed partial class MainWindow : Window
         }
         catch (MxqException failure)
         {
-            ShowFailure("failure.gameDidNotStart", failure);
+            ShowFatalFailure("failure.gameDidNotStart", failure);
             return;
         }
 
@@ -106,6 +186,12 @@ public sealed partial class MainWindow : Window
         {
             _board.Release();
             _preview.Release();
+            _replayBoard.Release();
+
+            // Both destinations are quiesced before the core is shut down: each
+            // has calls it started that may still be inside it, and the core does
+            // not defend against a caller that has not quiesced its own threads.
+            _history?.Dispose();
             _flow?.Dispose();
             _core?.Dispose();
         };
@@ -147,11 +233,12 @@ public sealed partial class MainWindow : Window
     /// Both the board and the chrome have floors, so the window has one too, and
     /// it stops resizing there rather than either becoming unusable. The board
     /// block at the accepted 44-point pitch is 340 square, the air around it is
-    /// 24 a side, the panel beside it is 260, and the navigation row above every
-    /// page is 44.
+    /// 24 a side, the panel beside it is 260, the navigation row above every page
+    /// is 44, and the shell's rail is <see cref="ShellPaneWidth"/> beside all of
+    /// it — 696 by 432 at a scale of 1.
     ///
-    /// It is the destination's floor rather than the board page's, and the same
-    /// number on every page: a window that could be shrunk on the home and then
+    /// It is the app's floor rather than any one page's, and the same number
+    /// everywhere: a window that could be shrunk on the History list and then
     /// walked to the board is a window that clips the board.
     /// </summary>
     private void StopShrinkingAtTheFloors(double scale)
@@ -162,7 +249,8 @@ public sealed partial class MainWindow : Window
         }
 
         BoardGeometry floor = new(BoardGeometry.MinimumPitch);
-        presenter.PreferredMinimumWidth = (int)Math.Ceiling((floor.BlockSide + 48 + 260) * scale);
+        presenter.PreferredMinimumWidth =
+            (int)Math.Ceiling((floor.BlockSide + 48 + 260 + ShellPaneWidth) * scale);
         presenter.PreferredMinimumHeight =
             (int)Math.Ceiling((floor.BlockSide + 48 + NavigationBarHeight) * scale);
     }
@@ -172,6 +260,9 @@ public sealed partial class MainWindow : Window
 
     private void OnPreviewHostSizeChanged(object sender, SizeChangedEventArgs args) =>
         Fit(_preview, PreviewHost, args.NewSize);
+
+    private void OnReplayHostSizeChanged(object sender, SizeChangedEventArgs args) =>
+        Fit(_replayBoard, ReplayHost, args.NewSize);
 
     private static void Fit(BoardView view, Grid host, Windows.Foundation.Size available)
     {
@@ -196,9 +287,40 @@ public sealed partial class MainWindow : Window
         view.Geometry = BoardGeometry.Fitting(side) ?? new BoardGeometry(BoardGeometry.MinimumPitch);
     }
 
-    // The navigation row.
+    // The shell, and the navigation row inside it.
 
-    private void OnBack(object sender, RoutedEventArgs args) => _flow?.LeaveTopPage();
+    /// <summary>
+    /// A top-level destination was chosen. Nothing is created, released or
+    /// committed: the game stays active whichever destination is on screen, and
+    /// each destination's own state is exactly where it was left.
+    /// </summary>
+    private void OnDestinationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        _onHistory = ReferenceEquals(args.SelectedItem, DestinationHistory);
+
+        // The library is read when the destination is first shown, and re-read on
+        // every later visit — a game finished on the Play destination is a new
+        // row, and the revision check makes the re-read two cheap queries when
+        // nothing changed.
+        if (_onHistory)
+        {
+            _history?.LoadIfChanged();
+        }
+
+        Refresh();
+    }
+
+    private void OnBack(object sender, RoutedEventArgs args)
+    {
+        if (_onHistory)
+        {
+            _history?.CloseViewer();
+        }
+        else
+        {
+            _flow?.LeaveTopPage();
+        }
+    }
 
     // The Play home.
 
@@ -343,47 +465,505 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnNoticeSecondary(object sender, RoutedEventArgs args) => _flow?.StartNewGame();
+    /// <summary>
+    /// The notice's second action, which is a different act on either side of
+    /// confirmation: 保存并开始新对局 before it, and 回放 after.
+    /// </summary>
+    private void OnNoticeSecondary(object sender, RoutedEventArgs args)
+    {
+        if (_flow?.Session is not { } play)
+        {
+            return;
+        }
+
+        if (play.Notice != ResultNotice.Recorded)
+        {
+            _flow.StartNewGame();
+            return;
+        }
+
+        // 回放 opens the record this game became, on the History destination
+        // where every replay lives. The board it leaves behind is a finished
+        // game's, and the game is filed, so nothing is lost by walking away from
+        // it.
+        if (play.FiledRecordId is { } record && _history is { } history)
+        {
+            play.DismissNotice();
+            Shell.SelectedItem = DestinationHistory;
+            history.Open(record);
+        }
+    }
+
+    // History.
+
+    private void OnRecordClicked(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is ListViewItem { Tag: ulong recordId })
+        {
+            _history?.Open(recordId);
+        }
+    }
+
+    private void OnReplayFirst(object sender, RoutedEventArgs args) =>
+        _history?.Step(viewer => viewer.First());
+
+    private void OnReplayPrevious(object sender, RoutedEventArgs args) =>
+        _history?.Step(viewer => viewer.Previous());
+
+    private void OnReplayNext(object sender, RoutedEventArgs args) =>
+        _history?.Step(viewer => viewer.Next());
+
+    private void OnReplayLast(object sender, RoutedEventArgs args) =>
+        _history?.Step(viewer => viewer.Last());
+
+    private void OnReplayFlip(object sender, RoutedEventArgs args) =>
+        _history?.Step(viewer => viewer.FlipBoard());
+
+    /// <summary>
+    /// 导入… — the picker allows exactly one file and filters to the declared
+    /// game type, which is where the one-file-at-a-time rule is kept rather than
+    /// where it is enforced by refusal.
+    ///
+    /// The bytes are read inside the grant the picker gave and no reference to
+    /// the file is kept afterwards, which is the posture this repository's rules
+    /// ask of an untrusted input; the size gate and everything the core answers
+    /// belong to <see cref="HistoryFlow"/>, where they can be run without a
+    /// window. **The picker itself is the part that cannot**: it needs the
+    /// window's own handle, so it is the one step of the import path the headless
+    /// harness stands in for by naming a file directly.
+    /// </summary>
+    private async void OnImport(object sender, RoutedEventArgs args)
+    {
+        if (_history is not { Transferring: false } history || _dialogUp)
+        {
+            return;
+        }
+
+        FileOpenPicker picker = new();
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        picker.FileTypeFilter.Add(".mxq");
+
+        StorageFile? file = await picker.PickSingleFileAsync();
+        if (file is not null)
+        {
+            history.ImportFile(file.Path);
+        }
+    }
+
+    /// <summary>
+    /// 共享 — one History record written out as one game file.
+    ///
+    /// **On Windows that is a Save As rather than a share sheet, and the reason
+    /// is the accepted clause's own.** 共享 exports "through the platform's own
+    /// sharing, over a file rather than over data alone: the services an offline
+    /// team actually moves a game with — AirDrop, Mail, Messages — appear only
+    /// for a file." Windows' `DataTransferManager` share UI reaches installed
+    /// share targets and is not where a Windows user goes to hand somebody a
+    /// file; its own conventional equivalent is to write the file and then send
+    /// it, which is what docs/interaction-design.md § Platform adaptation
+    /// requires — "where a platform lacks an interaction idiom used elsewhere …
+    /// the same operations must be exposed through that platform's conventional
+    /// equivalents". The file, its bytes, its name and its extension are
+    /// identical either way, which is the part the interchange promise is about.
+    /// </summary>
+    private async void OnShare(ulong recordId, string suggested)
+    {
+        // Not while one is already in flight. `ExportTo` refuses a second
+        // transfer, and without this the picker would open, take a filename, and
+        // then write nothing to it.
+        if (_history is not { Transferring: false } history)
+        {
+            return;
+        }
+
+        FileSavePicker picker = new();
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+        // The type's own name in the dialog's dropdown is the application's,
+        // which is the one name this file format has that is already copy.
+        picker.FileTypeChoices.Add(Strings.Get("app.displayName"), [".mxq"]);
+        picker.SuggestedFileName = Path.GetFileNameWithoutExtension(suggested);
+
+        StorageFile? file = await picker.PickSaveFileAsync();
+        if (file is not null)
+        {
+            history.ExportTo(recordId, file.Path);
+        }
+    }
 
     // Presentation.
 
     private void Refresh()
     {
-        if (_flow is not { } flow)
+        if (_fatal || _flow is not { } flow || _history is not { } history)
         {
             return;
         }
 
-        ShowPage(flow);
-        switch (flow.Page)
+        ShowPage(flow, history);
+        if (_onHistory)
         {
-            case PlayPage.Home:
-                ShowHome(flow);
-                break;
-            case PlayPage.Setup:
-                ShowSetup(flow);
-                break;
-            case PlayPage.Board when flow.Session is { } play:
-                ShowBoard(play);
-                break;
+            if (history.Page == HistoryPageKind.Viewer && history.Viewer is { } viewer)
+            {
+                ShowViewer(viewer);
+            }
+            else
+            {
+                ShowHistory(history);
+            }
+        }
+        else
+        {
+            switch (flow.Page)
+            {
+                case PlayPage.Home:
+                    ShowHome(flow);
+                    break;
+                case PlayPage.Setup:
+                    ShowSetup(flow);
+                    break;
+                case PlayPage.Board when flow.Session is { } play:
+                    ShowBoard(play);
+                    break;
+            }
         }
 
-        ShowDialog(flow);
+        ShowDialog(flow, history);
     }
 
-    private void ShowPage(PlayFlow flow)
+    private void ShowPage(PlayFlow flow, HistoryFlow history)
     {
-        HomePage.Visibility = Shown(flow.Page == PlayPage.Home);
-        SetupPage.Visibility = Shown(flow.Page == PlayPage.Setup);
-        BoardPage.Visibility = Shown(flow.Page == PlayPage.Board && flow.Session is not null);
+        bool viewing = _onHistory && history.Page == HistoryPageKind.Viewer && history.Viewer is not null;
+        bool listing = _onHistory && !viewing;
 
-        // The back control appears on the two pages that have somewhere to go
-        // back to, and names the page it returns to — which here is always the
-        // Play home. The title is the destination's rather than any one page's,
-        // because all three pages carry the same one.
-        Back.Visibility = Shown(flow.Page != PlayPage.Home);
-        AutomationProperties.SetName(Back, Strings.Get("nav.play"));
-        PageTitle.Text = Strings.Get("nav.play");
+        HomePage.Visibility = Shown(!_onHistory && flow.Page == PlayPage.Home);
+        SetupPage.Visibility = Shown(!_onHistory && flow.Page == PlayPage.Setup);
+        BoardPage.Visibility =
+            Shown(!_onHistory && flow.Page == PlayPage.Board && flow.Session is not null);
+        HistoryPage.Visibility = Shown(listing && history.LoadFailure is null);
+        ViewerPage.Visibility = Shown(viewing);
+
+        // A library that cannot be read says *that*, in the failure-screen
+        // family, rather than showing an empty list it has no evidence for. It is
+        // the History destination's own screen, so leaving the destination puts
+        // it away.
+        if (listing && history.LoadFailure is { } unread)
+        {
+            ShowFailure("failure.historyDidNotLoad", unread);
+        }
+        else
+        {
+            Failure.Visibility = Visibility.Collapsed;
+        }
+
+        // The back control appears on the pages that have somewhere to go back
+        // to, and names the page it returns to. The title is the destination's
+        // rather than any one page's, because its pages carry the same one.
+        string destination = Strings.Get(_onHistory ? "nav.history" : "nav.play");
+        Back.Visibility = Shown(_onHistory ? viewing : flow.Page != PlayPage.Home);
+        AutomationProperties.SetName(Back, destination);
+        PageTitle.Text = destination;
+    }
+
+    /// <summary>
+    /// The list of filed games: two sections, or one unheaded one, or the empty
+    /// state.
+    /// </summary>
+    private void ShowHistory(HistoryFlow history)
+    {
+        Import.Content = Strings.Get("control.import");
+
+        HistoryEmpty.Visibility = Shown(history.IsEmpty);
+        HistoryEmptyTitle.Text = Strings.Get("history.empty.title");
+        HistoryEmptyDescription.Text = Strings.Get("history.empty.description");
+
+        // With nothing pinned there is one unheaded section and the list reads as
+        // a plain list of games; a header naming the only group on the screen
+        // labels the obvious.
+        bool sectioned = history.PinnedCount > 0;
+        PinnedHeader.Text = Strings.Get("history.section.pinned");
+        OthersHeader.Text = Strings.Get("history.section.others");
+        PinnedHeader.Visibility = Shown(sectioned);
+        OthersHeader.Visibility = Shown(sectioned && history.PinnedCount < history.Records.Count);
+
+        // The rows themselves are rebuilt only when this destination changed. A
+        // search finishing on the other one publishes through the same event, and
+        // a list of rows torn down and rebuilt because the AI moved is a list a
+        // reader cannot keep their place in.
+        if (_renderedHistory == history.Revision)
+        {
+            return;
+        }
+
+        _renderedHistory = history.Revision;
+        Fill(PinnedRecords, history.Pinned, history);
+        Fill(OtherRecords, history.Others, history);
+
+        if (history.Highlighted is { } added)
+        {
+            ScrollToRow(added);
+        }
+    }
+
+    /// <summary>
+    /// One section's rows. Each is the record's two lines and the context menu
+    /// that carries its actions — which on Windows is the primary path to them,
+    /// as the contract says of this platform.
+    /// </summary>
+    private void Fill(ListView list, IEnumerable<RecordSummary> records, HistoryFlow history)
+    {
+        list.Items.Clear();
+        foreach (RecordSummary record in records)
+        {
+            list.Items.Add(Row(record, history));
+        }
+
+        list.Visibility = Shown(list.Items.Count > 0);
+    }
+
+    private ListViewItem Row(RecordSummary record, HistoryFlow history)
+    {
+        TextBlock when = new()
+        {
+            Text = record.WhenLine(),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        // Every token on the second line is content the contract asks for, so it
+        // wraps rather than truncating.
+        TextBlock metadata = new()
+        {
+            Text = record.MetadataLine(),
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        if (SystemBrush("TextFillColorSecondaryBrush") is { } secondary)
+        {
+            metadata.Foreground = secondary;
+        }
+
+        // **Action meaning is carried by icon and text as well as colour**, which
+        // is the accepted rule for these three and the reason each one below has
+        // a symbol beside its word rather than only a word.
+        MenuFlyout actions = new();
+        MenuFlyoutItem pin = new()
+        {
+            Text = Strings.Get(record.Pinned ? "control.unpin" : "control.pin"),
+            Icon = new SymbolIcon(record.Pinned ? Symbol.UnPin : Symbol.Pin),
+        };
+        pin.Click += (_, _) => history.SetPinned(record.RecordId, !record.Pinned);
+        actions.Items.Add(pin);
+
+        MenuFlyoutItem share = new()
+        {
+            Text = Strings.Get("control.share"),
+            Icon = new SymbolIcon(Symbol.Share),
+        };
+        share.Click += (_, _) => OnShare(record.RecordId, record.SuggestedFileName());
+        actions.Items.Add(share);
+
+        actions.Items.Add(new MenuFlyoutSeparator());
+
+        // The destructive action takes the system's own destructive colour rather
+        // than a tint this file chose, so red keeps one meaning. Its icon and its
+        // word carry the meaning besides, which is why the colour can be absent
+        // without the action becoming ambiguous.
+        MenuFlyoutItem delete = new()
+        {
+            Text = Strings.Get("control.delete"),
+            Icon = new SymbolIcon(Symbol.Delete),
+        };
+        if (SystemBrush("SystemFillColorCriticalBrush") is { } critical)
+        {
+            delete.Foreground = critical;
+        }
+
+        delete.Click += (_, _) => history.RequestDelete(record.RecordId);
+        actions.Items.Add(delete);
+
+        ListViewItem row = new()
+        {
+            Tag = record.RecordId,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Content = new StackPanel { Spacing = 2, Children = { when, metadata } },
+            ContextFlyout = actions,
+        };
+
+        // A screen reader reads the row's own content rather than a name invented
+        // for it, and its actions are the context menu's — which is what
+        // docs/interaction-design.md asks of Narrator here.
+        AutomationProperties.SetName(row, record.RowLabel());
+        AutomationProperties.SetAutomationId(row, $"record-{record.RecordId}");
+
+        // The row a successful import just added carries a brief highlight. It is
+        // colour and is unchanged under Reduce Motion, which is the accepted
+        // treatment: what that setting removes is the scroll's animation, not the
+        // highlight.
+        if (history.Highlighted == record.RecordId
+            && SystemBrush("AccentFillColorSelectedTextBackgroundBrush") is { } light)
+        {
+            row.Background = light;
+        }
+
+        return row;
+    }
+
+    /// <summary>
+    /// Bring a row into view. The sections scroll with the page rather than
+    /// inside themselves, so it is the page's scroller that moves and the row's
+    /// own offset within it that says where to.
+    /// </summary>
+    private void ScrollToRow(ulong recordId)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (ListView list in new[] { PinnedRecords, OtherRecords })
+            {
+                foreach (object item in list.Items)
+                {
+                    if (item is not ListViewItem row || row.Tag is not ulong id || id != recordId)
+                    {
+                        continue;
+                    }
+
+                    if (row.XamlRoot is null)
+                    {
+                        return;
+                    }
+
+                    // **A scroll is travel, and travel is what Reduce Motion
+                    // removes**: the row still arrives, immediately. The light on
+                    // it is colour, which the same rule leaves alone — so only
+                    // this half of the accepted answer consults the setting. The
+                    // system's own switch is what says so, read at the moment of
+                    // use like every other preference here, because it can be
+                    // turned on while the window is open.
+                    HistoryScroller.ChangeView(
+                        null,
+                        row.TransformToVisual(HistoryScroller.Content as UIElement)
+                            .TransformPoint(new Point(0, 0)).Y,
+                        null,
+                        disableAnimation: !_system.AnimationsEnabled);
+                    return;
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// The viewer: the board at the shown ply, the record beside it, and the
+    /// transport under it.
+    /// </summary>
+    private void ShowViewer(ReplayViewer viewer)
+    {
+        _replayBoard.Scene = viewer.Scene;
+
+        ReplayProgress.Text = viewer.Progress;
+        ReplayMetadata.Text = viewer.MetadataLine;
+
+        Name(ReplayFirst, "replay.first");
+        Name(ReplayPrevious, "replay.previous");
+        Name(ReplayNext, "replay.next");
+        Name(ReplayLast, "replay.last");
+        ReplayFirst.IsEnabled = !viewer.IsAtStart;
+        ReplayPrevious.IsEnabled = !viewer.IsAtStart;
+        ReplayNext.IsEnabled = !viewer.IsAtEnd;
+        ReplayLast.IsEnabled = !viewer.IsAtEnd;
+
+        ReplayFlip.Content = Strings.Get("control.flipBoard");
+
+        ShowReplayRecord(viewer);
+    }
+
+    /// <summary>
+    /// The four transport controls are icon-only, so each carries its word as
+    /// both the screen reader's name and the pointer's tooltip.
+    /// </summary>
+    private static void Name(Button button, string key)
+    {
+        string word = Strings.Get(key);
+        AutomationProperties.SetName(button, word);
+        ToolTipService.SetToolTip(button, word);
+    }
+
+    /// <summary>
+    /// The move record, with the currently displayed move highlighted and every
+    /// move selectable.
+    ///
+    /// The highlight is a filled shape and a heavier weight, never colour alone,
+    /// which is the accepted rule for it.
+    /// </summary>
+    private void ShowReplayRecord(ReplayViewer viewer)
+    {
+        ReplayRecordRows.Children.Clear();
+        IReadOnlyList<string> moves = viewer.MoveRecord;
+        int shown = viewer.Ply - 1;
+
+        for (int index = 0; index < moves.Count; index += 2)
+        {
+            Grid row = new()
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(28) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                },
+            };
+
+            TextBlock number = new()
+            {
+                Text = Strings.Format("moveList.rowNumber", (index / 2) + 1),
+                TextAlignment = TextAlignment.Right,
+                Opacity = 0.6,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(number, 0);
+            row.Children.Add(number);
+
+            row.Children.Add(ReplayCell(viewer, index, 1, shown));
+            if (index + 1 < moves.Count)
+            {
+                row.Children.Add(ReplayCell(viewer, index + 1, 2, shown));
+            }
+
+            ReplayRecordRows.Children.Add(row);
+        }
+    }
+
+    private Button ReplayCell(ReplayViewer viewer, int index, int column, int shown)
+    {
+        bool current = index == shown;
+        Button cell = new()
+        {
+            Content = new TextBlock
+            {
+                Text = viewer.MoveRecord[index],
+                FontFamily = new FontFamily("Consolas"),
+                FontWeight = current ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+            },
+            Padding = new Thickness(6, 2, 6, 2),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+        };
+
+        // The highlight on the shown move is a filled shape **and** a heavier
+        // weight, never colour alone — the weight above is set whichever way the
+        // fill goes, so the accepted rule holds even if the fill does not arrive.
+        if (current && SystemBrush("SubtleFillColorSecondaryBrush") is { } fill)
+        {
+            cell.Background = fill;
+        }
+
+        int target = index + 1;
+        cell.Click += (_, _) => _history?.Step(replay => replay.Show(target));
+        AutomationProperties.SetAutomationId(cell, $"move-{index}");
+        Grid.SetColumn(cell, column);
+        return cell;
     }
 
     private void ShowHome(PlayFlow flow)
@@ -641,11 +1221,13 @@ public sealed partial class MainWindow : Window
         // Before confirmation both actions save, and the default one only
         // saves: when a game ends, keeping the game that was just played is
         // wanted far more often than being dealt the next one. Once recorded,
-        // 完成 stands alone — 回放 opens a History record, and History arrives
-        // with the pull request that builds it.
+        // the notice offers 回放, which opens the newly created History record
+        // from its initial position, and 完成, which returns to the Play home.
+        // 回放 had nowhere to go until this destination existed, which is why the
+        // recorded notice carried 完成 alone.
         NoticePrimary.Content = Strings.Get(recorded ? "control.done" : "control.save");
-        NoticeSecondary.Content = Strings.Get("control.saveAndNewGame");
-        NoticeSecondary.Visibility = Shown(!recorded);
+        NoticeSecondary.Content = Strings.Get(recorded ? "control.replay" : "control.saveAndNewGame");
+        NoticeSecondary.Visibility = Shown(!recorded || play.FiledRecordId is not null);
 
         Announce(play);
     }
@@ -693,10 +1275,25 @@ public sealed partial class MainWindow : Window
     // home therefore waits for them to come back to the board, which is where
     // its stalled state and its retry live anyway.
 
-    private void ShowDialog(PlayFlow flow)
+    private void ShowDialog(PlayFlow flow, HistoryFlow history)
     {
         if (_dialogUp)
         {
+            return;
+        }
+
+        // The destination on screen is the one whose alerts are presented. An
+        // import answered while the player has walked to the board would
+        // otherwise arrive over a board it says nothing about; it waits, and the
+        // History destination presents it when they come back to it — which is
+        // the same rule the board's own alerts already follow.
+        if (_onHistory)
+        {
+            if (history.Alert != HistoryAlert.None)
+            {
+                ShowHistoryAlert(history, history.Alert);
+            }
+
             return;
         }
 
@@ -707,6 +1304,116 @@ public sealed partial class MainWindow : Window
         else if (flow.Page == PlayPage.Board && flow.Session is { Alert: not PlayAlert.None } play)
         {
             ShowPlayAlert(play, play.Alert);
+        }
+    }
+
+    /// <summary>
+    /// The History destination's alerts: the deletion gate and its refusal, and
+    /// every answer an import can give that is not the row appearing.
+    ///
+    /// Each import message says 历史没有改变 explicitly, because no persistent
+    /// change is the guarantee the core makes and a reader has no other way to
+    /// know it held. Two of the seven carry a second action; the rest are
+    /// informational and take 好 alone.
+    /// </summary>
+    private async void ShowHistoryAlert(HistoryFlow history, HistoryAlert alert)
+    {
+        _dialogUp = true;
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot = Root.XamlRoot,
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        switch (alert)
+        {
+            case HistoryAlert.ConfirmDelete:
+                dialog.Title = Strings.Get("alert.deleteGame.title");
+                dialog.Content = Strings.Get("alert.deleteGame.message");
+                dialog.PrimaryButtonText = Strings.Get("control.delete");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+
+                // A destructive act does not get the emphasis a wanted one gets,
+                // and the default is the way out rather than the way through.
+                dialog.DefaultButton = ContentDialogButton.Close;
+                break;
+
+            case HistoryAlert.DeleteFailed:
+                dialog.Title = Strings.Get("alert.deleteFailed.title");
+                dialog.Content = Strings.Get("alert.deleteFailed.message");
+                dialog.PrimaryButtonText = Strings.Get("control.tryAgain");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+
+            case HistoryAlert.ImportDuplicate:
+                dialog.Title = Strings.Get("alert.importDuplicate.title");
+                dialog.Content = Strings.Get("alert.importDuplicate.message");
+                dialog.PrimaryButtonText = Strings.Get("control.view");
+                dialog.CloseButtonText = Strings.Get("control.ok");
+                break;
+
+            case HistoryAlert.ImportSaveFailed:
+                dialog.Title = Strings.Get("alert.importSaveFailed.title");
+                dialog.Content = Strings.Get("alert.importSaveFailed.message");
+                dialog.PrimaryButtonText = Strings.Get("control.tryAgain");
+                dialog.CloseButtonText = Strings.Get("control.cancel");
+                break;
+
+            default:
+                (string title, string message) = alert switch
+                {
+                    HistoryAlert.ImportConflict =>
+                        ("alert.importConflict.title", "alert.importConflict.message"),
+                    HistoryAlert.ImportNewerVersion =>
+                        ("alert.importNewerVersion.title", "alert.importNewerVersion.message"),
+                    HistoryAlert.ImportDamagedRecord =>
+                        ("alert.importDamagedRecord.title", "alert.importDamagedRecord.message"),
+                    _ => ("alert.importUnreadable.title", "alert.importUnreadable.message"),
+                };
+
+                // Informational plus nothing to navigate to: 好 alone. The
+                // conflict and the damaged record both name deleting the existing
+                // record as the route forward rather than offering it as a
+                // button, because that deletion is permanent and should be
+                // reached deliberately.
+                dialog.Title = Strings.Get(title);
+                dialog.Content = Strings.Get(message);
+                dialog.CloseButtonText = Strings.Get("control.ok");
+                dialog.DefaultButton = ContentDialogButton.Close;
+                break;
+        }
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        _dialogUp = false;
+        if (history.Alert != alert)
+        {
+            // The situation moved on while the reader was reading. This answer is
+            // about a question that is no longer being asked — but whatever
+            // replaced it published while a dialog was up, so nothing presented
+            // it, and without this the destination would sit behind an alert that
+            // is set and invisible with its rows refusing to answer. Redrawing is
+            // what puts the new one on screen.
+            Refresh();
+            return;
+        }
+
+        bool confirmed = result == ContentDialogResult.Primary;
+        switch (alert)
+        {
+            case HistoryAlert.ConfirmDelete when confirmed:
+            case HistoryAlert.DeleteFailed when confirmed:
+                history.ConfirmDelete();
+                break;
+            case HistoryAlert.ImportDuplicate when confirmed:
+                history.ViewDuplicate();
+                break;
+            case HistoryAlert.ImportSaveFailed when confirmed:
+                history.RetryImport();
+                break;
+            default:
+                history.DismissAlert();
+                break;
         }
     }
 
@@ -771,9 +1478,14 @@ public sealed partial class MainWindow : Window
         _dialogUp = false;
         if (flow.Alert != alert)
         {
-            // The situation moved on while the player was reading. Whatever
-            // replaced it will present itself; this answer is about a question
-            // that is no longer being asked.
+            // The situation moved on while the player was reading; this answer is
+            // about a question that is no longer being asked. **Whatever replaced
+            // it will not present itself**, which this comment used to assume it
+            // would: it published while a dialog was up, and ShowDialog runs only
+            // from Refresh. Redrawing here is what puts it on screen. (The same
+            // shape was in the History destination's handler and is fixed there
+            // too.)
+            Refresh();
             return;
         }
 
@@ -853,6 +1565,9 @@ public sealed partial class MainWindow : Window
         _dialogUp = false;
         if (play.Alert != alert)
         {
+            // As above: what replaced this published behind a dialog, so nothing
+            // presented it. Redrawing does.
+            Refresh();
             return;
         }
 
@@ -883,10 +1598,23 @@ public sealed partial class MainWindow : Window
     private static Visibility Shown(bool shown) =>
         shown ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>
+    /// A system brush by name, or nothing.
+    ///
+    /// A `{ThemeResource}` in XAML fails at parse time and is caught by building;
+    /// an indexer into <c>Application.Current.Resources</c> fails at the moment
+    /// it runs, with a <c>KeyNotFoundException</c> out of whatever was drawing.
+    /// Every brush this file asks for by name is decoration whose absence costs a
+    /// row its tint and nothing else — and this frontend's XAML is the one part
+    /// of it no machine here can run, so the difference between a plain row and a
+    /// window that will not open is worth four lines. The play screen's verify
+    /// found a reachable crash in exactly this class of code.
+    /// </summary>
+    private static Brush? SystemBrush(string key) =>
+        Application.Current.Resources.TryGetValue(key, out object? found) ? found as Brush : null;
+
     private void ShowFailure(string titleKey, MxqException failure) =>
-        ShowFailure(
-            titleKey,
-            $"{failure.StatusName} ({failure.Status}), domain {failure.Domain}\n{failure.Detail}");
+        ShowFailure(titleKey, HistoryFlow.Diagnose(failure));
 
     private void ShowFailure(string titleKey, string diagnostic)
     {
@@ -898,7 +1626,23 @@ public sealed partial class MainWindow : Window
         HomePage.Visibility = Visibility.Collapsed;
         SetupPage.Visibility = Visibility.Collapsed;
         BoardPage.Visibility = Visibility.Collapsed;
+        HistoryPage.Visibility = Visibility.Collapsed;
+        ViewerPage.Visibility = Visibility.Collapsed;
         Back.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// The failure this window cannot come back from: the core did not start, or
+    /// the first game did not.
+    ///
+    /// A History read that failed is not one of them — 历史未能载入 is one
+    /// destination's screen and leaving the destination puts it away — so the two
+    /// are told apart rather than both being "the failure screen is up".
+    /// </summary>
+    private void ShowFatalFailure(string titleKey, MxqException failure)
+    {
+        _fatal = true;
+        ShowFailure(titleKey, failure);
     }
 
     /// <summary>
@@ -909,8 +1653,11 @@ public sealed partial class MainWindow : Window
     /// inside its own call — and 对局未能开始 is the honest title for a screen
     /// that can no longer be played on.
     /// </summary>
-    internal void ReportUnexpected(Exception failure) =>
+    internal void ReportUnexpected(Exception failure)
+    {
+        _fatal = true;
         ShowFailure("failure.gameDidNotStart", $"{failure.GetType().Name}\n{failure.Message}");
+    }
 
     /// <summary>
     /// The window's thread, as the play session's scheduler. The search

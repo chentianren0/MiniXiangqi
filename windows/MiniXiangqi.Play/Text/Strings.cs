@@ -75,6 +75,7 @@ public static class Strings
             // own title, and the back control that returns to it — one string
             // for one page, as docs/copy.md keys it.
             ["nav.play"] = new("对局", "Play"),
+            ["nav.history"] = new("历史", "History"),
             ["nav.resumeGame"] = new("回到对局", "Resume Game"),
             ["mode.humanVersusAI"] = new("人机对弈", "Human versus AI"),
             ["mode.freePlay"] = new("自由对弈", "Free Play"),
@@ -96,6 +97,21 @@ public static class Strings
             ["control.later"] = new("稍后", "Later"),
             ["control.keepPlaying"] = new("继续对局", "Keep Playing"),
             ["control.endAsDraw"] = new("以和棋结束", "End as a Draw"),
+            ["control.replay"] = new("回放", "Replay"),
+
+            // The History destination's row actions and its two alert
+            // acknowledgements. On Windows the context menu is the primary path
+            // to the first four, per the platform-adaptation rule: where a
+            // platform lacks an idiom used elsewhere — list swipe actions here —
+            // the same operations are exposed through that platform's own
+            // conventional equivalents.
+            ["control.share"] = new("共享", "Share"),
+            ["control.delete"] = new("删除", "Delete"),
+            ["control.pin"] = new("置顶", "Pin"),
+            ["control.unpin"] = new("取消置顶", "Unpin"),
+            ["control.import"] = new("导入…", "Import…"),
+            ["control.view"] = new("查看", "View"),
+            ["control.ok"] = new("好", "OK"),
 
             // Turn status.
             ["status.redToMove"] = new("轮到红方", "Red to Move"),
@@ -167,6 +183,54 @@ public static class Strings
                 "保存这盘新对局时出错。请重试。",
                 "Saving the new game failed. Please try again."),
 
+            // Deleting a History record. 删除后无法恢复 says *recovered* rather
+            // than *undone* on purpose: the app has a visible Undo control that
+            // means something else, and there is no deletion Undo.
+            ["alert.deleteGame.title"] = new("删除这盘棋？", "Delete this game?"),
+            ["alert.deleteGame.message"] = new("删除后无法恢复。", "This game can't be recovered."),
+            ["alert.deleteFailed.title"] = new("无法删除这盘棋", "Couldn't Delete This Game"),
+            ["alert.deleteFailed.message"] = new(
+                "这盘棋仍然保留在历史里。请重试。",
+                "This game is still in History. Please try again."),
+
+            // The import answers. Every one of them is a thing that did not
+            // happen, and every message says 历史没有改变 explicitly, because no
+            // persistent change is the guarantee the core makes and a reader has
+            // no other way to know it held. A successful import is not here: the
+            // row appearing is its answer.
+            ["alert.importDuplicate.title"] = new("这盘棋已经在历史里", "This Game Is Already in History"),
+            ["alert.importDuplicate.message"] = new(
+                "文件里的对局和历史中的一盘完全相同，所以没有重复添加。",
+                "The game in this file is identical to one already in History, so it wasn't added again."),
+            ["alert.importConflict.title"] = new(
+                "这个文件和历史中的一盘棋冲突",
+                "This File Conflicts with a Game in History"),
+            ["alert.importConflict.message"] = new(
+                "它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。",
+                "It is the same game as one in History, but its contents differ. History is unchanged. "
+                + "To use this file, delete that game from History first."),
+            ["alert.importNewerVersion.title"] = new(
+                "这个文件由更新版本的 Mini Xiangqi 创建",
+                "This File Was Created by a Newer Version of Mini Xiangqi"),
+            ["alert.importNewerVersion.message"] = new(
+                "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。",
+                "This version can't read it. Update Mini Xiangqi and try again. History is unchanged."),
+            ["alert.importUnreadable.title"] = new("无法读取这个对局文件", "Can't Read This Game File"),
+            ["alert.importUnreadable.message"] = new(
+                "文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。",
+                "The file's contents are invalid or too large to import. History is unchanged. "
+                + "Check that the file is complete, or ask for a new copy."),
+            ["alert.importSaveFailed.title"] = new("无法保存导入的对局", "Couldn't Save the Imported Game"),
+            ["alert.importSaveFailed.message"] = new(
+                "对局文件没有问题，但保存到历史时出错。历史没有改变。请重试。",
+                "The game file is fine, but saving it to History failed. History is unchanged. "
+                + "Please try again."),
+            ["alert.importDamagedRecord.title"] = new("历史中有一盘损坏的棋", "A Game in History Is Damaged"),
+            ["alert.importDamagedRecord.message"] = new(
+                "这个文件对应的历史记录已损坏，无法比较或导入。如果要用这个文件，请先删除历史中的那一盘。",
+                "The record in History matching this file is damaged, so it can't be compared or "
+                + "imported. To use this file, delete that game from History first."),
+
             // Pre-start setup. 本局设置 names the group and the three options
             // name themselves, so 先后手 is drawn nowhere and is the segmented
             // control's screen-reader name.
@@ -193,11 +257,38 @@ public static class Strings
             // and PlayText selects between them.
             ["metadata.moveCount"] = new("{0} 步", "{0} moves"),
             ["metadata.moveCount.one"] = new("{0} 步", "{0} move"),
+            // A leading token on a filed record's date line: the list is ordered
+            // by when this library added a record while the row states the game's
+            // own end, and 导入 is what explains an old game sitting at the top.
+            ["metadata.imported"] = new("导入", "Imported"),
+
+            // The History destination: its two sections, and what it says with
+            // nothing in it. With nothing pinned there is one unheaded section
+            // and the list reads as a plain list of games.
+            ["history.section.pinned"] = new("已置顶", "Pinned"),
+            ["history.section.others"] = new("其他对局", "Other Games"),
+            ["history.empty.title"] = new("还没有历史对局", "No Games Yet"),
+            ["history.empty.description"] = new(
+                "对局结束后会保存到这里。",
+                "Games you finish are saved here."),
+
+            // The step-through viewer. Its four transport controls are icon-only,
+            // so each of these is what a screen reader reads and what a pointer's
+            // tooltip shows, and none of them is drawn. 自动播放 and 暂停 have no
+            // rows here: issue #80's trim makes replay on Windows a step-through
+            // viewer, and a string for a control that does not exist would be a
+            // string nothing reads.
+            ["replay.progress"] = new("{0} / {1}", "{0} / {1}"),
+            ["replay.first"] = new("回到开始", "Go to Start"),
+            ["replay.previous"] = new("上一步", "Previous Move"),
+            ["replay.next"] = new("下一步", "Next Move"),
+            ["replay.last"] = new("跳到最后", "Go to End"),
 
             // Failure screens. The technical description beneath each title is
             // the core's own diagnostic, which is never localized.
             ["failure.coreDidNotStart"] = new("核心未能启动", "The core did not start"),
             ["failure.gameDidNotStart"] = new("对局未能开始", "The game did not start"),
+            ["failure.historyDidNotLoad"] = new("历史未能载入", "History did not load"),
 
             // Composition.
             ["metadata.join"] = new("{0} · {1}", "{0} · {1}"),

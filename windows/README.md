@@ -3,10 +3,11 @@
 The WinUI 3 frontend, over the same shared core as the Apple frontend. What is here
 is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
 Play destination — the home where what to play is chosen, each mode's pre-start state,
-and the board with a live game against the AI — and two headless harnesses that are how
-any of it is verified on a machine nobody is logged into. History and replay, the
-Settings screen, the stacked layout that narrow windows take on the other platforms, and
-the packaging build are later pull requests.
+and the board with a live game against the AI — the History destination with its
+step-through viewer and its import, and two headless harnesses that are how any of it is
+verified on a machine nobody is logged into. The Settings screen, the stacked layout that
+narrow windows take on the other platforms, and the packaging build are later pull
+requests.
 
 The target is Windows 11 on `x64`; `ARM64` returns when there is real hardware to test
 it on (owner decisions, 2026-07-30). Product behaviour and persisted meaning are
@@ -20,7 +21,7 @@ materials, navigation and context menus rather than recreated Apple styling.
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
-| `MiniXiangqi.Play/` | the board's vocabulary and geometry, the destination's flows and the play screen's logic, and the string table — no UI framework at all |
+| `MiniXiangqi.Play/` | the board's vocabulary and geometry, both destinations' flows, the play screen's and the viewer's logic, and the string table — no UI framework at all |
 | `MiniXiangqi.Board/` | the board picture, in Win2D |
 | `MiniXiangqi.Smoke/` | the headless harness — this project's evidence |
 | `MiniXiangqi.Shots/` | the offscreen board renders |
@@ -41,6 +42,43 @@ every path between them, including the one save-and-continue confirmation, the a
 creation ordering, and both forms of the insufficient-memory refusal. The game lives on
 it rather than on the board page, so walking to the home and back neither resumes the
 game again nor brings back a result notice the player has already put away.
+
+`HistoryFlow` is its counterpart: the list of filed games in the core's own order, one
+record's read-only `ReplayViewer`, the deletion gate, pin and unpin, and both interchange
+paths. The two destinations share a core and nothing else — a game stays active whichever
+one is on screen — and the shell above them is a `NavigationView` in its Auto display
+mode, which is this platform's own adaptation rather than one the app selected.
+
+## History, the viewer, and interchange
+
+Three things about them are decisions rather than transcriptions, and each is argued where
+it is made.
+
+- **The viewer is a step-through and nothing more**, which is issue #80's owner-decided
+  trim: History and reading Mac-saved games are the stage's promise and they stay, while
+  the motion language and the autoplay transport are what the trim defers. So four
+  transport controls rather than five, no autoplay, no pause, and a step is the same
+  presentational cut a jump is. `docs/interaction-design.md` § History replay carries the
+  Windows clause that says so. Everything the section says replay *shows* is unchanged.
+- **Every position is `mxq_game_position_at`.** The viewer asks the core what the position
+  *was* at the ply it is showing, on the detached read-only session
+  `mxq_store_history_open` returned, and never applies or unapplies a move to work one out.
+  The record's own result and reason come from the store's summary rather than from the
+  replayed position, because a resignation and an ended-early record are not properties of
+  a position at all.
+- **共享 is a Save As**, and **the History row's date is numeric on every day**. Both are
+  Windows clauses in `docs/interaction-design.md` § History library with the reasoning:
+  Windows' share UI is not where anyone goes to hand somebody a file; and no formatter an
+  app composes dates with has a relative form — the shell's `SHFormatDateTime` does, and is
+  callable, but it formats from the *user locale* rather than the app's own language and
+  takes no format control, so it can give neither the right language nor the four-digit
+  year the clause asks for.
+
+The 删除前确认 preference is read from `deleteConfirmation.enabled`, which is
+`apple/MiniXiangqi/Settings/Preferences.swift`'s key and its Bool vocabulary. Absent means
+on, and so does anything this reader cannot make sense of: **false is the dangerous answer
+on this key**, because it deletes a game without asking. The Settings screen is the next
+rung and owns writing it.
 
 ## Building
 
@@ -201,9 +239,10 @@ Sections 17 to 21 are the play screen's.
 frontend shows is a row of the contract, and both languages of it match. That is one
 direction of the agreement check the localization process asks for, and only one — the
 reverse, that no user-facing key in the contract is absent here, cannot apply while
-Windows implements sixty-six of the contract's rows and the Apple frontend implements
-the rest. It becomes checkable when the Windows frontend is complete, and it is not
-checked before then rather than checked against a number somebody has to keep adjusting.
+Windows implements part of the contract's rows and the Apple frontend implements the
+rest. It becomes checkable when the Windows frontend is complete, and it is not checked
+before then rather than checked against a count somebody has to keep adjusting — a count
+this paragraph used to carry and which the History destination immediately made stale.
 
 **18** plays a whole game against the AI through `PlaySession` — every move committed by
 clicking a point and then another point, exactly as the window's board does it, the AI
@@ -214,7 +253,7 @@ into a threefold repetition and claims it. **21** is the pair of races a confirm
 a search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed
 with a 深思 search genuinely in flight.
 
-Sections 22 to 28 are the destination's. **22** reads the two Settings defaults, both
+Sections 22 to 28 are the Play destination's. **22** reads the two Settings defaults, both
 through stand-in stores that prove the fallbacks and through `FilePreferenceStore` over a
 real file on disk, which is the reader every pre-start entry actually runs: a stored name
 read back, an absent file, a malformed one, and a value of the wrong kind. **23** walks
@@ -233,13 +272,63 @@ release-before-open invariant makes unreachable in the app — what it runs is t
 **answer** to a refused creation, which had no run at all, and `Create`'s catch does not
 discriminate between refusals.
 
-**One blocking answer is still unrun, and is named rather than dressed up.** The accepted
-**无法保存对局** retry after a refused archive — `FlowAlert.ArchiveFailed` — needs
-`mxq_store_archive_and_clear` itself to fail, and there is no honest seam for that: the
-memory probe seam feeds a real input to real code, and a store seam would be a stand-in
-replacing the call under test. What is checked instead is that the path around it is
-right — the game stays active, the search is picked back up, the retry repeats the same
-atomic archive — by reading, not by running.
+Sections 29 to 35 are the History destination's. **29** is the screen every new
+installation opens on: a store directory that has never been written, read as an empty
+library rather than as a failure, with neither section and the two accepted lines.
+**30** files a resignation and an ended-early Free Play game, reads the list back through
+both halves of the buffer protocol, and states the row vocabulary — the mode, the human's
+side where there is one, the result, the reason where the result does not already carry it,
+and the move count — then pins a record and watches it move between the two sections, and
+then drives **历史未能载入** by opening a record identifier the store never issued.
+**31** opens the viewer and walks it: every transport control, both ends, a move selected
+from the list, the orientation control, and the read-only board's own emptiness. **32** is
+删除 on both sides of 删除前确认, including the file-backed reader every deletion actually
+runs and the switch being flipped between two deletions on one destination, which is what
+"read at the moment of use" means. **33** exports a filed game to a real `.mxq` on disk and
+imports it back, once unchanged, once with its `started_at` shifted, once with its archive
+version bumped, and four times as a file that cannot be read, then refuses an export and
+confirms it left no file of nothing behind and that neither a deletion nor a second export
+begins while one is in flight; **34** deletes the record and puts the same game back from
+the file written before it went, which is the interchange promise end to end. **35** files
+201 games so that `AllHistory`'s paging loop runs at an offset past the first page — the
+one branch a small library never reaches, and one that would otherwise first execute on
+somebody's real library.
+
+**Two import answers have no seam, and are stated as the mapping they are.** 历史中有一盘
+损坏的棋 needs a stored record whose own bytes no longer decode, and 无法保存导入的对局 needs
+the store to refuse a write; producing either would mean reaching around the core into its
+database or standing in for the call under test. `HistoryFlow.AnswerFor` is therefore a
+pure function of the status and its domain, and the harness states the whole of the mapping
+over it — all seven answers, including an unknown status inside each known domain — while
+driving five of them through the core besides.
+
+**What is still unrun is named rather than dressed up.** The accepted **无法保存对局** retry
+after a refused archive — `FlowAlert.ArchiveFailed` — needs `mxq_store_archive_and_clear`
+itself to fail, and **无法删除这盘棋** needs `mxq_store_history_delete` to. There is no
+honest seam for either: the memory probe seam feeds a real input to real code, and a store
+seam would be a stand-in replacing the call under test. What is checked instead is that the
+path around each is right — the game stays active and the retry repeats the same atomic
+archive; the record stays in the list and the retry repeats the same deletion — by reading,
+not by running. The bounded-retry exhaustion in `AllHistory` is a third of the same kind:
+it needs another writer to win three races in a row against a single-threaded reader.
+
+**Three known gaps, stated rather than closed.**
+
+- **`HistoryFlow.ExportRefused` is read nowhere in the window.** 共享 on Windows is a Save
+  As, and the save dialog is what reports a place it could not write to — so the case this
+  flag is left for is an `mxq_store_export` that failed over a path the dialog accepted,
+  and there it is currently silent. Answering it means choosing a presentation the accepted
+  flow does not have, which is a design decision rather than a wiring one. What the failure
+  path does do is delete the empty file the picker created, so no `.mxq` of nothing is left
+  under a name somebody would try to import.
+- **One damaged record blanks the whole list.** `mxq_store_history_page` answers about a
+  page, not about a row: a record whose blob no longer decodes fails the call, and the
+  interface offers no way to ask for the rest of the page without it. Reading the library
+  one `mxq_store_history_get` at a time to find the bad one would be re-deriving the list
+  operation the core owns, and would still have nothing useful to say about the row it
+  found. So 历史未能载入 is what shows, which is exactly true, with the core's own
+  diagnostic beneath it.
+- **The two file pickers** — see below.
 
 ```powershell
 windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
@@ -291,8 +380,15 @@ there, which is why the CI job is what produces the committed pictures under
 ### What is still only proved by building
 
 The XAML, and the wiring between it and the session: the layout, the alerts, the result
-notice's surface, the Fluent materials, and the pointer and Narrator behaviour of the
-forty-nine point elements. Seeing those needs an RDP session.
+notice's surface, the Fluent materials, the shell's own pane, the History list's rows and
+their context menus, and the pointer and Narrator behaviour of the forty-nine point
+elements. Seeing those needs an RDP session.
+
+**The two file pickers are the same case, and are the one part of the import and export
+paths a harness cannot drive.** `FileOpenPicker` and `FileSavePicker` need the window's
+own handle, so they live in `MainWindow` and nowhere else; everything on either side of
+them — the size gate, the read, every answer the core gives, the encode, the write, and
+the suggested filename — is `HistoryFlow`'s and is run headlessly against real files.
 
 **That is where the one reported interaction defect lived.** Selecting a piece appeared
 to need a double click, where the contract's board selects in one. A point's tap reached
@@ -309,15 +405,18 @@ is exactly the class of question this section is about.
 ## Preferences
 
 The pre-start controls are initialized afresh from the persistent Settings defaults on
-every entry to the page, so this frontend reads two of them —
-`defaults.firstMover` and `defaults.aiLevel`, with the vocabularies and the
+every entry to the page, and the History destination reads one preference before every
+deletion, so this frontend reads three of them — `defaults.firstMover`,
+`defaults.aiLevel` and `deleteConfirmation.enabled`, with the vocabularies and the
 absent-means-this fallbacks `apple/MiniXiangqi/Settings/Preferences.swift` records. It
 **writes none of them**: the Settings screen is the next pull request and it owns
 writing.
 
-Where they are kept on Windows is the smallest answer that works — a JSON object of
-string values at `%LOCALAPPDATA%\MiniXiangqi\preferences.json`, read at the moment of use
-and never cached, absent or malformed reading as "nothing is stored". The Apple frontend
+Where they are kept on Windows is the smallest answer that works — a JSON object at
+`%LOCALAPPDATA%\MiniXiangqi\preferences.json`, read at the moment of use
+and never cached, absent or malformed reading as "nothing is stored". A flag is read as a
+JSON boolean first and as the string spelling of one after that, because a file a Settings
+screen writes and a person may edit can honestly hold either. The Apple frontend
 has `UserDefaults`; an unpackaged Win32 app has no equivalent it can reach without
 deciding the packaging question this repository has parked. The Settings pull request may
 keep that storage or replace it. What it may not change is the key or the vocabulary:
@@ -341,7 +440,12 @@ the header, and the DLL export path and the bindings can no longer drift silentl
 
 `MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, keyed exactly
 as [`docs/copy.md`](../docs/copy.md) keys it, with the normative Chinese and its approved
-English side by side. The language is the operating system's — the app offers no
+English side by side. The History destination and its viewer added no key to that
+contract: every string they say was already a row of it, including the ones it marks
+*(proposed)* — the two section headers, the empty state's pair, the deletion-failure pair,
+the History-read failure title, and the transport's labels — which this frontend now ships
+and which `docs/copy.md` § Need to discuss asks the owner to approve. The two rows it does
+not ship are `replay.autoplay` and `replay.pause`, whose control the trim removed. The language is the operating system's — the app offers no
 interface-language control of its own — which .NET resolves as `CurrentUICulture` from
 the system's language preference list.
 

@@ -151,6 +151,22 @@ internal static class Program
         // composes.
         studio.Preview("setup-preview", 84, PlayMode.HumanVersusAi, FirstMoverChoice.HumanFirst);
         studio.Preview("setup-preview-ai-first", 84, PlayMode.HumanVersusAi, FirstMoverChoice.AiFirst);
+
+        // The step-through viewer, mid-replay: a filed game reopened through
+        // mxq_store_history_open and stepped to a ply in the middle of it, so the
+        // picture is a replayed position with the move that produced it still
+        // marked. It is a *different* picture from anything play produces — the
+        // board carries a last move and no selection, destinations, capture ring
+        // or hover, because replay offers none of them.
+        studio.Replay("replay-mid", 84, plies: 10, at: 5);
+
+        // And the same viewer at ply 0, which is the frozen initial position and
+        // therefore byte-identical to start-large. **Drawn and uploaded, not
+        // committed**, exactly as the pre-start previews are: what the run proves
+        // is that the viewer's own path reaches the real board at the real
+        // starting position, and a second copy of a file already in the
+        // repository would be weight rather than evidence.
+        studio.Replay("replay-start", 84, plies: 10, at: 0);
     }
 
     /// <summary>
@@ -199,6 +215,49 @@ internal static class Program
             Save(name, flow.PreviewScene, pitch, plies: 0);
         }
 
+        /// <summary>
+        /// The step-through viewer, reached the way a reader reaches it: a game
+        /// played and filed, then opened from the History list through
+        /// <c>mxq_store_history_open</c> and stepped to a ply.
+        ///
+        /// Every position in it is <c>mxq_game_position_at</c>'s answer about
+        /// that ply, so the board below is the core's own account of what the
+        /// position was rather than a placement this harness worked out.
+        /// </summary>
+        internal void Replay(string name, double pitch, int plies, int at)
+        {
+            GameSession game = core.Create(
+                Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+                Mxq.MXQ_COLOR_NONE,
+                Mxq.MXQ_AI_LEVEL_NONE,
+                Mxq.MXQ_FIRST_MOVER_NONE,
+                0);
+
+            ulong record;
+            using (PlaySession play = new(core, game, new PumpScheduler()))
+            {
+                // A varied line rather than Advance's first-legal-move walk,
+                // which on this board is two chariots shuffling: a picture of a
+                // replayed *position* is worth nothing if the position is three
+                // squares from the start. The seed is fixed, so the game is the
+                // same game on every run and the picture is reproducible.
+                Wander(play, plies, seed: 20260731);
+                record = core.ArchiveAndClear(game);
+            }
+
+            using HistoryFlow history = new(core, new PumpScheduler(), NoPreferences.Instance);
+            history.Load();
+            history.Open(record);
+            if (history.Viewer is not { } viewer)
+            {
+                Console.WriteLine($"    {name,-28} the record did not open");
+                return;
+            }
+
+            viewer.Show(at);
+            Save(name, viewer.Scene, pitch, viewer.Ply);
+        }
+
         private void Save(string name, BoardScene scene, double pitch, int plies)
         {
             BoardGeometry geometry = new(pitch);
@@ -231,6 +290,29 @@ internal static class Program
             List<string> legal = [.. play.LegalMoves()];
             legal.Sort(StringComparer.Ordinal);
             if (legal.Count == 0 || Move.Parse(legal[0]) is not { } move)
+            {
+                return;
+            }
+
+            play.Tap(move.From);
+            play.Tap(move.To);
+        }
+    }
+
+    /// <summary>
+    /// Play <paramref name="plies"/> half-moves, each drawn from the core's own
+    /// legal set with a fixed seed, and each committed by the same two clicks.
+    /// The line is arbitrary but reproducible, which is what a picture of a
+    /// mid-game position needs.
+    /// </summary>
+    private static void Wander(PlaySession play, int plies, int seed)
+    {
+        Random rng = new(seed);
+        for (int ply = 0; ply < plies; ply++)
+        {
+            List<string> legal = [.. play.LegalMoves()];
+            legal.Sort(StringComparer.Ordinal);
+            if (legal.Count == 0 || Move.Parse(legal[rng.Next(legal.Count)]) is not { } move)
             {
                 return;
             }

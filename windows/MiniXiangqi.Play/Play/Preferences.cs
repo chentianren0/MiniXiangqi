@@ -12,15 +12,24 @@
 // apple/MiniXiangqi/Settings/Preferences.swift says in as many words. This file
 // carries the same two rows of that table:
 //
-// | Key | Names | Absent means |
+// | Key | Type | Absent means |
 // |---|---|---|
 // | `defaults.firstMover` | `human-first` \| `ai-first` \| `random` | `human-first` |
 // | `defaults.aiLevel` | `fast` \| `standard` \| `deep` | `standard` |
+// | `deleteConfirmation.enabled` | Bool | on |
 //
-// The names are docs/game-data.md's serialized vocabulary, so the preference,
-// the frozen configuration and the archive all say the same words — and so that
-// a preference written by one frontend reads correctly in the other, which is
-// the whole reason the key rather than the storage is the contract.
+// The two choice names are docs/game-data.md's serialized vocabulary, so the
+// preference, the frozen configuration and the archive all say the same words —
+// and so that a preference written by one frontend reads correctly in the other,
+// which is the whole reason the key rather than the storage is the contract.
+//
+// **删除前确认 joined them with the History destination**, which is the surface
+// that reads it: it gates a permanent deletion, and docs/game-data.md's Settings
+// placement is explicit that the core never reads a preference and that this one
+// in particular "gates a permanent deletion but does not perform it". Its absent
+// value is on, and a value this reader cannot make sense of reads as on too —
+// **false is the dangerous answer here**, because on this key it deletes a game
+// without asking, so anything short of an unambiguous no is treated as a yes.
 //
 // **Where they are kept on Windows is deliberately the smallest answer that
 // works.** A JSON file of string values beside the store, read at the moment of
@@ -47,6 +56,19 @@ public interface IPreferenceStore
     /// caller answers with the accepted default rather than with a failure.
     /// </summary>
     string? Read(string key);
+
+    /// <summary>
+    /// The flag stored under <paramref name="key"/>, or null where nothing
+    /// recognisable is stored.
+    ///
+    /// A flag is a second read rather than a spelling of the first because a
+    /// preferences file can be written by a Settings screen and edited by hand,
+    /// and a JSON <c>true</c> and the string <c>"true"</c> are both honest ways
+    /// to have written one. What is not a flag at all — a number, an object, a
+    /// word neither language of this table knows — reads as absent, and the
+    /// caller supplies the accepted default.
+    /// </summary>
+    bool? ReadFlag(string key) => Preferences.Flag(Read(key));
 }
 
 /// <summary>
@@ -72,7 +94,24 @@ public sealed class FilePreferenceStore : IPreferenceStore
         _path = path;
     }
 
-    public string? Read(string key)
+    public string? Read(string key) => Value(key) is { ValueKind: JsonValueKind.String } value
+        ? value.GetString()
+        : null;
+
+    /// <summary>
+    /// A JSON <c>true</c> or <c>false</c> first, and the string spellings of one
+    /// after that — which is what the interface's own default does with whatever
+    /// <see cref="Read"/> returned.
+    /// </summary>
+    public bool? ReadFlag(string key) => Value(key) switch
+    {
+        { ValueKind: JsonValueKind.True } => true,
+        { ValueKind: JsonValueKind.False } => false,
+        { ValueKind: JsonValueKind.String } text => Preferences.Flag(text.GetString()),
+        _ => null,
+    };
+
+    private JsonElement? Value(string key)
     {
         try
         {
@@ -80,8 +119,7 @@ public sealed class FilePreferenceStore : IPreferenceStore
             using JsonDocument document = JsonDocument.Parse(file);
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty(key, out JsonElement value)
-                && value.ValueKind == JsonValueKind.String
-                ? value.GetString()
+                ? value.Clone()
                 : null;
         }
         catch (Exception failure) when (
@@ -107,6 +145,30 @@ public static class Preferences
 
     /// <summary>How long a new human-versus-AI game's opponent thinks.</summary>
     public const string DefaultAiLevelKey = "defaults.aiLevel";
+
+    /// <summary>Whether deleting a History record asks first.</summary>
+    public const string DeleteConfirmationKey = "deleteConfirmation.enabled";
+
+    /// <summary>
+    /// The string spellings of a flag a hand-edited or foreign-written
+    /// preferences file may hold. Anything else is not a flag, and the caller's
+    /// accepted default answers instead.
+    /// </summary>
+    public static bool? Flag(string? text) => text?.ToLowerInvariant() switch
+    {
+        "1" or "yes" or "true" or "on" => true,
+        "0" or "no" or "false" or "off" => false,
+        _ => null,
+    };
+
+    /// <summary>
+    /// 删除前确认, which is enabled by default and enabled again wherever the
+    /// stored value cannot be read as a flag. Read at the moment of use, like
+    /// every other preference here, so a switch takes effect at the next
+    /// deletion rather than at the next run.
+    /// </summary>
+    public static bool ConfirmsDeletion(IPreferenceStore store) =>
+        store.ReadFlag(DeleteConfirmationKey) ?? true;
 
     /// <summary>
     /// 我先手 on a new installation. A stored name nothing recognises reads as

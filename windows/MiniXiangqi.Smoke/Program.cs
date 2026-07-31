@@ -11,14 +11,21 @@
 // than the wrapper types beside them. A wrapper proves the wrapper; this proves
 // the ABI.
 //
-// Sections 17 to 28 are the Play destination's. A WinUI 3 process cannot be
-// launched from an SSH session, so the Windows frontend's behaviour would
-// otherwise be runnable on no machine this project owns. Its logic lives in
-// MiniXiangqi.Play with no window attached to it — PlayFlow and PlaySession —
-// and this drives all of it: every move committed by clicking a point and then
-// another point, the AI answering through the same marshalled callback the
-// window uses, every page reached the way a person reaches it, and the strings
-// shown along the way checked against docs/copy.md.
+// Sections 17 to 28 are the Play destination's and 29 to 33 the History
+// destination's. A WinUI 3 process cannot be launched from an SSH session, so
+// the Windows frontend's behaviour would otherwise be runnable on no machine
+// this project owns. Its logic lives in MiniXiangqi.Play with no window attached
+// to it — PlayFlow, PlaySession, HistoryFlow and ReplayViewer — and this drives
+// all of it: every move committed by clicking a point and then another point,
+// the AI answering through the same marshalled callback the window uses, every
+// page reached the way a person reaches it, a filed game exported to a real file
+// and imported back from it, and the strings shown along the way checked against
+// docs/copy.md.
+//
+// Two things in this frontend a headless process cannot reach, and both are
+// named where they happen rather than implied: the two file pickers, which need
+// the window's own handle — so the harness names a file where the window would
+// have picked one — and the store refusals that no honest seam produces.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -64,6 +71,14 @@ internal static unsafe class Program
             CopyTable(copyTable);
             ThePlayScreen(store, assets);
             TheFlows(store, assets);
+            // Each of these opens its own core, and the core is singleton-enforced
+            // — a second mxq_core_init before shutdown is
+            // MXQ_ERR_STATE_ALREADY_INITIALIZED — so they are sequential rather
+            // than nested. The two with their own store directory want a library
+            // of a known size, which is what the shared one cannot be by the time
+            // they run.
+            TheHistoryDestination(store, assets);
+            ThePagedLibrary(assets);
         }
         catch (Exception ex)
         {
@@ -1810,6 +1825,858 @@ internal static unsafe class Program
 
         core.ArchiveAndClear(standing);
         Console.WriteLine("    (the standing game filed; the library is empty again)");
+    }
+
+    // ---------------------------------------------------------------------
+    // 29 to 35. The History destination, its step-through viewer, and import.
+    //
+    // Everything below is driven through HistoryFlow and ReplayViewer — the same
+    // objects the window drives — with one deliberate exception named where it
+    // happens: the file picker, which needs the window's own handle, so the
+    // harness names a file directly where the window would have picked one.
+    // Every byte those files hold was written by mxq_store_export on this
+    // machine, so the interchange path below is the real one rather than a
+    // fixture standing in for it.
+    // ---------------------------------------------------------------------
+    private static void TheHistoryDestination(string store, string assets)
+    {
+        // Its own core, over a store directory that has never been written, and
+        // shut down before this section opens one of its own.
+        TheEmptyLibrary(assets);
+
+        Section("30. The History destination: the list, its sections, and its rows");
+
+        using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+        PumpScheduler scheduler = new();
+
+        // Whatever the earlier sections left active is filed first: one game is
+        // active at a time, and a History list is what this section is about.
+        using (GameSession? standing = core.ResumeActive())
+        {
+            if (standing is not null)
+            {
+                core.ArchiveAndClear(standing);
+            }
+        }
+
+        // Two games of known shape, so the row vocabulary can be stated rather
+        // than described. The first is played to a resignation — a result whose
+        // reason a row must keep — and the second is filed as it stands, which is
+        // the ended-early record whose result slot carries its own reason.
+        ulong resigned = FileAResignation(core, scheduler);
+        ulong endedEarly = FileAnEndedEarlyFreePlayGame(core);
+
+        using HistoryFlow history = new(core, scheduler, NoPreferences.Instance);
+        history.Load();
+
+        Console.WriteLine($"    records             {history.Records.Count}");
+        Console.WriteLine($"    pinned              {history.PinnedCount}");
+        Check("the library was read", history is { Loaded: true, LoadFailure: null });
+        Check("both filed games are in it", history.Records.Count >= 2);
+        Check("nothing is pinned, so the list is one unheaded section",
+            history.PinnedCount == 0 && !history.Records[0].Pinned);
+        Check("the order is the core's, most recently added first",
+            history.Records[0].RecordId == endedEarly && history.Records[1].RecordId == resigned);
+        Check("an empty state is not claimed for a library that has games", !history.IsEmpty);
+
+        RecordSummary loss = history.Records.First(record => record.RecordId == resigned);
+        RecordSummary early = history.Records.First(record => record.RecordId == endedEarly);
+
+        Console.WriteLine($"    resigned row        {loss.WhenLine()}");
+        Console.WriteLine($"                        {loss.MetadataLine()}");
+        Console.WriteLine($"    ended-early row     {early.WhenLine()}");
+        Console.WriteLine($"                        {early.MetadataLine()}");
+
+        Check("a human-versus-AI row names the mode and the human's side",
+            loss.MetadataLine().StartsWith(
+                Strings.Join(Strings.Get("mode.humanVersusAI"), Strings.Get("metadata.youRed")),
+                StringComparison.Ordinal));
+        Check("a resignation keeps its reason beside the result",
+            loss.MetadataLine().Contains(Strings.Get("reason.resignation"), StringComparison.Ordinal)
+            && loss.MetadataLine().Contains(Strings.Get("result.blackWins"), StringComparison.Ordinal));
+        Check("a Free Play row omits 执子",
+            !early.MetadataLine().Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
+            && !early.MetadataLine().Contains(Strings.Get("metadata.youBlack"), StringComparison.Ordinal));
+        Check("an ended-early row says 提前结束 once, in the result slot",
+            Occurrences(early.MetadataLine(), Strings.Get("reason.endedEarly")) == 1);
+        Check("every row ends with the move count",
+            loss.MetadataLine().EndsWith(loss.MoveCountText(), StringComparison.Ordinal)
+            && early.MetadataLine().EndsWith(early.MoveCountText(), StringComparison.Ordinal));
+        Check("a locally played row carries no imported marker",
+            !loss.WhenLine().Contains(Strings.Get("metadata.imported"), StringComparison.Ordinal));
+
+        // The accepted reason the time is on the line at all: "it is what tells
+        // two games played on one day apart". So two instants one hour apart on
+        // one day are rendered, and what the check states is that they read
+        // differently — which is the clause, rather than the shape of a string.
+        long noon = DateTimeOffset
+            .ParseExact("2026-07-31T12:00:00Z", "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal)
+            .ToUnixTimeMilliseconds();
+        CultureInfo reader = CultureInfo.GetCultureInfo("en-GB");
+        string earlier = HistoryText.Moment(noon, reader);
+        string later = HistoryText.Moment(noon + (60 * 60 * 1000), reader);
+        Console.WriteLine($"    two instants        {earlier}   /   {later}");
+        Check("two games filed on one day are told apart by the time", earlier != later);
+        Check("and the row's date carries a four-digit year",
+            earlier.Contains("2026", StringComparison.Ordinal));
+        Check("a two-digit year in a culture's own short date is widened to four",
+            HistoryText.WithFourDigitYear("dd/MM/yy") == "dd/MM/yyyy"
+            && HistoryText.WithFourDigitYear("M/d/yyyy") == "M/d/yyyy"
+            && HistoryText.WithFourDigitYear("'yy'/yy") == "'yy'/yyyy");
+
+        // Pinning is ordering rather than decoration: the row moves between the
+        // two sections, and that movement is the whole report.
+        history.SetPinned(resigned, true);
+        Console.WriteLine($"    after 置顶           pinned {history.PinnedCount}, "
+            + $"head {history.Records[0].RecordId}");
+        Check("a pinned record moves to the head of the list",
+            history.PinnedCount == 1 && history.Records[0].RecordId == resigned);
+        Check("and the two sections are the prefix and the rest",
+            history.Pinned.Single().RecordId == resigned
+            && history.Others.All(record => !record.Pinned));
+
+        history.SetPinned(resigned, false);
+        Check("取消置顶 puts it back", history.PinnedCount == 0);
+
+        TheUnreadableLibrary(history);
+        TheViewer(history, endedEarly, resigned);
+        TheDeleteGate(core, scheduler, history);
+        TheImportAnswers(core, scheduler, history);
+    }
+
+    /// <summary>
+    /// 29. What the destination says with nothing in it — which is the first
+    /// thing every new installation shows, and until now the only screen in this
+    /// frontend nothing had ever run.
+    ///
+    /// It gets a store directory that has never been written, because that is the
+    /// state it is about: an empty library is not the same thing as a library
+    /// emptied by deletions, and the core creates the store's leading directories
+    /// itself.
+    /// </summary>
+    private static void TheEmptyLibrary(string assets)
+    {
+        Section("29. A library with nothing in it");
+
+        string fresh = Path.Combine(Path.GetTempPath(), "mxq-empty-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using MiniXiangqiCore core = MiniXiangqiCore.Start(fresh, assets);
+            using HistoryFlow history = new(core, new PumpScheduler(), NoPreferences.Instance);
+            history.Load();
+
+            Console.WriteLine($"    records             {history.Records.Count}");
+            Console.WriteLine($"    empty               {history.IsEmpty}");
+            Console.WriteLine($"    title               {Strings.Get("history.empty.title")}");
+            Console.WriteLine($"    description         {Strings.Get("history.empty.description")}");
+
+            Check("a store that has never been written reads as an empty library",
+                history is { Loaded: true, LoadFailure: null } && history.Records.Count == 0);
+            Check("an empty library is the empty state rather than a failure", history.IsEmpty);
+            Check("it has neither section, so the list reads as a plain list",
+                history.PinnedCount == 0 && !history.Pinned.Any() && !history.Others.Any());
+            Check("还没有历史对局 and its one line are what it says",
+                Strings.Table["history.empty.title"].Chinese == "还没有历史对局"
+                && Strings.Table["history.empty.description"].Chinese == "对局结束后会保存到这里。");
+
+            // The empty state gains no import button — it says what it says and
+            // offers nothing else to do — and 导入… is above it either way, which
+            // is the toolbar item the window draws on this page whatever the list
+            // holds.
+            Check("导入… is the destination's own item and does not belong to the list",
+                Strings.Get("control.import").Length > 0);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(fresh, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch store; failing to remove it is not a result.
+            }
+        }
+    }
+
+    /// <summary>
+    /// A library the frontend could not read, which is the other screen this
+    /// destination has and the other one nothing had run.
+    ///
+    /// The route is a record identifier the store never issued: every one of
+    /// `_get`, `_open`, `_set_pinned` and `_delete` answers
+    /// MXQ_ERR_STORE_NOT_FOUND for one, "as an identifier that was never issued
+    /// is". What is under test is the **answer** — that a library which cannot be
+    /// read says so in the failure-screen family rather than showing an empty
+    /// list it has no evidence for — rather than the cause, and the answer is
+    /// what had no run at all.
+    /// </summary>
+    private static void TheUnreadableLibrary(HistoryFlow history)
+    {
+        Section("历史未能载入 — the screen a library that cannot be read shows");
+
+        int before = history.Records.Count;
+        history.Open(ulong.MaxValue);
+
+        Console.WriteLine($"    diagnostic          {history.LoadFailure?.Replace('\n', ' ')}");
+        Check("a record the store never issued is a library that did not load",
+            history.LoadFailure is { Length: > 0 });
+        Check("the diagnostic is the core's own, named and coded",
+            history.LoadFailure!.Contains("MXQ_ERR_STORE_NOT_FOUND", StringComparison.Ordinal)
+            && history.LoadFailure.Contains(
+                Mxq.MXQ_ERR_STORE_NOT_FOUND.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal));
+        Check("it opened no viewer", history is { Viewer: null, Page: HistoryPageKind.List });
+        Check("and it is not an alert: there is no action to offer",
+            history.Alert == HistoryAlert.None);
+
+        // It is one destination's screen rather than the window's, so reading the
+        // library again is what puts it away.
+        history.Load();
+        Check("a library that reads again clears it",
+            history.LoadFailure is null && history.Records.Count == before);
+    }
+
+    /// <summary>
+    /// 35. A library that does not fit in one page.
+    ///
+    /// `AllHistory`'s paging loop is the only code in this frontend a small
+    /// library never reaches: with fewer than 200 records the second call is
+    /// never made, so `offset > 0` had never executed and neither had the
+    /// short-page exit. Filing 201 games is a few hundred store commits and a
+    /// second or two, which is proportionate for a loop that would otherwise
+    /// first run on somebody's real library.
+    ///
+    /// Its own store, because it wants a library of a known size and every other
+    /// section shares one.
+    /// </summary>
+    private static void ThePagedLibrary(string assets)
+    {
+        Section("35. A library larger than one page");
+
+        const int wanted = MiniXiangqiCore.HistoryPageSize + 1;
+        string fresh = Path.Combine(Path.GetTempPath(), "mxq-paged-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using MiniXiangqiCore core = MiniXiangqiCore.Start(fresh, assets);
+
+            Stopwatch clock = Stopwatch.StartNew();
+            for (int index = 0; index < wanted; index++)
+            {
+                using GameSession game = core.Create(
+                    Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+                    Mxq.MXQ_COLOR_NONE,
+                    Mxq.MXQ_AI_LEVEL_NONE,
+                    Mxq.MXQ_FIRST_MOVER_NONE,
+                    0);
+                core.ArchiveAndClear(game);
+            }
+
+            clock.Stop();
+            Console.WriteLine($"    filed               {wanted} games in {clock.ElapsedMilliseconds} ms");
+
+            using HistoryFlow history = new(core, new PumpScheduler(), NoPreferences.Instance);
+            history.Load();
+
+            Console.WriteLine($"    page size           {MiniXiangqiCore.HistoryPageSize}");
+            Console.WriteLine($"    records             {history.Records.Count}");
+
+            Check("the whole library is read, not the first page of it",
+                history is { LoadFailure: null } && history.Records.Count == wanted);
+            Check("the second page is the one record beyond the first",
+                history.Records.Count == MiniXiangqiCore.HistoryPageSize + 1);
+            Check("every record is distinct, so no page was read twice",
+                history.Records.Select(record => record.RecordId).Distinct().Count() == wanted);
+            Check("the order is still the core's, newest first and strictly descending",
+                history.Records.Zip(history.Records.Skip(1))
+                    .All(pair => pair.First.RecordId > pair.Second.RecordId));
+
+            // And the page call itself, at an offset the whole-library read
+            // reaches only through its loop.
+            HistoryPage second = core.HistoryPageAt(
+                MiniXiangqiCore.HistoryPageSize, (uint)MiniXiangqiCore.HistoryPageSize);
+            Console.WriteLine($"    page at offset {MiniXiangqiCore.HistoryPageSize}  {second.Records.Count} record(s)");
+            Check("a page past the first returns the remainder and stops",
+                second.Records.Count == 1
+                && second.Records[0].RecordId == history.Records[^1].RecordId);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(fresh, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch store; failing to remove it is not a result.
+            }
+        }
+    }
+
+    /// <summary>
+    /// 31. The step-through viewer.
+    ///
+    /// Every position below is `mxq_game_position_at`'s answer about the ply
+    /// asked for, on the detached read-only session `mxq_store_history_open`
+    /// returned. Nothing here applies or unapplies a move.
+    /// </summary>
+    private static void TheViewer(HistoryFlow history, ulong freePlay, ulong versusAi)
+    {
+        Section("31. The step-through viewer");
+
+        history.Open(freePlay);
+        if (history.Viewer is not { } viewer)
+        {
+            Check("the record opened", false);
+            return;
+        }
+
+        Console.WriteLine($"    page                {history.Page}");
+        Console.WriteLine($"    plies               {viewer.Plies}");
+        Console.WriteLine($"    progress            {viewer.Progress}");
+        Console.WriteLine($"    metadata            {viewer.MetadataLine}");
+        Console.WriteLine($"    record              {string.Join(' ', viewer.MoveRecord)}");
+
+        Check("opening a record opens the viewer page", history.Page == HistoryPageKind.Viewer);
+        Check("replay begins at the game's initial position", viewer.Ply == 0 && viewer.IsAtStart);
+        Check("the initial position is the frozen starting FEN",
+            viewer.Position.Fen == MiniXiangqiCore.StartFen);
+        Check("no move produced the initial position", viewer.Scene.LastMove is null);
+        Check("the record is the core's own canonical coordinate text",
+            viewer.MoveRecord.Count > 0 && viewer.MoveRecord.All(IsCanonicalMove));
+        Check("the record's length is the record's move count",
+            viewer.MoveRecord.Count == (int)viewer.Record.MoveCount);
+
+        // The separator is the same in both languages and no word in the pair is
+        // translated, so the expected string can be spelled out here rather than
+        // built from the call under test.
+        Check("progress is shown ply over recorded plies",
+            viewer.Progress == $"0 / {viewer.Plies}");
+        Check("Free Play history opens with Red at the bottom", !viewer.Flipped);
+
+        // The board is read-only: nothing on the scene is an affordance.
+        Check("the replay board offers nothing to interact with",
+            viewer.Scene.Selected is null
+            && viewer.Scene.Destinations.IsEmpty
+            && viewer.Scene.Captures.IsEmpty
+            && viewer.Scene.Hovered is null);
+
+        string startFen = viewer.Position.Fen;
+        viewer.Next();
+        Console.WriteLine($"    after 下一步          {viewer.Progress}  last {viewer.Scene.LastMove?.Text}");
+        Check("下一步 advances one ply", viewer.Ply == 1 && !viewer.IsAtStart);
+        Check("and the position changed", viewer.Position.Fen != startFen);
+        Check("the move that produced it is the ply just played",
+            viewer.Scene.LastMove?.Text == viewer.MoveRecord[0]);
+
+        viewer.Previous();
+        Check("上一步 goes back to exactly the position that was there",
+            viewer.Ply == 0 && viewer.Position.Fen == startFen && viewer.Scene.LastMove is null);
+
+        viewer.Last();
+        Console.WriteLine($"    after 跳到最后        {viewer.Progress}");
+        Check("跳到最后 shows the last recorded position",
+            viewer.IsAtEnd && viewer.Ply == viewer.Plies);
+        Check("the last position is the ply count the record holds",
+            viewer.Position.PlyCount == viewer.Record.MoveCount);
+
+        viewer.Next();
+        Check("下一步 at the end moves nothing", viewer.Ply == viewer.Plies);
+
+        viewer.First();
+        Check("回到开始 returns to the initial position",
+            viewer.IsAtStart && viewer.Position.Fen == startFen);
+
+        viewer.Previous();
+        Check("上一步 at the start moves nothing", viewer.Ply == 0);
+
+        // Selecting a move in the list jumps to it, which is what the accepted
+        // move-list behaviour asks of replay and of replay alone.
+        int middle = Math.Max(1, viewer.Plies / 2);
+        viewer.Show(middle);
+        Check("selecting a move shows that move's position",
+            viewer.Ply == middle && viewer.Scene.LastMove?.Text == viewer.MoveRecord[middle - 1]);
+
+        bool before = viewer.Flipped;
+        string standing = viewer.Position.Fen;
+        viewer.FlipBoard();
+        Check("the orientation control is available and changes presentation only",
+            viewer.Flipped != before
+            && viewer.Scene.Flipped == viewer.Flipped
+            && viewer.Ply == middle
+            && viewer.Position.Fen == standing);
+
+        history.CloseViewer();
+        Check("the back control returns to the list",
+            history is { Page: HistoryPageKind.List, Viewer: null });
+
+        // A human-versus-AI record opens on the original human player's own
+        // perspective, which for a Red human is Red at the bottom.
+        history.Open(versusAi);
+        Check("human-versus-AI history opens on the human's own side",
+            history.Viewer is { Flipped: false });
+        Check("a resigned record's committed outcome is the store's, not the position's",
+            history.Viewer!.Record.Outcome == Mxq.MXQ_OUTCOME_BLACK_WINS
+            && history.Viewer.Record.EndReason == Mxq.MXQ_END_REASON_RESIGNATION);
+        history.CloseViewer();
+    }
+
+    /// <summary>
+    /// 32. 删除前确认, both ways round, and the deletion behind it.
+    /// </summary>
+    private static void TheDeleteGate(
+        MiniXiangqiCore core, PumpScheduler scheduler, HistoryFlow standing)
+    {
+        Section("32. 删除 and the 删除前确认 preference, both paths");
+
+        // The preference is read at the moment of use, so each path below is a
+        // destination over a store that holds one answer.
+        StubPreferences asks = new();
+        StubPreferences doesNot = new();
+        doesNot[Preferences.DeleteConfirmationKey] = "false";
+
+        Check("the preference defaults to on where nothing is stored",
+            Preferences.ConfirmsDeletion(NoPreferences.Instance));
+        Check("a stored no is honoured", !Preferences.ConfirmsDeletion(doesNot));
+        Check("a value that is not a flag reads as on, because false is the "
+            + "dangerous answer here",
+            Preferences.ConfirmsDeletion(Nonsense()));
+
+        // And the reader every deletion actually runs, over a real file: a JSON
+        // boolean, which is what a Settings screen would write.
+        string file = Path.Combine(Path.GetTempPath(), "mxq-prefs-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(file, "{\"deleteConfirmation.enabled\":false}");
+        Check("FilePreferenceStore reads a JSON boolean",
+            !Preferences.ConfirmsDeletion(new FilePreferenceStore(file)));
+        File.WriteAllText(file, "{\"deleteConfirmation.enabled\":\"true\"}");
+        Check("and the string spelling of one",
+            Preferences.ConfirmsDeletion(new FilePreferenceStore(file)));
+        File.Delete(file);
+
+        ulong first = FileAnEndedEarlyFreePlayGame(core);
+        ulong second = FileAnEndedEarlyFreePlayGame(core);
+
+        using (HistoryFlow gated = new(core, scheduler, asks))
+        {
+            gated.Load();
+            int before = gated.Records.Count;
+
+            gated.RequestDelete(first);
+            Console.WriteLine($"    with the preference on   alert {gated.Alert}");
+            Check("删除 presents the accepted confirmation", gated.Alert == HistoryAlert.ConfirmDelete);
+            Check("and the record remains in the list until it is answered",
+                gated.Records.Count == before && gated.Records.Any(r => r.RecordId == first));
+
+            gated.DismissAlert();
+            Check("取消 leaves the record exactly where it was",
+                gated.Alert == HistoryAlert.None
+                && gated.Records.Any(r => r.RecordId == first));
+
+            gated.RequestDelete(first);
+            gated.ConfirmDelete();
+            Console.WriteLine($"    after 删除               records {gated.Records.Count}");
+            Check("删除 on the confirmation removes the record permanently",
+                gated.Alert == HistoryAlert.None
+                && gated.Records.All(r => r.RecordId != first));
+            Check("and the core no longer holds it", !Exists(core, first));
+        }
+
+        using (HistoryFlow immediate = new(core, scheduler, doesNot))
+        {
+            immediate.Load();
+            immediate.RequestDelete(second);
+            Console.WriteLine($"    with the preference off  alert {immediate.Alert}");
+            Check("with 删除前确认 off the deletion happens immediately",
+                immediate.Alert == HistoryAlert.None
+                && immediate.Records.All(r => r.RecordId != second));
+            Check("and the core no longer holds that one either", !Exists(core, second));
+        }
+
+        // The preference is read at the moment of use rather than cached, which
+        // is the rule every preference in this frontend shares and the reason a
+        // switch takes effect at the next deletion rather than at the next run.
+        // One store, changed between two deletions on one destination.
+        StubPreferences switched = new();
+        ulong third = FileAnEndedEarlyFreePlayGame(core);
+        ulong fourth = FileAnEndedEarlyFreePlayGame(core);
+        using (HistoryFlow live = new(core, scheduler, switched))
+        {
+            live.Load();
+            live.RequestDelete(third);
+            Check("the same destination asks first while the preference says so",
+                live.Alert == HistoryAlert.ConfirmDelete);
+            live.ConfirmDelete();
+
+            switched[Preferences.DeleteConfirmationKey] = "false";
+            live.RequestDelete(fourth);
+            Check("and stops asking the moment it is switched off, without a relaunch",
+                live.Alert == HistoryAlert.None && !Exists(core, fourth));
+        }
+
+        standing.Load();
+
+        // The refusal has no honest seam either — making mxq_store_history_delete
+        // fail needs the store itself to fail — so what is stated here is the
+        // mapping, and the pull request says so rather than dressing it up.
+        Console.WriteLine("    (无法删除这盘棋 needs a store that refuses a delete; no seam, stated unrun)");
+    }
+
+    /// <summary>
+    /// 33 and 34. Import: the interchange promise, driven with real bytes.
+    ///
+    /// Every file below came out of `mxq_store_export` on this machine, written
+    /// to disk and handed back to `HistoryFlow.ImportFile` exactly as the picker
+    /// would hand it one. What the harness stands in for is the picker and
+    /// nothing else.
+    /// </summary>
+    private static void TheImportAnswers(
+        MiniXiangqiCore core, PumpScheduler scheduler, HistoryFlow history)
+    {
+        Section("33. Export and import: one game out to a file and back in");
+
+        string directory = Path.Combine(Path.GetTempPath(), "mxq-interchange-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        ulong source = history.Records[0].RecordId;
+        RecordSummary exported = history.Records[0];
+        string path = Path.Combine(directory, exported.SuggestedFileName());
+
+        Console.WriteLine($"    suggested name      {exported.SuggestedFileName()}");
+        Check("the exported name is built from the game's own end, machine-ordered",
+            exported.SuggestedFileName().StartsWith("minixiangqi-", StringComparison.Ordinal)
+            && exported.SuggestedFileName().EndsWith(".mxq", StringComparison.Ordinal)
+            && exported.SuggestedFileName().Length == "minixiangqi-2026-07-30-2133.mxq".Length);
+
+        history.ExportTo(source, path);
+        bool written = scheduler.PumpUntil(() => !history.Transferring, TimeSpan.FromSeconds(30));
+        byte[] bytes = File.ReadAllBytes(path);
+        string document = Encoding.UTF8.GetString(bytes);
+        Console.WriteLine($"    exported            {bytes.Length:N0} bytes to {Path.GetFileName(path)}");
+
+        Check("共享 wrote the record out as one game file", written && !history.ExportRefused);
+        Check("the file is the accepted archive envelope",
+            document.StartsWith("{\"archive_format\":\"minixiangqi-game\"", StringComparison.Ordinal));
+        Check("it carries this game's frozen identity",
+            document.Contains(exported.GameId, StringComparison.Ordinal));
+        Check("it is one canonical line", !document.Contains('\n') && !document.Contains('\r'));
+        Check("it is inside the accepted import bound", bytes.Length <= HistoryFlow.ImportSizeLimit);
+
+        // 1. The duplicate. The record is still there, so the same bytes are the
+        //    same game with the same content: a success that deliberately does
+        //    not meet the expectation a first import sets.
+        Answer(history, scheduler, path, HistoryAlert.ImportDuplicate, "an unchanged file re-imported is the duplicate answer");
+        Check("the duplicate answer names the record it found",
+            history.DuplicateRecord == source);
+        Check("and nothing was added", history.Records.Count(r => r.RecordId == source) == 1);
+        history.DismissAlert();
+
+        // 2. The conflict: the same game_id with different content. `started_at`
+        //    is a content member, so shifting it by a second changes the hash
+        //    while leaving the move line, the terminal trio and every cross-field
+        //    rule exactly as they were.
+        string conflicting = Path.Combine(directory, "conflict.mxq");
+        File.WriteAllBytes(conflicting, Encoding.UTF8.GetBytes(ShiftStartedAt(document)));
+        Answer(history, scheduler, conflicting, HistoryAlert.ImportConflict, "the same game with different content is an identity conflict");
+        history.DismissAlert();
+
+        // 3. A file created by a newer version. The archive version is dispatched
+        //    on explicitly, and this is the one message the data contract requires
+        //    to be distinct.
+        string newer = Path.Combine(directory, "newer.mxq");
+        File.WriteAllBytes(newer, Encoding.UTF8.GetBytes(
+            document.Replace("\"archive_version\":1", "\"archive_version\":2", StringComparison.Ordinal)));
+        Answer(history, scheduler, newer, HistoryAlert.ImportNewerVersion, "a newer archive version is its own answer");
+        history.DismissAlert();
+
+        // 4. Files that cannot be read: a document that is not one of ours, one
+        //    that is not JSON at all, an empty one, and one over the accepted
+        //    bound. The taxonomy deliberately does not tell a foreign file from a
+        //    damaged one.
+        string foreign = Path.Combine(directory, "foreign.mxq");
+        File.WriteAllText(foreign, "{\"archive_format\":\"something-else\",\"archive_version\":1}");
+        Answer(history, scheduler, foreign, HistoryAlert.ImportUnreadable, "a file that is not ours cannot be read");
+        history.DismissAlert();
+
+        string garbage = Path.Combine(directory, "garbage.mxq");
+        File.WriteAllText(garbage, "this is not a game file");
+        Answer(history, scheduler, garbage, HistoryAlert.ImportUnreadable, "nor can a file that is not JSON");
+        history.DismissAlert();
+
+        string empty = Path.Combine(directory, "empty.mxq");
+        File.WriteAllBytes(empty, []);
+        Answer(history, scheduler, empty, HistoryAlert.ImportUnreadable, "nor an empty one, which reaches the core with a length of zero");
+        history.DismissAlert();
+
+        // The size gate is the frontend's, and it is checked before the bytes are
+        // read: an oversized file is declined without allocating for it, and the
+        // core is never asked.
+        string huge = Path.Combine(directory, "huge.mxq");
+        File.WriteAllBytes(huge, new byte[HistoryFlow.ImportSizeLimit + 1]);
+        history.ImportFile(huge);
+        Console.WriteLine($"    oversized file      alert {history.Alert}, transferring {history.Transferring}");
+        Check("a file over the accepted 1 MiB bound is declined without reading it",
+            history.Alert == HistoryAlert.ImportUnreadable && !history.Transferring);
+        history.DismissAlert();
+
+        history.ImportFile(Path.Combine(directory, "there-is-no-such-file.mxq"));
+        Check("and so is a file that is not there", history.Alert == HistoryAlert.ImportUnreadable);
+        history.DismissAlert();
+
+        // An export that failed leaves no file behind: the picker creates the
+        // file before the flow gets it, so a refusal that left it there would
+        // leave a `.mxq` of nothing under a name somebody would try to import.
+        // The refusal here is the filesystem's — a path inside a file — because
+        // the store's own refusal has no seam.
+        string impossible = Path.Combine(path, "inside-a-file.mxq");
+        history.ExportTo(source, impossible);
+        scheduler.PumpUntil(() => !history.Transferring, TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    export to a bad path  refused {history.ExportRefused}");
+        Check("an export the filesystem refuses is reported as refused", history.ExportRefused);
+        Check("and leaves no file of nothing behind", !File.Exists(impossible));
+
+        // Neither a deletion nor a second export begins while one is inside the
+        // core: both would commit under a call that is off this thread by
+        // contract, and the row is still there a moment later.
+        //
+        // Transferring is raised synchronously by the call and lowered only when
+        // the scheduler delivers the answer, so between the two the destination
+        // is in exactly the state this is about, and nothing has been pumped.
+        string busy = Path.Combine(directory, "busy.mxq");
+        history.ExportTo(source, busy);
+        bool inFlight = history.Transferring;
+
+        history.RequestDelete(source);
+        bool deletionRefused = history.Alert == HistoryAlert.None;
+
+        string second = Path.Combine(directory, "second.mxq");
+        history.ExportTo(source, second);
+
+        scheduler.PumpUntil(() => !history.Transferring, TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    during a transfer   delete began {!deletionRefused}, "
+            + $"second export began {File.Exists(second)}");
+        Check("a deletion asked for during a transfer does not begin",
+            inFlight && deletionRefused && Exists(core, source));
+        Check("nor does a second export", !File.Exists(second) && File.Exists(busy));
+
+        Section("34. A filed game deleted and read back from its own file");
+
+        // The whole promise in one move: the record is removed, and the file
+        // written before it was removed puts the same game back.
+        int identical = history.Records.Count;
+        core.DeleteHistoryRecord(source);
+        history.Load();
+        Check("the record is gone", history.Records.All(r => r.RecordId != source));
+
+        history.ImportFile(path);
+        bool imported = scheduler.PumpUntil(
+            () => !history.Transferring, TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    after 导入…          alert {history.Alert}, "
+            + $"highlighted {history.Highlighted}");
+
+        Check("a valid import says nothing: the row is the answer",
+            imported && history.Alert == HistoryAlert.None && history.Highlighted is not null);
+        Check("the list is back to its length", history.Records.Count == identical);
+
+        RecordSummary restored = history.Records.First(r => r.RecordId == history.Highlighted);
+        Console.WriteLine($"    restored row        {restored.WhenLine()}");
+        Console.WriteLine($"                        {restored.MetadataLine()}");
+        Check("the stable identity survived the round trip", restored.GameId == exported.GameId);
+        Check("so did the result, the reason and the move count",
+            restored.Outcome == exported.Outcome
+            && restored.EndReason == exported.EndReason
+            && restored.MoveCount == exported.MoveCount
+            && restored.EndedAtMs == exported.EndedAtMs);
+        Check("the record is marked imported", restored.IsImported());
+        Check("and its row says so, on the date line",
+            restored.WhenLine().StartsWith(Strings.Get("metadata.imported"), StringComparison.Ordinal));
+        Check("provenance is local library metadata and was never in the file",
+            !document.Contains("provenance", StringComparison.Ordinal)
+            && !document.Contains("pinned", StringComparison.Ordinal));
+
+        // The move line the file carried is the move line the viewer walks.
+        history.Open(restored.RecordId);
+        Check("the imported game replays from its own file's move line",
+            history.Viewer is { } replay
+            && replay.MoveRecord.Count == (int)exported.MoveCount
+            && document.Contains(replay.MoveRecord[0], StringComparison.Ordinal));
+        history.CloseViewer();
+
+        // The light decays on its own, on the destination's own clock rather than
+        // on a window's, so it is waited for rather than cleared.
+        bool decayed = scheduler.PumpUntil(
+            () => history.Highlighted is null, HistoryFlow.HighlightDuration + TimeSpan.FromSeconds(5));
+        Check("the highlight decays on its own", decayed && history.Highlighted is null);
+
+        // The two answers with no seam. Their mapping is a pure function of the
+        // status and its domain, so the whole of it is stated here even where the
+        // core cannot be driven to produce the status.
+        Section("The import answers that have no seam, as the mapping they are");
+        Check("a damaged stored record is its own answer",
+            HistoryFlow.AnswerFor(Mxq.MXQ_ERR_STORE_CORRUPT, Mxq.MXQ_DOMAIN_STORE)
+                == HistoryAlert.ImportDamagedRecord);
+        Check("a store that would not write it is 无法保存导入的对局",
+            HistoryFlow.AnswerFor(Mxq.MXQ_ERR_STORE_IO, Mxq.MXQ_DOMAIN_STORE)
+                == HistoryAlert.ImportSaveFailed
+            && HistoryFlow.AnswerFor(Mxq.MXQ_ERR_STORE_FULL, Mxq.MXQ_DOMAIN_STORE)
+                == HistoryAlert.ImportSaveFailed);
+        Check("every other archive-domain refusal is 无法读取这个对局文件",
+            HistoryFlow.AnswerFor(Mxq.MXQ_ERR_ARCHIVE_MALFORMED, Mxq.MXQ_DOMAIN_ARCHIVE)
+                == HistoryAlert.ImportUnreadable
+            && HistoryFlow.AnswerFor(Mxq.MXQ_ERR_ARCHIVE_TOO_LARGE, Mxq.MXQ_DOMAIN_ARCHIVE)
+                == HistoryAlert.ImportUnreadable
+            && HistoryFlow.AnswerFor(Mxq.MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH, Mxq.MXQ_DOMAIN_ARCHIVE)
+                == HistoryAlert.ImportUnreadable);
+        Check("an unknown status inside a known domain still has an answer",
+            HistoryFlow.AnswerFor(4999, Mxq.MXQ_DOMAIN_STORE) == HistoryAlert.ImportSaveFailed
+            && HistoryFlow.AnswerFor(5999, Mxq.MXQ_DOMAIN_ARCHIVE) == HistoryAlert.ImportUnreadable);
+        // Those messages say 历史没有改变 explicitly, because no persistent change
+        // is the guarantee the core makes and a reader has no other way to know
+        // it held. **The damaged record is the one exception**, and it is stated
+        // here rather than skipped: that answer is about the library rather than
+        // about the file, and a guarantee about a library the same message has
+        // just called damaged would be a guarantee worth nothing.
+        // docs/interaction-design.md's sentence claimed all of them and is
+        // corrected in this pull request to match docs/copy.md's table, which
+        // wins by that document's own rule. The normative Chinese is what carries
+        // the phrase, so that is the half this reads.
+        Check("every import refusal about a file says 历史没有改变",
+            new[]
+            {
+                "alert.importConflict.message",
+                "alert.importNewerVersion.message",
+                "alert.importUnreadable.message",
+                "alert.importSaveFailed.message",
+            }.All(key => Strings.Table[key].Chinese.Contains("历史没有改变", StringComparison.Ordinal)));
+        Check("and the one refusal about the library deliberately does not",
+            !Strings.Table["alert.importDamagedRecord.message"].Chinese
+                .Contains("历史没有改变", StringComparison.Ordinal));
+
+        try
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // A scratch directory; failing to remove it is not a result.
+        }
+    }
+
+    /// <summary>Import one file and state which answer it gave.</summary>
+    private static void Answer(
+        HistoryFlow history, PumpScheduler scheduler, string path, HistoryAlert expected, string what)
+    {
+        int before = history.Records.Count;
+        history.ImportFile(path);
+        scheduler.PumpUntil(() => !history.Transferring, TimeSpan.FromSeconds(30));
+        Console.WriteLine($"    {Path.GetFileName(path),-20} {history.Alert}");
+        Check(what, history.Alert == expected);
+        Check($"and {Path.GetFileName(path)} changed nothing", history.Records.Count == before);
+    }
+
+    /// <summary>
+    /// A human-versus-AI game the human resigns: a committed result that the
+    /// replayed position does not carry, which is exactly what makes it worth
+    /// filing here — the row and the viewer both have to read it from the
+    /// store's own summary rather than from the position.
+    ///
+    /// It is resigned before a move is played, deliberately: the human's own
+    /// side moves first, so nothing is owed to the engine, and a section about
+    /// the History list should not need one prepared.
+    /// </summary>
+    private static ulong FileAResignation(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
+            Mxq.MXQ_COLOR_RED,
+            Mxq.MXQ_AI_LEVEL_FAST,
+            Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+            Mxq.MXQ_MOVETIME_FAST_MS);
+
+        using PlaySession play = new(core, game, scheduler);
+        play.RequestResign();
+        play.ConfirmResign();
+        return play.FiledRecordId ?? 0;
+    }
+
+    /// <summary>
+    /// A Free Play game filed as it stands, which the core classifies as ended
+    /// early with no competitive result.
+    /// </summary>
+    private static ulong FileAnEndedEarlyFreePlayGame(MiniXiangqiCore core)
+    {
+        using GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        for (int ply = 0; ply < 6; ply++)
+        {
+            List<string> legal = [.. game.LegalMoves()];
+            legal.Sort(StringComparer.Ordinal);
+            if (legal.Count == 0)
+            {
+                break;
+            }
+
+            game.ApplyMove(legal[0]);
+        }
+
+        return core.ArchiveAndClear(game);
+    }
+
+    private static bool Exists(MiniXiangqiCore core, ulong recordId)
+    {
+        try
+        {
+            core.HistoryRecord(recordId);
+            return true;
+        }
+        catch (MxqException)
+        {
+            return false;
+        }
+    }
+
+    private static int Occurrences(string text, string token)
+    {
+        int count = 0;
+        for (int index = text.IndexOf(token, StringComparison.Ordinal);
+             index >= 0;
+             index = text.IndexOf(token, index + token.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Shift a document's <c>started_at</c> back by one second, which changes the
+    /// content hash and nothing else about whether the document is valid.
+    /// </summary>
+    private static string ShiftStartedAt(string document)
+    {
+        const string member = "\"started_at\":\"";
+        int at = document.IndexOf(member, StringComparison.Ordinal) + member.Length;
+        string instant = document.Substring(at, "2026-07-30T21:33:00.000Z".Length);
+        string shifted = DateTimeOffset
+            .ParseExact(instant, "yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal)
+            .AddSeconds(-1)
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        return document[..at] + shifted + document[(at + instant.Length)..];
+    }
+
+    /// <summary>A preference store holding a value that is not a flag at all.</summary>
+    private static IPreferenceStore Nonsense()
+    {
+        StubPreferences nonsense = new();
+        nonsense[Preferences.DeleteConfirmationKey] = "maybe";
+        return nonsense;
     }
 
     /// <summary>
