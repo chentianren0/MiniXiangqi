@@ -231,6 +231,16 @@ public sealed class PlaySession : IDisposable
     public bool IsFiled => _recorded;
 
     /// <summary>
+    /// The History record this game became, once it has become one.
+    ///
+    /// The recorded notice's 回放 opens it — "the recorded state offers **回放**,
+    /// which opens the newly created History record from its initial position" —
+    /// and until the History destination existed there was nowhere for that
+    /// action to go, which is why the notice carried 完成 alone.
+    /// </summary>
+    public ulong? FiledRecordId => _committed?.RecordId;
+
+    /// <summary>
     /// In human-versus-AI play the human's own side is at the bottom and there
     /// is no flip control. Free Play starts with Red at the bottom and offers
     /// one.

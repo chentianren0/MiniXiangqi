@@ -8,23 +8,50 @@
     mc:Ignorable="d">
 
     <!--
-        The Play destination and its three pages: the home where what to play is
-        chosen, each mode's pre-start state, and the board. One of them is
-        visible at a time, and PlayFlow is what says which — the page is drawn
-        rather than pushed, so there is no navigation history to keep in step
-        with the state.
+        Two destinations, and the pages inside each of them.
+
+        **Play** has three pages: the home where what to play is chosen, each
+        mode's pre-start state, and the board. **History** has two: the list of
+        filed games, and one record's read-only step-through viewer. One page is
+        visible at a time, and the destination's flow object is what says which —
+        the page is drawn rather than pushed, so there is no navigation history
+        to keep in step with the state.
 
         Over them sits the one navigation row: the back control, which appears
-        on the two pages that have somewhere to go back to and names the page it
-        returns to, and the destination's own title, which all three pages
-        share.
+        on the pages that have somewhere to go back to and names the page it
+        returns to, and the destination's own title, which its pages share.
 
-        Nothing resident intersects the board block on either page that has a
-        board: the panel sits beside it and the air around the board is an
-        allowance taken off the space the board is fitted into. The result notice
-        is a transient, and it may stand in front of the board precisely because
-        the player can put it away.
+        The container around both is a NavigationView, which is this platform's
+        own: docs/interaction-design.md § Layout shapes fixes that "navigation
+        uses one adaptive container, and the container is the platform's own
+        rather than a presentation the app selects", so the display mode is left
+        at Auto and the app decides none of it. Settings is the ladder's next
+        rung and its item arrives with it, so IsSettingsVisible is off rather
+        than pointing at a page that does not exist.
+
+        Nothing resident intersects the board block on any page that has a board:
+        the panel sits beside it and the air around the board is an allowance
+        taken off the space the board is fitted into. The result notice is a
+        transient, and it may stand in front of the board precisely because the
+        player can put it away.
     -->
+
+    <NavigationView x:Name="Shell"
+                    IsSettingsVisible="False"
+                    IsBackButtonVisible="Collapsed"
+                    SelectionChanged="OnDestinationChanged">
+        <NavigationView.MenuItems>
+            <NavigationViewItem x:Name="DestinationPlay" Tag="play">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE7FC;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem x:Name="DestinationHistory" Tag="history">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE81C;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.MenuItems>
 
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
@@ -347,7 +374,184 @@
             </Grid>
         </Grid>
 
-        <!-- What is shown instead when the core or the game did not start. -->
+        <!-- ============================================================= -->
+        <!-- History: the list of filed games, in the core's own order.     -->
+        <!-- ============================================================= -->
+        <Grid x:Name="HistoryPage" Grid.Row="1" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!--
+                导入… lives on this destination and nowhere else, because this is
+                the screen the result lands on. It is above the empty state
+                either way: the empty state says what it says and offers nothing
+                else to do.
+            -->
+            <StackPanel Orientation="Horizontal"
+                        Padding="24,4,24,8"
+                        HorizontalAlignment="Right">
+                <Button x:Name="Import"
+                        Click="OnImport"
+                        AutomationProperties.AutomationId="history-import" />
+            </StackPanel>
+
+            <ScrollViewer x:Name="HistoryScroller" Grid.Row="1" Padding="24,0,24,24">
+                <StackPanel MaxWidth="640" HorizontalAlignment="Stretch" Spacing="8">
+
+                    <!--
+                        Pinned records appear before unpinned records, and the two
+                        groups are rendered as two sections rather than as a
+                        per-row badge: pinned-ness is ordering rather than
+                        decoration. With nothing pinned there is one unheaded
+                        section and the list reads as a plain list of games.
+
+                        Each list scrolls with the page rather than inside itself,
+                        so the two sections read as one list.
+                    -->
+                    <TextBlock x:Name="PinnedHeader"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="Collapsed" />
+                    <ListView x:Name="PinnedRecords"
+                              Visibility="Collapsed"
+                              IsItemClickEnabled="True"
+                              SelectionMode="None"
+                              ItemClick="OnRecordClicked"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              AutomationProperties.AutomationId="history-pinned" />
+
+                    <TextBlock x:Name="OthersHeader"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="Collapsed" />
+                    <ListView x:Name="OtherRecords"
+                              Visibility="Collapsed"
+                              IsItemClickEnabled="True"
+                              SelectionMode="None"
+                              ItemClick="OnRecordClicked"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              AutomationProperties.AutomationId="history-others" />
+
+                    <!-- An empty History says so quietly, and offers nothing
+                         else to do. -->
+                    <StackPanel x:Name="HistoryEmpty"
+                                Visibility="Collapsed"
+                                Spacing="6"
+                                Padding="0,64,0,0"
+                                HorizontalAlignment="Center">
+                        <TextBlock x:Name="HistoryEmptyTitle"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="history-empty" />
+                        <TextBlock x:Name="HistoryEmptyDescription"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ============================================================= -->
+        <!-- The step-through viewer: one filed game, read-only.            -->
+        <!-- ============================================================= -->
+        <Grid x:Name="ViewerPage" Grid.Row="1" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid x:Name="ReplayHost" Padding="24" SizeChanged="OnReplayHostSizeChanged" />
+
+            <Grid Grid.Column="1"
+                  Width="260"
+                  Padding="16"
+                  Background="{ThemeResource LayerFillColorDefaultBrush}"
+                  BorderThickness="1,0,0,0"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!--
+                    Progress through the game as shown ply / recorded plies, and
+                    the record's own metadata — the same line its History row
+                    carries. There is no side-to-move line: a finished game is
+                    not anybody's turn.
+                -->
+                <StackPanel Spacing="6" Margin="0,0,0,16">
+                    <TextBlock x:Name="ReplayProgress"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               AutomationProperties.AutomationId="replay-progress" />
+                    <TextBlock x:Name="ReplayMetadata"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="replay-metadata" />
+                </StackPanel>
+
+                <!-- The move record, and the move it is showing. -->
+                <ScrollViewer x:Name="ReplayRecordScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ReplayRecordRows"
+                                Spacing="2"
+                                AutomationProperties.AutomationId="replay-record" />
+                </ScrollViewer>
+
+                <!--
+                    The transport. Four controls rather than the accepted five:
+                    issue #80 trims Windows replay to a step-through viewer, so
+                    there is no autoplay and therefore no pause. They are
+                    icon-only and carry their words as accessibility labels and
+                    tooltips — the end controls take the media transport's own
+                    symbols and the single steps take chevrons, because a step is
+                    not a scan.
+                -->
+                <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8"
+                                HorizontalAlignment="Center">
+                        <Button x:Name="ReplayFirst"
+                                Click="OnReplayFirst"
+                                Content="&#xE892;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                AutomationProperties.AutomationId="replay-first" />
+                        <Button x:Name="ReplayPrevious"
+                                Click="OnReplayPrevious"
+                                Content="&#xE76B;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                AutomationProperties.AutomationId="replay-previous" />
+                        <Button x:Name="ReplayNext"
+                                Click="OnReplayNext"
+                                Content="&#xE76C;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                AutomationProperties.AutomationId="replay-next" />
+                        <Button x:Name="ReplayLast"
+                                Click="OnReplayLast"
+                                Content="&#xE893;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                AutomationProperties.AutomationId="replay-last" />
+                    </StackPanel>
+
+                    <!-- The accepted history orientation control, which replay
+                         keeps. -->
+                    <Button x:Name="ReplayFlip"
+                            HorizontalAlignment="Stretch"
+                            Click="OnReplayFlip"
+                            AutomationProperties.AutomationId="replay-flip" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- What is shown instead when the core, the game, or the library did
+             not start or load. -->
         <StackPanel x:Name="Failure"
                     Grid.Row="1"
                     Visibility="Collapsed"
@@ -364,4 +568,5 @@
                        TextWrapping="Wrap" />
         </StackPanel>
     </Grid>
+    </NavigationView>
 </Window>

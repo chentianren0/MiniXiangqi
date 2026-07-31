@@ -74,15 +74,51 @@ public readonly record struct SearchAnswer(
     string ProfileId);
 
 /// <summary>
-/// What a filed game committed. The outcome and the reason are the core's
-/// classification, derived from committed state and never from a caller.
+/// What a filed game committed, and the local library metadata beside it.
+///
+/// The outcome and the reason are the core's classification, derived from
+/// committed state and never from a caller. The three instants are epoch
+/// milliseconds, exactly as the store's derived columns hold them: when the game
+/// began, when it ended, and when this library added it. They are three
+/// different facts and the History destination shows two of them for two
+/// different reasons — the row states the game's own end, and the order the core
+/// returns records in is by the added time.
+///
+/// <c>Pinned</c> and <c>Provenance</c> are local library metadata rather than
+/// archive content: neither is in the file, and neither affects content
+/// equality.
 /// </summary>
 public readonly record struct RecordSummary(
     ulong RecordId,
+    int Mode,
+    int HumanSide,
+    int AiLevel,
     int Outcome,
     int EndReason,
+    int Provenance,
+    bool Pinned,
     uint MoveCount,
+    long StartedAtMs,
+    long EndedAtMs,
+    long AddedAtMs,
     string GameId);
+
+/// <summary>
+/// What an import did, when it did anything: the core's own outcome, plus the
+/// record it created or the one it found already holding this identity and these
+/// bytes.
+/// </summary>
+public readonly record struct ImportResult(int Outcome, ulong RecordId, RecordSummary Summary);
+
+/// <summary>
+/// One page of History, with the library revision the core answered it at.
+///
+/// The revision is the accepted answer to library-change observation — a
+/// monotonic counter bumped by every committed store mutation, with no
+/// notification mechanism in the MVP — and it is what lets a two-call read say
+/// whether the two calls saw the same library.
+/// </summary>
+public readonly record struct HistoryPage(IReadOnlyList<RecordSummary> Records, ulong Revision);
 
 /// <summary>The plan the accepted Hash-budget arithmetic yields.</summary>
 public readonly record struct EnginePlan(

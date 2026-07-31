@@ -255,7 +255,9 @@ Nothing here offers an interface language, and no key exists for one: the operat
 
 The five transport controls are icon-only, so every one of these is what a screen reader reads and what a pointer's help tag shows; none of them is drawn on screen. **Autoplay** rather than *Play* in English because 对局 is already *Play*: the navigation destination and the playback control would otherwise be the same English word, and the Chinese never had that collision.
 
-`history.empty.description` is one sentence rather than the two the Part 7 draft proposed. The second named importing a game file, and import does not exist yet; a line that offers an action the app cannot take is worse than a short line.
+**The Windows frontend ships every row above except `replay.autoplay` and `replay.pause`**, whose control does not exist there: [issue #80](https://github.com/ppppvz/MiniXiangqi/issues/80)'s trim makes Windows replay a step-through viewer with four transport controls, so a fifth string would be one nothing reads. The two rows are not retired — the Apple frontend has the control — and they return to Windows with the appearance pass. The remaining rows are live in `windows/MiniXiangqi.Play/Text/Strings.cs` as well as in the String Catalog, and the mechanical agreement check runs over both.
+
+`history.empty.description` is one sentence rather than the two the Part 7 draft proposed. The second named importing a game file. Import now exists, and the line is unchanged all the same, for the reason [interaction-design.md](interaction-design.md) § History library gives about the empty state itself: it "says what it says and offers nothing else to do", and the 导入… toolbar item is above it either way.
 
 ### Board accessibility
 
