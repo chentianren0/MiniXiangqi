@@ -81,6 +81,9 @@ internal static unsafe class Program
             TheHistoryDestination(store, assets);
             ThePagedLibrary(assets);
             TheSettingsDestination(assets);
+
+            // Arithmetic and one string, so it needs no core and opens none.
+            TheBoardsSpace();
         }
         catch (Exception ex)
         {
@@ -742,8 +745,7 @@ internal static unsafe class Program
         Console.WriteLine($"    status              {play.PrimaryStatus()} / {play.SecondaryStatus()}");
 
         Check("the human moves first, so the board accepts input", play.AcceptsInput);
-        Check("the board starts with Red at the bottom", !play.Scene.Flipped);
-        Check("no board-flip control in human-versus-AI play", !play.CanFlip);
+        Check("the board starts with the human's own side at the bottom", !play.Scene.Flipped);
         Check("resignation is offered", play.CanResign);
         Check("there is nothing to undo yet", !play.CanUndo);
 
@@ -772,6 +774,28 @@ internal static unsafe class Program
         // this file could make are already checked above as the separate acts
         // they are. Restating them as a pair would be a check about this file
         // rather than about the defect. The owner's re-test is the evidence.
+
+        // 翻转棋盘, in human-versus-AI (owner recommendation, 2026-07-31;
+        // docs/interaction-design.md § Play controls and § Board orientation).
+        // What is checked is that it is presentation and nothing else — the same
+        // claim Free Play's own flip is checked for in section 19, made here
+        // where the machine is also holding an opinion about the position.
+        bool uprightBeforeTheFlip = play.Scene.Flipped;
+        uint plyAtTheFlip = play.Position.PlyCount;
+        int recordAtTheFlip = play.MoveRecord.Count;
+        int sideAtTheFlip = play.Position.SideToMove;
+        bool acceptedInputAtTheFlip = play.AcceptsInput;
+
+        play.FlipBoard();
+        Console.WriteLine($"    after 翻转棋盘       Black at the bottom: {play.Scene.Flipped}");
+        Check("human-versus-AI offers 翻转棋盘 too",
+            play.Scene.Flipped != uprightBeforeTheFlip);
+        Check("flipping changes presentation only",
+            play.Position.SideToMove == sideAtTheFlip
+            && play.Position.SideToMove == game.Position().SideToMove
+            && play.Position.PlyCount == plyAtTheFlip
+            && play.MoveRecord.Count == recordAtTheFlip
+            && play.AcceptsInput == acceptedInputAtTheFlip);
 
         Random rng = new(20260731);
         int plies = 0;
@@ -833,6 +857,8 @@ internal static unsafe class Program
             play.MoveRecord.SequenceEqual(game.MoveHistory()));
         Check("a search ran long enough to show the thinking indicator", sawThinking);
         Check("the game reached a conclusion or the move cap", play.IsOver || plies >= cap);
+        Check("the orientation survived every move and every reply the AI made",
+            play.Scene.Flipped != uprightBeforeTheFlip);
 
         // Both languages, for the lines the screen actually composes. Nothing
         // on the board itself is copy — the coordinates are ASCII and the piece
@@ -844,7 +870,8 @@ internal static unsafe class Program
             Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                "
                 + $"{play.PrimaryStatus()} / {play.SecondaryStatus()} · "
                 + $"{Strings.Get("control.undo")} · {Strings.Get("control.claimDraw")} · "
-                + $"{Strings.Get("control.resign")} · {play.NoticeTitle()}");
+                + $"{Strings.Get("control.resign")} · {Strings.Get("control.flipBoard")} · "
+                + $"{play.NoticeTitle()}");
         }
 
         Strings.PrefersChinese = true;
@@ -909,7 +936,7 @@ internal static unsafe class Program
         using PlaySession play = new(core, game, scheduler);
         play.Begin();
 
-        Check("Free Play offers a board-flip control", play.CanFlip);
+        Check("Free Play starts with Red at the bottom", !play.Scene.Flipped);
         Check("Free Play has no controller label", play.SecondaryStatus() is null);
         Check("Free Play never owes a search", !play.Status.SearchExpected);
 
@@ -1497,8 +1524,8 @@ internal static unsafe class Program
 
         if (flow.Session is { } play)
         {
-            Check("Free Play offers a board-flip control and cannot resign",
-                play.CanFlip && !play.CanResign);
+            Check("Free Play starts with Red at the bottom and cannot resign",
+                !play.Scene.Flipped && !play.CanResign);
             Check("the board is interactive and Red is to move",
                 play.AcceptsInput && play.SideToMove == Side.Red);
             Console.WriteLine($"    当前对局             {flow.ActiveGameLine}");
@@ -1557,6 +1584,13 @@ internal static unsafe class Program
             return;
         }
 
+        // Turned over before it is concluded, so that the next game can be asked
+        // whether it inherited the orientation. It must not: 翻转棋盘 is the
+        // board's presentation of *this* game, a game is a session, and the
+        // contract has each mode starting the board its own way up.
+        play.FlipBoard();
+        Check("翻转棋盘 turns this game's board over", play.Scene.Flipped);
+
         // 认输 is the cheapest finish there is, and it files on the way.
         play.RequestResign();
         play.ConfirmResign();
@@ -1585,6 +1619,9 @@ internal static unsafe class Program
             Check("a second game was created", false);
             return;
         }
+
+        Check("a new game starts the right way up rather than inheriting the flip",
+            !second.Scene.Flipped);
 
         second.RequestResign();
         second.ConfirmResign();
@@ -3307,6 +3344,116 @@ internal static unsafe class Program
         Console.WriteLine($"    after 认输           {string.Join(", ", heard)}");
         Check("a resignation settles the game at the commit too",
             resigning.IsOver && heard is [BoardSound.Conclusion]);
+    }
+
+    // ---------------------------------------------------------------------
+    // 38. The board's space: the floor the window keeps for it, and the line
+    //     it shows when it has not got it.
+    //
+    // Everything here is arithmetic and one string, so it opens no core and
+    // touches no store — which is the point. The numbers used to live inside
+    // MainWindow, where a WinUI 3 process that cannot be launched over SSH is
+    // the only thing that could have run them; they are BoardSpace's and
+    // WindowFloor's now, and this is the run.
+    // ---------------------------------------------------------------------
+    private static void TheBoardsSpace()
+    {
+        Section("38. The board's space, and the line that asks for more of it");
+
+        double block = WindowFloor.BoardBlockAtFloor;
+        Console.WriteLine($"    board block at 44   {block}");
+        Console.WriteLine($"    content floor       {WindowFloor.ContentWidth} x {WindowFloor.ContentHeight}");
+        Console.WriteLine($"    window floor        {WindowFloor.WindowWidth} x {WindowFloor.WindowHeight}");
+
+        // The block the whole floor is derived from. It is 340 rather than the
+        // Mac's 308 because this board carries the canonical coordinates on four
+        // edges, and the contract's Windows clause states that number.
+        Check("the board block at the accepted pitch floor is 340 square", block == 340);
+        Check("the play content's floor is 648 by 388",
+            WindowFloor.ContentWidth == 648 && WindowFloor.ContentHeight == 388);
+        Check("the window's floor is the content's plus the rail and the navigation row",
+            WindowFloor.WindowWidth == 696 && WindowFloor.WindowHeight == 432);
+
+        // The floor's own promise, read the way the window reads it: take the
+        // chrome back off the window floor, hand what is left to the board, and
+        // the board fits at exactly the accepted pitch. (That the room comes out
+        // at the block is arithmetic rather than a finding — the floor was built
+        // by adding the chrome to it — so what is asserted is the pitch, and how
+        // little room there is to spare is the check below.)
+        double hostAtTheFloor = WindowFloor.WindowWidth - WindowFloor.CompactRailWidth
+            - WindowFloor.PanelWidth - (2 * WindowFloor.Air);
+        BoardSpace atTheFloor = BoardSpace.Of(hostAtTheFloor, hostAtTheFloor);
+        Console.WriteLine($"    host at the floor   {hostAtTheFloor}  pitch {atTheFloor.Board?.Pitch}");
+        Check("at the window's floor the board fits, at the accepted pitch floor",
+            atTheFloor.Board is { } floored && floored.Pitch == BoardGeometry.MinimumPitch);
+
+        // **The pane cannot squeeze it.** The shell's display mode is the
+        // platform's own and this app sets none of it, so what matters is the
+        // platform's own numbers: a full-width inline pane appears only at or
+        // above the expanded threshold, and below that an opened pane overlays
+        // the content rather than taking width from it. At the narrowest window
+        // that produces an inline pane the content still clears its floor, which
+        // is why the floor pays for the 48-point rail and not for a 320-point
+        // pane it can never meet.
+        Console.WriteLine(
+            $"    inline pane at {WindowFloor.ExpandedModeThresholdWidth} leaves "
+            + $"{WindowFloor.ContentAtExpandedThreshold} of content");
+        Check("the expanded pane cannot take the content below its floor",
+            WindowFloor.ContentAtExpandedThreshold >= WindowFloor.ContentWidth);
+
+        // And the floor pays for the arrangement it actually lands in. The
+        // thresholds are measured against the container's own width, which at
+        // the floor is the client area — which is the whole reason the window's
+        // minimum allows for its frame separately. Below the compact threshold
+        // the pane would not be a rail at all and the 48 would be the wrong
+        // number; at or above the expanded one it would be an inline pane and
+        // the 48 would be too small. The floor sits between them.
+        Check("the window's own floor lands in the arrangement its 48 pays for",
+            WindowFloor.WindowWidth >= WindowFloor.CompactModeThresholdWidth
+            && WindowFloor.WindowWidth < WindowFloor.ExpandedModeThresholdWidth);
+
+        // One point under the block is where the refusal begins, and the refusal
+        // is what the notice answers. The board is not drawn small; it is not
+        // drawn.
+        BoardSpace justUnder = BoardSpace.Of(block - 1, block);
+        BoardSpace tooShort = BoardSpace.Of(block, block - 1);
+        BoardSpace none = BoardSpace.Of(0, 0);
+        Console.WriteLine($"    at {block - 1} wide         board {justUnder.ShowsBoard}");
+        Check("one point under the block, no board is drawn",
+            !justUnder.ShowsBoard && justUnder.Board is null);
+        Check("the height bounds it exactly as the width does", !tooShort.ShowsBoard);
+        Check("a host with no room at all is the same answer", !none.ShowsBoard);
+        Check("and a host that has the room still gets its board", atTheFloor.ShowsBoard);
+
+        // The line itself, published by the state rather than fetched beside it.
+        // **A key with no row answers with itself**, which is the one thing this
+        // value can never legitimately be — the test the Apple catalog suite
+        // makes about its own register — so this catches an absent row and a row
+        // filled in one language only. Section 17 is where the pair is checked
+        // against docs/copy.md.
+        string? inChinese = null;
+        string? inEnglish = null;
+        foreach (bool chinese in (bool[])[true, false])
+        {
+            Strings.PrefersChinese = chinese;
+            string? line = justUnder.Notice;
+            Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                {line}");
+            if (chinese)
+            {
+                inChinese = line;
+            }
+            else
+            {
+                inEnglish = line;
+            }
+        }
+
+        Strings.PrefersChinese = true;
+        Check("the too-small state publishes the notice in both languages",
+            inChinese is { Length: > 0 } && inEnglish is { Length: > 0 }
+            && inChinese != "board.tooSmall" && inEnglish != "board.tooSmall"
+            && inChinese != inEnglish);
+        Check("and a drawn board publishes none", atTheFloor.Notice is null);
     }
 
     /// <summary>

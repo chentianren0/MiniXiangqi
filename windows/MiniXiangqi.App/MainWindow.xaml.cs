@@ -33,38 +33,6 @@ namespace MiniXiangqi.App;
 
 public sealed partial class MainWindow : Window
 {
-    /// <summary>
-    /// The navigation row's height, which the window's own floor has to allow
-    /// for on top of the board block and the air around it.
-    /// </summary>
-    private const double NavigationBarHeight = 44;
-
-    /// <summary>
-    /// What the shell's pane takes off the width at the app's own floor.
-    ///
-    /// <c>NavigationView</c> in its Auto display mode — which is the platform's
-    /// own adaptation and not one this app chose — shows a 48-wide compact rail
-    /// between 641 and 1008 effective pixels. **That rail is what this number
-    /// pays for**: the content beside it needs its own floor whole, so the
-    /// window's floor is that floor plus 48.
-    ///
-    /// The content floor on Windows is **648**, not the 616 that
-    /// docs/interaction-design.md § Layout shapes states for the play content:
-    /// this board block is 340 wide rather than 308, because the Windows board
-    /// carries the canonical coordinates on four edges rather than the file
-    /// numerals on two. 340 plus 48 of air plus the 260 panel is 648, and the
-    /// window floor is 696. Every one of those figures is derived below rather
-    /// than written down, so a geometry change moves them.
-    ///
-    /// **It is not an argument about which display mode the window lands in.**
-    /// A first version of this comment claimed the 48 kept the window out of the
-    /// overlay band below 641 — which is false twice over: 648 is already above
-    /// 641, so the content alone would have cleared it, and the mode the window
-    /// lands in is the platform's business either way. What the rail costs is
-    /// width, and this is that width.
-    /// </summary>
-    private const double ShellPaneWidth = 48;
-
     private readonly BoardView _board = new();
     private readonly BoardView _preview = new(interactive: false);
 
@@ -75,6 +43,19 @@ public sealed partial class MainWindow : Window
     /// pointer to hit or a screen reader to offer.
     /// </summary>
     private readonly BoardView _replayBoard = new(interactive: false);
+
+    /// <summary>
+    /// The line each board host shows when it has no room for a board, one per
+    /// host so that each says it in its own space.
+    ///
+    /// They are built here rather than in the XAML for the same reason the three
+    /// boards above are: what a host contains is this file's business, the three
+    /// are identical, and three copies of the same block of markup is three
+    /// places for them to stop being identical.
+    /// </summary>
+    private readonly TextBlock _boardTooSmall = TooSmall("board-too-small");
+    private readonly TextBlock _previewTooSmall = TooSmall("preview-too-small");
+    private readonly TextBlock _replayTooSmall = TooSmall("replay-too-small");
 
     private readonly MiniXiangqiCore? _core;
     private readonly PlayFlow? _flow;
@@ -139,6 +120,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += (_, _) => WatchTheScale();
 
         BoardHost.Children.Add(_board);
+        BoardHost.Children.Add(_boardTooSmall);
         _board.HorizontalAlignment = HorizontalAlignment.Center;
         _board.VerticalAlignment = VerticalAlignment.Center;
         _board.PointTapped += OnPointTapped;
@@ -147,10 +129,12 @@ public sealed partial class MainWindow : Window
         Root.KeyDown += OnKeyDown;
 
         PreviewHost.Children.Add(_preview);
+        PreviewHost.Children.Add(_previewTooSmall);
         _preview.HorizontalAlignment = HorizontalAlignment.Center;
         _preview.VerticalAlignment = VerticalAlignment.Center;
 
         ReplayHost.Children.Add(_replayBoard);
+        ReplayHost.Children.Add(_replayTooSmall);
         _replayBoard.HorizontalAlignment = HorizontalAlignment.Center;
         _replayBoard.VerticalAlignment = VerticalAlignment.Center;
 
@@ -320,11 +304,27 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Both the board and the chrome have floors, so the window has one too, and
-    /// it stops resizing there rather than either becoming unusable. The board
-    /// block at the accepted 44-point pitch is 340 square, the air around it is
-    /// 24 a side, the panel beside it is 260, the navigation row above every page
-    /// is 44, and the shell's rail is <see cref="ShellPaneWidth"/> beside all of
-    /// it — 696 by 432 at a scale of 1.
+    /// it stops resizing there rather than either becoming unusable. Every
+    /// figure is <see cref="WindowFloor"/>'s, derived from the board's own
+    /// geometry — 696 by 432 at a scale of 1, in device-independent pixels — and
+    /// two things are added to it here, because both are properties of this
+    /// window rather than of the layout.
+    ///
+    /// **The display scale**, because the two sides of the sum are measured in
+    /// different units, which the comment on <see cref="WatchTheScale"/>
+    /// explains.
+    ///
+    /// **The frame**, because <c>PreferredMinimumWidth</c> answers
+    /// <c>WM_GETMINMAXINFO</c>, and that message is about the *window* rectangle
+    /// — the resize borders and the title bar included — while everything XAML
+    /// lays out is inside the client area. A floor set from the content alone is
+    /// therefore short by exactly the frame, and short in the direction that
+    /// matters: the window stops shrinking while the board still has less room
+    /// than its floor asks for. The frame is measured rather than assumed —
+    /// <c>AppWindow.Size</c> is documented as including the non-client area and
+    /// <c>ClientSize</c> as excluding it, both in physical pixels, so their
+    /// difference is the frame in the units this property wants. It is read on
+    /// every recomputation because it moves with the scale.
     ///
     /// It is the app's floor rather than any one page's, and the same number
     /// everywhere: a window that could be shrunk on the History list and then
@@ -337,43 +337,97 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        BoardGeometry floor = new(BoardGeometry.MinimumPitch);
+        double frameWidth = Math.Max(0, AppWindow.Size.Width - AppWindow.ClientSize.Width);
+        double frameHeight = Math.Max(0, AppWindow.Size.Height - AppWindow.ClientSize.Height);
+
         presenter.PreferredMinimumWidth =
-            (int)Math.Ceiling((floor.BlockSide + 48 + 260 + ShellPaneWidth) * scale);
+            (int)Math.Ceiling((WindowFloor.WindowWidth * scale) + frameWidth);
         presenter.PreferredMinimumHeight =
-            (int)Math.Ceiling((floor.BlockSide + 48 + NavigationBarHeight) * scale);
+            (int)Math.Ceiling((WindowFloor.WindowHeight * scale) + frameHeight);
     }
 
     private void OnBoardHostSizeChanged(object sender, SizeChangedEventArgs args) =>
-        Fit(_board, BoardHost, args.NewSize);
+        Fit(_board, BoardHost, _boardTooSmall, args.NewSize);
 
     private void OnPreviewHostSizeChanged(object sender, SizeChangedEventArgs args) =>
-        Fit(_preview, PreviewHost, args.NewSize);
+        Fit(_preview, PreviewHost, _previewTooSmall, args.NewSize);
 
     private void OnReplayHostSizeChanged(object sender, SizeChangedEventArgs args) =>
-        Fit(_replayBoard, ReplayHost, args.NewSize);
+        Fit(_replayBoard, ReplayHost, _replayTooSmall, args.NewSize);
 
-    private static void Fit(BoardView view, Grid host, Windows.Foundation.Size available)
+    /// <summary>
+    /// A host, and what it shows for the room it has.
+    ///
+    /// The decision is <see cref="BoardSpace"/>'s, where a headless run can reach
+    /// it; what is left here is turning it into two visibilities. **The refusal
+    /// is now visible**: where the geometry declines to draw a board under the
+    /// accepted floor, no board is drawn and the line that asks for a larger
+    /// window stands in the space it would have taken.
+    ///
+    /// This window used to answer a refusal by drawing the board at the floor
+    /// anyway — which is how the owner's tour finding happened, though not for
+    /// the reason it looks like: the fallback assigned the same pitch-44
+    /// geometry <c>BoardView</c> is constructed with, its setter's equality
+    /// guard returned early, and the view was left with no width or height to
+    /// paint into. That is fixed in <c>BoardView</c>'s own constructor, and
+    /// what the floor above was missing is fixed in the floor. This is the
+    /// residue's answer, not theirs.
+    ///
+    /// All three hosts, including the pre-start preview. The contract exempts a
+    /// preview from the floor so that it can yield space to the setup controls;
+    /// on this frontend those controls are a fixed 260-point panel that never
+    /// asks for more, so there is nothing for the preview to yield to and it has
+    /// taken the same floor as the other two since the play screen landed. The
+    /// contract records that divergence under § Layout shapes. A preview with no
+    /// room has the same nothing to show, and says the same thing about it.
+    /// </summary>
+    private static void Fit(BoardView view, Grid host, TextBlock notice, Windows.Foundation.Size available)
     {
-        // The board is square and is sized to the largest square fitting both
-        // the available width and the height left after the surrounding chrome,
-        // so it never overflows a short window.
-        double side = Math.Min(
+        BoardSpace space = BoardSpace.Of(
             available.Width - host.Padding.Left - host.Padding.Right,
             available.Height - host.Padding.Top - host.Padding.Bottom);
-        if (side <= 0)
+
+        if (space.Board is { } fitted)
         {
-            return;
+            view.Geometry = fitted;
         }
 
-        // Fitting refuses rather than clamps when even the floor does not fit,
-        // which is the shape the Apple frontend's geometry has and for the same
-        // reason: a board below the floor is a decision, and a decision belongs
-        // where somebody can see it. Here the decision is the floor anyway —
-        // the window's own minimum should have made this unreachable, and if a
-        // scale change beats it there, an oversized board that can still be
-        // played beats a board that is not drawn.
-        view.Geometry = BoardGeometry.Fitting(side) ?? new BoardGeometry(BoardGeometry.MinimumPitch);
+        view.Visibility = Shown(space.ShowsBoard);
+        notice.Text = space.Notice ?? string.Empty;
+        notice.Visibility = Shown(!space.ShowsBoard);
+    }
+
+    /// <summary>
+    /// The line a board host shows in the board's place. Centred in the space
+    /// the board would have taken, wrapping rather than truncating — it is a
+    /// sentence and both of its halves matter — and quiet, because nothing has
+    /// gone wrong.
+    /// </summary>
+    private static TextBlock TooSmall(string automationId)
+    {
+        TextBlock line = new()
+        {
+            Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 280,
+        };
+
+        if (Application.Current.Resources.TryGetValue("BodyTextBlockStyle", out object? body)
+            && body is Style style)
+        {
+            line.Style = style;
+        }
+
+        if (SystemBrush("TextFillColorSecondaryBrush") is { } secondary)
+        {
+            line.Foreground = secondary;
+        }
+
+        AutomationProperties.SetAutomationId(line, automationId);
+        return line;
     }
 
     // The shell, and the navigation row inside it.
@@ -551,22 +605,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnTrailing(object sender, RoutedEventArgs args)
-    {
-        if (_flow?.Session is not { } play)
-        {
-            return;
-        }
+    private void OnTrailing(object sender, RoutedEventArgs args) => _flow?.Session?.RequestResign();
 
-        if (play.CanFlip)
-        {
-            play.FlipBoard();
-        }
-        else
-        {
-            play.RequestResign();
-        }
-    }
+    private void OnFlip(object sender, RoutedEventArgs args) => _flow?.Session?.FlipBoard();
 
     private void OnRetryEngine(object sender, RoutedEventArgs args) => _flow?.Session?.RetryEngine();
 
@@ -1311,24 +1352,19 @@ public sealed partial class MainWindow : Window
             ? (Style)Application.Current.Resources["AccentButtonStyle"]
             : null;
 
-        if (play.CanFlip)
-        {
-            // Free Play cannot resign, having no opponent to resign to, and it
-            // is the mode the accepted orientation behaviour gives a flip
-            // control.
-            Trailing.Content = Strings.Get("control.flipBoard");
-            Trailing.IsEnabled = true;
-            Trailing.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            // Human versus AI carries no board-flip control: the human's own
-            // side is already at the bottom, and moving it to the top is
-            // disorienting rather than useful.
-            Trailing.Content = Strings.Get("control.resign");
-            Trailing.IsEnabled = play.CanResign;
-            Trailing.Visibility = Shown(!play.IsOver);
-        }
+        // 认输 belongs to human-versus-AI and to a game still being played: Free
+        // Play has no opponent to resign to, and a finished game has nothing
+        // left to end.
+        Trailing.Content = Strings.Get("control.resign");
+        Trailing.IsEnabled = play.CanResign;
+        Trailing.Visibility = Shown(play.IsHumanVersusAi && !play.IsOver);
+
+        // 翻转棋盘, in both modes and for as long as the board is on screen
+        // (owner recommendation, 2026-07-31; docs/interaction-design.md § Play
+        // controls). It is presentation, so nothing about the game's state
+        // enables or disables it, and it takes no tint — the cluster's one
+        // tinted moment is the concluding action above.
+        Flip.Content = Strings.Get("control.flipBoard");
     }
 
     private void ShowRecord(PlaySession play)

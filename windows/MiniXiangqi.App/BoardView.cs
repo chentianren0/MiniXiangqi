@@ -39,6 +39,26 @@ public sealed partial class BoardView : Grid
     /// </param>
     public BoardView(bool interactive = true)
     {
+        // **A board view is born at the size its geometry says.**
+        //
+        // This is the hole the owner's tour actually fell into, and it is worth
+        // stating exactly, because the two-line fix looks like housekeeping. The
+        // Geometry setter below assigns Width and Height *past* its own equality
+        // guard, so a set whose value equals the one this field was initialized
+        // with returns early and leaves the view unsized. The window's minimum
+        // parks the board host at exactly the pitch floor, so the very first fit
+        // in the smallest window is a set of the 44-point geometry — the same
+        // value — and the view kept Auto width and height. Unsized inside a Grid
+        // and centred, it measures nothing and paints nothing: a board page with
+        // no board on it and nothing said.
+        //
+        // Saying the size here rather than moving the assignments above the guard
+        // keeps the invariant this class's own rather than the caller's: it holds
+        // from construction, and every set that changes anything re-establishes
+        // it. The guard below stays what it was for — the work, not the size.
+        Width = _geometry.BlockSide;
+        Height = _geometry.BlockSide;
+
         _canvas.Draw += OnDraw;
         _canvas.ClearColor = Microsoft.UI.Colors.Transparent;
         Children.Add(_canvas);
@@ -102,6 +122,15 @@ public sealed partial class BoardView : Grid
     /// <summary>The piece style the board is drawn in. Only 传统 exists so far.</summary>
     public BoardStyle PieceStyle { get; set; } = BoardStyle.Traditional;
 
+    /// <summary>
+    /// The geometry this view draws at, and the size it takes.
+    ///
+    /// The guard is about the work — replacing forty-nine buttons' positions and
+    /// invalidating the canvas — and never about the size, which the constructor
+    /// has already stated and which only a *changed* geometry can move. Setting
+    /// the same geometry twice is a no-op that leaves a correctly sized view;
+    /// it did not use to, and that is the comment in the constructor.
+    /// </summary>
     public BoardGeometry Geometry
     {
         get => _geometry;

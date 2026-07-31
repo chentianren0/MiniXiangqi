@@ -253,13 +253,23 @@ public sealed class PlaySession : IDisposable
     public ulong? FiledRecordId => _committed?.RecordId;
 
     /// <summary>
-    /// In human-versus-AI play the human's own side is at the bottom and there
-    /// is no flip control. Free Play starts with Red at the bottom and offers
-    /// one.
+    /// Which way round the board is drawn.
+    ///
+    /// Each mode has its own starting orientation — the human's own side at the
+    /// bottom in human-versus-AI, Red at the bottom in Free Play — and
+    /// **翻转棋盘 turns the board over from there in either of them** (owner
+    /// recommendation, 2026-07-31; docs/interaction-design.md § Board
+    /// orientation and § Play controls carry it). Human-versus-AI had no flip
+    /// control before that, on the reasoning that its orientation was already
+    /// the right one; what the recommendation changes is that the orientation a
+    /// mode chooses is where the board starts rather than where it has to stay.
+    ///
+    /// The flip is a field of this session and of nothing longer-lived, which is
+    /// what makes a new game start the right way up: a game is a session, and
+    /// the next one is the next session. That was already Free Play's behaviour
+    /// and the mode gaining the control inherits it rather than needing a rule.
     /// </summary>
-    public bool Flipped => IsHumanVersusAi ? HumanSide == Side.Black : _userFlipped;
-
-    public bool CanFlip => !IsHumanVersusAi;
+    public bool Flipped => _userFlipped ^ (IsHumanVersusAi && HumanSide == Side.Black);
 
     public bool CanUndo => Status.UndoAvailable && !_recorded;
 
@@ -386,13 +396,14 @@ public sealed class PlaySession : IDisposable
         EnsureSearch();
     }
 
+    /// <summary>
+    /// **翻转棋盘.** Presentation and nothing else: it does not change the side
+    /// to move, the game state, the move record, or a stored coordinate. It is
+    /// offered in both modes and while the game is finished, so there is nothing
+    /// here to refuse.
+    /// </summary>
     public void FlipBoard()
     {
-        if (!CanFlip)
-        {
-            return;
-        }
-
         _userFlipped = !_userFlipped;
         Publish();
     }

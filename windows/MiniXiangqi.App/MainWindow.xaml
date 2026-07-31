@@ -361,7 +361,22 @@
                     <StackPanel x:Name="RecordRows" Spacing="2" AutomationProperties.AutomationId="move-record" />
                 </ScrollViewer>
 
-                <!-- The play-control cluster. -->
+                <!--
+                    The play-control cluster.
+
+                    Four slots rather than three, because 翻转棋盘 is now in
+                    human-versus-AI as well (owner recommendation, 2026-07-31).
+                    The panel is where the accepted cluster bound — not crowding
+                    the screen, not reading strangely — costs the least: this is
+                    the side-by-side shape, the controls are stacked in a column
+                    of their own width, and a fourth takes 40 points of a panel
+                    whose move list is what yields them.
+
+                    The order is one order for both modes: 悔棋, the draw slot,
+                    认输, 翻转棋盘. Free Play collapses 认输 — it has no opponent
+                    to resign to — and what is left is the accepted three-control
+                    Free Play cluster it always was.
+                -->
                 <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
                     <Button x:Name="Undo"
                             HorizontalAlignment="Stretch"
@@ -375,6 +390,10 @@
                             HorizontalAlignment="Stretch"
                             Click="OnTrailing"
                             AutomationProperties.AutomationId="control-trailing" />
+                    <Button x:Name="Flip"
+                            HorizontalAlignment="Stretch"
+                            Click="OnFlip"
+                            AutomationProperties.AutomationId="control-flip" />
                 </StackPanel>
             </Grid>
         </Grid>
