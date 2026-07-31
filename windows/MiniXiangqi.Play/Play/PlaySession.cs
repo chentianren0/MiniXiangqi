@@ -101,6 +101,16 @@ public sealed class PlaySession : IDisposable
     /// </summary>
     private readonly Func<MxqEngineBudget> _probe;
 
+    /// <summary>
+    /// The heard half of the board. Every call below reports an event that has
+    /// **completed** — a move sounds when the piece has landed, never when it
+    /// lifts — and which of the four voices answers is chosen by what the landing
+    /// means, in `Motion/Feedback.cs`. The 声音 switch is inside the object
+    /// rather than in front of it, and is read at the moment the sound would
+    /// fire.
+    /// </summary>
+    private readonly Feedback _feedback;
+
     private GameSession _game;
     private string _gameId;
     private GameConfiguration _configuration;
@@ -128,12 +138,14 @@ public sealed class PlaySession : IDisposable
         MiniXiangqiCore core,
         GameSession game,
         IPlayScheduler scheduler,
-        Func<MxqEngineBudget>? probe = null)
+        Func<MxqEngineBudget>? probe = null,
+        Feedback? feedback = null)
     {
         _core = core;
         _game = game;
         _scheduler = scheduler;
         _probe = probe ?? WindowsMemoryProbe.Current;
+        _feedback = feedback ?? Feedback.Silent;
         _search = new SearchService(core, scheduler);
         _gameId = game.Id;
         _configuration = game.Configuration();
@@ -363,6 +375,14 @@ public sealed class PlaySession : IDisposable
         Read();
         _noticeDismissed = false;
         Publish();
+
+        // Taking a move back is a piece landing on a point, so it sounds like
+        // one. It is never a capture: the disc that reappears is a restoration
+        // rather than a take, which is the distinction the accepted rule draws.
+        // Whether it is the plain tock or the check accent is the arrived
+        // position's to say, exactly as it is for a move played forward — an
+        // Undo can perfectly well land back inside a check.
+        AnnounceLanding(captured: false);
         EnsureSearch();
     }
 
@@ -411,16 +431,34 @@ public sealed class PlaySession : IDisposable
     /// <summary>
     /// 认输, confirmed. It records a human loss and moves the game to immutable
     /// History.
+    ///
+    /// **It sounds the conclusion at the commit**, which is the one place a
+    /// conclusion cannot wait for a landing: nothing moves, and the moment the
+    /// game ends is the moment the core took the resignation. Whether resignation
+    /// was still on offer is the game's to say, and it says so by whether the
+    /// commit went through.
     /// </summary>
-    public void ConfirmResign() => Confirmed(() => CanResign, () => _game.Resign());
+    public void ConfirmResign() =>
+        Confirmed(() => CanResign, () => _game.Resign(), sounds: true);
 
-    /// <summary>以和棋结束, confirmed. The one finish that cannot be walked back.</summary>
-    public void ConfirmClaimDraw() => Confirmed(() => CanClaimDraw, () => _game.ClaimDraw());
+    /// <summary>
+    /// 以和棋结束, confirmed. The one finish that cannot be walked back, and the
+    /// other result that arrives with nothing moving — so its conclusion sounds
+    /// at the commit too, for the same reason and at the same instant.
+    /// </summary>
+    public void ConfirmClaimDraw() =>
+        Confirmed(() => CanClaimDraw, () => _game.ClaimDraw(), sounds: true);
 
     /// <summary>
     /// 保存 — the result notice's default action. It confirms the result, files
     /// the game in History, and leaves the board standing exactly at the result
     /// it reached.
+    ///
+    /// **It is silent, and that is the whole of the difference from the two
+    /// above.** The result it confirms was reached by a landing, and that landing
+    /// already replaced its own tock with the conclusion; a second one here would
+    /// be one ending sounding twice, once when it happened and once when the
+    /// player got round to filing it.
     /// </summary>
     public void SaveResult() => Confirmed(() => IsOver && !_recorded, () => _game.ConfirmResult());
 
@@ -442,7 +480,7 @@ public sealed class PlaySession : IDisposable
     /// while the player was reading — so it is a quiet return with the board
     /// brought up to date.
     /// </summary>
-    private void Confirmed(Func<bool> stillAvailable, Func<ulong> commit)
+    private void Confirmed(Func<bool> stillAvailable, Func<ulong> commit, bool sounds = false)
     {
         _search.Cancel();
         StopIndicator();
@@ -460,7 +498,7 @@ public sealed class PlaySession : IDisposable
             return;
         }
 
-        Terminal(commit);
+        Terminal(commit, sounds);
     }
 
     /// <summary>重试, for a terminal commit the store refused.</summary>
@@ -706,6 +744,11 @@ public sealed class PlaySession : IDisposable
 
     private void Commit(Move move)
     {
+        // Asked before the move is applied, because afterwards the point is
+        // occupied by the mover either way. A take is a piece standing where this
+        // one is going.
+        bool captured = _placement[move.To] is not null;
+
         if (!Mutate(() => _game.ApplyMove(move.Text)))
         {
             return;
@@ -714,8 +757,24 @@ public sealed class PlaySession : IDisposable
         Select(null);
         Read();
         Publish();
+        AnnounceLanding(captured);
         EnsureSearch();
     }
+
+    /// <summary>
+    /// The disc has met the board. One sound per landing, chosen by what the
+    /// arrived position means — the same rule for a played move, the machine's
+    /// reply and an Undo alike.
+    ///
+    /// It is called after <see cref="Read"/>, because the question is about the
+    /// position that arrived: whether the game is over and whether the side to
+    /// move is in check are both properties of that position and of nothing
+    /// else. It is called after <see cref="Publish"/> for the reason the contract
+    /// gives about feedback that reports an event — the event completing is what
+    /// fires it, and on this platform the board is up to date at that instant.
+    /// </summary>
+    private void AnnounceLanding(bool captured) => _feedback.Play(
+        BoardSounds.OfTheLanding(captured, finished: IsOver, inCheck: Position.InCheck));
 
     /// <summary>
     /// Runs one committing call, and answers whether it committed. A
@@ -746,8 +805,16 @@ public sealed class PlaySession : IDisposable
     /// outcome is committed, the immutable History record inserted, and the
     /// active-game reference cleared. On a store-domain failure the game
     /// remains active and unchanged, and the accepted 无法保存对局 retry says so.
+    ///
+    /// <paramref name="sounds"/> is set by the two commits that end a game with
+    /// nothing moving — a resignation and a claimed draw — and clear for 保存,
+    /// whose result already sounded at the landing that reached it. It travels
+    /// with the retry rather than being decided by the caller, because a
+    /// resignation the store refused and the player retried is still a
+    /// resignation, and the conclusion belongs to the commit that succeeds rather
+    /// than to the first one attempted.
     /// </summary>
-    private bool Terminal(Func<ulong> commit)
+    private bool Terminal(Func<ulong> commit, bool sounds)
     {
         ulong record;
         try
@@ -757,7 +824,7 @@ public sealed class PlaySession : IDisposable
         catch (MxqException failure) when (failure.Domain == Mxq.MXQ_DOMAIN_STORE)
         {
             Alert = PlayAlert.SaveFailed;
-            _failedCommit = () => Terminal(commit);
+            _failedCommit = () => Terminal(commit, sounds);
             Publish();
             return false;
         }
@@ -793,6 +860,12 @@ public sealed class PlaySession : IDisposable
         Select(null);
         Read();
         Publish();
+
+        if (sounds)
+        {
+            _feedback.Play(BoardSound.Conclusion);
+        }
+
         return true;
     }
 
@@ -1007,6 +1080,8 @@ public sealed class PlaySession : IDisposable
 
     private void ApplyOpponent(Move move)
     {
+        bool captured = _placement[move.To] is not null;
+
         try
         {
             _game.ApplyMove(move.Text);
@@ -1038,6 +1113,7 @@ public sealed class PlaySession : IDisposable
         Read();
         _noticeDismissed = false;
         Publish();
+        AnnounceLanding(captured);
         EnsureSearch();
     }
 

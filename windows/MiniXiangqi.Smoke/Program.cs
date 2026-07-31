@@ -33,6 +33,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
 using MiniXiangqi.Play;
@@ -79,6 +80,7 @@ internal static unsafe class Program
             // they run.
             TheHistoryDestination(store, assets);
             ThePagedLibrary(assets);
+            TheSettingsDestination(assets);
         }
         catch (Exception ex)
         {
@@ -1157,9 +1159,11 @@ internal static unsafe class Program
     /// 22. The two Settings defaults the pre-start controls are initialized
     ///     from, read from the keys the Apple frontend stores them under.
     ///
-    /// The Settings screen that writes them is the next pull request; what is
-    /// checked here is the reading and the fallbacks, which is the whole of what
-    /// this one owes.
+    /// This is the reading half and its fallbacks. The writing half is section
+    /// 36, where the Settings screen writes these same two keys and this same
+    /// draft opens on what it wrote — the two sections are the two ends of one
+    /// circle, and they are apart because a fallback is a claim about a reader
+    /// and needs no writer to make it.
     /// </summary>
     private static void TheDefaults()
     {
@@ -2756,6 +2760,554 @@ internal static unsafe class Program
         List<string> legal = [.. play.LegalMoves()];
         legal.Sort(StringComparer.Ordinal);
         return Move.Parse(legal[0])!.Value.From;
+    }
+
+    // ---------------------------------------------------------------------
+    // 36 and 37. The Settings destination, and the board's four voices.
+    //
+    // Its own core over its own store directory, because the core is
+    // singleton-enforced and because the games played here are for their sound
+    // rather than for a library anybody reads afterwards.
+    //
+    // What the *screen* looks like is not here and cannot be: it is XAML, and a
+    // WinUI 3 process fail-fasts in session 0. What is here is everything the
+    // screen decides — which keys it writes, in which vocabulary, and what the
+    // surfaces that read those keys make of them afterwards. **And the audible
+    // half of section 37 is the owner's tour**: a harness can state which event
+    // asked for which voice, and only an ear can say the voices are right.
+    // ---------------------------------------------------------------------
+    private static void TheSettingsDestination(string assets)
+    {
+        string store = Path.Combine(
+            Path.GetTempPath(), "mxq-settings-" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+            PumpScheduler scheduler = new();
+
+            TheSettingsRoundTrip(core, scheduler);
+            TheFourVoices(core, scheduler);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(store, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch directory; failing to remove it is not a result.
+            }
+        }
+    }
+
+    /// <summary>
+    /// 36. The Settings screen, and the surfaces that read what it wrote.
+    ///
+    /// **The circle closes here.** Section 22 proved the reader: a pre-start
+    /// draft opens on `defaults.firstMover` and `defaults.aiLevel` with the
+    /// accepted fallbacks. This proves the writer against that same reader, over
+    /// the same `FilePreferenceStore` and the same file on disk — the screen
+    /// writes, the raw JSON is read back to confirm the key and the vocabulary,
+    /// and then a real `PlayFlow` walks to a pre-start page and opens on it.
+    /// Neither half is a stand-in for the other.
+    ///
+    /// **Three rows are absent and that is scope, not a gap.** The string table
+    /// is where that is stated mechanically below: the keys this screen draws are
+    /// there, and 棋盘's two, 记谱法's and 触感's are not.
+    /// </summary>
+    private static void TheSettingsRoundTrip(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("36. The Settings screen: what it writes, and who reads it back");
+
+        string directory = Path.Combine(
+            Path.GetTempPath(), "mxq-settings-prefs-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "preferences.json");
+        FilePreferenceStore stored = new(path);
+        SettingsScreen settings = new(stored);
+
+        int published = 0;
+        settings.Changed += () => published++;
+
+        try
+        {
+            Console.WriteLine($"    preferences file    {path}");
+
+            // Neither the file nor the directory above it exists yet, which is
+            // the state of every first launch.
+            Check("a screen over nothing stored opens on the accepted defaults",
+                settings is
+                {
+                    DefaultFirstMover: FirstMoverChoice.HumanFirst,
+                    DefaultAiLevel: AiLevel.Standard,
+                    Sound: true,
+                    ConfirmsDeletion: true,
+                });
+
+            settings.ChooseDefaultFirstMover(FirstMoverChoice.AiFirst);
+            settings.ChooseDefaultAiLevel(AiLevel.Deep);
+            settings.SetSound(false);
+            settings.SetDeleteConfirmation(false);
+
+            Check("a first write creates the file and the directory above it",
+                File.Exists(path));
+            Console.WriteLine($"    written             {File.ReadAllText(path).ReplaceLineEndings(" ")}");
+
+            // The raw document, because the *key* and the *vocabulary* are the
+            // interface between the two frontends and a reader of our own could
+            // agree with a writer of our own about a spelling neither of them
+            // shares with the Apple app.
+            Check("the keys and their vocabulary are the contract's own",
+                Stored(path, "defaults.firstMover") == "\"ai-first\""
+                && Stored(path, "defaults.aiLevel") == "\"deep\""
+                && Stored(path, "sound.enabled") == "false"
+                && Stored(path, "deleteConfirmation.enabled") == "false");
+
+            Check("a flag is written as a flag, not as its spelling",
+                stored.ReadFlag(Preferences.SoundKey) == false
+                && stored.Read(Preferences.SoundKey) is null);
+
+            Check("the screen reads back exactly what it wrote",
+                settings is
+                {
+                    DefaultFirstMover: FirstMoverChoice.AiFirst,
+                    DefaultAiLevel: AiLevel.Deep,
+                    Sound: false,
+                    ConfirmsDeletion: false,
+                });
+
+            // The first end of the circle: the reader section 22 proved, over the
+            // file this screen just wrote.
+            SetupDraft draft = SetupDraft.FromDefaults(new FilePreferenceStore(path));
+            Console.WriteLine($"    the draft opens on  {draft.FirstMover} / {draft.Level}");
+            Check("the pre-start draft opens on what Settings wrote",
+                draft is { FirstMover: FirstMoverChoice.AiFirst, Level: AiLevel.Deep });
+
+            // And the other end: the destination itself, walking the home to a
+            // pre-start page exactly as a click on a mode entry walks it.
+            using (PlayFlow flow = new(core, scheduler, new FilePreferenceStore(path)))
+            {
+                flow.Start();
+                flow.Choose(PlayMode.HumanVersusAi);
+                Console.WriteLine(
+                    $"    the page opens on   {flow.Draft.FirstMover} / {flow.Draft.Level}, "
+                    + $"preview flipped {flow.PreviewScene.Flipped}");
+                Check("and so does the pre-start page a mode entry opens",
+                    flow.Page == PlayPage.Setup
+                    && flow.Draft is { FirstMover: FirstMoverChoice.AiFirst, Level: AiLevel.Deep });
+                Check("AI 先手 previews the human as Black on that page",
+                    flow.PreviewScene.Flipped);
+                flow.LeaveTopPage();
+            }
+
+            // The other two keys reach their own readers — the gate in front of
+            // the four voices, and the one in front of a permanent deletion.
+            Check("声音 off is what the sound gate reads",
+                !Preferences.Sound(new FilePreferenceStore(path)));
+            Check("删除前确认 off is what the deletion gate reads",
+                !Preferences.ConfirmsDeletion(new FilePreferenceStore(path)));
+
+            // Read at the moment of use, on this screen as much as anywhere else:
+            // a preference changed underneath it — by hand, or by another
+            // frontend over a shared profile — is what it shows next.
+            File.WriteAllText(path, """{"defaults.aiLevel":"fast","sound.enabled":true}""");
+            Check("the screen shows what is stored rather than what it last wrote",
+                settings is { DefaultAiLevel: AiLevel.Fast, Sound: true });
+            Check("and a key that went with it reads as the accepted default",
+                settings.ConfirmsDeletion);
+
+            // A value that is already the stored value is not written again: a
+            // XAML selector reports the value a refresh gives it, and a screen
+            // that wrote on every such report would rewrite the file every time
+            // it drew.
+            published = 0;
+            settings.ChooseDefaultAiLevel(AiLevel.Fast);
+            settings.SetSound(true);
+            Check("choosing what is already chosen writes nothing", published == 0);
+
+            // **The keys no surface here reads survive a write.** This file is
+            // not this screen's private state: 记谱法, 棋子符号 and 触感 belong
+            // to the Apple frontend, they are absent from this platform by
+            // issue #80's trim rather than by disagreement, and a screen that
+            // rewrote the object from the four rows it draws would silently
+            // delete a preference somebody set on another machine.
+            File.WriteAllText(
+                path,
+                """{"notation.style":"wxf","pieces.symbols":"icons","haptics.enabled":false}""");
+            settings.SetSound(false);
+            Console.WriteLine($"    after one write     {File.ReadAllText(path).ReplaceLineEndings(" ")}");
+            Check("a preference this platform has no surface for is left exactly as it was",
+                Stored(path, "notation.style") == "\"wxf\""
+                && Stored(path, "pieces.symbols") == "\"icons\""
+                && Stored(path, "haptics.enabled") == "false"
+                && Stored(path, "sound.enabled") == "false");
+
+            // A file nothing can parse is replaced by one that holds the choice
+            // just made, rather than leaving a screen whose switches do nothing
+            // until somebody deletes a file by hand.
+            File.WriteAllText(path, "{ this is not json");
+            settings.SetDeleteConfirmation(false);
+            Check("a malformed file is replaced by a well-formed one holding the new value",
+                Stored(path, "deleteConfirmation.enabled") == "false"
+                && !settings.ConfirmsDeletion);
+
+            // The trim, stated over the string table rather than described. Every
+            // row this screen draws is a row of docs/copy.md — section 17 checks
+            // that for the whole table — and the rows it deliberately does not
+            // draw carry no key at all.
+            Check("the screen's own rows are in the string table",
+                Strings.Table.ContainsKey("nav.settings")
+                && Strings.Table.ContainsKey("settings.defaults.group")
+                && Strings.Table.ContainsKey("settings.defaults.firstMover")
+                && Strings.Table.ContainsKey("settings.defaults.aiLevel")
+                && Strings.Table.ContainsKey("settings.defaults.footer")
+                && Strings.Table.ContainsKey("settings.sound.label")
+                && Strings.Table.ContainsKey("settings.confirmDelete.label")
+                && Strings.Table.ContainsKey("settings.confirmDelete.footer"));
+            Check("and the three trimmed rows carry no string on this platform",
+                !Strings.Table.ContainsKey("settings.section.board")
+                && !Strings.Table.ContainsKey("settings.symbols.label")
+                && !Strings.Table.ContainsKey("settings.notation.label")
+                && !Strings.Table.ContainsKey("settings.haptics.label"));
+
+            string[] footers =
+                [.. Strings.Table.Keys.Where(key => key.StartsWith("settings.", StringComparison.Ordinal)
+                    && key.EndsWith(".footer", StringComparison.Ordinal))];
+            Console.WriteLine($"    footers             {string.Join(", ", footers.Order(StringComparer.Ordinal))}");
+            Check("there are two footers on the screen, and only two", footers.Length == 2);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch directory; failing to remove it is not a result.
+            }
+        }
+    }
+
+    /// <summary>
+    /// 37. The four voices: which event asks for which, and the switch in front
+    ///     of them.
+    ///
+    /// **The felt-and-heard separation cuts this section in two, and only half of
+    /// it can run here.** What a landing *asks for* is a decision — a pure
+    /// function of the position that arrived — and it is stated below over its
+    /// whole truth table and then driven through a real game. Whether the four
+    /// samples sound right, and whether the level sits under the system alert
+    /// where the contract puts it, is an ear's answer and is **the owner's tour**:
+    /// this machine has no audio endpoint and nobody is logged into it.
+    ///
+    /// The samples themselves are checked for presence rather than for sound, in
+    /// the way apple/MiniXiangqi/Motion/BoardSounds.swift's `missing` is: a board
+    /// that cannot find its samples is quiet rather than broken, so a file that
+    /// fell out of the build is invisible in use and has to be caught here.
+    /// </summary>
+    private static void TheFourVoices(MiniXiangqiCore core, PumpScheduler scheduler)
+    {
+        Section("37. The board's four voices, and the 声音 switch in front of them");
+
+        Console.WriteLine($"    samples             {BoardSoundAssets.Directory}");
+        foreach (BoardSound sound in BoardSounds.All)
+        {
+            string file = BoardSoundAssets.PathFor(sound);
+            Console.WriteLine(
+                $"      {sound,-11} {(File.Exists(file) ? new FileInfo(file).Length + " bytes" : "ABSENT"),-13}"
+                + $"{BoardSoundAssets.DurationOf(sound)?.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) ?? "?"} ms");
+        }
+
+        Check("every sample the code names reached the build",
+            BoardSoundAssets.Missing.Count == 0);
+
+        TimeSpan?[] durations = [.. BoardSounds.All.Select(BoardSoundAssets.DurationOf)];
+        Check("each is a readable PCM sample", durations.All(length => length is not null));
+        Check("the accepted character holds: all short, and the conclusion the one gesture",
+            durations.All(length => length is { TotalSeconds: > 0 and < 1 })
+            && BoardSoundAssets.DurationOf(BoardSound.Conclusion)
+                > BoardSoundAssets.DurationOf(BoardSound.Plain));
+
+        // The rule itself, over everything it can be asked. Precedence is
+        // conclusion, then capture, then check, then the plain landing — so a
+        // capturing check is a capture and a checkmating capture is a conclusion,
+        // which are the two rows a rule written in the wrong order gets wrong.
+        Console.WriteLine("    captured finished inCheck   voice");
+        bool ranked = true;
+        for (int bits = 0; bits < 8; bits++)
+        {
+            bool captured = (bits & 1) != 0;
+            bool finished = (bits & 2) != 0;
+            bool inCheck = (bits & 4) != 0;
+            BoardSound voice = BoardSounds.OfTheLanding(captured, finished, inCheck);
+            BoardSound expected = finished ? BoardSound.Conclusion
+                : captured ? BoardSound.Capture
+                : inCheck ? BoardSound.Check
+                : BoardSound.Plain;
+            ranked &= voice == expected;
+            Console.WriteLine($"    {captured,-9}{finished,-9}{inCheck,-10}{voice}");
+        }
+
+        Check("the higher meaning is the only one heard, in the accepted order", ranked);
+
+        // The gate, held over a recorder: exactly what the app would have
+        // silenced, and read at the moment the sound would fire rather than when
+        // the gate was composed.
+        StubPreferences switchable = new();
+        List<BoardSound> gated = [];
+        Feedback feedback = Feedback.Gating(switchable, gated.Add);
+
+        feedback.Play(BoardSound.Plain);
+        Check("nothing stored means the board is heard", gated.Count == 1);
+
+        switchable[Preferences.SoundKey] = "false";
+        feedback.Play(BoardSound.Capture);
+        Check("声音 off silences it", gated.Count == 1);
+
+        switchable[Preferences.SoundKey] = "true";
+        feedback.Play(BoardSound.Check);
+        Check("and back on again, without a relaunch and on the same object",
+            gated is [BoardSound.Plain, BoardSound.Check]);
+
+        Check("a board with no player attached is quiet rather than broken",
+            Silently(() => Feedback.Silent.Play(BoardSound.Conclusion)));
+
+        // The seam itself, through the session the window drives. Free Play,
+        // because every landing here is one the harness commits and no engine is
+        // owed; the rule is about the position that arrived and knows nothing
+        // about who moved.
+        List<BoardSound> heard = [];
+        Feedback recording = Feedback.Gating(NoPreferences.Instance, heard.Add);
+
+        GameSession game = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        using (PlaySession play = new(core, game, scheduler, probe: null, feedback: recording))
+        {
+            play.Begin();
+
+            // A capture-preferring line with a fixed seed, so the game is the
+            // same game on every run and every machine. Each landing is checked
+            // against what the board itself says happened — the piece that was
+            // standing on the destination, and the position that arrived — rather
+            // than against the rule under test.
+            Random rng = new(20260731);
+            bool everyLandingAgrees = true;
+            int plies = 0;
+            for (; plies < 200 && !play.IsOver; plies++)
+            {
+                if (Preferring(play, rng) is not { } move)
+                {
+                    break;
+                }
+
+                bool captured = play.Scene.Placement[move.To] is not null;
+                int before = heard.Count;
+
+                play.Tap(move.From);
+                play.Tap(move.To);
+
+                BoardSound expected = play.IsOver ? BoardSound.Conclusion
+                    : captured ? BoardSound.Capture
+                    : play.Position.InCheck ? BoardSound.Check
+                    : BoardSound.Plain;
+                everyLandingAgrees &= heard.Count == before + 1 && heard[^1] == expected;
+            }
+
+            Console.WriteLine($"    played              {plies} plies, {heard.Count} landings heard");
+            foreach (BoardSound voice in BoardSounds.All)
+            {
+                Console.WriteLine($"      {voice,-11}{heard.Count(sounded => sounded == voice)}");
+            }
+
+            Check("one sound per landing, and no landing silent",
+                heard.Count == plies && plies > 0);
+            Check("every landing sounded what the arrived position says it should",
+                everyLandingAgrees);
+            Check("a played game reaches all four voices",
+                BoardSounds.All.All(heard.Contains));
+            Check("the game's own ending is one conclusion and no more",
+                play.IsOver && heard.Count(voice => voice == BoardSound.Conclusion) == 1);
+            Check("and it replaced the landing rather than joining it",
+                heard[^1] == BoardSound.Conclusion);
+
+            // 保存 confirms a result that already sounded when it was reached. A
+            // second conclusion here would be one ending heard twice.
+            int settled = heard.Count;
+            play.SaveResult();
+            Console.WriteLine($"    after 保存           {heard.Count - settled} further sounds");
+            Check("保存 files the game and says nothing",
+                play.IsFiled && heard.Count == settled);
+
+            // An Undo's return is a landing, and never a capture: the disc that
+            // reappears is a restoration rather than a take. A filed game cannot
+            // be taken back, so this one is asked of a fresh game.
+        }
+
+        TheUndoAndTheTwoQuietEndings(core, scheduler, heard);
+
+        Check("Settings itself is silent, structurally: it holds no Feedback at all",
+            typeof(SettingsScreen).GetFields(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .All(field => field.FieldType != typeof(Feedback)));
+        Check("and so is the viewer, for the reason a cut has no landing",
+            typeof(ReplayViewer).GetFields(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .All(field => field.FieldType != typeof(Feedback)));
+
+        Console.WriteLine("    (whether the four voices sound right is an ear's answer: the owner's tour)");
+    }
+
+    /// <summary>
+    /// The three landings the played game above could not ask for: a move taken
+    /// back, a draw the player claims, and a resignation. The last two are the
+    /// results that arrive with **nothing moving**, so their conclusion cannot
+    /// wait for a landing and sounds at the commit instead.
+    /// </summary>
+    private static void TheUndoAndTheTwoQuietEndings(
+        MiniXiangqiCore core, PumpScheduler scheduler, List<BoardSound> heard)
+    {
+        // The repetition shuffle section 20 uses: two cannons step off their own
+        // file and back until the starting position stands for the third time.
+        GameSession repeating = core.Create(
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_FIRST_MOVER_NONE,
+            0);
+
+        heard.Clear();
+        Feedback recording = Feedback.Gating(NoPreferences.Instance, heard.Add);
+
+        using (PlaySession play = new(core, repeating, scheduler, probe: null, feedback: recording))
+        {
+            play.Begin();
+
+            // One quiet move and its Undo, before the shuffle: neither is a
+            // capture, and the position either arrives at is an ordinary one.
+            if (Preferring(play, new Random(20260731)) is { } opening)
+            {
+                play.Tap(opening.From);
+                play.Tap(opening.To);
+                heard.Clear();
+                play.Undo();
+            }
+
+            Console.WriteLine($"    after 悔棋           {string.Join(", ", heard)}");
+            Check("a move taken back is a disc landing on a point, and never a take",
+                heard is [BoardSound.Plain] or [BoardSound.Check]);
+
+            string[] shuffle = ["b1b2", "b7b6", "b2b1", "b6b7"];
+            bool reached = false;
+            for (int cycle = 0; cycle < 2 && !reached; cycle++)
+            {
+                foreach (string text in shuffle)
+                {
+                    if (Move.Parse(text) is not { } move || !play.LegalMoves().Contains(text))
+                    {
+                        Check("the repetition shuffle is playable", false);
+                        core.ArchiveAndClear(repeating);
+                        return;
+                    }
+
+                    play.Tap(move.From);
+                    play.Tap(move.To);
+                    reached = play.CanClaimDraw;
+                }
+            }
+
+            heard.Clear();
+            play.RequestClaimDraw();
+            Check("presenting the claim's confirmation is silent", heard.Count == 0);
+
+            play.ConfirmClaimDraw();
+            Console.WriteLine($"    after 以和棋结束      {string.Join(", ", heard)}");
+            Check("a claimed draw settles the game at the confirmation, with nothing moving",
+                play.ResultState == Mxq.MXQ_GAME_DRAW && heard is [BoardSound.Conclusion]);
+        }
+
+        // A resignation, on a human-versus-AI game the human moves first in — so
+        // no search is ever owed and no engine is ever prepared. What is under
+        // test is the commit, not the opponent.
+        GameSession conceding = core.Create(
+            Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
+            Mxq.MXQ_COLOR_RED,
+            Mxq.MXQ_AI_LEVEL_FAST,
+            Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+            Mxq.MXQ_MOVETIME_FAST_MS);
+
+        heard.Clear();
+        using PlaySession resigning = new(
+            core, conceding, scheduler, probe: null,
+            feedback: Feedback.Gating(NoPreferences.Instance, heard.Add));
+
+        resigning.RequestResign();
+        Check("presenting 认输's confirmation is silent", heard.Count == 0);
+
+        resigning.ConfirmResign();
+        Console.WriteLine($"    after 认输           {string.Join(", ", heard)}");
+        Check("a resignation settles the game at the commit too",
+            resigning.IsOver && heard is [BoardSound.Conclusion]);
+    }
+
+    /// <summary>
+    /// A legal move, captures first, with a fixed seed among equals so the game
+    /// is the same game every run. Preferring captures is what makes one played
+    /// game reach every voice rather than most of them.
+    /// </summary>
+    private static Move? Preferring(PlaySession play, Random rng)
+    {
+        List<string> legal = [.. play.LegalMoves()];
+        legal.Sort(StringComparer.Ordinal);
+        if (legal.Count == 0)
+        {
+            return null;
+        }
+
+        List<Move> captures = [.. legal
+            .Select(Move.Parse)
+            .Where(move => move is { } candidate && play.Scene.Placement[candidate.To] is not null)
+            .Select(move => move!.Value)];
+
+        return captures.Count > 0
+            ? captures[rng.Next(captures.Count)]
+            : Move.Parse(legal[rng.Next(legal.Count)]);
+    }
+
+    /// <summary>The raw JSON text stored under one key, or null where there is none.</summary>
+    private static string? Stored(string path, string key)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.TryGetProperty(key, out JsonElement value)
+                ? value.GetRawText()
+                : null;
+        }
+        catch (Exception failure) when (failure is IOException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Answers whether <paramref name="work"/> ran without raising.</summary>
+    private static bool Silently(Action work)
+    {
+        try
+        {
+            work();
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------------

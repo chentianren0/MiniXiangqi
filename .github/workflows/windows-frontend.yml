@@ -38,6 +38,7 @@ on:
       - 'core/**'
       - 'pinned-inputs.json'
       - 'docs/copy.md'
+      - 'apple/MiniXiangqi/Sounds/**'
       - '.github/workflows/windows-frontend.yml'
       - '.github/scripts/fetch-network.sh'
   push:
@@ -47,6 +48,7 @@ on:
       - 'core/**'
       - 'pinned-inputs.json'
       - 'docs/copy.md'
+      - 'apple/MiniXiangqi/Sounds/**'
       - '.github/workflows/windows-frontend.yml'
       - '.github/scripts/fetch-network.sh'
 
@@ -114,6 +116,32 @@ jobs:
           git diff --exit-code -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
           if ($LASTEXITCODE -ne 0) {
             throw 'The committed bindings differ from what ClangSharp generates from core/include/mxq.h. Run windows/bindings/generate.ps1 and commit the result.'
+          }
+
+      # The board's four voices are one set of samples with one generator,
+      # apple/Sounds/generate.py, and both frontends bundle its output. They are
+      # copied rather than referenced across the two trees — a cross-tree csproj
+      # reference would make the Windows build depend on the Apple app's own
+      # directory layout, and the two campaigns run in parallel over disjoint
+      # trees — so this is what keeps the copies from drifting. A retune that
+      # reached one bundle and not the other would otherwise leave the same board
+      # sounding different on two platforms, which is exactly the bug nobody would
+      # notice from either side.
+      #
+      # It reads apple/ and writes nothing there.
+      - name: The four voices are the same four voices
+        shell: pwsh
+        run: |
+          $mismatched = @()
+          foreach ($voice in 'plain', 'capture', 'check', 'conclusion') {
+            $name = "board-$voice.wav"
+            $mac = Get-FileHash "apple/MiniXiangqi/Sounds/$name" -Algorithm SHA256
+            $win = Get-FileHash "windows/MiniXiangqi.Play/Sounds/$name" -Algorithm SHA256
+            Write-Host "$name  $($mac.Hash.ToLower())"
+            if ($mac.Hash -ne $win.Hash) { $mismatched += $name }
+          }
+          if ($mismatched.Count -gt 0) {
+            throw "These samples differ between apple/MiniXiangqi/Sounds and windows/MiniXiangqi.Play/Sounds: $($mismatched -join ', '). Both bundles are outputs of apple/Sounds/generate.py; run it and copy all four."
           }
 
       - name: Build every project

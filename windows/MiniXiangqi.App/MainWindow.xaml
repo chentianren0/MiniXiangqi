@@ -8,26 +8,31 @@
     mc:Ignorable="d">
 
     <!--
-        Two destinations, and the pages inside each of them.
+        Three destinations, and the pages inside each of them.
 
         **Play** has three pages: the home where what to play is chosen, each
         mode's pre-start state, and the board. **History** has two: the list of
-        filed games, and one record's read-only step-through viewer. One page is
-        visible at a time, and the destination's flow object is what says which —
-        the page is drawn rather than pushed, so there is no navigation history
-        to keep in step with the state.
+        filed games, and one record's read-only step-through viewer. **Settings**
+        has one and needs no more. One page is visible at a time, and the
+        destination's own object is what says which — the page is drawn rather
+        than pushed, so there is no navigation history to keep in step with the
+        state.
 
         Over them sits the one navigation row: the back control, which appears
         on the pages that have somewhere to go back to and names the page it
         returns to, and the destination's own title, which its pages share.
 
-        The container around both is a NavigationView, which is this platform's
-        own: docs/interaction-design.md § Layout shapes fixes that "navigation
-        uses one adaptive container, and the container is the platform's own
-        rather than a presentation the app selects", so the display mode is left
-        at Auto and the app decides none of it. Settings is the ladder's next
-        rung and its item arrives with it, so IsSettingsVisible is off rather
-        than pointing at a page that does not exist.
+        The container around all three is a NavigationView, which is this
+        platform's own: docs/interaction-design.md § Layout shapes fixes that
+        "navigation uses one adaptive container, and the container is the
+        platform's own rather than a presentation the app selects", so the
+        display mode is left at Auto and the app decides none of it.
+        **IsSettingsVisible is now on**, which is the container's own settings
+        item — the platform's gear, in the platform's place at the foot of the
+        pane, reached the platform's way. Its word is the one thing the app
+        supplies, from `nav.settings`, because that row is the string of record
+        for this destination's name and a framework's own word for it would be a
+        second source of truth.
 
         Nothing resident intersects the board block on any page that has a board:
         the panel sits beside it and the air around the board is an allowance
@@ -37,7 +42,7 @@
     -->
 
     <NavigationView x:Name="Shell"
-                    IsSettingsVisible="False"
+                    IsSettingsVisible="True"
                     IsBackButtonVisible="Collapsed"
                     SelectionChanged="OnDestinationChanged">
         <NavigationView.MenuItems>
@@ -549,6 +554,175 @@
                 </StackPanel>
             </Grid>
         </Grid>
+
+        <!-- ============================================================= -->
+        <!-- Settings: the preferences the app keeps, and nothing else.     -->
+        <!-- ============================================================= -->
+        <!--
+            Three groups, in the Mac's own order, and the Fluent adaptation is
+            one rule applied three times: **a group is a card**. The Mac draws
+            these as sections of a grouped Form, which supplies a header above
+            and a footer below for free; Windows has no grouped Form, and its own
+            settings idiom is a caption-weight header, a card carrying the rows,
+            and a caption beneath. The mapping is therefore exact rather than
+            approximate — one Form section becomes one header, one card, one
+            footer — and the rows inside a card are divided by the same hairline
+            the Play home already puts between its two mode entries, so the two
+            screens are one app.
+
+            The Community Toolkit's SettingsCard is the packaged form of exactly
+            this and was declined: it is a dependency for four rows, and the
+            vocabulary it would bring — the card fill, the card stroke, the
+            divider, the caption-secondary footer — is already in this file,
+            drawn from the same theme resources the toolkit itself uses.
+
+            **What is not here is recorded scope, not a gap.** The Mac's fourth
+            group, 棋盘, is absent with both of its rows; so is 触感 from the
+            feedback group. Issue #80's owner-decided trim and the contract's own
+            hardware rule are why, and MiniXiangqi.Play's SettingsScreen carries
+            the reasoning. **The two footers are both here**, which is the
+            accepted "there are two footers on the screen, and only two"
+            surviving the trim rather than being restated by it: an absent row
+            explains itself by not being there, so nothing needed a third.
+        -->
+        <ScrollViewer x:Name="SettingsPage" Grid.Row="1" Visibility="Collapsed">
+            <StackPanel MaxWidth="640"
+                        HorizontalAlignment="Stretch"
+                        Padding="24,16,24,24"
+                        Spacing="20">
+
+                <!-- 人机对弈默认设置: headed and footed, because its two values
+                     need saying what they are for. They initialize the next
+                     game's setup and never reach the game already on the
+                     board. -->
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="DefaultsHeader"
+                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <Border CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource SettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="DefaultFirstMoverLabel"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <ComboBox x:Name="DefaultFirstMover"
+                                          Grid.Column="1"
+                                          MinWidth="150"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="OnDefaultFirstMoverChanged"
+                                          AutomationProperties.AutomationId="settings-first-mover">
+                                    <ComboBoxItem x:Name="DefaultFirstMoverHuman" />
+                                    <ComboBoxItem x:Name="DefaultFirstMoverAi" />
+                                    <ComboBoxItem x:Name="DefaultFirstMoverRandom" />
+                                </ComboBox>
+                            </Grid>
+
+                            <Rectangle Height="1"
+                                       Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                            <Grid Style="{StaticResource SettingsRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="DefaultAiLevelLabel"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <ComboBox x:Name="DefaultAiLevel"
+                                          Grid.Column="1"
+                                          MinWidth="150"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="OnDefaultAiLevelChanged"
+                                          AutomationProperties.AutomationId="settings-ai-level">
+                                    <ComboBoxItem x:Name="DefaultLevelFast" />
+                                    <ComboBoxItem x:Name="DefaultLevelStandard" />
+                                    <ComboBoxItem x:Name="DefaultLevelDeep" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="DefaultsFooter"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="settings-defaults-footer" />
+                </StackPanel>
+
+                <!-- 声音: its own group, with no header and no footer. On the Mac
+                     it stands beside 触感 under no header; here it stands alone
+                     under no header, and means exactly what it meant there. -->
+                <Border CornerRadius="8"
+                        BorderThickness="1"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <Grid Style="{StaticResource SettingsRowStyle}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SoundLabel" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        <!--
+                            OnContent and OffContent are emptied and the switch's
+                            reserved width with them. A bare switch is what
+                            Windows 11's own Settings shows, and the words it
+                            would otherwise carry are the framework's rather than
+                            docs/copy.md's — copy on a control that this
+                            repository's string of record does not own. Narrator
+                            is unaffected: a toggle reports its state through the
+                            toggle pattern, in the screen reader's own words,
+                            whatever content it draws.
+                        -->
+                        <ToggleSwitch x:Name="Sound"
+                                      Grid.Column="1"
+                                      MinWidth="0"
+                                      OnContent=""
+                                      OffContent=""
+                                      VerticalAlignment="Center"
+                                      Toggled="OnSoundToggled"
+                                      AutomationProperties.AutomationId="settings-sound" />
+                    </Grid>
+                </Border>
+
+                <!-- 删除前确认: a group of its own so that its footer is
+                     unmistakably about it. Turning it off makes a deletion
+                     immediate, and a deletion cannot be undone. -->
+                <StackPanel Spacing="8">
+                    <Border CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Grid Style="{StaticResource SettingsRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ConfirmDeleteLabel"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                            <ToggleSwitch x:Name="ConfirmDelete"
+                                          Grid.Column="1"
+                                          MinWidth="0"
+                                          OnContent=""
+                                          OffContent=""
+                                          VerticalAlignment="Center"
+                                          Toggled="OnConfirmDeleteToggled"
+                                          AutomationProperties.AutomationId="settings-confirm-delete" />
+                        </Grid>
+                    </Border>
+                    <TextBlock x:Name="ConfirmDeleteFooter"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="settings-confirm-delete-footer" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- What is shown instead when the core, the game, or the library did
              not start or load. -->
