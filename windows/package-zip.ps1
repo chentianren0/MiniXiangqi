@@ -3,11 +3,16 @@
 Build the Windows distribution: one zip somebody unpacks and runs.
 
 .DESCRIPTION
-The accepted MVP distribution for Windows is a CI-built zip (issue #80, owner
-decision, 2026-07-30; MSIX and its signing-certificate story are the post-MVP
-upgrade). This script is that build. It runs on a developer machine and in
-.github/workflows/windows-frontend.yml, which is where the artifact anybody
-downloads comes from.
+The zip is the direct distribution for Windows: download, unpack, run, nothing
+installed (issue #80, owner decision, 2026-07-30). This script is that build. It
+runs on a developer machine and in .github/workflows/windows-frontend.yml, which
+is where the artifact anybody downloads comes from.
+
+It is not the only one any more. windows/package-msix.ps1 beside it builds the
+Store package from the same core, the same publish inputs and the same project,
+switched by MxqPackaged; the two are different deployment shapes of one app and
+neither is the other's fallback. Nothing here knows about that one, which is
+deliberate — this script's inputs and its output are exactly what they were.
 
 Run windows/build-core-dll.ps1 first, for the same architecture: the core is
 consumed as a prebuilt DLL beside a prebuilt asset directory, and this script
@@ -85,6 +90,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# What architecture a binary actually is, read from its PE header rather than
+# inferred from where it was found. One reader, shared with
+# windows/build-core-dll.ps1 and windows/package-msix.ps1, because a
+# disagreement between the three would be a distribution that builds and does
+# not run.
+. (Join-Path $PSScriptRoot 'Get-PeMachine.ps1')
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $rid = "win-$Architecture"
 $productName = "MiniXiangqi-windows-$Architecture"
@@ -105,30 +117,7 @@ $staging = Join-Path $OutputDirectory $productName
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $staging
 
-# What architecture a binary actually is, read from its PE header rather than
-# inferred from where it was found. Used twice below: once to decide which
-# Visual C++ runtime files belong in this zip, and once to check that every
-# binary in it does.
-function Get-PeMachine([string] $path) {
-    $stream = [System.IO.File]::OpenRead($path)
-    try {
-        $reader = New-Object System.IO.BinaryReader($stream)
-        if ($stream.Length -lt 0x40) { return $null }
-        $stream.Position = 0
-        if ($reader.ReadUInt16() -ne 0x5A4D) { return $null }   # MZ
-        $stream.Position = 0x3C
-        $peOffset = $reader.ReadUInt32()
-        if ($peOffset + 6 -gt $stream.Length) { return $null }
-        $stream.Position = $peOffset
-        if ($reader.ReadUInt32() -ne 0x00004550) { return $null } # PE\0\0
-        return $reader.ReadUInt16()
-    } finally {
-        $stream.Dispose()
-    }
-}
-
-$expectedMachine = if ($Architecture -eq 'arm64') { 0xAA64 } else { 0x8664 }
-$machineNames = @{ 0x014C = 'x86'; 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x01C4 = 'ARM' }
+$expectedMachine = Get-PeMachineForArchitecture -Architecture $Architecture
 
 # ---------------------------------------------------------------------------
 # Publish
@@ -261,66 +250,39 @@ Write-Host '  name, length and hash all match pinned-inputs.json'
 # zip, so it does: app-local deployment of these DLLs is what the Visual Studio
 # redistributable licence permits, and NOTICE.md records it.
 #
-# Copied only where the publish did not already produce them, and what happened
-# is printed either way, because "the Windows App SDK brought its own" and "we
-# added them" are different facts about the same directory.
+# This used to be the script that fetched them, from whichever redistributable
+# the build machine carried. It is now a check, because the fetching moved to
+# windows/build-core-dll.ps1 and the runtime arrives here the way mxqcore.dll
+# does — staged beside the core it belongs to, carried into the output by
+# windows/CoreArtifacts.targets, copied into this publish as an item.
 #
-# Each candidate's own PE machine type decides whether it is copied, rather than
-# the folder it sits in. That is not belt and braces — the arm64 redistributable
-# folder really does contain an x64 binary. `vcruntime140_1.dll` implements the
-# x64 exception unwinder, ARM64 has no use for it, and Microsoft ships an x64
-# copy under VC\Redist\MSVC\<version>\arm64\Microsoft.VC143.CRT anyway for the
-# emulation and ARM64EC cases. Trusting the folder name put it in an ARM64 zip;
-# the machine-type check further down caught it. Reading each file is what stops
-# it being caught rather than avoided.
+# The move was forced by the Store package, whose payload is a build output that
+# no script gets to add files to afterwards; a copy step here could only ever
+# have fixed the zip. What the zip gets out of it is that the runtime is now on
+# the same path as the core that needs it, so the two cannot come from different
+# builds. The message below is the one this branch always printed for the case
+# where the publish already had them, and it is now the only case there is.
+#
+# Which files are the right ones is decided where they are staged, by reading
+# each candidate's PE machine type: the set is not the same on both
+# architectures, because the arm64 redistributable's vcruntime140_1.dll is an
+# x64 binary. So this asks only for what every architecture must have. The
+# machine-type sweep below reads all of them anyway.
 
 $crtNames = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll',
               'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll',
               'vcruntime140.dll', 'vcruntime140_1.dll', 'concrt140.dll')
-$missing = @($crtNames | Where-Object { -not (Test-Path (Join-Path $staging $_)) })
-if ($missing.Count -eq 0) {
-    Write-Host 'The Visual C++ runtime was already in the published output.'
-} else {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere." }
-    $vsPath = & $vswhere -latest -products * -property installationPath
-    if (-not $vsPath) { throw 'No Visual Studio installation was found.' }
-
-    $redistRoot = Join-Path $vsPath 'VC\Redist\MSVC'
-    $crtSource = $null
-    if (Test-Path $redistRoot) {
-        foreach ($version in (Get-ChildItem -Directory $redistRoot | Sort-Object Name -Descending)) {
-            $candidate = Get-ChildItem -Directory (Join-Path $version.FullName $Architecture) `
-                -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue
-            if ($candidate) { $crtSource = $candidate[0].FullName; break }
-        }
-    }
-    if (-not $crtSource) {
-        throw ("The published output is missing $($missing -join ', ') and no Visual C++ $Architecture " +
-               "redistributable was found under $redistRoot. Install the C++ redistributable component " +
-               "for this architecture; a zip without it is not one that runs on a clean machine.")
-    }
-
-    Write-Host "Taking the Visual C++ runtime from $crtSource"
-    foreach ($name in $missing) {
-        $source = Join-Path $crtSource $name
-        # The set differs by architecture and by toolset version. Anything the
-        # redistributable does not carry for this architecture is something this
-        # architecture does not need.
-        if (-not (Test-Path $source)) { continue }
-        $machine = Get-PeMachine $source
-        if ($machine -ne $expectedMachine) {
-            $named = if ($machineNames.ContainsKey([int]$machine)) { $machineNames[[int]$machine] } else { "0x{0:X4}" -f $machine }
-            Write-Host "  skipped $name — it is $named in the $Architecture redistributable, so it is not this architecture's"
-            continue
-        }
-        Copy-Item $source $staging -Force
-        Write-Host "  added $name"
-    }
-    if (-not (Test-Path (Join-Path $staging 'vcruntime140.dll'))) {
-        throw "vcruntime140.dll reached neither the publish nor the redistributable copy; the zip would not run."
+$present = @($crtNames | Where-Object { Test-Path (Join-Path $staging $_) })
+foreach ($required in @('vcruntime140.dll', 'msvcp140.dll')) {
+    if ($present -notcontains $required) {
+        throw ("$required is not in the published output. mxqcore.dll links the C++ runtime " +
+               "dynamically and nothing else in this build carries it, so the zip would fail to load " +
+               "the core on any machine without Visual Studio. windows/build-core-dll.ps1 stages the " +
+               "runtime beside the core and windows/CoreArtifacts.targets copies it; run that script " +
+               "for -Architecture $Architecture and publish again.")
     }
 }
+Write-Host "The Visual C++ runtime was already in the published output: $($present -join ', ')"
 
 # ---------------------------------------------------------------------------
 # Every native binary is this architecture, checked rather than assumed
@@ -340,7 +302,7 @@ $wrong = @()
 $binaries = @(Get-ChildItem -Path $staging -Recurse -File |
     Where-Object { $_.Extension -eq '.dll' -or $_.Extension -eq '.exe' })
 foreach ($file in $binaries) {
-    $machine = Get-PeMachine $file.FullName
+    $machine = Get-PeMachine -Path $file.FullName
     if ($null -eq $machine) { continue }
     # A managed assembly built AnyCPU reports x86 in this field and is not a
     # native binary; only the ones that report a 64-bit machine are the question,
@@ -361,8 +323,7 @@ foreach ($file in $binaries) {
 
     $native++
     if ($machine -ne $expectedMachine) {
-        $name = if ($machineNames.ContainsKey([int]$machine)) { $machineNames[[int]$machine] } else { "0x{0:X4}" -f $machine }
-        $wrong += "$($file.Name): $name"
+        $wrong += "$($file.Name): $(Get-PeMachineName $machine)"
     }
 }
 if ($wrong.Count -gt 0) {

@@ -21,9 +21,11 @@ menus rather than recreated Apple styling.
 
 | | |
 |---|---|
-| `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
-| `package-zip.ps1` | the packaging build: publishes, checks the network it carries, and writes the distribution zip |
-| `make-app-icon.py` | builds `MiniXiangqi.ico` from the icon design's 1024 px export |
+| `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets and the C++ runtime into `artifacts/` |
+| `package-zip.ps1` | the direct distribution: publishes, checks the network it carries, and writes the zip |
+| `package-msix.ps1` | the [Store package](#the-store-package): builds the unsigned `.msix`, then unpacks it and checks what the Store would read |
+| `Get-PeMachine.ps1` | one PE-header reader, dot-sourced by the three scripts above that ask what architecture a binary is |
+| `make-app-icon.py` | builds `MiniXiangqi.ico` and the package's `Images/` from the icon design's 1024 px export |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
 | `MiniXiangqi.Play/` | the board's vocabulary and geometry, every destination's logic, the sound decision and the four samples, and the string table — no UI framework at all |
@@ -608,11 +610,15 @@ Where they are kept on Windows is the smallest answer that works — a JSON obje
 absent or malformed reading as "nothing is stored". A flag is read as a JSON boolean first
 and as the string spelling of one after that, because a file a Settings screen writes and
 a person may edit can honestly hold either. The Apple frontend has `UserDefaults`; an
-unpackaged Win32 app has no equivalent, and the packaging build settled that this app
-stays unpackaged — a zip of a `WindowsPackageType` `None` build has no package identity
-and so no `ApplicationData` to reach — rather than changing the answer. If MSIX is ever
-taken up, moving preferences into the packaged store is a change to one class rather than
-to a contract, because the key and the vocabulary are the interface, not the file. A write lands atomically — a sibling temporary file moved
+unpackaged Win32 app has no equivalent, so a file is what there is, and the zip's app —
+a `WindowsPackageType` `None` build with no package identity — has no `ApplicationData`
+to reach for even if it wanted one. **The Store package now does, and this class did not
+change.** A packaged app's writes under `LOCALAPPDATA` are redirected by Windows into the
+package's own writable location, so the two channels keep separate preferences from
+identical code and neither knows it. Making that explicit is a change to one class rather
+than to a contract, because the key and the vocabulary are the interface, not the file;
+whether it is worth making is [`docs/architecture.md`](../docs/architecture.md)'s open
+question, not this file's. A write lands atomically — a sibling temporary file moved
 over the old one — so a process that dies mid-write leaves the previous preferences rather
 than a truncated object every later read would answer "nothing is stored" to. What has not
 changed is the key or the vocabulary: those are the interface between the screen that
@@ -621,13 +627,22 @@ in one frontend mean the same thing in the other.
 
 ## The icon
 
-`MiniXiangqi.App/MiniXiangqi.ico` is the app's icon, and it is **derived rather than
-drawn**. The design is the Apple side's Icon Composer document, `apple/AppIcon.icon`;
-the owner exports a flat 1024×1024 PNG from it; and [`make-app-icon.py`](make-app-icon.py)
-turns that one image into the eight sizes Windows asks for. Only the last link of that
-chain is in this repository — the first is the Apple app's document and the second is a
-four-megabyte intermediate nobody edits — so the script is the paper trail, and
-regenerating after a design change is one command with the new export.
+The app's icon is **derived rather than drawn**. The design is the Apple side's Icon
+Composer document, `apple/AppIcon.icon`; the owner exports a flat 1024×1024 PNG from it;
+and [`make-app-icon.py`](make-app-icon.py) turns that one image into everything Windows
+asks for. Only the last link of that chain is in this repository — the first is the Apple
+app's document and the second is a four-megabyte intermediate nobody edits — so the script
+is the paper trail, and regenerating after a design change is one command with the new
+export.
+
+It writes two things, because the two distributions ask the question differently.
+`MiniXiangqi.App/MiniXiangqi.ico` is what the **executable** carries and is all the zip
+has. `MiniXiangqi.App/Images/` is what the **Store package** carries: thirty PNGs, one per
+qualifier, because a package declares its images in the manifest and the shell resolves
+each one through the resource index by the display's scale or the size a caller asked for
+— so a package needs one file per frame rather than one container holding them all. The
+directory is included only by a packaged build, so nothing about it can reach the zip;
+[The Store package](#the-store-package) says what is in it and why those sizes.
 
 The eight entries are 16, 20, 24, 32, 48, 64, 128 and 256 pixels: 16 with 20 and 24 for
 the title bar and the scaled variants a high-DPI machine picks up, 32 for the taskbar and
@@ -688,8 +703,10 @@ and a screen that clicked back at every switch would be the app talking about it
 the step-through viewer is silent because a Windows step is the presentational cut a jump
 already is, and `docs/interaction-design.md` § History replay's own Windows clause says a
 cut has no landing. Neither type holds a `Feedback` at all, which is how that is enforced
-rather than remembered. **Backgrounding needs no code**: an unpackaged desktop app has no
-platform suspension, losing focus is not one — which is what
+rather than remembered. **Backgrounding needs no code**: a desktop app has no
+platform suspension whether it is packaged or not — the lifecycle manager suspends UWP
+apps, and a full-trust packaged desktop app is exempt from it exactly as the zip's app is
+outside it — losing focus is not one — which is what
 `apple/MiniXiangqi/Play/Suspension.swift` says about macOS — and a game still being played
 is still heard, with the volume mixer where somebody who wants it quieter goes.
 
@@ -699,8 +716,11 @@ is still heard, with the volume mixer where somebody who wants it quieter goes.
 builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, regenerates the bindings and fails
 on any difference from what is committed, compares the four sound samples against the
 Apple bundle's, builds every project, runs the smoke harness against `docs/copy.md`,
-renders the board, and builds the distribution zip. It uploads the renders and the zip
-on every run, and it takes no secrets: the network the AI needs is in the checkout.
+renders the board, builds the distribution zip, and builds the Store package. It uploads
+four artifacts on every run — the board renders, the zip per architecture, the `.msix`
+per architecture, and the `.msixupload` that carries both packages to Partner Center —
+and it takes no secrets: the network the AI needs is in the checkout, and the package is
+unsigned because the Store signs what it accepts.
 
 **It is a matrix over two architectures**, each on its own native runner: `windows-2025`
 for `x64` and `windows-11-arm` for `ARM64`. Three steps run on `x64` only, and the
@@ -708,9 +728,15 @@ workflow says why where they are — the bindings check and the sound comparison
 source-level checks that a second architecture would repeat rather than extend, and the
 renders are pictures of a board no dimension of which depends on the instruction set.
 Everything that could differ by architecture — the C++ build, every managed build, the
-harness, the publish and the zip — runs on both. `fail-fast` is off on both matrices:
-one architecture failing is a finding about that architecture, and the other's result
-beside it is what says whether it is architecture-specific.
+harness, the publish, the zip and the Store package — runs on both. `fail-fast` is off on
+both matrices: one architecture failing is a finding about that architecture, and the
+other's result beside it is what says whether it is architecture-specific.
+
+**One job is not in the matrix**, and it is the only one that could not be: `store-package`
+waits for both legs, downloads the two `.msix` artifacts they uploaded, and zips them into
+the single `.msixupload` a Store submission takes. It compiles nothing and proves nothing
+about either package — the legs did that — beyond reopening the archive it just wrote and
+reading back that it holds exactly the two packages, at the root, where the Store looks.
 
 The core's own suites on `ARM64` are in [`core-suites.yml`](../.github/workflows/core-suites.yml)
 rather than here. What decides a job's home is which changes should start it: that
@@ -769,9 +795,14 @@ from a false premise.
 
 ## The distribution
 
-[`package-zip.ps1`](package-zip.ps1) is the packaging build, and one zip per architecture
-is the accepted MVP distribution (issue #80, owner decision, 2026-07-30; MSIX and its
-signing-certificate story are the post-MVP upgrade). It publishes `MiniXiangqi.App` and
+**There are two distributions and this is the first of them.** The zip is the direct
+download — unpack, run, nothing installed — and [The Store package](#the-store-package)
+below is the other. They are two deployment shapes of one app from one project, switched
+by one MSBuild property, and neither is the other's fallback. Everything in this section
+describes the zip.
+
+[`package-zip.ps1`](package-zip.ps1) is that build, and one zip per architecture is what
+it produces (issue #80, owner decision, 2026-07-30). It publishes `MiniXiangqi.App` and
 `MiniXiangqi.Smoke` self-contained into one directory — they share every runtime file,
 this app's own assemblies, the core DLL and the asset directory, so publishing them
 apart would ship two .NET runtimes to prove one works — writes the licence and the
@@ -779,14 +810,22 @@ notes, and zips the result under one top-level folder.
 
 **Self-contained means three things, and the third is the one people forget.**
 `--self-contained` carries the .NET runtime. `WindowsAppSDKSelfContained`, which the
-projects already set, carries the Windows App Runtime. Neither carries the *Visual C++*
-runtime, and `mxqcore.dll` is MSVC's output linked against it dynamically — so the script
-ensures `vcruntime140*.dll` and `msvcp140*.dll` are in the directory, taking them from
-the Visual Studio redistributable if the publish did not already produce them, and says
-which of the two happened. App-local deployment of those DLLs is what the Visual Studio
-redistributable terms permit, and the zip's `NOTICE.md` records it. With all three in
-place, "unpack and run" needs no install of any kind; what the machine still needs is
-Windows 11 and the matching architecture.
+unpackaged build sets, carries the Windows App Runtime. Neither carries the *Visual C++*
+runtime, and `mxqcore.dll` is MSVC's output linked against it dynamically.
+
+**That third runtime now arrives with the core rather than being fetched here**, and the
+move is worth a sentence because it changed which script owns it.
+[`build-core-dll.ps1`](build-core-dll.ps1) stages `vcruntime140*.dll` and `msvcp140*.dll`
+beside `mxqcore.dll` in `windows/artifacts/`, reading each candidate's own PE machine type
+to decide which files are this architecture's; [`CoreArtifacts.targets`](CoreArtifacts.targets)
+copies them into every executable's output the way it copies the core; and this script
+only checks that they arrived. The runtime belongs to the DLL that links it, so putting it
+on the same path is what stops the two coming from different builds — and it is the only
+arrangement that also reaches the Store package, whose payload is a build output that no
+script gets to add files to after the fact. App-local deployment of those DLLs is what the
+Visual Studio redistributable terms permit, and the zip's `NOTICE.md` records it. With all
+three runtimes in place, "unpack and run" needs no install of any kind; what the machine
+still needs is Windows 11 and the matching architecture.
 
 **And a fourth thing, which is not a runtime at all and is the one that actually broke.**
 `dotnet publish` does not carry an unpackaged WinUI 3 app's own compiled XAML. Two files
@@ -887,6 +926,188 @@ it around. One script, one zip, one complete application, and CI's own artifact 
 Use `pwsh` rather than `powershell`: Windows PowerShell 5.1 — the default in some shells and
 SSH sessions — does not accept `&&` as a statement separator; `;` is, or start `pwsh` first.
 
+## The Store package
+
+The Microsoft Store is the intended public channel for Windows (owner decision,
+2026-07-31), and [`package-msix.ps1`](package-msix.ps1) is the build that produces what is
+submitted to it: **one unsigned `.msix` per architecture**, and a `.msixupload` holding
+both, which is what a single Store submission takes.
+
+```powershell
+pwsh windows\build-core-dll.ps1
+pwsh windows\package-msix.ps1
+```
+
+The same first command as the zip, over the same staged core. In CI both packaging builds
+run in the same job for exactly that reason: the C++ is compiled once and the two
+distributions are two shapes of one build.
+
+### There is no certificate, and there never will be
+
+This is the fact the whole arrangement rests on, and it is the one the project had wrong
+until 2026-07-31. `docs/product.md` and `docs/architecture.md` both used to defer MSIX on
+the cost of "a signing certificate to obtain and keep". **A package accepted by the Store
+is signed by the Store**, with Microsoft's own certificate, after acceptance. So a package
+built for submission is *supposed* to be unsigned, `AppxPackageSigningEnabled=false` is
+what says so, and there is no key to obtain, store, rotate, expire or leak. That is why
+this build needs no secret, why CI runs it on a public repository's pull requests, and why
+a fork's pull request builds it too.
+
+The consequence for anyone holding the artifact: an unsigned `.msix` **cannot be
+double-clicked to install**. The owner's own check before a submission is a registered
+install from an unpacked layout, which needs Developer Mode and no certificate either —
+[Checking a package on a machine](#checking-a-package-on-a-machine) below.
+
+### One project, two shapes, one switch
+
+There is no packaging project. `MiniXiangqi.App.csproj` builds both distributions, and
+`MxqPackaged` chooses:
+
+| | not set (the default) | `MxqPackaged=true` |
+|---|---|---|
+| `WindowsPackageType` | `None` | absent — the vocabulary's own way of saying "packaged" |
+| Windows App SDK | self-contained, in the folder | a framework dependency the Store installs |
+| .NET | self-contained | self-contained |
+| `Package.appxmanifest`, `Images\` | removed from the item set | included |
+| built by | `package-zip.ps1` | `package-msix.ps1` |
+
+**The switch is this way round on purpose.** Everything the zip depends on is either
+unconditional or under the default, so a build that forgets the property builds the zip's
+shape; a build that gets it wrong fails on the MSIX side, where a failure is a red CI leg
+rather than a quietly different download. The zip's evidence is unchanged by any of it:
+the workflow still unpacks the artifact it built and runs the harness from inside it.
+
+The one asymmetry worth stating is .NET's. The Windows App SDK can be a framework
+dependency because a framework package for it exists in the Store; **there is no way for an
+MSIX to declare a dependency on the .NET runtime**, so a framework-dependent .NET app in a
+package installs and then fails to start wherever that runtime is absent, with nothing to
+say why. So .NET travels, and `package-msix.ps1` checks for `hostfxr.dll` and `coreclr.dll`
+in the unpacked package rather than trusting a command line.
+
+What the package sheds by *not* carrying the Windows App SDK is the private copy of the
+machine-learning components that deployment brings with it — `onnxruntime.dll`,
+`DirectML.dll` and their companions, which this application never loads and the zip's
+`NOTICE.md` has to explain because they are large, present and otherwise unaccounted for.
+
+### The three placeholders
+
+`Package.appxmanifest` carries `MXQPLACEHOLDER` in three fields, and they are deliberately
+not plausible:
+
+| Manifest field | Where the real value comes from |
+|---|---|
+| `Identity/@Name` | Partner Center → the app → **View app identity details** → `Package/Identity/Name` |
+| `Identity/@Publisher` | the same page's `Package/Identity/Publisher`, a full `CN=…` string |
+| `Properties/PublisherDisplayName` | the same page's publisher display name |
+
+All three are assigned when the app's name is reserved, and a package whose identity does
+not match the reservation is rejected at upload — so a plausible-looking guess would buy
+nothing and cost a reader the ability to tell. **Nothing else changes when they land**: not
+the project, not the scripts, not CI. Three string edits, and the next build is the same
+build.
+
+`Version` is hardcoded at `1.0.0.0` and the owner bumps it by hand per submission. CI does
+not stamp it: the Store refuses a version that is not higher than the last accepted one
+and reserves the fourth part for itself, and a version that moves on every run is a
+version nobody chose. `DisplayName` is **Xiangqi Master**, the owner's provisional choice
+(2026-07-31); the reservation fixes the name finally, in the same act as the identity.
+
+### What the manifest declares, and what it deliberately does not
+
+`Windows.Desktop` at `MinVersion` `10.0.22000.0` — Windows 11's first build, the product
+floor, and **the same number as `TargetPlatformMinVersion` in the project file**. The two
+answer different questions — what the compiler allows, and which machines the Store offers
+the app to — and disagreeing would offer the app to a machine it was not built against.
+
+Both languages are declared **explicitly** rather than with the template's `x-generate`.
+That value tells the packaging build to declare one `Resource` per language it found
+*qualified resources* for, and this app has none: its bilingualism is a C# string table
+selected from `CurrentUICulture` ([Strings](#strings)), not a set of `.resw` files. So
+`x-generate` would find English alone and publish an app that says it speaks one language,
+which is what a Chinese-language customer would be shown. `en-US` is first, and first is
+the package's default (owner decision).
+
+`runFullTrust` is the only capability, and it is the one every packaged desktop app
+declares — it is what says this is a Win32 process rather than a sandboxed UWP one.
+**`internetClient` is absent and its absence is the point**: the app never touches the
+network, so declaring it would be a permission shown on the listing page for something the
+app does not do, and unjustifiable in a submission review.
+
+Deliberately absent as well: no `DefaultTile` and so no wide or small tile, no
+`SplashScreen` (a UWP element a packaged desktop app neither needs nor uses), no lock-screen
+or badge declaration. `BackgroundColor` is `transparent`, because the icon is a shaped disc
+drawn on transparency and a colour there would put a square plate behind a round icon.
+
+The images the manifest names resolve through the package's resource index rather than
+existing at the literal paths it gives: the manifest says `Images\StoreLogo.png` and the
+package holds `StoreLogo.scale-100.png` and its four siblings. There are thirty of them —
+three logos at the five display scales, plus `Square44x44Logo` at five target sizes in
+plain, unplated and light-unplated forms — and [the icon](#the-icon) says where they come
+from. `make-app-icon.py` enforces the rules that are each a named certification failure:
+every frame LANCZOS-resized from the 1024 px original rather than from a larger frame,
+half-up rounding of the scale arithmetic, the exact pixel size each qualifier declares,
+never a `scale-` and a `targetsize-` in one filename, and every file under 200 KB.
+
+### What the build checks, and why it unpacks what it just built
+
+**The manifest in this repository is not the manifest that ships.** The packaging build
+rewrites it — filling `ProcessorArchitecture` from `/p:Platform`, resolving
+`$targetnametoken$`, adding the Windows App SDK framework dependency — and what the Store
+reads is the generated `AppxManifest.xml` inside the package. Checking the source manifest
+would be checking our own input, so `package-msix.ps1` unpacks the package with `makeappx`
+and asserts against what came out: the architecture this leg claims, a four-part version
+whose revision is 0, the Windows 11 floor, both languages, `runFullTrust` and only
+`runFullTrust`, a Windows App Runtime dependency, and an image for every one the manifest
+names.
+
+Then, on the unpacked tree, the things whose absence is silent until somebody installs it:
+a resource index and at least one `.xbf`, without which the app dies before its first
+window exactly as the zip once did; `mxqcore.dll`, `vcruntime140.dll`, `hostfxr.dll` and
+`coreclr.dll`; `sounds\`; `assets\` holding the variant configuration and the network under
+the names `pinned-inputs.json` pins; and a PE machine-type sweep over every `.dll` and
+`.exe`, because an ARM64 package that quietly resolved x64 natives builds, uploads, passes
+certification and fails on every machine it is for.
+
+`makeappx` is found by globbing the installed Windows SDKs rather than by naming a build,
+for the same reason `build-core-dll.ps1` locates MSVC through `vswhere`: the SDK moves with
+every runner image and a hard-coded path fails a long way from its cause. MSBuild is found
+the same way — Visual Studio's own packaging targets are what produce an `.msix`, and the
+.NET CLI does not carry them, which is why this one script uses `msbuild.exe` where
+everything else here uses `dotnet`.
+
+`UapAppxPackageBuildMode` is `SideloadOnly`, not `StoreUpload`. `StoreUpload` would also
+ask the build for a symbol package — `mspdbcmf`, and a failure on a hosted runner — to
+produce the same two packages plus an `.appxsym` that is documented as optional. The
+`.msixupload` is built directly instead, which is Microsoft's own documented "create your
+upload file manually": a plain zip with each architecture's `.msix` **at the archive root**.
+The `store-package` job writes it, reopens it, and reads back that it holds exactly two
+entries, both `.msix`, both at the root — because "I wrote a zip" and "the zip is what the
+Store needs" are different claims, and a submission rejected for its shape costs a round
+trip through Partner Center to discover.
+
+### Checking a package on a machine
+
+An unsigned package cannot be installed by double-clicking it, and no certificate is
+needed to try it anyway. With **Developer Mode** on (Settings → System → For developers),
+unpack the package and register the layout in place:
+
+```powershell
+makeappx unpack /p MiniXiangqi-windows-x64.msix /d layout
+Add-AppxPackage -Register .\layout\AppxManifest.xml
+```
+
+The app then appears in Start under its `DisplayName` and runs from that folder;
+`Remove-AppxPackage` by package full name takes it away again. This is a real install of
+the real package, not a rehearsal of one — the manifest, the identity, the tile assets and
+the resource index are all the ones the Store would read.
+
+**A machine that has only ever run the zip will need the Windows App Runtime once.** The
+zip carries its own copy and installs nothing; the package deliberately does not, and
+takes the framework dependency the Store would satisfy automatically. Registering a layout
+by hand does not, so install the Windows App SDK runtime for the machine's architecture
+first — the redistributable installer from the Windows App SDK downloads page — and it is a
+one-time thing, not a per-package one.
+
 ## What the packaging build pinned, and what it did not
 
 [`pinned-inputs.json`](../pinned-inputs.json)'s Windows entry has two toolchain fields
@@ -903,3 +1124,14 @@ stays `false` because of them: `engine_defines`, `engine_flags`, `sqlite_defines
 frontend over a core somebody else already built. Filling them from
 `build-core-dll.ps1`'s command line would record a developer build's flags in fields that
 describe a packaging build, which is exactly the confusion that entry is shaped to avoid.
+
+**`packaging_flags` now has two halves for the same reason it exists at all.** Its flat
+fields were the whole of it while there was one distribution, and they describe the zip:
+unpackaged, `WindowsPackageType` `None`, self-contained on both counts. `store_package`
+beside them describes the Store's shape — packaged, `WindowsPackageType` absent, .NET
+self-contained and the Windows App SDK not, unsigned because the Store signs — and carries
+its own `established` flag, `false` until a run has answered the fields that only a run
+can: the Windows App Runtime framework the generated manifest asks the Store to install,
+and the MSBuild each leg used. Everything else in it is a decision rather than a
+measurement, and is there so that "how does the Store copy differ" is answerable without
+reading a project condition.

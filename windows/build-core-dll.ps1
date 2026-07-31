@@ -14,9 +14,21 @@ What it produces:
   windows/artifacts/mxqcore.dll      the C ABI, with the rules and search
                                      facades compiled in
   windows/artifacts/mxqcore.pdb      its symbols
+  windows/artifacts/msvcp140*.dll    the Visual C++ runtime mxqcore.dll links
+  windows/artifacts/vcruntime140*.dll  against, from the redistributable of the
+  windows/artifacts/concrt140.dll    toolset that just compiled it
   windows/artifacts/assets/          the asset directory MxqCoreConfig points
                                      at: the pinned variant configuration and
                                      the NNUE network under its bundled name
+
+The C++ runtime is staged here, beside the core, because it belongs to the core:
+mxqcore.dll is MSVC's output and links it dynamically, so the runtime is a
+property of the DLL this script just built rather than of any particular way of
+packaging it. Staging it here means windows/CoreArtifacts.targets carries it
+into every executable's output the same way it carries mxqcore.dll, and both
+packaging builds get it for free — the zip, which used to fetch it itself, and
+the Store package, whose payload is a build output that no script gets to add
+files to afterwards.
 
 The asset directory is copied from the staging the core's own CMake performs,
 which verifies the network's byte length and SHA-256 against pinned-inputs.json
@@ -59,6 +71,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# One PE reader for the three scripts that ask what architecture a binary is.
+# This one asks it of the Visual C++ redistributable, below.
+. (Join-Path $PSScriptRoot 'Get-PeMachine.ps1')
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $BuildDirectory) {
@@ -164,6 +180,86 @@ Copy-Item $dll $artifacts -Force
 $pdb = Join-Path $BuildDirectory 'shared\mxqcore.pdb'
 if (Test-Path $pdb) { Copy-Item $pdb $artifacts -Force }
 
+# ---------------------------------------------------------------------------
+# The Visual C++ runtime, beside the core that links it
+# ---------------------------------------------------------------------------
+#
+# mxqcore.dll is MSVC's output and links the C++ runtime dynamically, so a
+# machine with no Visual Studio and no redistributable installed cannot load it.
+# Neither self-contained mode carries it: --self-contained carries the .NET
+# runtime and WindowsAppSDKSelfContained carries the Windows App Runtime, and
+# the C++ runtime is neither.
+#
+# It is staged here rather than added by a packaging script because it belongs
+# to the DLL above. windows/CoreArtifacts.targets then copies it into every
+# executable's output beside mxqcore.dll, which is what makes it reach both
+# distributions by the same route the core does — including the Store package,
+# whose payload is a build output that nothing gets to add files to after the
+# fact. windows/package-zip.ps1 used to fetch these itself; it now checks that
+# they arrived.
+#
+# Each candidate's own PE machine type decides whether it is copied, rather than
+# the folder it sits in. That is not belt and braces — the arm64 redistributable
+# folder really does contain an x64 binary. `vcruntime140_1.dll` implements the
+# x64 exception unwinder, ARM64 has no use for it, and Microsoft ships an x64
+# copy under VC\Redist\MSVC\<version>\arm64\Microsoft.VC143.CRT anyway for the
+# emulation and ARM64EC cases. Trusting the folder name put it in an ARM64 zip;
+# reading each file is what stops that happening rather than being caught later.
+
+$crtNames = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll',
+              'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll',
+              'vcruntime140.dll', 'vcruntime140_1.dll', 'concrt140.dll')
+
+# Whatever this directory holds from an earlier architecture goes first, for the
+# same reason the networks above do: this directory accumulates, the two
+# architectures' sets are not the same set — vcruntime140_1.dll is in the x64
+# one and not the arm64 one — and a file left behind is a file the next build
+# ships. It would be caught by the machine-type sweep in the packaging build,
+# which is a long way from here to find out.
+Get-ChildItem -Path $artifacts -Filter '*.dll' -File -ErrorAction SilentlyContinue |
+    Where-Object { $crtNames -contains $_.Name } |
+    ForEach-Object {
+        Write-Host "Removing a previously staged runtime file: $($_.Name)"
+        Remove-Item $_.FullName -Force
+    }
+
+$expectedMachine = Get-PeMachineForArchitecture -Architecture $Architecture
+$redistRoot = Join-Path $vsPath 'VC\Redist\MSVC'
+$crtSource = $null
+if (Test-Path $redistRoot) {
+    foreach ($version in (Get-ChildItem -Directory $redistRoot | Sort-Object Name -Descending)) {
+        $candidate = Get-ChildItem -Directory (Join-Path $version.FullName $Architecture) `
+            -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue
+        if ($candidate) { $crtSource = $candidate[0].FullName; break }
+    }
+}
+if (-not $crtSource) {
+    throw ("No Visual C++ $Architecture redistributable was found under $redistRoot. Install the " +
+           "C++ redistributable component for this architecture; mxqcore.dll links the C++ runtime " +
+           "dynamically and neither distribution runs on a clean machine without it.")
+}
+
+Write-Host "Staging the Visual C++ runtime from $crtSource"
+foreach ($name in $crtNames) {
+    $source = Join-Path $crtSource $name
+    # The set differs by architecture and by toolset version. Anything the
+    # redistributable does not carry for this architecture is something this
+    # architecture does not need.
+    if (-not (Test-Path $source)) { continue }
+    $machine = Get-PeMachine -Path $source
+    if ($machine -ne $expectedMachine) {
+        Write-Host ("  skipped $name — it is $(Get-PeMachineName $machine) in the $Architecture " +
+                    "redistributable, so it is not this architecture's")
+        continue
+    }
+    Copy-Item $source $artifacts -Force
+    Write-Host "  staged $name"
+}
+if (-not (Test-Path (Join-Path $artifacts 'vcruntime140.dll'))) {
+    throw ("vcruntime140.dll is not in $crtSource, so nothing here can load mxqcore.dll on a machine " +
+           "without Visual Studio. Check the C++ redistributable component for $Architecture.")
+}
+
 # The staged, verified asset directory. Configuration warns and stages nothing
 # when the network is missing or does not match its pins, so an empty staging
 # directory here means exactly that, and is reported rather than shipped past.
@@ -181,6 +277,7 @@ $stagedFiles | ForEach-Object { Copy-Item $_.FullName $artifactAssets -Force }
 Write-Host ''
 Write-Host "Architecture:     $Architecture"
 Write-Host "Core DLL:         $(Join-Path $artifacts 'mxqcore.dll')"
+Write-Host "C++ runtime:      $(($crtNames | Where-Object { Test-Path (Join-Path $artifacts $_) }) -join ', ')"
 Write-Host "Asset directory:  $artifactAssets"
 Get-ChildItem -File $artifactAssets | ForEach-Object {
     Write-Host ("  {0}  {1:N0} bytes" -f $_.Name, $_.Length)

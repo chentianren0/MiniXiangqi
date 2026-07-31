@@ -1,19 +1,33 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The Windows frontend's first window: WinUI 3 over the Windows App SDK,
-    unpackaged. It shows the same readback the smoke harness prints, from the
-    same core, so that the interface is proved in a process that also runs a
-    UI framework.
+    The Windows frontend's first window: WinUI 3 over the Windows App SDK. It
+    shows the same readback the smoke harness prints, from the same core, so
+    that the interface is proved in a process that also runs a UI framework.
 
-    Unpackaged and self-contained, which is now the shipped shape rather than a
-    convenience: WindowsPackageType None because the accepted MVP distribution
-    is a zip somebody unpacks and runs (issue #80, owner decision, 2026-07-30 —
-    MSIX and its signing story are the post-MVP upgrade), and
-    WindowsAppSDKSelfContained so that a machine which has never installed the
-    Windows App Runtime can run what it unpacked. windows/package-zip.ps1
-    publishes this project self-contained on top of both, and
-    pinned-inputs.json's Windows entry records what that build measured.
+    ONE PROJECT, TWO DEPLOYMENT SHAPES, ONE SWITCH
+
+    This project builds the zip's app and the Store's app. MxqPackaged chooses
+    which, it is false unless a build passes it, and the false side is exactly
+    the file that shipped the zip:
+
+      not set (the default)   unpackaged, self-contained on both counts — the
+                              zip somebody unpacks and runs, built by
+                              windows/package-zip.ps1
+      MxqPackaged=true        single-project MSIX for the Microsoft Store, built
+                              by windows/package-msix.ps1
+
+    The switch is deliberately this way round rather than the other. Everything
+    the zip depends on is unconditional or lives under the default, so a build
+    that forgets the switch builds the zip's shape; a build that sets it wrong
+    fails loudly on the MSIX side, where a failure is a red CI leg rather than a
+    silently different download. There is no second project, because a second
+    project is a second copy of every reference, every target and every
+    property, kept in step by nobody.
+
+    windows/README.md § The distribution and § The Store package are the prose
+    for the two shapes, and pinned-inputs.json's windows.packaging_flags records
+    what each build measured.
   -->
 
   <PropertyGroup>
@@ -43,13 +57,13 @@
     <ApplicationIcon>MiniXiangqi.ico</ApplicationIcon>
     <RuntimeIdentifier>$(MxqRuntimeIdentifier)</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
-    <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <!--
-      This is not about MSIX. Nothing here builds one and WindowsPackageType
-      stays None; what this property does that this project needs is put the
-      app's compiled resource index — MiniXiangqi.App.pri — into the output of
+      Unconditional, and it earns that twice over. It is the property
+      single-project MSIX is switched on by, so the packaged build below needs
+      it — and it was here first for a reason that has nothing to do with MSIX:
+      what it does that the *unpackaged* build needs is put the app's compiled
+      resource index — MiniXiangqi.App.pri — into the output of
       `dotnet publish`, which without it does not carry it at all.
 
       An unpackaged WinUI 3 app still uses MRT. InitializeComponent resolves
@@ -71,9 +85,100 @@
     <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
 
+  <!--
+    THE ZIP'S SHAPE. This is the default, and it is the file as it shipped.
+
+    WindowsPackageType None because the app has no package identity: the
+    distribution is a zip somebody unpacks and runs (issue #80, owner decision,
+    2026-07-30). WindowsAppSDKSelfContained so that a machine which has never
+    installed the Windows App Runtime can run what it unpacked.
+    windows/package-zip.ps1 publishes this project self-contained on top of
+    both, and pinned-inputs.json's Windows entry records what that build
+    measured.
+  -->
+  <PropertyGroup Condition="'$(MxqPackaged)' != 'true'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+
+  <!--
+    THE STORE PACKAGE'S SHAPE. windows/package-msix.ps1 is the only thing that
+    sets MxqPackaged, and Package.appxmanifest beside this file is the manifest
+    it builds from.
+
+    WindowsPackageType is deliberately ABSENT rather than set to something. Its
+    documented vocabulary is "None, or absent (for a packaged app)" — there is
+    no affirmative value meaning "packaged" — so a packaged build is one that
+    does not name it, which is exactly what a group conditioned the other way
+    produces.
+
+    WindowsAppSDKSelfContained goes to false because a Store package must not
+    carry the Windows App Runtime: the Store installs the framework package the
+    generated manifest declares a dependency on, and that is both the supported
+    shape and how the app stops shipping a private copy of the machine-learning
+    components it never loads — onnxruntime.dll, DirectML.dll and their
+    companions, which the zip's NOTICE.md has to explain because they are large,
+    present and unexplained otherwise.
+
+    SelfContained stays TRUE, and the asymmetry is the interesting part. An MSIX
+    manifest can express a dependency on a Windows App SDK framework package
+    because one exists in the Store; there is no equivalent for the .NET
+    runtime, so a framework-dependent .NET app in a package is an app that fails
+    to start on a machine without the right .NET installed and has no way to say
+    so. The runtime travels.
+
+    Platforms is the pair the two legs build, and Platform (singular) is what
+    package-msix.ps1 passes per leg. It is what the packaging build fills the
+    manifest's Identity/@ProcessorArchitecture from, and it moves the output
+    tree to bin\<Platform>\ — a tree nothing else in this repository points at.
+
+    The rest are refusals of things a packaging build does by default and this
+    one has no use for: no .msixbundle (AppxBundle Never — two separate .msix
+    are what the Store's upload file holds), no .appinstaller sideloading
+    document, no test artifacts, no revision number quietly incrementing under a
+    Version the owner chose, and no deployment-manager initialisation, since the
+    app raises no notifications and uses no push.
+  -->
+  <PropertyGroup Condition="'$(MxqPackaged)' == 'true'">
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Platforms>x64;arm64</Platforms>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <AppxBundle>Never</AppxBundle>
+    <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
+    <GenerateTestArtifacts>false</GenerateTestArtifacts>
+    <AppxAutoIncrementPackageRevision>false</AppxAutoIncrementPackageRevision>
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+  </ItemGroup>
+
+  <!--
+    The manifest and the images, and the removal that keeps them out of the zip.
+
+    Two item groups rather than one condition, because the second is not the
+    absence of the first. Left alone, the SDK's default globs would sweep
+    Package.appxmanifest and everything under Images\ into @(None) in *every*
+    build — and the unpackaged build runs MakePri over its own inputs to produce
+    MiniXiangqi.App.pri, the index the zip's app resolves ms-appx:///App.xaml
+    through. Indexing thirty tile images into it would change a file the zip
+    ships, for a package the zip is not. Removing them makes the unpackaged
+    build's item set identical to the one it had before this directory existed,
+    which is the only claim worth making about it.
+  -->
+  <ItemGroup Condition="'$(MxqPackaged)' == 'true'">
+    <AppxManifest Include="Package.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <Content Include="Images\**\*.png" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MxqPackaged)' != 'true'">
+    <None Remove="Package.appxmanifest" />
+    <None Remove="Images\**\*.png" />
   </ItemGroup>
 
   <ItemGroup>
@@ -124,6 +229,12 @@
     build already placed beside the executable, at the paths it placed them,
     makes "the published tree holds what the build tree holds" true by
     construction rather than by a rule that has to be kept in step.
+
+    The packaged build needs none of this and is not exempted from it. Its
+    payload is the build output, where the SDK already put both files, so this
+    target is inert there; windows/package-msix.ps1 asserts on the unpacked
+    package that they arrived anyway, because "inert" is a claim about a
+    pipeline and the assertion is a measurement of a package.
   -->
   <Target Name="MxqPublishCompiledXaml" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>

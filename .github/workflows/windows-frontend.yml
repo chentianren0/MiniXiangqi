@@ -1,5 +1,6 @@
 # The Windows frontend: the core as a DLL, the bindings, the C# projects, the
-# headless harness, pictures of the board, and the zip anybody is given.
+# headless harness, pictures of the board, and both of the app's distributions —
+# the zip anybody is given and the Store package.
 #
 # The obligation is issue #80's, carried from #85's verify: "the next
 # Windows-frontend PR owes CI an `mxq_core_shared` build and a `generate.ps1`
@@ -19,6 +20,24 @@
 #   * the distribution, which is a zip somebody unpacks and runs (issue #80,
 #     owner decision, 2026-07-30). This workflow is where it is built, because
 #     it is the only place both architectures exist.
+#
+# THREE ARTIFACTS AND FOUR UPLOADS, WHICH IS THE SHAPE AS OF 2026-07-31
+#
+# The board renders, the zip, the Store package, and the Store's upload file.
+# The first three are uploaded from the matrix job — the renders once, on x64,
+# and the other two once per architecture — and the fourth from the
+# store-package job below, which is the only step in this workflow that needs
+# both architectures' output at the same time.
+#
+# THE STORE PACKAGE IS BUILT HERE AND SIGNED NOWHERE
+#
+# The Microsoft Store is the intended public channel (owner decision,
+# 2026-07-31), and a package submitted to it is signed by the Store after it is
+# accepted. So this workflow builds the .msix unsigned, holds no certificate,
+# and — like everything else here — takes no secret. That is what lets it run
+# on a public repository's pull requests at all. Nothing in this file or in
+# windows/package-msix.ps1 submits anything; the upload file is an artifact the
+# owner downloads and gives to Partner Center.
 #
 # TWO ARCHITECTURES, AND WHY THE CORE'S OWN ARM64 SUITES ARE NOT HERE
 #
@@ -279,4 +298,119 @@ jobs:
           # The default is 90 days. A fortnight is what an internal build is
           # worth keeping: it is reproducible from the commit it was built at,
           # and a stale zip somebody finds later is a build nobody chose.
+          retention-days: 14
+
+      # ---------------------------------------------------------------------
+      # The Store package
+      # ---------------------------------------------------------------------
+      #
+      # After the zip and over the same core: windows/build-core-dll.ps1 ran
+      # once at the top of this job and both packaging builds publish on top of
+      # what it staged, so the C++ is compiled once and the two distributions
+      # are two shapes of one build rather than two builds.
+      #
+      # windows/package-msix.ps1 argues every setting it passes. The parts that
+      # matter here: it is unsigned by design because the Store signs, it needs
+      # no secret, and it unpacks what it just built to check the manifest the
+      # Store will actually read rather than the one in the repository.
+      - name: Build the Store package
+        shell: pwsh
+        run: pwsh windows/package-msix.ps1 -Architecture ${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MiniXiangqi-windows-${{ matrix.arch }}-msix
+          path: windows/dist/MiniXiangqi-windows-${{ matrix.arch }}.msix
+          if-no-files-found: error
+          retention-days: 14
+
+  # -------------------------------------------------------------------------
+  # The file the owner gives to Partner Center
+  # -------------------------------------------------------------------------
+  #
+  # One submission covers both architectures, and the Store takes them in one
+  # file: a .msixupload, which is a plain zip holding each architecture's .msix
+  # at its root. Microsoft's own documentation calls this "create your upload
+  # file manually" and it is the alternative to UapAppxPackageBuildMode
+  # StoreUpload, which would ask the packaging build for a symbol package as
+  # well — mspdbcmf, and a failure on a hosted runner — to produce the same two
+  # packages plus an .appxsym that is documented as optional and that we do not
+  # ship.
+  #
+  # This is the only job that needs both architectures at once, which is why it
+  # is a job rather than a step. It compiles nothing: it downloads what the two
+  # matrix legs already proved and zips them.
+  store-package:
+    name: The Store upload file
+    needs: frontend
+    runs-on: windows-2025
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-x64-msix
+          path: msix
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-arm64-msix
+          path: msix
+
+      - name: Build MiniXiangqi.msixupload
+        shell: pwsh
+        run: |
+          $expected = @('MiniXiangqi-windows-x64.msix', 'MiniXiangqi-windows-arm64.msix')
+          $staging = Join-Path $env:RUNNER_TEMP 'msixupload'
+          if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+          $null = New-Item -ItemType Directory -Force -Path $staging
+
+          # Copied by name rather than by glob, so that the upload file holds
+          # the two packages this run built and cannot quietly hold one of them
+          # twice or a third that arrived from somewhere else.
+          foreach ($name in $expected) {
+            $source = Join-Path 'msix' $name
+            if (-not (Test-Path $source)) {
+              throw "$name was not downloaded. Both architectures' packaging legs have to have run."
+            }
+            Copy-Item $source $staging
+            Write-Host ("  {0}  {1:N0} bytes" -f $name, (Get-Item $source).Length)
+          }
+
+          # includeBaseDirectory $false: the Store reads the packages from the
+          # archive root and finds nothing if they are one folder down.
+          $upload = Join-Path $env:RUNNER_TEMP 'MiniXiangqi.msixupload'
+          if (Test-Path $upload) { Remove-Item $upload -Force }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $staging, $upload, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+          # Reopened and read back, because "I wrote a zip" and "the zip holds
+          # what the Store needs" are different claims and only the second one
+          # is worth uploading. A submission rejected for its shape costs a
+          # round trip through Partner Center to find out.
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($upload)
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName })
+          } finally {
+            $archive.Dispose()
+          }
+          Write-Host ''
+          Write-Host "MiniXiangqi.msixupload holds: $($entries -join ', ')"
+          if ($entries.Count -ne 2) {
+            throw "The upload file holds $($entries.Count) entries; the Store expects one .msix per architecture and this submission has two."
+          }
+          foreach ($entry in $entries) {
+            if ($entry -notlike '*.msix') { throw "$entry is not a .msix; the upload file carries packages and nothing else." }
+            if ($entry -match '[\\/]') { throw "$entry is not at the archive root, where the Store looks for it." }
+          }
+          Write-Host ("Upload file:      {0:N0} bytes" -f (Get-Item $upload).Length)
+          Write-Host ("SHA-256:          {0}" -f (Get-FileHash $upload -Algorithm SHA256).Hash.ToLowerInvariant())
+
+          $null = New-Item -ItemType Directory -Force -Path dist
+          Move-Item $upload (Join-Path 'dist' 'MiniXiangqi.msixupload')
+          Write-Host 'MXQ_MSIXUPLOAD_OK'
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MiniXiangqi-msixupload
+          path: dist/MiniXiangqi.msixupload
+          if-no-files-found: error
           retention-days: 14
