@@ -21,6 +21,10 @@
 // its own status and what the contract's stacked arrangement describes. The
 // owner asked for exactly that from the iPhone (2026-07-30): the result line
 // goes to the top of the page and the room it leaves goes to the move list.
+//
+// **The room it leaves is shared, and the share leans to the board**, which is
+// the owner's second look at the same screen (2026-07-31): the first round gave
+// the whole of it to the list and the board paid three points of pitch for it.
 
 import SwiftUI
 
@@ -37,7 +41,7 @@ struct ReplayScreen: View {
     /// constant here, and the board is sized around what it really is. It
     /// starts at the height the default text size comes to, so the first frame
     /// is already the right size, and nothing it measures depends on the board.
-    @State private var headerHeight: CGFloat = 66
+    @State private var headerHeight: CGFloat = 69
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -119,9 +123,13 @@ struct ReplayScreen: View {
     /// what is true of the game above the board, the board, the controls below
     /// it — which is what the contract's stacked arrangement describes. The
     /// header used to be the first section *inside* the panel; moving it above
-    /// the board is the owner's own iPhone feedback (2026-07-30), and what the
-    /// panel does with the room is nothing: it keeps asking for the same 260
-    /// points, so the whole of the header's former slot goes to the move list.
+    /// the board is the owner's own iPhone feedback (2026-07-30), and the room
+    /// that move frees is **shared, leaning to the board** — the owner's second
+    /// look at the same screen (2026-07-31), after a first round that gave the
+    /// whole of it to the list and charged the board three points of pitch for
+    /// it. Two things pay the board back: the panel asks for less beneath the
+    /// board than it does beside it, and the header claims no air below itself
+    /// here, because the board's own allowance is already that air.
     ///
     /// Replay is the exception to the on-demand move list: its accepted
     /// behaviour needs the list to indicate the shown move and to let one be
@@ -145,7 +153,7 @@ struct ReplayScreen: View {
         let chrome = BoardLayout.stackedChrome(in: size,
                                                asking: headerHeight + panelHeight)
         return VStack(spacing: 0) {
-            headerBlock(replay)
+            headerBlock(replay, airBelow: 0)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { headerHeight = $0 }
 
             board(replay, BoardLayout.stackedGeometry(in: size, chrome: chrome))
@@ -156,11 +164,21 @@ struct ReplayScreen: View {
     }
 
     /// What the panel beneath the board asks for: the list and the transport,
-    /// in the height the transport needs plus room for six or seven rows of the
-    /// game. It is the same number it asked for when the header was in it —
-    /// which is the point, and the owner's: the header left and the list got
-    /// its slot.
-    private var panelHeight: CGFloat { 260 }
+    /// in the height the transport needs plus room for four rows of the game.
+    ///
+    /// **This is the one number the owner's buy-back decision moves**
+    /// (2026-07-31), and it is settled against rendered screens rather than
+    /// reasoned about here. The panel used to ask beneath the board for exactly
+    /// what it asks beside it, and on a phone that ask is refused anyway — the
+    /// grant below is the whole of what is left once a floor-sized board is
+    /// reserved, so asking for more than the phone has just pins the board on
+    /// its floor. Asking for less is what hands the board its pitch back, and
+    /// every point of it costs the list a point of the same height, so the
+    /// number is exactly where the two stop: **200** is the largest ask that
+    /// leaves a 402-point iPhone a 46-point pitch, and the smallest that still
+    /// draws the seven-ply game's fourth row whole beneath it. Beside the
+    /// board there is no such contest and the panel is the width it always was.
+    private var panelHeight: CGFloat { 200 }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry) -> some View {
         BoardView(geometry: geometry,
@@ -188,7 +206,7 @@ struct ReplayScreen: View {
     private func panel(_ replay: Replay, showsHeader: Bool, edge: Edge.Set) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
-                headerBlock(replay)
+                headerBlock(replay, airBelow: 20)
 
                 Divider()
             }
@@ -226,8 +244,8 @@ struct ReplayScreen: View {
         }
     }
 
-    /// The header with the air around it, in the one set of insets both shapes
-    /// use.
+    /// The header with the air around it: the one leading edge both shapes use,
+    /// and the air above it that both shapes use too.
     ///
     /// They are the play screen's turn-status insets, arrived at from the other
     /// side: that element carries 12 points of its own padding — it has a
@@ -239,10 +257,22 @@ struct ReplayScreen: View {
     /// between the two screens sees; what follows differs because a status line
     /// and a record's metadata are different sentences, not because the air
     /// around them was chosen twice.
-    private func headerBlock(_ replay: Replay) -> some View {
+    ///
+    /// `airBelow` is the one inset the two shapes disagree about, because what
+    /// follows the header differs: beside the board a `Divider` follows and the
+    /// header states its own 20-point gap to it, as it states the gap above.
+    /// Beneath the board the **board's own allowance** follows —
+    /// `BoardLayout.boardPadding`, 24 points of air already reserved above the
+    /// block — and a gap stated here as well would be a second one drawn on top
+    /// of the first. It would also be a gap the board paid for: beneath the
+    /// board the header sits inside the chrome the board is sized around, so
+    /// every point of air here is a point of board. That is the half of the
+    /// owner's buy-back (2026-07-31) that the panel's own ask does not reach.
+    private func headerBlock(_ replay: Replay, airBelow: CGFloat) -> some View {
         header(replay)
             .padding(.horizontal, BoardLayout.panelInset)
-            .padding(.vertical, 20)
+            .padding(.top, 20)
+            .padding(.bottom, airBelow)
     }
 
     /// What the game was, and where in it the board is.
