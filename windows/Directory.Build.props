@@ -16,7 +16,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PlatformTarget>x64</PlatformTarget>
-    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!--
+      Globalization is on. It was off in the walking skeleton, which showed one
+      screen of ASCII diagnostics and needed none of it; the play screen does.
+      docs/interaction-design.md's localization rule is that the app follows the
+      language the operating system selects for it, with no interface-language
+      control of its own, and under InvariantGlobalization every culture is the
+      invariant one — so the app would answer in English on a Chinese system and
+      the rule would be silently unimplementable.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <PropertyGroup>

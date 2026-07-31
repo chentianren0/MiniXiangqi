@@ -6,10 +6,11 @@
     same core, so that the interface is proved in a process that also runs a
     UI framework.
 
-    The designed screens, the Fluent materials, and the packaging build are not
-    here. docs/architecture.md's Need-to-discuss entry for the Windows frontend
-    toolchain stays open until a packaging build establishes it; nothing below
-    is a pin.
+    The play screen is here; the Play home, the pre-start states and the
+    navigation container are the next pull request's, and the packaging build
+    is later still. docs/architecture.md's Need-to-discuss entry for the Windows
+    frontend toolchain stays open until a packaging build establishes it;
+    nothing below is a pin.
 
     Unpackaged and self-contained: WindowsPackageType None because no packaging
     build exists yet and this one decides nothing about the one that will, and
@@ -33,10 +34,13 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+    <ProjectReference Include="..\MiniXiangqi.Play\MiniXiangqi.Play.csproj" />
+    <ProjectReference Include="..\MiniXiangqi.Board\MiniXiangqi.Board.csproj" />
   </ItemGroup>
 
   <Import Project="..\CoreArtifacts.targets" />

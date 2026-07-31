@@ -5,46 +5,178 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Title="Mini Xiangqi — core readback">
+    mc:Ignorable="d">
 
     <!--
-        Deliberately plain. This window's job is to show that a WinUI 3 process
-        reaches the real core and reads real state back; the designed screens
-        and the Fluent work are the next pull requests, and putting a first
-        guess at them here would only invite reviewing a guess.
+        The side-by-side layout shape: the board on one side with a panel beside
+        it carrying the turn status, the move record and the controls. It is the
+        shape docs/interaction-design.md gives ordinary Mac windows and wide
+        iPad ones, and an ordinary desktop window is that. The stacked shape,
+        which narrow windows take, arrives with the layout work the appearance
+        pass carries.
+
+        Nothing resident intersects the board block: the panel sits beside it
+        and the air around the board is an allowance taken off the space the
+        board is fitted into. The result notice is a transient, and it may stand
+        in front of the board precisely because the player can put it away.
     -->
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="12" MaxWidth="900">
 
-            <TextBlock Text="Mini Xiangqi" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock x:Name="Subtitle"
-                       Style="{StaticResource BodyStrongTextBlockStyle}"
+    <Grid x:Name="Root">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- The board, centred in whatever the panel leaves. -->
+        <Grid x:Name="BoardHost" Padding="24" SizeChanged="OnBoardHostSizeChanged" />
+
+        <!-- The result notice: a transient over the board, dismissible. -->
+        <Border x:Name="Notice"
+                Visibility="Collapsed"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="320"
+                MaxWidth="420"
+                Padding="20"
+                CornerRadius="12"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+            <StackPanel Spacing="8">
+                <Grid>
+                    <TextBlock x:Name="NoticeTitle"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               TextWrapping="Wrap" />
+                    <Button x:Name="NoticeClose"
+                            Click="OnDismissNotice"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Padding="4"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Content="&#xE711;"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                </Grid>
+                <TextBlock x:Name="NoticeReason"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" />
+                <StackPanel x:Name="NoticeActions"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8"
+                            Margin="0,8,0,0">
+                    <Button x:Name="NoticeSecondary" Click="OnNoticeSecondary" />
+                    <Button x:Name="NoticePrimary" Click="OnNoticePrimary" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- The panel. Its sections begin on one edge, 16 in from its own. -->
+        <Grid x:Name="Panel"
+              Grid.Column="1"
+              Width="260"
+              Padding="16"
+              Background="{ThemeResource LayerFillColorDefaultBrush}"
+              BorderThickness="1,0,0,0"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Turn status: one coherent description of the current play state. -->
+            <StackPanel Spacing="6" Margin="0,0,0,16">
+                <StackPanel x:Name="TurnStatus"
+                            Spacing="6"
+                            AutomationProperties.AutomationId="turn-status">
+                    <TextBlock x:Name="StatusPrimary"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusSecondary"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                        <ProgressRing x:Name="Thinking"
+                                      Width="16"
+                                      Height="16"
+                                      IsActive="False"
+                                      Visibility="Collapsed"
+                                      AutomationProperties.AutomationId="ai-thinking" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- The stalled slot, outside the combined element above,
+                     because a control folded into one is a control a screen
+                     reader cannot reach. -->
+                <StackPanel x:Name="Stalled"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="StalledText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               AutomationProperties.AutomationId="ai-stalled" />
+                    <HyperlinkButton x:Name="StalledRetry"
+                                     Padding="0"
+                                     Click="OnRetryEngine"
+                                     AutomationProperties.AutomationId="ai-retry" />
+                </StackPanel>
+
+                <!-- The save-failure capsule, anchored to the turn status. -->
+                <Border x:Name="SaveFailure"
+                        Visibility="Collapsed"
+                        Padding="8,4"
+                        CornerRadius="4"
+                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                    <TextBlock x:Name="SaveFailureText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="save-failed" />
+                </Border>
+            </StackPanel>
+
+            <!-- The move record: the core's own canonical coordinate text. -->
+            <ScrollViewer x:Name="RecordScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="RecordRows" Spacing="2" AutomationProperties.AutomationId="move-record" />
+            </ScrollViewer>
+
+            <!-- The play-control cluster. -->
+            <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
+                <Button x:Name="Undo"
+                        HorizontalAlignment="Stretch"
+                        Click="OnUndo"
+                        AutomationProperties.AutomationId="control-undo" />
+                <Button x:Name="Middle"
+                        HorizontalAlignment="Stretch"
+                        Click="OnMiddle"
+                        AutomationProperties.AutomationId="control-middle" />
+                <Button x:Name="Trailing"
+                        HorizontalAlignment="Stretch"
+                        Click="OnTrailing"
+                        AutomationProperties.AutomationId="control-trailing" />
+            </StackPanel>
+        </Grid>
+
+        <!-- What is shown instead when the core or the game did not start. -->
+        <StackPanel x:Name="Failure"
+                    Grid.ColumnSpan="2"
+                    Visibility="Collapsed"
+                    Padding="32"
+                    Spacing="8"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+            <TextBlock x:Name="FailureTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+            <TextBlock x:Name="FailureDetail"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontFamily="Consolas"
+                       IsTextSelectionEnabled="True"
                        TextWrapping="Wrap" />
-
-            <InfoBar x:Name="Problem"
-                     IsOpen="False"
-                     IsClosable="False"
-                     Severity="Error"
-                     Title="The core refused" />
-
-            <TextBlock Text="Build" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
-            <TextBlock x:Name="BuildLines" TextWrapping="Wrap" FontFamily="Consolas" />
-
-            <TextBlock Text="Position" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
-            <TextBlock x:Name="PositionLines" TextWrapping="Wrap" FontFamily="Consolas" />
-
-            <TextBlock Text="Legal moves" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
-            <TextBlock x:Name="LegalMoveLines" TextWrapping="Wrap" FontFamily="Consolas" />
-
-            <TextBlock Text="Move history" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
-            <TextBlock x:Name="HistoryLines" TextWrapping="Wrap" FontFamily="Consolas" />
-
-            <Button x:Name="PlayFirstLegalMove"
-                    Content="Play the first legal move"
-                    Click="OnPlayFirstLegalMove"
-                    Margin="0,16,0,0" />
-
         </StackPanel>
-    </ScrollViewer>
+    </Grid>
 </Window>
