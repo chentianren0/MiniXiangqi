@@ -755,7 +755,7 @@ workflow above, so a release is the ordinary build with the ordinary proofs rath
 second definition of them, and then attaches five of that run's artifacts — the two zips,
 the two `.msix`, and the `.msixupload` — to a **draft** release on the tag, with generated
 notes as the starting point. The assets are those files themselves rather than the
-artifact wrappers described [above](#the-distribution), so a release download is the zip
+artifact wrappers described [below](#the-distribution), so a release download is the zip
 and not a zip around it. It stops at a draft deliberately: this repository has release
 immutability enabled, so publishing freezes both the assets and the tag, and that click is
 the owner's to make after running the thing. Before either runner starts, it also refuses

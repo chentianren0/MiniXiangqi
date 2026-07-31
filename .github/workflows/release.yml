@@ -61,11 +61,11 @@ on:
       - 'v*'
 
 # Two runs for one tag would race to attach assets to one release. This
-# serializes them instead, and the second fails at `gh release create` with the
-# sentence worth reading — a release for this tag already exists. Nothing is
-# cancelled: a run part-way through uploading assets has left a draft that wants
-# looking at, and cancelling it would leave that draft with no run to explain
-# it.
+# serializes them instead, and the release job below stops the second before it
+# creates anything — a draft is not tag-unique, so without that check the second
+# run would leave a second draft rather than fail. Nothing is cancelled: a run
+# part-way through uploading assets has left a draft that wants looking at, and
+# cancelling it would leave that draft with no run to explain it.
 #
 # The group is deliberately not windows-frontend.yml's. The two serialize
 # different things — that one keeps two builds of a ref apart, this one keeps
@@ -176,6 +176,12 @@ jobs:
       - name: Attach the five files to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          # GH_REPO because this job has no checkout and gh resolves a
+          # repository from a git remote or from this variable — GITHUB_REPOSITORY
+          # is not one it reads. Without it every gh call here dies on "fatal:
+          # not a git repository" in a workspace holding nothing but dist/.
+          # Checking out the tree to satisfy it would be a clone for a string.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -205,6 +211,31 @@ jobs:
           done
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "Not present: ${missing[*]}. Both architectures' legs and the upload-file job have to have run." >&2
+            exit 1
+          fi
+
+          # A draft is not tag-unique. GitHub holds two drafts naming one tag
+          # without complaint — only a published release refuses a duplicate,
+          # and by then it is far too late to be the check — so a second run for
+          # a tag would leave a second draft and say nothing, and the owner would
+          # have two candidates with no way to tell which run made which. Asking
+          # first is what makes the concurrency group's promise above true.
+          #
+          # The filter prints a line per match rather than counting, which is
+          # what keeps it honest under --paginate: gh applies --jq per page, so a
+          # total would arrive one number per page and no match prints nothing on
+          # any number of them.
+          #
+          # This cannot move to an earlier job to fail sooner: only a token with
+          # write access is shown drafts at all, and the jobs before this one
+          # deliberately have none.
+          export TAG="$GITHUB_REF_NAME"
+          clash="$(gh api "repos/{owner}/{repo}/releases" --paginate \
+            --jq '.[] | select(.tag_name == env.TAG) | "  \(.html_url)  draft=\(.draft)"')"
+          if [ -n "$clash" ]; then
+            echo "A release already carries the tag $TAG:" >&2
+            echo "$clash" >&2
+            echo "Delete it and run this again. A draft and its tag can both still be deleted; two drafts on one tag is what this refuses to leave behind." >&2
             exit 1
           fi
 
