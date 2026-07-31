@@ -54,6 +54,11 @@ struct HistoryScreen: View {
 
     @State private var path: [RecordSummary] = []
 
+    /// Whether the launch's own replay request has been performed. Once, per
+    /// visit: a page pushed again every time this destination reappears is a
+    /// page nobody can leave.
+    @State private var openedLaunchReplay = false
+
     /// The record a deletion is about — while its confirmation is up, and
     /// afterwards while a refused deletion offers its retry.
     @State private var deleting: RecordSummary?
@@ -91,9 +96,13 @@ struct HistoryScreen: View {
             // library revision is what says whether it did.
             library.loadIfChanged()
             showPendingReplay()
+            openLaunchReplay()
             importPendingFiles()
         }
         .onChange(of: pendingReplay) { _, _ in showPendingReplay() }
+        // The launch's own replay request survives an empty first read: the
+        // records it wants may be filed or imported after this screen appears.
+        .onChange(of: library.records.count) { _, _ in openLaunchReplay() }
         // One file at a time is the accepted rule, and the picker is the
         // cheapest place to keep it: a player never selects five games and then
         // has four of them refused. The allowed type is the declared one, so
@@ -365,6 +374,20 @@ struct HistoryScreen: View {
             // import must see what the first one wrote.
             for file in files { await library.importGame(file) }
         }
+    }
+
+    /// Opens the newest record's replay when the launch asked for it.
+    ///
+    /// A debug affordance, in the family every other launch argument belongs
+    /// to and for the same reason: a screenshot of a page reached by clicking
+    /// cannot say what it shows. Release builds have no argument to read.
+    private func openLaunchReplay() {
+        #if DEBUG
+        guard DebugLaunch.contains("-mxq-open-replay"), !openedLaunchReplay,
+              let newest = library.records.first else { return }
+        openedLaunchReplay = true
+        path = [newest]
+        #endif
     }
 
     /// Pushes the record another destination asked for, once the list holding

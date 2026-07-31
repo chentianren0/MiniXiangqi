@@ -35,6 +35,65 @@ struct BoardLayoutTests {
         #expect(BoardLayout.stackedGeometry(in: phone).pitch >= BoardGeometry.minimumPitch)
     }
 
+    /// The narrower phone the device policy actually names, and the one every
+    /// screenshot in this campaign is taken on.
+    ///
+    /// 402 by 672 is roughly what an iPhone 17 hands a screen's own
+    /// GeometryReader: 402 points of screen width, and what is left of 874 once
+    /// the status bar, the navigation bar and the tab bar are off. It is a
+    /// rounded stand-in rather than the device's exact figure — measuring the
+    /// running app against the rendered board puts the height a couple of points
+    /// higher — and rounded deliberately, for the reason at the top of this
+    /// file: a rule that only held at one exact pixel count would not be a rule.
+    /// What is asserted below therefore holds either side of that couple of
+    /// points; the pitch each shape actually draws is a rendered number and
+    /// lives with the pictures, not here.
+    ///
+    /// It is the tighter of the two phones in both directions, so it is where
+    /// the stacked shape's floors are reached first.
+    @Test("The 402-point iPhone stacks, and replay's chrome now fits inside it")
+    func phone402PortraitStacks() {
+        let phone = CGSize(width: 402, height: 672)
+        #expect(BoardLayout.shape(in: phone) == .stacked)
+        #expect(BoardLayout.stackedGeometry(in: phone).pitch >= BoardGeometry.minimumPitch)
+
+        // Play's chrome leaves the board well clear of its floor: this phone is
+        // not a phone that draws floor-sized boards.
+        #expect(BoardLayout.stackedGeometry(in: phone,
+                                            chrome: BoardLayout.stackedChromeHeight).pitch
+                > BoardGeometry.minimumPitch)
+
+        // Replay's chrome is the header above the board plus the panel beneath
+        // it. Asking for the whole of the panel's side-by-side height put that
+        // sum past what this phone has once a floor-sized board is reserved, and
+        // pinned the board on its floor; the owner's buy-back (2026-07-31)
+        // brought the ask under that line, so the phone now grants it whole and
+        // the board it leaves stands clear of the floor rather than on it.
+        //
+        // The header's measured height is written into the sum for honesty
+        // rather than for arithmetic: what is asserted is the relation between
+        // the ask, the grant and the floor, not either number.
+        let asked: CGFloat = 69 + 200
+        let chrome = BoardLayout.stackedChrome(in: phone, asking: asked)
+        #expect(chrome == asked, "the ask fits, so it is granted whole")
+        #expect(chrome < phone.height - BoardLayout.minimumBoardHeight)
+        let board = BoardLayout.stackedGeometry(in: phone, chrome: chrome)
+        #expect(board.pitch > BoardGeometry.minimumPitch, "the board is off its floor")
+        #expect(board.blockSize.height <= phone.height - chrome)
+
+        // The grant still tightens where the space really is short — a header
+        // grown by an accessibility text size is the case it exists for. There
+        // the chrome yields, the board stands exactly on its floor, and the
+        // block still fits the slot it is left.
+        let outsized: CGFloat = 200 + 200
+        let tightened = BoardLayout.stackedChrome(in: phone, asking: outsized)
+        #expect(tightened < outsized, "the chrome is what tightens, not the board")
+        #expect(tightened == phone.height - BoardLayout.minimumBoardHeight)
+        let floored = BoardLayout.stackedGeometry(in: phone, chrome: tightened)
+        #expect(floored.pitch == BoardGeometry.minimumPitch)
+        #expect(floored.blockSize.height <= phone.height - tightened)
+    }
+
     @Test("An iPad in portrait stacks: the panel would cost the board more than it returns")
     func padPortraitStacks() {
         let padPortrait = CGSize(width: 834, height: 1130)
