@@ -273,16 +273,25 @@ the content alone stops the resize while the board still has less room than it a
 documented in physical pixels, and adds it to the scaled content floor. It is read on
 every recomputation, because it moves with the display scale exactly as the content does.
 
-**And under all of it, a board that cannot be drawn says so.** `BoardGeometry.Fitting`
-has always refused rather than clamped — a board under the accepted floor is a decision,
-and it declines to make one quietly — but the window used to answer that refusal by
-drawing the board at the floor anyway, into a host too small to hold it. What the owner's
-tour saw was the consequence: a page whose whole point is a board, showing no board and
-saying nothing. `BoardSpace` now answers with the geometry **or** with `board.tooSmall`,
-the window draws whichever it got, and all three board hosts do it — including the
-pre-start preview, which the contract exempts from the floor so that it can yield space
-to the setup controls, and which on this frontend has nothing to yield to because those
-controls are a fixed 260-point panel.
+**What the owner's tour actually hit was those two faults compounding, and the pane was
+not involved.** The floor was short by the frame, so the client area at the hard minimum
+put the board host under the 340 the block needs. `BoardGeometry.Fitting` then refused,
+as it should — a board under the accepted floor is a decision and it declines to make one
+quietly — and the window's old answer to a refusal was to draw the board at the floor
+anyway. That fallback assigned a pitch-44 geometry which is **the same value `BoardView`
+is constructed with**, so the setter's equality guard returned early and the view was
+never given a width or a height. Unsized inside a `Grid` and centred, it measured nothing
+and painted nothing: a board page with no board on it and nothing said. `BoardView` now
+states its size in its own constructor, which makes the invariant the class's rather than
+the caller's, and the guard goes back to being about the work.
+
+**And under both of them, a board that cannot be drawn says so.** `BoardSpace` answers
+with the geometry **or** with `board.tooSmall`, the window draws whichever it got, and
+all three board hosts do it — including the pre-start preview, which the contract exempts
+from the floor so that it can yield space to the setup controls, and which on this
+frontend has nothing to yield to because those controls are a fixed 260-point panel. It
+is the floor under the residue the arithmetic cannot reach — a display scale that rounds
+badly, a platform default that moves — rather than the fix for what the tour found.
 
 ## Verifying without a screen
 
@@ -498,6 +507,16 @@ cluster carries, what each one does, and what the flip does and does not change 
 260-point column is XAML. The decision to show a line instead of a board, and the line
 itself, are `BoardSpace`'s and are run in section 38; the line centred in the space the
 board would have taken is XAML. Both are on the owner's zip check.
+
+**Two more belong on that list, and both are in the window rather than beside it.** The
+**frame allowance** — the window floor adding `AppWindow.Size` minus `AppWindow.ClientSize`
+to the scaled content floor — is arithmetic over two values only a real window has, so
+nothing here can run it; what a zip check sees is whether the window can still be dragged
+down to a size that clips the board. And **`BoardView` taking its size in its own
+constructor** is the same: it is a XAML `Grid` subclass, it needs the WinUI runtime to
+exist at all, and the fault it fixes showed only as a board that measured 0 by 0 on a
+screen. Dragging the window to its hard minimum and seeing a board there is the check both
+of them want.
 
 **The four voices are the same case with a second reason.** Which voice a landing asks for
 is run headlessly in section 37; whether it is *heard*, and whether what is heard is right,

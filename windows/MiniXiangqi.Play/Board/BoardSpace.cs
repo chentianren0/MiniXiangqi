@@ -7,13 +7,25 @@
 // this project's Windows machine can check. MiniXiangqi.Smoke drives every one
 // of them.
 //
-// **The notice is the owner's tour finding.** Below a certain space the board's
-// geometry refuses rather than clamping — a board under the accepted 44-point
-// floor is a decision, and BoardGeometry says why it declines to make one
-// quietly — and until now the window answered that refusal by drawing the board
-// at the floor anyway, into a host too small to hold it. What the owner saw was
-// the consequence: a page whose whole point is a board, showing no board and
-// saying nothing. The refusal now reaches the screen as a sentence.
+// **The notice is not the fix for the owner's tour finding; it is the floor
+// under whatever is left.** That finding had a mechanism, and it was neither the
+// navigation pane nor this refusal:
+//
+//   * the window's own minimum was computed from the content alone, while the
+//     message it answers is about the *window* rectangle, so at the hard minimum
+//     the client area came up 16 points short across and 40 short down — enough
+//     to put the board host under the 340 the block needs;
+//   * BoardGeometry.Fitting then refused, as it should, and the window's old
+//     answer to a refusal was to draw the board at the floor anyway — assigning
+//     a pitch-44 geometry that was *the same value* BoardView had been
+//     constructed with, so its setter's equality guard returned early and the
+//     view was never given a width or a height at all. Unsized and centred, it
+//     measured nothing and painted nothing.
+//
+// Both are fixed where they live: the floor allows for the frame, and a board
+// view is born at the size its geometry says. What remains for this file is the
+// honest residue — a display scale that rounds badly, a platform default that
+// moves — where the refusal is right and silence is not.
 
 namespace MiniXiangqi.Play;
 

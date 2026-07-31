@@ -3374,17 +3374,18 @@ internal static unsafe class Program
         Check("the window's floor is the content's plus the rail and the navigation row",
             WindowFloor.WindowWidth == 696 && WindowFloor.WindowHeight == 432);
 
-        // The floor's own promise, read the way the window reads it: at the
-        // minimum window the board host gets exactly the block, and the board
-        // fits at exactly the accepted pitch.
+        // The floor's own promise, read the way the window reads it: take the
+        // chrome back off the window floor, hand what is left to the board, and
+        // the board fits at exactly the accepted pitch. (That the room comes out
+        // at the block is arithmetic rather than a finding — the floor was built
+        // by adding the chrome to it — so what is asserted is the pitch, and how
+        // little room there is to spare is the check below.)
         double hostAtTheFloor = WindowFloor.WindowWidth - WindowFloor.CompactRailWidth
             - WindowFloor.PanelWidth - (2 * WindowFloor.Air);
         BoardSpace atTheFloor = BoardSpace.Of(hostAtTheFloor, hostAtTheFloor);
         Console.WriteLine($"    host at the floor   {hostAtTheFloor}  pitch {atTheFloor.Board?.Pitch}");
         Check("at the window's floor the board fits, at the accepted pitch floor",
-            hostAtTheFloor == block
-            && atTheFloor.Board is { } floored
-            && floored.Pitch == BoardGeometry.MinimumPitch);
+            atTheFloor.Board is { } floored && floored.Pitch == BoardGeometry.MinimumPitch);
 
         // **The pane cannot squeeze it.** The shell's display mode is the
         // platform's own and this app sets none of it, so what matters is the

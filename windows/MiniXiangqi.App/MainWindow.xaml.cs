@@ -360,19 +360,26 @@ public sealed partial class MainWindow : Window
     ///
     /// The decision is <see cref="BoardSpace"/>'s, where a headless run can reach
     /// it; what is left here is turning it into two visibilities. **The refusal
-    /// is now visible**, which is the owner's tour finding: the geometry has
-    /// always declined to draw a board under the accepted floor, and this window
-    /// used to answer that by drawing one at the floor anyway, into a host too
-    /// small to hold it. The board is not drawn, and the line that asks for a
-    /// larger window is, in the space the board would have taken.
+    /// is now visible**: where the geometry declines to draw a board under the
+    /// accepted floor, no board is drawn and the line that asks for a larger
+    /// window stands in the space it would have taken.
+    ///
+    /// This window used to answer a refusal by drawing the board at the floor
+    /// anyway — which is how the owner's tour finding happened, though not for
+    /// the reason it looks like: the fallback assigned the same pitch-44
+    /// geometry <c>BoardView</c> is constructed with, its setter's equality
+    /// guard returned early, and the view was left with no width or height to
+    /// paint into. That is fixed in <c>BoardView</c>'s own constructor, and
+    /// what the floor above was missing is fixed in the floor. This is the
+    /// residue's answer, not theirs.
     ///
     /// All three hosts, including the pre-start preview. The contract exempts a
     /// preview from the floor so that it can yield space to the setup controls;
     /// on this frontend those controls are a fixed 260-point panel that never
     /// asks for more, so there is nothing for the preview to yield to and it has
-    /// taken the same floor as the other two since the play screen landed. A
-    /// preview with no room is the same silent emptiness, and it says the same
-    /// thing.
+    /// taken the same floor as the other two since the play screen landed. The
+    /// contract records that divergence under § Layout shapes. A preview with no
+    /// room has the same nothing to show, and says the same thing about it.
     /// </summary>
     private static void Fit(BoardView view, Grid host, TextBlock notice, Windows.Foundation.Size available)
     {
