@@ -322,6 +322,13 @@ public static class Strings
             ["failure.gameDidNotStart"] = new("对局未能开始", "The game did not start"),
             ["failure.historyDidNotLoad"] = new("历史未能载入", "History did not load"),
 
+            // What a board host says when it has no room for a board. It is not
+            // a failure — nothing went wrong and the reader can put it right in
+            // one drag — so it names the fact and the remedy and stops there.
+            ["board.tooSmall"] = new(
+                "窗口太小，放不下棋盘。请把窗口调大一些。",
+                "The window is too small to fit the board. Please make it larger."),
+
             // Composition.
             ["metadata.join"] = new("{0} · {1}", "{0} · {1}"),
             ["moveList.rowNumber"] = new("{0}.", "{0}."),

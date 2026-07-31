@@ -126,8 +126,8 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.gameNotStarted.message` | 保存这盘新对局时出错。请重试。 | Saving the new game failed. Please try again. | alert message | same |
 | `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
-| `alert.deleteFailed.title` *(proposed)* | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
-| `alert.deleteFailed.message` *(proposed)* | 这盘棋仍然保留在历史里。请重试。 | This game is still in History. Please try again. | alert message | same |
+| `alert.deleteFailed.title` | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `alert.deleteFailed.message` | 这盘棋仍然保留在历史里。请重试。 | This game is still in History. Please try again. | alert message | same |
 | `alert.importDuplicate.title` | 这盘棋已经在历史里 | This Game Is Already in History | alert title | [interaction-design.md](interaction-design.md) § History library; [game-data.md](game-data.md) § Accepted MVP record behavior; `History/HistoryScreen.swift` |
 | `alert.importDuplicate.message` | 文件里的对局和历史中的一盘完全相同，所以没有重复添加。 | The game in this file is identical to one already in History, so it wasn't added again. | alert message | same |
 | `alert.importConflict.title` | 这个文件和历史中的一盘棋冲突 | This File Conflicts with a Game in History | alert title | same |
@@ -157,7 +157,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 |---|---|---|---|---|
 | `failure.coreDidNotStart` | 核心未能启动 | The core did not start | unavailable-content title | `ContentView.swift` — English shipped; the Chinese source is supplied here |
 | `failure.gameDidNotStart` | 对局未能开始 | The game did not start | unavailable-content title | `Play/PlayScreen.swift` — same |
-| `failure.historyDidNotLoad` *(proposed)* | 历史未能载入 | History did not load | unavailable-content title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `failure.historyDidNotLoad` | 历史未能载入 | History did not load | unavailable-content title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 
 Both screens carry a technical description beneath the title. That description is diagnostic text from the core, not copy, and is not localized.
 
@@ -243,15 +243,15 @@ Nothing here offers an interface language, and no key exists for one: the operat
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `history.section.pinned` *(proposed)* | 已置顶 | Pinned | list section header | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
-| `history.section.others` *(proposed)* | 其他对局 | Other Games | list section header | same |
-| `history.empty.title` *(proposed)* | 还没有历史对局 | No Games Yet | unavailable-content title | same |
-| `history.empty.description` *(proposed)* | 对局结束后会保存到这里。 | Games you finish are saved here. | unavailable-content description | same |
-| `replay.progress` *(proposed)* | `%1$lld / %2$lld` | `%1$lld / %2$lld` | replay progress | [interaction-design.md](interaction-design.md) § History replay; `History/ReplayScreen.swift` — plies shown of plies recorded; numerals and a separator, and no word is translated |
-| `replay.first` *(proposed)* | 回到开始 | Go to Start | accessibility label | same; `History/ReplayTransport.swift` |
-| `replay.previous` *(proposed)* | 上一步 | Previous Move | accessibility label | same |
-| `replay.next` *(proposed)* | 下一步 | Next Move | accessibility label | same |
-| `replay.last` *(proposed)* | 跳到最后 | Go to End | accessibility label | same |
+| `history.section.pinned` | 已置顶 | Pinned | list section header | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
+| `history.section.others` | 其他对局 | Other Games | list section header | same |
+| `history.empty.title` | 还没有历史对局 | No Games Yet | unavailable-content title | same |
+| `history.empty.description` | 对局结束后会保存到这里。 | Games you finish are saved here. | unavailable-content description | same |
+| `replay.progress` | `%1$lld / %2$lld` | `%1$lld / %2$lld` | replay progress | [interaction-design.md](interaction-design.md) § History replay; `History/ReplayScreen.swift` — plies shown of plies recorded; numerals and a separator, and no word is translated |
+| `replay.first` | 回到开始 | Go to Start | accessibility label | same; `History/ReplayTransport.swift` |
+| `replay.previous` | 上一步 | Previous Move | accessibility label | same |
+| `replay.next` | 下一步 | Next Move | accessibility label | same |
+| `replay.last` | 跳到最后 | Go to End | accessibility label | same |
 | `replay.autoplay` *(proposed)* | 自动播放 | Autoplay | accessibility label | same |
 | `replay.pause` *(proposed)* | 暂停 | Pause | accessibility label | same |
 
@@ -260,6 +260,16 @@ The five transport controls are icon-only, so every one of these is what a scree
 **The Windows frontend ships every row above except `replay.autoplay` and `replay.pause`**, whose control does not exist there: [issue #80](https://github.com/ppppvz/MiniXiangqi/issues/80)'s trim makes Windows replay a step-through viewer with four transport controls, so a fifth string would be one nothing reads. The two rows are not retired — the Apple frontend has the control — and they return to Windows with the appearance pass. The remaining rows are live in `windows/MiniXiangqi.Play/Text/Strings.cs` as well as in the String Catalog, and the mechanical agreement check runs over both.
 
 `history.empty.description` is one sentence rather than the two the Part 7 draft proposed. The second named importing a game file. Import now exists, and the line is unchanged all the same, for the reason [interaction-design.md](interaction-design.md) § History library gives about the empty state itself: it "says what it says and offers nothing else to do", and the 导入… toolbar item is above it either way.
+
+### When there is no room for the board
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `board.tooSmall` | 窗口太小，放不下棋盘。请把窗口调大一些。 | The window is too small to fit the board. Please make it larger. | line in the board's place | [interaction-design.md](interaction-design.md) § Layout shapes — the accepted 44-point floor, and the refusal that keeps a board from being drawn under it; `windows/MiniXiangqi.Play/Board/BoardSpace.cs` |
+
+**It is not a failure screen and does not join that family.** Nothing went wrong, nothing was lost, and the reader can put it right with one drag of a window edge — so it takes no 无法 title, carries no diagnostic beneath it, and is one line where a failure screen is a title and a description. It says the fact and then the remedy, in that order, and stops.
+
+**It is read on Windows**, where a window is resized against a navigation container whose own width changes with it: the accepted floor is derived so that the board survives every arrangement the platform chooses, and this line is the honest floor under the residue — an unusual display scale, a window frame wider than the app's arithmetic allowed for, a platform default that moves. iOS and iPadOS have no resize to reach it with, and whether the Mac's own window can is the Apple frontend's question; the row is here for it if the answer is yes.
 
 ### Board accessibility
 
@@ -343,6 +353,6 @@ These are the consequences for the code that the localization pull request inher
 > The items below are questions, not requirements or implementation authorization.
 
 - Decide whether the application's display name stays **Mini Xiangqi** in Simplified Chinese. One name in both languages is what ships today and is recorded above as accepted for now; a Chinese name is a product-identity decision rather than a translation.
-- Approve the rows marked *(proposed)* above: the two History section headers, the empty state's two lines, the History-read failure title, the deletion-failure pair, and the replay transport's seven. They are what the History destination and its replay say, and they ship in the String Catalog behind this proposal.
+- Approve the two rows still marked *(proposed)* above, `replay.autoplay` and `replay.pause`. The twelve that stood here with them are accepted: they shipped in [#92](https://github.com/ppppvz/MiniXiangqi/pull/92) and the owner's Windows tour passed on them, under the copy delegation that makes routine copy correctness the lead's to decide (owner, 2026-07-31, recorded in [issue #80](https://github.com/ppppvz/MiniXiangqi/issues/80)). These two did not ship with them — Windows replay has no autoplay control — so their approval waits for the appearance pass that brings it there.
 - Supply copy for the surfaces that still have no accepted string in either language: the Help entry point and its contents, and autoplay speeds if they are ever offered. The sound and haptics toggles are no longer among them — 声音 and 触感 are accepted above, with the rest of the Settings destination, in [issue #64](https://github.com/ppppvz/MiniXiangqi/issues/64)'s Stage 5 design. Import and export, and the import, duplicate, conflict and error messages, are proposed above rather than still open. The History row's date and move-count formatting needed no copy in the end — the date is the system's own words and the count reuses `metadata.moveCount`.
 - Decide what the metadata line does in English where it is aligned to the board. The middot composition is accepted, and the English forms of the longest lines are materially wider than their Chinese sources; whether they wrap, restyle, or recompose is a layout question that belongs with the stacked-layout item in [interaction-design.md](interaction-design.md) § Need to discuss, not a copy question.

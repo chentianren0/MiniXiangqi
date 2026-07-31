@@ -243,6 +243,47 @@ the core's canonical coordinate text: the edges carry the canonical coordinates 
 than the file-numeral strips, and there are four strips rather than two. The contract
 carries that as a Windows clause under **User-visible notation**.
 
+### The window's floor, and the board that will not fit
+
+`MiniXiangqi.Play/Board/BoardSpace.cs` holds both, and holds them there rather than in
+the window so that the harness can run them. `WindowFloor` derives every figure from the
+board's own geometry: the block at the accepted 44-point pitch is **340** square — 340
+rather than the Mac's 308, because this board carries the coordinates on four edges — the
+air around it is 24 a side, the panel beside it 260, the navigation row above every page
+44, and the shell's compact rail 48. The content floor is **648 by 388** and the window's
+is **696 by 432**, in device-independent pixels.
+
+**The shell's pane cannot squeeze the board below that**, and the arithmetic that says so
+is checked rather than asserted. `NavigationView` is left in its Auto display mode — the
+app decides none of it — so the numbers are the platform's: a full-width inline pane
+appears only at or above the expanded threshold of 1008, and 1008 minus the 320 that pane
+measures leaves 688 of content, which clears the 648 floor with room over. Below that
+threshold the pane is a 48-point rail, and *opening* it overlays the content rather than
+taking width from it. So the floor pays for the rail, which is the arrangement that
+actually costs it width, and pays nothing for a pane it can never meet. **That is the
+answer to the tour's "reachable via the expanded navigation pane": under the platform's
+own defaults it is not** — and the notice below is what stands under the residue instead
+of a bigger floor nobody needs.
+
+**The floor also allows for the window frame.** `PreferredMinimumWidth` answers
+`WM_GETMINMAXINFO`, which is about the *window* rectangle — resize borders and title bar
+included — while everything XAML lays out is inside the client area, so a floor set from
+the content alone stops the resize while the board still has less room than it asked for.
+`MainWindow` measures the frame as `AppWindow.Size` minus `AppWindow.ClientSize`, both
+documented in physical pixels, and adds it to the scaled content floor. It is read on
+every recomputation, because it moves with the display scale exactly as the content does.
+
+**And under all of it, a board that cannot be drawn says so.** `BoardGeometry.Fitting`
+has always refused rather than clamped — a board under the accepted floor is a decision,
+and it declines to make one quietly — but the window used to answer that refusal by
+drawing the board at the floor anyway, into a host too small to hold it. What the owner's
+tour saw was the consequence: a page whose whole point is a board, showing no board and
+saying nothing. `BoardSpace` now answers with the geometry **or** with `board.tooSmall`,
+the window draws whichever it got, and all three board hosts do it — including the
+pre-start preview, which the contract exempts from the floor so that it can yield space
+to the setup controls, and which on this frontend has nothing to yield to because those
+controls are a fixed 260-point panel.
+
 ## Verifying without a screen
 
 **A WinUI 3 process cannot be launched over SSH.** An SSH session lands in session 0,
@@ -275,7 +316,12 @@ this paragraph used to carry and which the History destination immediately made 
 **18** plays a whole game against the AI through `PlaySession` — every move committed by
 clicking a point and then another point, exactly as the window's board does it, the AI
 answering through the same marshalled callback — to a conclusion or a move cap, and then
-takes the concluding action. **19** plays Free Play through the same session and taps an
+takes the concluding action. It also presses **翻转棋盘**, which this mode now carries
+(owner recommendation, 2026-07-31), and checks the claim the flip makes: the orientation
+turns over while the position, the ply count, the record, the side to move and whose turn
+it is to click are all exactly what they were — and then that the orientation is still
+turned over after every move and every reply that followed. **19** plays Free Play through
+the same session, makes the same presentation-only claim about its own flip, and taps an
 illegal point to confirm it moves nothing and cancels nothing. **20** shuffles two cannons
 into a threefold repetition and claims it. **21** is the pair of races a confirmation and
 a search can arrive in either order: Undo while the AI is thinking, and 认输 confirmed
@@ -290,7 +336,8 @@ leaving the pre-start page discards and what an abandoned attempt commits. **24*
 the save-and-continue confirmation over an active game, cancels it, answers it, and reads
 the filed record's classification back. **25** finishes a game and takes both concluding
 actions — 开始新对局 opening that game's own mode's pre-start state, 完成 returning to the
-home. **26** and **27** are the insufficient-memory refusal in both of its forms,
+home — and, because it is the only place two games exist one after the other, turns the
+first game's board over and checks that the second starts the right way up. **26** and **27** are the insufficient-memory refusal in both of its forms,
 pre-start and mid-game, reached by handing the frontend a probe that reports a starved
 machine so that the core's own budget arithmetic answers the refusal rather than a stub
 standing in for it. **28** is 无法开始对局, reached the same way in spirit: a game left
@@ -341,6 +388,17 @@ rather than against the rule under test. A move taken back, a claimed draw and a
 resignation are asked separately, because the played game cannot ask for them. What the
 harness cannot say is whether the four voices *sound* right; that is an ear's answer and it
 is the owner's tour, and section 37 prints as much.
+
+**38 is the board's own space**, and it opens no core because it needs none. It reads the
+window floor back out of the geometry it is derived from — the 340-point block, the 648 by
+388 content, the 696 by 432 window — checks that the board fits at exactly the accepted
+pitch in the room the floor promises it, checks that the shell's own expanded-pane
+arithmetic leaves more content than the floor asks for, and then drives the geometry one
+point under the block so that the refusal fires. What it asserts about the refusal is that
+no board is drawn at all and that the state publishes `board.tooSmall` in both languages —
+a key with no row answers with itself, which is the one thing that value can never
+legitimately be. It is the run behind the owner's tour finding, and the numbers it reads
+used to be unreachable literals inside the window.
 
 **Two import answers have no seam, and are stated as the mapping they are.** 历史中有一盘
 损坏的棋 needs a stored record whose own bytes no longer decode, and 无法保存导入的对局 needs
@@ -432,6 +490,14 @@ notice's surface, the Fluent materials, the shell's own pane and its settings it
 History list's rows and their context menus, the Settings destination's three cards, and
 the pointer and Narrator behaviour of the forty-nine point elements. Seeing those needs an
 RDP session.
+
+**The play-control cluster's fourth button and the too-small line are the newest two**,
+and the split between what runs and what does not is the usual one. Which controls the
+cluster carries, what each one does, and what the flip does and does not change are
+`PlaySession`'s and are run in sections 18, 19 and 25; the four buttons standing in a
+260-point column is XAML. The decision to show a line instead of a board, and the line
+itself, are `BoardSpace`'s and are run in section 38; the line centred in the space the
+board would have taken is XAML. Both are on the owner's zip check.
 
 **The four voices are the same case with a second reason.** Which voice a landing asks for
 is run headlessly in section 37; whether it is *heard*, and whether what is heard is right,
@@ -641,11 +707,14 @@ the header, and the DLL export path and the bindings can no longer drift silentl
 `MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, keyed exactly
 as [`docs/copy.md`](../docs/copy.md) keys it, with the normative Chinese and its approved
 English side by side. The History destination and its viewer added no key to that
-contract: every string they say was already a row of it, including the ones it marks
-*(proposed)* — the two section headers, the empty state's pair, the deletion-failure pair,
-the History-read failure title, and the transport's labels — which this frontend now ships
-and which `docs/copy.md` § Need to discuss asks the owner to approve. The two rows it does
-not ship are `replay.autoplay` and `replay.pause`, whose control the trim removed. **The
+contract: every string they say was already a row of it, including the twelve it then
+marked *(proposed)* — the two section headers, the empty state's pair, the
+deletion-failure pair, the History-read failure title, the replay progress line, and the
+four transport labels this viewer has. **Those twelve are accepted now**: the owner's
+Windows tour passed on them and the copy delegation makes routine copy correctness the
+lead's to decide (owner, 2026-07-31, issue #80), so the markers are off.
+`replay.autoplay` and `replay.pause` keep theirs and keep their absence here, because the
+trim removed their control. **The
 Settings destination added none either, and shipped no proposed row**: its eight strings —
 `nav.settings`, the four `settings.defaults.*`, `settings.sound.label` and the two
 `settings.confirmDelete.*` — are all accepted, and the six option words its two pickers
@@ -654,6 +723,13 @@ rows it does not ship are the ones its trim removed: `settings.section.board`,
 `settings.symbols.*`, `settings.notation.*` and `settings.haptics.label`. The language is
 the operating system's — the app offers no interface-language control of its own — which
 .NET resolves as `CurrentUICulture` from the system's language preference list.
+
+**One key is this frontend's own addition to the contract**: `board.tooSmall`, the line a
+board host shows when there is no room for a board. It is the second Windows-first row
+after `control.close`, and for the same shape of reason — this is the platform where a
+window is dragged against a navigation container that changes width with it. The row and
+its reasoning are in `docs/copy.md` § When there is no room for the board; the state that
+publishes it is [above](#the-windows-floor-and-the-board-that-will-not-fit).
 
 It is a table in C# rather than a `.resw` and a PRI, and the packaging build did not
 change that. A `.resw` compiles to a PRI, which is a resource system for a *packaged*
