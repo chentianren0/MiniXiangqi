@@ -18,8 +18,13 @@
 # The pinned trees are not normalised at all. Their bytes ARE the pin, so git
 # hands them over exactly as they were committed whatever anyone's configuration
 # says: the vendored engine and SQLite snapshots against their SOURCES.sha256
-# manifests, the variant configuration against pinned-inputs.json, and the
-# fixtures against the golden bytes the codec suites compare. `eol` is unset
+# manifests, the variant configuration and the NNUE network against
+# pinned-inputs.json, and the fixtures against the golden bytes the codec suites
+# compare. The network is the one file here that is binary rather than merely
+# hash-pinned text, and `core/assets/**` is what covers it: a checkout that
+# rewrote a byte in four megabytes of weights would not produce a damaged network
+# anybody could see, it would produce a SHA-256 mismatch that stops every build
+# that stages it. `eol` is unset
 # here as well as `text`, and not only for tidiness — git documents `eol` as
 # enabling conversion "without any content checks, effectively setting the text
 # attribute", so leaving it inherited from the line above would leave these

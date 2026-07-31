@@ -22,8 +22,10 @@
 # it makes each job's target architecture readable in the job rather than
 # inferred from the runner label.
 #
-# MXQ_NNUE_SOURCE and MXQ_CTEST_EXCLUDE come from the fetch-network step, and
-# are both empty when no network reached the runner.
+# Nothing is passed for the network. It is in the checkout, at the path
+# pinned-inputs.json records, and core/CMakeLists.txt defaults to it — so every
+# suite runs on every runner, including engine_search, and a run that excluded
+# one is not a shape this file can produce any more.
 
 set -euo pipefail
 
@@ -32,14 +34,7 @@ build_directory="${RUNNER_TEMP//\\//}/$2"
 generator_platform="${3:-x64}"
 
 configure_options=(-DMXQ_ENABLE_RULES_FACADE=ON)
-if [ -n "${MXQ_NNUE_SOURCE:-}" ]; then
-	configure_options+=("-DMXQ_NNUE_SOURCE=${MXQ_NNUE_SOURCE}")
-fi
-
 test_options=(--output-on-failure)
-if [ -n "${MXQ_CTEST_EXCLUDE:-}" ]; then
-	test_options+=(--exclude-regex "${MXQ_CTEST_EXCLUDE}")
-fi
 
 case "${generator_kind}" in
 single-config)

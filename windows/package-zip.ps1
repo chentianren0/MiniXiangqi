@@ -13,7 +13,7 @@ Run windows/build-core-dll.ps1 first, for the same architecture: the core is
 consumed as a prebuilt DLL beside a prebuilt asset directory, and this script
 publishes on top of that rather than compiling C++ itself.
 
-WHAT THE ZIP CONTAINS, AND THE ONE THING IT DELIBERATELY DOES NOT
+WHAT THE ZIP CONTAINS
 
   MiniXiangqi-windows-<arch>/
     MiniXiangqi.App.exe        the app, carrying its own icon
@@ -26,50 +26,38 @@ WHAT THE ZIP CONTAINS, AND THE ONE THING IT DELIBERATELY DOES NOT
                                the Visual C++ runtime, and this app's own
                                assemblies — self-contained, so the machine that
                                unpacks it installs nothing
-    assets/                    the pinned variant configuration
+    assets/                    the pinned variant configuration and the AI's
+                               neural network
     sounds/                    the board's four voices
     LICENSE                    GPL-3.0, this project's own
     NOTICE.md                  what else is inside and under what terms
-    NETWORK.md                 the one file that is missing, and how to add it
     README.md                  what this is and how to run it
 
-TWO ZIPS, ONE CODE PATH
+ONE ZIP, AND IT IS THE WHOLE APP
 
-Run with no -NnueSource, this produces the **public-safe** zip: everything above
-except the NNUE network, which is what CI builds and uploads. Run with one, it
-produces the **complete internal** package instead, the same layout with the
-network placed in assets/ and a NETWORK.md that says it is there.
+There used to be two, differing in one file: this zip without the NNUE network,
+and an internal one with it. The reason was licensing rather than technical — the
+network then bundled was community-trained, its redistribution licence was never
+established, and a GitHub Actions artifact on a public repository is downloadable
+by any logged-in account, so the published zip could not carry it whatever
+anybody intended.
 
-The distinction is a licensing one and not a technical one. Bundling the pinned
-network for internal testers is accepted (docs/engine-integration.md); what is
-barred is a *public* location, and this repository is public, so **a GitHub
-Actions artifact on it is downloadable by any logged-in GitHub account** and
-carrying the network there would be a distribution beyond internal testing —
-the exact expansion that document makes a licensing gate for, which nobody has
-passed. A zip built on a machine the owner controls and handed to a tester is
-not that.
+That network is gone. The one this project trained is in this repository, ours to
+publish, and this build carries it like every other asset. So there is one
+artifact, it is complete, and nobody unpacking it has a file to go and find.
 
-So the order below is deliberate and is the thing to check when reading it:
-the publish's network is removed and the whole staged tree is then checked
-three ways — by name, by exact byte length, and by content for anything that
-matches the length — **before** anything is placed back. Both modes run that
-check on an identical tree. Only after it passes does the internal mode verify
-the bytes it was handed against the manifest and place them, visibly and on its
-own. CI calls this script without -NnueSource and therefore cannot produce an
-internal package however it is invoked; windows/package-internal.ps1 is the
-entry point that does, and exists so the intent is legible at the call site.
+What survives from the old arrangement is the check, inverted. The publish copies
+the asset directory windows/build-core-dll.ps1 staged — the verified one — and
+this script then confirms the network is there and is the network: exactly one
+.nnue, the manifest's name, the manifest's byte length, the manifest's SHA-256.
+A zip whose AI silently does not start is the failure this guards, and it is
+cheaper to catch here than in somebody's hands.
 
 .PARAMETER Architecture
 x64 or arm64, defaulting to the machine this runs on. It must match the
 architecture windows/build-core-dll.ps1 last staged, which is checked rather
 than trusted: every native binary in the published tree has its PE machine type
 read and compared.
-
-.PARAMETER NnueSource
-The pinned NNUE network's bytes. Absent — which is how CI calls this — the zip
-is the public-safe one. Given, the bytes are verified against
-pinned-inputs.json's byte length and SHA-256 and placed in the zip, and the
-result is named -internal. Wrong bytes are a hard stop, not a warning.
 
 .PARAMETER Configuration
 The MSBuild configuration to publish. Release by default.
@@ -78,19 +66,17 @@ The MSBuild configuration to publish. Release by default.
 Where the zip is written. windows/dist by default, which .gitignore covers.
 
 .PARAMETER Revision
-The commit this was built from, stamped into the zip's README.md and into an
-internal package's filename. Defaults to GITHUB_SHA and then to git rev-parse
-HEAD.
+The commit this was built from, stamped into the zip's README.md. Defaults to
+GITHUB_SHA and then to git rev-parse HEAD.
 
 .EXAMPLE
-pwsh windows/build-core-dll.ps1 -NnueSource <path to the pinned network>
+pwsh windows/build-core-dll.ps1
 pwsh windows/package-zip.ps1
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('x64', 'arm64')]
     [string] $Architecture = $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }),
-    [string] $NnueSource,
     [string] $Configuration = 'Release',
     [string] $OutputDirectory,
     [string] $Revision
@@ -102,7 +88,6 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $rid = "win-$Architecture"
 $productName = "MiniXiangqi-windows-$Architecture"
-$internal = [bool] $NnueSource
 
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repoRoot 'windows\dist' }
 if (-not $Revision) { $Revision = $env:GITHUB_SHA }
@@ -114,7 +99,6 @@ if (-not $Revision) {
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
 $network = $manifest.network
 $fork = $manifest.fork
-$variant = $manifest.variant
 $sqlite = $manifest.sqlite
 
 $staging = Join-Path $OutputDirectory $productName
@@ -213,28 +197,59 @@ Write-Host ("  {0}  {1:N0} bytes" -f $priName, (Get-Item $priPath).Length)
 Write-Host ("  {0} compiled XAML file(s): {1}" -f $xbf.Count, (($xbf | ForEach-Object { $_.Name }) -join ', '))
 
 # ---------------------------------------------------------------------------
-# The network comes out
+# The network is in here, checked rather than assumed
 # ---------------------------------------------------------------------------
 #
 # The publish above copied the asset directory windows/build-core-dll.ps1
-# staged, and that directory is the verified one — it holds the network, because
-# every other thing that consumes it needs the network. Removing it here rather
-# than staging assets a second time keeps one verified staging in the project
-# instead of two, and means the variant configuration in the zip is the same
-# bytes CMake checked against pinned-inputs.json.
+# staged, and that directory is the verified one: CMake checked the network's
+# byte length and SHA-256 against pinned-inputs.json before writing it, and
+# staged nothing that failed. Shipping that staging rather than assembling a
+# second one is what keeps the zip's assets the bytes that were verified.
+#
+# Checking them again here is not the same check twice. What CMake verified was
+# the file it was given; what this verifies is the file that survived a publish,
+# a copy and whatever an MSBuild pipeline did in between — and the failure it
+# catches is silent in a way the others are not. An app whose network is absent,
+# renamed or corrupt does not crash: the AI refuses to start, every other
+# feature works, and the person who unpacked it has no way to know why. So:
+# exactly one .nnue, under the manifest's name, at the manifest's length, with
+# the manifest's hash. No value is restated here — all three come from the
+# manifest, as docs/architecture.md's input rule requires.
 
 $stagedAssets = Join-Path $staging 'assets'
-$removed = @(Get-ChildItem -Path $stagedAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue)
-foreach ($file in $removed) {
-    Write-Host ("Removing the network from the distribution: {0} ({1:N0} bytes)" -f $file.Name, $file.Length)
-    Remove-Item $file.FullName -Force
+Write-Host ''
+Write-Host 'Checking the network the zip carries'
+$networks = @(Get-ChildItem -Path $stagedAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue)
+if ($networks.Count -ne 1) {
+    $found = if ($networks.Count -eq 0) { 'none' } else { ($networks | ForEach-Object { $_.Name }) -join ', ' }
+    throw ("Expected exactly one .nnue in $stagedAssets; found $($networks.Count) ($found). More than one " +
+           "usually means windows/artifacts/assets kept a network from an earlier build after the bundled " +
+           "name changed — delete windows/artifacts and re-run windows/build-core-dll.ps1, which now clears " +
+           "them itself. None means the core staged no network at all, which that script refuses to finish " +
+           "without. Either way, stop rather than shipping a zip whose AI may not start.")
 }
-if ($removed.Count -eq 0) {
-    throw ("No NNUE network was found in $stagedAssets to remove. The published tree should have " +
-           "contained one, because windows/build-core-dll.ps1 stages the verified network beside the " +
-           "variant configuration and refuses to finish without it. Something changed upstream of this " +
-           "script; stop rather than shipping a zip whose asset staging is not the verified one.")
+$stagedNetwork = $networks[0]
+# -cne, not -ne: PowerShell's string comparison is case-insensitive by default,
+# and the rule this gate defends is not. The engine matches the file's basename
+# against the variant identifier case-sensitively, so a network whose name
+# differs only in case passes -ne and is then ignored in silence at runtime,
+# which is the one failure this whole check exists to catch.
+if ($stagedNetwork.Name -cne $network.filename) {
+    throw ("The staged network is named $($stagedNetwork.Name); pinned-inputs.json pins $($network.filename). " +
+           "The engine restricts NNUE to the matching variant by this basename, and a name that does not " +
+           "match disables NNUE silently while the app still reports it in use.")
 }
+if ($stagedNetwork.Length -ne $network.byte_length) {
+    throw ("$($stagedNetwork.Name) is $('{0:N0}' -f $stagedNetwork.Length) bytes; pinned-inputs.json pins " +
+           "$('{0:N0}' -f $network.byte_length). Refusing to package unverified bytes.")
+}
+$stagedHash = (Get-FileHash $stagedNetwork.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($stagedHash -ne $network.sha256) {
+    throw ("$($stagedNetwork.Name) hashes to $stagedHash; pinned-inputs.json pins $($network.sha256). " +
+           "Refusing to package unverified bytes.")
+}
+Write-Host ("  {0}  {1:N0} bytes  sha256 {2}" -f $stagedNetwork.Name, $stagedNetwork.Length, $stagedHash)
+Write-Host '  name, length and hash all match pinned-inputs.json'
 
 # ---------------------------------------------------------------------------
 # The Visual C++ runtime
@@ -308,38 +323,6 @@ if ($missing.Count -eq 0) {
 }
 
 # ---------------------------------------------------------------------------
-# The network is not in here, checked rather than assumed
-# ---------------------------------------------------------------------------
-#
-# Three ways, because one removal above is a line of code and this is the
-# constraint the whole design turns on. By name, by exact byte length, and — for
-# anything that matches the length — by content. A renamed network is caught by
-# the second, a network hidden inside another file's name by the third.
-
-Write-Host ''
-Write-Host 'Checking that no NNUE network reached the distribution'
-$leaks = @()
-foreach ($file in Get-ChildItem -Path $staging -Recurse -File) {
-    if ($file.Extension -eq '.nnue') {
-        $leaks += "$($file.FullName): a .nnue file"
-        continue
-    }
-    if ($file.Length -eq $network.byte_length) {
-        $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($hash -eq $network.sha256) {
-            $leaks += "$($file.FullName): the pinned network's bytes under another name"
-        } else {
-            Write-Host "  $($file.Name) is the network's size but not its bytes ($hash)"
-        }
-    }
-}
-if ($leaks.Count -gt 0) {
-    throw ("The NNUE network reached the distribution, which must never happen: this artifact is " +
-           "downloadable by any GitHub account. " + ($leaks -join '; '))
-}
-Write-Host '  no .nnue file, and nothing with the pinned network''s length or bytes'
-
-# ---------------------------------------------------------------------------
 # Every native binary is this architecture, checked rather than assumed
 # ---------------------------------------------------------------------------
 #
@@ -392,161 +375,20 @@ if ($hybrid.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------------------
-# The network goes back in, for an internal package only
-# ---------------------------------------------------------------------------
-#
-# This is the one step the two modes do not share, and it is deliberately after
-# both checks rather than before them: what those checks establish is that the
-# *published tree* carries no network, which is a fact about the build and is
-# equally worth having in either mode. Anything in assets/ from here on is
-# something this block put there, in the open, having verified it.
-#
-# The bytes are checked against pinned-inputs.json exactly as core/CMakeLists.txt
-# checks them, and for the same reason: an internal package with the wrong
-# network is an opponent nobody can tell is wrong. Neither value is restated
-# here — both come from the manifest.
-
-if ($internal) {
-    Write-Host ''
-    Write-Host 'Placing the network for an internal package'
-    if (-not (Test-Path $NnueSource)) {
-        throw "No NNUE network at $NnueSource. An internal package is the complete app; without those bytes it is the public zip under a misleading name."
-    }
-    $given = Get-Item $NnueSource
-    if ($given.Length -ne $network.byte_length) {
-        throw ("$NnueSource is $('{0:N0}' -f $given.Length) bytes; pinned-inputs.json pins the network at " +
-               "$('{0:N0}' -f $network.byte_length). Refusing to package unverified bytes.")
-    }
-    $givenHash = (Get-FileHash $NnueSource -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($givenHash -ne $network.sha256) {
-        throw ("$NnueSource hashes to $givenHash; pinned-inputs.json pins $($network.sha256). " +
-               "Refusing to package unverified bytes.")
-    }
-    Copy-Item $NnueSource (Join-Path $stagedAssets $network.filename) -Force
-    Write-Host ("  $($network.filename)  {0:N0} bytes  sha256 {1}" -f $given.Length, $givenHash)
-    Write-Host '  verified against pinned-inputs.json before it was copied'
-}
-
-# ---------------------------------------------------------------------------
 # The documents
 # ---------------------------------------------------------------------------
 #
-# NETWORK.md and NOTICE.md are generated from pinned-inputs.json rather than
-# written by hand, because docs/architecture.md's input rule cuts both ways: a
-# hash or a revision restated anywhere is a second place for it to be wrong, and
-# a distribution that tells somebody the wrong SHA-256 is worse than one that
-# tells them nothing.
+# NOTICE.md is generated from pinned-inputs.json rather than written by hand,
+# because docs/architecture.md's input rule cuts both ways: a hash or a revision
+# restated anywhere is a second place for it to be wrong, and a distribution that
+# tells somebody the wrong revision is worse than one that tells them nothing.
 #
-# They are written last so that they describe the directory as it now is. A
-# NETWORK.md telling somebody to go and find a file that is sitting beside it
-# would be the one kind of wrong that costs a reader more than saying nothing.
+# There is no NETWORK.md any more. It existed to tell a reader about a file that
+# was not in the zip; the file is in the zip, so the honest length of that
+# document is zero. What a reader may still want — which network, and how to
+# check it survived the download — is one row in NOTICE.md and the self-check.
 
 Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $staging 'LICENSE') -Force
-
-$networkPath = "$productName\assets\$($network.filename)"
-
-if ($internal) {
-
-Set-Content -Path (Join-Path $staging 'NETWORK.md') -Encoding UTF8 -Value @"
-# The network file is already here
-
-This is a **complete internal package**: the neural network the AI evaluates
-with is in it, at ``assets\$($network.filename)``, and there is nothing to add.
-Unpack it and run ``MiniXiangqi.App.exe``.
-
-| | |
-|---|---|
-| File name | ``$($network.filename)`` |
-| Size | $('{0:N0}' -f $network.byte_length) bytes |
-| SHA-256 | ``$($network.sha256)`` |
-
-Those are the values ``pinned-inputs.json`` pins, and the packaging build
-verified the file against both before putting it here. If you want to confirm
-it survived the copy:
-
-``````powershell
-Get-FileHash .\assets\$($network.filename) -Algorithm SHA256
-``````
-
-Or run ``MiniXiangqi.Smoke.exe``, which opens the real core, plays whole games
-against the AI and prints ``MXQ_SMOKE_OK`` at the end if everything is in place.
-
-## Why this file exists at all
-
-The build this repository publishes automatically does **not** contain the
-network. Its artifacts are downloadable by anyone with a GitHub account, and the
-network's redistribution licence has never been established, so it is kept out
-of anything public and named instead. Packages built by hand for internal
-testers — this one — carry it, which is what the licence position allows and
-what makes this the complete app.
-
-**So do not put this zip anywhere public**, or attach it to anything that is.
-Hand it to internal testers directly.
-"@
-
-} else {
-
-Set-Content -Path (Join-Path $staging 'NETWORK.md') -Encoding UTF8 -Value @"
-# The one file that is not in here
-
-This app plays against you with a neural-network evaluation, and **that network
-file is not in this zip**. Everything else is. Until you add it, the app opens
-and works — Free Play, History, replay, import, export and Settings are all
-unaffected — but **the AI will not start**, and starting a Human-versus-AI game
-will fail.
-
-The network is not here because this project's source repository is public and
-the network's redistribution licence has never been established. It is not ours
-to hand out, so it travels to you separately.
-
-## What to add
-
-| | |
-|---|---|
-| File name | ``$($network.filename)`` |
-| Size | $('{0:N0}' -f $network.byte_length) bytes exactly |
-| SHA-256 | ``$($network.sha256)`` |
-
-**The file name matters.** The engine restricts a network to the matching
-variant by the name's leading part, and a renamed file is ignored silently while
-the app still reports that the network is in use. Copy it under exactly the name
-above.
-
-## Where it goes
-
-Beside the variant configuration, in the ``assets`` folder next to the app:
-
-``````text
-$productName\
-  MiniXiangqi.App.exe
-  assets\
-    $($variant.filename)
-    $($network.filename)   <-- here
-``````
-
-## How to check you got it right
-
-Run ``MiniXiangqi.Smoke.exe`` from this folder. It is the same self-check this
-build runs in CI: it opens the real core, reads the staged network, plays whole
-games against the AI and prints a count of checks and failures. The last line is
-``MXQ_SMOKE_OK`` when everything is right. It takes a few minutes and needs no
-window.
-
-If you would rather check by hand, PowerShell will tell you the hash:
-
-``````powershell
-Get-FileHash .\assets\$($network.filename) -Algorithm SHA256
-``````
-
-## What it looks like when the file is missing or wrong
-
-The app starts normally. Starting a Human-versus-AI game raises a failure
-notice, and resuming a saved AI game shows "The AI can't start right now" on the
-board with a Try Again that will keep failing. Neither message names this file
-today. Add the network and the AI starts.
-"@
-
-}
 
 Set-Content -Path (Join-Path $staging 'NOTICE.md') -Encoding UTF8 -Value @"
 # Mini Xiangqi — licences and attribution
@@ -555,7 +397,10 @@ Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
 full text is in ``LICENSE`` beside this file. The project's source is at
 <https://github.com/ppppvz/MiniXiangqi>.
 
-This build contains the following third-party components.
+What else is in this build, and under what terms. One section below is not a
+third-party component at all — the neural network is this project's own — and it
+is here because a reader looking for where the AI's evaluation came from will
+look here first.
 
 ## Fairy-Stockfish — GPL-3.0
 
@@ -578,14 +423,32 @@ file in it. The fork URL above is where that copy came from; the path is this
 project's. Carrying the sources rather than only linking to somebody else's
 server is what makes the corresponding source available even if the fork moves.
 
-$(if ($internal) {
-"The neural network the evaluation loads is a separate input with its own
-provenance, and is not covered by this notice. It is in this package because
-this package is for internal testers; see ``NETWORK.md``."
-} else {
-"The neural network the evaluation loads is **not** part of this distribution and
-is not covered by this notice; see ``NETWORK.md``."
-})
+## The neural network — this project's own
+
+The evaluation the AI thinks with is a neural network this project trained from
+zero, and it is not a third-party component: it is covered by the licence at the
+top of this file, like the rest of the application. It is in ``assets`` beside
+the variant configuration.
+
+| | |
+|---|---|
+| File name | ``$($network.filename)`` |
+| Size | $('{0:N0}' -f $network.byte_length) bytes |
+| SHA-256 | ``$($network.sha256)`` |
+| Pipeline | <$($network.provenance.pipeline_repository)> |
+| Pipeline revision | ``$($network.provenance.pipeline_revision)`` |
+
+The pipeline above is public and is the provenance: it generates its own training
+data with the engine revision named in this file and the variant configuration
+beside the network, and generation 0 was trained from the engine's own classical
+evaluation, with no other network as a teacher or a seed at any stage.
+
+The packaging build verified this file against the size and hash above before
+putting it here. To confirm it survived the download:
+
+``````powershell
+Get-FileHash .\assets\$($network.filename) -Algorithm SHA256
+``````
 
 ## SQLite — public domain
 
@@ -629,14 +492,9 @@ Unpack this folder anywhere you can write to, and run **``MiniXiangqi.App.exe``*
 There is nothing to install: the .NET runtime, the Windows App Runtime and the
 Visual C++ runtime are all in this folder.
 
-$(if ($internal) {
-"This is a complete internal package — the AI's network file is in it and there
-is nothing to add. ``NETWORK.md`` says what it is and why the automatically
-published build does not carry it. **Do not put this zip anywhere public.**"
-} else {
-"**Read ``NETWORK.md`` first.** One file is deliberately missing from this zip,
-and the AI cannot start until you add it. Everything else works without it."
-})
+This is the whole app. Nothing is missing from it and there is nothing to add:
+the AI's neural network is in ``assets`` with everything else, and ``NOTICE.md``
+says what it is and where it came from.
 
 ## What this machine needs
 
@@ -671,22 +529,14 @@ Built from ``$Revision``, $(Get-Date -Format 'yyyy-MM-dd').
 # under one folder, so unpacking this into a downloads directory produces one
 # directory rather than several hundred loose files.
 #
-# The two modes differ in the zip's name and in nothing else, so an internal
-# package unpacks to the same folder with the same contents plus one file. The
-# name carries the short revision because an internal package is handed over by
-# hand and there is otherwise nothing on it to say which build it is; the public
-# one does not need it, because the run that produced it is its provenance.
+# One name, because there is one zip. The -internal- suffix a second, complete
+# package used to carry is gone with the package: what it distinguished was
+# whether the network was inside, and now it always is.
 
 if (-not ('System.IO.Compression.ZipFile' -as [type])) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 }
-$zipName = if ($internal) {
-    $short = if ($Revision.Length -ge 7) { $Revision.Substring(0, 7) } else { $Revision }
-    "$productName-internal-$short.zip"
-} else {
-    "$productName.zip"
-}
-$zipPath = Join-Path $OutputDirectory $zipName
+$zipPath = Join-Path $OutputDirectory "$productName.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory(
     $staging, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $true)
@@ -696,7 +546,6 @@ $unpacked = ($files | Measure-Object -Property Length -Sum).Sum
 $zip = Get-Item $zipPath
 
 Write-Host ''
-Write-Host ("Kind:             {0}" -f $(if ($internal) { 'complete internal package — keep it off public locations' } else { 'public-safe, without the network' }))
 Write-Host "Distribution:     $zipPath"
 Write-Host ("Zipped:           {0:N0} bytes" -f $zip.Length)
 Write-Host ("Unpacked:         {0:N0} bytes in {1:N0} files" -f $unpacked, $files.Count)

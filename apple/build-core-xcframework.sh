@@ -194,26 +194,28 @@ cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
 # The bundled NNUE network, staged the same way and under the same policy the
 # core's CMake staging enforces: nothing is consumed on trust.
 #
-# The repository never contains these bytes. They live in the workspace at
-# .git/minixiangqi-control/nnue/ under the source name the network was
-# published with, and they are bundled under the name the variant-matching rule
-# requires — the engine restricts NNUE to the matching variant by requiring the
-# file's basename to begin with the variant identifier, and a basename that does
-# not match disables NNUE *silently* while the Use NNUE option still reads true.
-# Only the name changes: the byte length and the SHA-256 are over content and
-# are what pinned-inputs.json pins.
+# It comes from core/assets, beside the variant configuration it is loaded with,
+# under the name it is bundled as — which has to begin with the variant
+# identifier, because the engine restricts NNUE to the matching variant by that
+# basename and a name that does not match disables NNUE *silently* while the Use
+# NNUE option still reads true. MXQ_NNUE_SOURCE overrides the path, which is how
+# a candidate network is tried before it is committed; nothing has to set it for
+# an ordinary build.
 #
 # Absence or a mismatch stops here rather than producing an app whose AI is
-# quietly a different opponent. plutil reads the manifest because it is on every
-# Mac and this script is Apple-only.
-nnue_source="${MXQ_NNUE_SOURCE:-$root/.git/minixiangqi-control/nnue/minixiangqi-12c45d5da817.nnue}"
+# quietly a different opponent. It is worth verifying a version-controlled file:
+# the check is what catches an override pointed at the wrong bytes, and a
+# checkout that damaged four megabytes of weights would otherwise be invisible.
+# plutil reads the manifest because it is on every Mac and this script is
+# Apple-only.
 nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+nnue_source="${MXQ_NNUE_SOURCE:-$root/core/assets/$nnue_name}"
 nnue_length=$(plutil -extract network.byte_length raw -o - "$root/pinned-inputs.json")
 nnue_sha256=$(plutil -extract network.sha256 raw -o - "$root/pinned-inputs.json")
 
 if [ ! -f "$nnue_source" ]; then
   echo "error: the NNUE network was not found at $nnue_source" >&2
-  echo "note: point MXQ_NNUE_SOURCE at the pinned bytes; the repository never carries them." >&2
+  echo "note: it belongs in core/assets under the name pinned-inputs.json pins, or point MXQ_NNUE_SOURCE at other bytes." >&2
   exit 1
 fi
 actual_length=$(wc -c < "$nnue_source" | tr -d ' ')
@@ -226,6 +228,26 @@ if [ "$actual_sha256" != "$nnue_sha256" ]; then
   echo "error: the NNUE network at $nnue_source does not match the SHA-256 pinned-inputs.json pins." >&2
   exit 1
 fi
+# Exactly one network ends up in Resources, so any other one goes first.
+#
+# This matters the moment the bundled network's NAME changes, which it did when
+# the project's own network replaced the community one. Copying the new name
+# beside the old leaves two, and apple/MiniXiangqi is a file-system-synchronized
+# group: both would be bundled into the .app and both would ship. The runtime
+# would not notice — the bridge prefers the pinned basename — which is exactly
+# why nothing else would catch it.
+#
+# An unmatched glob expands to the pattern itself in a POSIX shell, so the
+# existence test is what makes "no networks here" a no-op rather than an attempt
+# to delete a file called *.nnue.
+for stale in "$resources"/*.nnue; do
+  [ -e "$stale" ] || continue
+  if [ "$(basename "$stale")" != "$nnue_name" ]; then
+    rm -f "$stale"
+    echo "removed a network that is no longer the bundled one: $(basename "$stale")"
+  fi
+done
+
 cp "$nnue_source" "$resources/$nnue_name"
 echo "staged the pinned network as $nnue_name"
 

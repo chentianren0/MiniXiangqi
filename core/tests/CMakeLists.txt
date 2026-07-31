@@ -237,9 +237,17 @@ endif()
 string(REPLACE ";" "," MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM}")
 string(REPLACE "\\" "/" MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM_TEXT}")
 
+# The bundled name and the two variant identifiers reach the suite from the
+# manifest rather than being spelled a second time in C++. The suite reads the
+# staged network by name and composes the wrong-basename case's name from the
+# other two, so replacing the network stays what pinned-inputs.json says it is:
+# the bytes and the manifest, with nothing else to remember.
 target_compile_definitions(mxq_search_tests PRIVATE
   MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
   MXQ_TEST_ASSETS_DIR="${MXQ_TEST_ASSETS_DIR}"
+  MXQ_TEST_NNUE_FILENAME="${MXQ_BUILD_NNUE_FILENAME}"
+  MXQ_TEST_VARIANT_ID="${MXQ_BUILD_VARIANT_ID}"
+  MXQ_TEST_BASE_VARIANT_ID="${MXQ_BUILD_BASE_VARIANT_ID}"
   MXQ_TEST_NNUE_STAGED=${MXQ_TEST_NNUE_STAGED}
   MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM_TEXT}"
 )

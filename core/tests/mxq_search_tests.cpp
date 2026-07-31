@@ -18,10 +18,13 @@
  *
  * The wrong-basename case is the one the NNUE policy exists for: the network
  * bytes are the pinned ones — every byte-level preflight passes — but the
- * basename is the SOURCE name rather than the bundled one, the engine clears
- * its internal NNUE flag silently while the Use NNUE option still reads true,
- * and only the effective-state preflight stands between that and an opponent
- * silently playing on classical evaluation.
+ * basename names the PARENT variant rather than the custom one, the engine
+ * clears its internal NNUE flag silently while the Use NNUE option still reads
+ * true, and only the effective-state preflight stands between that and an
+ * opponent silently playing on classical evaluation. The mistake is a live one
+ * even now that the network is committed under its bundled name: minixiangqi
+ * and minixiangqiaxf differ by three characters, and only one of them is the
+ * variant this app plays.
  *
  * With the engine in the build, a missing or mismatched staged network FAILS
  * this suite with the configure-time message rather than skipping: a suite
@@ -132,9 +135,23 @@ std::string staged_assets() {
     return MXQ_TEST_ASSETS_DIR;
 }
 
-constexpr const char *kBundledNetworkName = "minixiangqiaxf-12c45d5da817.nnue";
-constexpr const char *kSourceNetworkName = "minixiangqi-12c45d5da817.nnue";
+/* All three from pinned-inputs.json through the build, rather than spelled
+ * again here: replacing the network is then the bytes and the manifest and
+ * nothing else. */
+constexpr const char *kBundledNetworkName = MXQ_TEST_NNUE_FILENAME;
+constexpr const char *kVariantId = MXQ_TEST_VARIANT_ID;
+constexpr const char *kBaseVariantId = MXQ_TEST_BASE_VARIANT_ID;
 constexpr const char *kVariantIniName = "minixiangqi-variants.ini";
+
+/* The same bytes under a basename naming the variant this one derives FROM:
+ * the bundled name with `minixiangqiaxf` replaced by `minixiangqi`. It is the
+ * plausible mistake — the two identifiers differ by three characters and only
+ * one of them is the variant the engine is configured for — and the engine
+ * refuses it in silence. */
+std::string wrong_prefix_network_name() {
+    return std::string(kBaseVariantId) +
+           std::string(kBundledNetworkName).substr(std::strlen(kVariantId));
+}
 
 /* A fresh scratch directory per case, so no case can lean on another. */
 fs::path scratch_root() {
@@ -486,15 +503,36 @@ void case_missing_network() {
 }
 
 void case_wrong_basename_network() {
-    Case c("the pinned bytes under the source basename fail the "
+    Case c("the pinned bytes under the parent variant's basename fail the "
            "effective-NNUE preflight, not the byte preflight");
     /* The realistic packaging failure: the bytes are exactly the pinned
-     * network — length and hash both pass — but the file kept its source
-     * name, which does not begin with the variant identifier. */
+     * network — length and hash both pass — but the basename names the parent
+     * variant, so it does not begin with the variant identifier. */
     const std::string bytes =
         read_file(fs::path(staged_assets()) / kBundledNetworkName);
+    const std::string wrong_name = wrong_prefix_network_name();
+
+    /* What is staged has to be the mistake this case is about, and it is
+     * composed from two build definitions rather than written out — so a
+     * definition that arrived empty or wrong would compose something like
+     * "-ad52b8658c9e.nnue", which fails the prefix rule for a reason nobody
+     * intended and would let this case pass while testing nothing it claims to.
+     * These three make that loud instead. */
+    c.check(std::strlen(kBaseVariantId) > 0,
+            "MXQ_TEST_BASE_VARIANT_ID reached this build: the staged name is "
+            "composed from it and means nothing when it is empty");
+    c.check(wrong_name.starts_with(kBaseVariantId) &&
+                wrong_name.size() > std::strlen(kBaseVariantId),
+            "the staged name is the parent variant's identifier followed by the "
+            "rest of the bundled name, got: " + wrong_name);
+    c.check(!wrong_name.starts_with(kVariantId),
+            std::string("the staged name does NOT begin with the configured "
+                        "variant identifier, which is the whole provocation, "
+                        "got: ") +
+                wrong_name);
+
     const fs::path assets =
-        stage_assets("wrong-basename", kSourceNetworkName, &bytes);
+        stage_assets("wrong-basename", wrong_name.c_str(), &bytes);
     const fs::path store = scratch_dir("wrong-basename-store");
     MxqError err = make_error();
     MxqCore *core = nullptr;

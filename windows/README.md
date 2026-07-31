@@ -22,8 +22,7 @@ menus rather than recreated Apple styling.
 | | |
 |---|---|
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
-| `package-zip.ps1` | the packaging build: publishes, strips the network, and writes the distribution zip |
-| `package-internal.ps1` | the same build with the network placed — the complete package, for internal testers |
+| `package-zip.ps1` | the packaging build: publishes, checks the network it carries, and writes the distribution zip |
 | `make-app-icon.py` | builds `MiniXiangqi.ico` from the icon design's 1024 px export |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
@@ -99,15 +98,17 @@ during the build would put a multi-minute C++ compile inside every C# build. So,
 the repository root, and again after any change under `core/`:
 
 ```powershell
-pwsh windows\build-core-dll.ps1 -NnueSource <path to the pinned network>
+pwsh windows\build-core-dll.ps1
 dotnet build windows\MiniXiangqi.slnx -c Release
 ```
 
-The network's bytes are in no repository ([`docs/engine-integration.md`](../docs/engine-integration.md));
-`-NnueSource` names where they are, and CMake verifies their byte length and SHA-256
-against [`pinned-inputs.json`](../pinned-inputs.json) before staging anything. Building
-the C# projects without having run the script first fails with a message that says so
-rather than producing an executable that cannot find its core.
+The NNUE network needs no argument: it is in this repository at `core/assets`
+([`docs/engine-integration.md`](../docs/engine-integration.md)), and CMake verifies its
+byte length and SHA-256 against [`pinned-inputs.json`](../pinned-inputs.json) before
+staging anything. `-NnueSource` is still there as an override, for trying a candidate
+network that has not been committed yet. Building the C# projects without having run the
+script first fails with a message that says so rather than producing an executable that
+cannot find its core.
 
 **Both commands build for the machine they are run on**, which is the whole of the
 architecture story on a developer machine. `build-core-dll.ps1` takes `-Architecture`
@@ -116,7 +117,7 @@ so an x64 machine produces an x64 core and an x64 frontend with no argument, and
 ARM64 machine produces ARM64 ones. To build for the other architecture:
 
 ```powershell
-pwsh windows\build-core-dll.ps1 -Architecture arm64 -NnueSource <path to the pinned network>
+pwsh windows\build-core-dll.ps1 -Architecture arm64
 dotnet build windows\MiniXiangqi.slnx -c Release -p:MxqRuntimeIdentifier=win-arm64
 ```
 
@@ -695,11 +696,11 @@ is still heard, with the volume mixer where somebody who wants it quieter goes.
 ## Continuous integration
 
 [`.github/workflows/windows-frontend.yml`](../.github/workflows/windows-frontend.yml)
-builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, fetches the pinned network with the
-same script the core suites use, regenerates the bindings and fails on any difference
-from what is committed, compares the four sound samples against the Apple bundle's,
-builds every project, runs the smoke harness against `docs/copy.md`, renders the board,
-and builds the distribution zip. It uploads the renders and both zips on every run.
+builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, regenerates the bindings and fails
+on any difference from what is committed, compares the four sound samples against the
+Apple bundle's, builds every project, runs the smoke harness against `docs/copy.md`,
+renders the board, and builds the distribution zip. It uploads the renders and the zip
+on every run, and it takes no secrets: the network the AI needs is in the checkout.
 
 **It is a matrix over two architectures**, each on its own native runner: `windows-2025`
 for `x64` and `windows-11-arm` for `ARM64`. Three steps run on `x64` only, and the
@@ -808,33 +809,39 @@ places. **The build tree was never evidence for the zip on this point**: it runs
 it was built, and this is precisely the class of thing that is only wrong after a
 publish.
 
-**The network is not in the zip, and that is the decision the design turns on.** This
-repository is public and a GitHub Actions artifact on a public repository can be
-downloaded by any logged-in GitHub account, so an artifact carrying the NNUE network
-would be a public distribution of bytes whose redistribution licence
-[`docs/engine-integration.md`](../docs/engine-integration.md) has never let anybody
-establish. The publish copies the verified asset directory, the script removes the
-network from it, and then checks three ways that none survived: no `.nnue` by extension,
-nothing with the pinned byte length, and — for anything that matches the length — nothing
-with the pinned SHA-256. Removing it from the *verified* staging rather than staging
-assets a second time is deliberate: the variant configuration in the zip is the same
-bytes CMake checked against the manifest, not a second uncontrolled copy.
+**The network is in the zip, and the zip is the whole app.** *(2026-07-31.)* It used to be
+the one thing deliberately left out: this repository is public, a GitHub Actions artifact
+on a public repository can be downloaded by any logged-in GitHub account, and the network
+then bundled was community-trained with a redistribution licence nobody had established.
+The network [`docs/engine-integration.md`](../docs/engine-integration.md) now records is
+this project's own, so there is nothing the artifact cannot carry and no second, more
+complete package to build.
 
-`NETWORK.md` in the zip names the file, the byte length, the SHA-256 and the folder,
-generated from [`pinned-inputs.json`](../pinned-inputs.json) rather than transcribed, so
-the instruction and the manifest cannot disagree. `NOTICE.md` names Fairy-Stockfish with
-the pinned fork revision, SQLite's public-domain dedication, and the Microsoft
-redistributables — also from the manifest. `LICENSE` is the repository's own GPL-3.0.
+What survives that change is the check, inverted. The publish copies the verified asset
+directory — the staging CMake produced, not a second uncontrolled copy — and the script
+then confirms the network is in it and *is* the network: exactly one `.nnue`, under the
+manifest's name, at the manifest's byte length, with the manifest's SHA-256. The failure
+it guards is the quiet one. A network that is absent, renamed or damaged does not crash
+anything: the AI declines to start, every other feature works, and whoever unpacked the
+zip has no way to know why. Name matters as much as bytes, because the engine restricts
+NNUE to the matching variant by the file's leading name and ignores a mismatch in silence.
+
+`NOTICE.md` names Fairy-Stockfish with the pinned fork revision, SQLite's public-domain
+dedication, the Microsoft redistributables, and the network — which filename, which byte
+length, which SHA-256, and which pipeline revision produced it — all generated from
+[`pinned-inputs.json`](../pinned-inputs.json) rather than transcribed, so the note and
+the manifest cannot disagree. `LICENSE` is the repository's own GPL-3.0. There is no
+`NETWORK.md`: it existed to describe a file that was not in the zip.
 
 **The zip is proved runnable rather than assumed to be.** The workflow unpacks the
-artifact it just built into a directory of its own, drops the network into the unpacked
-`assets` folder from the same fetch the build used — the way `NETWORK.md` asks a person
-to — and runs the `MiniXiangqi.Smoke.exe` that came out of the zip against the zip's own
-layout: its own core DLL, its own assets, its own runtime, at the paths somebody who
-unpacked it would have, with nothing from the build tree on that path. The network copied
-in never leaves the runner, because the artifact was zipped before that step and is not
-rebuilt after it. That harness is in the zip for the same reason: it is how a person who
-has just placed the network file finds out whether they placed it correctly.
+artifact it just built into a directory of its own and runs the `MiniXiangqi.Smoke.exe`
+that came out of the zip against the zip's own layout: its own core DLL, its own assets,
+its own network, its own runtime, at the paths somebody who unpacked it would have, with
+nothing from the build tree on that path and nothing added to it. That last clause is new
+and is worth the sentence — the run used to need the network dropped in first, so what it
+exercised was the zip plus a step, and it now exercises the zip. The harness is in the zip
+for the reader's sake as much as CI's: it is how somebody finds out whether their copy
+is sound before they sit down with it.
 
 **Runnable, and the word has a limit worth stating.** What that run proves is the layer
 the harness touches: the core DLL loads from the unpacked folder, the C++ runtime is
@@ -861,41 +868,21 @@ is a zip containing `MiniXiangqi-windows-<arch>.zip`. That is the cost of the ar
 being byte-for-byte the file the job proved, rather than a repackaging of the directory
 it proved; the alternative uploads a tree and proves a different thing than it ships.
 
-### Two zips, and the line between them
+### Building a distribution by hand
 
-[`package-internal.ps1`](package-internal.ps1) builds the **complete** package: the same
-layout, from the same code path — it *is* `package-zip.ps1`, called with the network's
-bytes — with the network verified against `pinned-inputs.json` and placed in `assets/`,
-and a `NETWORK.md` that says it is there rather than telling somebody to go and find it.
-It emits `MiniXiangqi-windows-<arch>-internal-<revision>.zip` locally and uploads nothing.
-
-**The line between the two is a licensing one, not a technical one.** Bundling the pinned
-network for internal testers is accepted — [`docs/engine-integration.md`](../docs/engine-integration.md)'s
-NNUE handling policy says so plainly. What is barred is a *public* location, because the
-network's origin and redistribution licence have never been established and that document
-makes establishing them a mandatory gate for any distribution beyond internal testing.
-CI's artifacts are a public location: any logged-in GitHub account can download them from
-a public repository. So the automatically published zip cannot carry the network — and
-structurally does not, since the script only places one when handed a path and CI never
-hands it one — while a package built by hand on a machine the owner controls and given to
-a tester directly carries it and is the complete app. The internal zip's own README and
-NETWORK.md both say not to put it anywhere public, for whoever opens it later without
-this paragraph in front of them.
-
-The order inside `package-zip.ps1` is what makes that structural rather than trusted: the
-publish's network is removed and the whole staged tree is checked three ways **before**
-anything is placed back, so both modes run that check on an identical tree and anything
-in `assets/` afterwards is something the internal branch put there in the open. CI also
-runs the internal script once per architecture, into `RUNNER_TEMP` and after the artifact
-upload, purely to prove the path the uploaded zip does not take — then re-examines
-`windows/dist` for the network by name and by byte length and fails the job on a hit.
-
-To build one, from the repository root, with the two commands in this order:
+The zip anybody is given comes from CI, and building one locally is the same two
+commands the workflow runs, from the repository root and in this order:
 
 ```powershell
-pwsh windows\build-core-dll.ps1 -NnueSource <path to the pinned network>
-pwsh windows\package-internal.ps1
+pwsh windows\build-core-dll.ps1
+pwsh windows\package-zip.ps1
 ```
+
+There used to be a second entry point here, `package-internal.ps1`, and a section
+explaining the line between two zips. Both are gone. The line was a licensing one — the
+published zip could not carry the community-trained network, a hand-built one for
+internal testers could — and with a network this project owns there is nothing to draw
+it around. One script, one zip, one complete application, and CI's own artifact is it.
 
 Use `pwsh` rather than `powershell`: Windows PowerShell 5.1 — the default in some shells and
 SSH sessions — does not accept `&&` as a statement separator; `;` is, or start `pwsh` first.

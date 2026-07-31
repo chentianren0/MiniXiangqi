@@ -28,6 +28,15 @@
 # this file names that is not in the repository is the runner image, pinned to
 # an exact label rather than to `-latest` for the same reason.
 #
+# THIS WORKFLOW TAKES NO SECRETS, and that is new. The NNUE network used to be
+# the one build input the repository could not supply — fetched from a private
+# repository with a deploy key, and, where no key was configured, absent, so that
+# `engine_search` was excluded and the run said so. The network is now this
+# project's own and is in the checkout beside the variant configuration, so the
+# fetch, the key, the download-location alternative and the exclusion are all
+# gone: every suite runs on every runner, from bytes anyone reading this file can
+# see, and a fork's pull request gets the same run as a branch's.
+#
 # The images are the newest GitHub hosts, not the oldest that still works: CI
 # should track the toolchain this project actually uses rather than trail it
 # (owner instruction, 2026-07-30). `macos-26` is the newest generally-available
@@ -106,28 +115,7 @@ jobs:
           cmake --version
           cc --version
 
-      # The network never enters version control, in any form
-      # (docs/engine-integration.md, "Accepted NNUE handling policy"), and this
-      # repository is public, so it is not attached to a release here either. It
-      # is cloned instead from the private ppppvz/minixiangqi-assets repository,
-      # with the read-only deploy key below. See
-      # .github/scripts/fetch-network.sh for why, for the URL alternative it
-      # also accepts, and for what happens when neither is configured: the one
-      # suite that needs a network does not run, every other suite does, and the
-      # job summary says so. Both secrets are named on both jobs, because a
-      # suite that runs on one platform and is skipped on the other proves
-      # nothing about the platform that skipped it.
-      - name: Fetch the pinned network
-        id: network
-        env:
-          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
-          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
-        run: .github/scripts/fetch-network.sh
-
       - name: Configure, build and run both configurations
-        env:
-          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
-          MXQ_CTEST_EXCLUDE: ${{ steps.network.outputs.exclude }}
         run: .github/scripts/run-suites.sh single-config build
 
   windows:
@@ -166,15 +154,5 @@ jobs:
           cmd //c ver
           echo "shell's own architecture: ${PROCESSOR_ARCHITECTURE:-unknown}"
 
-      - name: Fetch the pinned network
-        id: network
-        env:
-          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
-          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
-        run: .github/scripts/fetch-network.sh
-
       - name: Configure, build and run both configurations
-        env:
-          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
-          MXQ_CTEST_EXCLUDE: ${{ steps.network.outputs.exclude }}
         run: .github/scripts/run-suites.sh multi-config build ${{ matrix.arch }}

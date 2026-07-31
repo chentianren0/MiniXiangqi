@@ -23,7 +23,9 @@ core/
 │                     # bindings are generated from
 ├── src/              # the C++ implementation behind it
 ├── tests/            # the one shared C++ test runner
-├── assets/           # minixiangqi-variants.ini, the bundled variant configuration
+├── assets/           # what the engine is configured with: the bundled variant
+│                     # configuration and the NNUE network, which travel together
+│                     # and are both pinned by hash in the manifest
 ├── third_party/      # where the pinned fork and SQLite are vendored
 └── CMakeLists.txt
 ```
@@ -43,11 +45,12 @@ fixture and fails the run only on `FAIL` or `ERROR`.
 That default configuration does **not** compile the vendored engine. Add
 `-DMXQ_ENABLE_RULES_FACADE=ON` to build and link it; the engine is a multi-minute
 compile and nothing else in the core needs it, so it is opt-in. Engine-dependent
-tests also need the pinned NNUE network, which never enters version control:
-point `-DMXQ_NNUE_SOURCE=<path>` at it, and configuration verifies its byte
-length and SHA-256 against `pinned-inputs.json` before staging it. A missing or
-mismatched network stages nothing and the search suite FAILS with the reason
-rather than skipping.
+tests also need the NNUE network, and it needs no argument: it is in `assets/`
+beside the variant configuration, and configuration verifies its byte length and
+SHA-256 against `pinned-inputs.json` before staging it. `-DMXQ_NNUE_SOURCE=<path>`
+overrides that default, which is how a candidate network is tried before it is
+committed. A missing or mismatched network stages nothing and the search suite
+FAILS with the reason rather than skipping.
 
 Run both configurations. `Debug` and `Release` are not the same test run: the
 programming errors in `docs/core-interface.md`'s error taxonomy assert in a
@@ -57,9 +60,9 @@ evaluates them, while only a debug run exercises the assertions themselves.
 
 ```sh
 cmake -S core -B core/.build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-  -DMXQ_ENABLE_RULES_FACADE=ON -DMXQ_NNUE_SOURCE=<path to the pinned network>
+  -DMXQ_ENABLE_RULES_FACADE=ON
 cmake -S core -B core/.build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DMXQ_ENABLE_RULES_FACADE=ON -DMXQ_NNUE_SOURCE=<path to the pinned network>
+  -DMXQ_ENABLE_RULES_FACADE=ON
 ```
 
 This CMake project is standalone and is deliberately not wired into the Xcode

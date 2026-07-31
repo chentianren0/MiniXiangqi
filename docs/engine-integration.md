@@ -153,7 +153,7 @@ Search speed statistics such as nodes per second, depth, and hash utilization ar
 
 - The target variant's identifier is **`minixiangqiaxf`**, defined in a bundled configuration file named `minixiangqi-variants.ini`. The name is distinct from built-in `minixiangqi` so that the two can be selected unambiguously in the same build, which the fixture harness requires in order to run a variant and its control side by side.
 - The variant keeps built-in `minixiangqi`'s board geometry and piece set exactly; it differs only in adjudication. That is what keeps the pinned network structurally valid for it.
-- **The bundled network's filename must begin with the variant identifier.** `EvalFile` is not simply a path the engine opens: the engine restricts NNUE to the matching variant by requiring the file's basename to start with the variant name (or with a `nnueAlias` that an `.ini` variant cannot set). A basename that does not match does not produce an error, and does not change the `Use NNUE` option either — it clears the engine's *internal* NNUE flag, so the option still reads true while the engine plays on classical evaluation. The pinned network is therefore bundled as **`minixiangqiaxf-12c45d5da817.nnue`**. Only the filename changes; the bytes, the byte length, and the SHA-256 that pins them are unchanged, since the hash is over content.
+- **The bundled network's filename must begin with the variant identifier.** `EvalFile` is not simply a path the engine opens: the engine restricts NNUE to the matching variant by requiring the file's basename to start with the variant name (or with a `nnueAlias` that an `.ini` variant cannot set). A basename that does not match does not produce an error, and does not change the `Use NNUE` option either — it clears the engine's *internal* NNUE flag, so the option still reads true while the engine plays on classical evaluation. The pinned network is therefore named **`minixiangqiaxf-ad52b8658c9e.nnue`**, and is committed under that name, so staging is a copy rather than a rename and no build has a chance to get it wrong.
 - Because that failure is silent, the core's preflight must assert the engine's **effective NNUE state** after configuration, not merely that the file exists and parses. A preflight that checks only file presence would pass in exactly the case this rule exists to prevent.
 - The fork's patch boundary is the set of focused source changes this contract and [xiangqi-rules.md](xiangqi-rules.md) require, each recorded in the pinned manifest by revision. Their implementation, tests, and upstream maintenance belong to the fork repository.
 
@@ -165,11 +165,15 @@ The core's rules facade is the authoritative runtime rules component, as accepte
 
 ### Accepted NNUE handling policy
 
-- The repository never contains NNUE bytes. The network file is not committed to version control in any form; it enters builds from a workspace- or CI-provided location.
-- Bundling the pinned network into internal builds is accepted. The product is an internal education app distributed only to internal testers, and the user has approved using and bundling the existing network on that basis.
-- The bundled network is pinned by exact byte length and SHA-256 in a machine-readable manifest, and the build verifies the hash before packaging. A hash mismatch fails the build rather than shipping unverified bytes.
-- The selected network is 4,333,499 bytes, SHA-256 `12c45d5da817e7948cc22f2f295a0781dabd379be472006360c36676f1cc09ce`, bundled as `minixiangqiaxf-12c45d5da817.nnue` for the reason given under variant packaging. Its structural loading with the current local `minixiangqi` engine has been verified.
-- The file's known trainer string is not sufficient provenance or licensing evidence. Establishing origin, training revision, and redistribution license — or replacing the network — becomes a mandatory gate only if distribution ever expands beyond internal testing; no such expansion is planned.
+*(Rewritten 2026-07-31, with the project's own network. What stood here was written for a network of unestablished origin and made establishing it — or replacing it — a mandatory gate for any distribution beyond internal testing. The network was replaced; the gate is passed rather than waived, and this says what the passed state is. The two staging rules below are unchanged, because they never guarded licensing: they guard packaging mistakes, which a network of any provenance can suffer.)*
+
+- **The network is this project's own, and it is in this repository**, at `core/assets/`, beside the variant configuration it is loaded with. Origin and redistribution licence are settled by ownership: the weights were trained by this project, so they are ours to publish, and they are covered by this project's own licence rather than by somebody else's terms.
+- **The provenance is a public pipeline rather than a claim.** `ppppvz/minixiangqi-nnue` at the revision `pinned-inputs.json` records generates its own training data with the shipping fork revision and the pinned variant configuration — the game this app actually plays, adjudication included — and generation 0 was trained from the engine's own classical evaluation, with no other network as a teacher, a seed, or an input at any stage. `pinned-inputs.json`'s `network.provenance` carries the repository, the revision, and the acceptance summary; the pipeline's own `docs/results.md` carries the evidence.
+- **It was accepted against measured gates**, recorded in issue #95: it beats the classical evaluation at each of the app's three thinking times — +417 / +335 / +338 Elo at 1000 / 3000 / 5000 ms, SPRT accepted at all three — and plays more sensibly by the same referee over the same games, 2.00 blunders per 100 moves against classical's 2.58.
+- **It is materially weaker than the community-trained network this project previously bundled**: about 300 Elo below it at the app's settings, and far above having no network at all. That trade was made deliberately and by the owner. What the levels promise is a single strongest configuration differing only in thinking time, which is unchanged; what changes is that the opponent behind it is one whose origin can be stated.
+- The bundled network is pinned by exact byte length and SHA-256 in a machine-readable manifest, and every consumer verifies both before staging a byte: `core/CMakeLists.txt` for the core's own asset directory and both frontends' staging, `apple/build-core-xcframework.sh` for the app's resources, `windows/package-zip.ps1` for the distribution zip. A mismatch fails the build rather than shipping unverified bytes. That the file is version-controlled does not retire the check — it is what catches a build pointed at other bytes, and a damaged four-megabyte binary is invisible without it.
+- **`MXQ_NNUE_SOURCE` remains, as an override rather than as the way a build finds the network.** Its default is the committed file. Pointing it elsewhere is how a candidate network is tried before it is committed; replacing the network for good is the bytes and the manifest, and nothing else.
+- The selected network is 4,333,479 bytes, SHA-256 `ad52b8658c9ebf968bd6fd2d319541bc2f73dca3d790e2b9ac22eaa31c2e8c0a`, committed and bundled as `minixiangqiaxf-ad52b8658c9e.nnue` for the reason given under variant packaging.
 
 ### Accepted network failure policy
 
@@ -179,17 +183,13 @@ There is no fallback to the engine's classical evaluation. The accepted levels a
 
 The core preflights the network against the engine's observable load state before any search, so this is detected during preparation and the engine's own fatal verification path is never reached.
 
-### Accepted absence for the Windows distribution
+### Accepted bundling in every distribution
 
-*(Amended 2026-07-31, with the CI-built zip. The clauses above were written when every build bundled the network, and they treat its absence as damage; one distribution now omits it on purpose, and this says what that means rather than leaving the two to contradict each other.)*
+*(2026-07-31, with the project's own network. This section previously recorded an accepted exception: the Windows distribution deliberately omitted the network, because a CI artifact on a public repository is a distribution beyond internal testing and the bytes were not ours to publish. The bytes are now ours, so the exception has nothing left to except; what it said is replaced by what follows rather than kept beside it.)*
 
-The Windows distribution is a zip built by CI, and **it does not contain the network**. [architecture.md](architecture.md) gives the reason and it is not a preference: this repository is public, a CI artifact on a public repository can be downloaded by any logged-in account, so an artifact carrying those bytes would be a distribution beyond internal testing — the exact expansion the last clause of the handling policy makes a licensing gate for, and which nobody has passed. The zip therefore carries the network's filename, byte length, SHA-256 and destination folder, generated from the manifest rather than transcribed, and its holder places the file after unpacking.
-
-Three consequences, stated so that nothing above is read as still covering this case.
-
-- **Absence in this distribution is expected rather than damage**, and reinstalling does not fix it. What fixes it is placing the file. The zip's own instructions say so, and the headless self-check it carries is how somebody confirms they placed it correctly.
-- **The runtime behaviour is unchanged and remains correct**: the core reports its typed engine-asset error, the AI does not start, no fallback evaluation is substituted, and every other feature works. The build-time hash verification still happens — the zip's asset directory is the verified staging with the network removed from it, not a second unverified one — and the placed file's hash is checkable by hand and by the self-check.
-- **The frontend's messages were written for damage and are not yet right for this case.** A new human-versus-AI game refuses through the cause-free creation-failure notice, whose approved copy names a save failure; resuming one shows the engine-unavailable caption, which is true but names nothing actionable. Neither is wrong about *what happened*, and one is wrong about *why*. Correcting it means a new approved string pair in [copy.md](copy.md) and its twin on the Apple platforms, so it is recorded as owed rather than done here, and the zip's instructions carry the burden in the meantime.
+- **The Windows zip carries the network**, in `assets/` beside the variant configuration, and is the complete application. There is no second, more complete package: the artifact CI publishes is the whole thing.
+- **The clauses above therefore cover every distribution again.** An absent or mismatched network is damage in all of them, reinstalling is what fixes it, and no distribution has a case in which absence is expected.
+- **The frontend's messages, written for damage, are right again.** The Windows-zip case is what made them awkward — they described damage to somebody whose network was missing on purpose — and it is gone. The owed string pair recorded here is withdrawn rather than deferred: there is no case left for it to describe.
 
 ### Accepted pinned-input manifest
 
@@ -198,7 +198,7 @@ One machine-readable manifest, `pinned-inputs.json`, at the root of this reposit
 - the fork's repository, revision, and the ordered list of focused patches applied at that revision;
 - the build flags and defines the app build uses for each supported platform;
 - the bundled variant configuration's filename and SHA-256;
-- the bundled network's filename, exact byte length, and SHA-256;
+- the bundled network's filename, in-repository path, exact byte length, SHA-256, and provenance — the pipeline repository and revision that produced it, and the acceptance summary that admitted it;
 - the vendored SQLite amalgamation's version and SHA-256.
 
 The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The fork repository owns how its patches are implemented and how its own artifacts are built; this manifest records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.

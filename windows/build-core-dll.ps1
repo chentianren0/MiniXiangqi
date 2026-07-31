@@ -22,8 +22,8 @@ The asset directory is copied from the staging the core's own CMake performs,
 which verifies the network's byte length and SHA-256 against pinned-inputs.json
 before writing a byte. Staging it a second time here would mean verifying it a
 second time, or not verifying it at all. windows/package-zip.ps1 is the
-packaging build, and it starts from this staging for the same reason: it removes
-the network from what it ships rather than staging an unverified copy.
+packaging build, and it ships this staging for the same reason: the assets in
+the zip are the bytes that were verified rather than a second uncontrolled copy.
 
 .PARAMETER Configuration
 The CMake build type. RelWithDebInfo by default.
@@ -34,16 +34,18 @@ windows/artifacts/, so the directory holds one architecture's core at a time;
 the build tree is per-architecture, so switching back does not recompile.
 
 .PARAMETER NnueSource
-The pinned NNUE network's bytes. Defaults to the MXQ_NNUE_SOURCE environment
-variable, and then to the workspace location core/CMakeLists.txt expects. The
-bytes are in no repository; see docs/engine-integration.md.
+An override for the NNUE network's bytes, defaulting to the MXQ_NNUE_SOURCE
+environment variable and then to nothing at all — in which case core/CMakeLists.txt
+uses the network in the repository, which is the ordinary case and needs no
+argument. Pass this only to build against a candidate network that has not been
+committed yet.
 
 .PARAMETER BuildDirectory
 The CMake build tree. core/.build-windows-<architecture> by default, which
 .gitignore covers.
 
 .EXAMPLE
-pwsh windows/build-core-dll.ps1 -NnueSource C:\mxq\control\nnue\minixiangqi-12c45d5da817.nnue
+pwsh windows/build-core-dll.ps1
 #>
 [CmdletBinding()]
 param(
@@ -61,9 +63,6 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $BuildDirectory) {
     $BuildDirectory = Join-Path $repoRoot "core\.build-windows-$Architecture"
-}
-if (-not $NnueSource) {
-    $NnueSource = Join-Path $repoRoot '.git\minixiangqi-control\nnue\minixiangqi-12c45d5da817.nnue'
 }
 
 # The MSVC environment. Located rather than assumed: the toolset moves with
@@ -120,15 +119,23 @@ foreach ($tool in @(@{ Name = 'cmake'; Path = (Join-Path $vsCMake 'CMake\bin') }
     }
 }
 
-$cmakeNnue = $NnueSource -replace '\\', '/'
+# -DMXQ_NNUE_SOURCE only when one was asked for. Left alone, CMake's own default
+# is the network in core/assets, which is what every ordinary build wants; passing
+# a path here unconditionally would mean this script had to know one, and the
+# whole point of committing the network is that nothing has to.
+$configureOptions = @(
+    "-DCMAKE_BUILD_TYPE=$Configuration"
+    '-DMXQ_ENABLE_RULES_FACADE=ON'
+    '-DMXQ_BUILD_SHARED_LIBRARY=ON'
+    '-DBUILD_TESTING=OFF'
+)
+if ($NnueSource) {
+    Write-Host "Overriding the network with $NnueSource"
+    $configureOptions += "-DMXQ_NNUE_SOURCE=$($NnueSource -replace '\\', '/')"
+}
 
 Write-Host "Configuring $BuildDirectory ($Configuration, $Architecture)"
-& cmake -S (Join-Path $repoRoot 'core') -B $BuildDirectory -G Ninja `
-    "-DCMAKE_BUILD_TYPE=$Configuration" `
-    '-DMXQ_ENABLE_RULES_FACADE=ON' `
-    '-DMXQ_BUILD_SHARED_LIBRARY=ON' `
-    '-DBUILD_TESTING=OFF' `
-    "-DMXQ_NNUE_SOURCE=$cmakeNnue"
+& cmake -S (Join-Path $repoRoot 'core') -B $BuildDirectory -G Ninja @configureOptions
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 
 Write-Host 'Building mxq_core_shared'
@@ -138,6 +145,18 @@ if ($LASTEXITCODE -ne 0) { throw 'The shared core failed to build.' }
 $artifacts = Join-Path $repoRoot 'windows\artifacts'
 $artifactAssets = Join-Path $artifacts 'assets'
 $null = New-Item -ItemType Directory -Force -Path $artifactAssets
+
+# Any network already here goes before the staged one is copied in. This
+# directory accumulates rather than being rebuilt, so when the bundled network's
+# name changes — as it did when the project's own network replaced the community
+# one — a copy beside the old one leaves two, and windows/package-zip.ps1 would
+# refuse the publish that came from it. Removing them here means the refusal
+# never has to happen; the count check there stays as the guarantee.
+Get-ChildItem -Path $artifactAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        Write-Host "Removing a previously staged network: $($_.Name)"
+        Remove-Item $_.FullName -Force
+    }
 
 $dll = Join-Path $BuildDirectory 'shared\mxqcore.dll'
 if (-not (Test-Path $dll)) { throw "mxqcore.dll was not produced at $dll." }
@@ -152,9 +171,10 @@ $staged = Join-Path $BuildDirectory 'test-assets'
 $stagedFiles = @()
 if (Test-Path $staged) { $stagedFiles = @(Get-ChildItem -File $staged) }
 if ($stagedFiles.Count -lt 2) {
+    $where = if ($NnueSource) { $NnueSource } else { 'core/assets, under the name pinned-inputs.json pins' }
     throw ("The core staged no verified assets in $staged. The NNUE network at " +
-           "$NnueSource is missing, or does not match the byte length and SHA-256 " +
-           "pinned-inputs.json pins. Re-run with -NnueSource pointing at the pinned bytes.")
+           "$where is missing, or does not match the byte length and SHA-256 " +
+           "pinned-inputs.json pins. The configure log above says which.")
 }
 $stagedFiles | ForEach-Object { Copy-Item $_.FullName $artifactAssets -Force }
 

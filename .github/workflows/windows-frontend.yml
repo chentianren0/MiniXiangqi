@@ -28,17 +28,16 @@
 # decides a job's home is which changes should start it, and a fixtures change
 # starts core-suites.yml and not this workflow.
 #
-# THE NETWORK IS NOT IN THE ARTIFACT
+# THE NETWORK IS IN THE ARTIFACT, AND THE ZIP IS THE WHOLE APP
 #
-# This repository is public, and a GitHub Actions artifact on a public
-# repository can be downloaded by any logged-in GitHub account. The NNUE network
-# is bytes docs/engine-integration.md keeps out of version control in any form,
-# whose redistribution licence has never been established. So the zip excludes
-# it and carries a NETWORK.md naming what is missing; windows/package-zip.ps1
-# removes it and then proves it is gone three ways. The packaging-proof step
-# below puts the network back — into a copy of the unpacked zip that never
-# leaves the runner — because that is the only way to run the harness against
-# the zip's own layout.
+# It used to be the one thing the zip deliberately left out: a public
+# repository's artifacts are downloadable by any logged-in account, and the
+# community-trained network's redistribution licence was never established, so
+# the zip carried a NETWORK.md naming a file its holder had to add. That
+# network is gone. The one this project trained is in the repository, ours to
+# publish, and it travels in the zip like every other asset — so there is one
+# artifact, complete, and the harness that runs from inside the unpacked copy
+# below is running against exactly what a person downloads.
 #
 # WHAT THIS WORKFLOW NAMES THAT THE REPOSITORY DOES NOT: the runner images and
 # the .NET SDK feature band. Both are for the reason core-suites.yml gives about
@@ -59,7 +58,6 @@ on:
       - 'apple/MiniXiangqi/Sounds/**'
       - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
-      - '.github/scripts/fetch-network.sh'
   push:
     branches: [main]
     paths:
@@ -70,7 +68,6 @@ on:
       - 'apple/MiniXiangqi/Sounds/**'
       - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
-      - '.github/scripts/fetch-network.sh'
 
 # A superseded push to a pull request cancels the run it superseded: the core is
 # a multi-minute C++ build on every runner and the older answer is worthless the
@@ -151,31 +148,15 @@ jobs:
           dotnet --info | Select-Object -First 8
           Write-Host "session id: $((Get-Process -Id $PID).SessionId)"
 
-      # The network never enters version control and this repository is public,
-      # so it is fetched exactly the way the core suites fetch it, by the same
-      # script. Nothing here restates a hash: core/CMakeLists.txt verifies the
-      # bytes against pinned-inputs.json and stages nothing that fails.
-      - name: Fetch the pinned network
-        id: network
-        shell: bash
-        env:
-          MXQ_NNUE_DEPLOY_KEY: ${{ secrets.MXQ_NNUE_DEPLOY_KEY }}
-          MXQ_NNUE_URL: ${{ secrets.MXQ_NNUE_URL }}
-        run: .github/scripts/fetch-network.sh
-
       # MXQ_BUILD_SHARED_LIBRARY=ON, which is the export path #85 added and the
       # thing this job exists to keep from breaking silently. The script builds
       # for the machine it is on, so this line is the same on both runners and
-      # the architecture comes from the runner.
+      # the architecture comes from the runner. The network needs no argument:
+      # it is in the checkout, and core/CMakeLists.txt verifies it against
+      # pinned-inputs.json before staging a byte of it.
       - name: Build the core as a DLL
         shell: pwsh
-        env:
-          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
-        run: |
-          if (-not $env:MXQ_NNUE_SOURCE) {
-            throw 'No NNUE network reached this runner. The frontend cannot stage its assets without one; set MXQ_NNUE_DEPLOY_KEY or MXQ_NNUE_URL.'
-          }
-          pwsh windows/build-core-dll.ps1 -Architecture ${{ matrix.arch }} -NnueSource $env:MXQ_NNUE_SOURCE
+        run: pwsh windows/build-core-dll.ps1 -Architecture ${{ matrix.arch }}
 
       # A Mxq.g.cs that differs from what the generator writes is a
       # transcription of the header rather than the header.
@@ -253,8 +234,8 @@ jobs:
       # ---------------------------------------------------------------------
       #
       # windows/package-zip.ps1 publishes the app and the self-check
-      # self-contained into one directory, removes the network, adds the licence
-      # and the two notes, checks three ways that no network byte survived and
+      # self-contained into one directory, verifies the staged network against
+      # pinned-inputs.json, adds the licence and the attribution note, checks
       # that every native binary is this architecture, and zips it. Everything
       # it decides is argued there rather than here.
       - name: Build the distribution zip
@@ -263,17 +244,15 @@ jobs:
 
       # The proof that the zip runs, rather than the assumption that it does.
       #
-      # The artifact is unpacked into a directory of its own, the network is
-      # dropped into the unpacked assets folder from the same fetch the build
-      # used, and the harness that came out of the zip is run against the zip's
-      # own layout — its own mxqcore.dll, its own assets, its own runtime, at the
+      # The artifact is unpacked into a directory of its own and the harness that
+      # came out of the zip is run against the zip's own layout — its own
+      # mxqcore.dll, its own assets, its own network, its own runtime, at the
       # paths a person who unpacked it would have. Nothing from the build tree is
-      # on that path. The network copied here never leaves the runner: the
-      # artifact was zipped before this step and is not rebuilt after it.
+      # on that path, and nothing is added to the unpacked tree: what runs here
+      # is byte-for-byte what a person downloads, which is what this step could
+      # not claim while the network had to be dropped in first.
       - name: Run the harness from inside the unpacked zip
         shell: pwsh
-        env:
-          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
         run: |
           $zip = "windows/dist/MiniXiangqi-windows-${{ matrix.arch }}.zip"
           $proof = Join-Path $env:RUNNER_TEMP 'zip-proof'
@@ -281,17 +260,10 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $proof
           $unpacked = Join-Path $proof "MiniXiangqi-windows-${{ matrix.arch }}"
 
-          Write-Host 'As unpacked, before the network is added:'
+          Write-Host 'As unpacked:'
           Get-ChildItem (Join-Path $unpacked 'assets') | ForEach-Object {
             Write-Host ("  assets\{0}  {1:N0} bytes" -f $_.Name, $_.Length)
           }
-
-          # The name is the one NETWORK.md tells a person to use, taken from the
-          # manifest exactly as that file takes it, so this step and the
-          # instruction cannot disagree.
-          $manifest = Get-Content pinned-inputs.json -Raw | ConvertFrom-Json
-          Copy-Item $env:MXQ_NNUE_SOURCE (Join-Path $unpacked "assets\$($manifest.network.filename)") -Force
-          Write-Host "Added $($manifest.network.filename), as NETWORK.md asks a person to."
 
           # No --copy-table: docs/copy.md is not in the zip and has no business
           # being. The string table is checked against the contract by the build
@@ -308,49 +280,3 @@ jobs:
           # worth keeping: it is reproducible from the commit it was built at,
           # and a stale zip somebody finds later is a build nobody chose.
           retention-days: 14
-
-      # The complete internal package is built by hand, on a machine the owner
-      # controls, and handed to a tester — never uploaded, and never from here.
-      # But the script that builds it is one somebody will run once and expect
-      # to work, so this runs it and throws the result away, which proves the
-      # path that CI's own zip does not take: the hash gate accepting the right
-      # bytes, the placement, the other NETWORK.md, and the naming.
-      #
-      # Three things keep it from becoming a leak. It writes to RUNNER_TEMP
-      # rather than to windows/dist, so the directory the artifact came from is
-      # never touched. It runs after the upload, so there is no ordering in
-      # which its output could be picked up. And the check afterwards is
-      # mechanical rather than a convention: windows/dist is re-examined for the
-      # network by name and by exact byte length, and a hit fails the job.
-      #
-      # RUNNER_TEMP now holds the network twice — the fetch put it there, and
-      # this package contains it — and neither copy can reach an artifact,
-      # because nothing in this repository uploads from RUNNER_TEMP or from a
-      # glob that could reach it. There are exactly two upload steps, both in
-      # this workflow: the board renders, from shots/*.png, and the distribution
-      # zip, named in full. Adding a third is the thing to look at twice.
-      - name: Prove the internal packaging path, and upload none of it
-        shell: pwsh
-        env:
-          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
-        run: |
-          $out = Join-Path $env:RUNNER_TEMP 'internal-package'
-          pwsh windows/package-internal.ps1 `
-            -Architecture ${{ matrix.arch }} `
-            -NnueSource $env:MXQ_NNUE_SOURCE `
-            -OutputDirectory $out
-          if ($LASTEXITCODE -ne 0) { throw 'The internal packaging script failed.' }
-
-          $zips = @(Get-ChildItem $out -Filter '*.zip' -File)
-          if ($zips.Count -ne 1 -or $zips[0].Name -notlike '*-internal-*') {
-            throw "Expected exactly one -internal- zip in $out; found $($zips.Name -join ', ')."
-          }
-          Write-Host ("The internal package stays here: {0} ({1:N0} bytes)" -f $zips[0].Name, $zips[0].Length)
-
-          $manifest = Get-Content pinned-inputs.json -Raw | ConvertFrom-Json
-          $leaked = @(Get-ChildItem windows/dist -Recurse -File |
-            Where-Object { $_.Extension -eq '.nnue' -or $_.Length -eq $manifest.network.byte_length })
-          if ($leaked.Count -gt 0) {
-            throw "The network reached windows/dist, which is where the uploaded artifact came from: $($leaked.FullName -join ', ')"
-          }
-          Write-Host 'windows/dist still carries no network, by name or by length.'
