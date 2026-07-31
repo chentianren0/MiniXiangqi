@@ -187,10 +187,14 @@ public sealed class FilePreferenceStore : IPreferenceStore, IWritablePreferences
     /// the Apple frontend, and a Windows machine sharing a roamed profile or an
     /// exported file would have them — and a screen that rewrote the object from
     /// the four rows it draws would silently delete a preference somebody set on
-    /// another machine. A key the reader could not parse is the one thing not
-    /// carried across: an unreadable file is replaced by a well-formed one
-    /// holding what was just chosen, which is strictly better than a screen whose
-    /// switches do nothing until somebody deletes a file by hand.
+    /// another machine. Their **order** is kept too, and the written key keeps its
+    /// own place: this is a file a person may open, and one whose members
+    /// reshuffled on every switch would be a file nobody could read a diff of.
+    ///
+    /// **A file that cannot be parsed carries nothing across and does not stop
+    /// the write.** Every read already answers "nothing is stored" to it, so
+    /// there is nothing there to preserve, and a write that refused would leave a
+    /// screen whose switches do nothing until somebody deletes a file by hand.
     ///
     /// **It lands atomically.** The new object is written to a sibling temporary
     /// file and moved over the old one, so a process that dies mid-write leaves
@@ -211,24 +215,21 @@ public sealed class FilePreferenceStore : IPreferenceStore, IWritablePreferences
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? ".");
 
-            byte[] existing = Read();
+            List<KeyValuePair<string, string?>> members = Carried(key);
             using (FileStream file = File.Create(temporary))
             using (Utf8JsonWriter writer = new(file, new JsonWriterOptions { Indented = true }))
             {
                 writer.WriteStartObject();
-                put(writer);
-                if (existing.Length > 0)
+                foreach ((string name, string? raw) in members)
                 {
-                    using JsonDocument document = JsonDocument.Parse(existing);
-                    if (document.RootElement.ValueKind == JsonValueKind.Object)
+                    if (raw is null)
                     {
-                        foreach (JsonProperty property in document.RootElement.EnumerateObject())
-                        {
-                            if (!string.Equals(property.Name, key, StringComparison.Ordinal))
-                            {
-                                property.WriteTo(writer);
-                            }
-                        }
+                        put(writer);
+                    }
+                    else
+                    {
+                        writer.WritePropertyName(name);
+                        writer.WriteRawValue(raw);
                     }
                 }
 
@@ -257,21 +258,63 @@ public sealed class FilePreferenceStore : IPreferenceStore, IWritablePreferences
     }
 
     /// <summary>
-    /// The file's current bytes, or nothing at all where there is no readable
-    /// file. Read whole rather than streamed because the same handle cannot be
-    /// held open across the move that replaces it.
+    /// What the rewritten object holds, in order: every member of the current
+    /// file that is not <paramref name="replaced"/>, carried across as its own raw
+    /// text, with one null entry standing where the written value goes — at
+    /// <paramref name="replaced"/>'s own position where the file already had it,
+    /// and at the end where it did not.
+    ///
+    /// The values are taken as text rather than kept as <c>JsonElement</c>s
+    /// because an element is a window onto its document and the document has to
+    /// be closed before the file it came from can be replaced.
     /// </summary>
-    private byte[] Read()
+    private List<KeyValuePair<string, string?>> Carried(string replaced)
     {
+        List<KeyValuePair<string, string?>> members = [];
         try
         {
-            return File.ReadAllBytes(_path);
+            byte[] existing = File.ReadAllBytes(_path);
+            if (existing.Length > 0)
+            {
+                using JsonDocument document = JsonDocument.Parse(existing);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    bool placed = false;
+                    foreach (JsonProperty property in document.RootElement.EnumerateObject())
+                    {
+                        if (!string.Equals(property.Name, replaced, StringComparison.Ordinal))
+                        {
+                            members.Add(new(property.Name, property.Value.GetRawText()));
+                        }
+                        else if (!placed)
+                        {
+                            // The written value goes where the key already was. A
+                            // hand-mangled file may name the same key twice —
+                            // JSON's text permits it, whatever a reader makes of
+                            // it — and the rewrite leaves one, because an object
+                            // this app wrote is one this app can read back.
+                            members.Add(new(property.Name, null));
+                            placed = true;
+                        }
+                    }
+                }
+            }
         }
         catch (Exception failure) when (
-            failure is IOException or UnauthorizedAccessException)
+            failure is IOException or UnauthorizedAccessException or JsonException)
         {
-            return [];
+            // No file, or one no reader here can make sense of. Either way there
+            // is nothing stored to carry across, and the write goes ahead with
+            // the one member below.
+            members.Clear();
         }
+
+        if (!members.Any(member => member.Value is null))
+        {
+            members.Add(new(replaced, null));
+        }
+
+        return members;
     }
 }
 

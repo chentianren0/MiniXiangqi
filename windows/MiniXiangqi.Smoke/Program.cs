@@ -2934,7 +2934,7 @@ internal static unsafe class Program
             // delete a preference somebody set on another machine.
             File.WriteAllText(
                 path,
-                """{"notation.style":"wxf","pieces.symbols":"icons","haptics.enabled":false}""");
+                """{"notation.style":"wxf","sound.enabled":true,"pieces.symbols":"icons","haptics.enabled":false}""");
             settings.SetSound(false);
             Console.WriteLine($"    after one write     {File.ReadAllText(path).ReplaceLineEndings(" ")}");
             Check("a preference this platform has no surface for is left exactly as it was",
@@ -2943,11 +2943,18 @@ internal static unsafe class Program
                 && Stored(path, "haptics.enabled") == "false"
                 && Stored(path, "sound.enabled") == "false");
 
+            // And their order with them, the written key's own place included:
+            // this is a file a person may open, and one whose members reshuffled
+            // on every switch would be a file nobody could read a diff of.
+            Check("and so is the order they were in",
+                Keys(path) is ["notation.style", "sound.enabled", "pieces.symbols", "haptics.enabled"]);
+
             // A file nothing can parse is replaced by one that holds the choice
             // just made, rather than leaving a screen whose switches do nothing
             // until somebody deletes a file by hand.
             File.WriteAllText(path, "{ this is not json");
             settings.SetDeleteConfirmation(false);
+            Console.WriteLine($"    after the malformed {File.ReadAllText(path).ReplaceLineEndings(" ")}");
             Check("a malformed file is replaced by a well-formed one holding the new value",
                 Stored(path, "deleteConfirmation.enabled") == "false"
                 && !settings.ConfirmsDeletion);
@@ -3278,6 +3285,20 @@ internal static unsafe class Program
         return captures.Count > 0
             ? captures[rng.Next(captures.Count)]
             : Move.Parse(legal[rng.Next(legal.Count)]);
+    }
+
+    /// <summary>The file's members, in the order they are written.</summary>
+    private static string[] Keys(string path)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            return [.. document.RootElement.EnumerateObject().Select(member => member.Name)];
+        }
+        catch (Exception failure) when (failure is IOException or JsonException)
+        {
+            return [];
+        }
     }
 
     /// <summary>The raw JSON text stored under one key, or null where there is none.</summary>
