@@ -153,11 +153,18 @@ jobs:
       # repository saying so.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+      # PROCESSOR_ARCHITECTURE here is the *shell's* rather than the machine's,
+      # and on the ARM64 runner it reads AMD64 because git-bash is an x64 build
+      # running under Windows' emulation. That is worth seeing rather than
+      # hiding — it is why the generator platform is passed to the script
+      # explicitly below instead of being inferred from the environment. What
+      # the build actually targeted is CMAKE_GENERATOR_PLATFORM, which
+      # run-suites.sh prints from the cache.
       - name: Record the toolchain
         run: |
           cmake --version
           cmd //c ver
-          echo "processor architecture: ${PROCESSOR_ARCHITECTURE:-unknown}"
+          echo "shell's own architecture: ${PROCESSOR_ARCHITECTURE:-unknown}"
 
       - name: Fetch the pinned network
         id: network

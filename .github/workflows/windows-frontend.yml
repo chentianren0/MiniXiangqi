@@ -118,16 +118,36 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Everything pinned-inputs.json's Windows entry records comes from a run
+      # like this one rather than from intent, so the values it records have to
+      # be readable somewhere. This is that somewhere: the Visual Studio
+      # installation, the MSVC toolset, the Windows SDKs installed, CMake, Ninja
+      # and the .NET SDK, on whichever architecture this leg is.
       - name: Record the toolchain
         shell: pwsh
         run: |
           Write-Host "processor architecture: $env:PROCESSOR_ARCHITECTURE"
           cmd /c ver
-          if (Get-Command cmake -ErrorAction SilentlyContinue) {
-            cmake --version
-          } else {
-            Write-Host 'cmake is not on PATH; build-core-dll.ps1 falls back to the one Visual Studio ships.'
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (Test-Path $vswhere) {
+            $vs = & $vswhere -latest -products * -format json | ConvertFrom-Json
+            Write-Host "visual studio: $($vs[0].displayName) $($vs[0].installationVersion)"
+            $toolset = Join-Path $vs[0].installationPath 'VC\Tools\MSVC'
+            Get-ChildItem -Directory $toolset -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "msvc toolset: $($_.Name)" }
+            Get-ChildItem -Directory (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include') -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "windows sdk: $($_.Name)" }
           }
+
+          foreach ($tool in 'cmake', 'ninja') {
+            if (Get-Command $tool -ErrorAction SilentlyContinue) {
+              Write-Host "$tool $(& $tool --version | Select-Object -First 1)"
+            } else {
+              Write-Host "$tool is not on PATH; build-core-dll.ps1 falls back to the one Visual Studio ships."
+            }
+          }
+
           dotnet --info | Select-Object -First 8
           Write-Host "session id: $((Get-Process -Id $PID).SessionId)"
 

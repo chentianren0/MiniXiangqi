@@ -635,15 +635,46 @@ Write-Host "Distribution:     $zipPath"
 Write-Host ("Zipped:           {0:N0} bytes" -f $zip.Length)
 Write-Host ("Unpacked:         {0:N0} bytes in {1:N0} files" -f $unpacked, $files.Count)
 Write-Host ("SHA-256:          {0}" -f (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant())
+# What is actually in it, at a size somebody can read. A self-contained .NET
+# publish carries a satellite-resource directory per culture — around ninety of
+# them, two files each — and listing those one to a line buries the ten things a
+# reader of this log is looking for. They are kept rather than trimmed with
+# SatelliteResourceLanguages: they are the framework's own text in the user's
+# language, this app's normative language is Chinese, and trimming a localized
+# resource to save a download is the wrong trade in an app whose whole subject
+# is read in characters.
 Write-Host ''
 Write-Host 'Top level:'
-Get-ChildItem -Path $staging | Sort-Object PSIsContainer, Name | ForEach-Object {
-    if ($_.PSIsContainer) {
-        $inner = @(Get-ChildItem -Path $_.FullName -Recurse -File)
-        Write-Host ("  {0,-34} {1,3} files" -f "$($_.Name)\", $inner.Count)
-    } else {
-        Write-Host ("  {0,-34} {1,12:N0} bytes" -f $_.Name, $_.Length)
+$cultures = @()
+foreach ($entry in Get-ChildItem -Path $staging | Sort-Object PSIsContainer, Name) {
+    if (-not $entry.PSIsContainer) {
+        Write-Host ("  {0,-34} {1,13:N0} bytes" -f $entry.Name, $entry.Length)
+        continue
     }
+    $inner = @(Get-ChildItem -Path $entry.FullName -Recurse -File)
+    $bytes = ($inner | Measure-Object -Property Length -Sum).Sum
+    # A culture directory is named like a culture and holds only resources.
+    if ($entry.Name -match '^[a-z]{2,3}(-[A-Za-z]+)+$') {
+        $cultures += [pscustomobject]@{ Files = $inner.Count; Bytes = [long] $bytes }
+        continue
+    }
+    Write-Host ("  {0,-34} {1,13:N0} bytes in {2} files" -f "$($entry.Name)\", $bytes, $inner.Count)
 }
+if ($cultures.Count -gt 0) {
+    $cultureBytes = ($cultures | Measure-Object -Property Bytes -Sum).Sum
+    $cultureFiles = ($cultures | Measure-Object -Property Files -Sum).Sum
+    Write-Host ("  {0,-34} {1,13:N0} bytes in {2} files" `
+        -f "$($cultures.Count) localized resource dirs", $cultureBytes, $cultureFiles)
+}
+
+# The five biggest single files, which is how a size question gets answered
+# without reading five hundred lines.
+Write-Host ''
+Write-Host 'Largest files:'
+foreach ($file in ($files | Sort-Object Length -Descending | Select-Object -First 5)) {
+    $relative = $file.FullName.Substring($staging.Length).TrimStart('\')
+    Write-Host ("  {0,-34} {1,13:N0} bytes" -f $relative, $file.Length)
+}
+
 Write-Host ''
 Write-Host 'MXQ_PACKAGE_OK'
