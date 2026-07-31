@@ -16,9 +16,43 @@
 // rebuilt on every visit; a game living in it would be resumed on each one, and
 // a result notice the player had put away would come back with the rebuilt
 // view. `PlayState` is what the screen re-renders against instead.
+//
+// **The two board screens hide the container while they are up**, which is the
+// owner's own recommendation twice over (2026-07-31) and is `hidesDestinationBar`
+// below. The homes keep it; the board and the replay do not.
 
 import Foundation
 import SwiftUI
+
+#if os(iOS)
+/// Whether a board screen hides the destination bar at this width.
+///
+/// docs/interaction-design.md, "Navigation": the homes carry the destination
+/// bar and the two board screens hide it — the owner's recommendation from the
+/// device pass (2026-07-31), given first for replay's move list and then for
+/// the play screen too, "to solve the space problem".
+///
+/// **The condition is the presentation, not the device**, which is the same
+/// reasoning the layout shapes take: what the recommendation is about is a bar
+/// standing across the bottom of the screen, directly under the board's own
+/// controls and costing the layout its whole height. That is what the compact
+/// presentation is. Where the container presents any other way — the iPad's
+/// row of destinations inside the navigation bar, the Mac's sidebar — the bar
+/// is not under the controls, hiding it returns little or nothing, and what it
+/// does return is a visible way to the other destinations. Measured on both,
+/// which is why this is a width test rather than `#if os(iOS)` alone: on a
+/// phone the reclaimed height is 49 points; on an iPad in portrait it is one
+/// collapsed title row on replay and *nothing at all* on the board, and in
+/// landscape the container presents as a sidebar that this modifier does not
+/// reach, so a device-wide rule would change one iPad orientation and not the
+/// other.
+///
+/// A narrow iPadOS window is compact and gets the phone's answer, for the
+/// phone's reason: there the bar really is across the bottom.
+func hidesDestinationBar(_ widthClass: UserInterfaceSizeClass?) -> Bool {
+    widthClass == .compact
+}
+#endif
 
 struct ContentView: View {
     var body: some View {

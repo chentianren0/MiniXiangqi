@@ -80,6 +80,12 @@ struct PlayScreen: View {
 
     @Environment(\.motionPolicy) private var policy
 
+    #if os(iOS)
+    /// Whether the navigation container is presenting as a bar across the
+    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
+    @Environment(\.horizontalSizeClass) private var widthClass
+    #endif
+
     var body: some View {
         Group {
             if let game = play.game, let motion = play.motion {
@@ -91,6 +97,14 @@ struct PlayScreen: View {
                 ProgressView()
             }
         }
+        // docs/interaction-design.md, "Navigation": a board screen hides the
+        // destination bar where that bar is a bar across the bottom. It is on
+        // the Group rather than on the layout so that the frame before the game
+        // arrives is already without it, and a board opening from a launch
+        // resume never shows the bar appearing and then leaving.
+        #if os(iOS)
+        .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
+        #endif
     }
 
     /// The concluding action on a finished board: the filing, then the

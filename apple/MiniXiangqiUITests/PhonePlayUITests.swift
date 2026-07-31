@@ -16,8 +16,10 @@
 // tap select a piece and a second tap move it? Does the 棋谱 sheet come up over
 // the board and go away again? Does the phone hold its portrait layout when the
 // device is turned — the one orientation clause that belongs to the phone rather
-// than to the iPad? And does the result flow, which every platform shares,
-// actually reach a filed record from here?
+// than to the iPad? Does a board screen put the destination bar away and a home
+// keep it, which § Navigation asks of this presentation and of no other? And
+// does the result flow, which every platform shares, actually reach a filed
+// record from here?
 //
 // What is deliberately **not** here: anything about a window; how a landing
 // feels in the hand, which is the owner's device pass and cannot be felt by a
@@ -66,6 +68,7 @@ final class PhonePlayUITests: XCTestCase {
     /// the same reason it is named there: a screenshot series that let the
     /// system decide would change halfway through the evening.
     private func launch(replaying line: String? = nil,
+                        history: String? = nil,
                         preferences: [String: String] = [:],
                         availableMemory: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
@@ -78,6 +81,10 @@ final class PhonePlayUITests: XCTestCase {
             app.launchArguments += ["-mxq-available-memory", availableMemory]
         }
         if let line { app.launchArguments += ["-mxq-replay", line] }
+        // Games played and filed before the board opens, so that a test which
+        // needs a record to open has one. The same argument the Mac's History
+        // suite seeds its library with.
+        if let history { app.launchArguments += ["-mxq-history", history] }
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "the app should reach the foreground")
@@ -275,11 +282,23 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertEqual(reading(app, "setup-header"), "本局设置")
         XCTAssertTrue(control(app, "setup-first-mover").exists,
                       "with the group of per-game choices only this mode has")
+        // docs/interaction-design.md § Navigation: a pre-start page is not a
+        // board screen, so it is on the keeping side of the destination-bar
+        // rule. This is where that rule's boundary lies, one page short of the
+        // board, which is why it is asserted here rather than only at the home.
+        XCTAssertTrue(app.tabBars.firstMatch.exists,
+                      "本局设置 is not a board screen, so it keeps the bar")
         attach(app, named: "phone-02-the-setup-page")
 
         control(app, "setup-start").tap()
         XCTAssertTrue(point(app, "d1").waitForExistence(timeout: 90),
                       "开始对局 should create the game and open the board")
+
+        // And the board is, so it puts the bar away — the owner's own
+        // recommendation from the device pass (2026-07-31). Waited out rather
+        // than read once: the bar leaves with an animation.
+        XCTAssertTrue(waitForAbsence(app.tabBars.firstMatch),
+                      "the board hides the destination bar")
 
         // The stacked shape, by the one affordance only it has: in the panel
         // shape the move record is resident and there is nothing to raise it.
@@ -339,18 +358,37 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(point(app, "b1"), containing: "空"),
                       "and the square it left should be empty — b1 reads "
                       + point(app, "b1").label)
-        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 15),
-                      "and the turn should pass to the machine")
         attach(app, named: "phone-05-after-the-tapped-move")
 
         // The reply. Which move it is, is the machine's business; that a legal
         // one arrived and the turn came back is the invariant — and on this
         // platform it is also the first evidence that the engine, its network
         // and the memory probe all work from an iOS process.
-        XCTAssertTrue(waitForStatus(app, timeout: 120) { !$0.contains("轮到黑方") },
-                      "the machine should answer within its own thinking time")
-        XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 15),
-                      "and hand the turn back — Black cannot mate in one from here")
+        //
+        // **The machine's own turn is not something a test can be sure of
+        // seeing**, and an assertion that waited for 轮到黑方 to be *observed*
+        // was asserting this process's sampling rate rather than the app.
+        // Measured rather than reasoned about: at 快速, from the opening, the
+        // search on this Simulator returns inside a single accessibility query,
+        // so the poll's next read already says 轮到红方 and the wait fails while
+        // the reply is on the board behind it. Reproduced on the branch and
+        // again on an unchanged checkout, which is what says it is the
+        // assertion's defect and not this round's.
+        //
+        // What is durable is the exchange itself, and it is a stronger claim
+        // than the one it replaces: the turn is the player's again, and one of
+        // Black's own pieces has left its starting point — so a search really
+        // ran and really moved something, rather than a status string having
+        // changed.
+        XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 120),
+                      "the machine answers within its own thinking time and hands "
+                      + "the turn back — Black cannot mate in one from here — the "
+                      + "status reads " + reading(app, "turn-status"))
+        let blackStart = ["a7", "b7", "c7", "d7", "e7", "f7", "g7",
+                          "a6", "c6", "d6", "e6", "g6"]
+        XCTAssertTrue(blackStart.contains { point(app, $0).label.contains("空") },
+                      "and it answered by moving one of its own pieces — every one "
+                      + "of Black's starting points is still occupied")
         attach(app, named: "phone-06-after-the-machines-reply")
     }
 
@@ -488,13 +526,64 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertTrue(point(app, "d4").exists)
         attach(app, named: "phone-12-the-board-after-closing")
 
-        // And the record exists, which is what 保存 promised.
+        // And the record exists, which is what 保存 promised. The way to
+        // History from here is out of the board first: this screen has put the
+        // destination bar away, per docs/interaction-design.md § Navigation, and
+        // the bar comes back with the home. That is the walk a person makes, and
+        // asserting the bar's return on the way is what says the change withdrew
+        // no destination.
+        goBack(app)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10),
+                      "leaving the board brings the destination bar back")
         destination(app, 1).tap()
         let row = control(app, "history-row-0")
         XCTAssertTrue(row.waitForExistence(timeout: 20), "the filed game is in History")
         XCTAssertTrue(row.label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
                       "with its own result and its exact reason — it reads " + row.label)
         attach(app, named: "phone-13-the-record-in-history")
+    }
+
+    // MARK: - Replay, and the bar the board screens put away
+
+    /// docs/interaction-design.md § Navigation: the board and replay hide the
+    /// destination bar where it stands across the bottom of the screen; the
+    /// homes keep it. A phone is the only presentation the rule applies to, so
+    /// a phone is the only place it can be driven — and this is also the first
+    /// time any suite reaches replay from this platform, which is the second
+    /// thing the test is for: the screen is not only laid out but reachable.
+    func testAReplayHidesTheDestinationBarAndLeavingItBringsItBack() {
+        let app = launch(history: Self.mateLine)
+        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 30),
+                      "a launch with no game to resume opens on the Play home")
+
+        destination(app, 1).tap()
+        let row = control(app, "history-row-0")
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "the seeded game is in History")
+        XCTAssertTrue(app.tabBars.firstMatch.exists,
+                      "and the list is a home, so it carries the bar")
+
+        row.tap()
+
+        XCTAssertTrue(control(app, "replay-progress").waitForExistence(timeout: 20),
+                      "the row opens the record's replay")
+        XCTAssertEqual(reading(app, "replay-progress"), "0 / 3",
+                       "which begins at the game's initial position")
+        XCTAssertTrue(app.buttons["replay-next"].exists,
+                      "with the transport under the board")
+        // Waited out rather than read once: the bar leaves with the push.
+        XCTAssertTrue(waitForAbsence(app.tabBars.firstMatch),
+                      "and the replay screen puts the destination bar away — the "
+                      + "owner's own recommendation from the device pass (2026-07-31)")
+        attach(app, named: "phone-14-the-replay-without-the-bar")
+
+        // The bar belongs to the screen rather than to the session, so leaving
+        // returns it. The back control is addressed by position because it is
+        // the platform's own and its label is the platform's own too.
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "back reaches the list again")
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10),
+                      "with the bar under it")
+        attach(app, named: "phone-15-the-list-with-the-bar-back")
     }
 }
 

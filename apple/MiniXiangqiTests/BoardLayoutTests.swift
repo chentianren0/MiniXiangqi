@@ -10,12 +10,18 @@
 // photographed and accepted as side by side, and a rule that stacked it would
 // be a regression rather than an adaptation.
 //
-// The sizes below are the *layout* areas, not screen sizes: what the play
-// screen's own GeometryReader is handed once the status bar, the navigation bar
-// and the tab bar or sidebar are off. The iOS ones were read off the running
-// app on the two devices this phase's evidence was taken on — an iPhone 17 Pro
-// Max and an iPad Pro 11-inch — and are rounded, deliberately: a rule that only
-// held at one exact pixel count would not be a rule.
+// The sizes below are the *layout* areas, not screen sizes: what a screen's own
+// GeometryReader is handed once the status bar, the navigation bar, and
+// whatever the navigation container is showing are off. The iOS ones were read
+// off the running app on the two devices this phase's evidence was taken on —
+// an iPhone 17 Pro Max and an iPad Pro 11-inch — and are rounded, deliberately:
+// a rule that only held at one exact pixel count would not be a rule.
+//
+// On a phone that last term is now **two** numbers rather than one, because
+// docs/interaction-design.md § Navigation has the two board screens hide the
+// destination bar: a home is handed the shorter area and a board screen the
+// taller one, the difference being the bar's own height. The 402-point phone
+// below is pinned at both.
 
 import CoreGraphics
 import Testing
@@ -38,22 +44,28 @@ struct BoardLayoutTests {
     /// The narrower phone the device policy actually names, and the one every
     /// screenshot in this campaign is taken on.
     ///
-    /// 402 by 672 is roughly what an iPhone 17 hands a screen's own
-    /// GeometryReader: 402 points of screen width, and what is left of 874 once
-    /// the status bar, the navigation bar and the tab bar are off. It is a
-    /// rounded stand-in rather than the device's exact figure — measuring the
-    /// running app against the rendered board puts the height a couple of points
-    /// higher — and rounded deliberately, for the reason at the top of this
-    /// file: a rule that only held at one exact pixel count would not be a rule.
-    /// What is asserted below therefore holds either side of that couple of
-    /// points; the pitch each shape actually draws is a rendered number and
-    /// lives with the pictures, not here.
+    /// 402 is the screen's width. The two heights are what is left of 874 once
+    /// the status bar and the navigation bar are off — **672** with the
+    /// destination bar under them as well, which is what the homes have and
+    /// what every board screen had before § Navigation's board-screen rule, and
+    /// **720** without it, which is what the board and replay have now. Both are
+    /// rounded stand-ins rather than the device's exact figures — measured on
+    /// the running app the areas come to 675 and 724 — and rounded deliberately,
+    /// for the reason at the top of this file: a rule that only held at one
+    /// exact pixel count would not be a rule. What is asserted below therefore
+    /// holds either side of those few points, and it is asserted at *both*
+    /// heights because the rule has to hold at both.
+    ///
+    /// The pitch each shape actually draws stays a rendered number and lives
+    /// with the pictures, not here — with the one exception at the end, which is
+    /// a relation between the two screens rather than a size.
     ///
     /// It is the tighter of the two phones in both directions, so it is where
     /// the stacked shape's floors are reached first.
-    @Test("The 402-point iPhone stacks, and replay's chrome now fits inside it")
-    func phone402PortraitStacks() {
-        let phone = CGSize(width: 402, height: 672)
+    @Test("The 402-point iPhone stacks, and replay's chrome fits inside it",
+          arguments: [CGFloat(672), CGFloat(720)])
+    func phone402PortraitStacks(height: CGFloat) {
+        let phone = CGSize(width: 402, height: height)
         #expect(BoardLayout.shape(in: phone) == .stacked)
         #expect(BoardLayout.stackedGeometry(in: phone).pitch >= BoardGeometry.minimumPitch)
 
@@ -67,8 +79,8 @@ struct BoardLayoutTests {
         // it. Asking for the whole of the panel's side-by-side height put that
         // sum past what this phone has once a floor-sized board is reserved, and
         // pinned the board on its floor; the owner's buy-back (2026-07-31)
-        // brought the ask under that line, so the phone now grants it whole and
-        // the board it leaves stands clear of the floor rather than on it.
+        // brought the ask under that line, so the phone grants it whole and the
+        // board it leaves stands clear of the floor rather than on it.
         //
         // The header's measured height is written into the sum for honesty
         // rather than for arithmetic: what is asserted is the relation between
@@ -92,6 +104,37 @@ struct BoardLayoutTests {
         let floored = BoardLayout.stackedGeometry(in: phone, chrome: tightened)
         #expect(floored.pitch == BoardGeometry.minimumPitch)
         #expect(floored.blockSize.height <= phone.height - tightened)
+    }
+
+    /// What hiding the destination bar bought this phone, stated as the relation
+    /// it is rather than as the pitch it comes to.
+    ///
+    /// Replay's chrome is more than twice play's, so on the shorter area
+    /// replay's board was the smaller of the two: its height was what bound it.
+    /// The bar's own height is exactly what stops that being true — on the
+    /// taller area **both** boards run out of *width* first, so replay draws the
+    /// same board play does. That is the whole of what the change gives this
+    /// screen, and it is also why the move list gains nothing: what the board
+    /// cannot use, nothing else on the page is asking for.
+    @Test("Hiding the bar makes replay's board the size play's is, not merely nearer")
+    func replayReachesPlaysBoardOnceTheBarIsHidden() {
+        let replayChrome: CGFloat = 69 + 200
+        func boards(in height: CGFloat) -> (play: CGFloat, replay: CGFloat) {
+            let phone = CGSize(width: 402, height: height)
+            return (BoardLayout.stackedGeometry(in: phone,
+                                                chrome: BoardLayout.stackedChromeHeight).pitch,
+                    BoardLayout.stackedGeometry(
+                        in: phone,
+                        chrome: BoardLayout.stackedChrome(in: phone, asking: replayChrome)).pitch)
+        }
+
+        let withTheBar = boards(in: 672)
+        #expect(withTheBar.replay < withTheBar.play,
+                "with the bar under it, replay pays for its heavier chrome")
+
+        let without = boards(in: 720)
+        #expect(without.replay == without.play,
+                "without it, both boards are bound by the phone's width instead")
     }
 
     @Test("An iPad in portrait stacks: the panel would cost the board more than it returns")
