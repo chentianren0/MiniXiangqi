@@ -59,10 +59,11 @@ enum NotationStyle: String, CaseIterable {
     /// the language the operating system selects *for it*, which is this list's
     /// definition.
     ///
-    /// Read at the moment of use like every other preference. The language cannot
-    /// change without a relaunch, so this is a constant in practice; it is not
-    /// cached because nothing else here is, and a cached one would be one more
-    /// thing to be wrong at launch.
+    /// Computed at each read rather than stored, because that is the shape every
+    /// preference read in this app has and there is no reason for this one to be
+    /// the exception. Caching would be perfectly sound — the language cannot
+    /// change without a relaunch — and would save a locale lookup that nothing
+    /// here is waiting on.
     static var resolvedForInterfaceLanguage: NotationStyle {
         resolved(forInterfaceLanguage: Bundle.main.preferredLocalizations.first)
     }

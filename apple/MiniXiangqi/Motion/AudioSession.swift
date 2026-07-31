@@ -8,16 +8,22 @@
 // playback is nonprimary — that is, your app also works with the sound turned
 // off" — so the contract picks the category rather than this file inventing one.
 //
-// **The silent switch silences the board.** `ambient` is silenced by the
-// Ring/Silent switch and by screen locking, and that is the decision: a person
-// who has moved that switch has already said what they want from the room they
-// are in, and an app that knocks anyway has overruled them to say something it
-// also said on the board. Nothing is lost by obeying, because by contract every
-// sound has a visible counterpart and none of them is the only channel for
-// anything. The alternative category, `playback`, plays through silence and is
-// for apps whose audio *is* the app — music, video, a podcast; a Xiangqi board
-// is not one, and choosing it would be the app claiming a standing it does not
-// have.
+// **The silent switch silences the board, and now does so on purpose.** No
+// behaviour is being repaired here: the platform default, `soloAmbient`, obeyed
+// the switch already, so what changes is that obedience stops being an inherited
+// accident and becomes a decision this file can be held to — a later category
+// change cannot quietly take it away. `ambient` is silenced by the Ring/Silent
+// switch and by screen locking, and that is the decision: a person who has moved
+// that switch has already said what they want from the room they are in, and an
+// app that knocks anyway has overruled them to say something it also said on the
+// board. Nothing is lost by obeying, because by contract every sound has a
+// visible counterpart and none of them is the only channel for anything. The
+// alternative category, `playback`, plays through silence and is for apps whose
+// audio *is* the app — music, video, a podcast; a Xiangqi board is not one, and
+// choosing it would be the app claiming a standing it does not have.
+//
+// **What does change in behaviour is the other app's audio**, and that is the
+// whole of this file's practical effect — the mixing paragraph below.
 //
 // **Haptics are not affected, and that is the point of two switches.** The felt
 // half is not audio and does not pass through this session at all, so a silenced

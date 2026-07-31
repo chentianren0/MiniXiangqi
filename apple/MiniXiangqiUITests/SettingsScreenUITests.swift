@@ -262,6 +262,12 @@ final class SettingsScreenUITests: XCTestCase {
         // The two feedback switches, on where nobody has said otherwise. A row's
         // label is a text of its own beside the switch rather than the switch's
         // own label, so the words and the state are read off two elements.
+        //
+        // **`settings-haptics` is required unconditionally here because this is
+        // the macOS suite, where the switch is always offered.** An iOS suite
+        // cannot copy this: the row is absent on a device that reports no haptic
+        // engine, and whether the Simulator reports one has not been measured —
+        // so read `Haptics.isOffered` rather than assuming the row exists.
         for (identifier, label) in [("settings-sound", language.sound),
                                     ("settings-haptics", language.haptics)] {
             let control = control(app, identifier)
