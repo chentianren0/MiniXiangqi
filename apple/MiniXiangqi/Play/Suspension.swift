@@ -1,6 +1,6 @@
 // The platform signals that release the engine, and the ones that do not.
 //
-// docs/engine-integration.md, "Accepted backgrounding and teardown behavior":
+// docs/engine-integration.md, "Backgrounding and teardown":
 // the trigger is **the platform's own suspension or memory-pressure signal, not
 // loss of focus**. On macOS an unfocused window is still a running app, so the
 // signals are system sleep, app termination, and a memory-pressure notification;

@@ -36,7 +36,7 @@ namespace engine {
 namespace {
 
 /* The identifier and configuration filename are fixed by
- * docs/engine-integration.md, "Accepted variant packaging". */
+ * docs/engine-integration.md, "Variant packaging". */
 constexpr const char *kVariantId = "minixiangqiaxf";
 constexpr const char *kVariantFile = "minixiangqi-variants.ini";
 

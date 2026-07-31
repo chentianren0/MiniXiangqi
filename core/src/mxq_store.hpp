@@ -44,7 +44,7 @@ namespace store {
 
 /* The store's one database file, under the frontend-supplied store directory.
  * The name is part of the accepted contract: docs/game-data.md, "Library store
- * schema". Write-ahead logging keeps its journal beside it as
+ * schema, version 1". Write-ahead logging keeps its journal beside it as
  * library.sqlite3-wal and library.sqlite3-shm. */
 constexpr const char *kDatabaseFileName = "library.sqlite3";
 
