@@ -114,10 +114,20 @@
 
     Thirteen kilobytes. The reason to write nine lines about it is that the
     absence of these files is invisible until launch.
+
+    They are taken from $(TargetDir) — the build output — and not from the
+    intermediate directory the compiler writes them to, which is the obvious
+    source and the wrong one. That directory holds two copies: the pair the
+    build ships beside the executable, and a second pair under `embed\` that it
+    does not. Globbing the intermediate puts an `embed\` folder in the zip that
+    no working layout has, which is the opposite of the point. Copying what the
+    build already placed beside the executable, at the paths it placed them,
+    makes "the published tree holds what the build tree holds" true by
+    construction rather than by a rule that has to be kept in step.
   -->
   <Target Name="MxqPublishCompiledXaml" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
-      <_MxqCompiledXaml Include="$(XamlGeneratedOutputPath)**\*.xbf" />
+      <_MxqCompiledXaml Include="$(TargetDir)**\*.xbf" />
       <ResolvedFileToPublish Include="@(_MxqCompiledXaml)"
                              RelativePath="%(RecursiveDir)%(Filename)%(Extension)"
                              CopyToPublishDirectory="PreserveNewest" />
@@ -126,7 +136,7 @@
          than letting a publish go quiet again — quiet is what this whole block
          is about. -->
     <Error Condition="'@(_MxqCompiledXaml)' == ''"
-           Text="No compiled XAML (.xbf) was found under $(XamlGeneratedOutputPath). This project's XAML compiles to .xbf and the published app needs it beside the executable; if the SDK has moved these files, find them and fix this target rather than publishing without them." />
+           Text="No compiled XAML (.xbf) was found under $(TargetDir). This project's XAML compiles to .xbf and the published app needs it beside the executable; if the SDK has stopped putting it in the build output, find where it went and fix this target rather than publishing without it." />
   </Target>
 
   <Import Project="..\CoreArtifacts.targets" />
