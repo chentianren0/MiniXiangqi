@@ -474,11 +474,12 @@ struct PlayScreen: View {
 
             Divider()
 
-            // Where all three fit at their full width they keep it; where the
-            // other two's labels leave no room — the concluding action in
-            // Chinese, every cluster state in English at the minimum window —
-            // the trailing control falls back to its symbol, which carries the
-            // same accessibility label either way.
+            // Where the row fits at full width it keeps it; where the labels
+            // leave no room — the concluding action in Chinese, every cluster
+            // state in English at the minimum window — the trailing control
+            // falls back to its symbol, and where four controls' words will not
+            // fit either way 翻转棋盘 drops beneath them. All three arrangements
+            // carry the same accessibility labels.
             controlCluster(game, motion)
                 .padding(BoardLayout.panelInset)
         }
@@ -540,29 +541,37 @@ struct PlayScreen: View {
     /// ordinary play. It carries no tint during play, because saturated colour
     /// on the play screen means which side a piece belongs to.
     ///
-    /// The accepted compositions, by mode. Human versus AI is 悔棋, 判和, 认输,
-    /// and there is no board-flip control here: the orientation behaviour
-    /// already puts the human's own side at the bottom, and moving one's own
-    /// side to the top is disorienting rather than useful when the player
-    /// controls one side. Free Play is 悔棋, 判和, 翻转棋盘 — it cannot resign,
-    /// having no opponent to resign to.
+    /// The accepted compositions, by mode. Human versus AI is 悔棋, 判和, 认输
+    /// and 翻转棋盘; Free Play is 悔棋, 判和, 翻转棋盘 — it cannot resign, having
+    /// no opponent to resign to. The flip against the machine is the owner's
+    /// recommendation of 2026-07-31, recorded in issue #80: the orientation rule
+    /// still opens the board with the human's own side at the bottom, but that
+    /// is where the board starts rather than where it has to stay, and reading
+    /// the position from the other side is worth the same in either mode. It is
+    /// the same control Free Play and replay carry — the same key, the same
+    /// word, the same identifier, presentation only — so nothing but its
+    /// presence here is new.
     ///
     /// A finished game has nothing to judge a draw in, so that slot carries the
     /// concluding action instead — the one obvious next action, and therefore
-    /// the one thing on screen the tint rule allows.
+    /// the one thing on screen the tint rule allows — and 认输 goes with the
+    /// game it could have ended rather than staying on as a disabled word. The
+    /// finished cluster is therefore 悔棋, the concluding action and 翻转棋盘 in
+    /// both modes, which is the contract's own arrangement.
     ///
     /// Each carries an identifier beside its label, in the cluster's own
     /// namespace. A label is copy and changes with the interface language; an
     /// identifier does not, so it is what a test addresses a control by.
     ///
-    /// `compact` is the cluster's one concession to a width that will not hold
-    /// it: the **trailing** control falls back to its symbol, keeping the same
-    /// accessibility label either way. It is the trailing one in every
-    /// composition — 翻转棋盘 in Free Play, 认输 against the machine — because
-    /// the two ahead of it are what the cluster is for and the concluding
-    /// action is the longest label it ever carries. One control gives up its
-    /// word so that the other two keep theirs.
-    private func controls(_ game: Game, _ motion: PlayMotion, compact: Bool) -> some View {
+    /// `compact` is the row's concession to a width that will not hold it: the
+    /// **trailing** control falls back to its symbol, keeping the same
+    /// accessibility label either way. Which control that is depends on what the
+    /// row carries — 翻转棋盘 where the row carries it, 认输 where the flip has
+    /// gone to a second row — because the ones ahead of it are what the cluster
+    /// is for and the concluding action is the longest label it ever carries.
+    /// One control gives up its word so that the others keep theirs.
+    private func controls(_ game: Game, _ motion: PlayMotion,
+                          compact: Bool, carriesFlip: Bool) -> some View {
         HStack(spacing: 8) {
             // Unavailable until a running transition completes — its own
             // Undo's included, which is what makes a second Undo wait its
@@ -585,7 +594,7 @@ struct PlayScreen: View {
                     .accessibilityIdentifier("cluster-claim")
             }
 
-            if game.isHumanVersusAI {
+            if game.isHumanVersusAI, !game.isFinished {
                 Button {
                     resignPresented = true
                 } label: {
@@ -595,7 +604,7 @@ struct PlayScreen: View {
                     // and cannot be undone, so the symbol is the one every
                     // board game uses for it, and the alert still stands
                     // between the control and the act.
-                    if compact {
+                    if compact, !carriesFlip {
                         Label("control.resign", systemImage: "flag.fill")
                             .labelStyle(.iconOnly)
                     } else {
@@ -606,40 +615,73 @@ struct PlayScreen: View {
                 .disabled(!game.canResign)
                 .accessibilityLabel(Text("control.resign"))
                 .accessibilityIdentifier("cluster-resign")
-            } else {
-                Button {
-                    motion.flip()
-                } label: {
-                    if compact {
-                        Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-                            .labelStyle(.iconOnly)
-                    } else {
-                        Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-                    }
-                }
-                .buttonStyle(.glass)
-                .accessibilityLabel(Text("control.flipBoard"))
-                .accessibilityIdentifier("cluster-flip")
             }
+
+            if carriesFlip { flipControl(motion, compact: compact) }
 
             Spacer(minLength: 0)
         }
     }
 
-    /// The cluster at whichever of its two label states fits, in one place
-    /// because both shapes carry the same cluster: the panel puts it under the
-    /// move list, the stacked shape puts it under the board, and neither of
-    /// them decides what is in it.
+    /// 翻转棋盘. One control, one key, one identifier, in both modes and in
+    /// either arrangement below — which is what makes the mode it is in
+    /// invisible to a test, to a screen reader, and to the person pressing it.
+    private func flipControl(_ motion: PlayMotion, compact: Bool) -> some View {
+        Button {
+            motion.flip()
+        } label: {
+            if compact {
+                Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                    .labelStyle(.iconOnly)
+            } else {
+                Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+            }
+        }
+        .buttonStyle(.glass)
+        .accessibilityLabel(Text("control.flipBoard"))
+        .accessibilityIdentifier("cluster-flip")
+    }
+
+    /// The cluster at whichever of its arrangements fits, in one place because
+    /// both shapes carry the same cluster: the panel puts it under the move
+    /// list, the stacked shape puts it under the board, and neither of them
+    /// decides what is in it.
     ///
-    /// The two candidates differ in every composition the cluster has — both
-    /// modes, and a finished board as well as a running one — which is what
-    /// makes the fallback worth measuring. Two candidates that rendered the
-    /// same would leave `ViewThatFits` measuring nothing and the cluster
-    /// simply overflowing wherever it did not fit.
+    /// One row where one row holds it, and the row gives up the trailing word
+    /// before it gives up the line. Where even that will not fit — the
+    /// human-versus-AI cluster in the 260-point panel, whose four English labels
+    /// come to more than the 228 points inside its inset — **翻转棋盘 drops to a
+    /// second row beneath the others**, which is the arrangement replay's own
+    /// cluster already uses in this same panel rather than a new idea. It is
+    /// leading-aligned rather than spanning, because the row above it is
+    /// leading-aligned too; replay's spans because its row above is a
+    /// five-cell grid whose trailing edge is the panel's.
+    ///
+    /// The candidates differ in every composition the cluster has — both modes,
+    /// and a finished board as well as a running one — which is what makes the
+    /// fallback worth measuring. Two candidates that rendered the same would
+    /// leave `ViewThatFits` measuring nothing and the cluster simply
+    /// overflowing wherever it did not fit.
     private func controlCluster(_ game: Game, _ motion: PlayMotion) -> some View {
         ViewThatFits(in: .horizontal) {
-            controls(game, motion, compact: false)
-            controls(game, motion, compact: true)
+            controls(game, motion, compact: false, carriesFlip: true)
+            controls(game, motion, compact: true, carriesFlip: true)
+            wrappedControls(game, motion, compact: false)
+            wrappedControls(game, motion, compact: true)
+        }
+    }
+
+    /// The cluster over two rows: the play controls above, 翻转棋盘 beneath with
+    /// its word intact — the row it left is what was short of width, and the
+    /// row it arrives on has the whole of it.
+    private func wrappedControls(_ game: Game, _ motion: PlayMotion,
+                                 compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            controls(game, motion, compact: compact, carriesFlip: false)
+            HStack(spacing: 8) {
+                flipControl(motion, compact: false)
+                Spacer(minLength: 0)
+            }
         }
     }
 
