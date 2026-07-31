@@ -46,7 +46,7 @@ Build and run the core suites the same way as on macOS, from a shell with the Vi
 
 ```bat
 call "%ProgramFiles%\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
-cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMXQ_ENABLE_RULES_FACADE=ON -DMXQ_NNUE_SOURCE=<path to the pinned network>
+cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMXQ_ENABLE_RULES_FACADE=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
@@ -67,4 +67,6 @@ ctest --test-dir build --output-on-failure
 
 Distribution is internal only: TestFlight internal testing on Apple platforms and, on Windows, a zip built by CI that somebody unpacks and runs — one per architecture, with no installer and no store (owner decision, 2026-07-30; MSIX and its signing-certificate story are the post-MVP upgrade). The project is licensed under the [GNU General Public License version 3](LICENSE), matching its Fairy-Stockfish dependency, and the Windows zip carries that licence and an attribution note beside the app.
 
-The NNUE network used by the AI is never committed to this repository; internal builds bundle it from a pinned, hash-verified local or CI-provided input, as defined in [Engine integration](docs/engine-integration.md). **The Windows zip is the one build that does not bundle it.** A GitHub Actions artifact on a public repository can be downloaded by any logged-in GitHub account, which would make bundling it a public distribution of bytes whose redistribution licence has never been established — the gate that document sets. So the zip ships everything else and carries a `NETWORK.md` naming the file, its byte length, its SHA-256 and where it goes; whoever has the bytes adds them after unpacking, and the self-check in the zip says whether they got it right.
+The NNUE network the AI evaluates with is **this project's own**, trained from zero by the public pipeline at [`ppppvz/minixiangqi-nnue`](https://github.com/ppppvz/minixiangqi-nnue) with no other network as a teacher or a seed. It lives in this repository at `core/assets/`, pinned by byte length and SHA-256 in [`pinned-inputs.json`](pinned-inputs.json) along with its provenance, and every build verifies it before staging it. Every distribution carries it, the Windows zip included: there is one artifact and it is the complete application.
+
+It replaced a community-trained network of unestablished origin, and it is weaker — about 300 Elo below it at the app's settings, and far above having no network at all. The trade bought a provenance that can be stated, and [Engine integration](docs/engine-integration.md) records the measurements the swap was accepted on.

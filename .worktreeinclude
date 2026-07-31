@@ -4,9 +4,11 @@
 # any change under core/.
 apple/Generated/
 apple/MiniXiangqi/Resources/minixiangqi-variants.ini
-# The bundled network. Its bytes are never in the repository and never derived
-# from anything in it, so a worktree that did not seed it could build an app
-# whose AI cannot start. Verified against pinned-inputs.json when the build
-# script stages it; seeded here so a fresh worktree starts with a working
-# opponent rather than with a re-stage to remember.
-apple/MiniXiangqi/Resources/minixiangqiaxf-12c45d5da817.nnue
+# The bundled network, staged from core/assets — which does now carry the bytes,
+# so this line is a convenience rather than the only way they can be had. It
+# stays for the reason apple/check-core-is-current.sh gives about not recreating
+# it: the app's resources are a file-system-synchronized group, enumerated when
+# the build is planned, so a copy that appears during a build lands in the next
+# one. Seeding it means a fresh worktree's first build has it. The name changes
+# with the network, and the manifest is where that change is decided.
+apple/MiniXiangqi/Resources/minixiangqiaxf-ad52b8658c9e.nnue

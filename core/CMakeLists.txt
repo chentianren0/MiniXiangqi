@@ -90,6 +90,7 @@ endfunction()
 
 mxq_pinned_get(MXQ_BUILD_FORK_REVISION fork revision)
 mxq_pinned_get(MXQ_BUILD_VARIANT_ID variant id)
+mxq_pinned_get(MXQ_BUILD_BASE_VARIANT_ID variant base_variant)
 mxq_pinned_get(MXQ_BUILD_NNUE_SHA256 network sha256)
 mxq_pinned_get(MXQ_BUILD_NNUE_FILENAME network filename)
 mxq_pinned_get(MXQ_BUILD_NNUE_BYTE_LENGTH network byte_length)
@@ -354,24 +355,32 @@ endif()
 # The staged engine test assets
 # --------------------------------------------------------------------------
 #
-# The NNUE network never enters version control; it lives in the workspace at
-# MiniXiangqi/.git/minixiangqi-control/nnue/ under its source name, and enters
-# builds from there (or from wherever MXQ_NNUE_SOURCE points, which is how CI
-# supplies it). Engine-dependent tests need it under the BUNDLED name —
-# minixiangqiaxf-12c45d5da817.nnue, whose basename must begin with the variant
-# identifier or the engine silently disables NNUE — next to the variant
-# configuration, exactly as a packaged asset directory holds them. So, with the
-# engine enabled, this stages a test asset directory in the build tree: the
-# variant configuration plus the network, renamed to the bundled name, with
-# byte length and SHA-256 verified against pinned-inputs.json first. A missing
-# or mismatched network stages nothing and records why; the search tests then
-# FAIL with that message rather than skipping silently, because a suite that
+# The NNUE network is this repository's own, and it is in this repository:
+# assets/, beside the variant configuration it is loaded with, under the name it
+# is bundled as. That name has to begin with the variant identifier or the engine
+# silently disables NNUE, so the committed name is already the bundled name and
+# staging is a copy rather than a rename. MXQ_NNUE_SOURCE survives as an
+# override — pointing a build at a candidate network is how the next one gets
+# tried before it is committed — and its default is the file below rather than
+# anything a build has to be told about.
+#
+# The filename comes from pinned-inputs.json rather than from a second spelling
+# here: replacing the network is then the manifest and the bytes, which is what
+# docs/engine-integration.md's handling policy asks of a future net.
+#
+# With the engine enabled, this stages a test asset directory in the build tree —
+# the variant configuration plus the network — with byte length and SHA-256
+# verified against the manifest first. That verification is not ceremony for a
+# file that is version-controlled: it is the same gate every other consumer
+# applies, and it is what catches an override pointed at the wrong bytes. A
+# missing or mismatched network stages nothing and records why; the search tests
+# then FAIL with that message rather than skipping silently, because a suite that
 # silently skipped its engine would report green on exactly the regression it
 # exists to catch. No unverified byte is ever staged.
 
 if(MXQ_ENABLE_RULES_FACADE)
   set(MXQ_NNUE_SOURCE
-      "${MXQ_REPO_ROOT}/.git/minixiangqi-control/nnue/minixiangqi-12c45d5da817.nnue"
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/${MXQ_BUILD_NNUE_FILENAME}"
       CACHE FILEPATH
       "The pinned NNUE network bytes staged for engine-dependent tests")
   set(MXQ_TEST_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets")
@@ -379,7 +388,7 @@ if(MXQ_ENABLE_RULES_FACADE)
   set(MXQ_TEST_NNUE_PROBLEM "")
   if(NOT EXISTS "${MXQ_NNUE_SOURCE}")
     set(MXQ_TEST_NNUE_PROBLEM
-        "the NNUE network was not found at ${MXQ_NNUE_SOURCE}; point MXQ_NNUE_SOURCE at the pinned bytes")
+        "the NNUE network was not found at ${MXQ_NNUE_SOURCE}; it belongs in core/assets under the name pinned-inputs.json pins, or point MXQ_NNUE_SOURCE at other bytes")
   else()
     file(SIZE "${MXQ_NNUE_SOURCE}" mxq_nnue_size)
     file(SHA256 "${MXQ_NNUE_SOURCE}" mxq_nnue_sha256)

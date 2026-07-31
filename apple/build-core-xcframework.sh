@@ -194,26 +194,28 @@ cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
 # The bundled NNUE network, staged the same way and under the same policy the
 # core's CMake staging enforces: nothing is consumed on trust.
 #
-# The repository never contains these bytes. They live in the workspace at
-# .git/minixiangqi-control/nnue/ under the source name the network was
-# published with, and they are bundled under the name the variant-matching rule
-# requires — the engine restricts NNUE to the matching variant by requiring the
-# file's basename to begin with the variant identifier, and a basename that does
-# not match disables NNUE *silently* while the Use NNUE option still reads true.
-# Only the name changes: the byte length and the SHA-256 are over content and
-# are what pinned-inputs.json pins.
+# It comes from core/assets, beside the variant configuration it is loaded with,
+# under the name it is bundled as — which has to begin with the variant
+# identifier, because the engine restricts NNUE to the matching variant by that
+# basename and a name that does not match disables NNUE *silently* while the Use
+# NNUE option still reads true. MXQ_NNUE_SOURCE overrides the path, which is how
+# a candidate network is tried before it is committed; nothing has to set it for
+# an ordinary build.
 #
 # Absence or a mismatch stops here rather than producing an app whose AI is
-# quietly a different opponent. plutil reads the manifest because it is on every
-# Mac and this script is Apple-only.
-nnue_source="${MXQ_NNUE_SOURCE:-$root/.git/minixiangqi-control/nnue/minixiangqi-12c45d5da817.nnue}"
+# quietly a different opponent. It is worth verifying a version-controlled file:
+# the check is what catches an override pointed at the wrong bytes, and a
+# checkout that damaged four megabytes of weights would otherwise be invisible.
+# plutil reads the manifest because it is on every Mac and this script is
+# Apple-only.
 nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+nnue_source="${MXQ_NNUE_SOURCE:-$root/core/assets/$nnue_name}"
 nnue_length=$(plutil -extract network.byte_length raw -o - "$root/pinned-inputs.json")
 nnue_sha256=$(plutil -extract network.sha256 raw -o - "$root/pinned-inputs.json")
 
 if [ ! -f "$nnue_source" ]; then
   echo "error: the NNUE network was not found at $nnue_source" >&2
-  echo "note: point MXQ_NNUE_SOURCE at the pinned bytes; the repository never carries them." >&2
+  echo "note: it belongs in core/assets under the name pinned-inputs.json pins, or point MXQ_NNUE_SOURCE at other bytes." >&2
   exit 1
 fi
 actual_length=$(wc -c < "$nnue_source" | tr -d ' ')

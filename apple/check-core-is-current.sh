@@ -48,15 +48,19 @@ if [ ! -f "$root/apple/MiniXiangqi/Resources/minixiangqi-variants.ini" ]; then
   cp "$root/core/assets/minixiangqi-variants.ini" "$root/apple/MiniXiangqi/Resources/"
 fi
 
-# The bundled network is the third. It is not recreated here: its bytes are not
-# in the repository and are not derived from anything the digest covers, so the
-# only honest thing to do about an absent one is to say where it comes from.
-# A build without it produces an app whose AI cannot start — contained at
-# runtime, but a surprise nobody asked for, and the build is where it is cheap
-# to notice.
+# The bundled network is the third, and it now derives from core/assets exactly
+# as the variant configuration does — the digest above covers both. It is still
+# demanded rather than recreated, and the reason is Xcode rather than provenance:
+# the app's resources are a file-system-synchronized group, whose contents are
+# enumerated when the build is planned, so a file this phase creates is picked up
+# by the *next* build. Recreating it here would produce one build with no network
+# in the bundle and no complaint about it, which is precisely the silence this
+# check exists to break. The variant configuration is recreated above because a
+# seeded worktree always arrives with it; the network arrives the same way, and
+# an absent one means the staging did not happen and should be said out loud.
 nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
 if [ ! -f "$root/apple/MiniXiangqi/Resources/$nnue_name" ]; then
   echo "error: the bundled NNUE network $nnue_name has not been staged." >&2
-  echo "note: run ./apple/build-core-xcframework.sh, which verifies and stages it." >&2
+  echo "note: run ./apple/build-core-xcframework.sh, which verifies it against pinned-inputs.json and stages it from core/assets." >&2
   exit 1
 fi
