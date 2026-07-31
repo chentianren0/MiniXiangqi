@@ -1,18 +1,37 @@
 #!/usr/bin/env python3
-"""Build MiniXiangqi.App/MiniXiangqi.ico from the app icon's 1024 px export.
+"""Build the frontend's icon assets from the app icon's 1024 px export.
 
 The icon's true source is the Apple side's Icon Composer document,
 apple/AppIcon.icon. The owner exports a flat 1024x1024 PNG from it
-(AppIcon-1024@1x.png), and this script turns that one image into the
-multi-size Windows .ico the frontend ships. The chain is
+(AppIcon-1024@1x.png), and this script turns that one image into everything
+Windows asks for. The chain is
 
     apple/AppIcon.icon  ->  AppIcon-1024@1x.png  ->  MiniXiangqi.ico
+                                                 ->  MiniXiangqi.App/Images/
 
-and only the last of the three is in this repository: the .icon document is the
-Apple app's, and the 1024 px export is four megabytes of intermediate that this
+and only the last link is in this repository: the .icon document is the Apple
+app's, and the 1024 px export is four megabytes of intermediate that this
 script consumes rather than something anybody edits.
 
     python3 windows/make-app-icon.py <path to AppIcon-1024@1x.png>
+
+TWO OUTPUTS, ONE SOURCE
+
+MiniXiangqi.ico is what the *executable* carries: Explorer, a shortcut, a
+pinned taskbar entry, and the window's own AppWindow.SetIcon. It is what an
+unpackaged zip has and all it has.
+
+MiniXiangqi.App/Images/ is what the *Store package* carries. An MSIX declares
+its images in Package.appxmanifest and the shell resolves each one through the
+package's resource index, picking the frame that matches the display's scale
+or the size the caller asked for — so the package needs one PNG per qualifier
+rather than one container holding them all. Nothing outside a packaged build
+reads that directory (MiniXiangqi.App.csproj includes it only when
+MxqPackaged is true), which is why regenerating it cannot disturb the zip.
+
+Both are written by one script because both are derived from one image, and a
+design change that reached one and not the other would leave the app wearing
+two faces.
 
 WHY THIS RATHER THAN Pillow's OWN ICO WRITER
 
@@ -23,8 +42,9 @@ PNG entries at small sizes are handled by the modern shell and not by every
 older path that may still ask for a 32x32 icon. So the container is written
 here, one entry at a time, with each frame encoded the way that size wants.
 
-Every frame is resized from the 1024 px original rather than from the next size
-up, so no downscaling error compounds, and LANCZOS is the filter throughout.
+Every frame in either output is resized from the 1024 px original rather than
+from the next size up, so no downscaling error compounds, and LANCZOS is the
+filter throughout.
 """
 
 from __future__ import annotations
@@ -44,6 +64,49 @@ from PIL import Image
 # has one byte for it, so 256 is written as "0 means 256".
 SIZES = [16, 20, 24, 32, 48, 64, 128, 256]
 PNG_FROM = 256
+
+# ---------------------------------------------------------------------------
+# The Store package's images
+# ---------------------------------------------------------------------------
+#
+# Three logos are declared in Package.appxmanifest and each is emitted at the
+# five display scales Windows defines, because a scale qualifier the package
+# does not carry is one the shell satisfies by stretching the nearest frame it
+# has. StoreLogo is the package's own face in the Store listing and in the
+# installer; Square150x150Logo is the Start menu's medium tile; Square44x44Logo
+# is the app list, the taskbar and the title bar.
+#
+# The base is the 100% size, and the qualifier's own arithmetic gives the rest.
+SCALES = [100, 125, 150, 200, 400]
+SCALED_LOGOS = {
+    "StoreLogo": 50,
+    "Square150x150Logo": 150,
+    "Square44x44Logo": 44,
+}
+
+# The target-size frames, which are a different question from the scaled ones.
+# A scale- frame answers "this display is at 150%"; a targetsize- frame answers
+# "something asked for a 32-pixel icon", and the shell picks it for the taskbar,
+# Alt-Tab and the app list irrespective of scale.
+#
+# These five sizes are MiniXiangqi.ico's own set minus the entries the .ico
+# carries for older shell paths — the same argument windows/README.md § The icon
+# makes about which sizes are worth having, applied to the package.
+#
+# Each is emitted three times. The plain frame is drawn on the system's accent
+# plate; _altform-unplated is the same frame with no plate behind it, which is
+# what the taskbar and Alt-Tab use; _altform-lightunplated is the unplated frame
+# for a light-themed shell. This icon is a shaped disc on transparency and reads
+# the same on any background, so the three are identical bytes — they are all
+# emitted anyway, because a missing altform is not resolved to the plain frame,
+# it is resolved to a plate the icon was never meant to sit on.
+TARGET_SIZES = [16, 24, 32, 48, 256]
+ALTFORMS = ["", "_altform-unplated", "_altform-lightunplated"]
+
+# Store certification refuses any image asset of 200 KB or more. Only one frame
+# in this set comes near it — Square150x150Logo.scale-400, which is 600 px of a
+# grainy original — and _write_png says below what it does about that.
+MAX_ASSET_BYTES = 204_800
 
 
 def dib_entry(frame: Image.Image) -> bytes:
@@ -136,9 +199,140 @@ def describe(path: Path) -> None:
               f"sizes {sorted(reopened.info['sizes'])}")
 
 
+def scaled_pixels(base: int, scale: int) -> int:
+    """The pixel size a scale qualifier means, rounded half up.
+
+    Windows defines a scale- frame as the 100% size times the percentage, and
+    the only case in this set where that is not already an integer is 125% of
+    an odd base: 50 -> 62.5 and 150 -> 187.5. The shell rounds those up, to 63
+    and 188, and a frame that disagrees with its own qualifier by one pixel is
+    a named certification failure rather than a rendering nuisance — so the
+    arithmetic is integer and half-up here rather than whatever the platform's
+    float rounding would give.
+    """
+    return (base * scale + 50) // 100
+
+
+def _write_png(frame: Image.Image, destination: Path) -> tuple[int, str]:
+    """Write one asset frame, and keep it under the certification limit.
+
+    Full-colour first, because that is what the icon is. Every frame in this
+    set but one comes out well under 200 KB that way.
+
+    The exception is the 600 px Square150x150Logo.scale-400. The original is a
+    grainy 1024 px render — nearly four megabytes of it — and at 600 px the
+    grain that survives the downscale costs half a megabyte of PNG that no
+    compression setting recovers, because the grain is the incompressible part.
+    So that one frame falls back to a 256-colour adaptive palette, which is the
+    largest a PNG can hold, and lands around 76 KB. FASTOCTREE is the quantizer
+    because it is the one that keeps an alpha channel, and this icon is a
+    shaped disc whose transparency is the shape.
+
+    What is lost is the last of the grain on the one frame only a 400%-scale
+    display ever asks for, where the tile is physically the same size as the
+    150 px frame at 100%. What would be lost by not doing it is the submission.
+    The return value names which path each file took, so the log says so rather
+    than the reader having to know.
+    """
+    buffer = BytesIO()
+    frame.save(buffer, "png", optimize=True)
+    if len(buffer.getvalue()) < MAX_ASSET_BYTES:
+        destination.write_bytes(buffer.getvalue())
+        return len(buffer.getvalue()), "RGBA"
+
+    for colours in (256, 192, 128, 96, 64):
+        reduced = frame.quantize(colors=colours, method=Image.Quantize.FASTOCTREE)
+        buffer = BytesIO()
+        reduced.save(buffer, "png", optimize=True)
+        if len(buffer.getvalue()) < MAX_ASSET_BYTES:
+            destination.write_bytes(buffer.getvalue())
+            return len(buffer.getvalue()), f"palette-{colours}"
+
+    raise SystemExit(
+        f"{destination.name} is {len(buffer.getvalue()):,} bytes even at 64 colours, and Store "
+        f"certification refuses any image asset of {MAX_ASSET_BYTES:,} bytes or more. The source "
+        f"image is carrying more detail than this size can hold; simplify it rather than "
+        f"shipping a package that fails submission."
+    )
+
+
+def build_images(source: Path, directory: Path) -> list[tuple[str, int, int, str]]:
+    """Write the Store package's image assets, and return what was written.
+
+    Every frame comes from the 1024 px original by one LANCZOS resize. Resizing
+    the 88 px frame from the 176 px one would be cheaper and would compound the
+    filter's error twice over on the size a person looks at most.
+    """
+    original = Image.open(source).convert("RGBA")
+    if original.size != (1024, 1024):
+        raise SystemExit(
+            f"expected a 1024x1024 source; {source} is {original.size[0]}x{original.size[1]}")
+
+    directory.mkdir(parents=True, exist_ok=True)
+    # Everything in here is derived, so a frame left behind by an earlier set of
+    # rules would be indistinguishable from one this run wrote. The manifest
+    # names three logos and the shell resolves what it finds, so a stale
+    # qualifier is a frame that silently wins over the right one.
+    for stale in directory.glob("*.png"):
+        stale.unlink()
+
+    written: list[tuple[str, int, int, str]] = []
+
+    def emit(name: str, pixels: int) -> None:
+        # A qualifier set is a comma-free grammar with one rule that catches
+        # everybody: scale- and targetsize- are alternatives, never both. A file
+        # named for both is indexed under neither and the shell falls back to
+        # whatever else it has, which is the failure that looks like "the icon
+        # is just wrong" rather than like a build error.
+        if ".scale-" in name and ".targetsize-" in name:
+            raise SystemExit(f"{name} carries both a scale- and a targetsize- qualifier.")
+        frame = original.resize((pixels, pixels), Image.Resampling.LANCZOS)
+        length, encoding = _write_png(frame, directory / name)
+        written.append((name, pixels, length, encoding))
+
+    for logo, base in SCALED_LOGOS.items():
+        for scale in SCALES:
+            emit(f"{logo}.scale-{scale}.png", scaled_pixels(base, scale))
+
+    for size in TARGET_SIZES:
+        for altform in ALTFORMS:
+            emit(f"Square44x44Logo.targetsize-{size}{altform}.png", size)
+
+    return written
+
+
+def describe_images(directory: Path, written: list[tuple[str, int, int, str]]) -> None:
+    """Read every frame back the way the packaging build will, and say what is
+    in it. Writing a file is not evidence that it holds what it was meant to;
+    reopening it and reading its dimensions off the decoded image is."""
+    print(f"{directory}  {len(written)} images")
+    total = 0
+    for name, pixels, length, encoding in written:
+        path = directory / name
+        with Image.open(path) as frame:
+            actual = frame.size
+        if actual != (pixels, pixels):
+            raise SystemExit(
+                f"{name} decodes as {actual[0]}x{actual[1]}; its qualifier says {pixels}x{pixels}. "
+                f"Store certification checks each asset against the size its own name declares.")
+        if path.stat().st_size >= MAX_ASSET_BYTES:
+            raise SystemExit(f"{name} is {path.stat().st_size:,} bytes, at or over the "
+                             f"{MAX_ASSET_BYTES:,}-byte limit.")
+        total += length
+        print(f"  {name:<48} {pixels:>4}x{pixels:<4} {length:>9,} bytes  {encoding}")
+    print(f"  {'total':<48} {'':>9} {total:>9,} bytes")
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit(f"usage: {sys.argv[0]} <path to AppIcon-1024@1x.png>")
-    target = Path(__file__).resolve().parent / "MiniXiangqi.App" / "MiniXiangqi.ico"
-    build(Path(sys.argv[1]), target)
+    source = Path(sys.argv[1])
+    app = Path(__file__).resolve().parent / "MiniXiangqi.App"
+
+    target = app / "MiniXiangqi.ico"
+    build(source, target)
     describe(target)
+
+    print()
+    images = app / "Images"
+    describe_images(images, build_images(source, images))

@@ -25,6 +25,25 @@
       <Link>mxqcore.pdb</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!--
+      The Visual C++ runtime, which windows/build-core-dll.ps1 stages beside the
+      core because the core is what links it. It travels the same way the core
+      does: neither self-contained mode carries it, and the Store package's
+      payload is a build output that no script gets to add files to afterwards,
+      so "beside mxqcore.dll" is the one place that reaches every distribution
+      by one route.
+
+      Everything the core build staged in that directory except the core itself.
+      Naming the eight DLLs here would put the set in two files, and the set is
+      not the same on both architectures — the arm64 redistributable has no
+      ARM64 vcruntime140_1.dll — so the script that reads each file's PE machine
+      type is the one that gets to decide what is in there.
+    -->
+    <None Include="$(MxqArtifactsDir)*.dll" Exclude="$(MxqArtifactsDir)mxqcore.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="$(MxqArtifactsDir)assets\**\*">
       <Link>assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

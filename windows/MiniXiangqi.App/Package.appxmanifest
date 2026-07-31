@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  The Store package's manifest.
+
+  This file is read only by a packaged build: MiniXiangqi.App.csproj includes it
+  as an AppxManifest when MxqPackaged is true and removes it from the item set
+  otherwise, so the zip's build cannot see it and its inputs are unchanged by
+  its existence. windows/package-msix.ps1 is the build that consumes it, and
+  windows/README.md § The Store package is the prose.
+
+  What ships is not this file. The packaging build rewrites it — filling
+  ProcessorArchitecture from /p:Platform, resolving $targetnametoken$ against
+  the executable, and adding the framework dependency the Windows App SDK
+  declares for itself — and writes the result into the package as
+  AppxManifest.xml. That generated file is what the Store reads and what
+  package-msix.ps1 asserts against after unpacking, precisely because it is not
+  this one.
+-->
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <!--
+    THE THREE PLACEHOLDERS, AND WHERE THE REAL VALUES COME FROM
+
+    Name, Publisher and PublisherDisplayName are not ours to choose. They are
+    assigned by Partner Center when the app's name is reserved, and they are
+    read from the dashboard's **View app identity details** page for that app:
+
+      Package/Identity/@Name            ->  Name
+      Package/Identity/@Publisher       ->  Publisher (a full CN=... string,
+                                            including the GUID-shaped CN)
+      Package/Properties/PublisherDisplayName
+
+    A package whose identity does not match the reservation is rejected at
+    upload, so inventing plausible values would be worse than leaving these
+    obviously wrong: MXQPLACEHOLDER cannot be mistaken for a real identity by a
+    reader or by a submission.
+
+    Nothing else in this file, in the project, in package-msix.ps1 or in CI
+    changes when they land. They are three string edits here, and the build that
+    follows is the same build.
+
+    Version is hardcoded and the owner bumps it by hand for each submission. The
+    Store requires the revision (fourth) part to be 0 and refuses a package
+    whose version is not higher than the last one accepted. CI does not stamp
+    it: a version that moves on every run is a version nobody chose, and the
+    submission is a deliberate act.
+  -->
+  <Identity
+    Name="MXQPLACEHOLDER.MiniXiangqi"
+    Publisher="CN=MXQPLACEHOLDER"
+    Version="1.0.0.0" />
+
+  <!--
+    ProcessorArchitecture is deliberately absent above. The packaging build
+    fills it from /p:Platform, which is what makes one manifest produce the x64
+    package and the ARM64 package rather than two manifests that can disagree.
+
+    DisplayName is the owner's provisional choice (2026-07-31). The name is
+    finally fixed by the Partner Center reservation, which is also where the
+    identity values above come from, so both settle in the same act.
+  -->
+  <Properties>
+    <DisplayName>Xiangqi Master</DisplayName>
+    <PublisherDisplayName>MXQPLACEHOLDER</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <!--
+    Windows 11 is the floor (owner decision, 2026-07-30; Windows 10 left
+    Microsoft support in October 2025), and 10.0.22000.0 is its first build.
+    This value MUST equal TargetPlatformMinVersion in MiniXiangqi.App.csproj:
+    the project setting decides what the compiler will let the code call, and
+    this one decides which machines the Store offers the package to. The two
+    disagreeing is an app offered to a machine whose API surface it was not
+    built against.
+
+    MaxVersionTested is the SDK the app is built against — 10.0.26100.0, the
+    same as the target framework's platform version — and says which Windows
+    behaviours it has been seen under, not which it will run on.
+  -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <!--
+    The two languages, declared rather than generated.
+
+    The template's value here is x-generate, which tells the packaging build to
+    write one Resource element per language it found qualified resources for.
+    This app has none: its bilingualism is a C# string table selected from
+    CurrentUICulture (windows/README.md § Strings), not a set of
+    language-qualified PRI resources — so x-generate would find English alone
+    and declare an app that speaks one language, which is false and is what the
+    Store would show a Chinese-language customer.
+
+    en-US is first, and first is what the Store treats as the package's default
+    (owner decision).
+  -->
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="zh-Hans" />
+  </Resources>
+
+  <!--
+    $targetnametoken$ and $targetentrypoint$ are resolved by the packaging build
+    against the project's own output, so this manifest does not restate the
+    assembly name that MiniXiangqi.App.csproj already owns.
+
+    BackgroundColor is transparent because the icon is a shaped disc drawn on
+    transparency: a colour here would put a square plate behind a round icon on
+    every tile that shows it. Windows composes the shell's own background
+    instead.
+
+    Two logos, and no more. There is no DefaultTile element, so the app gets the
+    Start menu's medium tile from Square150x150Logo and nothing else — no wide
+    tile, no small tile, no tile notifications. There is no SplashScreen,
+    which is a UWP element that a packaged desktop app neither needs nor uses,
+    and no lock-screen or badge declaration, because this app raises none. Each
+    absence is an asset not drawn and a behaviour not claimed.
+  -->
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Xiangqi Master"
+        Description="Play mini xiangqi against the engine or in free play."
+        BackgroundColor="transparent"
+        Square150x150Logo="Images\Square150x150Logo.png"
+        Square44x44Logo="Images\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <!--
+    One capability, and it is the one every packaged desktop app declares:
+    runFullTrust is what says this is a Win32 process rather than a sandboxed
+    UWP one. It is a restricted capability, which for this one means the Store
+    asks what the app does rather than refusing it.
+
+    internetClient is NOT here and its absence is the point. The app never
+    touches the network (docs/product.md), so declaring it would be a permission
+    claimed for nothing — visible to every customer on the listing page, and
+    unjustifiable in a submission review.
+  -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+</Package>
