@@ -7,20 +7,50 @@
 // surface, the grid at 3:1. A style whose colours are re-tuned has to keep
 // satisfying them, and this is what notices when it stops.
 
+#if canImport(AppKit)
+import AppKit
+#else
+import UIKit
+#endif
 import SwiftUI
 import Testing
 @testable import MiniXiangqi
 
+/// The colour's sRGB components, asked of whichever platform colour type this
+/// platform has. The ratios below are about the colours the app draws, so the
+/// components are read out of the drawing framework rather than recomputed.
+private func sRGB(_ color: Color) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+    #if canImport(AppKit)
+    let components = NSColor(color).usingColorSpace(.sRGB)!
+    return (components.redComponent, components.greenComponent, components.blueComponent)
+    #else
+    // UIKit has no `usingColorSpace`, so the conversion is CoreGraphics's and
+    // the components are read back through `UIColor`. Both steps are checked:
+    // `getRed` reports whether it could answer at all, and a colour that could
+    // not be expressed in sRGB or read out of it has no ratio to measure — a
+    // silent zero would be measured as black and would pass ratios it fails.
+    let converted = UIColor(color).cgColor.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                     intent: .defaultIntent,
+                                                     options: nil)
+    guard let converted else { preconditionFailure("a style colour that has no sRGB form") }
+    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+    guard UIColor(cgColor: converted).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+        preconditionFailure("a style colour whose sRGB components cannot be read")
+    }
+    return (red, green, blue)
+    #endif
+}
+
 /// WCAG relative luminance and contrast, over the style's own sRGB components.
 private func luminance(_ color: Color) -> Double {
-    let components = NSColor(color).usingColorSpace(.sRGB)!
+    let components = sRGB(color)
     func linear(_ channel: CGFloat) -> Double {
         let value = Double(channel)
         return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
     }
-    return 0.2126 * linear(components.redComponent)
-        + 0.7152 * linear(components.greenComponent)
-        + 0.0722 * linear(components.blueComponent)
+    return 0.2126 * linear(components.red)
+        + 0.7152 * linear(components.green)
+        + 0.0722 * linear(components.blue)
 }
 
 private func contrast(_ a: Color, _ b: Color) -> Double {

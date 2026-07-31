@@ -27,36 +27,59 @@ struct SetupScreen: View {
 
     @Environment(\.motionPolicy) private var policy
 
+    /// What the setup controls came to under the preview, in the stacked shape.
+    /// They take the space they need first — the preview has no floor to
+    /// protect — so the number is measured rather than allowed for.
+    @State private var controlsHeight = BoardLayout.stackedChromeHeight
+
     var body: some View {
         GeometryReader { proxy in
-            let geometry = BoardLayout.previewGeometry(in: proxy.size)
-            HStack(spacing: 0) {
-                BoardView(geometry: geometry,
-                          placement: Placement(fen: Core.startFEN),
-                          flipped: previewsFlipped,
-                          showsNumerals: true,
-                          selected: nil,
-                          destinations: [],
-                          captures: [],
-                          lastMove: nil,
-                          checkedGeneral: nil,
-                          transit: nil,
-                          policy: policy,
-                          onTap: { _ in },
-                          onTravelArrival: { },
-                          onFadeArrival: { },
-                          onFlipArrival: { })
-                    // A preview has nothing to interact with, and saying so is
-                    // what keeps a screen reader from offering forty-nine
-                    // points that answer to nothing.
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                panel
-                    .frame(width: BoardLayout.panelWidth)
+            switch BoardLayout.shape(in: proxy.size) {
+            case .sideBySide:
+                HStack(spacing: 0) {
+                    preview(BoardLayout.previewGeometry(in: proxy.size))
+                    panel(fillingHeight: true)
+                        .frame(width: BoardLayout.panelWidth)
+                }
+            case .stacked:
+                // The preview above, the controls below, in the same order the
+                // play screen puts the board and its cluster. The preview
+                // yields: it has no touch targets to protect, so the controls
+                // take what they need and it fits into what is left.
+                VStack(spacing: 0) {
+                    preview(BoardLayout.stackedPreviewGeometry(in: proxy.size,
+                                                               chrome: controlsHeight))
+                    panel(fillingHeight: false)
+                        .onGeometryChange(for: CGFloat.self, of: \.size.height) {
+                            controlsHeight = $0
+                        }
+                }
             }
         }
+    }
+
+    private func preview(_ geometry: BoardGeometry) -> some View {
+        BoardView(geometry: geometry,
+                  placement: Placement(fen: Core.startFEN),
+                  flipped: previewsFlipped,
+                  showsNumerals: true,
+                  selected: nil,
+                  destinations: [],
+                  captures: [],
+                  lastMove: nil,
+                  checkedGeneral: nil,
+                  transit: nil,
+                  policy: policy,
+                  onTap: { _ in },
+                  onTravelArrival: { },
+                  onFadeArrival: { },
+                  onFlipArrival: { })
+            // A preview has nothing to interact with, and saying so is what
+            // keeps a screen reader from offering forty-nine points that answer
+            // to nothing.
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// The human's side is at the bottom, and 随机 previews Red until it is
@@ -65,21 +88,29 @@ struct SetupScreen: View {
         mode == .humanVersusAI && play.draft.previewsHumanAsBlack
     }
 
+    /// The setup controls, beside the preview or beneath it.
+    ///
+    /// Beside it they fill the height and read from the top, as a panel does.
+    /// Beneath it they take exactly what they need and no more, because every
+    /// point they do not take is a point the preview above them keeps — and the
+    /// material then runs to the bottom edge rather than to the top, since that
+    /// is the edge this shape puts them on.
     @ViewBuilder
-    private var panel: some View {
+    private func panel(fillingHeight: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             switch mode {
             case .humanVersusAI: humanVersusAISetup
             case .freePlay: freePlaySetup
             }
-            Spacer(minLength: 0)
+            if fillingHeight { Spacer(minLength: 0) }
         }
         .padding(BoardLayout.panelInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: fillingHeight ? .infinity : nil,
+               alignment: .topLeading)
         .background {
             Rectangle()
                 .fill(.regularMaterial)
-                .ignoresSafeArea(.container, edges: .top)
+                .ignoresSafeArea(.container, edges: fillingHeight ? .top : .bottom)
         }
         // One alert, two failures. They are exclusive by construction — a
         // creation fails at one gate or the other — and one presentation is
@@ -132,15 +163,39 @@ struct SetupScreen: View {
             .labelsHidden()
             .accessibilityIdentifier("setup-first-mover")
 
-            Picker("setup.aiLevel", selection: level) {
-                Text("setup.level.fast").tag(AiLevel.fast)
-                Text("setup.level.standard").tag(AiLevel.standard)
-                Text("setup.level.deep").tag(AiLevel.deep)
-            }
-            .accessibilityIdentifier("setup-ai-level")
+            levelPicker
 
             startControl
         }
+    }
+
+    /// **AI 等级**, and the one control on this page whose label the two
+    /// platforms do not present the same way.
+    ///
+    /// A menu picker outside a form shows its label on macOS and swallows it on
+    /// iOS, where the row is expected to be a form row that carries the label
+    /// itself. This page is a panel rather than a form on either platform, so
+    /// iOS is given the pairing explicitly: 标准 alone says nothing about what
+    /// it is the standard *of*, and a level nobody can name is a level nobody
+    /// can choose. macOS keeps the picker's own label, unchanged.
+    @ViewBuilder
+    private var levelPicker: some View {
+        let picker = Picker("setup.aiLevel", selection: level) {
+            Text("setup.level.fast").tag(AiLevel.fast)
+            Text("setup.level.standard").tag(AiLevel.standard)
+            Text("setup.level.deep").tag(AiLevel.deep)
+        }
+        .accessibilityIdentifier("setup-ai-level")
+
+        #if os(macOS)
+        picker
+        #else
+        LabeledContent {
+            picker.labelsHidden()
+        } label: {
+            Text("setup.aiLevel")
+        }
+        #endif
     }
 
     private var freePlaySetup: some View {

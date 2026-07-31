@@ -6,9 +6,12 @@
 // list's structure, its numbering, its pairing and its layout, is the same
 // either way. Only the words in the two columns change.
 //
-// Where the side-by-side layout applies — ordinary Mac windows, iPad landscape
-// — the move list is permanently visible in the panel. It is presentation:
-// what is stored is the canonical notation, and this never shows it.
+// Where the side-by-side layout applies — most Mac windows, iPad landscape —
+// the move list is permanently visible in the panel. Where the stacked layout
+// applies it is the same list on a different surface: `PlayScreen` reaches it
+// from a toolbar item over a half-height sheet, so it costs the board and the
+// controls nothing until it is asked for. Either way it is presentation: what
+// is stored is the canonical notation, and this never shows it.
 //
 // Replay reads the same list with two things added, because its accepted
 // behaviour asks for them: the move the board is showing is indicated, and any

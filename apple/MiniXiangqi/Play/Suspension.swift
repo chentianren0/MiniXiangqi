@@ -10,8 +10,10 @@
 //
 // iOS and iPadOS take scene backgrounding and the foreground memory-pressure
 // warning instead — the last signal before the system reclaims the process, on
-// the platform where the per-process limit applies. They are wired here so that
-// the shape is one shape, though only macOS runs today.
+// the platform where the per-process limit applies. Both are live: the app
+// builds and runs there, and the two platforms share one memory-pressure path
+// by the same document's amendment, which the owner's deferral of anything
+// iOS-specific leaves running rather than switches off.
 
 import Foundation
 
@@ -57,12 +59,16 @@ final class Suspension {
         #else
         observe(centre, UIApplication.didEnterBackgroundNotification, .suspend, handle)
         observe(centre, UIApplication.willEnterForegroundNotification, .resume, handle)
-        // Wired, and dormant: no iOS build ships yet. What it should do is not
-        // the desktop's answer — engine-integration.md confines the immediate
-        // re-ask to macOS and Windows, because an iOS memory warning precedes
-        // reclamation and re-allocating gigabytes in reply is the one response
-        // certain to make it worse. Stage 6 settles it with a device in hand,
-        // and the event this raises is the thing it will settle.
+        // The same event macOS raises, and it takes the same path: cancel,
+        // release the table whole, then ask again from a fresh probe whether a
+        // search is owed. engine-integration.md is explicit that this is a
+        // decision and not a claim that iOS is safe — `os_proc_available_memory`
+        // measures *this process's* remaining headroom, which rises as soon as
+        // the table is released, so the re-ask here can hand back a Hash the
+        // size of the one just given up. What covers that is the accepted worst
+        // case: the system reclaims the app, and autosave has already committed.
+        // Anything better — a wait, a smaller retry trigger — is the owner's
+        // deferral, and reopening it takes evidence from a device.
         observe(centre, UIApplication.didReceiveMemoryWarningNotification,
                 .memoryPressure, handle)
         #endif

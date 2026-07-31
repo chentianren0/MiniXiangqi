@@ -12,8 +12,9 @@ This document is for engineers, reviewers, and internal release testers who need
 - Developer directory: `/Applications/Xcode-beta.app/Contents/Developer`.
 - Expected build: `27A5228h`.
 - Swift 6.
-- iOS, iPadOS, and macOS 26.5 targets.
+- iOS, iPadOS, and macOS 26.6 deployment targets. iOS shares macOS's figure rather than reaching lower: the app is built on the Liquid Glass controls that arrive with 26, the prebuilt core is compiled at 26.5, and a floor beneath the library the app links would only invite a linker warning about a slice it can already run on. The owner's target hardware is a current iPhone and a current iPad, which run well past it.
 - Apple-silicon macOS; `x86_64` is not supported on macOS.
+- **The Apple simulator pair this project takes its iOS evidence on is a current iPhone — iPhone 17 or iPhone 17 Pro — and a current iPad — iPad Air or iPad Pro.** *(Owner, 2026-07-30.)* The phone gives the compact-width evidence and the iPad the regular-width evidence in both orientations, which is every arrangement the layout has. Both phones the policy names are **402 points** wide, and that width is the point of them: a *larger* phone is a different compact width and does not stand in for it, any more than an older or smaller one does. Layout evidence therefore names the device it was taken on. **One simulator is booted at a time**: several at once is enough to put a development Mac under memory pressure, which is a poor way to measure an app about memory.
 
 Every Apple validation session begins by checking:
 
@@ -23,6 +24,18 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 ```
 
 Do not change global `xcode-select`, and do not silently validate with another Xcode.
+
+**The two test bundles do not declare the same platforms, and the difference is deliberate.** The unit bundle declares `iphoneos iphonesimulator macosx` and runs on both an iOS Simulator and macOS: what it measures — the layout-shape rule, the memory probe, the contrast ratios, the rendered board — is about the platform it runs on, so running it on one platform is evidence about one platform. The UI bundle declares `macosx` alone, because it drives windows, and window geometry is what iOS does not have; an iOS UI suite is a different suite about the stacked shape and touch rather than a port of that one, and it does not exist yet.
+
+The unit suite on a Simulator, which is one run against one destination:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
+    -destination 'id=<simulator-udid>' -only-testing:MiniXiangqiTests
+```
+
+Name the destination by UDID rather than by device name: two simulators of the same model are ordinary on a development machine, and `xcodebuild` refuses an ambiguous name rather than choosing.
 
 ### Shared core and Windows targets
 
@@ -55,7 +68,7 @@ Do not change global `xcode-select`, and do not silently validate with another X
 - Review affected product and interaction contracts.
 - Exercise the complete affected user flow on the smallest relevant iPhone layout, an iPad layout, and a supported macOS window size.
 - Verify iPhone stays in portrait when rotated and shows no orientation prompt, while iPad adapts to every orientation and to full-screen and windowed sizes including the system tiling configurations.
-- Verify both the layout shape and the navigation presentation are selected by available width rather than device identity, so a resized macOS window and a windowed iPad reach the same arrangement at the same width, and that one navigation container serves all three platforms.
+- Verify the layout shape is selected by the available space rather than by device identity, so a resized macOS window and a windowed iPad reach the same arrangement at the same size — including the tall, narrow macOS window that stacks. Verify one navigation container serves all three platforms, in the presentation each platform gives it.
 - Verify the board fits both the available width and the remaining height at every supported size, never overflowing a short window.
 - Verify a grid point stays at or above 44 points on every platform, that chrome tightens before the board does, and that each platform's minimum window size prevents either from falling below its floor. Include a Mac at its largest-text display setting, where the window budget is smallest.
 - Verify the pre-start preview shrinks as needed so the setup controls always fit, including when a creation-failure error is shown.
@@ -212,8 +225,7 @@ An internal distribution candidate — TestFlight on Apple platforms, or the int
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Verify and record the exact simulator and macOS build/test commands.
-- Select the supported simulator, physical-device, macOS, and Windows validation matrix.
+- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on.
 - Pin the Windows *frontend* toolchain — Windows App SDK, .NET, packaging flags — and record verified packaging commands. The core's half is pinned and its commands are in the README.
 - Decide which artifacts the GitHub Actions workflows retain. The workflows and their pinned inputs are defined in `.github/`; nothing is retained today beyond the run log.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.

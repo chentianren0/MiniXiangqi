@@ -17,7 +17,7 @@
 // Images are written into the sandboxed host's own caches and attached to the
 // result bundle, exactly as BoardSnapshotTests does and for the same reason.
 
-import AppKit
+import Foundation
 import SwiftUI
 import Testing
 @testable import MiniXiangqi
@@ -307,13 +307,7 @@ struct PieceIconTests {
 private func render(_ view: some View, scale: CGFloat = 4, named name: String) throws -> CGSize {
     let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("MiniXiangqiSnapshots", isDirectory: true)
-    let renderer = ImageRenderer(content: view)
-    renderer.scale = scale
-    guard let image = renderer.nsImage,
-          let data = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: data),
-          let png = bitmap.representation(using: .png, properties: [:])
-    else {
+    guard let (image, png) = renderPNG(view, scale: scale) else {
         Issue.record("the glyph did not render")
         return .zero
     }
