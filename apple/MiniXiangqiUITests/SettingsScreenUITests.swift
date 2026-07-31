@@ -13,6 +13,14 @@
 // domain is searched ahead of everything, so `-deleteConfirmation.enabled 0` is
 // the app's answer for that launch and is written nowhere at all.
 
+// **macOS only.** The bundle this file lives in builds for an iOS Simulator too
+// now, and this suite does not go there: it drives a window — naming a size,
+// reading the frame back, clicking and right-clicking a pointer, typing keys —
+// and a window is what iOS has not got. The phone's own evidence is the
+// `Phone…UITests` files beside this one, which are a different suite rather than
+// a port of this one.
+#if os(macOS)
+
 import AppKit
 import XCTest
 
@@ -543,3 +551,5 @@ final class SettingsScreenUITests: XCTestCase {
         }
     }
 }
+
+#endif  // os(macOS)

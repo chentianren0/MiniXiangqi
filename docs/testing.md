@@ -25,17 +25,33 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 
 Do not change global `xcode-select`, and do not silently validate with another Xcode.
 
-**The two test bundles do not declare the same platforms, and the difference is deliberate.** The unit bundle declares `iphoneos iphonesimulator macosx` and runs on both an iOS Simulator and macOS: what it measures — the layout-shape rule, the memory probe, the contrast ratios, the rendered board — is about the platform it runs on, so running it on one platform is evidence about one platform. The UI bundle declares `macosx` alone, because it drives windows, and window geometry is what iOS does not have; an iOS UI suite is a different suite about the stacked shape and touch rather than a port of that one, and it does not exist yet.
+**Both test bundles declare `iphoneos iphonesimulator macosx`, and what differs between the platforms is which suites the bundle carries there.** The unit bundle runs on both an iOS Simulator and macOS: what it measures — the layout-shape rule, the memory probe, the contrast ratios, the rendered board — is about the platform it runs on, so running it on one platform is evidence about one platform.
 
-The unit suite on a Simulator, which is one run against one destination:
+The UI bundle carries two sets of suites that are not ports of each other, and the platform is declared **per file** rather than by the target. The macOS suites — `PlayScreenUITests`, `PlayHomeUITests`, `HistoryScreenUITests`, `SettingsScreenUITests`, `HumanVersusAIUITests` — are `#if os(macOS)`: they drive a window, naming a size and reading the frame back, and a window is what iOS has not got. The phone suites — `PhonePlayUITests`, `PhoneSettingsUITests` — are `#if os(iOS)`, and they ask the questions only a phone can answer: that a 402-point phone takes the **stacked** arrangement rather than the panel one, that a point of the board still meets the 44-point floor once drawn at that size, that two taps make a move, that the 棋谱 record comes up over the board on demand and goes away again, that the phone holds its portrait layout when the device is turned, that the result flow reaches a filed record, and that the 触感 row agrees with what the hardware reports rather than being assumed either way. A destination therefore selects its own suites, and `LaunchPreferences` — the one file both sets read, and the only shared one — keeps the hermetic-launch table single rather than letting two copies drift. Widening the bundle rather than adding a second one is what makes that possible; the separation the old `macosx`-only declaration expressed is now expressed where the suites are.
+
+What the phone suites deliberately leave alone: how a landing feels in the hand, and any measurement of latency, memory, energy or thermals. Both belong to the owner's device pass, and a Simulator is the wrong instrument for either.
+
+Each suite, one run against one destination:
 
 ```sh
+# The unit suite on a Simulator.
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
   xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
     -destination 'id=<simulator-udid>' -only-testing:MiniXiangqiTests
+
+# The UI bundle on macOS, which runs the five window suites and nothing else.
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
+    -destination 'platform=macOS,arch=arm64' -only-testing:MiniXiangqiUITests
+
+# The UI bundle on an iPhone Simulator, which runs the two phone suites and
+# nothing else.
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
+    -destination 'id=<simulator-udid>' -only-testing:MiniXiangqiUITests
 ```
 
-Name the destination by UDID rather than by device name: two simulators of the same model are ordinary on a development machine, and `xcodebuild` refuses an ambiguous name rather than choosing.
+Name the destination by UDID rather than by device name: two simulators of the same model are ordinary on a development machine, and `xcodebuild` refuses an ambiguous name rather than choosing. Shut the Simulator down when the run finishes — `xcrun simctl shutdown all` — so that the next session starts from the one-booted-simulator state the policy above requires.
 
 ### Shared core and Windows targets
 
