@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The play screen, minus the window: the board's vocabulary and geometry, the
+    accepted piece style's values, the scene a painter draws, the session logic
+    that turns clicks into core calls, and the string table.
+
+    It references no UI framework at all, which is the point. A WinUI 3 process
+    cannot be launched over SSH, so everything above the core would otherwise be
+    unrunnable on the only Windows machine this project has; with the logic
+    here, MiniXiangqi.Smoke drives whole games through the real screen logic
+    headlessly, and only the XAML is left to a screen.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MiniXiangqi.Play</RootNamespace>
+    <AssemblyName>MiniXiangqi.Play</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+  </ItemGroup>
+
+</Project>
