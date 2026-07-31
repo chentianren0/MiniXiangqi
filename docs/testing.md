@@ -1,65 +1,34 @@
 # Testing
 
-This document is for engineers, reviewers, and internal release testers who need to know which evidence is required for a Mini Xiangqi change or build. It owns durable validation categories, fixture expectations, and release gates. It does not record individual run results, implementation progress, temporary experiments, or work status; those belong in CI artifacts and GitHub Issues.
+This document owns the validation categories, fixture expectations, and release gates: which evidence a Mini Xiangqi change or build requires. It does not record individual run results, run commands, or work status; those belong in the CI workflows, the platform READMEs, and GitHub Issues.
 
-> **Status: Draft validation proposal.** Nothing in this document is normative until its status or an individual section is explicitly marked accepted. Add exact commands and thresholds only after they have been verified with the required toolchains and representative devices. Items under **Need to discuss** are non-normative.
+> **Status: binding**, except for the thresholds this document names as owed — performance, memory, energy and thermal figures per AI profile, and the retained-evidence list for a distribution candidate.
 
-## Required toolchain
+## Toolchain and destinations
 
-### Apple targets
+### Apple
 
-- Xcode 27 beta at `/Applications/Xcode-beta.app`.
-- Developer directory: `/Applications/Xcode-beta.app/Contents/Developer`.
-- Expected build: `27A5228h`.
-- Swift 6.
-- iOS, iPadOS, and macOS 26.6 deployment targets. iOS shares macOS's figure rather than reaching lower: the app is built on the Liquid Glass controls that arrive with 26, the prebuilt core is compiled at 26.5, and a floor beneath the library the app links would only invite a linker warning about a slice it can already run on. The owner's target hardware is a current iPhone and a current iPad, which run well past it.
+- Xcode 27 beta at `/Applications/Xcode-beta.app`, build `27A5228h`, Swift 6. It is selected per invocation through `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`: do not change global `xcode-select`, and do not silently validate with another Xcode.
+- iOS, iPadOS, and macOS 26.6 deployment targets. iOS shares macOS's figure rather than reaching lower: the app is built on the Liquid Glass controls that arrive with 26, the prebuilt core is compiled at 26.5, and a floor beneath the library the app links would only invite a linker warning about a slice it can already run on.
 - Apple-silicon macOS; `x86_64` is not supported on macOS.
-- **The Apple simulator pair this project takes its iOS evidence on is a current iPhone — iPhone 17 or iPhone 17 Pro — and a current iPad — iPad Air or iPad Pro.** *(Owner, 2026-07-30.)* The phone gives the compact-width evidence and the iPad the regular-width evidence in both orientations, which is every arrangement the layout has. Both phones the policy names are **402 points** wide, and that width is the point of them: a *larger* phone is a different compact width and does not stand in for it, any more than an older or smaller one does. Layout evidence therefore names the device it was taken on. **One simulator is booted at a time**: several at once is enough to put a development Mac under memory pressure, which is a poor way to measure an app about memory.
+- **iOS evidence is taken on a current iPhone — iPhone 17 or iPhone 17 Pro — and a current iPad — iPad Air or iPad Pro.** The phone gives the compact-width evidence and the iPad the regular-width evidence in both orientations, which is every arrangement the layout has. Both named phones are **402 points** wide, and that width is the point of them: a *larger* phone is a different compact width and does not stand in for it, any more than an older or smaller one does. Layout evidence names the device it was taken on.
+- **One simulator is booted at a time.** Several at once puts a development Mac under memory pressure, which is a poor way to measure an app about memory.
 
-Every Apple validation session begins by checking:
+Both test bundles declare `iphoneos iphonesimulator macosx`, and what differs between the platforms is which suites the bundle carries there. The unit bundle runs on both an iOS Simulator and macOS: what it measures — the layout-shape rule, the memory probe, the contrast ratios, the rendered board — is about the platform it runs on, so running it on one platform is evidence about one platform.
 
-```sh
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  xcodebuild -version
-```
-
-Do not change global `xcode-select`, and do not silently validate with another Xcode.
-
-**Both test bundles declare `iphoneos iphonesimulator macosx`, and what differs between the platforms is which suites the bundle carries there.** The unit bundle runs on both an iOS Simulator and macOS: what it measures — the layout-shape rule, the memory probe, the contrast ratios, the rendered board — is about the platform it runs on, so running it on one platform is evidence about one platform.
-
-The UI bundle carries two sets of suites that are not ports of each other, and the platform is declared **per file** rather than by the target. The macOS suites — `PlayScreenUITests`, `PlayHomeUITests`, `HistoryScreenUITests`, `SettingsScreenUITests`, `HumanVersusAIUITests` — are `#if os(macOS)`: they drive a window, naming a size and reading the frame back, and a window is what iOS has not got. The phone suites — `PhonePlayUITests`, `PhoneSettingsUITests` — are `#if os(iOS)`, and they ask the questions only a phone can answer: that a 402-point phone takes the **stacked** arrangement rather than the panel one, that a point of the board still meets the 44-point floor once drawn at that size, that two taps make a move, that the 棋谱 record comes up over the board on demand and goes away again, that the phone holds its portrait layout when the device is turned, that the result flow reaches a filed record, and that the 触感 row agrees with what the hardware reports rather than being assumed either way. A destination therefore selects its own suites, and `LaunchPreferences` — the one file both sets read, and the only shared one — keeps the hermetic-launch table single rather than letting two copies drift. Widening the bundle rather than adding a second one is what makes that possible; the separation the old `macosx`-only declaration expressed is now expressed where the suites are.
+The UI bundle carries two sets of suites that are not ports of each other, and the platform is declared **per file** rather than by the target. The macOS suites — `PlayScreenUITests`, `PlayHomeUITests`, `HistoryScreenUITests`, `SettingsScreenUITests`, `HumanVersusAIUITests` — are `#if os(macOS)`: they drive a window, naming a size and reading the frame back, and a window is what iOS has not got. The phone suites — `PhonePlayUITests`, `PhoneSettingsUITests` — are `#if os(iOS)`, and they ask the questions only a phone can answer: that a 402-point phone takes the **stacked** arrangement rather than the panel one, that a point of the board still meets the 44-point floor once drawn at that size, that two taps make a move, that the 棋谱 record comes up over the board on demand and goes away again, that the phone holds its portrait layout when the device is turned, that the result flow reaches a filed record, and that the 触感 row agrees with what the hardware reports rather than being assumed either way. A destination therefore selects its own suites, and `LaunchPreferences` — the one file both sets read, and the only shared one — keeps the hermetic-launch table single rather than letting two copies drift.
 
 What the phone suites deliberately leave alone: how a landing feels in the hand, and any measurement of latency, memory, energy or thermals. Both belong to the owner's device pass, and a Simulator is the wrong instrument for either.
 
-Each suite, one run against one destination:
+Build and run operations live in [`apple/README.md`](../apple/README.md).
 
-```sh
-# The unit suite on a Simulator.
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
-    -destination 'id=<simulator-udid>' -only-testing:MiniXiangqiTests
-
-# The UI bundle on macOS, which runs the five window suites and nothing else.
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
-    -destination 'platform=macOS,arch=arm64' -only-testing:MiniXiangqiUITests
-
-# The UI bundle on an iPhone Simulator, which runs the two phone suites and
-# nothing else.
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  xcodebuild test -project apple/MiniXiangqi.xcodeproj -scheme MiniXiangqi \
-    -destination 'id=<simulator-udid>' -only-testing:MiniXiangqiUITests
-```
-
-Name the destination by UDID rather than by device name: two simulators of the same model are ordinary on a development machine, and `xcodebuild` refuses an ambiguous name rather than choosing. Shut the Simulator down when the run finishes — `xcrun simctl shutdown all` — so that the next session starts from the one-booted-simulator state the policy above requires.
-
-### Shared core and Windows targets
+### Shared core and Windows
 
 - The shared core builds and its tests run on every development platform without a frontend.
-- The core's Windows compiler is pinned in `pinned-inputs.json`, established by builds that produced it, one per architecture: Visual Studio 2026 Community with the MSVC v14.51 toolset and the Windows 11 SDK on `x64`, and the CI runner's own MSVC v14.44 on `ARM64`. The frontend's half of that toolchain — Windows App SDK version, .NET version, and the deployment flags — was pinned by the first packaging build, `windows/package-zip.ps1`, and the manifest records what that build measured rather than what it intends. What it did not measure stays unestablished, and the entry says which fields those are.
-- **`ARM64` is a CI-only build.** The owner's ARM64 Windows machine runs the product and does not develop it, so no developer machine compiles that architecture; the workflow is the only place it exists. A validation claim about `ARM64` therefore cites a CI run rather than a developer run, which is the one place this document's developer-runs-are-the-evidence rule does not reach, and it says so rather than pretending the two are the same.
-- GitHub Actions CI is the recommended place for long or multi-platform builds and test runs, with pinned inputs; CI results supplement, and do not replace, the release gates below.
-- `.github/workflows/core-suites.yml` is that CI: the core suites in both configurations, on a pinned macOS runner and two pinned Windows runners, `x64` and `ARM64`, each pinned to the newest image GitHub hosts rather than the oldest that still works, so that CI tracks this project's toolchain instead of trailing it. That is still not the same claim as reproducing the pin: an image carries what its maintainers put in it and moves on their schedule, not ours. What CI proves is that the core compiles and its suites pass on a machine other than the one the change was written on. Reproducing the pinned build is a developer-machine claim on `x64`, and on `ARM64` there is no developer machine for it to be one on.
+- The core's Windows compiler is pinned in `pinned-inputs.json`, one entry per architecture: Visual Studio 2026 Community with the MSVC v14.51 toolset and the Windows 11 SDK on `x64`, and the CI runner's own MSVC v14.44 on `ARM64`. The frontend's half of that toolchain — Windows App SDK version, .NET version, and the deployment flags — is pinned by the packaging build, `windows/package-zip.ps1`. The manifest records what a build measured rather than what it intends; what no build measured stays unestablished, and the entry says which fields those are.
+- **`ARM64` is a CI-only build.** No developer machine compiles that architecture, so a validation claim about `ARM64` cites a CI run rather than a developer run. That is the one place this document's developer-runs-are-the-evidence rule does not reach, and it says so rather than pretending the two are the same.
+- `.github/workflows/core-suites.yml` runs the core suites in both configurations, on a pinned macOS runner and two pinned Windows runners, `x64` and `ARM64`, each pinned to the newest image GitHub hosts rather than the oldest that still works, so that CI tracks this project's toolchain instead of trailing it. What CI proves is that the core compiles and its suites pass on a machine other than the one the change was written on; reproducing the pinned build is a developer-machine claim on `x64`, and on `ARM64` there is no developer machine for it to be one on.
+- CI results supplement, and do not replace, the release gates below. Windows build, packaging, and smoke operations live in [`windows/README.md`](../windows/README.md).
 
 ## Validation principles
 
@@ -74,11 +43,11 @@ Name the destination by UDID rather than by device name: two simulators of the s
 ### Shared core
 
 - Core changes run the core test suite — rules fixtures, archive codec, library store, and search facade — on at least one Apple platform and on Windows.
-- Run that suite in **both** a debug and a release configuration. Neither is a superset of the other: the programming errors in `docs/core-interface.md`'s error taxonomy assert where `NDEBUG` is undefined and return their code where it is defined, so a release run is the only one that can observe those codes and a debug run is the only one that exercises the assertions — and the vendored engine's own assertions are live only in the first.
+- Run that suite in **both** a debug and a release configuration. Neither is a superset of the other: the programming errors in [core-interface.md](core-interface.md)'s error taxonomy assert where `NDEBUG` is undefined and return their code where it is defined, so a release run is the only one that can observe those codes and a debug run is the only one that exercises the assertions — and the vendored engine's own assertions are live only in the first.
 - Verify the one shared core test runner executes the approved fixtures identically on every development platform, without a frontend.
 - Store changes verify the transactional invariants: single active game, atomic archive-and-clear, no partial import, and deletion rollback.
 - Archive changes verify cross-platform round-trips and version dispatch, including rejection of unsupported versions.
-- C-interface changes verify both platform bindings against the threading and error contract in `docs/core-interface.md`.
+- C-interface changes verify both platform bindings against the threading and error contract in [core-interface.md](core-interface.md).
 
 ### Product and interaction
 
@@ -113,7 +82,7 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify the natural-result notice before and after saving, including **保存**, **保存并开始新对局**, **回放**, **完成**, the absence of **悔棋** on the notice and its presence in the cluster, and the absence of a Play Again action. Verify it is dismissible by its own close control, by the cancel key, and by a click on the board; that closing it decides nothing, leaving the result on the turn status, Undo available while the result is unconfirmed, and the concluding action in the cluster; and that it does not present itself again for the same result. Verify that a game already filed is not filed again by **完成** or by the cluster's **开始新对局**.
 - Verify the threefold notice, **继续对局**, **以和棋结束**, and retained non-blocking **可判和** affordance in both play modes.
 - Verify manual replay navigation and autoplay at 0.5×, 1×, and 2×, including animation completion, manual-navigation pause, board-flip pause, background pause, end-of-game stop, and Reduce Motion behavior.
-- Verify pinned-first and newest-within-group History ordering, accepted row metadata, read-only game content, one-game import/export, duplicate navigation, conflict rejection, and the absence of Move, folders, bulk deletion, search, filters, tags, and game editing.
+- Verify pinned-first and newest-within-group History ordering, accepted row metadata, read-only game content, one-game import and export, duplicate navigation, conflict rejection, and the absence of Move, folders, bulk deletion, search, filters, tags, and game editing.
 - Verify that the History row's date and time are produced without the app writing a date or time pattern, so the 12- or 24-hour clock follows the locale and the reader's own system setting. This one fails silently — a hand-written pattern looks right on the machine it was written on — and is cheap to gate.
 - Verify that the row omits the human side in Free Play and omits the end reason exactly where the result word already carries it, and that a resignation keeps its reason.
 - Verify partial and complete leading and trailing swipes, action order, icon-and-text labels, Share and Delete colors, immediate Pin or Unpin, full-swipe Delete, and pointer, keyboard, and VoiceOver equivalents.
@@ -124,10 +93,10 @@ Name the destination by UDID rather than by device name: two simulators of the s
 
 - Run the approved conformance fixtures in `fixtures/rules/` for movement, general safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase.
 - Verify every ply's legal set, resulting position, check state, and final result where applicable.
-- Verify that the target custom variant has no move-count draw and recognizes the neutral draw outcome on the third occurrence for search.
+- Verify that the custom variant has no move-count draw and recognizes the neutral draw outcome on the third occurrence for search.
 - Verify that the app-visible rules boundary exposes claim eligibility on that occurrence, continuing keeps the game active, and only an explicit claim commits the draw.
 - Verify that a unilateral perpetual violation becomes terminal automatically at the third sustained occurrence, is attributed to the violating side, and is presented through the standard natural-result flow rather than a claim.
-- Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and king and soldier chase-target exclusion.
+- Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and general and soldier chase-target exclusion.
 - Verify the accepted interpretations: a side alternating check and chase commits neither violation and reaches a neutral claimable repetition; a chase renews when the chasing piece attacks the target from the square it now occupies having not attacked it from that square before, so that stepping away from a target while still attacking it renews while advancing toward it along an existing line does not; and a chase whose target's only defender is a general is adjudicated on the flying-generals condition alone, degrading to a claimable repetition rather than a loss.
 - Verify adjudication does not depend on side-to-move parity: enter one repeating sequence by a quiet move from each side in turn, and confirm the same verdict at the same occurrence, including that a mutual perpetual chase is a draw rather than a loss for the side that did not enter it.
 - Verify check outranks chase unconditionally, including when the checking side is also chasing and when both sides are chasing.
@@ -162,7 +131,7 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify the applied `Threads` value equals the active processor count reported by the device at engine initialization.
 - Test the accepted Hash budget at and around the 4 GiB cap, 50%-of-physical-memory boundary, 20%-or-128-MiB reserve boundary, 64 MiB rounding boundary, and 256 MiB minimum.
 - Record and verify the actual UCI Hash value applied on each representative device. Test a zero probe value, a rounded budget below 256 MiB, exactly 256 MiB, allocation failure, and operation without the increased-memory entitlement.
-- Verify each platform's memory probe: `os_proc_available_memory()` on iOS and iPadOS, and the selected system-availability probes on macOS and Windows.
+- Verify each platform's memory probe — `os_proc_available_memory()` on iOS and iPadOS, and the selected system-availability probes on macOS and Windows — against the accepted budget boundaries on real hardware.
 - Below the minimum, verify that the engine is not initialized, no smaller Hash or special automatic cleanup is attempted, and Retry uses a fresh available-memory value.
 - Compare engine behavior with accepted rules fixtures wherever search consumes terminal adjudication.
 - Measure whole-game playing behavior, latency, memory, energy, and thermal behavior of the accepted 1-, 3-, and 5-second profiles on representative supported devices. Any retuning is an explicit later product decision rather than an automatic response to diagnostic NPS or depth.
@@ -176,9 +145,8 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify the preparation ordering prepare → resolve → create → search at each failure point: a preparation failure creates nothing and resolves no Random side; a persistence failure releases the prepared engine and creates nothing; and leaving mid-attempt invalidates it and prevents a late completion from committing.
 - Verify that an allocation failure at a budget of at least 256 MiB presents the accepted **无法启动 AI 对手** notice unchanged, that Retry re-probes and recalculates, and that no smaller Hash is substituted.
 - Verify that a missing or hash-mismatched network prevents the AI from starting with no fallback to a different evaluation, that the failure is detected during preparation rather than by the engine's own fatal path, and that Free Play, History, replay, import, and export still work.
-- Verify each platform's memory probe against the accepted budget boundaries on real hardware.
 - Verify the build fails rather than packaging when any hash in `pinned-inputs.json` does not match, and that the packaged engine artifact is the static library built from the pinned revision and flags.
-- Verify the target variant `minixiangqiaxf` and built-in `minixiangqi` can both be selected in one build.
+- Verify the variant `minixiangqiaxf` and built-in `minixiangqi` can both be selected in one build.
 - Verify the engine's effective NNUE state is on after configuration, not merely that the network file exists — a basename that does not begin with the variant identifier disables NNUE silently and the engine plays on classical evaluation.
 - Verify the complete approved fixture set passes against the pinned fork build named in `pinned-inputs.json`, and that the fork's own suite still passes, before that revision is packaged.
 
@@ -195,11 +163,11 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify a held piece still reads as raised under Reduce Motion, and that no piece style suppresses the lift.
 - Verify the capture ring stays distinguishable from any ring belonging to the selected piece style.
 - Verify the illegal-square haptic uses the lightest selection-weight feedback, is distinguishable from the save-failure warning, and that Undo transitions complete within their accepted durations.
-- *(Waits with the preference itself — deferred to the post-Windows appearance pass, owner 2026-07-28/29, since a preference with one option is not a preference.)* Verify the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
+- Once a second piece style exists and the preference with it, verify that the piece-style preference persists, applies immediately, and changes presentation only, leaving game content, archives, and notation identical across styles.
 - Verify every Settings preference persists in the platform's own preference system and survives relaunch, that none is written to the shared store, and that changing one never alters an active game or any History record.
 - Verify a game created from the pre-start draft freezes the first-mover choice and AI level supplied at creation, and that changing either Settings default afterwards leaves the created and archived game untouched.
 - Verify the app follows the operating system's language selection, including through an Apple per-app language change, and that it offers no interface-language control of its own.
-- Run the localization evidence that [copy.md](copy.md) § The localization process requires: the Double-Length and Bounded String pseudolanguage passes, the smoke flows in both Simplified Chinese and English, and — once the CI workflows below exist — the mechanical check that the copy contract and the String Catalog agree in both languages.
+- Run the localization evidence [copy.md](copy.md) § The localization process requires: the Double-Length and Bounded String pseudolanguage passes, the smoke flows in both Simplified Chinese and English, and the mechanical check that the copy contract and the String Catalog agree in both languages.
 - Verify the sound, haptics, and piece-symbols settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
 - Verify the grid and palace diagonals are stroked identically, that the outer boundary is a single line, and that both reach 3:1 against each style's board surface.
 - Verify both numeral strips are present, that each faces the player whose numerals it shows, that they follow the board's orientation, that the two sets share a baseline and read as equal in weight, and that every numeral reaches 4.5:1 against the board surface and 7:1 under Increase Contrast.
@@ -214,7 +182,7 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify every board marker — legal-move dot, capture ring, last-move markers, and check treatment — stays legible against each style's own board surface.
 - Verify the board-metric rules on a rendered board: no piece style's decoration touches the marker band, no game-state marker's ink touches a disc face at the disc's largest, and no marker leaves its own cell at rest or at any moment of its animation. A dragged piece is exempt only while dragged.
 - Verify no resident surface intersects the board block, that a user-summoned sheet may cover it, and that the natural-result notice may stand in front of the board, leaving the position undimmed beneath it and fully visible the moment it is put away.
-- Verify each style's marker ink meets both accepted strengths — active at 4.5:1 and record at 3:1 — against that style's own board surface, with shadows excluded, in light and dark appearance, and that record ink is promoted to active values under Increase Contrast. **The second measurement, against the pointer hover fill composited over that surface, is Windows's alone**, because the fill is: the owner scoped it there (2026-07-30, [interaction-design.md](interaction-design.md) § Game-state markers), and a platform that draws no hover fill has no composite to measure against.
+- Verify each style's marker ink meets both accepted strengths — active at 4.5:1 and record at 3:1 — against that style's own board surface, with shadows excluded, in light and dark appearance, and that record ink is promoted to active values under Increase Contrast. **The second measurement, against the pointer hover fill composited over that surface, is Windows's alone**, because the fill is: a platform that draws no hover fill has no composite to measure against.
 - Verify every game-state marker renders identically with Differentiate Without Color enabled and disabled, the keyboard focus ring excepted.
 - Verify an illegal tap and an invalid drop draw no board mark: with a piece selected the legal destinations pulse once and the selection survives, and with nothing selected the turn status beats instead.
 - Verify the illegal-tap response survives Reduce Motion as a single non-animated state change of the legal destinations, and confirm it on a Mac, where no haptic exists to carry it.
@@ -223,30 +191,28 @@ Name the destination by UDID rather than by device name: two simulators of the s
 - Verify the **将军** token is present during play for exactly as long as the side to move is in check, and absent in replay, where there is no side-to-move line. Verify the check rings hide while a checked general is selected or dragged and return when it is released, including after an abandoned drag, and that they are therefore always visible in replay.
 - Verify last-move brackets mark the move that produced the position on screen: they follow an Undo to the move that is now last rather than remaining on the discarded one, they move with each step of replay navigation in both directions, and no brackets appear at an initial position.
 - Verify that the piece-style, piece-symbols, and user-visible-notation choices change presentation only: game content, archives, and canonical notation are unaffected, and History records are identical whichever is selected.
-- Verify traditional notation against the approved clause table carried by `MoveNotationTests`, covering: file numbering from each side's own right; each side's own numerals used for every number, with the four-or-more ordinal — Chinese for both sides — as the one exception; 进 and 退 carrying a rank count for the chariot, cannon, soldier, and general but a destination file for the horse; 平 carrying a destination file; 前 or 后 leading the move without a file for two on a file; 前, 中, and 后 for three; 一 to 五 from the front for four or more; the origin file returning after the piece name when more than one file is doubled; and a capture rendering exactly as the quiet move would. That table is the oracle, accepted 2026-07-28: it distils the Part 6 research table — 110 rows over 24 positions, every row engine-checked (`research/p6-notation-oracle.md` §7 on `archive/design-research`) — to one assertion per clause, and a notation change that no clause catches is a missing clause, since the fixtures record only canonical coordinates.
-- Verify the WXF rendering against the approved clause table carried by `WXFNotationTests`, covering: the letters K, R, H, C and P for both sides alike; files numbered 1 to 7 from each side's own right in Arabic numerals for both sides; `+`, `-` and `=` for advance, retreat and traverse; a rank count when the move stays on its file and the destination file when it does not, which is the horse's value in both directions and the traverse value for the chariot, cannon, soldier and general, with the rank count checked at every distance a chariot can travel; `+` or `-` after the piece letter in place of the file for two of a type on one file, for chariots, horses, cannons and soldiers alike, including the case where the other piece of the pair could not make the same move and the marker is written anyway, and including a pair beside a lone single on a third file, which is one doubled file and therefore keeps the marker; the index from the front in place of the piece letter with the file kept, at three, four and five on a file and for every index; both files' soldiers indexed within their own file at 2-2 and 3-2 with a soldier elsewhere staying plain; a capture rendering exactly as the quiet move would; and a whole line read end to end whose last move is checkmate and carries no marker. Every clause about the front of a file is verified in both sides' frames, since front means nearer the opponent and the two sides therefore count from opposite ends of the same board. That table is the oracle, and it is also machine-checked: of its 145 rows, 141 render identically in Fairy-Stockfish, which emits WXF for this variant and implements the same indexed/marker/plain condition. The four that differ — two per side — are the unconditional-marker reading recorded in [interaction-design.md](interaction-design.md) § WXF rendering, the one class where the two are designed to disagree, and no divergence outside that class is tolerated.
+- Verify traditional notation against the approved clause table carried by `MoveNotationTests`, covering: file numbering from each side's own right; each side's own numerals used for every number, with the four-or-more ordinal — Chinese for both sides — as the one exception; 进 and 退 carrying a rank count for the chariot, cannon, soldier, and general but a destination file for the horse; 平 carrying a destination file; 前 or 后 leading the move without a file for two on a file; 前, 中, and 后 for three; 一 to 五 from the front for four or more; the origin file returning after the piece name when more than one file is doubled; and a capture rendering exactly as the quiet move would. That table is the oracle: a notation change that no clause catches is a missing clause, since the fixtures record only canonical coordinates.
+- Verify the WXF rendering against the approved clause table carried by `WXFNotationTests`, covering: the letters K, R, H, C and P for both sides alike; files numbered 1 to 7 from each side's own right in Arabic numerals for both sides; `+`, `-` and `=` for advance, retreat and traverse; a rank count when the move stays on its file and the destination file when it does not, which is the horse's value in both directions and the traverse value for the chariot, cannon, soldier and general, with the rank count checked at every distance a chariot can travel; `+` or `-` after the piece letter in place of the file for two of a type on one file, for chariots, horses, cannons and soldiers alike, including the case where the other piece of the pair could not make the same move and the marker is written anyway, and including a pair beside a lone single on a third file, which is one doubled file and therefore keeps the marker; the index from the front in place of the piece letter with the file kept, at three, four and five on a file and for every index; both files' soldiers indexed within their own file at 2-2 and 3-2 with a soldier elsewhere staying plain; a capture rendering exactly as the quiet move would; and a whole line read end to end whose last move is checkmate and carries no marker. Every clause about the front of a file is verified in both sides' frames, since front means nearer the opponent and the two sides therefore count from opposite ends of the same board. The table is also machine-checked against Fairy-Stockfish, which emits WXF for this variant: the only tolerated divergence is the unconditional-marker reading recorded in [interaction-design.md](interaction-design.md) § WXF rendering, and no divergence outside that class is accepted.
 - Verify the numeral strips follow the notation preference: both edges Arabic with WXF selected, Red's Chinese with 中文, each side numbering from its own right either way, and the two edges reading as equal in weight under both.
 - Verify unavailable hardware and muted-audio behavior.
 
-## Build and internal-distribution gates
+## Build and distribution gates
 
-An internal distribution candidate — TestFlight on Apple platforms, or the Windows distribution zip — requires:
+A distribution candidate — TestFlight on Apple platforms, or the Windows zip or Store package — requires:
 
-- successful builds for every supported configuration on the distributed platform, which on Windows means **both architectures**, since each is a separate zip that a separate machine runs;
-- passing shared-core tests plus targeted unit, integration, persistence, import/export, rules, engine, and critical UI tests;
+- successful builds for every supported configuration on the distributed platform, which on Windows means **both architectures**, since each is a separate artifact that a separate machine runs;
+- passing shared-core tests plus targeted unit, integration, persistence, import and export, rules, engine, and critical UI tests;
 - no unresolved data-loss, illegal-move, rules-result, engine-termination, or migration failure;
-- verified GPLv3 and license inputs, carried in the artifact where the artifact is one somebody is handed: the Windows zip contains the project's own `LICENSE` and a notice naming Fairy-Stockfish with the pinned fork revision, SQLite's public-domain dedication, the Microsoft redistributables it carries, and — not a third-party input, and named there because it is where a reader looks for it — the neural network, with its filename, byte length, SHA-256 and the pipeline revision that produced it. **The Windows Store package is a distribution under this same clause and carries the same two documents**, generated by the same script from the same manifest; only the sentence about which Microsoft runtime is installed rather than carried differs between them, and "the Microsoft redistributables it carries" is read against what the package actually holds rather than against what its deployment mode was expected to remove;
-- **the bundled network's verified pinned hash per the accepted NNUE handling policy, in every distribution without exception.** *(2026-07-31, with the project's own network.)* This clause used to carry one, for the Windows zip, whose bytes were not the project's to publish; the network is now its own and every distribution bundles it, so there is no case in which an absent network is anything but damage and no instructions for a recipient to follow;
+- verified GPLv3 and license inputs, carried in the artifact where the artifact is one somebody is handed: the Windows zip contains the project's own `LICENSE` and a notice naming Fairy-Stockfish with the pinned fork revision, SQLite's public-domain dedication, the Microsoft redistributables it carries, and — not a third-party input, and named there because it is where a reader looks for it — the neural network, with its filename, byte length, SHA-256 and the pipeline revision that produced it. **The Store package is a distribution under this same clause and carries the same two documents**, generated by the same script from the same manifest; only the sentence about which Microsoft runtime is installed rather than carried differs between them, and "the Microsoft redistributables it carries" is read against what the package actually holds;
+- **the bundled network's verified pinned hash, in every distribution without exception**, so that an absent network is damage rather than a case a recipient has instructions for;
 - for the Windows zip, a run of the headless harness against the **unpacked zip exactly as produced**, with nothing added to it, rather than against the build tree the zip was made from;
 - manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each distributed platform.
 
-## Need to discuss
+## Thresholds not yet set
 
-> The following questions are non-normative and are not implementation requirements.
+These are named so a reader knows the gate above is incomplete, not to authorize a value:
 
-- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on. The Windows half now has a shape: two architectures, one of which — `ARM64` — exists on a machine that runs the product and does not build it, so what a candidate is exercised on there is the zip rather than a build tree.
-- Decide how long the workflows should retain their artifacts, and whether a candidate's zip should be kept beyond that. Two kinds are produced today: the board renders, at the ninety-day default, and the distribution zips, at a fortnight because a zip is reproducible from the commit it was built at and a stale one somebody finds later is a build nobody chose. Neither figure was chosen against a stated retention policy, because there is not one.
-- Define performance, memory, energy, and thermal thresholds for each AI profile.
-- Define which critical flows require UI automation versus structured manual review.
-- Define how the accepted import validation time budget is measured and enforced on each platform.
-- Define which evidence must be retained for an internal distribution candidate.
+- performance, memory, energy, and thermal thresholds for each AI profile;
+- how the accepted import validation time budget is measured and enforced on each platform;
+- which evidence a distribution candidate must retain, and which critical flows require UI automation rather than structured manual review;
+- the physical-device matrix a candidate must be exercised on. The simulator pair and the macOS host are settled above; on Windows, `ARM64` exists on a machine that runs the product and does not build it, so what a candidate is exercised on there is the artifact rather than a build tree.
