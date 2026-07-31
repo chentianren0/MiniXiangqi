@@ -40,7 +40,7 @@ Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](d
 
 ## Windows toolchain
 
-The core's Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by a build that produced it rather than by intent: Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja. The frontend's half — Windows App SDK, .NET, and the packaging flags — is still unestablished and waits for the Windows frontend, which is where a packaging build will first exist to establish it.
+The core's Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by a build that produced it rather than by intent: Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja. The frontend's half — Windows App SDK, .NET, and the packaging flags — is still unestablished and waits for a packaging build, which is where it will first exist to establish it; the frontend skeleton under [`windows/`](windows/README.md) builds unpackaged and pins nothing.
 
 Build and run the core suites the same way as on macOS, from a shell with the Visual Studio environment loaded:
 

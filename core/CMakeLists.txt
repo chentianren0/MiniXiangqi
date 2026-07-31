@@ -261,9 +261,6 @@ foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
     target_compile_definitions(${mxq_target} PRIVATE MXQ_ENABLE_RULES_FACADE=1)
   endif()
 
-  # Hidden by default on both, so that the ELF and Mach-O shared libraries
-  # publish the same surface the Windows one does: what MXQ_API marks, and
-  # nothing the vendored components happen to define.
   set_target_properties(${mxq_target} PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
@@ -301,6 +298,30 @@ foreach(mxq_dep IN ITEMS fairy-stockfish sqlite)
     message(STATUS "Mini Xiangqi core: vendored ${mxq_dep}")
   endif()
 endforeach()
+
+# A shared library exports what its objects say is exportable, and the vendored
+# components are compiled as their own targets: hiding mxq_core_shared's own
+# symbols says nothing about theirs. On Windows nothing is exported without
+# __declspec(dllexport), so the DLL is already exactly mxq.h's 54 functions and
+# this changes nothing there. On ELF and Mach-O the default is the opposite,
+# and without this the library would also publish every sqlite3_ entry point
+# and much of the engine — components docs/architecture.md requires to stay
+# invisible through mxq.h. Applied only while building a shared library, so
+# that the Apple frontend's static build compiles the same objects it always
+# did. Measured with nm on macOS: without it the library exported the whole
+# sqlite3_ surface alongside mxq.h's own functions; with it, mxq.h's own and
+# nothing else.
+if(MXQ_BUILD_SHARED_LIBRARY)
+  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_sqlite)
+    if(TARGET ${mxq_vendored})
+      set_target_properties(${mxq_vendored} PROPERTIES
+        C_VISIBILITY_PRESET hidden
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+      )
+    endif()
+  endforeach()
+endif()
 
 # --------------------------------------------------------------------------
 # The bundled variant configuration

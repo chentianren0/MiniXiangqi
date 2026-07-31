@@ -137,7 +137,7 @@ public sealed unsafe class GameSession : IDisposable
         MxqGame* game = Live;
         nuint count;
         MxqError err = MxqCall.Error();
-        MxqCall.Check(read(game, null, 0, &count, &err), in err, "move readback");
+        MxqCall.CheckCountProbe(read(game, null, 0, &count, &err), in err, "move readback");
         if (count == 0)
         {
             return Array.Empty<string>();

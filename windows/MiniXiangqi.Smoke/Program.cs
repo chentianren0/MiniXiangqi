@@ -48,6 +48,7 @@ internal static unsafe class Program
             BeforeInitialisation(assets);
             MxqEngineBudget budget = Probe();
             Run(store, assets, budget);
+            WhatTheWindowDoes(store, assets);
         }
         catch (Exception ex)
         {
@@ -289,8 +290,15 @@ internal static unsafe class Program
         Section("7. mxq_game_legal_moves — both halves of the buffer protocol");
         nuint count;
         err = MxqCall.Error();
-        MxqCall.Check(Mxq.mxq_game_legal_moves(game, null, 0, &count, &err), in err, "legal-move count");
-        Console.WriteLine($"    count-only call     {count} moves");
+        int probe = Mxq.mxq_game_legal_moves(game, null, 0, &count, &err);
+        Console.WriteLine($"    count-only call     {count} moves, {MxqCall.StatusName(probe)}, required_size {err.required_size}");
+
+        // The probe answers with the routine buffer-too-small status rather
+        // than MXQ_OK, because a cap of 0 genuinely could not hold the answer.
+        // Only an empty list answers MXQ_OK. Both are the protocol working.
+        Check("the count probe answers MXQ_ERR_ARG_BUFFER_TOO_SMALL with the count",
+            probe == Mxq.MXQ_ERR_ARG_BUFFER_TOO_SMALL && count > 0
+            && err.required_size == count);
 
         MxqMove[] moves = new MxqMove[(int)count];
         fixed (MxqMove* buffer = moves)
@@ -338,7 +346,8 @@ internal static unsafe class Program
         Check("the AI is now expected to answer", afterStatus.search_expected == 1);
 
         err = MxqCall.Error();
-        MxqCall.Check(Mxq.mxq_game_move_history(game, null, 0, &count, &err), in err, "history count");
+        MxqCall.CheckCountProbe(
+            Mxq.mxq_game_move_history(game, null, 0, &count, &err), in err, "history count");
         Console.WriteLine($"    move history        {count} ply");
         Check("the retained line holds the one move", count == 1);
 
@@ -453,6 +462,68 @@ internal static unsafe class Program
         Mxq.mxq_game_release(game);
         core.Dispose();
         Console.WriteLine("    session released, core shut down");
+    }
+
+    // ---------------------------------------------------------------------
+    // 16. Everything the window does, minus the XAML.
+    //
+    // A WinUI 3 process cannot be launched from an SSH session — session 0 has
+    // no interactive desktop and the Windows App SDK's input stack fail-fasts
+    // before any of this project's code runs — so the window's own evidence is
+    // that it builds. What it would otherwise leave unproven is the wrapper
+    // between it and the generated bindings, which is real code with real
+    // callers. So the harness drives exactly the calls MainWindow makes, in
+    // the order it makes them, headlessly.
+    // ---------------------------------------------------------------------
+    private static void WhatTheWindowDoes(string store, string assets)
+    {
+        Section("16. The wrapper the window uses, over a second core lifetime");
+
+        CoreVersion version = MiniXiangqiCore.Version;
+        Console.WriteLine($"    api                 {version.ApiVersion}");
+        Console.WriteLine($"    variant             {version.VariantId}");
+
+        using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+        Console.WriteLine("    core re-initialised over the same store");
+
+        // The previous section archived its game, so the library holds no
+        // active one and this is the create half of resume-or-create.
+        using GameSession session = core.ResumeOrCreate(
+            humanSide: Mxq.MXQ_COLOR_RED,
+            aiLevel: Mxq.MXQ_AI_LEVEL_FAST,
+            firstMoverChoice: Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+            movetimeMs: Mxq.MXQ_MOVETIME_FAST_MS);
+
+        BoardPosition position = session.Position();
+        GameState state = session.State();
+        IReadOnlyList<string> legal = session.LegalMoves();
+        IReadOnlyList<string> history = session.MoveHistory();
+
+        Console.WriteLine($"    game id             {session.Id}");
+        Console.WriteLine($"    fen                 {position.Fen}");
+        Console.WriteLine($"    ply / revision      {position.PlyCount} / {position.PositionRevision}");
+        Console.WriteLine($"    state / reason      {state.State} / {state.EndReason}");
+        Console.WriteLine($"    legal moves         {legal.Count}");
+        Console.WriteLine($"    history             {history.Count}");
+
+        Check("a second core opened over the same store", position.Fen == MiniXiangqiCore.StartFen);
+        Check("the wrapper read the legal-move set", legal.Count > 0);
+        Check("a new game has no retained line", history.Count == 0);
+
+        BoardPosition after = session.ApplyMove(legal[0]);
+        IReadOnlyList<string> historyAfter = session.MoveHistory();
+        Console.WriteLine($"    applied             {legal[0]}");
+        Console.WriteLine($"    fen                 {after.Fen}");
+        Console.WriteLine($"    history             {historyAfter.Count}: {string.Join(' ', historyAfter)}");
+
+        Check("the wrapper applied a move", after.PlyCount == 1);
+        Check("the retained line holds it", historyAfter.Count == 1 && historyAfter[0] == legal[0]);
+
+        // The other half of resume-or-create is not reachable in one process:
+        // a second mxq_game_resume_active while the first session is live is
+        // MXQ_ERR_ARG_CONCURRENT_USE by contract, so the resume path is what
+        // the window exercises at its second launch.
+        Console.WriteLine("    (the resume half of resume-or-create belongs to a second launch)");
     }
 
     // ---------------------------------------------------------------------

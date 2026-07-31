@@ -36,6 +36,12 @@ file=single
 --generate
 file-scoped-namespaces
 
+# The [NativeTypeName] attribute the output annotates every field and parameter
+# with, so the generated file states which C type each C# type stands for. It
+# carries the assembly-level attributes with it, the next one included.
+--generate
+helper-types
+
 # The capacity, version and budget constants mxq.h defines as macros —
 # MXQ_FEN_CAP, MXQ_API_VERSION_MAJOR, MXQ_ENGINE_MIN_HASH_MIB and the rest —
 # rather than leaving the C# side to restate numbers the header owns.

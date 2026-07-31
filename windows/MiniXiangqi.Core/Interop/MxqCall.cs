@@ -27,6 +27,30 @@ public static unsafe class MxqCall
         throw Failure(status, in err, operation);
     }
 
+    /// <summary>
+    /// Throw unless <paramref name="status"/> is the answer a count probe
+    /// gives.
+    ///
+    /// The first half of the core's two-call buffer protocol — a NULL buffer
+    /// with cap 0 — asks for a count, and the count is all it asks for, so the
+    /// call reports that the buffer could not hold the answer: it returns
+    /// <c>MXQ_ERR_ARG_BUFFER_TOO_SMALL</c> with the count written and
+    /// <c>required_size</c> set. That status is routine rather than a
+    /// programming error, and it is the ordinary answer here; only an empty
+    /// list returns <c>MXQ_OK</c>, because then cap 0 really was enough. A
+    /// binding that treated every non-OK status as a failure would fail on the
+    /// most common call in the interface.
+    /// </summary>
+    public static void CheckCountProbe(int status, in MxqError err, string operation)
+    {
+        if (status is Mxq.MXQ_OK or Mxq.MXQ_ERR_ARG_BUFFER_TOO_SMALL)
+        {
+            return;
+        }
+
+        throw Failure(status, in err, operation);
+    }
+
     /// <summary>Build the exception for a status without throwing it.</summary>
     public static MxqException Failure(int status, in MxqError err, string operation)
     {
