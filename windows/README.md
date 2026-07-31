@@ -749,6 +749,20 @@ The bindings check is the obligation issue #80 carried from #85's verify: a `Mxq
 that differs from what the generator writes is a transcription of the header rather than
 the header, and the DLL export path and the bindings can no longer drift silently.
 
+**A `v*` tag makes a release out of the same run.**
+[`release.yml`](../.github/workflows/release.yml) builds nothing of its own: it calls the
+workflow above, so a release is the ordinary build with the ordinary proofs rather than a
+second definition of them, and then attaches five of that run's artifacts — the two zips,
+the two `.msix`, and the `.msixupload` — to a **draft** release on the tag, with generated
+notes as the starting point. The assets are those files themselves rather than the
+artifact wrappers described [above](#the-distribution), so a release download is the zip
+and not a zip around it. It stops at a draft deliberately: this repository has release
+immutability enabled, so publishing freezes both the assets and the tag, and that click is
+the owner's to make after running the thing. Before either runner starts, it also refuses
+a tag whose version and `Package.appxmanifest`'s disagree — `v1.6` means `1.6.0.0` — since
+a release page and the package hanging off it should not answer *which version is this*
+two different ways.
+
 ## Strings
 
 `MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, keyed exactly
@@ -1027,10 +1041,13 @@ nothing and cost a reader the ability to tell. **Nothing else changes when they 
 the project, not the scripts, not CI. Three string edits, and the next build is the same
 build.
 
-`Version` is hardcoded at `1.0.0.0` and the owner bumps it by hand per submission. CI does
-not stamp it: the Store refuses a version that is not higher than the last accepted one
-and reserves the fourth part for itself, and a version that moves on every run is a
-version nobody chose. `DisplayName` is **Xiangqi Master**, the owner's provisional choice
+`Version` is hardcoded — `1.6.0.0` — and bumped by hand, in a commit, before the release
+tag it belongs to is pushed. CI does not stamp it: the Store refuses a version that is not
+higher than the last accepted one and reserves the fourth part for itself, and a version
+that moves on every run is a version nobody chose. What CI does is compare, because the
+tag names the same number: `vX.Y` is `X.Y.0.0` and `vX.Y.Z` is `X.Y.Z.0`, and
+[`release.yml`](../.github/workflows/release.yml) stops a release whose two answers
+differ. `DisplayName` is **Xiangqi Master**, the owner's provisional choice
 (2026-07-31); the reservation fixes the name finally, in the same act as the identity.
 
 ### What the manifest declares, and what it deliberately does not

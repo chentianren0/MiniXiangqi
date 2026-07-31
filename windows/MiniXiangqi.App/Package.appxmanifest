@@ -45,16 +45,18 @@
     changes when they land. They are three string edits here, and the build that
     follows is the same build.
 
-    Version is hardcoded and the owner bumps it by hand for each submission. The
-    Store requires the revision (fourth) part to be 0 and refuses a package
-    whose version is not higher than the last one accepted. CI does not stamp
-    it: a version that moves on every run is a version nobody chose, and the
-    submission is a deliberate act.
+    Version is hardcoded and bumped by hand, in a commit, before the release tag
+    is pushed — because the tag names it too: vX.Y is X.Y.0.0 and vX.Y.Z is
+    X.Y.Z.0, and .github/workflows/release.yml refuses to build a release whose
+    tag and package disagree. The Store requires the revision (fourth) part to be 0 and
+    refuses a package whose version is not higher than the last one accepted. CI
+    does not stamp it: a version that moves on every run is a version nobody
+    chose, and both the tag and the submission are deliberate acts.
   -->
   <Identity
     Name="MXQPLACEHOLDER.MiniXiangqi"
     Publisher="CN=MXQPLACEHOLDER"
-    Version="1.0.0.0" />
+    Version="1.6.0.0" />
 
   <!--
     ProcessorArchitecture is deliberately absent above. The packaging build
