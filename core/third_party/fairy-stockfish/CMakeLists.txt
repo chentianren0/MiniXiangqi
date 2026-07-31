@@ -179,23 +179,29 @@ endif()
 # to; applying it to a vendored snapshot we do not edit would make an upstream
 # style choice fail our build. The fork's own warning flags are used instead.
 #
-# What that leaves visible when the ENGINE'S OWN sources compile: C4267 and
-# C4324 in them, and C4996 for std::getenv in uci.cpp. All are the fork's code
-# at the pinned revision, all are read-only here, and none can fail this build,
-# because /WX never reaches this target. Noise to scroll past, not debt to us.
+# What that leaves visible on MSVC when the ENGINE'S OWN sources compile —
+# C4244, C4267, and C4996 for std::getenv in uci.cpp — is the fork's code at
+# the pinned revision, read-only here, and unable to fail this build because
+# /WX never reaches this target. Noise to scroll past, not debt to us.
 #
-# A separate set is emitted while OUR translation units compile, because they
-# include engine headers, and those targets DO link mxq_warnings: the first
-# Windows CI run reported C5054 and C4244 against types.h and bitboard.h with
-# mxq_core.vcxproj and mxq_search_tests.vcxproj named as the project. The
-# counts vary with the configuration and are not worth recording; which codes
-# reach whose translation units is. C5054 is handled by the INTERFACE
-# suppression below. C4244 is deliberately not: it is a narrowing conversion
-# rather than a deprecation, and silencing it on the interface would blind our
-# own code to narrowing in exactly the files that include an engine header.
-# With MXQ_WARNINGS_AS_ERRORS off — which it is everywhere, CI included — it
-# costs nothing; turning that option on is the decision that would have to
-# settle it, and it is not settled here.
+# A different set lands on OUR translation units, because they include engine
+# headers, and their targets DO link mxq_warnings. Reading the Windows CI log
+# by the project each warning is attributed to, rather than by the file it
+# points at, is what separates the two, and it is the only way to tell: every
+# one of these is reported against types.h, bitboard.h or an nnue header
+# whichever target is compiling. Ours get C4244 and C4324. They also got C5054
+# until the INTERFACE suppression below grew its MSVC spelling, which is what
+# removed it.
+#
+# The two that remain are left deliberately, and are the reason
+# MXQ_WARNINGS_AS_ERRORS is not simply switched on. C4244 is a narrowing
+# conversion rather than a deprecation: silencing it on the interface would
+# blind our own code to narrowing in every file that includes an engine
+# header. C4324 — padding added for an alignment specifier — is upstream's
+# NNUE structures, and no rule says a future aligned struct of ours should be
+# silent too. With the option off, which it is everywhere including CI, both
+# cost nothing. Turning it on is the decision that would have to settle them,
+# and this file does not settle it.
 
 if(NOT MSVC)
   target_compile_options(mxq_fairy_stockfish PRIVATE
