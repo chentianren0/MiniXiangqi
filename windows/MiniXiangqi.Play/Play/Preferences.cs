@@ -24,9 +24,10 @@
 // between; `pieces.symbols` has none because only the 汉字 set is drawn, and a
 // preference with one option is not a preference — which is the rule
 // docs/product.md § Product navigation already applies to the piece style;
-// `haptics.enabled` has none because the platform offers no hardware to drive,
-// and docs/interaction-design.md § Sound and haptics removes that row rather
-// than greying it out. None of the three keys is written here, and none is read:
+// `haptics.enabled` has none because the felt half is not for the MVP — Windows'
+// own touchpad haptics exist and are experimental, 24H2-gated and rarely
+// carried, so docs/interaction-design.md § Sound and haptics removes that row
+// rather than greying it out. None of the three keys is written here, and none is read:
 // a Windows launch leaves whatever an Apple launch stored under them exactly as
 // it found it, which is what sharing a key vocabulary across frontends is worth.
 //

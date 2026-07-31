@@ -306,7 +306,10 @@ are what is checked, and then the reader section 22 proved opens a pre-start dra
 first directly, then through a real `PlayFlow` walking the home to a mode entry to a
 pre-start page. It also states the two things a shared preference file makes possible to get
 wrong: a preference this platform has no surface for is left exactly as it was by a write,
-and a preference changed underneath the screen is what the screen shows next. **37 states
+and a preference changed underneath the screen is what the screen shows next. It also
+drives the no-alert design rather than describing it — a file standing where the directory
+should be refuses every write deterministically, and both halves of the snap-back are
+checked. **37 states
 the sound event-mapping seam**: the precedence rule over its whole truth table, the 声音
 gate honoured at the moment of use and flipped between two landings on one object, and then
 a real Free Play game in which every landing is checked against what the board itself says
@@ -438,11 +441,19 @@ issue #80's owner-decided trim rather than a design change — `docs/product.md`
 navigation carries the Windows Settings scope with the reasoning for each. 棋盘 is absent
 with both of its rows: the move record here is the core's own coordinate text in both
 languages so 记谱法 has nothing to choose between, and only the 汉字 set is drawn so
-棋子符号 is a preference with one option. 触感 is absent because the platform gives an
-application no way to drive the machine's own hardware, which
-`docs/interaction-design.md` § Sound and haptics settles as the Windows answer — the row
-is removed rather than greyed out, exactly as it is on an iPad. **Both accepted footers
-survive**, so the two-footer rule reads the same here as it does on the Mac.
+棋子符号 is a preference with one option. 触感 is absent because it is **not for the MVP**,
+which is a narrower claim than it looks and is worth stating exactly: Windows *does* have a
+touchpad counterpart to the Mac's system haptic performer —
+`Windows.Devices.Haptics.InputHapticsManager`, UniversalApiContract 19 with Windows 11
+24H2, whose `HapticDeviceType` names Touchpad and Mouse and which answers `IsSupported()`
+and `IsHapticDevicePresent()` before `TrySendHapticWaveform` plays anything. It is
+experimental, gated to 24H2 and later, and the hardware is rare, so shipping the switch now
+would ship one that does nothing on nearly every machine — which the contract forbids for
+the same reason it forbids a switch with no API behind it. The row is removed rather than
+greyed out, exactly as it is on an iPad, and if it is ever offered here iOS's ask-the-device
+rule carries over unchanged: `IsSupported()` plus `IsHapticDevicePresent()` is that question
+in Windows' own words. **Both accepted footers survive**, so the two-footer rule reads the
+same here as it does on the Mac.
 
 The Fluent adaptation is one rule applied three times: **a group is a card**. A grouped
 `Form` section on macOS supplies a header above and a footer below; Windows has no grouped
@@ -465,6 +476,15 @@ where it was, which is the truth and needs no alert — there is no accepted cop
 and inventing a preference-failure alert would be inventing a contract. And a preference
 changed underneath the screen is picked up on the next refresh without a relaunch, which
 is the same read-at-the-moment-of-use rule the sound gate and the deletion gate run under.
+
+**That is a deliberate divergence from the Mac**, which mirrors each value into `@State`
+and so shows what was *asked for*. It is confined to a failure mode the two platforms do
+not share equally — a `UserDefaults` write barely has one, a file write has disk, quota and
+permissions behind it. The snap-back has two halves and both are load-bearing: the screen
+reads the stored value, and `Changed` is raised **whether or not the write landed**, which
+is the only thing that redraws the control back to it. Announcing only on success would
+leave a switch showing a value nobody stored, silently, so §36 drives a refused write —
+a file standing where the directory should be — rather than describing one.
 
 This frontend now reads **four** preferences and writes those same four —
 `defaults.firstMover`, `defaults.aiLevel`, `sound.enabled` and

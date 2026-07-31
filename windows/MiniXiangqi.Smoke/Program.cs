@@ -2813,9 +2813,10 @@ internal static unsafe class Program
     /// and then a real `PlayFlow` walks to a pre-start page and opens on it.
     /// Neither half is a stand-in for the other.
     ///
-    /// **Three rows are absent and that is scope, not a gap.** The string table
-    /// is where that is stated mechanically below: the keys this screen draws are
-    /// there, and 棋盘's two, 记谱法's and 触感's are not.
+    /// **Eight keys are absent and that is scope, not a gap** — 棋盘's group
+    /// header, the two rows of a label and two options each that stood under it,
+    /// and 触感's switch. The string table is where that is stated mechanically
+    /// below: the keys this screen draws are there, and those eight are not.
     /// </summary>
     private static void TheSettingsRoundTrip(MiniXiangqiCore core, PumpScheduler scheduler)
     {
@@ -2959,6 +2960,37 @@ internal static unsafe class Program
                 Stored(path, "deleteConfirmation.enabled") == "false"
                 && !settings.ConfirmsDeletion);
 
+            // **A write the file system refuses, and the whole of what answers
+            // it.** The accepted design here is that there is no alert — a
+            // preference that could not be written is a control that visibly did
+            // not move — and that is two things holding together rather than one:
+            // the screen reads the *stored* value, and `Changed` fires whether or
+            // not the write landed, which is the only thing that redraws the
+            // control back to it. A refactor announcing only on success would
+            // leave a switch showing a value nobody stored, and every check above
+            // this one would stay green. So it is driven rather than described.
+            //
+            // A file standing where the directory should be is what refuses it,
+            // deterministically and on every write: `Directory.CreateDirectory`
+            // will not make a directory over a file.
+            string blocked = Path.Combine(directory, "blocked");
+            File.WriteAllText(blocked, "a file where the directory should be");
+            SettingsScreen refused = new(new FilePreferenceStore(
+                Path.Combine(blocked, "preferences.json")));
+
+            int announced = 0;
+            refused.Changed += () => announced++;
+
+            Check("a preference that cannot be read at all is the accepted default",
+                refused.Sound);
+            refused.SetSound(false);
+            Console.WriteLine(
+                $"    a refused write     声音 reads {refused.Sound}, {announced} announcement(s)");
+            Check("a write the file system refused leaves the value where it was",
+                refused.Sound);
+            Check("and it announces anyway, which is the only thing that snaps the control back",
+                announced == 1);
+
             // The trim, stated over the string table rather than described. Every
             // row this screen draws is a row of docs/copy.md — section 17 checks
             // that for the whole table — and the rows it deliberately does not
@@ -2972,11 +3004,15 @@ internal static unsafe class Program
                 && Strings.Table.ContainsKey("settings.sound.label")
                 && Strings.Table.ContainsKey("settings.confirmDelete.label")
                 && Strings.Table.ContainsKey("settings.confirmDelete.footer"));
-            Check("and the three trimmed rows carry no string on this platform",
-                !Strings.Table.ContainsKey("settings.section.board")
-                && !Strings.Table.ContainsKey("settings.symbols.label")
-                && !Strings.Table.ContainsKey("settings.notation.label")
-                && !Strings.Table.ContainsKey("settings.haptics.label"));
+            string[] trimmed =
+            [
+                "settings.section.board",
+                "settings.symbols.label", "settings.symbols.hanzi", "settings.symbols.icons",
+                "settings.notation.label", "settings.notation.traditional", "settings.notation.wxf",
+                "settings.haptics.label",
+            ];
+            Check("and the eight trimmed keys carry no string on this platform",
+                trimmed.All(key => !Strings.Table.ContainsKey(key)));
 
             string[] footers =
                 [.. Strings.Table.Keys.Where(key => key.StartsWith("settings.", StringComparison.Ordinal)
@@ -3032,10 +3068,20 @@ internal static unsafe class Program
 
         TimeSpan?[] durations = [.. BoardSounds.All.Select(BoardSoundAssets.DurationOf)];
         Check("each is a readable PCM sample", durations.All(length => length is not null));
-        Check("the accepted character holds: all short, and the conclusion the one gesture",
-            durations.All(length => length is { TotalSeconds: > 0 and < 1 })
-            && BoardSoundAssets.DurationOf(BoardSound.Conclusion)
-                > BoardSoundAssets.DurationOf(BoardSound.Plain));
+
+        // The bounds are the Apple suite's own — `BoardSoundsTests.swift` holds
+        // these same four files to them — because what they encode is the
+        // contract's character rather than either platform's: a landing is an
+        // impact, and the game settling is not another tock. The same numbers on
+        // both sides is also what makes the copied bundle checkable as one set:
+        // a retune that pushed a sample out of its length would fail in both
+        // places rather than in whichever one thought to look.
+        Check("a landing is an impact: the three are all inside 150 ms",
+            new[] { BoardSound.Plain, BoardSound.Capture, BoardSound.Check }.All(
+                sound => BoardSoundAssets.DurationOf(sound) is { TotalSeconds: > 0 and <= 0.150 }));
+        Check("and the game settling is a gesture: over 150 ms and inside 450",
+            BoardSoundAssets.DurationOf(BoardSound.Conclusion)
+                is { TotalSeconds: > 0.150 and <= 0.450 });
 
         // The rule itself, over everything it can be asked. Precedence is
         // conclusion, then capture, then check, then the plain landing — so a

@@ -258,7 +258,7 @@ public static class Strings
             // 棋盘 and its two rows carry no key below and neither does 触感:
             // the notation has nothing to choose between while the record is the
             // core's own coordinate text, only the 汉字 symbol set is drawn, and
-            // the platform has no haptic hardware to drive. The two footers are
+            // the felt half is not for the MVP. The two footers are
             // both here, which is the whole of the accepted two-footer rule —
             // "there are two footers on the screen, and only two" — surviving the
             // trim rather than being restated by it.

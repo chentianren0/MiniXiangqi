@@ -32,11 +32,27 @@
 //   * `ElementSoundPlayer` is WinUI's own sound set for its own controls. It
 //     plays the platform's sounds, not ours.
 //
-// **A second sound stops the first, and that is wanted.** `PlaySound` allows one
-// asynchronous sound per process and a new call replaces whatever is ringing —
-// which is the accepted behaviour written from the other side: "rewound before
-// it is started, so a sound that is still ringing from the previous landing
-// restarts rather than being ignored."
+// **A second sound stops the first, and it is the AudioGraph paragraph above
+// that says why this is acceptable rather than the Mac's own behaviour.**
+// `PlaySound` allows one asynchronous sound per process and a new call replaces
+// whatever is ringing, so this diverges from the Apple player in one respect and
+// matches it in the other:
+//
+//   * **The same voice twice in a row matches.** `BoardSounds.swift` rewinds a
+//     player before starting it, "so a sound that is still ringing from the
+//     previous landing restarts rather than being ignored" — which is what
+//     replacing it does here.
+//   * **Two different voices differ.** The Mac holds four `AVAudioPlayer`s and
+//     a check over a still-ringing capture would *mix*; here the capture stops.
+//     That divergence is near-unreachable rather than tolerated: the contract is
+//     one sound per landing, a committing transition runs to completion, and
+//     input arriving during one is discarded rather than queued — so a second
+//     landing cannot be committed while the first is still inside a 145 ms
+//     sample except by the machine answering a move within it, which no search
+//     does. It is named because it is real, not because it has been seen.
+//
+// The choice stands on that: an API whose only cost is a tail nothing can reach
+// beats one that builds a mixer to preserve it.
 //
 // **`SND_NODEFAULT` is not optional.** Without it, a sample the driver would not
 // play falls back to the *system default sound* — so a missing or malformed file

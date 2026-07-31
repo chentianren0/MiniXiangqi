@@ -18,11 +18,15 @@
 //     is a preference with one option, which docs/product.md § Product
 //     navigation has already ruled is not a preference. A group whose every row
 //     went is a group that goes.
-//   * 触感 is absent from the feedback group, by the same rule iOS removes it
-//     under: the hardware is not there, and the contract's answer to that is a
-//     row **removed rather than greyed out**. The group survives losing it
-//     exactly as the contract says it does — it has no header to strand, and the
-//     two switches were never conditioned on each other, so 声音 standing alone
+//   * 触感 is absent from the feedback group, **not for the MVP** rather than
+//     for want of an API — Windows' own touchpad haptics exist and
+//     `Motion/Feedback.cs` names them, and they are experimental, 24H2-gated and
+//     rarely carried, so a switch over them now would do nothing on nearly every
+//     machine. That is the contract's "unavailable rather than silently
+//     ineffective" all the same, so the row is **removed rather than greyed
+//     out**, which is iOS's own answer. The group survives losing it exactly as
+//     the contract says it does — it has no header to strand, and the two
+//     switches were never conditioned on each other, so 声音 standing alone
 //     means what it meant standing above 触感.
 //   * The two remaining groups are unchanged: 人机对弈默认设置, headed and
 //     footed, and 删除前确认, footed.
@@ -47,6 +51,16 @@
 // — is picked up on the next refresh without a relaunch, which is the same
 // "read at the moment of use" rule the sound gate and the deletion gate run
 // under.
+//
+// **This is a deliberate divergence from the Mac**, which mirrors each value
+// into `@State` and therefore shows what was *asked for*. That difference is
+// confined to a failure mode the two platforms do not share equally: a
+// `UserDefaults` write barely has one, while a file write has disk, quota and
+// permissions behind it. `Changed` is raised whether or not the write landed,
+// and that unconditional raise is the whole of the snap-back — it is what
+// redraws the control to the stored value. Announcing only on success would
+// leave a switch showing something nobody stored, silently, which is why the
+// harness drives a refused write rather than describing one.
 
 namespace MiniXiangqi.Play;
 
@@ -125,6 +139,13 @@ public sealed class SettingsScreen
     /// value it was just *given* is what a XAML selector does when a refresh sets
     /// it, and a screen that wrote on every such report would rewrite the file
     /// every time it drew.
+    ///
+    /// **`Changed` is raised whether or not the write landed, and that is
+    /// load-bearing rather than lax.** A refused write is answered by the control
+    /// snapping back to the stored value, and this raise is the only thing that
+    /// redraws it — the store swallowed the failure and has nothing to report.
+    /// Announcing only on success would leave a switch showing a value nobody
+    /// stored, and nothing else in the app would notice.
     /// </summary>
     private void Write(string key, string value)
     {

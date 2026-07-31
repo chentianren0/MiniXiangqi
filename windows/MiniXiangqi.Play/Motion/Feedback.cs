@@ -18,15 +18,26 @@
 // half and a heard half, and only one of them can be run headlessly. The heard
 // half is the owner's tour.
 //
-// **There is no felt half on Windows.** The Apple `Feedback` carries an `Event`
-// vocabulary beside its `Sound` one, because a Mac trackpad and an iPhone's
-// engine can answer a touch. Windows offers no equivalent — `Windows.Devices.Haptics`
-// speaks to pens and game controllers, not to the machine the app is running on
-// — and the contract's rule for hardware that is not there is that the row is
-// **removed rather than greyed out**, "unavailable rather than silently
-// ineffective". So 触感 is absent from this platform's Settings destination and
-// nothing here has a pattern to perform. `haptics.enabled` is neither read nor
-// written: whatever an Apple frontend stored under it survives untouched.
+// **There is no felt half on Windows at the MVP**, and the reason is narrower
+// than "the platform cannot". The Apple `Feedback` carries an `Event` vocabulary
+// beside its `Sound` one, because a Mac trackpad and an iPhone's engine can
+// answer a touch. Windows has a counterpart —
+// `Windows.Devices.Haptics.InputHapticsManager`, UniversalApiContract 19 with
+// Windows 11 24H2, whose `HapticDeviceType` names Touchpad and Mouse and which
+// answers `IsSupported()` and `IsHapticDevicePresent()` before
+// `TrySendHapticWaveform` plays anything. It is experimental, gated to 24H2 and
+// later, and the hardware is rare, so a switch shipped over it now would do
+// nothing on nearly every machine the app runs on — which the contract forbids
+// for the same reason it forbids a switch with no API behind it: "unavailable
+// rather than silently ineffective". So 触感 is absent from this platform's
+// Settings destination and nothing here has a pattern to perform, and
+// `haptics.enabled` is neither read nor written: whatever an Apple frontend
+// stored under it survives untouched.
+//
+// **If the felt half ever arrives here it needs no new rule.** iOS's is already
+// it — "the question is asked of the device rather than inferred from it" — and
+// `IsSupported()` plus `IsHapticDevicePresent()` is that question in Windows'
+// own words, with the same answer where it comes back no: the row is removed.
 
 namespace MiniXiangqi.Play;
 
