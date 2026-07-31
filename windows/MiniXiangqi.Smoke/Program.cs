@@ -846,20 +846,13 @@ internal static unsafe class Program
             Check("保存 files the game and the notice says so", play.Notice == ResultNotice.Recorded);
             Check("a filed game can no longer be taken back", !play.CanUndo);
 
-            // The concluding action, which has no other run: it files the
-            // finished game — already filed here — and deals another with the
-            // same frozen configuration, because there is no pre-start page to
-            // open yet.
-            string filed = play.GameId;
-            GameConfiguration was = play.Configuration;
-            play.NewGame();
-            Console.WriteLine($"    after 开始新对局      {play.GameId}");
-            Check("开始新对局 deals a different game", play.GameId != filed);
-            Check("the new game starts from the initial position",
-                play.MoveRecord.Count == 0 && play.Position.PlyCount == 0 && !play.IsOver);
-            Check("the new game keeps the finished game's configuration",
-                play.Configuration == was);
-            Check("the new game is playable", play.AcceptsInput || play.Status.SearchExpected);
+            // A game already filed is never filed again. What the concluding
+            // actions do *after* the filing is the destination's rather than
+            // this screen's, and section 25 is where it is run: 开始新对局 opens
+            // that game's own mode's pre-start state, and 完成 returns to the
+            // Play home.
+            Check("filing a filed game files nothing further", play.FileIfNeeded());
+            Check("and the record is still the one it made", play.Notice == ResultNotice.Recorded);
         }
         else
         {
@@ -1468,7 +1461,7 @@ internal static unsafe class Program
 
         // A game already filed is never filed again: the two conclusions above
         // committed one record each and no more.
-        core.HistoryCount(out uint records, out _);
+        uint records = HistoryCount(core);
         Console.WriteLine($"    history             {records} record(s)");
         Check("the two finishes filed one record each", records >= 2);
     }

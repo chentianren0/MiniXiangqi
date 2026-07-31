@@ -373,15 +373,15 @@ public sealed partial class MainWindow : Window
 
     private void ShowPage(PlayFlow flow)
     {
-        HomePage.Visibility = Visible(flow.Page == PlayPage.Home);
-        SetupPage.Visibility = Visible(flow.Page == PlayPage.Setup);
-        BoardPage.Visibility = Visible(flow.Page == PlayPage.Board && flow.Session is not null);
+        HomePage.Visibility = Shown(flow.Page == PlayPage.Home);
+        SetupPage.Visibility = Shown(flow.Page == PlayPage.Setup);
+        BoardPage.Visibility = Shown(flow.Page == PlayPage.Board && flow.Session is not null);
 
         // The back control appears on the two pages that have somewhere to go
         // back to, and names the page it returns to — which here is always the
         // Play home. The title is the destination's rather than any one page's,
         // because all three pages carry the same one.
-        Back.Visibility = Visible(flow.Page != PlayPage.Home);
+        Back.Visibility = Shown(flow.Page != PlayPage.Home);
         AutomationProperties.SetName(Back, Strings.Get("nav.play"));
         PageTitle.Text = Strings.Get("nav.play");
     }
@@ -389,7 +389,7 @@ public sealed partial class MainWindow : Window
     private void ShowHome(PlayFlow flow)
     {
         bool active = flow.ActiveGameLine is { Length: > 0 };
-        CurrentGame.Visibility = Visible(active);
+        CurrentGame.Visibility = Shown(active);
         CurrentGameHeader.Text = Strings.Get("alert.newGame.metadataHeader");
         CurrentGameLine.Text = flow.ActiveGameLine ?? string.Empty;
         ResumeGame.Content = Strings.Get("nav.resumeGame");
@@ -443,8 +443,8 @@ public sealed partial class MainWindow : Window
         _preview.Scene = flow.PreviewScene;
 
         bool versusAi = flow.SetupMode == PlayMode.HumanVersusAi;
-        ThisGame.Visibility = Visible(versusAi);
-        FreePlayExplanation.Visibility = Visible(!versusAi);
+        ThisGame.Visibility = Shown(versusAi);
+        FreePlayExplanation.Visibility = Shown(!versusAi);
         FreePlayExplanation.Text = Strings.Get("setup.freePlayExplanation");
 
         ThisGameHeader.Text = Strings.Get("setup.thisGame");
@@ -485,18 +485,18 @@ public sealed partial class MainWindow : Window
 
         StatusPrimary.Text = play.PrimaryStatus();
         StatusSecondary.Text = play.SecondaryStatus() ?? string.Empty;
-        StatusSecondary.Visibility = Visible(StatusSecondary.Text.Length > 0);
+        StatusSecondary.Visibility = Shown(StatusSecondary.Text.Length > 0);
 
         bool thinking = play.Activity == AiActivity.Thinking;
         Thinking.IsActive = thinking;
-        Thinking.Visibility = Visible(thinking);
+        Thinking.Visibility = Shown(thinking);
         AutomationProperties.SetName(Thinking, Strings.Get("status.aiThinking"));
 
-        Stalled.Visibility = Visible(play.Activity == AiActivity.Stalled);
+        Stalled.Visibility = Shown(play.Activity == AiActivity.Stalled);
         StalledText.Text = Strings.Get("status.aiUnavailable");
         StalledRetry.Content = Strings.Get("control.tryAgain");
 
-        SaveFailure.Visibility = Visible(play.MoveNotSaved);
+        SaveFailure.Visibility = Shown(play.MoveNotSaved);
         SaveFailureText.Text = Strings.Get("status.saveFailed");
 
         ShowControls(play);
@@ -536,7 +536,7 @@ public sealed partial class MainWindow : Window
             // disorienting rather than useful.
             Trailing.Content = Strings.Get("control.resign");
             Trailing.IsEnabled = play.CanResign;
-            Trailing.Visibility = Visible(!play.IsOver);
+            Trailing.Visibility = Shown(!play.IsOver);
         }
     }
 
@@ -624,7 +624,7 @@ public sealed partial class MainWindow : Window
 
         bool recorded = play.Notice == ResultNotice.Recorded;
         NoticeReason.Text = recorded ? string.Empty : play.Reason() ?? string.Empty;
-        NoticeReason.Visibility = Visible(NoticeReason.Text.Length > 0);
+        NoticeReason.Visibility = Shown(NoticeReason.Text.Length > 0);
 
         // Before confirmation both actions save, and the default one only
         // saves: when a game ends, keeping the game that was just played is
@@ -633,7 +633,7 @@ public sealed partial class MainWindow : Window
         // with the pull request that builds it.
         NoticePrimary.Content = Strings.Get(recorded ? "control.done" : "control.save");
         NoticeSecondary.Content = Strings.Get("control.saveAndNewGame");
-        NoticeSecondary.Visibility = Visible(!recorded);
+        NoticeSecondary.Visibility = Shown(!recorded);
 
         Announce(play);
     }
@@ -868,7 +868,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static Visibility Visible(bool shown) =>
+    private static Visibility Shown(bool shown) =>
         shown ? Visibility.Visible : Visibility.Collapsed;
 
     private void ShowFailure(string titleKey, MxqException failure) =>
