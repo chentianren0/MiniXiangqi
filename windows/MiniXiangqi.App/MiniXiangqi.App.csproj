@@ -24,6 +24,23 @@
     <RootNamespace>MiniXiangqi.App</RootNamespace>
     <AssemblyName>MiniXiangqi.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!--
+      The app's icon, in the executable's own resources: this is what Explorer,
+      a shortcut, the taskbar's pinned entry and the unpacked zip's folder show.
+      The running window's icon is a separate question and MainWindow answers it
+      from the same file, which is why the file is also copied beside the
+      executable below.
+
+      MiniXiangqi.ico is derived rather than drawn: apple/AppIcon.icon is the
+      design, the owner exports a 1024 px flat PNG from it, and
+      windows/make-app-icon.py turns that one image into the eight sizes Windows
+      asks for. Neither of the first two is in this repository — one is the Apple
+      app's document and the other is a four-megabyte intermediate — so that
+      script is the paper trail, and windows/README.md § The icon says the same
+      thing in prose.
+    -->
+    <ApplicationIcon>MiniXiangqi.ico</ApplicationIcon>
     <RuntimeIdentifier>$(MxqRuntimeIdentifier)</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
@@ -39,6 +56,14 @@
     <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
     <ProjectReference Include="..\MiniXiangqi.Play\MiniXiangqi.Play.csproj" />
     <ProjectReference Include="..\MiniXiangqi.Board\MiniXiangqi.Board.csproj" />
+  </ItemGroup>
+
+  <!-- AppWindow.SetIcon takes a path rather than a resource, so the same file
+       the executable embeds also travels beside it. -->
+  <ItemGroup>
+    <Content Include="MiniXiangqi.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <Import Project="..\CoreArtifacts.targets" />

@@ -135,6 +135,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = Strings.Get("app.displayName");
+        WearTheIcon();
         Root.Loaded += (_, _) => WatchTheScale();
 
         BoardHost.Children.Add(_board);
@@ -250,6 +251,39 @@ public sealed partial class MainWindow : Window
             _flow?.Dispose();
             _core?.Dispose();
         };
+    }
+
+    /// <summary>
+    /// The title bar's icon, and with it the taskbar's.
+    ///
+    /// <c>ApplicationIcon</c> in the project file puts <c>MiniXiangqi.ico</c> in
+    /// the executable's resources, which is what Explorer, a shortcut and the
+    /// unpacked zip's folder show. That is a different question from what the
+    /// running window wears: a WinUI 3 window's icon is the <c>AppWindow</c>'s,
+    /// and for an unpackaged app there is no package manifest to declare it in,
+    /// so it is set here. The same file answers both, so the two can never show
+    /// different pictures.
+    ///
+    /// <c>SetIcon(string)</c> takes a path, which means the file has to be beside
+    /// the executable; the project copies it there and the distribution zip
+    /// carries it. If it is not there, the window keeps the framework's default
+    /// icon and everything else works — a picture is not worth a launch failure,
+    /// which is the same rule the settings item's label is under above.
+    /// </summary>
+    private void WearTheIcon()
+    {
+        try
+        {
+            string icon = Path.Combine(AppContext.BaseDirectory, "MiniXiangqi.ico");
+            if (File.Exists(icon))
+            {
+                AppWindow.SetIcon(icon);
+            }
+        }
+        catch (Exception)
+        {
+            // Every failure here is cosmetic by construction.
+        }
     }
 
     // Layout.

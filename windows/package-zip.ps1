@@ -16,9 +16,11 @@ publishes on top of that rather than compiling C++ itself.
 WHAT THE ZIP CONTAINS, AND THE ONE THING IT DELIBERATELY DOES NOT
 
   MiniXiangqi-windows-<arch>/
-    MiniXiangqi.App.exe        the app
+    MiniXiangqi.App.exe        the app, carrying its own icon
     MiniXiangqi.Smoke.exe      the self-check, and the reason the zip can be
                                proved runnable rather than assumed to be
+    MiniXiangqi.ico            the same icon as a file, which is what the running
+                               window's AppWindow.SetIcon takes
     mxqcore.dll                the shared core
     *.dll                      the .NET runtime, the Windows App SDK, Win2D,
                                the Visual C++ runtime, and this app's own

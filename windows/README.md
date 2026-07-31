@@ -23,6 +23,7 @@ menus rather than recreated Apple styling.
 |---|---|
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `package-zip.ps1` | the packaging build: publishes, strips the network, and writes the distribution zip |
+| `make-app-icon.py` | builds `MiniXiangqi.ico` from the icon design's 1024 px export |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
 | `MiniXiangqi.Play/` | the board's vocabulary and geometry, every destination's logic, the sound decision and the four samples, and the string table — no UI framework at all |
@@ -530,6 +531,37 @@ than a truncated object every later read would answer "nothing is stored" to. Wh
 changed is the key or the vocabulary: those are the interface between the screen that
 writes a preference and the surface that reads one, and they are what lets a preference set
 in one frontend mean the same thing in the other.
+
+## The icon
+
+`MiniXiangqi.App/MiniXiangqi.ico` is the app's icon, and it is **derived rather than
+drawn**. The design is the Apple side's Icon Composer document, `apple/AppIcon.icon`;
+the owner exports a flat 1024×1024 PNG from it; and [`make-app-icon.py`](make-app-icon.py)
+turns that one image into the eight sizes Windows asks for. Only the last link of that
+chain is in this repository — the first is the Apple app's document and the second is a
+four-megabyte intermediate nobody edits — so the script is the paper trail, and
+regenerating after a design change is one command with the new export.
+
+The eight entries are 16, 20, 24, 32, 48, 64, 128 and 256 pixels: 16 with 20 and 24 for
+the title bar and the scaled variants a high-DPI machine picks up, 32 for the taskbar and
+ordinary Explorer, and the rest for the larger shell views. **256 is PNG-compressed and
+the seven below it are uncompressed DIB entries**, which is the conventional layout and
+the reason the container is written by hand rather than by Pillow's one-call ICO writer:
+that writer encodes every entry the same way, and PNG entries at small sizes are handled
+by the modern shell but not by every older path that may still ask for a 32-pixel icon.
+Every size is resized from the 1024 original with LANCZOS rather than from the size above
+it, so no downscaling error compounds. The disc reads as a red disc at 16 and the 帥
+becomes legible around 32, which is what those sizes are for.
+
+Two places show it and both are set, because they are different questions.
+`ApplicationIcon` in the project file puts the icon in the **executable's resources** —
+Explorer, a shortcut, a pinned taskbar entry, and the folder somebody unpacks the zip
+into. The **running window's** icon is the `AppWindow`'s, and an unpackaged app has no
+package manifest to declare it in, so `MainWindow` calls `AppWindow.SetIcon` with the
+copy of the same file that sits beside the executable. One file answers both, so the two
+can never show different pictures; if that copy is missing the window keeps the
+framework's default and nothing else changes, since a picture is not worth a launch
+failure.
 
 ## The four voices
 
