@@ -145,6 +145,18 @@ private struct Destinations: View {
         #if os(macOS)
         .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
         #endif
+        // `-mxq-open-replay` walks the launch to the newest record's replay,
+        // which is the page a formatting screenshot is about and three clicks
+        // from a launch otherwise. It waits for Play to have appeared, because
+        // that appearance is what files the same launch's `-mxq-history` games:
+        // switching sooner would open History onto a library nothing had
+        // written to yet. History pushes the record whenever the list arrives,
+        // so nothing here depends on this wait being long enough.
+        .task {
+            guard DebugLaunch.contains("-mxq-open-replay") else { return }
+            try? await Task.sleep(for: .seconds(2))
+            destination = .history
+        }
         #endif
     }
 

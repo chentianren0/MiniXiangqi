@@ -14,6 +14,13 @@
 //
 // The same side-by-side shape play uses, with a different panel in it: what the
 // game was, where in it the board is, the list, and the transport.
+//
+// **The header is the top of the page in both shapes.** Beside the board it is
+// the first thing in the panel, which is already the top; beneath the board it
+// is above the board rather than under it, which is where the play screen puts
+// its own status and what the contract's stacked arrangement describes. The
+// owner asked for exactly that from the iPhone (2026-07-30): the result line
+// goes to the top of the page and the room it leaves goes to the move list.
 
 import SwiftUI
 
@@ -23,6 +30,14 @@ struct ReplayScreen: View {
 
     @State private var replay: Replay?
     @State private var failure: CoreError?
+
+    /// What the header above the board actually came to, measured rather than
+    /// assumed — the same thing the play screen does with its turn status, and
+    /// for the same reason: at an accessibility text size it is taller than any
+    /// constant here, and the board is sized around what it really is. It
+    /// starts at the height the default text size comes to, so the first frame
+    /// is already the right size, and nothing it measures depends on the board.
+    @State private var headerHeight: CGFloat = 66
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -86,7 +101,7 @@ struct ReplayScreen: View {
             case .sideBySide:
                 HStack(spacing: 0) {
                     board(replay, BoardLayout.geometry(in: proxy.size))
-                    panel(replay, edge: .top)
+                    panel(replay, showsHeader: true, edge: .top)
                         .frame(width: BoardLayout.panelWidth)
                 }
             case .stacked:
@@ -98,36 +113,53 @@ struct ReplayScreen: View {
         #endif
     }
 
-    /// The board above, the panel beneath it.
+    /// The header above the board, the board, the panel beneath it.
+    ///
+    /// The same three-part arrangement the play screen takes in this shape —
+    /// what is true of the game above the board, the board, the controls below
+    /// it — which is what the contract's stacked arrangement describes. The
+    /// header used to be the first section *inside* the panel; moving it above
+    /// the board is the owner's own iPhone feedback (2026-07-30), and what the
+    /// panel does with the room is nothing: it keeps asking for the same 260
+    /// points, so the whole of the header's former slot goes to the move list.
     ///
     /// Replay is the exception to the on-demand move list: its accepted
     /// behaviour needs the list to indicate the shown move and to let one be
     /// selected, so in this shape the list is on screen too and the
     /// surrounding chrome is what tightens to make room.
     ///
-    /// The panel's height is what it is *granted* rather than what it asks
-    /// for. This panel is a fixed block of chrome — it wants the same 260
-    /// points wherever it is drawn, unlike the play screen's, which is a
-    /// measured line of status above the board and a row of controls below —
-    /// and a fixed block taken whole out of a short space leaves the board a
-    /// slot its own floor does not fit in, which is a board drawn over the
-    /// panel rather than a smaller one. `BoardLayout.stackedChrome(in:asking:)`
-    /// reserves the board's floor first and hands the panel the rest, on every
-    /// platform: the reachable Mac windows that take this shape start at 535
-    /// points of content height, and an iPadOS window is sized by the system
-    /// with no floor of the app's to stop it.
+    /// The chrome's height is what it is *granted* rather than what it asks
+    /// for, and the header is inside that grant rather than beside it: header
+    /// plus panel is exactly the chrome the board is sized around, so the board
+    /// cannot be drawn over either of them. A fixed block taken whole out of a
+    /// short space would leave the board a slot its own floor does not fit in,
+    /// which is a board drawn over the panel rather than a smaller one.
+    /// `BoardLayout.stackedChrome(in:asking:)` reserves the board's floor first
+    /// and hands the chrome the rest, on every platform: the reachable Mac
+    /// windows that take this shape start at 535 points of content height, and
+    /// an iPadOS window is sized by the system with no floor of the app's to
+    /// stop it. Where the grant is short the panel is what gives way, because
+    /// the header is a fact about the game and the list below it is what can be
+    /// read a row at a time.
     private func stacked(_ replay: Replay, in size: CGSize) -> some View {
-        let chrome = BoardLayout.stackedChrome(in: size, asking: panelHeight)
+        let chrome = BoardLayout.stackedChrome(in: size,
+                                               asking: headerHeight + panelHeight)
         return VStack(spacing: 0) {
+            headerBlock(replay)
+                .onGeometryChange(for: CGFloat.self, of: \.size.height) { headerHeight = $0 }
+
             board(replay, BoardLayout.stackedGeometry(in: size, chrome: chrome))
-            panel(replay, edge: .bottom)
-                .frame(height: chrome)
+
+            panel(replay, showsHeader: false, edge: .bottom)
+                .frame(height: max(0, chrome - headerHeight))
         }
     }
 
-    /// What the panel beneath the board asks for: the header, the list, and
-    /// the transport, in the height the two ends of it need plus room for four
-    /// or five rows of the game.
+    /// What the panel beneath the board asks for: the list and the transport,
+    /// in the height the transport needs plus room for six or seven rows of the
+    /// game. It is the same number it asked for when the header was in it —
+    /// which is the point, and the owner's: the header left and the list got
+    /// its slot.
     private var panelHeight: CGFloat { 260 }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry) -> some View {
@@ -148,13 +180,18 @@ struct ReplayScreen: View {
     /// material runs to — the top beside the board, where the title bar draws
     /// over it, and the bottom beneath the board, which is the edge this shape
     /// puts it on.
-    private func panel(_ replay: Replay, edge: Edge.Set) -> some View {
+    ///
+    /// `showsHeader` is what the two shapes disagree about, and only that:
+    /// beside the board the panel's own top *is* the top of the page, so the
+    /// header is in it; beneath the board the header is above the board
+    /// instead, and the panel begins at the list.
+    private func panel(_ replay: Replay, showsHeader: Bool, edge: Edge.Set) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            header(replay)
-                .padding(.horizontal, BoardLayout.panelInset)
-                .padding(.vertical, 12)
+            if showsHeader {
+                headerBlock(replay)
 
-            Divider()
+                Divider()
+            }
 
             // Replay is the exception to the on-demand move list: its accepted
             // behaviour needs the list to indicate the shown move and to let
@@ -189,12 +226,34 @@ struct ReplayScreen: View {
         }
     }
 
+    /// The header with the air around it, in the one set of insets both shapes
+    /// use.
+    ///
+    /// They are the play screen's turn-status insets, arrived at from the other
+    /// side: that element carries 12 points of its own padding — it has a
+    /// background to fill — and the screen adds `panelInset - 12` beside it and
+    /// 8 above and below, which comes to 16 and 20. This header has no
+    /// background and therefore no padding of its own, so it states the same
+    /// two numbers directly. The first line of a game and the first line of a
+    /// record then start at the same place, which is what a reader walking
+    /// between the two screens sees; what follows differs because a status line
+    /// and a record's metadata are different sentences, not because the air
+    /// around them was chosen twice.
+    private func headerBlock(_ replay: Replay) -> some View {
+        header(replay)
+            .padding(.horizontal, BoardLayout.panelInset)
+            .padding(.vertical, 20)
+    }
+
     /// What the game was, and where in it the board is.
     ///
     /// Replay has no side-to-move line: describing a finished game's position
     /// as somebody's turn would be describing a game that is not being played.
     /// What stands in that place is the record's own metadata — the same line
-    /// the History row carries — and the progress through it.
+    /// the History row carries — and the progress through it. The pair reads
+    /// down the page's own leading edge, as every other block on this screen
+    /// does; the title above it is the platform's and is centred or leading by
+    /// the platform's own rule, not by this screen's.
     private func header(_ replay: Replay) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(String(format: String(localized: "replay.progress"),
