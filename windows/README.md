@@ -893,12 +893,12 @@ upload, purely to prove the path the uploaded zip does not take — then re-exam
 To build one, from the repository root, with the two commands in this order:
 
 ```powershell
-pwsh windows\build-core-dll.ps1 -NnueSource C:\mxq\control\nnue\minixiangqi-12c45d5da817.nnue
+pwsh windows\build-core-dll.ps1 -NnueSource <path to the pinned network>
 pwsh windows\package-internal.ps1
 ```
 
-Use `pwsh` rather than `powershell`: an SSH session on the development VM lands in Windows
-PowerShell 5.1, where `&&` is not a statement separator — `;` is, or start `pwsh` first.
+Use `pwsh` rather than `powershell`: Windows PowerShell 5.1 — the default in some shells and
+SSH sessions — does not accept `&&` as a statement separator; `;` is, or start `pwsh` first.
 
 ## What the packaging build pinned, and what it did not
 
