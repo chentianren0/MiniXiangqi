@@ -24,6 +24,7 @@ menus rather than recreated Apple styling.
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets and the C++ runtime into `artifacts/` |
 | `package-zip.ps1` | the direct distribution: publishes, checks the network it carries, and writes the zip |
 | `package-msix.ps1` | the [Store package](#the-store-package): builds the unsigned `.msix`, then unpacks it and checks what the Store would read |
+| `New-DistributionNotices.ps1` | writes `LICENSE` and `NOTICE.md` into either distribution, from `pinned-inputs.json` |
 | `Get-PeMachine.ps1` | one PE-header reader, dot-sourced by the three scripts above that ask what architecture a binary is |
 | `make-app-icon.py` | builds `MiniXiangqi.ico` and the package's `Images/` from the icon design's 1024 px export |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
@@ -872,6 +873,16 @@ length, which SHA-256, and which pipeline revision produced it — all generated
 the manifest cannot disagree. `LICENSE` is the repository's own GPL-3.0. There is no
 `NETWORK.md`: it existed to describe a file that was not in the zip.
 
+Both documents come from [`New-DistributionNotices.ps1`](New-DistributionNotices.ps1),
+which the Store package's build calls too. **They are not a courtesy.** `mxqcore.dll`
+carries Fairy-Stockfish, this application is GPL-3.0 because of it, and
+[`docs/architecture.md`](../docs/architecture.md)'s rule is that a public repository's CI
+artifacts are a distribution channel and are governed as one — so every artifact either
+build uploads is a conveyance that has to carry its licence. One section of `NOTICE.md`
+differs between the two, and exactly one: the zip carries the Windows App Runtime and the
+package takes it as a framework dependency, which also decides whether the
+machine-learning components the app never loads are present to be explained.
+
 **The zip is proved runnable rather than assumed to be.** The workflow unpacks the
 artifact it just built into a directory of its own and runs the `MiniXiangqi.Smoke.exe`
 that came out of the zip against the zip's own layout: its own core DLL, its own assets,
@@ -1064,9 +1075,18 @@ Then, on the unpacked tree, the things whose absence is silent until somebody in
 a resource index and at least one `.xbf`, without which the app dies before its first
 window exactly as the zip once did; `mxqcore.dll`, `vcruntime140.dll`, `hostfxr.dll` and
 `coreclr.dll`; `sounds\`; `assets\` holding the variant configuration and the network under
-the names `pinned-inputs.json` pins; and a PE machine-type sweep over every `.dll` and
-`.exe`, because an ARM64 package that quietly resolved x64 natives builds, uploads, passes
-certification and fails on every machine it is for.
+the names `pinned-inputs.json` pins; `LICENSE` and `NOTICE.md`; and a PE machine-type sweep
+over every `.dll` and `.exe`, because an ARM64 package that quietly resolved x64 natives
+builds, uploads, passes certification and fails on every machine it is for.
+
+**The two documents have to be written before the build, not after it**, and that is the
+one place the packaged shape forced a change to how the zip works. The zip's build writes
+them into the staged directory once everything else is there; a package's payload is a
+build output, computed while MSBuild runs, so a script cannot add to it afterwards without
+making the package something other than what the build produced. So
+`New-DistributionNotices.ps1` runs first, writes into a directory named by `MxqNoticesDir`,
+and the project includes that directory as package content — which is also why the
+generation moved out of `package-zip.ps1` into a script the two builds share.
 
 `makeappx` is found by globbing the installed Windows SDKs rather than by naming a build,
 for the same reason `build-core-dll.ps1` locates MSVC through `vswhere`: the SDK moves with

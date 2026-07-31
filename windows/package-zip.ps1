@@ -110,8 +110,6 @@ if (-not $Revision) {
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
 $network = $manifest.network
-$fork = $manifest.fork
-$sqlite = $manifest.sqlite
 
 $staging = Join-Path $OutputDirectory $productName
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
@@ -339,106 +337,15 @@ if ($hybrid.Count -gt 0) {
 # The documents
 # ---------------------------------------------------------------------------
 #
-# NOTICE.md is generated from pinned-inputs.json rather than written by hand,
-# because docs/architecture.md's input rule cuts both ways: a hash or a revision
-# restated anywhere is a second place for it to be wrong, and a distribution that
-# tells somebody the wrong revision is worse than one that tells them nothing.
-#
-# There is no NETWORK.md any more. It existed to tell a reader about a file that
-# was not in the zip; the file is in the zip, so the honest length of that
-# document is zero. What a reader may still want — which network, and how to
-# check it survived the download — is one row in NOTICE.md and the self-check.
+# LICENSE and NOTICE.md are written by windows/New-DistributionNotices.ps1,
+# which the Store package's build also calls: both distributions carry the same
+# two documents, both are conveyances of GPL-licensed software, and the reasons
+# are argued there rather than twice. Only the README below is this
+# distribution's own, because only it is about unpacking a folder.
 
-Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $staging 'LICENSE') -Force
-
-Set-Content -Path (Join-Path $staging 'NOTICE.md') -Encoding UTF8 -Value @"
-# Mini Xiangqi — licences and attribution
-
-Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
-full text is in ``LICENSE`` beside this file. The project's source is at
-<https://github.com/ppppvz/MiniXiangqi>.
-
-What else is in this build, and under what terms. One section below is not a
-third-party component at all — the neural network is this project's own — and it
-is here because a reader looking for where the AI's evaluation came from will
-look here first.
-
-## Fairy-Stockfish — GPL-3.0
-
-The move generation, search and evaluation come from Fairy-Stockfish, which is
-licensed under the GNU General Public License version 3 — the same licence this
-application is under, and the reason it is under it.
-
-| | |
-|---|---|
-| Source | <$($fork.repository)> |
-| Revision | ``$($fork.revision)`` |
-| Upstream | <$($fork.upstream_repository)> |
-| Upstream base | ``$($fork.upstream_base_revision)`` |
-
-The exact sources this binary was built from are **in this project's own
-repository**, named at the top of this file, under
-``core/third_party/fairy-stockfish/upstream`` — a verbatim copy of the fork
-revision above, with ``SOURCES.sha256`` beside it listing the SHA-256 of every
-file in it. The fork URL above is where that copy came from; the path is this
-project's. Carrying the sources rather than only linking to somebody else's
-server is what makes the corresponding source available even if the fork moves.
-
-## The neural network — this project's own
-
-The evaluation the AI thinks with is a neural network this project trained from
-zero, and it is not a third-party component: it is covered by the licence at the
-top of this file, like the rest of the application. It is in ``assets`` beside
-the variant configuration.
-
-| | |
-|---|---|
-| File name | ``$($network.filename)`` |
-| Size | $('{0:N0}' -f $network.byte_length) bytes |
-| SHA-256 | ``$($network.sha256)`` |
-| Pipeline | <$($network.provenance.pipeline_repository)> |
-| Pipeline revision | ``$($network.provenance.pipeline_revision)`` |
-
-The pipeline above is public and is the provenance: it generates its own training
-data with the engine revision named in this file and the variant configuration
-beside the network, and generation 0 was trained from the engine's own classical
-evaluation, with no other network as a teacher or a seed at any stage.
-
-The packaging build verified this file against the size and hash above before
-putting it here. To confirm it survived the download:
-
-``````powershell
-Get-FileHash .\assets\$($network.filename) -Algorithm SHA256
-``````
-
-## SQLite — public domain
-
-The game library is stored in SQLite $($sqlite.version), whose authors have
-dedicated it to the public domain. There is no licence text to carry;
-<https://sqlite.org/copyright.html> is the statement.
-
-## Microsoft components — redistributable binaries
-
-This is a self-contained build, so it carries Microsoft's runtimes beside the
-app rather than requiring them to be installed:
-
-- the **.NET runtime**, MIT licensed;
-- the **Windows App SDK** and **WinUI 3**, redistributed under the Microsoft
-  Software Licence terms that accompany them. Its self-contained deployment also
-  brings the machine-learning components it depends on — ``onnxruntime.dll``,
-  ``DirectML.dll`` and their companions — which this application never loads;
-  they are covered by those same accompanying terms and are listed here because
-  they are large, present, and would otherwise go unexplained;
-- **Win2D** (``Microsoft.Graphics.Win2D``), MIT licensed;
-- the **Microsoft Visual C++ runtime** (``vcruntime140*.dll``,
-  ``msvcp140*.dll``), redistributed under the Visual Studio licence terms that
-  permit app-local deployment.
-
-## Sounds
-
-The board's four voices are this project's own, generated by a script in the
-source repository. There is no third-party audio here and nothing to attribute.
-"@
+Write-Host ''
+Write-Host 'Writing the licence and the attribution note'
+& (Join-Path $PSScriptRoot 'New-DistributionNotices.ps1') -Destination $staging -Shape zip
 
 Set-Content -Path (Join-Path $staging 'README.md') -Encoding UTF8 -Value @"
 # Mini Xiangqi for Windows ($Architecture)

@@ -150,12 +150,37 @@ $appxDir = Join-Path $OutputDirectory 'msix-build'
 if (Test-Path $appxDir) { Remove-Item $appxDir -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $appxDir
 
+# ---------------------------------------------------------------------------
+# The licence and the attribution note, before the build rather than after it
+# ---------------------------------------------------------------------------
+#
+# The zip's build writes these into the staged directory once everything else is
+# there. This one cannot: a package's payload is a build output, computed while
+# MSBuild runs, and nothing may be added to it afterwards without making the
+# package something other than what the build produced. So they are written
+# first, into a directory the project includes as package content when
+# MxqPackaged is true.
+#
+# They are not decoration. mxqcore.dll carries Fairy-Stockfish, this application
+# is GPL-3.0 because of it, and docs/architecture.md's rule is that a public
+# repository's CI artifacts are a distribution channel governed as one — so
+# every .msix this uploads is a conveyance that has to carry its licence.
+
+$noticesDir = Join-Path $OutputDirectory 'notices'
+if (Test-Path $noticesDir) { Remove-Item $noticesDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $noticesDir
+Write-Host ''
+Write-Host 'Writing the licence and the attribution note'
+& (Join-Path $PSScriptRoot 'New-DistributionNotices.ps1') -Destination $noticesDir -Shape store-package
+$noticesDir = (Resolve-Path $noticesDir).Path
+
 $common = @(
     $project
     "-p:Configuration=$Configuration"
     "-p:Platform=$platform"
     '-p:MxqPackaged=true'
     "-p:MxqRuntimeIdentifier=$rid"
+    "-p:MxqNoticesDir=$noticesDir\"
     '-nologo'
     '-v:minimal'
 )
@@ -422,6 +447,19 @@ if ($xbf.Count -eq 0) {
 foreach ($required in @('mxqcore.dll', 'vcruntime140.dll', 'MiniXiangqi.App.exe')) {
     if (-not (Test-Path (Join-Path $unpacked $required))) {
         $missing += "$required is not in the package."
+    }
+}
+
+# The licence travels with the software it licenses, and this is where that is
+# measured rather than intended. A packaging build that stopped carrying them
+# would produce a package that installs, runs, and conveys GPL-licensed code
+# with no licence in it — which nothing else here would notice.
+foreach ($required in @('LICENSE', 'NOTICE.md')) {
+    if (-not (Test-Path (Join-Path $unpacked $required))) {
+        $missing += ("$required is not in the package. mxqcore.dll carries Fairy-Stockfish and this " +
+                     'application is GPL-3.0 because of it, so every copy conveyed has to carry the ' +
+                     'licence; windows/New-DistributionNotices.ps1 writes both and MxqNoticesDir is how ' +
+                     'they reach the payload.')
     }
 }
 

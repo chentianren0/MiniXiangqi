@@ -174,6 +174,20 @@
       <SubType>Designer</SubType>
     </AppxManifest>
     <Content Include="Images\**\*.png" />
+
+    <!--
+      LICENSE and NOTICE.md, written by windows/New-DistributionNotices.ps1
+      before this build starts and pointed at by MxqNoticesDir. They are here
+      rather than added to the package afterwards because a package's payload is
+      a build output, and a distribution of GPL-licensed software carries its
+      licence — docs/architecture.md's rule that a public repository's CI
+      artifacts are a distribution channel is what makes that true of every
+      .msix this produces, not only of a submitted one.
+    -->
+    <Content Include="$(MxqNoticesDir)*" Condition="'$(MxqNoticesDir)' != ''">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup Condition="'$(MxqPackaged)' != 'true'">
