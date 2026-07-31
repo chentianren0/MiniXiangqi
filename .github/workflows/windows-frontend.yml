@@ -288,3 +288,42 @@ jobs:
           # worth keeping: it is reproducible from the commit it was built at,
           # and a stale zip somebody finds later is a build nobody chose.
           retention-days: 14
+
+      # The complete internal package is built by hand, on a machine the owner
+      # controls, and handed to a tester — never uploaded, and never from here.
+      # But the script that builds it is one somebody will run once and expect
+      # to work, so this runs it and throws the result away, which proves the
+      # path that CI's own zip does not take: the hash gate accepting the right
+      # bytes, the placement, the other NETWORK.md, and the naming.
+      #
+      # Three things keep it from becoming a leak. It writes to RUNNER_TEMP
+      # rather than to windows/dist, so the directory the artifact came from is
+      # never touched. It runs after the upload, so there is no ordering in
+      # which its output could be picked up. And the check afterwards is
+      # mechanical rather than a convention: windows/dist is re-examined for the
+      # network by name and by exact byte length, and a hit fails the job.
+      - name: Prove the internal packaging path, and upload none of it
+        shell: pwsh
+        env:
+          MXQ_NNUE_SOURCE: ${{ steps.network.outputs.path }}
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'internal-package'
+          pwsh windows/package-internal.ps1 `
+            -Architecture ${{ matrix.arch }} `
+            -NnueSource $env:MXQ_NNUE_SOURCE `
+            -OutputDirectory $out
+          if ($LASTEXITCODE -ne 0) { throw 'The internal packaging script failed.' }
+
+          $zips = @(Get-ChildItem $out -Filter '*.zip' -File)
+          if ($zips.Count -ne 1 -or $zips[0].Name -notlike '*-internal-*') {
+            throw "Expected exactly one -internal- zip in $out; found $($zips.Name -join ', ')."
+          }
+          Write-Host ("The internal package stays here: {0} ({1:N0} bytes)" -f $zips[0].Name, $zips[0].Length)
+
+          $manifest = Get-Content pinned-inputs.json -Raw | ConvertFrom-Json
+          $leaked = @(Get-ChildItem windows/dist -Recurse -File |
+            Where-Object { $_.Extension -eq '.nnue' -or $_.Length -eq $manifest.network.byte_length })
+          if ($leaked.Count -gt 0) {
+            throw "The network reached windows/dist, which is where the uploaded artifact came from: $($leaked.FullName -join ', ')"
+          }
+          Write-Host 'windows/dist still carries no network, by name or by length.'

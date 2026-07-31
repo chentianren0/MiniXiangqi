@@ -23,6 +23,7 @@ menus rather than recreated Apple styling.
 |---|---|
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets into `artifacts/` |
 | `package-zip.ps1` | the packaging build: publishes, strips the network, and writes the distribution zip |
+| `package-internal.ps1` | the same build with the network placed — the complete package, for internal testers |
 | `make-app-icon.py` | builds `MiniXiangqi.ico` from the icon design's 1024 px export |
 | `bindings/` | the ClangSharp recipe and the script that runs it |
 | `MiniXiangqi.Core/` | the generated declarations and the thin helpers over them |
@@ -720,6 +721,45 @@ about are Win2D's and the Windows App SDK's, which only a window loads.
 is a zip containing `MiniXiangqi-windows-<arch>.zip`. That is the cost of the artifact
 being byte-for-byte the file the job proved, rather than a repackaging of the directory
 it proved; the alternative uploads a tree and proves a different thing than it ships.
+
+### Two zips, and the line between them
+
+[`package-internal.ps1`](package-internal.ps1) builds the **complete** package: the same
+layout, from the same code path — it *is* `package-zip.ps1`, called with the network's
+bytes — with the network verified against `pinned-inputs.json` and placed in `assets/`,
+and a `NETWORK.md` that says it is there rather than telling somebody to go and find it.
+It emits `MiniXiangqi-windows-<arch>-internal-<revision>.zip` locally and uploads nothing.
+
+**The line between the two is a licensing one, not a technical one.** Bundling the pinned
+network for internal testers is accepted — [`docs/engine-integration.md`](../docs/engine-integration.md)'s
+NNUE handling policy says so plainly. What is barred is a *public* location, because the
+network's origin and redistribution licence have never been established and that document
+makes establishing them a mandatory gate for any distribution beyond internal testing.
+CI's artifacts are a public location: any logged-in GitHub account can download them from
+a public repository. So the automatically published zip cannot carry the network — and
+structurally does not, since the script only places one when handed a path and CI never
+hands it one — while a package built by hand on a machine the owner controls and given to
+a tester directly carries it and is the complete app. The internal zip's own README and
+NETWORK.md both say not to put it anywhere public, for whoever opens it later without
+this paragraph in front of them.
+
+The order inside `package-zip.ps1` is what makes that structural rather than trusted: the
+publish's network is removed and the whole staged tree is checked three ways **before**
+anything is placed back, so both modes run that check on an identical tree and anything
+in `assets/` afterwards is something the internal branch put there in the open. CI also
+runs the internal script once per architecture, into `RUNNER_TEMP` and after the artifact
+upload, purely to prove the path the uploaded zip does not take — then re-examines
+`windows/dist` for the network by name and by byte length and fails the job on a hit.
+
+To build one, from the repository root, with the two commands in this order:
+
+```powershell
+pwsh windows\build-core-dll.ps1 -NnueSource C:\mxq\control\nnue\minixiangqi-12c45d5da817.nnue
+pwsh windows\package-internal.ps1
+```
+
+Use `pwsh` rather than `powershell`: an SSH session on the development VM lands in Windows
+PowerShell 5.1, where `&&` is not a statement separator — `;` is, or start `pwsh` first.
 
 ## What the packaging build pinned, and what it did not
 

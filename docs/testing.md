@@ -230,21 +230,22 @@ Name the destination by UDID rather than by device name: two simulators of the s
 
 ## Build and internal-distribution gates
 
-An internal distribution candidate — TestFlight on Apple platforms, or the internal Windows package — requires:
+An internal distribution candidate — TestFlight on Apple platforms, or the Windows distribution zip — requires:
 
-- successful builds for every supported configuration on the distributed platform;
+- successful builds for every supported configuration on the distributed platform, which on Windows means **both architectures**, since each is a separate zip that a separate machine runs;
 - passing shared-core tests plus targeted unit, integration, persistence, import/export, rules, engine, and critical UI tests;
 - no unresolved data-loss, illegal-move, rules-result, engine-termination, or migration failure;
-- verified GPLv3 and third-party source and license inputs, and the bundled network's verified pinned hash per the accepted NNUE handling policy;
+- verified GPLv3 and third-party source and license inputs, carried in the artifact where the artifact is one somebody is handed: the Windows zip contains the project's own `LICENSE` and an attribution note naming Fairy-Stockfish with the pinned fork revision, SQLite's public-domain dedication, and the Microsoft redistributables it carries;
+- the bundled network's verified pinned hash per the accepted NNUE handling policy — **or, where the network is deliberately not bundled, the instructions that let its holder place and verify it**, which is the Windows zip's case and only its case;
+- for the Windows zip, a run of the headless harness against the **unpacked zip's own layout** with the network placed as those instructions describe, rather than against the build tree the zip was made from;
 - manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each distributed platform.
 
 ## Need to discuss
 
 > The following questions are non-normative and are not implementation requirements.
 
-- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on.
-- Pin the Windows *frontend* toolchain — Windows App SDK, .NET, packaging flags — and record verified packaging commands. The core's half is pinned and its commands are in the README.
-- Decide which artifacts the GitHub Actions workflows retain. The workflows and their pinned inputs are defined in `.github/`; nothing is retained today beyond the run log.
+- Select the supported physical-device and Windows validation matrix. The simulator pair and the macOS host are settled above, and so are the commands each is run with; what remains is which physical devices an internal distribution candidate must be exercised on. The Windows half now has a shape: two architectures, one of which — `ARM64` — exists on a machine that runs the product and does not build it, so what a candidate is exercised on there is the zip rather than a build tree.
+- Decide how long the workflows should retain their artifacts, and whether a candidate's zip should be kept beyond that. Two kinds are produced today: the board renders, at the ninety-day default, and the distribution zips, at a fortnight because a zip is reproducible from the commit it was built at and a stale one somebody finds later is a build nobody chose. Neither figure was chosen against a stated retention policy, because there is not one.
 - Define performance, memory, energy, and thermal thresholds for each AI profile.
 - Define which critical flows require UI automation versus structured manual review.
 - Define how the accepted import validation time budget is measured and enforced on each platform.

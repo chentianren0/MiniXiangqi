@@ -155,38 +155,57 @@ if(CMAKE_OSX_ARCHITECTURES)
 endif()
 
 if(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$" AND MSVC)
-  # arm64, but not the fork's apple-silicon profile, because USE_POPCNT means
-  # something different under MSVC than it does under Clang.
+  # ARM64 under MSVC takes the fork's portable general-64 profile, not its
+  # apple-silicon one. Two separate reasons, both measured on 2026-07-31 with
+  # MSVC 19.44.35228 targeting arm64 — the first time this engine had ever been
+  # compiled by MSVC for anything but x64 — and neither of them fixable from
+  # here, because everything under upstream/ is a verbatim copy.
   #
-  # types.h reaches for a header rather than an instruction, and which header
-  # depends on the compiler rather than on the target:
+  # USE_POPCNT and prefetch are HEADER requests, and which header depends on the
+  # compiler rather than on the target:
   #
-  #   types.h:73   USE_POPCNT  && _MSC_VER  ->  #include <nmmintrin.h>
-  #   types.h:77   !NO_PREFETCH && _MSC_VER ->  #include <xmmintrin.h>
+  #   types.h:73   USE_POPCNT   && _MSC_VER  ->  #include <nmmintrin.h>
+  #   types.h:77   !NO_PREFETCH && _MSC_VER  ->  #include <xmmintrin.h>
   #
-  # Both are x86 headers. Under Apple clang the same defines take the
-  # __builtin_popcountll and __builtin_prefetch paths instead and are correct;
-  # under MSVC on ARM64 the first is a hard stop —
+  # Both are x86 headers. Under Apple clang the same defines take
+  # __builtin_popcountll and __builtin_prefetch and are right; under MSVC on
+  # ARM64 the first is a hard stop, and it names ARM64 in its own message while
+  # refusing it:
   #
   #   nmmintrin.h(17): fatal error C1189: #error: This header is specific to
   #   X86, X64, ARM64, and ARM64EC targets
   #
-  # — measured on 2026-07-31, MSVC 19.44.35228 targeting arm64, the first time
-  # this engine had ever been compiled by MSVC for anything but x64. The header
-  # names ARM64 in its own message and refuses it anyway.
+  # USE_NEON is the deeper one, and it is why NEON is off here rather than kept.
+  # <arm_neon.h> is a real MSVC ARM64 header and the intrinsics resolve, but the
+  # fork's NEON code is written in GCC and Clang's vector-extension syntax,
+  # which MSVC does not have: it brace-initialises vector types and subscripts
+  # them, and under MSVC a NEON type is a struct with named lanes rather than a
+  # subscriptable vector.
   #
-  # So this profile is the one the fork's own Makefile would call general-64
-  # with NEON added: popcount falls back to types.h's 16-bit table and prefetch
-  # becomes a no-op, both of which are correct and both of which cost search
-  # speed. NEON is kept, because <arm_neon.h> is a real MSVC ARM64 header and
-  # the NNUE code's NEON path compiles against it.
+  #   affine_transform.h:396  int32x4_t sum = {biases[i]};
+  #   affine_transform.h:403  output[i] = sum[0] + sum[1] + sum[2] + sum[3];
+  #   affine_transform.h(403): error C2676: binary '[': 'int32x4_t' does not
+  #   define this operator or a conversion to a type acceptable to the
+  #   predefined operator
   #
-  # MSVC does have _CountOneBits64 and __prefetch2 for ARM64. Reaching them
-  # would mean editing the vendored snapshot, which is a verbatim copy nothing
-  # here may touch; a focused change in the fork is where that belongs, in the
-  # same place the MSVC thread-stack change went.
-  target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_NEON NO_PREFETCH)
-  set(MXQ_FS_ARCH_PROFILE "arm64/MSVC (neon; no popcnt and no prefetch — both are x86 headers on this compiler)")
+  # The same two shapes are in clipped_relu.h and nnue_feature_transformer.h.
+  # Writing them with vsetq_lane_s32 and vaddvq_s32 instead is a small, correct,
+  # upstreamable change — and it is a change to the vendored snapshot, so it
+  # belongs in the fork, where the MSVC thread-stack change went, and not here.
+  #
+  # WHAT THIS COSTS, stated rather than buried: popcount falls back to types.h's
+  # 16-bit table, prefetch becomes a no-op, and the NNUE layers take their plain
+  # C++ loops. Every one of those is the fork's own supported fallback and every
+  # one is correct — this is the profile the branch below already describes as
+  # "correct everywhere, slower". What it is not is a different opponent: the
+  # network, the weights and the integer arithmetic are identical, so the
+  # evaluation returns the same numbers and only the rate at which positions are
+  # searched changes. An ARM64 Windows machine therefore searches fewer nodes in
+  # the same thinking time than an x64 one, exactly as a slower CPU would, and
+  # docs/engine-integration.md's rule that levels differ only in thinking time
+  # is untouched.
+  target_compile_definitions(mxq_fairy_stockfish PUBLIC NO_PREFETCH)
+  set(MXQ_FS_ARCH_PROFILE "general-64 on arm64/MSVC (portable: no popcnt, no prefetch, no neon — all three are Clang-only or x86-only on this compiler)")
 elseif(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$")
   # The fork's ARCH=apple-silicon profile: popcnt and neon, no SSE.
   target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_POPCNT USE_NEON)
