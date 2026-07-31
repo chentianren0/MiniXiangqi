@@ -61,13 +61,21 @@
                            Style="{StaticResource BodyTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap" />
+                <!--
+                    The default action leads. On Apple platforms it trails,
+                    which is where that platform puts one; Fluent puts the
+                    primary first, and the contract's rule is the ordering
+                    decision itself — 保存 is the default and the only tinted
+                    element on the screen — rather than which end of the row it
+                    sits at. So the platform's own order stands.
+                -->
                 <StackPanel x:Name="NoticeActions"
                             Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             Spacing="8"
                             Margin="0,8,0,0">
-                    <Button x:Name="NoticeSecondary" Click="OnNoticeSecondary" />
                     <Button x:Name="NoticePrimary" Click="OnNoticePrimary" Style="{StaticResource AccentButtonStyle}" />
+                    <Button x:Name="NoticeSecondary" Click="OnNoticeSecondary" />
                 </StackPanel>
             </StackPanel>
         </Border>

@@ -80,6 +80,7 @@ public static class Strings
             ["control.save"] = new("保存", "Save"),
             ["control.saveAndNewGame"] = new("保存并开始新对局", "Save and New Game"),
             ["control.done"] = new("完成", "Done"),
+            ["control.close"] = new("关闭", "Close"),
             ["control.cancel"] = new("取消", "Cancel"),
             ["control.tryAgain"] = new("重试", "Try Again"),
             ["control.later"] = new("稍后", "Later"),
@@ -108,6 +109,9 @@ public static class Strings
             ["result.blackWins"] = new("黑方获胜", "Black Wins"),
             ["result.draw"] = new("和棋", "Draw"),
             ["result.recorded"] = new("已记录到历史", "Saved to History"),
+            // The separator is an ideographic comma in Chinese and a
+            // comma-space in English.
+            ["result.announcement"] = new("{0}，{1}", "{0}, {1}"),
 
             // Result reasons. One vocabulary, used by the result notice's
             // second line and by the turn status.

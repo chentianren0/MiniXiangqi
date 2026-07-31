@@ -19,6 +19,8 @@
 
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using MiniXiangqi.Core;
@@ -33,12 +35,14 @@ public sealed partial class MainWindow : Window
     private readonly MiniXiangqiCore? _core;
     private readonly PlaySession? _play;
     private PlayAlert _showing = PlayAlert.None;
+    private ResultNotice _announced = ResultNotice.None;
+    private int _recordLength = -1;
 
     public MainWindow()
     {
         InitializeComponent();
         Title = Strings.Get("app.displayName");
-        StopShrinkingAtTheFloors();
+        Root.Loaded += (_, _) => WatchTheScale();
 
         BoardHost.Children.Add(_board);
         _board.HorizontalAlignment = HorizontalAlignment.Center;
@@ -95,12 +99,42 @@ public sealed partial class MainWindow : Window
     // Layout.
 
     /// <summary>
+    /// The window's minimum follows the display scale, because the two sides of
+    /// the sum are measured in different units.
+    ///
+    /// Everything XAML lays out — the board block, the panel, the air around
+    /// them — is in device-independent pixels. <c>OverlappedPresenter</c> is not
+    /// a XAML object: it is the <c>AppWindow</c>'s presenter, and the whole
+    /// <c>AppWindow</c> surface is documented in physical pixels — <c>Size</c>,
+    /// <c>ClientSize</c>, <c>Resize</c>, <c>Move</c> — with the XAML island's
+    /// own scale exposed separately as <c>XamlRoot.RasterizationScale</c>
+    /// precisely because the two do not agree. These properties are also what
+    /// the presenter answers <c>WM_GETMINMAXINFO</c> with, and that message is
+    /// physical pixels by definition. Setting a DIP figure there would give a
+    /// 150 % display a floor two thirds of the intended one, which is exactly
+    /// the size at which the board stops fitting.
+    ///
+    /// The scale can change while the window is open — a drag to another
+    /// display, a settings change — so the floor is recomputed when it does.
+    /// </summary>
+    private void WatchTheScale()
+    {
+        if (Root.XamlRoot is not { } root)
+        {
+            return;
+        }
+
+        StopShrinkingAtTheFloors(root.RasterizationScale);
+        root.Changed += (sender, _) => StopShrinkingAtTheFloors(sender.RasterizationScale);
+    }
+
+    /// <summary>
     /// Both the board and the chrome have floors, so the window has one too,
     /// and it stops resizing there rather than either becoming unusable. The
     /// board block at the accepted 44-point pitch is 340 square, the air around
     /// it is 24 a side, and the panel beside it is 260.
     /// </summary>
-    private void StopShrinkingAtTheFloors()
+    private void StopShrinkingAtTheFloors(double scale)
     {
         if (AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
@@ -108,8 +142,8 @@ public sealed partial class MainWindow : Window
         }
 
         BoardGeometry floor = new(BoardGeometry.MinimumPitch);
-        presenter.PreferredMinimumWidth = (int)Math.Ceiling(floor.BlockSide + 48 + 260);
-        presenter.PreferredMinimumHeight = (int)Math.Ceiling(floor.BlockSide + 48);
+        presenter.PreferredMinimumWidth = (int)Math.Ceiling((floor.BlockSide + 48 + 260) * scale);
+        presenter.PreferredMinimumHeight = (int)Math.Ceiling((floor.BlockSide + 48) * scale);
     }
 
     private void OnBoardHostSizeChanged(object sender, SizeChangedEventArgs args)
@@ -120,10 +154,20 @@ public sealed partial class MainWindow : Window
         double side = Math.Min(
             args.NewSize.Width - BoardHost.Padding.Left - BoardHost.Padding.Right,
             args.NewSize.Height - BoardHost.Padding.Top - BoardHost.Padding.Bottom);
-        if (side > 0)
+        if (side <= 0)
         {
-            _board.Geometry = BoardGeometry.Fitting(side);
+            return;
         }
+
+        // Fitting refuses rather than clamps when even the floor does not fit,
+        // which is the shape the Apple frontend's geometry has and for the same
+        // reason: a board below the floor is a decision, and a decision belongs
+        // where somebody can see it. Here the decision is the floor anyway —
+        // the window's own minimum should have made this unreachable, and if a
+        // scale change beats it there, an oversized board that can still be
+        // played beats a board that is not drawn.
+        _board.Geometry = BoardGeometry.Fitting(side)
+            ?? new BoardGeometry(BoardGeometry.MinimumPitch);
     }
 
     // Board input.
@@ -255,7 +299,7 @@ public sealed partial class MainWindow : Window
         bool thinking = play.Activity == AiActivity.Thinking;
         Thinking.IsActive = thinking;
         Thinking.Visibility = thinking ? Visibility.Visible : Visibility.Collapsed;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Thinking, Strings.Get("status.aiThinking"));
+        AutomationProperties.SetName(Thinking, Strings.Get("status.aiThinking"));
 
         bool stalled = play.Activity == AiActivity.Stalled;
         Stalled.Visibility = stalled ? Visibility.Visible : Visibility.Collapsed;
@@ -312,8 +356,21 @@ public sealed partial class MainWindow : Window
         // The move record, live during play: the core's own canonical
         // coordinate text, paired by full move. It is not a notation rendering
         // and does not pretend to be one.
-        RecordRows.Children.Clear();
+        //
+        // Rebuilt only when the record's length changed, and scrolled to the
+        // end only when it grew. Everything on this screen publishes through
+        // one event, including the pointer moving from one point to the next,
+        // and a reader who has scrolled back through the game must not be
+        // yanked to the bottom by moving the mouse.
         IReadOnlyList<string> moves = play.MoveRecord;
+        if (moves.Count == _recordLength)
+        {
+            return;
+        }
+
+        bool grew = moves.Count > _recordLength;
+        _recordLength = moves.Count;
+        RecordRows.Children.Clear();
         for (int index = 0; index < moves.Count; index += 2)
         {
             Grid row = new()
@@ -345,8 +402,11 @@ public sealed partial class MainWindow : Window
             RecordRows.Children.Add(row);
         }
 
-        DispatcherQueue.TryEnqueue(() =>
-            RecordScroller.ChangeView(null, RecordScroller.ScrollableHeight, null, disableAnimation: true));
+        if (grew)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+                RecordScroller.ChangeView(null, RecordScroller.ScrollableHeight, null, disableAnimation: true));
+        }
     }
 
     private static TextBlock MoveCell(string text, int column)
@@ -365,11 +425,13 @@ public sealed partial class MainWindow : Window
         if (play.Notice == ResultNotice.None)
         {
             Notice.Visibility = Visibility.Collapsed;
+            _announced = ResultNotice.None;
             return;
         }
 
         Notice.Visibility = Visibility.Visible;
         NoticeTitle.Text = play.NoticeTitle() ?? string.Empty;
+        AutomationProperties.SetName(NoticeClose, Strings.Get("control.close"));
 
         bool recorded = play.Notice == ResultNotice.Recorded;
         NoticeReason.Text = recorded ? string.Empty : play.Reason() ?? string.Empty;
@@ -383,6 +445,41 @@ public sealed partial class MainWindow : Window
         NoticePrimary.Content = Strings.Get(recorded ? "control.done" : "control.save");
         NoticeSecondary.Content = Strings.Get("control.saveAndNewGame");
         NoticeSecondary.Visibility = recorded ? Visibility.Collapsed : Visibility.Visible;
+
+        Announce(play);
+    }
+
+    /// <summary>
+    /// The result, said out loud once.
+    ///
+    /// The notice arrives without being asked for and a screen-reader user has
+    /// no reason to be looking at it, so it is announced — which is what the
+    /// Apple frontend does, through this same `result.announcement` row, and
+    /// that is the level this platform owes. A UIA notification is the Windows
+    /// equivalent: it is spoken where it happens and moves nothing, so focus
+    /// stays where the player put it.
+    /// </summary>
+    private void Announce(PlaySession play)
+    {
+        if (_announced == play.Notice)
+        {
+            return;
+        }
+
+        _announced = play.Notice;
+        string title = play.NoticeTitle() ?? string.Empty;
+        string? reason = play.Notice == ResultNotice.Recorded ? null : play.Reason();
+        string spoken = reason is { Length: > 0 }
+            ? Strings.Format("result.announcement", title, reason)
+            : title;
+
+        AutomationPeer peer = FrameworkElementAutomationPeer.FromElement(NoticeTitle)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(NoticeTitle);
+        peer.RaiseNotificationEvent(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.MostRecent,
+            spoken,
+            "MiniXiangqi.Result");
     }
 
     private async void ShowAlert()
@@ -473,16 +570,33 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ShowFailure(string titleKey, MxqException failure)
+    private void ShowFailure(string titleKey, MxqException failure) =>
+        ShowFailure(
+            titleKey,
+            $"{failure.StatusName} ({failure.Status}), domain {failure.Domain}\n{failure.Detail}");
+
+    private void ShowFailure(string titleKey, string diagnostic)
     {
-        // The title is copy; the description beneath it is diagnostic text from
-        // the core and is not localized.
+        // The title is copy; the description beneath it is diagnostic text and
+        // is not localized.
         FailureTitle.Text = Strings.Get(titleKey);
-        FailureDetail.Text = $"{failure.StatusName} ({failure.Status}), domain {failure.Domain}\n{failure.Detail}";
+        FailureDetail.Text = diagnostic;
         Failure.Visibility = Visibility.Visible;
+        Notice.Visibility = Visibility.Collapsed;
         Panel.Visibility = Visibility.Collapsed;
         BoardHost.Visibility = Visibility.Collapsed;
     }
+
+    /// <summary>
+    /// The application's backstop, arriving here. Everything this repository
+    /// knows how to be refused is answered where it happens; what reaches this
+    /// is something nobody anticipated, so it stops the screen offering play and
+    /// says what it was. The game itself is whole — the store commits every move
+    /// inside its own call — and 对局未能开始 is the honest title for a screen
+    /// that can no longer be played on.
+    /// </summary>
+    internal void ReportUnexpected(Exception failure) =>
+        ShowFailure("failure.gameDidNotStart", $"{failure.GetType().Name}\n{failure.Message}");
 
     /// <summary>
     /// The window's thread, as the play session's scheduler. The search

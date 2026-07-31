@@ -2,7 +2,7 @@
 //
 // One function of one value: given a BoardScene, a geometry and a style, this
 // draws the board and nothing else. That is what lets the window's board and
-// the offscreen PNGs in docs/evidence/pr-windows-play/ be the same picture
+// the offscreen PNGs in docs/evidence/pr87/ be the same picture
 // rather than two pictures that agree — a CanvasControl hands this its drawing
 // session, a CanvasRenderTarget hands it one too, and neither knows which it
 // is.
@@ -187,15 +187,13 @@ public static class BoardPainter
     private static void DrawDestinations(
         CanvasDrawingSession session, BoardScene scene, BoardGeometry geometry, BoardStyle style)
     {
+        // The two sets are disjoint by construction: a destination is an empty
+        // point and a capture is an occupied one, and whichever built them
+        // decided that before the painter saw either.
         float radius = (float)(geometry.DestinationDotDiameter / 2);
         Color ink = Convert(style.ActiveInk);
         foreach (Square square in scene.Destinations)
         {
-            if (scene.Captures.Contains(square))
-            {
-                continue;
-            }
-
             session.FillCircle(Point(geometry, square, scene.Flipped), radius, ink);
         }
     }

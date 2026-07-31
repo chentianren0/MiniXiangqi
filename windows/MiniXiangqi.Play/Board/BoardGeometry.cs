@@ -177,21 +177,31 @@ public readonly record struct BoardGeometry(double Pitch)
 
     /// <summary>
     /// The largest pitch whose board block fits a square of
-    /// <paramref name="side"/>, bounded by the accepted floor and ceiling. The
-    /// block is square here, so this is arithmetic rather than the Mac's
-    /// step-down search over a height that depends on the pitch.
+    /// <paramref name="side"/>, bounded by the accepted floor and ceiling, or
+    /// null when even the floor does not fit.
+    ///
+    /// It refuses rather than clamping, exactly as the Apple frontend's
+    /// geometry does: a board below the accepted 44-point floor is a decision
+    /// about a contract, and a decision made silently inside an arithmetic
+    /// helper is one nobody can see. The caller decides what to do about it.
     /// </summary>
-    public static BoardGeometry Fitting(double side)
+    public static BoardGeometry? Fitting(double side)
     {
         // block = 7p + 2 * round(0.08p + 0.887 * clamp(round(0.32p), 13, 20)),
         // which rises monotonically with p, so stepping down from the pitch the
         // core alone would allow lands on the largest that fits.
         double pitch = Math.Min(Math.Floor(side / 7), MaximumPitch);
-        while (pitch > MinimumPitch && new BoardGeometry(pitch).BlockSide > side)
+        while (pitch >= MinimumPitch)
         {
+            BoardGeometry candidate = new(pitch);
+            if (candidate.BlockSide <= side)
+            {
+                return candidate;
+            }
+
             pitch -= 1;
         }
 
-        return new BoardGeometry(Math.Max(pitch, MinimumPitch));
+        return null;
     }
 }
