@@ -1,0 +1,259 @@
+# The release: a v* tag, the Windows build that every pull request gets, and a
+# draft release carrying everything a person or the Store is handed.
+#
+# The shape is the owner's, in the owner's words: "why not use the tag? when we
+# tag, and it run, then i could find what i need in the releases?" Before it, a
+# release was assembled by hand out of a run's artifacts — findable only under
+# Actions, expiring in a fortnight, and named by whoever did the downloading.
+#
+# THIS FILE BUILDS NOTHING
+#
+# The build is windows-frontend.yml, called rather than copied. A release
+# workflow that ran its own steps would be a second definition of the same
+# build, and two definitions drift; this one would drift in the worst direction,
+# because the release build is the one that runs least often and so the one
+# whose rot is discovered last — on the day it matters. So the proofs behind
+# every asset here are the ordinary ones: the smoke harness, the harness run
+# again from inside the unpacked zip, and the .msix manifest checks, on x64 and
+# on ARM64.
+#
+# Calling it rather than reacting to it also keeps the artifacts in reach. A
+# called workflow's jobs belong to this run, so the release job downloads its
+# own run's artifacts; a workflow_run trigger would have made them another run's
+# and bought a second lookup for nothing.
+#
+# THE RELEASE IS A DRAFT, AND PUBLISHING IS THE OWNER'S CLICK
+#
+# This repository has release immutability enabled: once a release is published,
+# its assets and its tag are frozen. A draft is not — it can be edited, its
+# assets replaced, and it can be deleted along with its tag — so the draft is
+# the last point at which a mistake is still cheap. The owner downloads the zip,
+# runs it, reads the notes, edits them into the release they meant, and
+# publishes. CI stops one click short of the irreversible act on purpose.
+#
+# --generate-notes writes the starting draft — the commits since the last
+# release, and a title — not the finished announcement. v1.5's notes are the
+# standard the edit is aiming at: what the app is, how to run it, and where the
+# corresponding source is.
+#
+# WHAT IT ATTACHES, AND WHAT IT DOES NOT
+#
+# Five files: the two zips a person downloads, the two .msix, and the
+# .msixupload the owner gives to Partner Center. Not the board renders, which
+# are evidence for a pull request rather than something anybody opens a release
+# for, and which stay where they have always been.
+#
+# NO SECRET, AND ONE JOB THAT MAY WRITE
+#
+# github.token is this run's own token and the release job is the only job that
+# asks for contents: write; the build it calls keeps the read-only default it
+# declares for itself. The release is created by `gh`, which the runner already
+# has, rather than by a third-party action — one fewer pinned SHA to keep
+# honest, for a command whose flags are the whole of what it does. Nothing here
+# holds a certificate or a Store credential: the .msix is unsigned because the
+# Store signs what it accepts, and nothing in this repository submits anything.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Two runs for one tag would race to attach assets to one release. This
+# serializes them instead, and the release job below stops the second before it
+# creates anything — a draft is not tag-unique, so without that check the second
+# run would leave a second draft rather than fail. Nothing is cancelled: a run
+# part-way through uploading assets has left a draft that wants looking at, and
+# cancelling it would leave that draft with no run to explain it.
+#
+# The group is deliberately not windows-frontend.yml's. The two serialize
+# different things — that one keeps two builds of a ref apart, this one keeps
+# two releases of a tag apart — and a caller sharing the group of the workflow
+# it calls is a queue a run can end up behind itself in.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Before a Windows runner is started, because this answer costs seconds and
+  # that build costs many minutes on two machines.
+  #
+  # Package.appxmanifest's Identity/@Version is written by hand and deliberately
+  # not stamped by CI: a version that moves on every run is a version nobody
+  # chose, and the Store refuses one that is not higher than the last it
+  # accepted (windows/README.md § The three placeholders). That decision stands
+  # — this job writes nothing. What is new is that the tag names a version too,
+  # and one build cannot have two version numbers: a .msix declaring one number
+  # hanging off a release page showing another is a question with two answers,
+  # and the one the Store believes is not the one anybody read. So the bump
+  # stays a commit made before tagging, and this is what says it was made.
+  #
+  # The mapping is the whole rule: vX.Y is X.Y.0.0 and vX.Y.Z is X.Y.Z.0, the
+  # fourth part being the revision the Store reserves for itself. Any other tag
+  # shape stops here rather than producing a release nobody can explain.
+  version:
+    name: The tag and the package agree
+    runs-on: ubuntu-24.04
+    steps:
+      # Pinned to a commit, not to the v5 tag: a tag is mutable.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: The package version is the one the tag names
+        run: |
+          set -euo pipefail
+          manifest=windows/MiniXiangqi.App/Package.appxmanifest
+          tag="$GITHUB_REF_NAME"
+
+          if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
+            echo "The tag is '$tag'. A release tag is vMAJOR.MINOR or vMAJOR.MINOR.PATCH — v1.6, v1.6.1 — because it has to name a four-part package version and nothing else can be turned into one." >&2
+            exit 1
+          fi
+          expected="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[4]:-0}.0"
+
+          # Read as XML through the same path windows/package-msix.ps1 asserts
+          # against, rather than grepped: the manifest carries other version
+          # attributes — the Windows floor, the SDK tested against — and a
+          # pattern that caught one of those would be wrong quietly.
+          actual="$(python3 - "$manifest" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          ns = {'d': 'http://schemas.microsoft.com/appx/manifest/foundation/windows10'}
+          print(ET.parse(sys.argv[1]).getroot().find('d:Identity', ns).get('Version'))
+          PY
+          )"
+
+          echo "tag:              $tag"
+          echo "the tag names:    $expected"
+          echo "the manifest has: $actual"
+
+          if [ "$actual" != "$expected" ]; then
+            echo "Identity/@Version in $manifest is '$actual', and $tag says the package is $expected. CI does not stamp the version; the bump is a commit, made before the tag is pushed. Set it to $expected, commit that, then delete and re-push $tag — the tag is still free to move, because nothing has been published against it yet." >&2
+            exit 1
+          fi
+
+  build:
+    name: Build
+    needs: version
+    uses: ./.github/workflows/windows-frontend.yml
+
+  release:
+    name: The draft release
+    needs: build
+    runs-on: ubuntu-24.04
+    # The one job that may write, and all it writes is the release.
+    permissions:
+      contents: write
+    steps:
+      # Pinned to a commit, not to the v4 tag: a tag is mutable.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-x64
+          path: dist
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-arm64
+          path: dist
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-x64-msix
+          path: dist
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-windows-arm64-msix
+          path: dist
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MiniXiangqi-msixupload
+          path: dist
+
+      - name: Attach the five files to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # GH_REPO because this job has no checkout and gh resolves a
+          # repository from a git remote or from this variable — GITHUB_REPOSITORY
+          # is not one it reads. Without it every gh call here dies on "fatal:
+          # not a git repository" in a workspace holding nothing but dist/.
+          # Checking out the tree to satisfy it would be a clone for a string.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Named rather than globbed, for the reason windows-frontend.yml gives
+          # about the upload file: what goes on a release is the five files this
+          # run built, not whatever is in the directory. Downloaded by name too,
+          # so a sixth artifact appearing upstream cannot arrive here by
+          # accident.
+          expected=(
+            MiniXiangqi-windows-x64.zip
+            MiniXiangqi-windows-arm64.zip
+            MiniXiangqi-windows-x64.msix
+            MiniXiangqi-windows-arm64.msix
+            MiniXiangqi.msixupload
+          )
+
+          missing=()
+          for name in "${expected[@]}"; do
+            if [ ! -f "dist/$name" ]; then
+              missing+=("$name")
+              continue
+            fi
+            printf '  %-32s %12d bytes  %s\n' \
+              "$name" \
+              "$(stat -c %s "dist/$name")" \
+              "$(sha256sum "dist/$name" | cut -d' ' -f1)"
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Not present: ${missing[*]}. Both architectures' legs and the upload-file job have to have run." >&2
+            exit 1
+          fi
+
+          # A draft is not tag-unique. GitHub holds two drafts naming one tag
+          # without complaint — only a published release refuses a duplicate,
+          # and by then it is far too late to be the check — so a second run for
+          # a tag would leave a second draft and say nothing, and the owner would
+          # have two candidates with no way to tell which run made which. Asking
+          # first is what makes the concurrency group's promise above true.
+          #
+          # The filter prints a line per match rather than counting, which is
+          # what keeps it honest under --paginate: gh applies --jq per page, so a
+          # total would arrive one number per page and no match prints nothing on
+          # any number of them.
+          #
+          # This cannot move to an earlier job to fail sooner: only a token with
+          # write access is shown drafts at all, and the jobs before this one
+          # deliberately have none.
+          export TAG="$GITHUB_REF_NAME"
+          clash="$(gh api "repos/{owner}/{repo}/releases" --paginate \
+            --jq '.[] | select(.tag_name == env.TAG) | "  \(.html_url)  draft=\(.draft)"')"
+          if [ -n "$clash" ]; then
+            echo "A release already carries the tag $TAG:" >&2
+            echo "$clash" >&2
+            echo "Delete it and run this again. A draft and its tag can both still be deleted; two drafts on one tag is what this refuses to leave behind." >&2
+            exit 1
+          fi
+
+          # --verify-tag because `gh release create` will otherwise invent a tag
+          # at the default branch's head, and a release pointing anywhere but at
+          # the commit that started this run is a release of something else.
+          #
+          # --draft is the decision this file argues at the top: publishing is
+          # irreversible under release immutability, and it is the owner's.
+          url="$(gh release create "$GITHUB_REF_NAME" \
+            "${expected[@]/#/dist/}" \
+            --draft \
+            --generate-notes \
+            --verify-tag)"
+
+          echo "$url"
+          {
+            echo "The draft release for \`$GITHUB_REF_NAME\` is at $url."
+            echo ""
+            echo "Unzip and run it, edit the generated notes, then publish it there. Publishing freezes the assets and the tag."
+          } >> "$GITHUB_STEP_SUMMARY"

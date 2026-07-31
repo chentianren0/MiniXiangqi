@@ -29,6 +29,23 @@
 # store-package job below, which is the only step in this workflow that needs
 # both architectures' output at the same time.
 #
+# THE SAME BUILD IS WHAT A RELEASE IS MADE OF
+#
+# This workflow is callable, and .github/workflows/release.yml calls it when a
+# v* tag is pushed. A release is therefore built by this file rather than beside
+# it: one definition of the build, one set of proofs, and no second copy to
+# drift out of step with this one — which it would, in the direction nobody
+# notices, the release build being the one that runs least often. Nothing here
+# asks why it ran, so a tag gets the smoke harness, the run from inside the
+# unpacked zip and the manifest checks that every pull request gets, on both
+# architectures.
+#
+# A called workflow's jobs belong to the caller's run, and that is what makes
+# the release need no machinery of its own: the artifacts uploaded below are
+# release.yml's own run's artifacts, downloadable by a job there and attachable
+# to the draft release. The ref being built is the tag, so the checkout is the
+# tagged commit and the release is what the tag names.
+#
 # THE STORE PACKAGE IS BUILT HERE AND SIGNED NOWHERE
 #
 # The Microsoft Store is the intended public channel (owner decision,
@@ -68,6 +85,11 @@
 name: Windows frontend
 
 on:
+  # Callable, so that release.yml builds a tag with these steps rather than with
+  # a copy of them. It declares no inputs, because there is nothing about a
+  # release build that differs from this one, and takes no secrets, because this
+  # workflow holds none to be given.
+  workflow_call:
   pull_request:
     paths:
       - 'windows/**'
@@ -92,6 +114,12 @@ on:
 # a multi-minute C++ build on every runner and the older answer is worthless the
 # moment a newer commit exists. Pushes to main are never cancelled, because
 # main's history is the record.
+#
+# Called from release.yml, both expressions read the caller's event: a tag push
+# is a push, so a release build is never cancelled either. Its group is a
+# different name from this one on purpose — the two serialize different things,
+# and a caller sharing the group of the workflow it calls is a queue a run can
+# end up behind itself in.
 concurrency:
   group: windows-frontend-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
