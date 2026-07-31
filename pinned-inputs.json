@@ -5,12 +5,12 @@
   "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. Nothing here has been consumed by a packaging build yet, so the names below are a proposal, not a frozen schema. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. One field has been added under that licence rather than by fixing the schema: build_flags.platforms.windows.toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times on Windows, and one boolean over one 'toolchain' object cannot say that half of it is measured. manifest_version stays 1: nothing existing changed shape, and the reader in core/CMakeLists.txt asks for none of this.",
   "fork": {
     "repository": "https://github.com/ppppvz/Fairy-Stockfish",
-    "revision": "afec5690a2db547bfd8bfa6c6751e94e21013f29",
-    "revision_committed_at": "2026-07-28T10:56:39-07:00",
+    "revision": "ede4a811b6bdb7e0d14e8820cfd36097237d3dde",
+    "revision_committed_at": "2026-07-30T17:56:31-07:00",
     "upstream_repository": "https://github.com/fairy-stockfish/Fairy-Stockfish",
     "upstream_base_revision": "c19b5f6c66894fdb0e88d0dd100e3885f744760a",
     "upstream_base_committed_at": "2026-07-23T19:20:28+02:00",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts seven focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts eight focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
     "patches": [
       {
         "id": "soldier-chase-target-exclusion",
@@ -96,6 +96,18 @@
         "commits": [
           "89b1c777"
         ]
+      },
+      {
+        "id": "msvc-thread-stack-size",
+        "summary": "Gives search threads an explicit 8 MiB stack on MSVC, which fell through to std::thread and the Windows 1 MB default while Apple, MinGW and pthreads builds all took the 8 MiB path. Under LARGEBOARDS every MovePicker holds a 64 KB move array and search nests one per ply, so a deep search overflowed the 1 MB stack and killed the process.",
+        "required_by": [
+          "docs/engine-integration.md",
+          "docs/architecture.md"
+        ],
+        "merge_revision": "ede4a811b6bdb7e0d14e8820cfd36097237d3dde",
+        "commits": [
+          "64f51506"
+        ]
       }
     ],
     "patches_pending": [],
@@ -127,7 +139,7 @@
       ],
       "_excluded_about": "The engine's own main(), its Python bindings, its JavaScript/WebAssembly bindings, the fork's build system, and the fork's sample variant configuration. setup.py, pyffish.pyi, MANIFEST.in, tests/, .github/, appveyor.yml and test.py are outside source_paths and so are not present either.",
       "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
-      "file_manifest_sha256": "c6dc95a360581d1b9c9da19ccb26025cf545f66b4d6dc98a55438e42bf46861f",
+      "file_manifest_sha256": "ccce66043b24565dda110a3aa6739b1558ff6733a552e5f73f6238a5fb222b04",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     }
   },

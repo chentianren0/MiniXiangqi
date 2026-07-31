@@ -62,6 +62,64 @@ public:
 
 } // namespace Stockfish
 
+#elif defined(_WIN32) && defined(_MSC_VER)
+
+/// Under MSVC neither mechanism above is available: there is no
+/// pthread_attr_setstacksize(), and std::thread cannot be asked for a stack
+/// size, so a search thread would run on the 1MB the linker reserves by
+/// default. That is the OSX problem above one size class up. Built with
+/// LARGEBOARDS, MAX_MOVES is 8192, so the ExtMove array every MovePicker holds
+/// is 64KB, and search() and qsearch() nest one MovePicker per ply on top of a
+/// StateInfo that is itself larger on a large board. Deep searches run off the
+/// end of 1MB, and on Windows a stack overflow terminates the process rather
+/// than raising something a caller could report.
+/// _beginthreadex() is the one creation path that takes a stack size, so ask it
+/// for the same 8MB the pthread branch asks for. STACK_SIZE_PARAM_IS_A_RESERVATION
+/// makes that a reservation of address space; without it the size would be an
+/// initial commit, and every thread would take 8MB of real memory it will
+/// almost never touch. Pages are committed as the stack grows into them either
+/// way.
+/// MinGW does not reach here: it is matched above and keeps pthreads.
+
+#include <process.h>
+
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#  define NOMINMAX // Disable macros min() and max()
+#endif
+#include <windows.h>
+#undef WIN32_LEAN_AND_MEAN
+
+namespace Stockfish {
+
+static const size_t TH_STACK_SIZE = 8 * 1024 * 1024;
+
+template <class T, class P = std::pair<T*, void(T::*)()>>
+unsigned __stdcall start_routine(void* ptr)
+{
+   P* p = reinterpret_cast<P*>(ptr);
+   (p->first->*(p->second))(); // Call member function pointer
+   delete p;
+   return 0;
+}
+
+class NativeThread {
+
+   HANDLE thread;
+
+public:
+  template<class T, class P = std::pair<T*, void(T::*)()>>
+  explicit NativeThread(void(T::*fun)(), T* obj) {
+    thread = reinterpret_cast<HANDLE>(_beginthreadex(
+               NULL, unsigned(TH_STACK_SIZE), start_routine<T>, new P(obj, fun),
+               STACK_SIZE_PARAM_IS_A_RESERVATION, NULL));
+  }
+  void join() { WaitForSingleObject(thread, INFINITE); CloseHandle(thread); }
+  void detach() { CloseHandle(thread); }
+};
+
+} // namespace Stockfish
+
 #else // Default case: use STL classes
 
 namespace Stockfish {
