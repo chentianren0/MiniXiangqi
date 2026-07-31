@@ -3370,8 +3370,7 @@ internal static unsafe class Program
         // edges, and the contract's Windows clause states that number.
         Check("the board block at the accepted pitch floor is 340 square", block == 340);
         Check("the play content's floor is 648 by 388",
-            WindowFloor.ContentWidth == 648
-            && WindowFloor.ContentHeight - WindowFloor.NavigationBarHeight == 388);
+            WindowFloor.ContentWidth == 648 && WindowFloor.ContentHeight == 388);
         Check("the window's floor is the content's plus the rail and the navigation row",
             WindowFloor.WindowWidth == 696 && WindowFloor.WindowHeight == 432);
 

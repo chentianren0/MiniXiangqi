@@ -107,17 +107,18 @@ public static class WindowFloor
     /// </summary>
     public static double ContentWidth => BoardBlockAtFloor + (2 * Air) + PanelWidth;
 
-    /// <summary>The play content's floor in height: the board host and the navigation row.</summary>
-    public static double ContentHeight => BoardBlockAtFloor + (2 * Air) + NavigationBarHeight;
+    /// <summary>The play content's floor in height: **388**, the board host alone.</summary>
+    public static double ContentHeight => BoardBlockAtFloor + (2 * Air);
 
     /// <summary>
     /// The window's own floor in device-independent pixels, before the display
     /// scale and before the frame the presenter's minimum includes: 696 by 432.
-    /// The rail costs width and no height.
+    /// The content's floor plus the chrome around it — the rail, which costs
+    /// width, and the navigation row, which costs height.
     /// </summary>
     public static double WindowWidth => ContentWidth + CompactRailWidth;
 
-    public static double WindowHeight => ContentHeight;
+    public static double WindowHeight => ContentHeight + NavigationBarHeight;
 
     /// <summary>
     /// What the content keeps where the shell's pane is inline rather than a
