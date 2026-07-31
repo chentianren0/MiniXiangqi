@@ -37,9 +37,18 @@ The directory to write LICENSE and NOTICE.md into. It must exist.
 Which distribution this is: zip or store-package. One section of NOTICE.md
 differs between them and no other does, because one fact differs — the zip
 carries the Windows App Runtime and the Store package takes it as a framework
-dependency the Store installs, which also decides whether the machine-learning
-components the app never loads are present to be explained. Telling a reader
-about files that are not there would be worse than saying nothing.
+dependency the Store installs. Telling a reader about files that are not there
+would be worse than saying nothing.
+
+The machine-learning components are in BOTH sections, because they are in both
+distributions. That is measured rather than assumed: the first packaged CI run
+extracted onnxruntime.dll, Microsoft.ML.OnnxRuntime.dll and DirectML.dll out of
+the .msix itself. Framework-dependence removed the Windows App Runtime — no
+Microsoft.ui.xaml.dll and no Microsoft.WindowsAppRuntime.dll are in the package,
+only the two Bootstrap DLLs — and it did not remove these. A licence document
+that under-reports what a GPL artifact carries is the failure mode this note
+exists against, so it says what the package holds and not what the deployment
+mode was expected to shed.
 
 .EXAMPLE
 pwsh windows/New-DistributionNotices.ps1 -Destination windows/dist/notices -Shape store-package
@@ -74,10 +83,13 @@ Microsoft Store installs, and carries the rest beside the app:
 - the **.NET runtime**, MIT licensed. It travels with the application because a
   package cannot declare a dependency on it;
 - the **Windows App SDK** and **WinUI 3**, redistributed under the Microsoft
-  Software Licence terms that accompany them. Only the parts a packaged app
-  carries are here — the runtime itself is the framework package the Store
-  installs, and with it go the machine-learning components a self-contained
-  deployment would bring, which this application never loads;
+  Software Licence terms that accompany them. The runtime itself is the
+  framework package the Store installs rather than a copy in here; what a
+  packaged app still carries beside it includes the machine-learning components
+  the SDK depends on — ``onnxruntime.dll``, ``Microsoft.ML.OnnxRuntime.dll``,
+  ``DirectML.dll`` and their companions — which this application never loads;
+  they are covered by those same accompanying terms and are listed here because
+  they are large, present, and would otherwise go unexplained;
 - **Win2D** (``Microsoft.Graphics.Win2D``), MIT licensed;
 - the **Microsoft Visual C++ runtime** (``vcruntime140*.dll``,
   ``msvcp140*.dll``), redistributed under the Visual Studio licence terms that

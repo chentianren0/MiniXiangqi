@@ -880,8 +880,11 @@ carries Fairy-Stockfish, this application is GPL-3.0 because of it, and
 artifacts are a distribution channel and are governed as one — so every artifact either
 build uploads is a conveyance that has to carry its licence. One section of `NOTICE.md`
 differs between the two, and exactly one: the zip carries the Windows App Runtime and the
-package takes it as a framework dependency, which also decides whether the
-machine-learning components the app never loads are present to be explained.
+package takes it as a framework dependency the Store installs. **The machine-learning
+components are named in both**, because the measurement says they are in both — a licence
+document that under-reports what a GPL artifact carries is the failure this document is
+against, and that is what the store-package section said until the first packaged run was
+read back.
 
 **The zip is proved runnable rather than assumed to be.** The workflow unpacks the
 artifact it just built into a directory of its own and runs the `MiniXiangqi.Smoke.exe`
@@ -995,10 +998,17 @@ package installs and then fails to start wherever that runtime is absent, with n
 say why. So .NET travels, and `package-msix.ps1` checks for `hostfxr.dll` and `coreclr.dll`
 in the unpacked package rather than trusting a command line.
 
-What the package sheds by *not* carrying the Windows App SDK is the private copy of the
-machine-learning components that deployment brings with it — `onnxruntime.dll`,
-`DirectML.dll` and their companions, which this application never loads and the zip's
-`NOTICE.md` has to explain because they are large, present and otherwise unaccounted for.
+**What framework-dependence actually sheds is narrower than it sounds, and the difference
+is measured rather than argued.** What leaves is the Windows App Runtime itself:
+`Microsoft.ui.xaml.dll` is not in the payload and neither is
+`Microsoft.WindowsAppRuntime.dll`, leaving the two Bootstrap DLLs that reach the framework
+package the Store installs. What does **not** leave is the machine-learning components the
+SDK depends on and this app never loads: `onnxruntime.dll`,
+`Microsoft.ML.OnnxRuntime.dll` and `DirectML.dll` are extracted out of the `.msix` on both
+architectures. This section claimed the opposite until the first packaged run's own
+`makeappx unpack` listing was read, and the package's `NOTICE.md` names them for exactly
+the reason the zip's does — large, present, and otherwise unaccounted for. The deployment
+mode changed which runtime is *installed*, not which redistributables travel.
 
 ### The three placeholders
 

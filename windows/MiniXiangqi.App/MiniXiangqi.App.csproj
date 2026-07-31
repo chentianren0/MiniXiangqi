@@ -114,11 +114,20 @@
 
     WindowsAppSDKSelfContained goes to false because a Store package must not
     carry the Windows App Runtime: the Store installs the framework package the
-    generated manifest declares a dependency on, and that is both the supported
-    shape and how the app stops shipping a private copy of the machine-learning
-    components it never loads — onnxruntime.dll, DirectML.dll and their
-    companions, which the zip's NOTICE.md has to explain because they are large,
-    present and unexplained otherwise.
+    generated manifest declares a dependency on, and that is the supported shape
+    for a package.
+
+    What that removes, measured on the unpacked package rather than assumed: the
+    runtime itself. Microsoft.ui.xaml.dll is not in the payload and neither is
+    Microsoft.WindowsAppRuntime.dll — only the two Bootstrap DLLs remain, which
+    are how the app reaches the framework package.
+
+    What it does NOT remove, also measured: the machine-learning components the
+    SDK depends on and this app never loads. onnxruntime.dll,
+    Microsoft.ML.OnnxRuntime.dll and DirectML.dll are extracted out of the .msix
+    on both architectures. The package's NOTICE.md names them for that reason,
+    the same way the zip's does; the deployment mode changed which runtime is
+    installed and not which redistributables travel.
 
     SelfContained stays TRUE, and the asymmetry is the interesting part. An MSIX
     manifest can express a dependency on a Windows App SDK framework package

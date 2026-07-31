@@ -289,8 +289,9 @@ $identity = $appx.SelectSingleNode('/d:Package/d:Identity', $ns)
 $declaredArch = $identity.GetAttribute('ProcessorArchitecture')
 if ($declaredArch -ne $Architecture) {
     $failures += ("Identity/@ProcessorArchitecture is '$declaredArch'; this leg builds $Architecture. " +
-                  'The Store rejects two packages that claim the same architecture and offers nothing ' +
-                  'to a machine no package claims.')
+                  'A package that does not declare the architecture it was built for is offered to the ' +
+                  'wrong machines or to none, and this leg is the only place the two can be compared ' +
+                  'before the submission holds both.')
 }
 
 # The version's shape. The Store refuses a package whose revision part is not 0,
@@ -444,7 +445,12 @@ if ($xbf.Count -eq 0) {
                  'cannot build its window without them.')
 }
 
-foreach ($required in @('mxqcore.dll', 'vcruntime140.dll', 'MiniXiangqi.App.exe')) {
+# Both halves of the C++ runtime, not just one. mxqcore.dll links the standard
+# library as well as the runtime proper, so msvcp140.dll is as load-bearing as
+# vcruntime140.dll; windows/package-zip.ps1's own check asks for the same pair,
+# and the two builds asking different questions of the same staging was an
+# oversight rather than a distinction.
+foreach ($required in @('mxqcore.dll', 'vcruntime140.dll', 'msvcp140.dll', 'MiniXiangqi.App.exe')) {
     if (-not (Test-Path (Join-Path $unpacked $required))) {
         $missing += "$required is not in the package."
     }
