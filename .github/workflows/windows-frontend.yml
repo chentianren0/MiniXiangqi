@@ -13,9 +13,9 @@
 #   * the offscreen board renders, which are how anybody sees what the board
 #     looks like. Win2D needs a Direct2D device and Direct2D refuses in session
 #     0, so the development VM cannot draw one over SSH; a hosted runner has a
-#     console session and can. The PNGs committed under
-#     docs/evidence/pr87/ came from this job, and it uploads a fresh
-#     set on every run.
+#     console session and can. Every set of PNGs committed under
+#     docs/evidence/pr<number>/ came from this job, and it uploads a fresh set on
+#     every run.
 #
 # It does not touch core-suites.yml, whose job is the core's own suites on both
 # platforms, and it starts on a disjoint set of paths. The one file both care
