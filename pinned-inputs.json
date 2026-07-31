@@ -239,7 +239,7 @@
         "architectures": [
           "x64"
         ],
-        "_architectures_note": "x64 only. ARM64 came off the promised architectures on 2026-07-30 (owner decision) and returns when there is real hardware to test it on; the value here is what a build has actually produced, which is the only thing this file records.",
+        "_architectures_note": "x64 only. ARM64 came off the promised architectures on 2026-07-30 (owner decision) and returns when there is real hardware to test it on. Like deployment_target below, this is the product's target from docs/product.md rather than a measurement — it happens also to be the architecture the core-proof build produced, but it would read x64 either way, and when a packaging build first expresses it as a build setting this field takes that form.",
         "deployment_target": "Windows 11",
         "_deployment_target_note": "Windows 11 is the floor (owner decision, 2026-07-30): Windows 10 left Microsoft support in October 2025. The value is the product floor from docs/product.md, not a measurement — no packaging build has expressed it as a manifest or an SDK setting yet, and when one does this field takes that form.",
         "engine_defines": [],

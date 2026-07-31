@@ -15,17 +15,26 @@
 # this file names that is not in the repository is the runner image, pinned to
 # an exact label rather than to `-latest` for the same reason.
 #
+# The images are the newest GitHub hosts, not the oldest that still works: CI
+# should track the toolchain this project actually uses rather than trail it
+# (owner instruction, 2026-07-30). `macos-26` is the newest generally-available
+# macOS image and is arm64, which is the only macOS architecture this product
+# supports. GitHub also offers an `xcode-27` public-preview image, which is the
+# same macOS 26 with a newer Xcode; it is deliberately not used, because a
+# preview image carries no Actions SLA and `macos-26` already provides the
+# Apple clang major this project builds with.
+#
 # Both configurations run on both platforms. docs/testing.md requires it and
 # says why: the error taxonomy's programming errors assert where NDEBUG is
 # undefined and return their code where it is defined, so a release run is the
 # only one that observes those codes and a debug run is the only one that
 # exercises the assertions.
 #
-# What this does NOT prove is the pinned toolchain. The runners carry whatever
-# their images carry — on 2026-07-30 that was the same MSVC toolset the pin
-# names from a different Visual Studio edition, and an Apple clang two major
-# versions behind the developer machines. Both are worth having and neither
-# reproduces the pin. Reproducing the pin is a developer-machine claim.
+# What this does NOT prove is the pinned toolchain, even now that the images
+# are the newest available. The runners carry whatever their images carry, and
+# the images move on their own schedule; what CI answers is "does this build
+# and pass on a machine that is not the one it was written on". Reproducing the
+# pin is a developer-machine claim and stays one.
 
 name: Core suites
 
@@ -35,6 +44,7 @@ on:
       - 'core/**'
       - 'fixtures/**'
       - 'pinned-inputs.json'
+      - '.gitattributes'
       - '.github/workflows/core-suites.yml'
       - '.github/scripts/**'
   push:
@@ -43,12 +53,18 @@ on:
       - 'core/**'
       - 'fixtures/**'
       - 'pinned-inputs.json'
+      - '.gitattributes'
       - '.github/workflows/core-suites.yml'
       - '.github/scripts/**'
 
 # A docs-only or apple-only change cannot move these suites, so it does not
 # start them; the paths filters above are what say so, and they are written
-# twice because GitHub Actions does not read YAML anchors. A superseded push to
+# twice because GitHub Actions does not read YAML anchors. `.gitattributes` is
+# in them for a reason that is not obvious from its size: it governs the bytes
+# every checkout produces, and the hash-pinned trees refuse to configure if
+# those bytes are rewritten. A change to it that broke a platform and started
+# no run would surface on whatever core pull request came next, attributed to
+# the wrong change. A superseded push to
 # a pull request cancels the run it superseded, because the engine is a
 # multi-minute build on every runner and the older answer is worthless the
 # moment a newer commit exists. Pushes to main are never cancelled: main's
@@ -63,9 +79,12 @@ permissions:
 jobs:
   macos:
     name: macOS (Apple clang, arm64)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to a commit, not to the v5 tag: a tag is mutable, and it was the
+      # last input to this workflow that could change under us without the
+      # repository saying so.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Record the toolchain
         run: |
@@ -99,7 +118,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to a commit, not to the v5 tag: a tag is mutable, and it was the
+      # last input to this workflow that could change under us without the
+      # repository saying so.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Record the toolchain
         run: |

@@ -179,10 +179,23 @@ endif()
 # to; applying it to a vendored snapshot we do not edit would make an upstream
 # style choice fail our build. The fork's own warning flags are used instead.
 #
-# What that leaves visible on MSVC, and deliberately: C4244 in types.h:133 and
-# C4996 for std::getenv in uci.cpp. Both are the fork's own code at the pinned
-# revision, both are read-only here, and neither can fail this build — /WX
-# never reaches this target. They are noise to scroll past, not debt to us.
+# What that leaves visible when the ENGINE'S OWN sources compile: C4267 and
+# C4324 in them, and C4996 for std::getenv in uci.cpp. All are the fork's code
+# at the pinned revision, all are read-only here, and none can fail this build,
+# because /WX never reaches this target. Noise to scroll past, not debt to us.
+#
+# A separate set is emitted while OUR translation units compile, because they
+# include engine headers, and those targets DO link mxq_warnings: the first
+# Windows CI run reported C5054 and C4244 against types.h and bitboard.h with
+# mxq_core.vcxproj and mxq_search_tests.vcxproj named as the project. The
+# counts vary with the configuration and are not worth recording; which codes
+# reach whose translation units is. C5054 is handled by the INTERFACE
+# suppression below. C4244 is deliberately not: it is a narrowing conversion
+# rather than a deprecation, and silencing it on the interface would blind our
+# own code to narrowing in exactly the files that include an engine header.
+# With MXQ_WARNINGS_AS_ERRORS off — which it is everywhere, CI included — it
+# costs nothing; turning that option on is the decision that would have to
+# settle it, and it is not settled here.
 
 if(NOT MSVC)
   target_compile_options(mxq_fairy_stockfish PRIVATE
@@ -199,11 +212,21 @@ endif()
 # and with MXQ_WARNINGS_AS_ERRORS it would fail to compile because of it. The
 # engine's own sources never see the warning; they are built as C++17.
 #
-# This is scoped to the specific deprecation, not a blanket -w, so a core file
-# that includes an engine header keeps every other warning the project sets.
+# This is scoped to the specific deprecation, not a blanket -w or /w, so a core
+# file that includes an engine header keeps every other warning the project
+# sets.
+#
+# Both spellings of the same suppression are listed, because the same
+# deprecation has two names: Clang and GCC call it
+# -Wdeprecated-enum-enum-conversion, MSVC calls it C5054. Only the Clang
+# spelling was here at first, so MSVC was left reporting the fork's C++17
+# headers at our own translation units — which the first green Windows CI run
+# showed and nobody had looked for. The probe below is what keeps the list
+# safe: a compiler that does not know a flag never receives it.
 include(CheckCXXCompilerFlag)
 foreach(mxq_fs_flag -Wno-deprecated-enum-enum-conversion
-                    -Wno-deprecated-anon-enum-enum-conversion)
+                    -Wno-deprecated-anon-enum-enum-conversion
+                    /wd5054)
   string(MAKE_C_IDENTIFIER "MXQ_FS_HAVE${mxq_fs_flag}" mxq_fs_flag_var)
   check_cxx_compiler_flag("${mxq_fs_flag}" ${mxq_fs_flag_var})
   if(${mxq_fs_flag_var})
