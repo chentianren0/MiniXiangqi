@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Windows frontend's first window: WinUI 3 over the Windows App SDK,
+    unpackaged. It shows the same readback the smoke harness prints, from the
+    same core, so that the interface is proved in a process that also runs a
+    UI framework.
+
+    The designed screens, the Fluent materials, and the packaging build are not
+    here. docs/architecture.md's Need-to-discuss entry for the Windows frontend
+    toolchain stays open until a packaging build establishes it; nothing below
+    is a pin.
+
+    Unpackaged and self-contained: WindowsPackageType None because no packaging
+    build exists yet and this one decides nothing about the one that will, and
+    WindowsAppSDKSelfContained because a machine that has never installed the
+    Windows App Runtime should still be able to run what it built.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RootNamespace>MiniXiangqi.App</RootNamespace>
+    <AssemblyName>MiniXiangqi.App</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\CoreArtifacts.targets" />
+
+</Project>

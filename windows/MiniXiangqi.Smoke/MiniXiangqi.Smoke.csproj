@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The headless proof that the C# frontend really talks to the real core. It
+    has no window and no framework beyond the runtime, so it runs over SSH on a
+    machine nobody is logged into, which is where this project's Windows
+    evidence is produced.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MiniXiangqi.Smoke</RootNamespace>
+    <AssemblyName>MiniXiangqi.Smoke</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiniXiangqi.Core\MiniXiangqi.Core.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\CoreArtifacts.targets" />
+
+</Project>

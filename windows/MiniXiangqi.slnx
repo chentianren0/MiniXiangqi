@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="MiniXiangqi.App/MiniXiangqi.App.csproj" />
+  <Project Path="MiniXiangqi.Core/MiniXiangqi.Core.csproj" />
+  <Project Path="MiniXiangqi.Smoke/MiniXiangqi.Smoke.csproj" />
+</Solution>

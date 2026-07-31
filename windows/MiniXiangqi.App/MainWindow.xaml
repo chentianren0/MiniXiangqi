@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="MiniXiangqi.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Mini Xiangqi — core readback">
+
+    <!--
+        Deliberately plain. This window's job is to show that a WinUI 3 process
+        reaches the real core and reads real state back; the designed screens
+        and the Fluent work are the next pull requests, and putting a first
+        guess at them here would only invite reviewing a guess.
+    -->
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="12" MaxWidth="900">
+
+            <TextBlock Text="Mini Xiangqi" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock x:Name="Subtitle"
+                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                       TextWrapping="Wrap" />
+
+            <InfoBar x:Name="Problem"
+                     IsOpen="False"
+                     IsClosable="False"
+                     Severity="Error"
+                     Title="The core refused" />
+
+            <TextBlock Text="Build" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
+            <TextBlock x:Name="BuildLines" TextWrapping="Wrap" FontFamily="Consolas" />
+
+            <TextBlock Text="Position" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
+            <TextBlock x:Name="PositionLines" TextWrapping="Wrap" FontFamily="Consolas" />
+
+            <TextBlock Text="Legal moves" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
+            <TextBlock x:Name="LegalMoveLines" TextWrapping="Wrap" FontFamily="Consolas" />
+
+            <TextBlock Text="Move history" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,12,0,0" />
+            <TextBlock x:Name="HistoryLines" TextWrapping="Wrap" FontFamily="Consolas" />
+
+            <Button x:Name="PlayFirstLegalMove"
+                    Content="Play the first legal move"
+                    Click="OnPlayFirstLegalMove"
+                    Margin="0,16,0,0" />
+
+        </StackPanel>
+    </ScrollViewer>
+</Window>
