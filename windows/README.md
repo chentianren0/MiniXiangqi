@@ -751,11 +751,20 @@ its reasoning are in `docs/copy.md` § When there is no room for the board; the 
 publishes it is [above](#the-windows-floor-and-the-board-that-will-not-fit).
 
 It is a table in C# rather than a `.resw` and a PRI, and the packaging build did not
-change that. A `.resw` compiles to a PRI, which is a resource system for a *packaged*
-app; the distribution is a zip of an unpackaged one, so resource lookup here is a
-deployment question rather than a copy question either way. The render harness also has
-to read the table with no XAML resource context. The smoke harness checks it against the
-contract, so it cannot drift from `docs/copy.md` silently either.
+change that. The render harness has to read the table with no XAML resource context, and
+the smoke harness checks it against the contract, so it cannot drift from `docs/copy.md`
+silently either.
+
+**This section used to say that a PRI is a resource system for a *packaged* app and that
+an unpackaged zip made resource lookup a deployment question rather than a copy
+question. That was wrong, and it was wrong in the direction that cost a working
+distribution.** An unpackaged WinUI 3 app has a PRI and depends on it completely: the
+index named after the executable, `MiniXiangqi.App.pri`, is what `InitializeComponent`
+resolves `ms-appx:///App.xaml` and `ms-appx:///MainWindow.xaml` through. It is very much
+a copy question — see [the distribution](#the-distribution), where not copying it is the
+whole of a defect. A `.resw` would still be the wrong shape for this table, for the
+render-harness reason above; the sentence about PRIs was arguing for a right conclusion
+from a false premise.
 
 ## The distribution
 
@@ -777,6 +786,27 @@ which of the two happened. App-local deployment of those DLLs is what the Visual
 redistributable terms permit, and the zip's `NOTICE.md` records it. With all three in
 place, "unpack and run" needs no install of any kind; what the machine still needs is
 Windows 11 and the matching architecture.
+
+**And a fourth thing, which is not a runtime at all and is the one that actually broke.**
+`dotnet publish` does not carry an unpackaged WinUI 3 app's own compiled XAML. Two files
+answer for it and neither reaches a publish by default:
+
+- **`MiniXiangqi.App.pri`**, the resource index every `ms-appx:` lookup goes through. The
+  SDK writes it straight into `$(TargetDir)`, so a *build* output has it because it was
+  written there; nothing represents it as an MSBuild item, and publish copies items.
+- **`App.xbf` and `MainWindow.xbf`**, the markup compiler's output. The SDK target that
+  copies them beside the executable hooks `GetCopyToOutputDirectoryItems` — the build copy
+  pipeline — and nothing hooks the publish one.
+
+Without the index the app dies on launch with a stowed exception (`0xc000027b`) inside
+`Microsoft.UI.Xaml.dll` the instant `App.xaml` is asked for: a busy cursor, then nothing.
+`MiniXiangqi.App.csproj` fixes both — `EnableMsixTooling` for the index, which is the
+property the WinUI templates set and whose entire effect on this publish is that one
+file, and an `MxqPublishCompiledXaml` target for the `.xbf` — and `package-zip.ps1`
+checks the staged tree for them before it zips anything. The reasons are written at both
+places. **The build tree was never evidence for the zip on this point**: it runs because
+it was built, and this is precisely the class of thing that is only wrong after a
+publish.
 
 **The network is not in the zip, and that is the decision the design turns on.** This
 repository is public and a GitHub Actions artifact on a public repository can be
@@ -805,6 +835,20 @@ unpacked it would have, with nothing from the build tree on that path. The netwo
 in never leaves the runner, because the artifact was zipped before that step and is not
 rebuilt after it. That harness is in the zip for the same reason: it is how a person who
 has just placed the network file finds out whether they placed it correctly.
+
+**Runnable, and the word has a limit worth stating.** What that run proves is the layer
+the harness touches: the core DLL loads from the unpacked folder, the C++ runtime is
+there, the assets and the network are found at the paths a person would have. It has no
+window and no XAML, which is what lets it run on a runner with no desktop — and means it
+passed, 361 checks and no failures, on a zip whose app could not open a window at all.
+The app's own launch is not something a headless run can reach on Windows, because a
+WinUI process cannot open one in session 0 at all
+([above](#the-windows-floor-and-the-board-that-will-not-fit) has the fuller version). So
+the layer above the harness is held by construction instead — the two checks named under
+[Self-contained](#the-distribution), which fail the build rather than the launch — and by
+somebody running the unpacked exe with a desktop in front of them. That last step is a
+person's, it is the only proof of it there is, and a zip that has not had it is a zip
+whose window is unproven however green the run was.
 
 The script also reads the PE machine type of every binary in the tree and fails if one is
 not the target architecture. A `win-arm64` publish that quietly resolved an x64 native
