@@ -1130,8 +1130,12 @@ fields were the whole of it while there was one distribution, and they describe 
 unpackaged, `WindowsPackageType` `None`, self-contained on both counts. `store_package`
 beside them describes the Store's shape — packaged, `WindowsPackageType` absent, .NET
 self-contained and the Windows App SDK not, unsigned because the Store signs — and carries
-its own `established` flag, `false` until a run has answered the fields that only a run
-can: the Windows App Runtime framework the generated manifest asks the Store to install,
-and the MSBuild each leg used. Everything else in it is a decision rather than a
-measurement, and is there so that "how does the Store copy differ" is answerable without
-reading a project condition.
+its own `established` flag for the same reason. Two of its fields could only be answered by
+a run and were null until the first one: the Windows App Runtime framework the generated
+manifest asks the Store to install, read out of the unpacked package, and the MSBuild each
+leg used. **The ARM64 leg's MSBuild warns** — `NETSDK1233`, "Targeting .NET 10.0 or higher
+in Visual Studio 2022 17.14 is not supported", on every project — and that is recorded
+there rather than worked around: it is a support position, and the package that leg
+produced passed every assertion made against it. Everything else in the entry is a decision
+rather than a measurement, and is there so that "how does the Store copy differ" is
+answerable without reading a project condition.

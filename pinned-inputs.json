@@ -275,8 +275,8 @@
           },
           "measured_on": "2026-07-31",
           "store_package": {
-            "established": false,
-            "_about": "The Microsoft Store's deployment shape, beside the zip's flat fields above. The Store is the intended public channel for Windows (owner decision, 2026-07-31) and windows/package-msix.ps1 is the build. 'established' is false because the values marked null below are the ones only a run can answer, and this entry is written in the same change as the build that will answer them; the fields already filled are the ones the project decides rather than measures, and they are recorded here because a reader asking 'how does the Store copy differ' should not have to read a csproj condition to find out.",
+            "established": true,
+            "_about": "The Microsoft Store's deployment shape, beside the zip's flat fields above. The Store is the intended public channel for Windows (owner decision, 2026-07-31) and windows/package-msix.ps1 is the build, first run in CI on 2026-07-31 on both architectures. Two fields could only be answered by a run and were null until it happened: windows_app_runtime_framework, read out of the unpacked package's generated manifest, and msbuild, read off each leg. Everything else here is what the project decides rather than what a build measures, and it is recorded so that a reader asking 'how does the Store copy differ' does not have to read a csproj condition to find out.",
             "package_type": "packaged",
             "windows_package_type": null,
             "_windows_package_type_note": "Null because the property is ABSENT in a packaged build rather than set to anything. Its documented vocabulary is 'None, or absent (for a packaged app)' — there is no affirmative value meaning packaged — so MiniXiangqi.App.csproj sets it only under the condition that builds the zip, and a packaged build is one that does not name it.",
@@ -302,12 +302,19 @@
             "_declared_capabilities_note": "The only one, and the one every packaged desktop app declares: it is what says this is a Win32 process rather than a sandboxed UWP one. internetClient is absent because the app never touches the network, and a permission declared for nothing is shown to every customer on the listing page.",
             "identity_source": "Partner Center, 'View app identity details', after the name reservation",
             "_identity_note": "windows/MiniXiangqi.App/Package.appxmanifest carries MXQPLACEHOLDER in Identity/@Name, Identity/@Publisher and Properties/PublisherDisplayName, deliberately not plausible: all three are assigned when the app's name is reserved, a package whose identity does not match the reservation is rejected at upload, and no value in this repository could be the real one. Version is hardcoded and the owner bumps it per submission; CI does not stamp it, because the Store reserves the fourth part and refuses a version that is not higher than the last accepted one, and a version that moves on every run is a version nobody chose.",
-            "windows_app_runtime_framework": null,
-            "_windows_app_runtime_framework_note": "The framework package the generated manifest declares a dependency on, which the Store installs. Null until a run reads it out of the unpacked package: it is the Windows App SDK's own choice of framework name and minimum version, not ours, so recording it from the csproj's package reference would be recording an intention.",
-            "msbuild": null,
-            "_msbuild_note": "The MSBuild that produced the package, per architecture. It is Visual Studio's rather than the .NET CLI's, because the packaging targets that produce an .msix are Visual Studio's; the two runner images carry different Visual Studio versions, as toolchain_core already records for the compiler, so this is measured per leg rather than stated once.",
+            "windows_app_runtime_framework": {
+              "name": "Microsoft.WindowsAppRuntime.2",
+              "min_version": "2.3.1.0"
+            },
+            "_windows_app_runtime_framework_note": "The framework package the generated manifest declares a dependency on, which the Store installs. Read out of the unpacked package rather than derived from the csproj's package reference: the name and the minimum version are the Windows App SDK's own choice, not ours, and both architectures' packages declared the same one. The packaging build also stages a copy of this framework package beside the app's for sideloading; a submission carries neither, because the Store resolves the declared dependency, and windows/package-msix.ps1 names them and leaves them where they are.",
+            "msbuild": {
+              "x64": "18.7.8.30822",
+              "arm64": "17.14.51.32402",
+              "_note": "Visual Studio's MSBuild rather than the .NET CLI's, because the packaging targets that produce an .msix are Visual Studio's, and located through vswhere rather than named. The two runner images carry different Visual Studio versions — 2026 Enterprise on windows-2025, 2022 Enterprise 17.14 on windows-11-arm — as toolchain_core already records for the compiler, so this is per leg. THE ARM64 LEG WARNS: the .NET SDK emits NETSDK1233, 'Targeting .NET 10.0 or higher in Visual Studio 2022 17.14 is not supported', on every project it builds there. It is a warning and not a failure: that leg restored, compiled and packaged, and the package it produced passed every assertion package-msix.ps1 makes against the generated manifest, the payload and the PE machine type of every binary in it. Recorded here rather than worked around, because what the warning states is a support position and what this manifest records is what a build measured."
+            },
             "packaged_by": "windows/package-msix.ps1",
-            "measured_on": null
+            "measured_on": "2026-07-31",
+            "measured_host": "GitHub-hosted runners windows-2025 and windows-11-arm"
           }
         },
         "toolchain_core": {

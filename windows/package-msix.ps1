@@ -295,6 +295,14 @@ if (-not $family) {
 # bilingualism is a C# string table rather than qualified resources, and an app
 # that says it speaks one language is what a Chinese-language customer would be
 # shown.
+#
+# Compared case-insensitively, deliberately: the packaging build upper-cases
+# these on the way into the generated manifest — Package.appxmanifest says
+# en-US and zh-Hans, and the package says EN-US and ZH-HANS — and a language tag
+# is case-insensitive by definition, so the two spellings are the same tag.
+# -notcontains is PowerShell's case-insensitive operator and that is why it is
+# the one here. Contrast windows/package-zip.ps1's network-name check, which
+# uses -cne because the rule IT defends is case-sensitive.
 $languages = @($appx.SelectNodes('/d:Package/d:Resources/d:Resource', $ns) |
     ForEach-Object { $_.GetAttribute('Language') })
 foreach ($language in @('en-US', 'zh-Hans')) {
