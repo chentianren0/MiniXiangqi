@@ -23,7 +23,7 @@
 // with any active game, selecting either mode presents the one save-and-continue
 // confirmation instead of opening anything.
 //
-// docs/engine-integration.md, "Accepted preparation ordering": human-versus-AI
+// docs/engine-integration.md, "Preparation ordering": human-versus-AI
 // creation runs prepare → resolve → create → search, each step a gate on the
 // next, from a fresh memory probe every attempt.
 //
@@ -412,7 +412,7 @@ public sealed class PlayFlow : IDisposable
     /// <summary>
     /// **开始对局**.
     ///
-    /// docs/engine-integration.md, "Accepted preparation ordering": prepare,
+    /// docs/engine-integration.md, "Preparation ordering": prepare,
     /// resolve, create, search, each a gate on the next. A preparation failure
     /// creates nothing and resolves nothing; a **随机** choice is drawn only
     /// after preparation succeeds and is committed only by the create that

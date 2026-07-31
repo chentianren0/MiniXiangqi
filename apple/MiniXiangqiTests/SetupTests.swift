@@ -1,7 +1,7 @@
 // The state before there is a game: the draft, the ordering that creates one,
 // and the memory budget the ordering's first gate is computed from.
 //
-// docs/engine-integration.md, "Accepted preparation ordering": prepare, resolve,
+// docs/engine-integration.md, "Preparation ordering": prepare, resolve,
 // create, search, each a gate on the next. Every failure point of that sequence
 // is a state the app has to survive and a working engine will not produce on
 // request, so the engine here is the same seam the opponent's tests use.

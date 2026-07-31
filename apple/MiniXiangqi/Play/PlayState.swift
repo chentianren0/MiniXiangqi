@@ -334,7 +334,7 @@ final class PlayState {
 
     /// **开始对局**.
     ///
-    /// docs/engine-integration.md, "Accepted preparation ordering": prepare,
+    /// docs/engine-integration.md, "Preparation ordering": prepare,
     /// resolve, create, search, each a gate on the next. A preparation failure
     /// creates nothing and resolves nothing; a Random choice is drawn only after
     /// preparation succeeds and is committed only by the create that follows, so
@@ -564,8 +564,8 @@ final class PlayState {
 
     // MARK: - Suspension
 
-    /// docs/engine-integration.md, "Accepted backgrounding and teardown
-    /// behavior": on the platform's own suspension or memory-pressure signal —
+    /// docs/engine-integration.md, "Backgrounding and teardown":
+    /// on the platform's own suspension or memory-pressure signal —
     /// never a loss of focus — the search is cancelled and the transposition
     /// table released. Re-preparation happens when a search is next owed.
     private func watchForSuspension() {

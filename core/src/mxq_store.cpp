@@ -26,8 +26,8 @@ namespace {
 
 /*
  * Schema version 1, exactly as accepted in docs/game-data.md ("Library store
- * schema"). Three STRICT tables; the single library row with the single
- * nullable active-game reference; result well-formedness, the
+ * schema, version 1"). Three STRICT tables; the single library row with the
+ * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship and time ordering as check constraints;
  * History content immutability and the archive-and-clear ordering as
  * triggers; the accepted History ordering served by one partial index that
