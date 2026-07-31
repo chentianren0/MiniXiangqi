@@ -45,6 +45,30 @@
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+
+    <!--
+      This is not about MSIX. Nothing here builds one and WindowsPackageType
+      stays None; what this property does that this project needs is put the
+      app's compiled resource index — MiniXiangqi.App.pri — into the output of
+      `dotnet publish`, which without it does not carry it at all.
+
+      An unpackaged WinUI 3 app still uses MRT. InitializeComponent resolves
+      ms-appx:///App.xaml and ms-appx:///MainWindow.xaml through the resource
+      index named after the executable, and the SDK writes that index straight
+      into $(TargetDir) with no MSBuild item standing for it — so a *build*
+      output has it because it was written there, and a *publish* output does
+      not, because publish copies items and there is no item to copy. It is
+      silent: publish succeeds, the directory looks complete, and the app dies
+      on launch with a stowed exception (0xc000027b) inside Microsoft.UI.Xaml.dll
+      the moment App.xaml is asked for. That is the defect the owner hit when
+      they ran the zip on 2026-07-31 — the build tree ran because it was built,
+      not published.
+
+      The property is the one the WinUI 3 project templates set, packaged and
+      unpackaged alike, and its whole effect on this publish is that one file:
+      the published file set is otherwise identical with it and without it.
+    -->
+    <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
 
   <ItemGroup>
@@ -65,6 +89,55 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!--
+    The compiled XAML itself, for the same reason and by the other half of the
+    same mechanism.
+
+    The XAML compiler turns App.xaml and MainWindow.xaml into App.xbf and
+    MainWindow.xbf, and the SDK target that copies them beside the executable
+    (AddProcessedXamlFilesToCopyLocal, in Microsoft.WinUI.NET.Markup.Compiler
+    .targets) hooks GetCopyToOutputDirectoryItems — the *build* copy pipeline —
+    and nothing hooks the publish one. So they are in a build output and absent
+    from a publish output, exactly as the resource index was.
+
+    Whether they are still *needed* once the index is there is a question no
+    headless test on this project can answer, and that is why they travel rather
+    than being reasoned about. A WinUI process cannot open a window in session 0,
+    so the furthest an SSH launch gets is the input stack, and both layouts —
+    with the .xbf and without — die at that same point; the launch that would
+    tell them apart is one with a desktop in front of it. Rather than ship a
+    layout no test distinguishes from the working one, ship the layout that *is*
+    the working one: with these two files the published tree and the build tree
+    the owner runs from hold the same set, and the zip stops being a
+    configuration nobody has seen a window from.
+
+    Thirteen kilobytes. The reason to write nine lines about it is that the
+    absence of these files is invisible until launch.
+
+    They are taken from $(TargetDir) — the build output — and not from the
+    intermediate directory the compiler writes them to, which is the obvious
+    source and the wrong one. That directory holds two copies: the pair the
+    build ships beside the executable, and a second pair under `embed\` that it
+    does not. Globbing the intermediate puts an `embed\` folder in the zip that
+    no working layout has, which is the opposite of the point. Copying what the
+    build already placed beside the executable, at the paths it placed them,
+    makes "the published tree holds what the build tree holds" true by
+    construction rather than by a rule that has to be kept in step.
+  -->
+  <Target Name="MxqPublishCompiledXaml" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <_MxqCompiledXaml Include="$(TargetDir)**\*.xbf" />
+      <ResolvedFileToPublish Include="@(_MxqCompiledXaml)"
+                             RelativePath="%(RecursiveDir)%(Filename)%(Extension)"
+                             CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+    <!-- If the SDK ever stops producing these here, say so at build time rather
+         than letting a publish go quiet again — quiet is what this whole block
+         is about. -->
+    <Error Condition="'@(_MxqCompiledXaml)' == ''"
+           Text="No compiled XAML (.xbf) was found under $(TargetDir). This project's XAML compiles to .xbf and the published app needs it beside the executable; if the SDK has stopped putting it in the build output, find where it went and fix this target rather than publishing without it." />
+  </Target>
 
   <Import Project="..\CoreArtifacts.targets" />
 

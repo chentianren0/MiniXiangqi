@@ -173,6 +173,46 @@ foreach ($project in @('MiniXiangqi.App', 'MiniXiangqi.Smoke')) {
 }
 
 # ---------------------------------------------------------------------------
+# The app can find its own XAML, checked rather than assumed
+# ---------------------------------------------------------------------------
+#
+# This check exists because its absence shipped a zip that could not open a
+# window. `dotnet publish` does not carry an unpackaged WinUI 3 app's compiled
+# XAML — neither the resource index ms-appx: lookups resolve through nor the
+# .xbf the markup compiler produces — because both reach a *build* output by
+# being written or copied there and the publish pipeline copies items instead.
+# MiniXiangqi.App.csproj now makes both travel, at length and with the reasons;
+# this is the check that they did, on the tree that is about to be zipped.
+#
+# It is here rather than left to the app's own tests because nothing else in
+# this build can see it. The smoke harness runs from this same layout and passes
+# without any of these files: it has no window, no XAML and no framework beyond
+# the runtime, which is what lets it run over SSH and is exactly why a green
+# harness said nothing about the one thing that was broken. A publish that
+# quietly stopped carrying these would otherwise be found by a person
+# double-clicking the exe, which is what happened on 2026-07-31.
+
+Write-Host ''
+Write-Host 'Checking that the app can find its own XAML'
+$priName = 'MiniXiangqi.App.pri'
+$priPath = Join-Path $staging $priName
+$xbf = @(Get-ChildItem -Path $staging -Filter '*.xbf' -File -ErrorAction SilentlyContinue)
+if (-not (Test-Path $priPath)) {
+    throw ("$priName is not in the published tree. It is the resource index an unpackaged WinUI 3 app " +
+           "resolves ms-appx:///App.xaml through, and without it MiniXiangqi.App.exe dies on launch with " +
+           "a stowed exception inside Microsoft.UI.Xaml.dll before any window appears. Publishing it " +
+           "depends on EnableMsixTooling in MiniXiangqi.App.csproj; check that it is still set.")
+}
+if ($xbf.Count -eq 0) {
+    throw ("No compiled XAML (.xbf) is in the published tree. App.xaml and MainWindow.xaml compile to " +
+           "these, MiniXiangqi.App.csproj's MxqPublishCompiledXaml target is what carries them into a " +
+           "publish, and a zip without them is one no test here can tell apart from a working zip until " +
+           "somebody launches it.")
+}
+Write-Host ("  {0}  {1:N0} bytes" -f $priName, (Get-Item $priPath).Length)
+Write-Host ("  {0} compiled XAML file(s): {1}" -f $xbf.Count, (($xbf | ForEach-Object { $_.Name }) -join ', '))
+
+# ---------------------------------------------------------------------------
 # The network comes out
 # ---------------------------------------------------------------------------
 #
