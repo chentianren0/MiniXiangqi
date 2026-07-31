@@ -44,9 +44,10 @@ final class HumanVersusAIUITests: XCTestCase {
                         availableMemory: String? = modestMemory,
                         firstMoverDefault: String? = nil,
                         levelDefault: String? = nil,
+                        language: String = "zh-Hans",
                         window: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
+        app.launchArguments += ["-AppleLanguages", "(\(language))"]
         app.launchArguments += ["-mxq-store-name", store ?? scratchStoreName()]
         // A scratch preference domain, so a test that writes a default never
         // touches the ones on the machine it runs on — and every preference
@@ -191,13 +192,14 @@ final class HumanVersusAIUITests: XCTestCase {
                       "开始对局 should create the game and open the board")
         attach(app, named: "hvai-1-the-opening-position")
 
-        // The accepted cluster: 悔棋, 判和, 认输, and no flip control — the
-        // orientation rule already puts the human's own side at the bottom.
+        // The accepted cluster: 悔棋, 判和, 认输 and 翻转棋盘 — the fourth is the
+        // owner's recommendation of 2026-07-31, and it carries the same label
+        // here as it does in Free Play whichever of its two shapes it is in.
         XCTAssertTrue(app.buttons["cluster-undo"].exists)
         XCTAssertTrue(app.buttons["cluster-claim"].exists)
         XCTAssertEqual(app.buttons["cluster-resign"].label, "认输")
-        XCTAssertFalse(app.buttons["cluster-flip"].exists,
-                       "human-versus-AI has no board-flip control")
+        XCTAssertEqual(app.buttons["cluster-flip"].label, "翻转棋盘",
+                       "human-versus-AI carries the board-flip control too")
 
         // 我先手 resolves Red, so Red is at the bottom and the turn is the
         // player's own.
@@ -307,6 +309,71 @@ final class HumanVersusAIUITests: XCTestCase {
         attach(app, named: "hvai-8-after-the-machine-opened")
     }
 
+    // MARK: - The four controls, in the panel that has to hold them
+
+    /// The cluster this mode gained a fourth control for, in the panel that has
+    /// to hold it, in each language the app speaks.
+    ///
+    /// **This is the width the placement was decided against, and it is not the
+    /// window's.** Side by side, the cluster lives in a 260-point panel flush
+    /// with the window's trailing edge and has 228 points inside the panel's
+    /// inset — the same 228 at every window size, because the panel does not
+    /// grow with the window. Four English labels come to 359 of them, so the row
+    /// gives up the trailing word, and where even that will not fit 翻转棋盘
+    /// drops to a second row beneath the others. Which of the three
+    /// arrangements a language gets is the layout's answer rather than a
+    /// promise; what is asserted is the promise — every control inside the
+    /// panel's own inset edge, none of it hanging past into the board — and the
+    /// frames are what the arrangement is read off.
+    ///
+    /// The window is a comfortable one deliberately. At the minimum the app
+    /// clamps a smaller request up to its own floor *after* the window has been
+    /// centred, so the window overhangs the display and a screenshot of it is
+    /// cut off at the right — which is exactly the edge this test is about. The
+    /// assertion below is measured from the window's trailing edge rather than
+    /// from its width, so it says the same thing at either size.
+    ///
+    /// The words are written out rather than read from the application's own
+    /// catalog, and the register itself is verified where it is the subject —
+    /// `PlayScreenUITests`, which walks both languages over every surface the
+    /// copy lives on. These four are here because a control whose label went
+    /// missing would pass an existence check.
+    func testTheFourControlsFitThePanelInBothLanguages() {
+        let words = [("zh-Hans", "zh", ["cluster-undo": "悔棋", "cluster-claim": "判和",
+                                        "cluster-resign": "认输", "cluster-flip": "翻转棋盘"]),
+                     ("en", "en", ["cluster-undo": "Undo", "cluster-claim": "Claim Draw",
+                                   "cluster-resign": "Resign", "cluster-flip": "Flip Board"])]
+        for (code, short, labels) in words {
+            let app = launch(levelDefault: "fast", language: code, window: "900x700")
+            // 我先手 is the default, so the pre-start page needs no choice made
+            // on it — which is what keeps this test out of the segmented
+            // control's localized labels.
+            XCTAssertTrue(startGame(app, firstMover: nil),
+                          "开始对局 should create the game and open the board in \(code)")
+            let window = app.windows.firstMatch.frame
+            // The panel's own inner edge: 16 points in from the window's
+            // trailing edge, which is where the cluster's padding puts it.
+            let edge = window.maxX - 16
+            for identifier in ["cluster-undo", "cluster-claim", "cluster-resign", "cluster-flip"] {
+                let button = app.buttons[identifier]
+                XCTAssertTrue(button.exists,
+                              "\(identifier) should be on screen in the panel in \(code)")
+                XCTAssertLessThanOrEqual(button.frame.maxX, edge + 0.5,
+                                         "\(identifier) should end inside the panel's inset, "
+                                         + "not past it — it ends at \(button.frame.maxX) "
+                                         + "and the inset edge is \(edge)")
+                XCTAssertEqual(button.label, labels[identifier],
+                               "and carry its own label whatever shape it is drawn in")
+                print("CLUSTER-EVIDENCE hvai-\(short) \(identifier) "
+                      + "frame=\(button.frame) panel-edge=\(edge)")
+            }
+            attach(app, named: "hvai-\(short)-panel")
+            app.terminate()
+            XCTAssertTrue(app.wait(for: .notRunning, timeout: 20),
+                          "the process has to be gone before the next launch asks for it")
+        }
+    }
+
     // MARK: - Insufficient memory
 
     /// The accepted notice, produced on the real screen by forcing the probe
@@ -414,10 +481,30 @@ final class HumanVersusAIUITests: XCTestCase {
                        "and resumes with the human's own side at the bottom")
         XCTAssertTrue(app.buttons["cluster-resign"].exists,
                       "with the human-versus-AI cluster")
-        XCTAssertFalse(app.buttons["cluster-flip"].exists)
         XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 5))
         XCTAssertTrue(app.staticTexts["1."].exists, "the machine's opening move survived")
         attach(app, named: "hvai-13-the-resumed-game")
+
+        // The orientation the mode chose, and the one the player can ask for
+        // over the top of it: 翻转棋盘 turns this board to the machine's side,
+        // and turns nothing else. The move that is already recorded is still
+        // recorded and the turn is still the same turn — the flip is
+        // presentation, here exactly as it is in Free Play.
+        app.buttons["cluster-flip"].click()
+        XCTAssertTrue(waitForLabel(strips["file-numerals-red"],
+                                   containing: "七 六 五 四 三 二 一"),
+                      "the flip should turn the board to Red at the bottom — it reads "
+                      + strips["file-numerals-red"].label)
+        XCTAssertTrue(app.staticTexts["1."].exists, "the record is untouched by a flip")
+        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 5),
+                      "and so is the turn")
+        attach(app, named: "hvai-13a-the-resumed-game-flipped")
+
+        // And back, because a flip is a toggle and two of them are none.
+        app.buttons["cluster-flip"].click()
+        XCTAssertTrue(waitForLabel(strips["file-numerals-black"],
+                                   containing: "7 6 5 4 3 2 1"),
+                      "a second flip returns the human's own side to the bottom")
 
         // It is the same game to play on: the player moves and the machine
         // answers, which means the engine was prepared again when a search was

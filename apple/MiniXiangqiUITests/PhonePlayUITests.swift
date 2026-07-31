@@ -305,13 +305,22 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertTrue(app.buttons["play-move-list"].exists,
                       "a phone takes the stacked shape, where the record is on demand")
 
-        // The accepted human-versus-AI cluster, and no flip control: the
-        // orientation rule already puts the human's own side at the bottom.
+        // The accepted human-versus-AI cluster, all four of it. The fourth is
+        // the owner's recommendation of 2026-07-31, and this is the width that
+        // decided where it goes: at 402 points the stacked row holds four, so
+        // the control sits in the cluster here exactly as it does in the panel
+        // rather than being sent to the toolbar beside 棋谱.
         XCTAssertEqual(app.buttons["cluster-undo"].label, "悔棋")
         XCTAssertEqual(app.buttons["cluster-claim"].label, "判和")
         XCTAssertEqual(app.buttons["cluster-resign"].label, "认输")
-        XCTAssertFalse(app.buttons["cluster-flip"].exists,
-                       "human-versus-AI has no board-flip control")
+        XCTAssertEqual(app.buttons["cluster-flip"].label, "翻转棋盘",
+                       "human-versus-AI carries the board-flip control too")
+        for identifier in ["cluster-undo", "cluster-claim", "cluster-resign", "cluster-flip"] {
+            let button = app.buttons[identifier]
+            XCTAssertTrue(app.frame.contains(button.frame),
+                          "\(identifier) should sit inside a 402-point phone, not past it")
+            print("PHONE-EVIDENCE \(identifier) frame=\(button.frame)")
+        }
 
         // The accepted 44-point floor, measured on a real phone rather than
         // computed. It is a touch-target rule, so a phone is where it means
@@ -349,6 +358,23 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 15))
         XCTAssertEqual(control(app, "file-numerals-red").label, "七 六 五 四 三 二 一",
                        "the human is Red, so Red is at the bottom")
+
+        // Where the board starts is not where it has to stay: 翻转棋盘 turns it
+        // to the machine's side and turns nothing else. The strips read the
+        // orientation off the board itself, so they are what says it happened.
+        app.buttons["cluster-flip"].tap()
+        XCTAssertTrue(waitForLabel(control(app, "file-numerals-red"),
+                                   containing: "一 二 三 四 五 六 七"),
+                      "the flip should turn the board over — the red strip reads "
+                      + control(app, "file-numerals-red").label)
+        XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 5),
+                      "and the turn is untouched: a flip is presentation")
+        attach(app, named: "phone-03a-the-flipped-board")
+
+        app.buttons["cluster-flip"].tap()
+        XCTAssertTrue(waitForLabel(control(app, "file-numerals-red"),
+                                   containing: "七 六 五 四 三 二 一"),
+                      "and a second flip puts the human's own side back at the bottom")
 
         // The move itself: two taps, and the position moved.
         play(app, from: "b1", to: "b4")

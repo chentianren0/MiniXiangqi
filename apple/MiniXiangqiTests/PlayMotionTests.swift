@@ -130,6 +130,51 @@ struct PlayMotionTests {
         #expect(!motion.isCommitting, "a flip is never a committing transition")
     }
 
+    @Test("Against the machine the flip is the same toggle, over the orientation the mode chose")
+    func theFlipAgainstTheMachine() throws {
+        // The owner's recommendation of 2026-07-31, recorded in issue #80, and
+        // the semantics the Windows half already ships: what is on screen is
+        // the mode's own orientation *exclusive-or* the player's flip. An AI
+        // 先手 game resolves the human as Black, so it opens with Black at the
+        // bottom; one flip views the same game from the machine's side.
+        let core = try TestCores.fresh()
+        try core.create(.humanVersusAI(humanSide: .black, level: .fast, choice: .aiFirst))
+        let game = try Game(rules: core)
+        #expect(game.flipped, "the mode's own orientation: the human's side is at the bottom")
+
+        let animator = ManualAnimator()
+        let recorder = try FeedbackRecorder(
+            defaults: ScratchDefaults.make(soundEnabled: true))
+        let motion = PlayMotion(game: game,
+                                policy: MotionPolicy(reduceMotion: false),
+                                animator: animator.animator,
+                                feedback: recorder.feedback)
+
+        let fen = game.evaluation.fen
+        let sideToMove = game.evaluation.sideToMove
+        motion.flip()
+        #expect(!game.flipped, "the player's flip turns the mode's orientation over")
+        #expect(!motion.isCommitting, "and is never a committing transition")
+        #expect(game.evaluation.fen == fen, "the game is untouched: the position…")
+        #expect(game.evaluation.sideToMove == sideToMove, "…and whose turn it is")
+        #expect(game.moves.isEmpty, "…and the record")
+
+        motion.flip()
+        #expect(game.flipped, "two flips are none, exactly as in Free Play")
+
+        // A new game is where it goes back to the mode's own answer, and it
+        // goes back because the orientation is decided at creation and never
+        // persisted: the flip is a field of the game on screen and of nothing
+        // longer-lived, which is Free Play's behaviour that this mode inherits
+        // rather than a rule of its own.
+        motion.flip()
+        #expect(!game.flipped)
+        let next = try TestCores.fresh()
+        try next.create(.humanVersusAI(humanSide: .black, level: .fast, choice: .aiFirst))
+        #expect(try Game(rules: next).flipped,
+                "the next game opens the way its own mode opens it")
+    }
+
     @Test("Board input is discarded while the board is turning round")
     func inputDuringAFlipIsDiscarded() throws {
         // The canvas carries each disc along the arc of the rotation while the
