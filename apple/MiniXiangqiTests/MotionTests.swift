@@ -14,6 +14,9 @@ import Testing
 @MainActor
 struct MotionTests {
 
+    private let miniBoard = GameKind.miniXiangqi.board
+    private let xiangqiBoard = GameKind.xiangqi.board
+
     @Test("The selection lift sits inside 120–160 ms")
     func liftBand() {
         #expect(Motion.lift >= 0.12 && Motion.lift <= 0.16)
@@ -23,8 +26,14 @@ struct MotionTests {
     func travelBand() {
         // The floor at a one-point step and the ceiling at the longest
         // crossing, exactly: the band's edges are the mapping's endpoints.
-        #expect(Motion.travel(distance: Motion.shortestStep) == Motion.travelFloor)
-        #expect(Motion.travel(distance: Motion.longestCrossing) == Motion.travelCeiling)
+        #expect(Motion.travel(distance: Motion.shortestStep, on: miniBoard)
+                == Motion.travelFloor)
+        #expect(Motion.travel(distance: Motion.longestCrossing(on: miniBoard), on: miniBoard)
+                == Motion.travelCeiling)
+        #expect(Motion.travel(distance: Motion.shortestStep, on: xiangqiBoard)
+                == Motion.travelFloor)
+        #expect(Motion.travel(distance: Motion.longestCrossing(on: xiangqiBoard),
+                              on: xiangqiBoard) == Motion.travelCeiling)
         #expect(Motion.travelFloor == 0.18)
         #expect(Motion.travelCeiling == 0.24)
     }
@@ -32,24 +41,33 @@ struct MotionTests {
     @Test("Travel rises monotonically with distance and never leaves the band")
     func travelMonotone() {
         let distances = stride(from: 0.5, through: 10.0, by: 0.25).map { $0 }
-        for (near, far) in zip(distances, distances.dropFirst()) {
-            #expect(Motion.travel(distance: near) <= Motion.travel(distance: far))
-        }
-        for distance in distances {
-            let duration = Motion.travel(distance: distance)
-            #expect(duration >= Motion.travelFloor && duration <= Motion.travelCeiling)
+        for board in [miniBoard, xiangqiBoard] {
+            for (near, far) in zip(distances, distances.dropFirst()) {
+                #expect(Motion.travel(distance: near, on: board)
+                        <= Motion.travel(distance: far, on: board))
+            }
+            for distance in distances {
+                let duration = Motion.travel(distance: distance, on: board)
+                #expect(duration >= Motion.travelFloor && duration <= Motion.travelCeiling)
+            }
         }
         // Strictly rising inside the endpoints, so a longer move never reads
         // as the same event as a shorter one.
-        #expect(Motion.travel(distance: 2) > Motion.travel(distance: 1))
-        #expect(Motion.travel(distance: 6) > Motion.travel(distance: 3))
+        #expect(Motion.travel(distance: 2, on: miniBoard)
+                > Motion.travel(distance: 1, on: miniBoard))
+        #expect(Motion.travel(distance: 6, on: xiangqiBoard)
+                > Motion.travel(distance: 3, on: xiangqiBoard))
     }
 
     @Test("A move's distance is the length of the line its disc travels")
     func distanceIsEuclidean() {
-        #expect(Motion.distance(of: Move(text: "d4d5")!) == 1)
-        #expect(Motion.distance(of: Move(text: "a1g7")!) == Motion.longestCrossing)
-        #expect(abs(Motion.distance(of: Move(text: "b1c3")!) - (5.0).squareRoot()) < 0.0001)
+        #expect(Motion.distance(of: Move(text: "d4d5", on: miniBoard)!) == 1)
+        #expect(Motion.distance(of: Move(text: "a1g7", on: miniBoard)!)
+                == Motion.longestCrossing(on: miniBoard))
+        #expect(Motion.distance(of: Move(text: "a1i10", on: xiangqiBoard)!)
+                == Motion.longestCrossing(on: xiangqiBoard))
+        #expect(abs(Motion.distance(of: Move(text: "b1c3", on: miniBoard)!)
+                    - (5.0).squareRoot()) < 0.0001)
     }
 
     @Test("The capture event ends about 250 ms after it began")
@@ -65,7 +83,7 @@ struct MotionTests {
         #expect(Motion.travelFloor + tail >= 0.20)
         #expect(Motion.travelCeiling + tail <= 0.29)
         for distance in [1.0, 2, 3] {
-            let event = Motion.travel(distance: distance) + tail
+            let event = Motion.travel(distance: distance, on: miniBoard) + tail
             #expect(abs(event - 0.25) <= 0.0201,
                     "a short capture, the common one, lands on ≈250 ms")
         }
@@ -95,7 +113,8 @@ struct MotionTests {
                 && Motion.markerRingGain > 0)
         // The strengthened destination dot stays far inside its cell. It marks
         // an empty point, so the floor the two rings answer to does not apply.
-        let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+        let geometry = BoardGeometry(board: miniBoard,
+                                     pitch: BoardGeometry.minimumPitch(for: miniBoard))
         #expect(geometry.destinationDotDiameter(emphasis: 1) / 2 < geometry.markerOuterLimit)
     }
 
@@ -111,8 +130,9 @@ struct MotionTests {
         // The inner edges are pinned *on* the floor by construction, so they
         // are compared with the hair floating point leaves on an equality.
         let hair: CGFloat = 1e-9
-        for pitch in [BoardGeometry.minimumPitch, 60, BoardGeometry.maximumPitch] {
-            let geometry = BoardGeometry(pitch: pitch)
+        for pitch in [BoardGeometry.minimumPitch(for: miniBoard), 60,
+                      BoardGeometry.maximumPitch(for: miniBoard)] {
+            let geometry = BoardGeometry(board: miniBoard, pitch: pitch)
 
             let capture = geometry.captureRingStroke(emphasis: 1)
             let captureRadius = geometry.captureRingRadius(stroke: capture)
@@ -134,7 +154,7 @@ struct MotionTests {
 
     @Test("At rest the swells leave the settled geometry exactly as it is")
     func pulsesRestOnTheSettledGeometry() {
-        let geometry = BoardGeometry(pitch: 60)
+        let geometry = BoardGeometry(board: miniBoard, pitch: 60)
         #expect(geometry.checkRingStroke(emphasis: 0) == geometry.checkRingStroke)
         #expect(geometry.checkRingRadii(emphasis: 0).inner == geometry.checkRingInnerRadius)
         #expect(geometry.checkRingRadii(emphasis: 0).outer == geometry.checkRingOuterRadius)
@@ -204,7 +224,8 @@ struct MotionTests {
 
     @Test("Square phases interpolate as one vector, so a lift can retarget")
     func squarePhasesArithmetic() {
-        let a = Square("b1")!, b = Square("d4")!
+        let board = GameKind.miniXiangqi.board
+        let a = Square("b1", on: board)!, b = Square("d4", on: board)!
         let from = SquarePhases(raised: a)
         let to = SquarePhases(raised: b)
 

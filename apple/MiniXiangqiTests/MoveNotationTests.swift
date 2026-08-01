@@ -12,8 +12,10 @@ import Testing
 @MainActor
 struct MoveNotationTests {
 
-    private func read(_ move: String, from fen: String) -> String {
-        MoveNotation.text(for: Move(text: move)!, in: Placement(fen: fen))
+    private func read(_ move: String, from fen: String,
+                      game: GameKind = .miniXiangqi) -> String {
+        MoveNotation.text(for: Move(text: move, on: game.board)!,
+                          in: Placement(fen: fen, game: game))
     }
 
     private static let start = "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
@@ -60,6 +62,32 @@ struct MoveNotationTests {
                       ("d4c2", "傌四退五"), ("d4e2", "傌四退三")])
     func horseNamesItsDestinationFile(move: String, expected: String) {
         #expect(read(move, from: "rc1k1cr/p1ppp1p/7/3N3/7/P1PPP1P/RC1K1CR w - - 0 1") == expected)
+    }
+
+    @Test("Advisors and elephants name their destination file on the 9x10 board")
+    func xiangqiDiagonalPiecesNameTheirDestinationFile() {
+        let redAdvisor = "5k3/9/9/9/9/9/9/9/3K5/3A5 w - - 0 1"
+        let redElephant = "5k3/9/9/9/9/9/9/9/3K5/2B6 w - - 0 1"
+        let blackAdvisor = "3a1k3/9/9/9/9/9/9/9/9/3K5 b - - 0 1"
+        let blackElephant = "2b2k3/9/9/9/9/9/9/9/9/3K5 b - - 0 1"
+
+        #expect(read("d1e2", from: redAdvisor, game: .xiangqi) == "仕六进五")
+        #expect(read("c1e3", from: redElephant, game: .xiangqi) == "相七进五")
+        #expect(read("d10e9", from: blackAdvisor, game: .xiangqi) == "士4进5")
+        #expect(read("c10e8", from: blackElephant, game: .xiangqi) == "象3进5")
+    }
+
+    @Test("Xiangqi numbers all nine files and scans all ten ranks")
+    func xiangqiUsesItsWholeBoard() {
+        let redEdges = "5k3/9/9/9/9/9/9/9/9/R2K4R w - - 0 1"
+        let blackEdges = "r2k4r/9/9/9/9/9/9/9/9/5K3 b - - 0 1"
+        let doubled = "R4k3/9/9/9/9/9/9/9/R8/3K5 w - - 0 1"
+
+        #expect(read("a1a2", from: redEdges, game: .xiangqi) == "俥九进一")
+        #expect(read("i1i2", from: redEdges, game: .xiangqi) == "俥一进一")
+        #expect(read("a10a9", from: blackEdges, game: .xiangqi) == "车1进1")
+        #expect(read("i10i9", from: blackEdges, game: .xiangqi) == "车9进1")
+        #expect(read("a10b10", from: doubled, game: .xiangqi) == "前俥平八")
     }
 
     @Test("The general is a line piece here: ranks after 进, a file after 平")
@@ -179,7 +207,7 @@ struct MoveNotationTests {
 
     @Test("It is presentation: the canonical notation is untouched")
     func canonicalNotationIsSeparate() {
-        let move = Move(text: "b1b4")!
+        let move = Move(text: "b1b4", on: GameKind.miniXiangqi.board)!
         #expect(move.text == "b1b4")
         #expect(read("b1b4", from: Self.start) != move.text)
     }

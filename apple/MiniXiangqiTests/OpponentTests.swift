@@ -215,8 +215,8 @@ struct OpponentTests {
         #expect(engine.preparations == 0, "a game waiting on the player prepares nothing")
         #expect(engine.startedSearches == 0)
 
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(game.searchExpected, "the premise: the AI now owes a move")
         #expect(engine.preparations == 1, "and a search that is owed prepares first")
         #expect(engine.probes == 1, "from a probe taken at the attempt")
@@ -259,20 +259,20 @@ struct OpponentTests {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
         _ = opponent
 
-        motion.tap(Square("b1")!)
-        #expect(game.selected == Square("b1"), "the player's own turn takes input")
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        #expect(game.selected == Square("b1", on: GameKind.miniXiangqi.board), "the player's own turn takes input")
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(game.searchExpected, "the premise: the AI owes a move")
 
         // Every point, not only the ones that would have been legal: a board
         // waiting on the opponent has nothing to offer anywhere on it.
-        #expect(game.effect(ofTapAt: Square("a2")!) == .unavailable,
+        #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable,
                 "a piece of the player's own is not selectable on the machine's turn")
-        #expect(game.effect(ofTapAt: Square("a6")!) == .unavailable,
+        #expect(game.effect(ofTapAt: Square("a6", on: GameKind.miniXiangqi.board)!) == .unavailable,
                 "nor is one of the machine's")
-        #expect(game.effect(ofTapAt: Square("d4")!) == .unavailable, "nor an empty point")
-        motion.tap(Square("a2")!)
+        #expect(game.effect(ofTapAt: Square("d4", on: GameKind.miniXiangqi.board)!) == .unavailable, "nor an empty point")
+        motion.tap(Square("a2", on: GameKind.miniXiangqi.board)!)
         #expect(game.selected == nil, "and a tap selects nothing")
 
         // It stays refused while a preparation is stalled, which is the state
@@ -280,7 +280,7 @@ struct OpponentTests {
         // the move, whatever is stopping it.
         opponent.cancelSearch()
         engine.answer(result(.failed, move: "", game: game))
-        #expect(game.effect(ofTapAt: Square("a2")!) == .unavailable)
+        #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable)
 
         // And is handed back the moment the reply lands.
         engine.answer(result(.move, move: "a6a5", game: game))
@@ -290,8 +290,8 @@ struct OpponentTests {
     @Test("The frontend compares staleness again before applying")
     func theSecondStalenessComparisonRejectsAWrongResult() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
@@ -334,8 +334,8 @@ struct OpponentTests {
     func aMatchingResultIsPlayed() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()   // the player's move lands
 
         engine.answer(result(.move, move: "a6a5", game: game))
@@ -350,8 +350,8 @@ struct OpponentTests {
     func theReplyWaitsForTheFloor() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
         // The search answers **while the player's move is still travelling**,
         // which is the case the floor is really for: a forced mate comes back in
@@ -376,8 +376,8 @@ struct OpponentTests {
     func theFloorHoldsForAReplyAfterTheArrival() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()   // the arrival first, this time
 
         clock.advance(by: 0.1)   // a search shorter than the floor
@@ -396,8 +396,8 @@ struct OpponentTests {
     func aSlowSearchDoesNotWait() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
         clock.advance(by: 3)     // the search thinks for three seconds
@@ -409,8 +409,8 @@ struct OpponentTests {
     @Test("Activity shows only once a search has run long enough to be worth showing")
     func theIndicatorWaitsItsThreshold() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
         #expect(opponent.activity == .idle, "a search just started shows nothing")
@@ -429,8 +429,8 @@ struct OpponentTests {
     @Test("A search cancelled before the threshold never shows activity at all")
     func aCancelledSearchShowsNothing() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
         opponent.cancelSearch()
@@ -446,8 +446,8 @@ struct OpponentTests {
     func undoTakesBackTheCycle() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         engine.answer(result(.move, move: "a6a5", game: game))
         clock.advance(by: 5)
@@ -465,8 +465,8 @@ struct OpponentTests {
     @Test("Undo while the machine is thinking cancels the search and removes one ply")
     func undoWhileThinkingCancels() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
         #expect(game.evaluation.undoPlies == 1,
@@ -513,8 +513,8 @@ struct OpponentTests {
         motion.committed = { [weak opponent] in opponent?.gameChanged() }
         motion.landed = { [weak opponent] in opponent?.landed() }
 
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
@@ -535,8 +535,8 @@ struct OpponentTests {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
         engine.preparationRefusal = CoreError(status: MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY),
                                               detail: "not enough")
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
         #expect(opponent.preparationFailure != nil, "the alert is what a failure raises first")
@@ -561,8 +561,8 @@ struct OpponentTests {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
         engine.preparationRefusal = CoreError(status: MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY),
                                               detail: "not enough")
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         opponent.deferPreparation()
         #expect(opponent.activity == .stalled)
@@ -586,8 +586,8 @@ struct OpponentTests {
     @Test("Suspension cancels and releases whole, and prepares nothing until it is back")
     func suspensionReleasesAndWaits() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
@@ -609,8 +609,8 @@ struct OpponentTests {
     @Test("Memory pressure releases and then asks again, because nothing will say it passed")
     func memoryPressureIsNotASuspension() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
         opponent.memoryPressure()

@@ -26,8 +26,10 @@ import Testing
 @MainActor
 struct WXFNotationTests {
 
-    private func read(_ move: String, from fen: String) -> String {
-        WXFNotation.text(for: Move(text: move)!, in: Placement(fen: fen))
+    private func read(_ move: String, from fen: String,
+                      game: GameKind = .miniXiangqi) -> String {
+        WXFNotation.text(for: Move(text: move, on: game.board)!,
+                         in: Placement(fen: fen, game: game))
     }
 
     private static let start = "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
@@ -58,6 +60,31 @@ struct WXFNotationTests {
         #expect(read("d4e2", from: Self.blackLetters) == "H4+5")
         #expect(read("g4g1", from: Self.blackLetters) == "C7+3")
         #expect(read("b5b4", from: Self.blackLetters) == "P2+1")
+    }
+
+    @Test("Xiangqi adds A and E and numbers all nine files")
+    func xiangqiPieceLettersAndFiles() {
+        let redAdvisor = "5k3/9/9/9/9/9/9/9/3K5/3A5 w - - 0 1"
+        let redElephant = "5k3/9/9/9/9/9/9/9/3K5/2B6 w - - 0 1"
+        let blackAdvisor = "3a1k3/9/9/9/9/9/9/9/9/3K5 b - - 0 1"
+        let blackElephant = "2b2k3/9/9/9/9/9/9/9/9/3K5 b - - 0 1"
+        let redEdges = "5k3/9/9/9/9/9/9/9/9/R2K4R w - - 0 1"
+        let blackEdges = "r2k4r/9/9/9/9/9/9/9/9/5K3 b - - 0 1"
+
+        #expect(read("d1e2", from: redAdvisor, game: .xiangqi) == "A6+5")
+        #expect(read("c1e3", from: redElephant, game: .xiangqi) == "E7+5")
+        #expect(read("d10e9", from: blackAdvisor, game: .xiangqi) == "A4+5")
+        #expect(read("c10e8", from: blackElephant, game: .xiangqi) == "E3+5")
+        #expect(read("a1a2", from: redEdges, game: .xiangqi) == "R9+1")
+        #expect(read("i1i2", from: redEdges, game: .xiangqi) == "R1+1")
+        #expect(read("a10a9", from: blackEdges, game: .xiangqi) == "R1+1")
+        #expect(read("i10i9", from: blackEdges, game: .xiangqi) == "R9+1")
+    }
+
+    @Test("Xiangqi disambiguation scans the tenth rank")
+    func xiangqiDisambiguationUsesTenRanks() {
+        let fen = "R4k3/9/9/9/9/9/9/9/R8/3K5 w - - 0 1"
+        #expect(read("a10b10", from: fen, game: .xiangqi) == "R+=8")
     }
 
     @Test("Red numbers files from its own right, in Arabic digits like Black")
@@ -214,7 +241,9 @@ struct WXFNotationTests {
         // made the distinction either.
         let fen = "1P2k2/7/1P5/7/7/7/3K3 w - - 0 1"
         #expect(read("b5b6", from: fen) == "P-+1")
-        #expect(MoveNotation.text(for: Move(text: "b5b6")!, in: Placement(fen: fen)) == "后兵进一")
+        #expect(MoveNotation.text(
+            for: Move(text: "b5b6", on: GameKind.miniXiangqi.board)!,
+            in: Placement(fen: fen, game: .miniXiangqi)) == "后兵进一")
 
         // The same pair's other moves, where the two renderers agree, so the
         // divergence above is the condition and not the position.
@@ -327,7 +356,9 @@ struct WXFNotationTests {
         // design.
         let fen = "4k2/7/7/7/1p5/7/1p1K3 b - - 0 1"
         #expect(read("b3b2", from: fen) == "P-+1")
-        #expect(MoveNotation.text(for: Move(text: "b3b2")!, in: Placement(fen: fen)) == "后卒进1")
+        #expect(MoveNotation.text(
+            for: Move(text: "b3b2", on: GameKind.miniXiangqi.board)!,
+            in: Placement(fen: fen, game: .miniXiangqi)) == "后卒进1")
 
         // And the same pair's other moves, where the two renderers agree.
         #expect(read("b1a1", from: fen) == "P+=1")
@@ -398,8 +429,9 @@ struct WXFNotationTests {
             "rcnkncr/p1ppp1p/7/7/1C5/P1PPP1P/R1NKNCR b - - 1 1",
             "r1nkncr/pcppp1p/7/7/1C5/P1PPP1P/R1NKNCR w - - 2 2",
         ]
-        let line = try MoveReading.line(for: ["b1b3", "b7b6", "b3d3"]) {
-            Placement(fen: placements[$0])
+        let line = try MoveReading.line(for: ["b1b3", "b7b6", "b3d3"],
+                                        on: GameKind.miniXiangqi.board) {
+            Placement(fen: placements[$0], game: .miniXiangqi)
         }
         #expect(line.map(\.wxf) == ["C6+2", "C2+1", "C6=4"])
         // The same three plies in the notation beside it, from the same reading:
@@ -441,16 +473,16 @@ struct WXFNotationTests {
         // `25=4` with one, and three across two files keeps 中 with its file
         // against an index. What every row holds is that both notations point at
         // the same soldier.
-        let played = Move(text: move)!
-        let placement = Placement(fen: fen)
+        let played = Move(text: move, on: GameKind.miniXiangqi.board)!
+        let placement = Placement(fen: fen, game: .miniXiangqi)
         #expect(MoveNotation.text(for: played, in: placement) == chinese)
         #expect(WXFNotation.text(for: played, in: placement) == wxf)
     }
 
     @Test("A reading carries both notations and the style selects between them")
     func aReadingCarriesBoth() {
-        let reading = MoveReading(of: Move(text: "b1b3")!,
-                                  in: Placement(fen: Self.start))
+        let reading = MoveReading(of: Move(text: "b1b3", on: GameKind.miniXiangqi.board)!,
+                                  in: Placement(fen: Self.start, game: .miniXiangqi))
         #expect(reading.text(in: .traditional) == "炮六进二")
         #expect(reading.text(in: .wxf) == "C6+2")
     }
@@ -525,7 +557,7 @@ struct WXFNotationTests {
 
     @Test("It is presentation: the canonical notation is untouched")
     func canonicalNotationIsSeparate() {
-        let move = Move(text: "b1b3")!
+        let move = Move(text: "b1b3", on: GameKind.miniXiangqi.board)!
         #expect(move.text == "b1b3")
         #expect(read("b1b3", from: Self.start) != move.text)
     }

@@ -28,9 +28,9 @@ final class HistoryScreenUITests: XCTestCase {
     /// at: a mate, a claimed draw, and the same mate reached after a shuffle —
     /// two results and three move counts.
     private static let threeGames = [
-        "b1b3,b7b6,b3d3",
-        "b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7",
-        "b1b2,b7b6,b2b1,b6b7,b1b3,b7b6,b3d3",
+        "minixiangqi:b1b3,b7b6,b3d3",
+        "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7",
+        "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b3,b7b6,b3d3",
     ].joined(separator: ";")
 
     private struct Language {
@@ -51,9 +51,9 @@ final class HistoryScreenUITests: XCTestCase {
 
         static let chinese = Language(
             code: "zh-Hans", short: "zh",
-            rows: ["自由对弈 · 红方获胜 · 将死 · 7 步",
-                   "自由对弈 · 和棋 · 三次重复 · 8 步",
-                   "自由对弈 · 红方获胜 · 将死 · 3 步"],
+            rows: ["迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 7 步",
+                   "迷你象棋 · 自由对弈 · 和棋 · 三次重复 · 8 步",
+                   "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步"],
             pinnedSection: "已置顶", otherSection: "其他对局",
             emptyTitle: "还没有历史对局",
             emptyDescription: "对局结束后会保存到这里。",
@@ -62,7 +62,7 @@ final class HistoryScreenUITests: XCTestCase {
             deleteTitle: "删除这盘棋？", deleteMessage: "删除后无法恢复。",
             flipBoard: "翻转棋盘",
             importedMarker: "导入",
-            importedRow: "人机对弈 · 你执红 · 红方获胜 · 将死 · 3 步",
+            importedRow: "迷你象棋 · 人机对弈 · 你执红 · 红方获胜 · 将死 · 3 步",
             duplicateTitle: "这盘棋已经在历史里",
             duplicateMessage: "文件里的对局和历史中的一盘完全相同，所以没有重复添加。",
             view: "查看", ok: "好",
@@ -71,9 +71,9 @@ final class HistoryScreenUITests: XCTestCase {
 
         static let english = Language(
             code: "en", short: "en",
-            rows: ["Free Play · Red Wins · Checkmate · 7 moves",
-                   "Free Play · Draw · Threefold Repetition · 8 moves",
-                   "Free Play · Red Wins · Checkmate · 3 moves"],
+            rows: ["Mini Xiangqi · Free Play · Red Wins · Checkmate · 7 moves",
+                   "Mini Xiangqi · Free Play · Draw · Threefold Repetition · 8 moves",
+                   "Mini Xiangqi · Free Play · Red Wins · Checkmate · 3 moves"],
             pinnedSection: "Pinned", otherSection: "Other Games",
             emptyTitle: "No Games Yet",
             emptyDescription: "Games you finish are saved here.",
@@ -82,7 +82,7 @@ final class HistoryScreenUITests: XCTestCase {
             deleteTitle: "Delete this game?", deleteMessage: "This game can't be recovered.",
             flipBoard: "Flip Board",
             importedMarker: "Imported",
-            importedRow: "Human versus AI · You: Red · Red Wins · Checkmate · 3 moves",
+            importedRow: "Mini Xiangqi · Human versus AI · You: Red · Red Wins · Checkmate · 3 moves",
             duplicateTitle: "This Game Is Already in History",
             duplicateMessage: "The game in this file is identical to one already in History, so it wasn't added again.",
             view: "View", ok: "OK",
@@ -134,7 +134,8 @@ final class HistoryScreenUITests: XCTestCase {
         // so anything on screen there means every seeded game has been filed.
         // With the seeded games filed there is no active game left, so what
         // arrives is the Play home's mode entries rather than a board.
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 15))
         return app
     }
 

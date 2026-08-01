@@ -2,7 +2,7 @@
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": the destination shows the active game's metadata and a direct Resume,
-// both mode entries stay interactive while a game exists, and selecting one
+// all four game-and-mode entries stay interactive while a game exists, and selecting one
 // presents the one fixed confirmation. 保存并继续 archives the game by its own
 // current state before the selected mode's pre-start page opens; a refusal keeps
 // the game exactly as it stood and offers the accepted retry; 取消 discards the
@@ -125,18 +125,26 @@ struct PlayHomeTests {
 
     // MARK: - What the card says
 
+    @Test("Both games have one localized display name")
+    func bothGamesHaveDisplayNames() {
+        #expect(GameKind.xiangqi.localizedName == text("game.xiangqi"))
+        #expect(GameKind.miniXiangqi.localizedName == text("game.miniXiangqi"))
+    }
+
     @Test("An ongoing game reads as its mode, that it is going, and whose turn it is")
     func anOngoingGameReadsAsItsTurn() throws {
         let core = try TestCores.fresh()
         let game = try openGame(on: core)
 
-        #expect(game.metadataLine == joined(text("mode.freePlay"),
+        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
+                                            text("mode.freePlay"),
                                             text("metadata.inProgress"),
                                             text("status.redToMove"),
                                             moves(0)))
 
         try game.replay(["b1b3"])
-        #expect(game.metadataLine == joined(text("mode.freePlay"),
+        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
+                                            text("mode.freePlay"),
                                             text("metadata.inProgress"),
                                             text("status.blackToMove"),
                                             moves(1)),
@@ -149,7 +157,8 @@ struct PlayHomeTests {
         try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
                                        level: .standard, choice: .humanFirst))
         let red = try Game(rules: core)
-        #expect(red.metadataLine == joined(text("mode.humanVersusAI"),
+        #expect(red.metadataLine == joined(text("game.miniXiangqi"),
+                                           text("mode.humanVersusAI"),
                                            text("metadata.youRed"),
                                            text("metadata.inProgress"),
                                            text("status.redToMove"),
@@ -159,7 +168,8 @@ struct PlayHomeTests {
         try other.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
                                         level: .fast, choice: .aiFirst))
         let black = try Game(rules: other)
-        #expect(black.metadataLine == joined(text("mode.humanVersusAI"),
+        #expect(black.metadataLine == joined(text("game.miniXiangqi"),
+                                             text("mode.humanVersusAI"),
                                              text("metadata.youBlack"),
                                              text("metadata.inProgress"),
                                              text("status.redToMove"),
@@ -174,7 +184,8 @@ struct PlayHomeTests {
         try game.replay(Self.shuffleLine)
         #expect(game.evaluation.claimAvailable, "the line should have made the claim available")
 
-        #expect(game.metadataLine == joined(text("mode.freePlay"),
+        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
+                                            text("mode.freePlay"),
                                             text("metadata.inProgress"),
                                             text("status.drawAvailable"),
                                             moves(8)),
@@ -188,7 +199,8 @@ struct PlayHomeTests {
         try game.replay(Self.mateLine)
         #expect(game.isFinished)
 
-        #expect(game.metadataLine == joined(text("mode.freePlay"),
+        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
+                                            text("mode.freePlay"),
                                             text("result.redWins"),
                                             text("reason.checkmate"),
                                             moves(3)),

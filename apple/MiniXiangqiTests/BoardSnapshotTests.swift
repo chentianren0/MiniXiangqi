@@ -41,13 +41,27 @@ private func render(_ view: some View, scale: CGFloat = 2, named name: String) t
 @Suite("Board snapshots")
 @MainActor
 struct BoardSnapshotTests {
-    let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+    let geometry = BoardGeometry(
+        board: GameKind.miniXiangqi.board,
+        pitch: BoardGeometry.minimumPitch(for: GameKind.miniXiangqi.board))
 
     @Test("The starting position renders at the accepted floor")
     func startingPosition() throws {
         let view = BoardView(geometry: geometry,
-                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi)))
+                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi), game: .miniXiangqi))
         let size = try render(view, named: "start")
+        #expect(size == geometry.blockSize)
+    }
+
+    @Test("The Xiangqi starting position renders at its accepted floor")
+    func xiangqiStartingPosition() throws {
+        let geometry = BoardGeometry(
+            board: GameKind.xiangqi.board,
+            pitch: BoardGeometry.minimumPitch(for: GameKind.xiangqi.board))
+        let view = BoardView(
+            geometry: geometry,
+            placement: Placement(fen: Core.startFEN(for: .xiangqi), game: .xiangqi))
+        let size = try render(view, named: "xiangqi-start")
         #expect(size == geometry.blockSize)
     }
 
@@ -57,12 +71,12 @@ struct BoardSnapshotTests {
         // last move, and a general in check — the cases that have to coexist.
         let view = BoardView(
             geometry: geometry,
-            placement: Placement(fen: "rcnkncr/p1ppp1p/7/2C4/7/P1PPP1P/R1NKNCR w - - 0 1"),
-            selected: Square("c4"),
-            destinations: [Square("c5")!, Square("c6")!, Square("b4")!, Square("c2")!],
-            captures: [Square("c6")!],
-            lastMove: Move(text: "c1c4"),
-            checkedGeneral: Square("d7"))
+            placement: Placement(fen: "rcnkncr/p1ppp1p/7/2C4/7/P1PPP1P/R1NKNCR w - - 0 1", game: .miniXiangqi),
+            selected: Square("c4", on: GameKind.miniXiangqi.board),
+            destinations: [Square("c5", on: GameKind.miniXiangqi.board)!, Square("c6", on: GameKind.miniXiangqi.board)!, Square("b4", on: GameKind.miniXiangqi.board)!, Square("c2", on: GameKind.miniXiangqi.board)!],
+            captures: [Square("c6", on: GameKind.miniXiangqi.board)!],
+            lastMove: Move(text: "c1c4", on: GameKind.miniXiangqi.board),
+            checkedGeneral: Square("d7", on: GameKind.miniXiangqi.board))
         let size = try render(view, named: "markers")
         #expect(size == geometry.blockSize)
     }
@@ -70,7 +84,7 @@ struct BoardSnapshotTests {
     @Test("The board renders flipped, with the numeral strips following it")
     func flipped() throws {
         let view = BoardView(geometry: geometry,
-                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi)),
+                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi), game: .miniXiangqi),
                              flipped: true)
         let size = try render(view, named: "flipped")
         #expect(size == geometry.blockSize)
@@ -86,7 +100,9 @@ struct BoardSnapshotTests {
 @Suite("Motion frames", .retiringItsCores)
 @MainActor
 struct MotionFrameTests {
-    let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+    let geometry = BoardGeometry(
+        board: GameKind.miniXiangqi.board,
+        pitch: BoardGeometry.minimumPitch(for: GameKind.miniXiangqi.board))
 
     private func game(playing line: [String]) throws -> Game {
         let game = try openGame(on: TestCores.fresh())
@@ -106,7 +122,7 @@ struct MotionFrameTests {
                     checkedGeneral: game.checkedGeneral,
                     transit: transit,
                     phases: phases)
-            .frame(width: geometry.coreSide, height: geometry.coreSide)
+            .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
             .background(BoardStyle.traditional.boardSurface)
     }
 
@@ -114,13 +130,13 @@ struct MotionFrameTests {
     func captureMidArrival() throws {
         let game = try game(playing: GameTests.captureLine)
         let transit = Transit(kind: .move,
-                              move: Move(text: "d5d4")!,
+                              move: Move(text: "d5d4", on: GameKind.miniXiangqi.board)!,
                               piece: Piece(kind: .soldier, side: .black),
-                              fading: (Piece(kind: .soldier, side: .red), Square("d4")!))
+                              fading: (Piece(kind: .soldier, side: .red), Square("d4", on: GameKind.miniXiangqi.board)!))
         let size = try render(frame(game, transit: transit,
                                     phases: BoardPhases(travel: 0.85, fade: 0.35)),
                               named: "capture-mid-arrival")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("The flip midway: one coordinated re-layout, characters upright")
@@ -128,21 +144,21 @@ struct MotionFrameTests {
         let game = try game(playing: ["b1b4", "a6a5"])
         let size = try render(frame(game, phases: BoardPhases(flip: 0.45)),
                               named: "flip-midway")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("Reduce Motion travels by dissolve: both ends, no movement")
     func reducedMotionDissolve() throws {
         let game = try game(playing: ["b1b4"])
         let transit = Transit(kind: .move,
-                              move: Move(text: "b1b4")!,
+                              move: Move(text: "b1b4", on: GameKind.miniXiangqi.board)!,
                               piece: Piece(kind: .cannon, side: .red),
                               fading: nil)
         let size = try render(frame(game, transit: transit,
                                     phases: BoardPhases(travel: 0.5),
                                     reduceMotion: true),
                               named: "reduced-motion-dissolve")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("The check rings at the peak of their one-time swell")
@@ -150,16 +166,16 @@ struct MotionFrameTests {
         let game = try game(playing: GameTests.checkLine)
         let size = try render(frame(game, phases: BoardPhases(check: 1)),
                               named: "check-pulse-peak")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("The markers strengthened: the illegal-tap answer at full emphasis")
     func markersStrengthened() throws {
         let game = try game(playing: ["d2d3", "d6d5", "d3d4"])
-        game.tap(Square("d5")!)   // Black holds the soldier facing a capture
+        game.tap(Square("d5", on: GameKind.miniXiangqi.board)!)   // Black holds the soldier facing a capture
         let size = try render(frame(game, phases: BoardPhases(marker: 1,
                                                               lifts: SquarePhases(raised: game.selected))),
                               named: "markers-strengthened")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 }

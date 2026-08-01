@@ -3,8 +3,8 @@
 // docs/interaction-design.md, "Starting and configuring a game" and "Saving the
 // active game before choosing a new mode": the Play destination's root is an
 // independent page for choosing what to play, with no board on it; with a game
-// active it also carries that game's metadata and a direct Resume; and both mode
-// entries stay interactive, presenting the one accepted confirmation whose
+// active it also carries that game's metadata and a direct Resume; and all four
+// game-and-mode entries stay interactive, presenting the accepted confirmation whose
 // 保存并继续 files the game as it stands before the selected mode's pre-start
 // page opens.
 //
@@ -27,10 +27,10 @@ final class PlayHomeUITests: XCTestCase {
 
     /// Two plies of an ordinary Free Play game — enough that the metadata has a
     /// count to report and a side to move that is not the opening one.
-    private static let openingLine = "b1b3,b7b6"
+    private static let openingLine = "minixiangqi:b1b3,b7b6"
 
     /// The shortest checkmate from the start position.
-    private static let mateLine = "b1b3,b7b6,b3d3"
+    private static let mateLine = "minixiangqi:b1b3,b7b6,b3d3"
 
     private func scratchStoreName() -> String {
         "mxq-uitest-store-" + UUID().uuidString
@@ -81,6 +81,11 @@ final class PlayHomeUITests: XCTestCase {
         return (element.value as? String) ?? element.label
     }
 
+    private func assertSetupGame(_ expected: String, in app: XCUIApplication) {
+        XCTAssertTrue(app.staticTexts["setup-game"].waitForExistence(timeout: 5))
+        XCTAssertEqual(reading(app, "setup-game"), expected)
+    }
+
     private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
         app.windows.firstMatch.outlines.element(boundBy: 0).cells.element(boundBy: index)
     }
@@ -105,10 +110,26 @@ final class PlayHomeUITests: XCTestCase {
     func testTheHomeOffersTheWaysToPlayAndNoBoard() {
         let app = launch()
 
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.buttons["mode-free-play"].exists)
-        XCTAssertEqual(app.buttons["mode-human-versus-ai"].label, "人机对弈")
-        XCTAssertEqual(app.buttons["mode-free-play"].label, "自由对弈")
+        let xiangqiAI = app.buttons["mode-xiangqi-human-versus-ai"]
+        let xiangqiFree = app.buttons["mode-xiangqi-free-play"]
+        let miniAI = app.buttons["mode-mini-xiangqi-human-versus-ai"]
+        let miniFree = app.buttons["mode-mini-xiangqi-free-play"]
+        XCTAssertTrue(xiangqiAI.waitForExistence(timeout: 20))
+        for entry in [xiangqiAI, xiangqiFree, miniAI, miniFree] {
+            XCTAssertTrue(entry.exists)
+        }
+        XCTAssertEqual(xiangqiAI.label, "人机对弈")
+        XCTAssertEqual(xiangqiFree.label, "自由对弈")
+        XCTAssertEqual(miniAI.label, "人机对弈")
+        XCTAssertEqual(miniFree.label, "自由对弈")
+        XCTAssertLessThan(xiangqiAI.frame.minY, xiangqiFree.frame.minY)
+        XCTAssertLessThan(xiangqiFree.frame.minY, miniAI.frame.minY)
+        XCTAssertLessThan(miniAI.frame.minY, miniFree.frame.minY)
+        XCTAssertTrue(app.staticTexts["象棋"].exists)
+        XCTAssertTrue(app.staticTexts["迷你象棋"].exists)
+        XCTAssertLessThan(app.staticTexts["象棋"].frame.minY,
+                          app.staticTexts["迷你象棋"].frame.minY,
+                          "Xiangqi is the first headed section")
 
         XCTAssertFalse(point(app, "d4").exists, "no board is addressable on the home")
         XCTAssertFalse(app.staticTexts["turn-status"].exists, "and nothing about a turn")
@@ -124,9 +145,10 @@ final class PlayHomeUITests: XCTestCase {
     /// pre-start page — which keeps its preview board, unchanged.
     func testEachModeIsStartedFromTheHome() {
         let app = launch()
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["mode-xiangqi-human-versus-ai"].waitForExistence(timeout: 20))
 
-        app.buttons["mode-human-versus-ai"].click()
+        app.buttons["mode-xiangqi-human-versus-ai"].click()
+        assertSetupGame("象棋", in: app)
         XCTAssertTrue(app.staticTexts["setup-header"].waitForExistence(timeout: 5),
                       "人机对弈 opens its 本局设置 page")
         XCTAssertTrue(app.buttons["setup-start"].exists)
@@ -135,10 +157,21 @@ final class PlayHomeUITests: XCTestCase {
         attach(app, named: "61-the-human-versus-ai-pre-start-page-from-the-home")
 
         goBack(app)
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["mode-xiangqi-free-play"].waitForExistence(timeout: 5),
                       "and going back returns to the home")
 
-        app.buttons["mode-free-play"].click()
+        app.buttons["mode-xiangqi-free-play"].click()
+        assertSetupGame("象棋", in: app)
+        XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 5))
+
+        goBack(app)
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
+        assertSetupGame("迷你象棋", in: app)
+        XCTAssertTrue(app.staticTexts["setup-header"].waitForExistence(timeout: 5))
+
+        goBack(app)
+        app.buttons["mode-mini-xiangqi-free-play"].click()
+        assertSetupGame("迷你象棋", in: app)
         XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 5))
         app.buttons["setup-start"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 15),
@@ -159,7 +192,7 @@ final class PlayHomeUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 5))
         XCTAssertEqual(reading(app, "home-current-game"),
-                       "自由对弈 · 进行中 · 轮到红方 · 2 步",
+                       "迷你象棋 · 自由对弈 · 进行中 · 轮到红方 · 2 步",
                        "the accepted metadata composition, on the game as it stands")
         XCTAssertEqual(app.buttons["home-resume"].label, "回到对局")
         XCTAssertFalse(point(app, "d4").exists, "and still no board on the home")
@@ -177,9 +210,9 @@ final class PlayHomeUITests: XCTestCase {
         let app = launch(replaying: Self.openingLine)
         XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 20))
         goBack(app)
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"].waitForExistence(timeout: 5))
 
-        app.buttons["mode-human-versus-ai"].click()
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
 
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5),
@@ -191,7 +224,7 @@ final class PlayHomeUITests: XCTestCase {
                         .map { ($0.value as? String) ?? $0.label }).joined(separator: "\n")
         XCTAssertTrue(said.contains("开始新对局？"), "the accepted title — it reads \(said)")
         XCTAssertTrue(said.contains("当前对局"), "the accepted metadata header")
-        XCTAssertTrue(said.contains("自由对弈 · 进行中 · 轮到红方 · 2 步"),
+        XCTAssertTrue(said.contains("迷你象棋 · 自由对弈 · 进行中 · 轮到红方 · 2 步"),
                       "over the same line the card shows — it reads \(said)")
         XCTAssertTrue(said.contains("这盘对局将按当前状态保存到历史。"))
         XCTAssertTrue(confirmation.buttons["取消"].exists)
@@ -209,7 +242,7 @@ final class PlayHomeUITests: XCTestCase {
         destination(app, 1).click()
         XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10),
                       "the game that was going is in History")
-        XCTAssertTrue(historyRow(app, 0).label.contains("自由对弈 · 提前结束 · 2 步"),
+        XCTAssertTrue(historyRow(app, 0).label.contains("迷你象棋 · 自由对弈 · 提前结束 · 2 步"),
                       "recorded as ended early with no competitive result — it reads "
                       + historyRow(app, 0).label)
         XCTAssertFalse(historyRow(app, 1).exists, "one game, one record")
@@ -226,17 +259,17 @@ final class PlayHomeUITests: XCTestCase {
         goBack(app)
         XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 5))
         XCTAssertEqual(reading(app, "home-current-game"),
-                       "自由对弈 · 红方获胜 · 将死 · 3 步",
+                       "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步",
                        "a result the player has not confirmed is still the active game")
 
-        app.buttons["mode-free-play"].click()
+        app.buttons["mode-mini-xiangqi-free-play"].click()
         XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
         app.sheets.firstMatch.buttons["保存并继续"].click()
         XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 10))
 
         destination(app, 1).click()
         XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10))
-        XCTAssertTrue(historyRow(app, 0).label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
+        XCTAssertTrue(historyRow(app, 0).label.contains("迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步"),
                       "its actual winner and its exact reason — it reads "
                       + historyRow(app, 0).label)
     }
@@ -247,12 +280,12 @@ final class PlayHomeUITests: XCTestCase {
     /// destination and leaves the game there to go back to.
     func testARefusedArchiveKeepsTheGameAndPresentsTheRetry() {
         let app = launch(refusingSaves: true)
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-free-play"].waitForExistence(timeout: 20))
 
         // The game this is about, created on the screen: a refusing store still
         // creates, because a stand-in that would not let a game be created
         // could never reach a game to refuse.
-        app.buttons["mode-free-play"].click()
+        app.buttons["mode-mini-xiangqi-free-play"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         app.buttons["setup-start"].click()
         XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 15),
@@ -261,10 +294,10 @@ final class PlayHomeUITests: XCTestCase {
         goBack(app)
         XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 5))
         let line = reading(app, "home-current-game")
-        XCTAssertEqual(line, "自由对弈 · 进行中 · 轮到红方 · 0 步",
+        XCTAssertEqual(line, "迷你象棋 · 自由对弈 · 进行中 · 轮到红方 · 0 步",
                        "the game as it stands, before anything is asked of it")
 
-        app.buttons["mode-human-versus-ai"].click()
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         confirmation.buttons["保存并继续"].click()
@@ -285,7 +318,7 @@ final class PlayHomeUITests: XCTestCase {
 
         refusal.buttons["取消"].click()
 
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-free-play"].waitForExistence(timeout: 5),
                       "the home is still the page")
         XCTAssertFalse(app.buttons["setup-start"].exists,
                        "a refusal never enters a pre-start state")
@@ -310,18 +343,18 @@ final class PlayHomeUITests: XCTestCase {
         let app = launch(replaying: Self.openingLine)
         XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 20))
         goBack(app)
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-free-play"].waitForExistence(timeout: 5))
 
-        app.buttons["mode-free-play"].click()
+        app.buttons["mode-mini-xiangqi-free-play"].click()
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         confirmation.buttons["取消"].click()
 
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-free-play"].waitForExistence(timeout: 5),
                       "the home is still the page")
         XCTAssertFalse(app.buttons["setup-start"].exists, "no pre-start page opened")
         XCTAssertEqual(reading(app, "home-current-game"),
-                       "自由对弈 · 进行中 · 轮到红方 · 2 步",
+                       "迷你象棋 · 自由对弈 · 进行中 · 轮到红方 · 2 步",
                        "and the game is untouched")
 
         destination(app, 1).click()

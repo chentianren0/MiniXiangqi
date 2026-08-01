@@ -102,8 +102,9 @@ final class HumanVersusAIUITests: XCTestCase {
     @discardableResult
     private func startGame(_ app: XCUIApplication,
                            firstMover: String? = "setup.iMoveFirst") -> Bool {
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
-        app.buttons["mode-human-versus-ai"].click()
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 15))
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         if let firstMover { choose(app, firstMover) }
         app.buttons["setup-start"].click()
@@ -381,8 +382,9 @@ final class HumanVersusAIUITests: XCTestCase {
     /// nothing.
     func testInsufficientMemoryKeepsThePageAndTheDraft() {
         let app = launch(availableMemory: Self.starvedMemory)
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
-        app.buttons["mode-human-versus-ai"].click()
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 15))
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         chooseLevel(app, "setup.level.deep")
         app.buttons["setup-start"].click()
@@ -414,8 +416,9 @@ final class HumanVersusAIUITests: XCTestCase {
     /// draft: leaving discards it, and coming back reads the defaults again.
     func testTheDraftOpensFromTheDefaultsAndIsDiscardedOnLeaving() {
         let app = launch(firstMoverDefault: "ai-first", levelDefault: "fast")
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
-        app.buttons["mode-human-versus-ai"].click()
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 15))
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
 
         let controls = app.windows.firstMatch.descendants(matching: .any)
@@ -441,9 +444,10 @@ final class HumanVersusAIUITests: XCTestCase {
         attach(app, named: "hvai-12-the-settings-defaults-group")
 
         destinations.element(boundBy: 0).click()   // Play
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 10),
                       "leaving the page discards the draft and returns to the Play home")
-        app.buttons["mode-human-versus-ai"].click()
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].click()
         XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.windows.firstMatch.descendants(matching: .any)["setup-ai-level"]
                         .value as? String, "快速",

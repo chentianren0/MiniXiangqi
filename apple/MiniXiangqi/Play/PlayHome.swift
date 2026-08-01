@@ -5,12 +5,11 @@
 // is no board anywhere on it. Selecting a way to play opens that mode's
 // pre-start state, which is where the preview board lives.
 //
-// **The game has a section of its own, and that is the whole of the
-// extensibility.** PR1 still presents Mini Xiangqi's two ways to play — 人机对弈
-// and 自由对弈 — as the one unlabelled section. Xiangqi's visible section is
-// deferred until its board can be displayed; the selections below nevertheless
-// carry Mini Xiangqi explicitly, so that later section can add its own game
-// without changing what either existing row means.
+// **Each game has a section of its own, and that is the whole of the
+// extensibility.** Xiangqi and Mini Xiangqi each offer 人机对弈 and 自由对弈,
+// under a heading that names the game. The selection carried by every row is
+// explicit, so neither its setup nor a game created from it can fall through to
+// a hidden default.
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": with a game active the page shows its metadata and a direct Resume, and
@@ -88,15 +87,24 @@ struct PlayHome: View {
         }
     }
 
+    @ViewBuilder
     private var waysToPlay: some View {
         Section {
-            // PR1 keeps the accepted two-row Mini Xiangqi home. The game axis
-            // is explicit here so adding Xiangqi later does not turn an
-            // omitted value into a hidden default.
+            entry(PlaySelection(game: .xiangqi, mode: .humanVersusAI),
+                  "mode.humanVersusAI", "mode-xiangqi-human-versus-ai")
+            entry(PlaySelection(game: .xiangqi, mode: .freePlay),
+                  "mode.freePlay", "mode-xiangqi-free-play")
+        } header: {
+            Text(GameKind.xiangqi.localizedName)
+        }
+
+        Section {
             entry(PlaySelection(game: .miniXiangqi, mode: .humanVersusAI),
-                  "mode.humanVersusAI", "mode-human-versus-ai")
+                  "mode.humanVersusAI", "mode-mini-xiangqi-human-versus-ai")
             entry(PlaySelection(game: .miniXiangqi, mode: .freePlay),
-                  "mode.freePlay", "mode-free-play")
+                  "mode.freePlay", "mode-mini-xiangqi-free-play")
+        } header: {
+            Text(GameKind.miniXiangqi.localizedName)
         }
     }
 

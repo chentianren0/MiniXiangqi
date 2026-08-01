@@ -61,7 +61,7 @@ struct GameTests {
                 "both readings shorten together — a reading is one value")
         #expect(game.moves == ["b1b4"], "the line is the session's own, read back")
         #expect(game.evaluation.sideToMove == .black)
-        #expect(game.lastMove == Move(text: "b1b4"))
+        #expect(game.lastMove == Move(text: "b1b4", on: GameKind.miniXiangqi.board))
 
         // The position is the core's own answer for the shortened history —
         // the session's replay of its whole line — rather than the previous
@@ -115,7 +115,7 @@ struct GameTests {
         #expect(try core.historyCount() == 1)
         #expect(try !core.activeGameExists())
 
-        game.tap(Square("b1")!)
+        game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         #expect(game.selected == nil, "a finished game accepts no input")
     }
 
@@ -126,25 +126,25 @@ struct GameTests {
         let (game, _) = try game(playing: Self.checkLine)
         #expect(game.evaluation.inCheck)
         #expect(game.evaluation.state == .ongoing, "the general still has d6")
-        #expect(game.checkedGeneral == Square("d7"))
+        #expect(game.checkedGeneral == Square("d7", on: GameKind.miniXiangqi.board))
     }
 
     @Test("The pinned capture line takes the red soldier on d4")
     func theCaptureLineCaptures() throws {
         let (game, _) = try game(playing: Self.captureLine)
-        #expect(game.placement[Square("d4")!] == Piece(kind: .soldier, side: .black))
-        #expect(game.placement[Square("d5")!] == nil)
-        #expect(game.lastMove == Move(text: "d5d4"))
+        #expect(game.placement[Square("d4", on: GameKind.miniXiangqi.board)!] == Piece(kind: .soldier, side: .black))
+        #expect(game.placement[Square("d5", on: GameKind.miniXiangqi.board)!] == nil)
+        #expect(game.lastMove == Move(text: "d5d4", on: GameKind.miniXiangqi.board))
         #expect(game.evaluation.state == .ongoing)
     }
 
     @Test("The pinned capturing-check line takes a piece and gives check at once")
     func theCapturingCheckLineDoesBoth() throws {
         let (game, _) = try game(playing: Self.capturingCheckLine)
-        #expect(game.placement[Square("c5")!] == Piece(kind: .horse, side: .red),
+        #expect(game.placement[Square("c5", on: GameKind.miniXiangqi.board)!] == Piece(kind: .horse, side: .red),
                 "the horse stands where the soldier stood")
         #expect(game.evaluation.inCheck)
-        #expect(game.checkedGeneral == Square("d7"))
+        #expect(game.checkedGeneral == Square("d7", on: GameKind.miniXiangqi.board))
         #expect(game.evaluation.state == .ongoing,
                 "a check and not a mate: the d6 soldier steps across to c6 and blocks the leg")
     }

@@ -71,6 +71,7 @@ struct CopyTests {
             "metadata.join", "metadata.moveCount", "moveList.rowNumber",
             "metadata.youRed", "metadata.youBlack", "metadata.imported",
             "metadata.inProgress",
+            "game.miniXiangqi", "game.xiangqi",
             "mode.humanVersusAI", "mode.freePlay",
             "nav.play", "nav.history", "nav.settings", "nav.resumeGame",
             "settings.section.board",
@@ -87,7 +88,8 @@ struct CopyTests {
             "setup.freePlayExplanation",
             "replay.progress", "replay.first", "replay.previous",
             "replay.next", "replay.last", "replay.autoplay", "replay.pause",
-            "piece.general", "piece.chariot", "piece.horse", "piece.cannon", "piece.soldier",
+            "piece.general", "piece.advisor", "piece.elephant", "piece.chariot",
+            "piece.horse", "piece.cannon", "piece.soldier",
             "reason.checkmate", "reason.stalemate", "reason.threefoldRepetition",
             "reason.perpetualCheck", "reason.perpetualChase",
             "reason.mutualPerpetualCheck", "reason.mutualPerpetualChase",
@@ -113,6 +115,14 @@ struct CopyTests {
         }
     }
 
+    @Test("The two game names are complete and distinct in both languages")
+    func gameNamesAreAcceptedCopy() throws {
+        #expect(try value("game.xiangqi", in: "zh-Hans") == "象棋")
+        #expect(try value("game.xiangqi", in: "en") == "Xiangqi")
+        #expect(try value("game.miniXiangqi", in: "zh-Hans") == "迷你象棋")
+        #expect(try value("game.miniXiangqi", in: "en") == "Mini Xiangqi")
+    }
+
     @Test("A piece is named by its character in Chinese and by its name in English")
     func pieceNamesSwitchWithTheLanguage() throws {
         // The pairs the register accepts. The Chinese half is the character
@@ -121,6 +131,10 @@ struct CopyTests {
         let expected: [(PieceKind, Side, String, String)] = [
             (.general, .red, "帅", "General"),
             (.general, .black, "将", "General"),
+            (.advisor, .red, "仕", "Advisor"),
+            (.advisor, .black, "士", "Advisor"),
+            (.elephant, .red, "相", "Elephant"),
+            (.elephant, .black, "象", "Elephant"),
             (.chariot, .red, "俥", "Chariot"),
             (.chariot, .black, "车", "Chariot"),
             (.horse, .red, "傌", "Horse"),

@@ -21,6 +21,7 @@ enum MoveNotation {
     /// The move as the player reads it, given the placement *before* it.
     static func text(for move: Move, in placement: Placement) -> String {
         guard let piece = placement[move.from] else { return move.text }
+        let board = placement.board
 
         // A disambiguator opens the move and the piece name follows it —
         // 前炮退二, not 炮前退二 — and it replaces the file rather than joining
@@ -33,10 +34,10 @@ enum MoveNotation {
             // name — 前兵六进一, 后卒3进1. Pieces alone on their file never
             // reach here and keep the plain form.
             opening = doubledFiles(of: piece, in: placement) > 1
-                ? marker + name + number(file: move.from.file, for: piece.side)
+                ? marker + name + number(file: move.from.file, for: piece.side, on: board)
                 : marker + name
         } else {
-            opening = name + number(file: move.from.file, for: piece.side)
+            opening = name + number(file: move.from.file, for: piece.side, on: board)
         }
 
         // 进 is toward the opponent, which is up the board for Red and down for
@@ -45,15 +46,19 @@ enum MoveNotation {
         let forward = piece.side == .red ? move.to.rank > move.from.rank
                                          : move.to.rank < move.from.rank
         if move.to.rank == move.from.rank {
-            return opening + "平" + number(file: move.to.file, for: piece.side)
+            return opening + "平" + number(file: move.to.file, for: piece.side, on: board)
         }
 
         let direction = forward ? "进" : "退"
-        // A horse does not move along a line, so what follows its direction is
-        // the destination file rather than a number of ranks.
-        let value = piece.kind == .horse
-            ? number(file: move.to.file, for: piece.side)
-            : numeral(abs(move.to.rank - move.from.rank), for: piece.side)
+        // A horse, advisor, or elephant does not move along a file, so what
+        // follows its direction is the destination file rather than a number
+        // of ranks.
+        let value = switch piece.kind {
+        case .horse, .advisor, .elephant:
+            number(file: move.to.file, for: piece.side, on: board)
+        case .general, .chariot, .cannon, .soldier:
+            numeral(abs(move.to.rank - move.from.rank), for: piece.side)
+        }
         return opening + direction + value
     }
 
@@ -65,7 +70,7 @@ enum MoveNotation {
     /// here, with five sideways-capable soldiers a side.
     private static func disambiguation(for piece: Piece, at square: Square,
                                        in placement: Placement) -> String? {
-        let sameFile = (0..<Square.count)
+        let sameFile = (0..<placement.board.rankCount)
             .map { Square(file: square.file, rank: $0) }
             .filter { placement[$0] == piece }
         guard sameFile.count > 1, let index = sameFile.firstIndex(of: square) else {
@@ -95,17 +100,19 @@ enum MoveNotation {
     /// for soldiers, as 2-2 or 3-2, and never together with the numbered form,
     /// which needs four on a single file.
     private static func doubledFiles(of piece: Piece, in placement: Placement) -> Int {
-        (0..<Square.count).count { file in
-            (0..<Square.count).count { rank in
+        (0..<placement.board.fileCount).count { file in
+            (0..<placement.board.rankCount).count { rank in
                 placement[Square(file: file, rank: rank)] == piece
             } >= 2
         }
     }
 
-    /// Files are numbered from each player's own right: Red's right is file g,
-    /// Black's is file a.
-    private static func number(file: Int, for side: Side) -> String {
-        numeral(side == .red ? Square.count - file : file + 1, for: side)
+    /// Files are numbered from each player's own right. The first number is the
+    /// board's file count rather than a Mini Xiangqi constant: seven files read
+    /// 七…一 / 1…7, and nine files read 九…一 / 1…9.
+    private static func number(file: Int, for side: Side,
+                               on board: BoardDefinition) -> String {
+        numeral(side == .red ? board.fileCount - file : file + 1, for: side)
     }
 
     private static func numeral(_ value: Int, for side: Side) -> String {

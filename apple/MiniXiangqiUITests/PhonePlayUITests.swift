@@ -11,15 +11,15 @@
 // what fits; nothing on a Mac exercises a tap at all.
 //
 // So the questions this file asks are the ones only a phone can answer. Is the
-// stacked shape what a 402-point phone takes? Does a point of the board still
-// meet the accepted 44-point floor once it is drawn at a phone's size? Does a
-// tap select a piece and a second tap move it? Does the 棋谱 sheet come up over
-// the board and go away again? Does the phone hold its portrait layout when the
-// device is turned — the one orientation clause that belongs to the phone rather
-// than to the iPad? Does a board screen put the destination bar away and a home
-// keep it, which § Navigation asks of this presentation and of no other? And
-// does the result flow, which every platform shares, actually reach a filed
-// record from here?
+// stacked shape what a 402-point phone takes? Does Mini Xiangqi still meet its
+// 44-point floor, and does Xiangqi expose 90 actual, disjoint cells at the
+// 39-point pitch this phone gives it? Does a tap select a piece and a second tap
+// move it? Does the 棋谱 sheet come up over the board and go away again? Does the
+// phone hold its portrait layout when the device is turned — the one orientation
+// clause that belongs to the phone rather than to the iPad? Does a board screen
+// put the destination bar away and a home keep it, which § Navigation asks of
+// this presentation and of no other? And does the result flow, which every
+// platform shares, actually reach a filed record from here?
 //
 // What is deliberately **not** here: anything about a window; how a landing
 // feels in the hand, which is the owner's device pass and cannot be felt by a
@@ -44,10 +44,10 @@ final class PhonePlayUITests: XCTestCase {
 
     /// Two plies of an ordinary Free Play game — enough that the move record has
     /// something to show and the board something to have moved.
-    private static let openingLine = "b1b3,b7b6"
+    private static let openingLine = "minixiangqi:b1b3,b7b6"
 
     /// The shortest checkmate from the start position.
-    private static let mateLine = "b1b3,b7b6,b3d3"
+    private static let mateLine = "minixiangqi:b1b3,b7b6,b3d3"
 
     /// One gibibyte of "available", which the accepted arithmetic turns into a
     /// 768 MiB Hash: over the 256 MiB minimum, and small enough that a launch
@@ -236,9 +236,12 @@ final class PhonePlayUITests: XCTestCase {
     func testThePhoneOpensOnThePlayHomeUnderATabBar() {
         let app = launch()
 
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 30))
-        XCTAssertEqual(app.buttons["mode-human-versus-ai"].label, "人机对弈")
-        XCTAssertEqual(app.buttons["mode-free-play"].label, "自由对弈")
+        XCTAssertTrue(app.buttons["mode-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 30))
+        XCTAssertEqual(app.buttons["mode-xiangqi-human-versus-ai"].label, "人机对弈")
+        XCTAssertEqual(app.buttons["mode-xiangqi-free-play"].label, "自由对弈")
+        XCTAssertEqual(app.buttons["mode-mini-xiangqi-human-versus-ai"].label, "人机对弈")
+        XCTAssertEqual(app.buttons["mode-mini-xiangqi-free-play"].label, "自由对弈")
 
         let tabs = app.tabBars.firstMatch
         XCTAssertTrue(tabs.exists,
@@ -258,6 +261,131 @@ final class PhonePlayUITests: XCTestCase {
         attach(app, named: "phone-01-the-play-home")
     }
 
+    // MARK: - Xiangqi, at a phone's actual pitch
+
+    /// Standard Xiangqi through the complete path that owns its identity: one of
+    /// the four rows on the Play home, a pre-start page that still says 象棋, and
+    /// only then a created game. The running board is the evidence the model
+    /// alone cannot give: all 90 named points are present, every hit frame is the
+    /// actual 39-point cell this 402-point phone draws rather than an overlapping
+    /// 44-point overlay, and two taps commit an ordinary Xiangqi move.
+    func testXiangqiStartsFromItsHomeEntryAsNinetyDisjointTappablePoints() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["mode-xiangqi-free-play"]
+            .waitForExistence(timeout: 30))
+
+        let modeIdentifiers = [
+            "mode-xiangqi-human-versus-ai",
+            "mode-xiangqi-free-play",
+            "mode-mini-xiangqi-human-versus-ai",
+            "mode-mini-xiangqi-free-play",
+        ]
+        for identifier in modeIdentifiers {
+            XCTAssertTrue(app.buttons[identifier].exists,
+                          "the four-entry Play home should include \(identifier)")
+        }
+
+        app.buttons["mode-xiangqi-free-play"].tap()
+        XCTAssertTrue(control(app, "setup-game").waitForExistence(timeout: 10))
+        XCTAssertEqual(reading(app, "setup-game"), "象棋",
+                       "the selected game should survive the trip into setup")
+        XCTAssertEqual(reading(app, "setup-explanation"),
+                       "你将控制红黑双方，红方先行。")
+        XCTAssertFalse(control(app, "turn-status").exists,
+                       "the Xiangqi preview is not a game yet")
+        attach(app, named: "phone-xiangqi-01-the-setup-page")
+
+        control(app, "setup-start").tap()
+        XCTAssertTrue(point(app, "a10").waitForExistence(timeout: 90),
+                      "开始对局 should expose Xiangqi's far corner")
+        XCTAssertEqual(app.frame.width, 402, accuracy: 0.5,
+                       "phone layout evidence belongs to the named 402-point device")
+
+        let pointElements = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "point-"))
+            .allElementsBoundByIndex
+        let files = "abcdefghi".map { String($0) }
+        let expectedPointIdentifiers = Set(files.flatMap { file in
+            (1...10).map { "point-\(file)\($0)" }
+        })
+        XCTAssertEqual(pointElements.count, 90,
+                       "a 9 by 10 board should expose one hit element per point")
+        XCTAssertEqual(Set(pointElements.map(\.identifier)), expectedPointIdentifiers,
+                       "the point identifiers should cover a1 through i10 exactly")
+
+        XCTAssertEqual(point(app, "a1").label, "a1 红 俥")
+        XCTAssertEqual(point(app, "i1").label, "i1 红 俥")
+        XCTAssertEqual(point(app, "a10").label, "a10 黑 车")
+        XCTAssertEqual(point(app, "i10").label, "i10 黑 车")
+        XCTAssertEqual(pointElements.filter { !$0.label.contains(" 空") }.count, 32,
+                       "standard Xiangqi should begin with its full complement")
+        XCTAssertEqual(control(app, "file-numerals-red").label,
+                       "九 八 七 六 五 四 三 二 一")
+
+        let pitch = point(app, "a1").frame.width
+        XCTAssertEqual(pitch, 39, accuracy: 0.5,
+                       "width fitting on a 402-point phone should yield pitch 39")
+        XCTAssertGreaterThanOrEqual(pitch, 34,
+                                    "Xiangqi should remain above its interactive floor")
+        XCTAssertLessThan(pitch, 44,
+                          "its hit regions should not be enlarged into Mini's floor")
+        for element in pointElements {
+            XCTAssertEqual(element.frame.width, pitch, accuracy: 0.5,
+                           "\(element.identifier) should be exactly one pitch wide")
+            XCTAssertEqual(element.frame.height, pitch, accuracy: 0.5,
+                           "\(element.identifier) should be exactly one pitch tall")
+        }
+
+        let pointsByIdentifier = Dictionary(
+            pointElements.map { ($0.identifier, $0) },
+            uniquingKeysWith: { first, _ in first })
+        for rank in 1...10 {
+            for fileIndex in 0..<(files.count - 1) {
+                let leftName = "point-\(files[fileIndex])\(rank)"
+                let rightName = "point-\(files[fileIndex + 1])\(rank)"
+                guard let left = pointsByIdentifier[leftName],
+                      let right = pointsByIdentifier[rightName] else {
+                    XCTFail("missing adjacent Xiangqi points \(leftName), \(rightName)")
+                    continue
+                }
+                XCTAssertEqual(left.frame.maxX, right.frame.minX, accuracy: 0.5,
+                               "adjacent hit cells should meet without overlapping")
+            }
+        }
+        for file in files {
+            for rank in 1..<10 {
+                let lowerName = "point-\(file)\(rank)"
+                let upperName = "point-\(file)\(rank + 1)"
+                guard let lower = pointsByIdentifier[lowerName],
+                      let upper = pointsByIdentifier[upperName] else {
+                    XCTFail("missing adjacent Xiangqi points \(lowerName), \(upperName)")
+                    continue
+                }
+                XCTAssertEqual(upper.frame.maxY, lower.frame.minY, accuracy: 0.5,
+                               "adjacent hit cells should meet without overlapping")
+            }
+        }
+        let a10Frame = point(app, "a10").frame
+        let i1Frame = point(app, "i1").frame
+        print("PHONE-XIANGQI-EVIDENCE points=\(pointElements.count) pitch=\(pitch) "
+              + "a10=\(a10Frame) i1=\(i1Frame)")
+        attach(app, named: "phone-xiangqi-02-the-standard-board")
+
+        point(app, "a4").tap()
+        XCTAssertTrue(waitForLabel(point(app, "a4"), containing: "已选择"),
+                      "the starting soldier should respond to the first tap")
+        XCTAssertTrue(waitForLabel(point(app, "a5"), containing: "可走"),
+                      "one step forward should be offered as a legal Xiangqi move")
+        point(app, "a5").tap()
+        XCTAssertTrue(waitForLabel(point(app, "a5"), containing: "红 兵"),
+                      "the destination should hold the moved soldier")
+        XCTAssertTrue(waitForLabel(point(app, "a4"), containing: "空"),
+                      "the soldier's starting point should be empty")
+        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 15),
+                      "a committed Red move should hand Free Play to Black")
+        attach(app, named: "phone-xiangqi-03-after-the-tapped-move")
+    }
+
     // MARK: - A game against the machine, started and played with a finger
 
     /// The whole of what a phone does that a Mac cannot: a mode chosen from the
@@ -274,9 +402,10 @@ final class PhonePlayUITests: XCTestCase {
     func testAGameAgainstTheMachineIsStartedFromSetupAndTakesATappedMove() {
         let app = launch(preferences: ["defaults.aiLevel": "fast"],
                          availableMemory: Self.modestMemory)
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 30))
 
-        app.buttons["mode-human-versus-ai"].tap()
+        app.buttons["mode-mini-xiangqi-human-versus-ai"].tap()
         XCTAssertTrue(control(app, "setup-header").waitForExistence(timeout: 10),
                       "人机对弈 opens its 本局设置 page")
         XCTAssertEqual(reading(app, "setup-header"), "本局设置")
@@ -564,7 +693,7 @@ final class PhonePlayUITests: XCTestCase {
         destination(app, 1).tap()
         let row = control(app, "history-row-0")
         XCTAssertTrue(row.waitForExistence(timeout: 20), "the filed game is in History")
-        XCTAssertTrue(row.label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
+        XCTAssertTrue(row.label.contains("迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步"),
                       "with its own result and its exact reason — it reads " + row.label)
         attach(app, named: "phone-13-the-record-in-history")
     }
@@ -579,7 +708,8 @@ final class PhonePlayUITests: XCTestCase {
     /// thing the test is for: the screen is not only laid out but reachable.
     func testAReplayHidesTheDestinationBarAndLeavingItBringsItBack() {
         let app = launch(history: Self.mateLine)
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 30),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 30),
                       "a launch with no game to resume opens on the Play home")
 
         destination(app, 1).tap()

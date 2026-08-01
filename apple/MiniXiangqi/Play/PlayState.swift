@@ -517,11 +517,12 @@ final class PlayState {
         core.endSession()
         do {
             #if DEBUG
-            // A launch line needs a board to be played onto, and a game is no
-            // longer created by its first move: the Free Play game the line
-            // belongs to is created here, exactly as 开始对局 would create it.
-            if !Self.launchReplayLine.isEmpty, try !core.activeGameExists() {
-                try rules.create(.freePlay(game: .miniXiangqi))
+            // A launch line names its game as well as its moves. The Free Play
+            // game it belongs to is created here, exactly as 开始对局 would
+            // create it; no debug fixture gets a hidden default game.
+            let launchReplay = try Self.launchReplay()
+            if let launchReplay, try !core.activeGameExists() {
+                try rules.create(.freePlay(game: launchReplay.game))
             }
             #endif
             if !rules.hasSession {
@@ -532,7 +533,9 @@ final class PlayState {
             }
             let resumed = try Game(rules: rules)
             #if DEBUG
-            try resumed.replay(Self.launchReplayLine)
+            if let launchReplay {
+                try resumed.replay(launchReplay.moves)
+            }
             #endif
             adopt(resumed, policy: policy)
             page = .board
@@ -591,19 +594,26 @@ final class PlayState {
     }
 
     #if DEBUG
-    /// The line `-mxq-replay a1a2,b7b5,…` names, played before first display so
-    /// a UI test can start from a position it would otherwise have to click its
-    /// way to. Debug only, and no move of it bypasses the core.
-    private static var launchReplayLine: [String] {
-        (DebugLaunch.argument(after: "-mxq-replay") ?? "")
-            .split(separator: ",")
-            .map(String.init)
+    /// The line `-mxq-replay minixiangqi:a1a2,b7b5,…` names, played before
+    /// first display so a UI test can start from a position it would otherwise
+    /// have to click its way to. The game name is mandatory: a fixture is not
+    /// allowed to make Mini Xiangqi an implicit default. Debug only, and no
+    /// move of it bypasses the core.
+    private static func launchReplay() throws -> LaunchLine? {
+        guard let argument = DebugLaunch.argument(after: "-mxq-replay") else {
+            return nil
+        }
+        guard let line = LaunchLine(argument) else {
+            throw InvalidLaunchLine(argument: argument)
+        }
+        return line
     }
 
-    /// The games `-mxq-history a1a2,b7b5;…;…` names, each played and filed
-    /// before the board opens, so that a screenshot of the History list has a
-    /// library to show and a UI test has records to act on. Games are separated
-    /// by `;` and plies by `,`.
+    /// The games `-mxq-history minixiangqi:a1a2,b7b5;xiangqi:a1a2,…` names,
+    /// each played and filed before the board opens, so that a screenshot of
+    /// the History list has a library to show and a UI test has records to act
+    /// on. Games are separated by `;`, every game name is mandatory, and plies
+    /// are separated by `,`.
     ///
     /// Each one goes through the same path a person's game does — created by its
     /// own configuration, every ply committed by the core, the finished game
@@ -612,14 +622,14 @@ final class PlayState {
     /// than filing a half-game, and the launch continues: the failure then shows
     /// as a shorter list than the test asked for, where a test can see it.
     private func fileLaunchHistory() {
-        let lines = (DebugLaunch.argument(after: "-mxq-history") ?? "")
+        let requested = (DebugLaunch.argument(after: "-mxq-history") ?? "")
             .split(separator: ";")
-            .map { $0.split(separator: ",").map(String.init) }
-        guard !lines.isEmpty else { return }
+        let lines = requested.compactMap { LaunchLine($0) }
+        guard !lines.isEmpty, lines.count == requested.count else { return }
         for line in lines {
             core.endSession()
-            guard (try? core.create(.freePlay(game: .miniXiangqi))) != nil,
-                  let game = try? Game(rules: core), (try? game.replay(line)) != nil
+            guard (try? core.create(.freePlay(game: line.game))) != nil,
+                  let game = try? Game(rules: core), (try? game.replay(line.moves)) != nil
             else { return }
             if game.evaluation.claimAvailable {
                 game.claimDraw()
@@ -628,6 +638,33 @@ final class PlayState {
             }
         }
         core.endSession()
+    }
+
+    /// One explicit debug fixture line. Its game names are the data contract's
+    /// own spellings, so a fixture and the record it produces use one
+    /// vocabulary.
+    private struct LaunchLine {
+        var game: GameKind
+        var moves: [String]
+
+        init?(_ text: some StringProtocol) {
+            let parts = text.split(separator: ":", maxSplits: 1,
+                                   omittingEmptySubsequences: false)
+            guard parts.count == 2 else { return nil }
+            switch parts[0] {
+            case "minixiangqi": game = .miniXiangqi
+            case "xiangqi": game = .xiangqi
+            default: return nil
+            }
+            moves = String(parts[1]).split(separator: ",").map(String.init)
+        }
+    }
+
+    private struct InvalidLaunchLine: Error, CustomStringConvertible {
+        var argument: String
+        var description: String {
+            "debug replay line must name minixiangqi or xiangqi: \(argument)"
+        }
     }
     #endif
 }

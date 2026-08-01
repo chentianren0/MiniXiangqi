@@ -3,8 +3,8 @@
 //
 // This suite was the drawing loop. The glyphs were tuned against these images
 // rather than against a description of them, because the whole difficulty of
-// the set is that `symbolSize` is `0.50 p` — 22 points at the 44-point pitch
-// floor — and nothing about a 22-point glyph can be judged from its path data.
+// the set is that `symbolSize` is `0.50 p` — 17 points at Xiangqi's 34-point
+// pitch floor — and nothing about a glyph that small can be judged from path data.
 // It stays in the suite as the gate's artefact generator: these sheets are what
 // the chariot-versus-cannon gate is read from, beside the UI tests' shots of
 // the running board.
@@ -26,45 +26,65 @@ import Testing
 @MainActor
 struct PieceIconTests {
 
-    /// The pitch the gates are measured at, and one a large window reaches.
-    static let floorPitch = BoardGeometry.minimumPitch
-    static let largePitch = BoardGeometry.minimumPitch * 2
+    static let miniBoard = GameKind.miniXiangqi.board
+    static let xiangqiBoard = GameKind.xiangqi.board
+    /// The two accepted floors, and one pitch a large Mini board reaches.
+    static let miniFloorPitch = BoardGeometry.minimumPitch(for: miniBoard)
+    static let xiangqiFloorPitch = BoardGeometry.minimumPitch(for: xiangqiBoard)
+    static let largePitch = miniFloorPitch * 2
 
     // MARK: - The sheets the gate is read from
 
     @Test("The starting position with icons, at the accepted floor")
     func startingPositionWithIcons() throws {
-        let geometry = BoardGeometry(pitch: Self.floorPitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .icons),
+        let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.miniFloorPitch)
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+                                    geometry, symbols: .icons),
                               named: "icons-start-at-the-floor")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("The starting position with characters, for comparison")
     func startingPositionWithCharacters() throws {
-        let geometry = BoardGeometry(pitch: Self.floorPitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .hanzi),
+        let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.miniFloorPitch)
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+                                    geometry, symbols: .hanzi),
                               named: "hanzi-start-at-the-floor")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
     @Test("The starting position with icons, large")
     func startingPositionLarge() throws {
-        let geometry = BoardGeometry(pitch: Self.largePitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .icons),
+        let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.largePitch)
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+                                    geometry, symbols: .icons),
                               named: "icons-start-large")
-        #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
+        #expect(size == geometry.coreSize)
     }
 
-    @Test("The five, both sides, at the floor and large")
-    func theFive() throws {
+    @Test("The Xiangqi starting position survives its smaller pitch")
+    func xiangqiStartingPosition() throws {
+        let geometry = BoardGeometry(board: Self.xiangqiBoard, pitch: Self.xiangqiFloorPitch)
+        let fen = Core.startFEN(for: .xiangqi)
+        let sheet = HStack(spacing: 0) {
+            board(fen, .xiangqi, geometry, symbols: .icons)
+            board(fen, .xiangqi, geometry, symbols: .hanzi)
+        }
+        let size = try render(sheet, named: "xiangqi-start-at-the-floor")
+        #expect(size == CGSize(width: 2 * geometry.coreSize.width,
+                              height: geometry.coreSize.height))
+    }
+
+    @Test("The seven, both sides, at the Xiangqi floor and large")
+    func theSeven() throws {
         // One rank of each side, in the survey's convention-table order, so
         // every glyph stands beside every other on real discs in both inks.
-        let fen = "krncp2/7/7/7/7/7/KRNCP2"
-        for (pitch, name) in [(Self.floorPitch, "the-five-at-the-floor"),
-                              (Self.largePitch, "the-five-large")] {
-            let geometry = BoardGeometry(pitch: pitch)
-            _ = try render(board(fen, geometry, symbols: .icons), named: "icons-\(name)")
+        let fen = "kabrncp2/9/9/9/9/9/9/9/9/KABRNCP2"
+        for (pitch, name) in [(Self.xiangqiFloorPitch, "the-seven-at-the-floor"),
+                              (Self.largePitch, "the-seven-large")] {
+            let geometry = BoardGeometry(board: Self.xiangqiBoard, pitch: pitch)
+            _ = try render(board(fen, .xiangqi, geometry, symbols: .icons),
+                           named: "icons-\(name)")
         }
     }
 
@@ -75,18 +95,19 @@ struct PieceIconTests {
         // ranks is the hardest adjacency the board can produce, and the same
         // position in characters beneath it says what the icons are standing in
         // for.
-        let geometry = BoardGeometry(pitch: Self.floorPitch)
-        let fen = "rcrcrcr/7/7/7/7/7/RCRCRCR"
+        let geometry = BoardGeometry(board: Self.xiangqiBoard, pitch: Self.xiangqiFloorPitch)
+        let fen = "rcrcrcrcr/9/9/9/9/9/9/9/9/RCRCRCRCR"
         let sheet = VStack(spacing: 0) {
-            board(fen, geometry, symbols: .icons)
-            board(fen, geometry, symbols: .hanzi)
+            board(fen, .xiangqi, geometry, symbols: .icons)
+            board(fen, .xiangqi, geometry, symbols: .hanzi)
         }
         _ = try render(sheet, named: "chariot-against-cannon-at-the-floor")
     }
 
     @Test("Every glyph as bare ink, at three sizes", arguments: PieceKind.allCases)
     func silhouettes(kind: PieceKind) throws {
-        let gate = BoardGeometry(pitch: Self.floorPitch).symbolSize
+        let gate = BoardGeometry(board: Self.xiangqiBoard,
+                                 pitch: Self.xiangqiFloorPitch).symbolSize
         let sheet = HStack(alignment: .bottom, spacing: 10) {
             ForEach([gate, gate * 2, gate * 6], id: \.self) { size in
                 PieceIcon(kind: kind)
@@ -113,7 +134,7 @@ struct PieceIconTests {
 
     @Test("No glyph draws itself small", arguments: PieceKind.allCases)
     func fillsTheBox(kind: PieceKind) {
-        // The five envelopes differ deliberately, so none of them fills the box
+        // The seven envelopes differ deliberately, so none of them fills the box
         // both ways — this is a floor on smallness, not a target. A glyph that
         // filled neither direction would be quietly lighter than the character
         // it stands in for on the same disc.
@@ -137,6 +158,8 @@ struct PieceIconTests {
         #expect(aspect(.cannon) > 1.2)
         // And the other three do not rhyme with either of them.
         #expect(aspect(.general) > 1.2)
+        #expect(aspect(.advisor) < 0.6)
+        #expect(aspect(.elephant) > 1)
         #expect(aspect(.soldier) < 0.85)
         #expect(aspect(.horse) < 1)
     }
@@ -148,7 +171,9 @@ struct PieceIconTests {
         // however blurred they get.
         #expect(mirrorAgreement(.chariot) > 0.98)
         #expect(mirrorAgreement(.general) > 0.98)
+        #expect(mirrorAgreement(.advisor) > 0.98)
         #expect(mirrorAgreement(.soldier) > 0.98)
+        #expect(mirrorAgreement(.elephant) < 0.90)
         #expect(mirrorAgreement(.cannon) < 0.80)
         #expect(mirrorAgreement(.horse) < 0.80)
     }
@@ -206,8 +231,11 @@ struct PieceIconTests {
         // What keeps every existing snapshot and motion frame identical: the
         // canvas's own default is the accepted one, so only a caller that asks
         // for icons gets them.
-        let canvas = BoardCanvas(geometry: BoardGeometry(pitch: Self.floorPitch),
-                                 placement: Placement(fen: Core.startFEN(for: .miniXiangqi)),
+        let canvas = BoardCanvas(
+                                 geometry: BoardGeometry(board: Self.miniBoard,
+                                                         pitch: Self.miniFloorPitch),
+                                 placement: Placement(fen: Core.startFEN(for: .miniXiangqi),
+                                                      game: .miniXiangqi),
                                  style: .traditional,
                                  policy: MotionPolicy(reduceMotion: false),
                                  phases: BoardPhases())
@@ -288,15 +316,15 @@ struct PieceIconTests {
 
     // MARK: - The board, as the board draws it
 
-    private func board(_ fen: String, _ geometry: BoardGeometry,
+    private func board(_ fen: String, _ game: GameKind, _ geometry: BoardGeometry,
                        symbols: PieceSymbols) -> some View {
         BoardCanvas(geometry: geometry,
-                    placement: Placement(fen: fen),
+                    placement: Placement(fen: fen, game: game),
                     style: .traditional,
                     symbols: symbols,
                     policy: MotionPolicy(reduceMotion: false),
                     phases: BoardPhases())
-            .frame(width: geometry.coreSide, height: geometry.coreSide)
+            .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
             .background(BoardStyle.traditional.boardSurface)
     }
 }

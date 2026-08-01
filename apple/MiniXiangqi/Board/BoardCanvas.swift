@@ -163,25 +163,39 @@ struct BoardCanvas: View, Animatable {
 
     private func drawGrid(in context: inout GraphicsContext) {
         var path = Path()
-        for index in 0..<Square.count {
-            let alongRank = point(Square(file: 0, rank: index), flip: 0)
-            let toRank = point(Square(file: Square.count - 1, rank: index), flip: 0)
+        for rank in 0..<geometry.board.rankCount {
+            let alongRank = point(Square(file: 0, rank: rank), flip: 0)
+            let toRank = point(Square(file: geometry.board.fileCount - 1, rank: rank), flip: 0)
             path.move(to: alongRank)
             path.addLine(to: toRank)
+        }
 
-            let alongFile = point(Square(file: index, rank: 0), flip: 0)
-            let toFile = point(Square(file: index, rank: Square.count - 1), flip: 0)
-            path.move(to: alongFile)
-            path.addLine(to: toFile)
+        for file in 0..<geometry.board.fileCount {
+            let first = Square(file: file, rank: 0)
+            let last = Square(file: file, rank: geometry.board.rankCount - 1)
+            if let river = geometry.board.riverAfterRank,
+               file != 0, file != geometry.board.fileCount - 1 {
+                path.move(to: point(first, flip: 0))
+                path.addLine(to: point(Square(file: file, rank: river), flip: 0))
+                path.move(to: point(Square(file: file, rank: river + 1), flip: 0))
+                path.addLine(to: point(last, flip: 0))
+            } else {
+                path.move(to: point(first, flip: 0))
+                path.addLine(to: point(last, flip: 0))
+            }
         }
         // Each palace is a 3-by-3 block of points, its two diagonals drawn
         // corner point to corner point at the same stroke weight as the grid,
         // so the palace reads as part of the board rather than as decoration.
-        for base in [0, 4] {
-            path.move(to: point(Square(file: 2, rank: base), flip: 0))
-            path.addLine(to: point(Square(file: 4, rank: base + 2), flip: 0))
-            path.move(to: point(Square(file: 4, rank: base), flip: 0))
-            path.addLine(to: point(Square(file: 2, rank: base + 2), flip: 0))
+        for palace in geometry.board.palaces {
+            path.move(to: point(Square(file: palace.files.lowerBound,
+                                             rank: palace.ranks.lowerBound), flip: 0))
+            path.addLine(to: point(Square(file: palace.files.upperBound,
+                                          rank: palace.ranks.upperBound), flip: 0))
+            path.move(to: point(Square(file: palace.files.upperBound,
+                                      rank: palace.ranks.lowerBound), flip: 0))
+            path.addLine(to: point(Square(file: palace.files.lowerBound,
+                                          rank: palace.ranks.upperBound), flip: 0))
         }
         context.stroke(path, with: .color(style.grid), lineWidth: geometry.gridStroke)
     }
@@ -290,8 +304,8 @@ struct BoardCanvas: View, Animatable {
 
     private func drawRestingPieces(in context: inout GraphicsContext, flip: Double) {
         let inTransit = transitSquares
-        for rank in 0..<Square.count {
-            for file in 0..<Square.count {
+        for rank in 0..<geometry.board.rankCount {
+            for file in 0..<geometry.board.fileCount {
                 let square = Square(file: file, rank: rank)
                 guard let piece = placement[square], !inTransit.contains(square) else { continue }
                 let lift = phases.lifts[square]
@@ -360,8 +374,8 @@ struct BoardCanvas: View, Animatable {
         // the square as a tiebreak so equal heights never trade places
         // between frames.
         let raised = phases.lifts.raised.sorted {
-            (phases.lifts[$0], $0.rank * Square.count + $0.file)
-                < (phases.lifts[$1], $1.rank * Square.count + $1.file)
+            (phases.lifts[$0], $0.rank * geometry.board.fileCount + $0.file)
+                < (phases.lifts[$1], $1.rank * geometry.board.fileCount + $1.file)
         }
         for square in raised {
             guard let piece = placement[square], !inTransit.contains(square) else { continue }

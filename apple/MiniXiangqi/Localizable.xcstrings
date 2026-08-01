@@ -1086,6 +1086,42 @@
         }
       }
     },
+    "game.miniXiangqi": {
+      "comment": "The game name used in the Play-home section, pre-start setup and game metadata. It does not change the application's display name.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mini Xiangqi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "迷你象棋"
+          }
+        }
+      }
+    },
+    "game.xiangqi": {
+      "comment": "The game name used in the Play-home section, pre-start setup and game metadata. It does not change the application's display name.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xiangqi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "象棋"
+          }
+        }
+      }
+    },
     "history.empty.description": {
       "extractionState": "manual",
       "localizations": {
@@ -1411,6 +1447,24 @@
         }
       }
     },
+    "piece.advisor": {
+      "comment": "The piece's name where words are used rather than the board's own glyph. English names it by its piece name; Chinese names it by the character the piece carries, which is game content, is never translated, and so passes through as the argument rather than being written here.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advisor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@"
+          }
+        }
+      }
+    },
     "piece.cannon": {
       "comment": "The piece's name where words are used rather than the board's own glyph. English names it by its piece name; Chinese names it by the character the piece carries, which is game content, is never translated, and so passes through as the argument rather than being written here.",
       "extractionState": "manual",
@@ -1437,6 +1491,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chariot"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@"
+          }
+        }
+      }
+    },
+    "piece.elephant": {
+      "comment": "The piece's name where words are used rather than the board's own glyph. English names it by its piece name; Chinese names it by the character the piece carries, which is game content, is never translated, and so passes through as the argument rather than being written here.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elephant"
           }
         },
         "zh-Hans": {

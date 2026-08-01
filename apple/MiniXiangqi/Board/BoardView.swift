@@ -1,4 +1,4 @@
-// The board: a 7-by-7 grid of *points*, never a checkerboard of squares.
+// The board: a grid of *points*, never a checkerboard of squares.
 //
 // Everything is drawn from BoardGeometry, so the board scales without any
 // dimension being re-tuned. The picture itself is BoardCanvas, which carries
@@ -79,7 +79,7 @@ struct BoardView: View {
         // The pitch is unchanged either way, so the two renderings differ by
         // exactly the room the strips take and by nothing else.
         .frame(width: geometry.blockSize.width,
-               height: showsNumerals ? geometry.blockSize.height : geometry.coreSide)
+               height: showsNumerals ? geometry.blockSize.height : geometry.coreSize.height)
     }
 
     // MARK: - The board core
@@ -106,7 +106,7 @@ struct BoardView: View {
                                       arrived: onTravelArrival))
             .modifier(ArrivalReporter(progress: transitFade, arrived: onFadeArrival))
             .modifier(ArrivalReporter(progress: flipped ? 1 : 0, arrived: onFlipArrival))
-            .frame(width: geometry.coreSide, height: geometry.coreSide)
+            .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
             .background(style.boardSurface)
             .overlay(points)
     }
@@ -114,7 +114,7 @@ struct BoardView: View {
     /// One element per point, over the drawn board.
     ///
     /// The board is drawn as a single canvas, which is right — it is one
-    /// picture, not forty-nine views — but a picture has no points a pointer
+    /// picture, not a view per point — but a picture has no points a pointer
     /// can hit or a screen reader can name. This grid supplies both: it is what
     /// makes a tap land on a point rather than at a coordinate, and what lets
     /// someone who cannot see the board hear where the pieces are.
@@ -138,9 +138,9 @@ struct BoardView: View {
     /// right again the moment the board is.
     private var points: some View {
         ZStack {
-            ForEach(0..<(Square.count * Square.count), id: \.self) { index in
-                let square = Square(file: index % Square.count,
-                                    rank: index / Square.count)
+            ForEach(0..<geometry.board.squareCount, id: \.self) { index in
+                let square = Square(file: index % geometry.board.fileCount,
+                                    rank: index / geometry.board.fileCount)
                 let centre = geometry.center(of: square, flipped: flipped)
                 Color.clear
                     .frame(width: p, height: p)
@@ -153,7 +153,7 @@ struct BoardView: View {
                     .position(x: centre.x, y: centre.y)
             }
         }
-        .frame(width: geometry.coreSide, height: geometry.coreSide)
+        .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
     }
 
     /// What a screen reader says about a point: its name, what stands there,
@@ -198,12 +198,13 @@ struct BoardView: View {
             stripContent(atTop: atTop, orientationFlipped: true)
                 .opacity(flipped ? 1 : 0)
         }
-        .frame(width: geometry.coreSide, height: geometry.stripHeight)
+        .frame(width: geometry.coreSize.width, height: geometry.stripHeight)
         .background(style.boardSurface)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier(isRed ? "file-numerals-red" : "file-numerals-black")
-        .accessibilityLabel((0..<Square.count)
-            .map { numeral(file: flipped ? Square.count - 1 - $0 : $0, forRedPlayer: isRed) }
+        .accessibilityLabel((0..<geometry.board.fileCount)
+            .map { numeral(file: flipped ? geometry.board.fileCount - 1 - $0 : $0,
+                           forRedPlayer: isRed) }
             .joined(separator: " "))
     }
 
@@ -212,8 +213,8 @@ struct BoardView: View {
     private func stripContent(atTop: Bool, orientationFlipped: Bool) -> some View {
         let isRed = atTop ? orientationFlipped : !orientationFlipped
         return HStack(spacing: 0) {
-            ForEach(0..<Square.count, id: \.self) { column in
-                let file = orientationFlipped ? Square.count - 1 - column : column
+            ForEach(0..<geometry.board.fileCount, id: \.self) { column in
+                let file = orientationFlipped ? geometry.board.fileCount - 1 - column : column
                 Text(numeral(file: file, forRedPlayer: isRed))
                     .font(.system(size: geometry.numeralSize,
                                   weight: isChinese(forRedPlayer: isRed) ? .semibold : .bold))
@@ -223,16 +224,17 @@ struct BoardView: View {
         }
     }
 
-    /// Files are numbered from each player's own right: Red's right is file g,
+    /// Files are numbered from each player's own right: Red's right is the
+    /// board's final file,
     /// Black's is file a. Which way each edge counts is the board's, not the
     /// notation's, and never changes; the script does. The traditional reading
     /// writes Red's numbers in Chinese numerals and Black's in Arabic, and WXF
     /// writes both sides' in Arabic, so under WXF Red's edge changes script and
     /// nothing else.
     private func numeral(file: Int, forRedPlayer isRed: Bool) -> String {
-        let index = isRed ? Square.count - 1 - file : file
+        let index = isRed ? geometry.board.fileCount - 1 - file : file
         return isChinese(forRedPlayer: isRed)
-            ? ["一", "二", "三", "四", "五", "六", "七"][index]
+            ? ["一", "二", "三", "四", "五", "六", "七", "八", "九"][index]
             : String(index + 1)
     }
 

@@ -91,12 +91,12 @@ final class Replay {
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
         self.moves = try session.moves()
-        self.notation = try MoveReading.line(for: moves) {
-            Placement(fen: try session.position(atPly: $0).fen)
+        self.notation = try MoveReading.line(for: moves, on: record.game.board) {
+            Placement(fen: try session.position(atPly: $0).fen, game: record.game)
         }
         let start = try session.position(atPly: 0)
         self.position = start
-        self.placement = Placement(fen: start.fen)
+        self.placement = Placement(fen: start.fen, game: record.game)
         // The accepted history orientation: the human's own side at the bottom
         // where there was a human side, Red at the bottom otherwise.
         self.flipped = record.humanSide == .black
@@ -109,7 +109,7 @@ final class Replay {
     /// The brackets always mark the move that produced the position on screen,
     /// so they follow the walk and the initial position carries none.
     var lastMove: Move? {
-        ply > 0 ? Move(text: moves[ply - 1]) : nil
+        ply > 0 ? Move(text: moves[ply - 1], on: record.game.board) : nil
     }
 
     /// The checked general, so the board can ring it. In replay no piece is
@@ -229,7 +229,7 @@ final class Replay {
         guard target != ply else { return 0 }
         let forward = target > ply
         guard abs(target - ply) == 1, !transits.isRunning,
-              let played = Move(text: moves[min(ply, target)]),
+              let played = Move(text: moves[min(ply, target)], on: record.game.board),
               // The mover, read from the position it is leaving: forward it
               // stands at the move's origin, backward at its destination.
               let mover = placement[forward ? played.from : played.to]
@@ -240,7 +240,8 @@ final class Replay {
         }
 
         let captured = forward ? placement[played.to] : nil
-        let travel = Motion.travel(distance: Motion.distance(of: played))
+        let travel = Motion.travel(distance: Motion.distance(of: played),
+                                   on: record.game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
             // A ply the session will not answer for leaves the board exactly
@@ -275,7 +276,7 @@ final class Replay {
         guard let position = try? session.position(atPly: target) else { return false }
         ply = target
         self.position = position
-        placement = Placement(fen: position.fen)
+        placement = Placement(fen: position.fen, game: record.game)
         return true
     }
 

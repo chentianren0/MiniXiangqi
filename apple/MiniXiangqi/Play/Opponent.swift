@@ -305,8 +305,15 @@ final class Opponent {
             // delivery and this compares before applying, and neither alone
             // covers both race directions.
             guard result.gameID == game.identity,
-                  result.positionRevision == game.evaluation.positionRevision,
-                  let move = Move(text: result.move) else { return }
+                  result.positionRevision == game.evaluation.positionRevision else { return }
+            guard let move = Move(text: result.move, on: game.kind.board) else {
+                // A `.move` result is promised to carry this game's canonical
+                // notation. If the presentation binding cannot read it, the AI
+                // did not produce a usable reply; surface the same stalled state
+                // as any other unusable engine answer rather than dropping it.
+                activity = .stalled
+                return
+            }
             pendingReply = move
             // The floor: the later of now and a short interval after the
             // player's own move finished animating. With no arrival yet there is

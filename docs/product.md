@@ -7,11 +7,11 @@ This document owns the product definition, the target platforms, and the feature
 ## Product identity and distribution
 
 - The product name is **Mini Xiangqi**.
-- The product exists for Mini Xiangqi education inside a small internal group. Education means learning through play: complete games against the AI or in Free Play, supported by in-app help that explains the pieces, rules, and results. Structured lessons, practice drills, and AI hints are not part of the product.
+- The product exists for Xiangqi education inside a small internal group. Education means learning through complete games of **Xiangqi** or **Mini Xiangqi**, against the AI or in Free Play. Structured lessons, practice drills, and AI hints are not part of the product.
 - The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing. There is no public App Store plan.
-- **Every build contains the AI's network file, the Windows zip included**, so there is no file a recipient has to add. What the bundled network plays like is measured in [engine-integration.md](engine-integration.md).
+- **Every build contains both AI network files, the Windows zip included**, so there is no file a recipient has to add. What the bundled networks play like is measured in [engine-integration.md](engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
 - Fully offline constrains the app, not the platform beneath it: the app itself never touches the network. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
@@ -25,10 +25,11 @@ This document owns the product definition, the target platforms, and the feature
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
 - The application has one main window; multiple main windows are not supported.
 - iPhone runs in portrait orientation only. iPad supports every orientation, as iPadOS multitasking expects.
-- Captured pieces are not displayed during play. Each side starts with twelve pieces, so the board itself shows what remains.
+- Captured pieces are not displayed during play. The board itself shows what remains, and a second inventory would compete with the board in both games.
 
 ## Play modes
 
+- Xiangqi and Mini Xiangqi each offer the same two modes.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - Human-versus-AI setup offers **我先手** (I Move First), **AI 先手** (AI Moves First), and **随机** (Random). Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
@@ -38,25 +39,25 @@ This document owns the product definition, the target platforms, and the feature
 - A chess clock is not part of the product.
 - Repeated undo is available. Redo is not.
 - Resign is available only in human-versus-AI games. After confirmation, resignation records a loss for the human player.
-- In-app help provides a Mini Xiangqi rules reference covering the board, pieces, movement, and game results. Help is read-only reference content; it does not analyze the current game or suggest moves.
+- In-app help is the read-only Mini Xiangqi rules reference. It does not analyze the current game or suggest moves; a standard-Xiangqi Help reference is not part of the current product surface.
 
 ## Games and history
 
-- There can be only one active game.
+- There can be only one active game across Xiangqi and Mini Xiangqi.
 - The active game is saved automatically and can be resumed after the application exits and reopens.
 - Before starting another game, the user must save the active game to History.
-- Selecting Human versus AI or Free Play while any game is active immediately presents the same confirmation with the active game's factual metadata. The mode entries remain interactive for both an ongoing game and an unconfirmed natural terminal result.
+- Selecting any of the four game-and-mode entries while a game is active immediately presents the same confirmation with the active game's factual metadata. Every entry remains interactive for both an ongoing game and an unconfirmed natural terminal result.
 - Cancelling leaves the active game unchanged. **保存并继续** atomically saves it to History according to its current state, clears it as the active game, and then opens the selected mode's transient pre-start state.
 - An ordinary ongoing game is saved as ended early without a competitive result. This includes a neutral threefold repetition that is merely claimable and has not been claimed.
 - An unconfirmed natural terminal result is saved with its actual result and termination reason rather than being reclassified as ended early.
-- Human versus AI shows its per-game choices. Free Play shows that one person controls both sides and that Red moves first, without adding configurable setup fields.
+- Every pre-start page visibly identifies the selected game. Human versus AI shows its per-game choices. Free Play shows that one person controls both sides and that Red moves first, without adding configurable setup fields.
 - Only **开始对局** creates the selected game. Leaving either pre-start state creates no game and does not restore an old game that the user already saved to History.
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A natural terminal result remains active and undoable until the user confirms it or chooses **保存并继续**; after either operation, it becomes immutable History with its factual result and termination reason.
 - In both human-versus-AI play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
 - A History record's game content cannot be edited. Pinning is mutable library organization rather than an edit to the game, and the complete record can be deleted individually.
 - Pinned History records appear first. Within the pinned and unpinned groups, the most recently recorded or imported games appear first.
-- Each History entry identifies at least its date, mode, result or end reason, and move count; human-versus-AI entries also identify the human side, and imported entries are visibly marked.
+- Each History entry identifies at least its game, date, mode, result or end reason, and move count; human-versus-AI entries also identify the human side, and imported entries are visibly marked.
 - The History list provides Pin or Unpin, Share, and Delete. Share exports one game file.
 - History games can be replayed manually or with user-started autoplay.
 - **Confirm Before Deleting** is enabled by default in Settings and may be disabled by the user. A completed deletion is permanent: there is neither deletion Undo nor Recently Deleted.
