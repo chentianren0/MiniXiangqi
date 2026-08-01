@@ -24,8 +24,8 @@ core/
 ├── src/              # the C++ implementation behind it
 ├── tests/            # the one shared C++ test runner
 ├── assets/           # what the engine is configured with: the bundled variant
-│                     # configuration and the NNUE network, which travel together
-│                     # and are both pinned by hash in the manifest
+│                     # configuration and one NNUE network per variant the core
+│                     # runs, every one of them pinned by hash in the manifest
 ├── third_party/      # where the pinned fork and SQLite are vendored
 └── CMakeLists.txt
 ```
@@ -45,12 +45,13 @@ fixture and fails the run only on `FAIL` or `ERROR`.
 That default configuration does **not** compile the vendored engine. Add
 `-DMXQ_ENABLE_RULES_FACADE=ON` to build and link it; the engine is a multi-minute
 compile and nothing else in the core needs it, so it is opt-in. Engine-dependent
-tests also need the NNUE network, and it needs no argument: it is in `assets/`
-beside the variant configuration, and configuration verifies its byte length and
-SHA-256 against `pinned-inputs.json` before staging it. `-DMXQ_NNUE_SOURCE=<path>`
-overrides that default, which is how a candidate network is tried before it is
-committed. A missing or mismatched network stages nothing and the search suite
-FAILS with the reason rather than skipping.
+tests also need the NNUE networks, and they need no argument: both are in
+`assets/` beside the variant configuration, and configuration verifies each
+one's byte length and SHA-256 against `pinned-inputs.json` before staging it.
+`-DMXQ_NNUE_SOURCE=<path>` and `-DMXQ_XIANGQI_NNUE_SOURCE=<path>` override those
+defaults, which is how a candidate network is tried before it is committed. A
+missing or mismatched network stages nothing and the search suite FAILS with the
+reason rather than skipping.
 
 Run both configurations. `Debug` and `Release` are not the same test run: the
 programming errors in `docs/core-interface.md`'s error taxonomy assert in a

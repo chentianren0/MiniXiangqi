@@ -109,8 +109,11 @@ target_include_directories(mxq_fairy_stockfish PUBLIC "${MXQ_FS_SRC}")
 # of every position. Making them interface properties of the target is what
 # removes the possibility of that mismatch.
 #
-# LARGEBOARDS, PRECOMPUTED_MAGICS and ALLVARS are not needed by a 7x7 board —
-# `minixiangqi` is registered outside the LARGEBOARDS guard in variant.cpp — but
+# LARGEBOARDS is required, and not as a margin: `xiangqi` is registered INSIDE
+# the LARGEBOARDS guard in variant.cpp, and the core runs searches of it, so a
+# build without the define has no such variant to configure. `minixiangqi` and
+# the variant derived from it are registered outside that guard and would not
+# need it. PRECOMPUTED_MAGICS and ALLVARS are not needed by either board, but
 # they are kept because this is the flag set under which the fork's own suite
 # and the approved fixtures were exercised in this workspace. Dropping them
 # would make that evidence no longer describe the binary we ship. Narrowing them

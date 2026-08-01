@@ -27,6 +27,33 @@
 namespace mxq {
 namespace engine {
 
+/* The variants this build can run, and there are exactly two.
+ *
+ * They are a closed set rather than a string a caller supplies, because
+ * everything that follows a variant here is pinned to it one for one: an
+ * identifier the engine knows, a network whose basename must begin with that
+ * identifier, and that network's byte length and SHA-256. A string parameter
+ * would make three of those four unpinnable, and the engine answers a variant
+ * it does not know with a silent no-op rather than an error.
+ *
+ * MiniXiangqi is the app's pinned custom variant, defined in the bundled
+ * configuration; Xiangqi is the engine's own built-in 9x10 game, registered
+ * before any configuration is parsed. */
+enum class Variant {
+    MiniXiangqi,
+    Xiangqi,
+};
+
+/* The variant the engine's process-global tables are built for. Its default is
+ * MiniXiangqi, which ensure_initialised establishes and deconfigure() restores;
+ * configure() is the only thing that changes it. See the serialisation design
+ * below for why that is not a matter of style. */
+Variant active_variant();
+
+/* The engine's identifier for a variant: what UCI_Variant is set to, and the
+ * prefix its network's basename must begin with. */
+const char *variant_id(Variant variant);
+
 /* Adjudication as the rules contract describes it, independent of how the
  * engine happens to report it. The engine returns one side-to-move-relative
  * Value, a flag, and which optional-end rule fired; docs/xiangqi-rules.md wants
@@ -46,12 +73,18 @@ struct Adjudication {
 enum class InitError {
     None,
     AssetMissing,       /* the bundled configuration cannot be opened */
-    VariantLoadFailed,  /* it parses, but the pinned variant is not in it */
+    VariantLoadFailed,  /* it parses, but a pinned variant is not in it */
 };
 
 /* Prepare the engine's process-global state and load the bundled variant
  * configuration. Idempotent; the first call does the work. Fills detail on
- * anything but None — which is a packaging failure, not a rules failure. */
+ * anything but None — which is a packaging failure, not a rules failure.
+ *
+ * Both variants must be in the variant map when this returns: the configuration
+ * defines the custom one and the engine registers the built-in one, but the
+ * registration is inside the engine's LARGEBOARDS guard, so "built in" is a
+ * property of this build's defines rather than of the engine. A build that lost
+ * that define would otherwise present a variant axis with one working end. */
 InitError ensure_initialised(const char *assets_dir, std::string &detail);
 
 /* Why a replay did not complete. Returned rather than inferred from the detail
@@ -108,18 +141,26 @@ bool validate_fen(const char *fen, std::string &detail);
  * bridge therefore must never block behind a multi-second search, and the
  * search must never trip over a concurrent replay. The reconciliation:
  *
- *   - The variant, piece and bitboard tables are built once, for the one
- *     pinned variant, by ensure_initialised, and never rebuilt outside
- *     configure(). replay() reads them and no longer re-initialises them per
- *     call — re-running UCI::init_variant per replay rewrote process-global
- *     tables, identical values or not, under any concurrent reader. A stable
- *     table read by both sides races with nothing.
+ *   - The variant, piece and bitboard tables are built for ONE variant at a
+ *     time. There is no per-call variant: setting UCI_Variant rewrites
+ *     pieceMap, the piece bitboards and the PSQT in place, so two variants
+ *     cannot be live at once however the calls are arranged. ensure_initialised
+ *     builds them for MiniXiangqi, and configure() and deconfigure() are the
+ *     only things that rebuild them — configure() for the variant it is asked
+ *     to prepare, deconfigure() back to MiniXiangqi. replay() reads them and
+ *     never re-initialises them: re-running UCI::init_variant per replay
+ *     rewrote process-global tables, identical values or not, under any
+ *     concurrent reader. A table rebuilt only under the exclusion below is read
+ *     by both sides and races with nothing.
  *   - configure() and deconfigure() are the only mutators of Options, the
- *     pool size and the transposition table. Both run on the facade's engine
- *     thread, both are refused by the facade while a search is outstanding
- *     (MXQ_ERR_STATE_SEARCH_IN_PROGRESS — reconfiguration serialises behind
- *     search), and both take the same g_mutex the rules replay holds, so a
- *     replay never observes the tables, the pool or the TT mid-mutation.
+ *     active variant, the pool size and the transposition table. Both run on
+ *     the facade's engine thread, both are refused by the facade while a search
+ *     is outstanding (MXQ_ERR_STATE_SEARCH_IN_PROGRESS — reconfiguration
+ *     serialises behind search), and both take the same g_mutex the rules
+ *     replay holds, so a replay never observes the tables, the active variant,
+ *     the pool or the TT mid-mutation. A variant switch is therefore never
+ *     concurrent with a search: it is exactly a reconfiguration, and it takes
+ *     the reconfiguration's exclusion.
  *   - search_run() deliberately does NOT hold g_mutex: it only reads the
  *     stable tables a replay also only reads, its Position is its own, and
  *     the TT it fills is touched by no rules path — a replay's do_move only
@@ -147,28 +188,47 @@ enum class ConfigureError {
     AssetMissing,          /* no network file to preflight */
     AssetMismatch,         /* byte length, SHA-256, or the effective NNUE
                             * state after configuration */
-    VariantLoadFailed,     /* the pinned variant is not loadable */
+    VariantLoadFailed,     /* the requested variant is not loadable */
     HashAllocationFailed,  /* the transposition table could not be allocated */
 };
 
 /*
- * Apply the plan: the pinned variant, the accepted shared search profile, the
- * NNUE, the thread count, and the Hash. The network is preflighted twice —
- * its bytes against the pinned byte length and SHA-256 before the engine sees
- * a path, and the engine's effective NNUE state after configuration, because
- * a basename that does not begin with the variant identifier clears the
- * engine's internal flag silently while the option still reads true. On any
- * refusal the engine is unwound whole to the deconfigured posture; it never
- * keeps a partial configuration.
+ * Apply the plan: the requested variant, the accepted shared search profile,
+ * the networks, the thread count, and the Hash. The requested variant becomes
+ * the active one, and searches run in it until the next configure() or
+ * deconfigure().
+ *
+ * EvalFile is a LIST rather than a path — the engine accepts several networks
+ * separated by UCI::SepChar and picks the first whose basename begins with the
+ * current variant's identifier — so every pinned network present in the asset
+ * directory is handed over, with the requested variant's own first. That is
+ * what lets one prepared engine be re-prepared for the other variant without
+ * the asset directory changing shape.
+ *
+ * Every network handed over is preflighted, and the requested variant's twice:
+ * every one's bytes against ITS OWN pinned byte length and SHA-256 before the
+ * engine sees a path, and then the engine's effective NNUE state after
+ * configuration, because a basename that does not begin with the active
+ * variant's identifier clears the engine's internal flag silently while the
+ * option still reads true. That second check compares against the token the
+ * engine would have SELECTED, never against the whole option value: the engine
+ * leaves eval_file_loaded untouched when a load fails, and its own verification
+ * asks only whether that stale name appears anywhere in the list — which, once
+ * the list holds more than one network, it does. On any refusal the engine is
+ * unwound whole to the deconfigured posture; it never keeps a partial
+ * configuration.
  *
  * Caller: the facade's engine thread only, with no search outstanding.
  */
-ConfigureError configure(uint32_t threads, uint32_t hash_mib,
+ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
                          const std::string &assets_dir, std::string &detail);
 
 /* Release the transposition table whole and restore the rules posture: pool
- * of 1, minimal option floor. Caller: the facade's engine thread with no
- * search outstanding, or mxq_core_shutdown after the engine thread joined. */
+ * of 1, minimal option floor, and the default variant's tables, so that the
+ * bridge answers rules queries after a teardown exactly as it did before any
+ * preparation whichever variant was prepared. Caller: the facade's engine
+ * thread with no search outstanding, or mxq_core_shutdown after the engine
+ * thread joined. */
 void deconfigure();
 
 /* Why search_run() produced no move. */
@@ -189,8 +249,12 @@ struct SearchOutput {
 };
 
 /*
- * Run one search over the snapshot: replay moves from start_fen, then think
- * for movetime_ms under the accepted shared profile. cancelled is re-checked
+ * Run one search over the snapshot, in the active variant: replay moves from
+ * start_fen, then think for movetime_ms under the accepted shared profile. The
+ * variant is not a parameter because it cannot be one — the tables the search
+ * reads are the active variant's, and switching them is a reconfiguration —
+ * so a snapshot of another variant fails to replay and returns ReplayFailed
+ * rather than being searched under the wrong rules. cancelled is re-checked
  * after the engine's own stop flag is re-armed, so a cancellation racing the
  * start is still prompt rather than lost. Blocks until the engine finishes or
  * is stopped. Caller: the facade's engine thread only.

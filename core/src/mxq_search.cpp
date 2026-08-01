@@ -197,10 +197,17 @@ bool well_formed_move(const std::string &move) {
 /* The engine thread                                                       */
 /* ---------------------------------------------------------------------- */
 
+/* The variant this facade prepares the engine for. The bridge takes it per
+ * configuration — the engine can run either of two — and what selects it is a
+ * property of the game being played; the C surface this facade sits behind
+ * creates games of one variant, so it names that one here rather than reading a
+ * choice nothing can yet express. */
+constexpr engine::Variant kFacadeVariant = engine::Variant::MiniXiangqi;
+
 void run_prepare(Task &task) {
     std::string detail;
-    const engine::ConfigureError rc =
-        engine::configure(task.threads, task.hash_mib, task.assets_dir, detail);
+    const engine::ConfigureError rc = engine::configure(
+        kFacadeVariant, task.threads, task.hash_mib, task.assets_dir, detail);
     task.detail = detail;
     switch (rc) {
     case engine::ConfigureError::None:

@@ -31,19 +31,76 @@
 
 using namespace Stockfish;
 
+/* Two things are called Variant in this file and nowhere else in the core:
+ * mxq::engine::Variant, the closed two-value choice this bridge's callers
+ * speak, and Stockfish::Variant, the engine's configuration record for one of
+ * them. The unqualified name is the first — the engine's is always written
+ * Stockfish::Variant below, which is also how it reads as what it is. */
+
 namespace mxq {
 namespace engine {
 namespace {
 
-/* The identifier and configuration filename are fixed by
- * docs/engine-integration.md, "Variant packaging". */
-constexpr const char *kVariantId = "minixiangqiaxf";
+/* The configuration filename is fixed by docs/engine-integration.md, "Variant
+ * packaging". */
 constexpr const char *kVariantFile = "minixiangqi-variants.ini";
 
-/* The engine's process-global tables, which are built once and never rebuilt.
- * Loading the variant configuration is separate and may be retried, because a
- * missing or wrong asset directory is a caller's mistake to correct rather than
- * a permanent property of the process. */
+/* Everything pinned to one variant, in one row per variant. The identifier is
+ * what UCI_Variant takes and what the network's basename must begin with; the
+ * three network fields are that variant's own pins, and reading a network
+ * against the wrong row is exactly the mistake the byte preflight below would
+ * otherwise stop catching. All of it comes from pinned-inputs.json through the
+ * generated build configuration rather than being spelled here. */
+struct VariantPin {
+    const char *id;
+    const char *nnue_filename;
+    uint64_t    nnue_byte_length;
+    const char *nnue_sha256;
+};
+
+constexpr VariantPin kVariantPins[] = {
+    {MXQ_BUILD_VARIANT_ID, MXQ_BUILD_NNUE_FILENAME, MXQ_BUILD_NNUE_BYTE_LENGTH,
+     MXQ_BUILD_NNUE_SHA256},
+    {MXQ_BUILD_XIANGQI_VARIANT_ID, MXQ_BUILD_XIANGQI_NNUE_FILENAME,
+     MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH, MXQ_BUILD_XIANGQI_NNUE_SHA256},
+};
+/* The rules posture's variant: the app's own, which is what a core that has
+ * never prepared an engine replays in. */
+constexpr Variant kDefaultVariant = Variant::MiniXiangqi;
+
+/* A switch rather than a comparison, and a count rather than a comment: adding
+ * a variant to the enum without a row here is a warning at the switch, and
+ * adding a case without a row is caught by the assertion. Both would otherwise
+ * be an out-of-bounds read of a table that looks obviously right. */
+static_assert(sizeof(kVariantPins) / sizeof(kVariantPins[0]) == 2,
+              "one pinned row per Variant enumerator");
+
+constexpr size_t pin_index(Variant variant) {
+    switch (variant) {
+    case Variant::MiniXiangqi:
+        return 0u;
+    case Variant::Xiangqi:
+        return 1u;
+    }
+    return 0u; /* unreachable: the switch is exhaustive */
+}
+
+const VariantPin &pin_of(Variant variant) {
+    return kVariantPins[pin_index(variant)];
+}
+
+/* The variant the process-global tables are currently built for. Written only
+ * by configure() and deconfigure(), both under g_mutex; read by search_run(),
+ * which holds no lock and reads it exactly as it reads those tables. Atomic
+ * because a plain read racing a write is a data race whatever the values are,
+ * and this one costs nothing. */
+std::atomic<Variant> g_active_variant{kDefaultVariant};
+
+/* The engine's process-global bootstrap, done once and never repeated — the
+ * piece registry, the variant map and the option map, none of which is
+ * per-variant. Loading the variant configuration is separate and may be
+ * retried, because a missing or wrong asset directory is a caller's mistake to
+ * correct rather than a permanent property of the process. */
 std::once_flag g_bootstrap;
 std::mutex g_init_mutex;
 std::atomic<bool> g_ready{false};
@@ -78,13 +135,22 @@ void initialise_once(const std::string &assets_dir) {
     variants.parse_istream<false>(ss);
     Options["UCI_Variant"].set_combo(variants.get_keys());
 
-    if (variants.find(std::string(kVariantId)) == variants.end()) {
-        g_init_detail = std::string("the bundled configuration does not define ") + kVariantId;
-        g_init_error = InitError::VariantLoadFailed;
-        return;
+    /* Every variant this build claims to run, not only the one it starts in:
+     * the built-in one is registered by the engine behind its LARGEBOARDS
+     * guard, so its absence is a build that lost a define rather than a
+     * configuration that lost a section, and the two failures are worth
+     * separating in the detail rather than in the code. */
+    for (const VariantPin &pin : kVariantPins) {
+        if (variants.find(std::string(pin.id)) == variants.end()) {
+            g_init_detail =
+                std::string("the engine does not define the variant ") + pin.id;
+            g_init_error = InitError::VariantLoadFailed;
+            return;
+        }
     }
 
-    PSQT::init(variants.find(std::string(kVariantId))->second);
+    const VariantPin &initial = pin_of(kDefaultVariant);
+    PSQT::init(variants.find(std::string(initial.id))->second);
     Bitboards::init();
     Position::init();
     Bitbases::init();
@@ -95,17 +161,24 @@ void initialise_once(const std::string &assets_dir) {
      * restores this posture. */
     Threads.set(1);
     Search::clear();
-    /* The piece and bitboard tables for the one pinned variant, built here
-     * once and rebuilt only under configure()'s exclusion. replay() used to
-     * re-run this per call, which rewrote process-global tables under any
-     * concurrent reader once a search could be that reader; see the
+    /* The piece and bitboard tables for the variant the rules posture uses,
+     * built here once and rebuilt only under configure()'s exclusion. replay()
+     * used to re-run this per call, which rewrote process-global tables under
+     * any concurrent reader once a search could be that reader; see the
      * serialisation design in mxq_engine_bridge.hpp. */
-    UCI::init_variant(variants.find(std::string(kVariantId))->second);
+    UCI::init_variant(variants.find(std::string(initial.id))->second);
+    g_active_variant.store(kDefaultVariant, std::memory_order_release);
     g_ready = true;
 }
 
-const Variant *target_variant() {
-    return variants.find(std::string(kVariantId))->second;
+const Stockfish::Variant *variant_object(Variant variant) {
+    return variants.find(std::string(pin_of(variant).id))->second;
+}
+
+/* The variant every rules query and every search reads: the one whose tables
+ * are built. */
+const Stockfish::Variant *target_variant() {
+    return variant_object(g_active_variant.load(std::memory_order_acquire));
 }
 
 /* placement + side to move, which is what docs/xiangqi-rules.md makes position
@@ -258,6 +331,12 @@ Adjudication adjudicate(Position &pos,
 
 } /* namespace */
 
+Variant active_variant() {
+    return g_active_variant.load(std::memory_order_acquire);
+}
+
+const char *variant_id(Variant variant) { return pin_of(variant).id; }
+
 InitError ensure_initialised(const char *assets_dir, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_init_mutex);
     if (g_ready) {
@@ -313,7 +392,7 @@ ReplayError replay(const char *start_fen,
         return ReplayError::StartFenInvalid;
     }
 
-    const Variant *v = target_variant();
+    const Stockfish::Variant *v = target_variant();
     if (FEN::validate_fen(std::string(start_fen), v, false) != FEN::FEN_OK) {
         detail = "start_fen does not satisfy the frozen structural encoding";
         return ReplayError::StartFenInvalid;
@@ -413,58 +492,116 @@ private:
     std::streambuf *saved_;
 };
 
+/* One network the engine is to be handed, and the row its bytes must satisfy.
+ * The pin travels with the path because the two must never be paired by
+ * position or by hope: a network verified against the other variant's byte
+ * length and hash is verified against nothing. */
+struct NetworkChoice {
+    std::string       path;
+    const VariantPin *pin;
+};
+
 /*
- * Find the network file to preflight. The pinned basename is what packaging
- * bundles and is preferred; failing that, a directory holding exactly one
- * .nnue file names its candidate unambiguously. The fallback is what makes
- * the wrong-basename packaging failure — the network staged under its source
- * name instead of the bundled one — reach the effective-state preflight as a
- * typed refusal instead of hiding behind "no such file": the bytes are right,
- * the byte and hash preflights pass, and the engine then clears its internal
- * NNUE flag over the basename, which is exactly what the preflight exists to
- * catch.
+ * Find every network to hand the engine for a configuration of `variant`, with
+ * that variant's own first.
+ *
+ * The first is the one that must be there. Its pinned basename is what
+ * packaging stages and is preferred; failing that, a directory holding exactly
+ * one .nnue file that is no OTHER variant's pinned network names its candidate
+ * unambiguously. That fallback is what makes the wrong-basename packaging
+ * failure — the network staged under its source name instead of the bundled one
+ * — reach the effective-state preflight as a typed refusal instead of hiding
+ * behind "no such file": the bytes are right, the byte and hash preflights
+ * pass, and the engine then clears its internal NNUE flag over the basename,
+ * which is exactly what the preflight exists to catch. A file that IS another
+ * variant's pinned network is never that candidate: it is a network this build
+ * knows the name of, and treating it as a mystery file would verify it against
+ * the wrong pins.
+ *
+ * Every other pinned network present is appended, so that EvalFile carries the
+ * whole set the asset directory holds. Absent ones are simply not in the list:
+ * a directory that carries one variant's network prepares that variant and
+ * refuses the other, which is what a distribution bundling one network is.
  */
-bool find_network(const std::string &assets_dir, std::string &out_path,
-                  std::string &detail) {
+bool find_networks(const std::string &assets_dir, Variant variant,
+                   std::vector<NetworkChoice> &out, std::string &detail) {
     namespace fs = std::filesystem;
     const fs::path dir = assets_dir.empty() ? fs::path(".") : fs::path(assets_dir);
-    const fs::path pinned = dir / MXQ_BUILD_NNUE_FILENAME;
+    const VariantPin &wanted = pin_of(variant);
+
+    const auto is_pinned_name = [](const std::string &basename) {
+        for (const VariantPin &pin : kVariantPins) {
+            if (basename == pin.nnue_filename) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     std::error_code ec;
+    const fs::path pinned = dir / wanted.nnue_filename;
     if (fs::is_regular_file(pinned, ec)) {
-        out_path = pinned.string();
-        return true;
+        out.push_back({pinned.string(), &wanted});
+    } else {
+        std::string only;
+        size_t count = 0;
+        for (const auto &entry : fs::directory_iterator(dir, ec)) {
+            if (entry.is_regular_file() &&
+                entry.path().extension() == ".nnue" &&
+                !is_pinned_name(entry.path().filename().string())) {
+                only = entry.path().string();
+                ++count;
+            }
+        }
+        if (ec) {
+            detail = "cannot read the asset directory at " + dir.string();
+            return false;
+        }
+        if (count != 1) {
+            detail = count == 0
+                         ? "no NNUE network for " + std::string(wanted.id) +
+                               " found in " + dir.string() + " (expected " +
+                               wanted.nnue_filename + ")"
+                         : "several unrecognised .nnue files in " +
+                               dir.string() + " and none is " +
+                               wanted.nnue_filename;
+            return false;
+        }
+        out.push_back({only, &wanted});
     }
-    std::string only;
-    size_t count = 0;
-    for (const auto &entry : fs::directory_iterator(dir, ec)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".nnue") {
-            only = entry.path().string();
-            ++count;
+
+    for (const VariantPin &pin : kVariantPins) {
+        if (&pin == &wanted) {
+            continue;
+        }
+        const fs::path other = dir / pin.nnue_filename;
+        if (fs::is_regular_file(other, ec)) {
+            out.push_back({other.string(), &pin});
         }
     }
-    if (ec) {
-        detail = "cannot read the asset directory at " + dir.string();
-        return false;
-    }
-    if (count == 1) {
-        out_path = only;
-        return true;
-    }
-    detail = count == 0
-                 ? "no NNUE network found in " + dir.string() + " (expected " +
-                       MXQ_BUILD_NNUE_FILENAME + ")"
-                 : "several .nnue files in " + dir.string() +
-                       " and none is the bundled " + MXQ_BUILD_NNUE_FILENAME;
-    return false;
+    return true;
 }
 
 /* The deconfigured posture, shared by deconfigure() and configure()'s unwind.
  * Caller holds g_mutex. The option floor goes first so the pool resize that
  * follows re-allocates a megabyte rather than the gigabytes being released;
  * the final direct resize(0) is the release itself, which the Hash option
- * cannot express because its minimum is 1. */
+ * cannot express because its minimum is 1.
+ *
+ * The variant goes back to the rules posture's, and only when it is not there
+ * already: assigning UCI_Variant rebuilds the piece, bitboard and PSQT tables
+ * and re-runs the NNUE load whatever value it is given, so an unconditional
+ * assignment would make every teardown of the app's own variant do work it did
+ * not do before this axis existed. Restoring it after the other variant is not
+ * optional — the tables a rules query reads are whatever the last configuration
+ * left, and a teardown must leave the bridge answering exactly as it did before
+ * any preparation. */
 void deconfigure_locked() {
     CoutSilencer silence;
+    if (g_active_variant.load(std::memory_order_relaxed) != kDefaultVariant) {
+        Options["UCI_Variant"] = std::string(pin_of(kDefaultVariant).id);
+        g_active_variant.store(kDefaultVariant, std::memory_order_release);
+    }
     Options["Hash"] = std::string("1");
     Options["Threads"] = std::string("1");
     TT.resize(0);
@@ -472,7 +609,7 @@ void deconfigure_locked() {
 
 } /* namespace */
 
-ConfigureError configure(uint32_t threads, uint32_t hash_mib,
+ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
                          const std::string &assets_dir, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_ready) {
@@ -482,62 +619,88 @@ ConfigureError configure(uint32_t threads, uint32_t hash_mib,
         detail = "the engine is not initialised";
         return ConfigureError::VariantLoadFailed;
     }
-    if (variants.find(std::string(kVariantId)) == variants.end()) {
-        detail = std::string("the pinned variant ") + kVariantId +
-                 " is not loaded";
+    const VariantPin &wanted = pin_of(variant);
+    if (variants.find(std::string(wanted.id)) == variants.end()) {
+        detail = std::string("the variant ") + wanted.id + " is not loaded";
         return ConfigureError::VariantLoadFailed;
     }
 
-    /* The byte preflight: presence, pinned byte length, pinned SHA-256. The
-     * engine never sees a path whose bytes were not verified first — a hash
-     * mismatch is a damaged installation and refuses here, so the engine's
-     * own fatal verification path stays unreachable. */
-    std::string network_path;
-    if (!find_network(assets_dir, network_path, detail)) {
+    /* The byte preflight, over every network this configuration will hand the
+     * engine: presence, pinned byte length, pinned SHA-256, each against the
+     * pins of the variant that network is for. The engine never sees a path
+     * whose bytes were not verified first — a hash mismatch is a damaged
+     * installation and refuses here, so the engine's own fatal verification
+     * path stays unreachable. */
+    std::vector<NetworkChoice> networks;
+    if (!find_networks(assets_dir, variant, networks, detail)) {
         return ConfigureError::AssetMissing;
     }
-    std::ifstream in(network_path, std::ios::binary);
-    if (!in) {
-        detail = "cannot open the NNUE network at " + network_path;
-        return ConfigureError::AssetMissing;
+    for (const NetworkChoice &network : networks) {
+        std::ifstream in(network.path, std::ios::binary);
+        if (!in) {
+            detail = "cannot open the NNUE network at " + network.path;
+            return ConfigureError::AssetMissing;
+        }
+        std::string bytes((std::istreambuf_iterator<char>(in)),
+                          std::istreambuf_iterator<char>());
+        if (in.bad()) {
+            detail = "cannot read the NNUE network at " + network.path;
+            return ConfigureError::AssetMissing;
+        }
+        /* The diagnosis leads and the path follows: MxqError.detail is
+         * bounded, and when a long path forces truncation it is the path that
+         * must lose, never the fact the caller can act on. */
+        if (bytes.size() !=
+            static_cast<size_t>(network.pin->nnue_byte_length)) {
+            detail = "the NNUE network is " + std::to_string(bytes.size()) +
+                     " bytes where the network pinned for " +
+                     std::string(network.pin->id) + " is " +
+                     std::to_string(network.pin->nnue_byte_length) + ", at " +
+                     network.path;
+            return ConfigureError::AssetMismatch;
+        }
+        if (sha256_hex(bytes) != network.pin->nnue_sha256) {
+            detail = "the NNUE network does not match the SHA-256 pinned for " +
+                     std::string(network.pin->id) + ", at " + network.path;
+            return ConfigureError::AssetMismatch;
+        }
     }
-    std::string bytes((std::istreambuf_iterator<char>(in)),
-                      std::istreambuf_iterator<char>());
-    if (in.bad()) {
-        detail = "cannot read the NNUE network at " + network_path;
-        return ConfigureError::AssetMissing;
-    }
-    /* The diagnosis leads and the path follows: MxqError.detail is bounded,
-     * and when a long path forces truncation it is the path that must lose,
-     * never the fact the caller can act on. */
-    if (bytes.size() != static_cast<size_t>(MXQ_BUILD_NNUE_BYTE_LENGTH)) {
-        detail = "the NNUE network is " + std::to_string(bytes.size()) +
-                 " bytes where the pinned network is " +
-                 std::to_string(MXQ_BUILD_NNUE_BYTE_LENGTH) + ", at " +
-                 network_path;
-        return ConfigureError::AssetMismatch;
-    }
-    if (sha256_hex(bytes) != MXQ_BUILD_NNUE_SHA256) {
-        detail = "the NNUE network does not match the pinned SHA-256, at " +
-                 network_path;
-        return ConfigureError::AssetMismatch;
+
+    /* EvalFile is a list, and the engine takes the first token whose basename
+     * begins with the current variant's identifier. The requested variant's
+     * network is first in `networks`, so it is also the token the engine
+     * selects — which is what makes `selected` below a fact rather than a
+     * second guess at the engine's rule. */
+    const std::string &selected = networks.front().path;
+    std::string eval_file;
+    for (const NetworkChoice &network : networks) {
+        if (!eval_file.empty()) {
+            eval_file += UCI::SepChar;
+        }
+        eval_file += network.path;
     }
 
     {
         CoutSilencer silence;
 
-        /* The pinned variant and the accepted shared search profile: Skill
+        /* The requested variant and the accepted shared search profile: Skill
          * Level 20, UCI_LimitStrength false, MultiPV 1, Ponder false, NNUE
          * evaluation. The profile values are the engine's own defaults, set
          * explicitly so the configuration is what this function says rather
-         * than what a default happened to be. */
-        Options["UCI_Variant"] = std::string(kVariantId);
+         * than what a default happened to be.
+         *
+         * Assigning UCI_Variant is what rebuilds the piece, bitboard and PSQT
+         * tables for it: the engine's own on-change handler does that work, so
+         * a switch needs nothing here beyond being inside this function's
+         * exclusion. */
+        Options["UCI_Variant"] = std::string(wanted.id);
+        g_active_variant.store(variant, std::memory_order_release);
         Options["Skill Level"] = std::string("20");
         Options["UCI_LimitStrength"] = std::string("false");
         Options["MultiPV"] = std::string("1");
         Options["Ponder"] = std::string("false");
         Options["Use NNUE"] = std::string("true");
-        Options["EvalFile"] = network_path;
+        Options["EvalFile"] = eval_file;
 
         /* The pool and the table. The Hash floor goes first so the pool
          * resize between them re-allocates a megabyte, not whatever the
@@ -565,12 +728,17 @@ ConfigureError configure(uint32_t threads, uint32_t hash_mib,
     if (!Eval::useNNUE) {
         detail = "the engine's effective NNUE state is off after "
                  "configuration: the network basename must begin with " +
-                 std::string(kVariantId) + " (got " + network_path + ")";
+                 std::string(wanted.id) + " (got " + selected + ")";
         deconfigure_locked();
         return ConfigureError::AssetMismatch;
     }
-    if (Eval::eval_file_loaded != network_path) {
-        detail = "the engine did not load the NNUE network at " + network_path;
+    /* Against the SELECTED token, never against the option value. A failed
+     * load leaves the engine's network zeroed and eval_file_loaded naming
+     * whatever loaded last, and the engine's own verification asks only
+     * whether that stale name appears anywhere in EvalFile — which, with more
+     * than one network in the list, it does. */
+    if (Eval::eval_file_loaded != selected) {
+        detail = "the engine did not load the NNUE network at " + selected;
         deconfigure_locked();
         return ConfigureError::AssetMismatch;
     }
@@ -594,7 +762,7 @@ SearchError search_run(const std::string &start_fen,
      * mxq_engine_bridge.hpp. This reads the same stable tables a rules replay
      * reads, and holding the lock for the length of a search would stall
      * every board query behind it. */
-    const Variant *v = target_variant();
+    const Stockfish::Variant *v = target_variant();
 
     auto states = StateListPtr(new std::deque<StateInfo>(1));
     Position pos;

@@ -91,10 +91,24 @@ endfunction()
 mxq_pinned_get(MXQ_BUILD_FORK_REVISION fork revision)
 mxq_pinned_get(MXQ_BUILD_VARIANT_ID variant id)
 mxq_pinned_get(MXQ_BUILD_BASE_VARIANT_ID variant base_variant)
-mxq_pinned_get(MXQ_BUILD_NNUE_SHA256 network sha256)
-mxq_pinned_get(MXQ_BUILD_NNUE_FILENAME network filename)
-mxq_pinned_get(MXQ_BUILD_NNUE_BYTE_LENGTH network byte_length)
 mxq_pinned_get(MXQ_VARIANT_INI_FILENAME variant filename)
+
+# The second variant the core can search: built-in `xiangqi`, the 9x10 game.
+# Its identifier is the engine's own registration name rather than anything this
+# repository chooses, which is why it is spelled here and not pinned — and it is
+# also the key its network is pinned under, so the spelling is checked by the
+# reads below failing if it is ever wrong.
+set(MXQ_BUILD_XIANGQI_VARIANT_ID "xiangqi")
+
+# One network per variant, each keyed in the manifest by the variant it serves.
+# The app's variant reads its entry through variant.id rather than through a
+# second spelling of the same name, so the keying is load-bearing here too.
+mxq_pinned_get(MXQ_BUILD_NNUE_SHA256 network ${MXQ_BUILD_VARIANT_ID} sha256)
+mxq_pinned_get(MXQ_BUILD_NNUE_FILENAME network ${MXQ_BUILD_VARIANT_ID} filename)
+mxq_pinned_get(MXQ_BUILD_NNUE_BYTE_LENGTH network ${MXQ_BUILD_VARIANT_ID} byte_length)
+mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_SHA256 network ${MXQ_BUILD_XIANGQI_VARIANT_ID} sha256)
+mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_FILENAME network ${MXQ_BUILD_XIANGQI_VARIANT_ID} filename)
+mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH network ${MXQ_BUILD_XIANGQI_VARIANT_ID} byte_length)
 
 # The core's own revision. Absent a git checkout — an exported source tree, for
 # instance — it is reported as "unknown" rather than guessed.
@@ -355,68 +369,121 @@ endif()
 # The staged engine test assets
 # --------------------------------------------------------------------------
 #
-# The NNUE network is this repository's own, and it is in this repository:
-# assets/, beside the variant configuration it is loaded with, under the name it
-# is bundled as. That name has to begin with the variant identifier or the engine
-# silently disables NNUE, so the committed name is already the bundled name and
-# staging is a copy rather than a rename. MXQ_NNUE_SOURCE survives as an
-# override — pointing a build at a candidate network is how the next one gets
-# tried before it is committed — and its default is the file below rather than
-# anything a build has to be told about.
+# Both networks are in this repository: assets/, beside the variant
+# configuration they are loaded with, under the names they are loaded as. A name
+# has to begin with the identifier of the variant it is for or the engine
+# silently disables NNUE, so a committed name is already the loaded name and
+# staging is a copy rather than a rename. MXQ_NNUE_SOURCE and
+# MXQ_XIANGQI_NNUE_SOURCE survive as overrides — pointing a build at a candidate
+# network is how the next one gets tried before it is committed — and each
+# defaults to the committed file rather than to anything a build has to be told
+# about.
 #
-# The filename comes from pinned-inputs.json rather than from a second spelling
-# here: replacing the network is then the manifest and the bytes, which is what
+# The filenames come from pinned-inputs.json rather than from a second spelling
+# here: replacing a network is then the manifest and the bytes, which is what
 # docs/engine-integration.md's handling policy asks of a future net.
 #
-# With the engine enabled, this stages a test asset directory in the build tree —
-# the variant configuration plus the network — with byte length and SHA-256
-# verified against the manifest first. That verification is not ceremony for a
-# file that is version-controlled: it is the same gate every other consumer
-# applies, and it is what catches an override pointed at the wrong bytes. A
-# missing or mismatched network stages nothing and records why; the search tests
-# then FAIL with that message rather than skipping silently, because a suite that
-# silently skipped its engine would report green on exactly the regression it
-# exists to catch. No unverified byte is ever staged.
+# With the engine enabled this stages two asset directories in the build tree,
+# byte length and SHA-256 verified against the manifest before a byte is copied:
+#
+#   test-assets            the variant configuration plus the app's network, and
+#                          nothing else. It is the shipped shape — one network,
+#                          for the variant the app plays — and it is also what
+#                          windows/build-core-dll.ps1 copies into the
+#                          distribution's asset directory, so what it holds is
+#                          what a distribution holds.
+#   test-assets-xiangqi    the variant configuration plus BOTH networks, which is
+#                          the shape a two-variant engine configuration is given:
+#                          EvalFile is a list and the engine selects from it by
+#                          basename. Kept apart from the directory above so that
+#                          exercising the second variant cannot change what any
+#                          frontend stages.
+#
+# That verification is not ceremony for files that are version-controlled: it is
+# the same gate every other consumer applies, and it is what catches an override
+# pointed at the wrong bytes. A missing or mismatched network stages nothing and
+# records why; the search tests then FAIL with that message rather than skipping
+# silently, because a suite that silently skipped its engine would report green
+# on exactly the regression it exists to catch. No unverified byte is ever
+# staged.
+
+# Verify one network's bytes against its pins. Sets <out_problem> to a sentence
+# naming what is wrong, or to the empty string when the file is good.
+function(mxq_verify_network out_problem source byte_length sha256)
+  set(problem "")
+  if(NOT EXISTS "${source}")
+    set(problem
+        "the NNUE network was not found at ${source}; it belongs in core/assets under the name pinned-inputs.json pins, or point the matching source variable at other bytes")
+  else()
+    file(SIZE "${source}" actual_size)
+    file(SHA256 "${source}" actual_sha256)
+    if(NOT actual_size EQUAL byte_length)
+      set(problem
+          "the NNUE network at ${source} is ${actual_size} bytes; pinned-inputs.json pins ${byte_length}")
+    elseif(NOT actual_sha256 STREQUAL sha256)
+      set(problem
+          "the NNUE network at ${source} does not match the SHA-256 pinned-inputs.json pins")
+    endif()
+  endif()
+  set(${out_problem} "${problem}" PARENT_SCOPE)
+endfunction()
 
 if(MXQ_ENABLE_RULES_FACADE)
   set(MXQ_NNUE_SOURCE
       "${CMAKE_CURRENT_SOURCE_DIR}/assets/${MXQ_BUILD_NNUE_FILENAME}"
       CACHE FILEPATH
       "The pinned NNUE network bytes staged for engine-dependent tests")
+  set(MXQ_XIANGQI_NNUE_SOURCE
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/${MXQ_BUILD_XIANGQI_NNUE_FILENAME}"
+      CACHE FILEPATH
+      "The pinned built-in-xiangqi NNUE network bytes staged for engine-dependent tests")
   set(MXQ_TEST_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets")
+  set(MXQ_TEST_XIANGQI_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets-xiangqi")
   set(MXQ_TEST_NNUE_STAGED 0)
-  set(MXQ_TEST_NNUE_PROBLEM "")
-  if(NOT EXISTS "${MXQ_NNUE_SOURCE}")
-    set(MXQ_TEST_NNUE_PROBLEM
-        "the NNUE network was not found at ${MXQ_NNUE_SOURCE}; it belongs in core/assets under the name pinned-inputs.json pins, or point MXQ_NNUE_SOURCE at other bytes")
-  else()
-    file(SIZE "${MXQ_NNUE_SOURCE}" mxq_nnue_size)
-    file(SHA256 "${MXQ_NNUE_SOURCE}" mxq_nnue_sha256)
-    if(NOT mxq_nnue_size EQUAL MXQ_BUILD_NNUE_BYTE_LENGTH)
-      set(MXQ_TEST_NNUE_PROBLEM
-          "the NNUE network at ${MXQ_NNUE_SOURCE} is ${mxq_nnue_size} bytes; pinned-inputs.json pins ${MXQ_BUILD_NNUE_BYTE_LENGTH}")
-    elseif(NOT mxq_nnue_sha256 STREQUAL MXQ_BUILD_NNUE_SHA256)
-      set(MXQ_TEST_NNUE_PROBLEM
-          "the NNUE network at ${MXQ_NNUE_SOURCE} does not match the SHA-256 pinned-inputs.json pins")
-    else()
-      file(MAKE_DIRECTORY "${MXQ_TEST_ASSETS_DIR}")
-      file(COPY_FILE "${MXQ_VARIANT_INI}"
-           "${MXQ_TEST_ASSETS_DIR}/${MXQ_VARIANT_INI_FILENAME}"
-           ONLY_IF_DIFFERENT)
-      file(COPY_FILE "${MXQ_NNUE_SOURCE}"
-           "${MXQ_TEST_ASSETS_DIR}/${MXQ_BUILD_NNUE_FILENAME}"
-           ONLY_IF_DIFFERENT)
-      set(MXQ_TEST_NNUE_STAGED 1)
-      message(STATUS "Mini Xiangqi core: NNUE staged for tests as ${MXQ_BUILD_NNUE_FILENAME}")
-    endif()
+
+  mxq_verify_network(MXQ_TEST_NNUE_PROBLEM "${MXQ_NNUE_SOURCE}"
+                     ${MXQ_BUILD_NNUE_BYTE_LENGTH} "${MXQ_BUILD_NNUE_SHA256}")
+  if(MXQ_TEST_NNUE_PROBLEM STREQUAL "")
+    mxq_verify_network(MXQ_TEST_NNUE_PROBLEM "${MXQ_XIANGQI_NNUE_SOURCE}"
+                       ${MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH}
+                       "${MXQ_BUILD_XIANGQI_NNUE_SHA256}")
   endif()
-  if(NOT MXQ_TEST_NNUE_STAGED)
+
+  # Both or neither. One verified network and one damaged one is a build whose
+  # engine axis is half there, and staging the good half would let the suite
+  # report the missing half as an engine defect rather than as a staging one.
+  if(MXQ_TEST_NNUE_PROBLEM STREQUAL "")
+    file(MAKE_DIRECTORY "${MXQ_TEST_ASSETS_DIR}")
+    file(COPY_FILE "${MXQ_VARIANT_INI}"
+         "${MXQ_TEST_ASSETS_DIR}/${MXQ_VARIANT_INI_FILENAME}"
+         ONLY_IF_DIFFERENT)
+    file(COPY_FILE "${MXQ_NNUE_SOURCE}"
+         "${MXQ_TEST_ASSETS_DIR}/${MXQ_BUILD_NNUE_FILENAME}"
+         ONLY_IF_DIFFERENT)
+
+    file(MAKE_DIRECTORY "${MXQ_TEST_XIANGQI_ASSETS_DIR}")
+    file(COPY_FILE "${MXQ_VARIANT_INI}"
+         "${MXQ_TEST_XIANGQI_ASSETS_DIR}/${MXQ_VARIANT_INI_FILENAME}"
+         ONLY_IF_DIFFERENT)
+    file(COPY_FILE "${MXQ_NNUE_SOURCE}"
+         "${MXQ_TEST_XIANGQI_ASSETS_DIR}/${MXQ_BUILD_NNUE_FILENAME}"
+         ONLY_IF_DIFFERENT)
+    file(COPY_FILE "${MXQ_XIANGQI_NNUE_SOURCE}"
+         "${MXQ_TEST_XIANGQI_ASSETS_DIR}/${MXQ_BUILD_XIANGQI_NNUE_FILENAME}"
+         ONLY_IF_DIFFERENT)
+
+    set(MXQ_TEST_NNUE_STAGED 1)
+    message(STATUS "Mini Xiangqi core: NNUE staged for tests as "
+                   "${MXQ_BUILD_NNUE_FILENAME} and "
+                   "${MXQ_BUILD_XIANGQI_NNUE_FILENAME}")
+  else()
     message(WARNING "Mini Xiangqi core: ${MXQ_TEST_NNUE_PROBLEM}; engine-dependent search tests will FAIL")
   endif()
 else()
   # Referenced unconditionally by tests/CMakeLists.txt; without the engine the
   # search runner reports NOT IMPLEMENTED and never reads these.
   set(MXQ_TEST_ASSETS_DIR "")
+  set(MXQ_TEST_XIANGQI_ASSETS_DIR "")
   set(MXQ_TEST_NNUE_STAGED 0)
   set(MXQ_TEST_NNUE_PROBLEM "the engine is not in this build")
 endif()

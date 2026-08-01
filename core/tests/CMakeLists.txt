@@ -198,7 +198,8 @@ set_tests_properties(store_interchange PROPERTIES
 # The search-facade runner: engine preparation with every typed refusal, the
 # effective-NNUE preflight in both directions, real searches over real
 # sessions with the delivery ladder, cancellation, staleness, retention,
-# reconfiguration serialisation, and shutdown mid-search.
+# reconfiguration serialisation, shutdown mid-search — and the bridge's variant
+# axis, which is the one part of it no public entry point reaches yet.
 #
 # It links the vendored engine directly, and deliberately: "the applied
 # Threads value", "the transposition table is released whole", and "the
@@ -208,17 +209,28 @@ set_tests_properties(store_interchange PROPERTIES
 # LARGEBOARDS define set, so the runner's view of every engine struct matches
 # the library's.
 #
-# Its asset directory is the staged one in the build tree — the variant
-# configuration beside the network under its bundled name, verified against
-# pinned-inputs.json at configure time. With the engine in the build and no
-# verified network staged, the runner FAILS with the staging problem rather
-# than skipping; without the engine it degrades to NOT IMPLEMENTED exactly as
-# the session runner does.
+# It includes the core's internal headers for the same kind of reason the store
+# runners do: the bridge takes a variant per configuration, the C surface above
+# it creates games of one variant and so can only ever ask for that one, and a
+# capability nothing above can request is tested where it is offered or nowhere.
+#
+# It has two asset directories, both staged in the build tree and both verified
+# against pinned-inputs.json at configure time. The first is the shipped shape —
+# the variant configuration beside the app's network alone — and every case that
+# is not about the second variant uses it, so those cases keep describing what a
+# distribution actually holds. The second adds the built-in variant's network,
+# which is the shape a two-variant configuration is handed. With the engine in
+# the build and no verified network staged, the runner FAILS with the staging
+# problem rather than skipping; without the engine it degrades to NOT
+# IMPLEMENTED exactly as the session runner does.
 
 add_executable(mxq_search_tests
   mxq_search_tests.cpp
 )
 target_link_libraries(mxq_search_tests PRIVATE mxq::core mxq_warnings)
+target_include_directories(mxq_search_tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
 if(MXQ_ENABLE_RULES_FACADE)
   target_link_libraries(mxq_search_tests PRIVATE mxq::fairy-stockfish)
 endif()
@@ -237,17 +249,24 @@ endif()
 string(REPLACE ";" "," MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM}")
 string(REPLACE "\\" "/" MXQ_TEST_NNUE_PROBLEM_TEXT "${MXQ_TEST_NNUE_PROBLEM_TEXT}")
 
-# The bundled name and the two variant identifiers reach the suite from the
-# manifest rather than being spelled a second time in C++. The suite reads the
-# staged network by name and composes the wrong-basename case's name from the
-# other two, so replacing the network stays what pinned-inputs.json says it is:
-# the bytes and the manifest, with nothing else to remember.
+# Every network name, byte length and variant identifier reaches the suite from
+# the manifest rather than being spelled a second time in C++. The suite reads
+# each staged network by name, composes the two wrong-basename cases' names from
+# the identifiers, and quotes the byte lengths back when it asserts which pin
+# refused a cross-loaded network — so replacing a network stays what
+# pinned-inputs.json says it is: the bytes and the manifest, with nothing else
+# to remember.
 target_compile_definitions(mxq_search_tests PRIVATE
   MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
   MXQ_TEST_ASSETS_DIR="${MXQ_TEST_ASSETS_DIR}"
+  MXQ_TEST_XIANGQI_ASSETS_DIR="${MXQ_TEST_XIANGQI_ASSETS_DIR}"
   MXQ_TEST_NNUE_FILENAME="${MXQ_BUILD_NNUE_FILENAME}"
+  MXQ_TEST_NNUE_BYTE_LENGTH=${MXQ_BUILD_NNUE_BYTE_LENGTH}
   MXQ_TEST_VARIANT_ID="${MXQ_BUILD_VARIANT_ID}"
   MXQ_TEST_BASE_VARIANT_ID="${MXQ_BUILD_BASE_VARIANT_ID}"
+  MXQ_TEST_XIANGQI_NNUE_FILENAME="${MXQ_BUILD_XIANGQI_NNUE_FILENAME}"
+  MXQ_TEST_XIANGQI_NNUE_BYTE_LENGTH=${MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH}
+  MXQ_TEST_XIANGQI_VARIANT_ID="${MXQ_BUILD_XIANGQI_VARIANT_ID}"
   MXQ_TEST_NNUE_STAGED=${MXQ_TEST_NNUE_STAGED}
   MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM_TEXT}"
 )
