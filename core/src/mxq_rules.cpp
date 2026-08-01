@@ -8,6 +8,7 @@
  * vocabulary. */
 
 #include "mxq_internal.hpp"
+#include "mxq_notation.hpp"
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_core_state.hpp"
@@ -19,16 +20,25 @@
 
 extern "C" {
 
-MxqStatus MXQ_CALL mxq_rules_start_fen(char *out, size_t cap, size_t *out_len,
-                                       MxqError *err) {
-    return mxq::write_string(MXQ_START_FEN, out, cap, out_len, err);
+MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
+                                       size_t *out_len, MxqError *err) {
+    const MxqStatus rc = mxq::require_game(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    return mxq::write_string(mxq::notation::start_fen(game), out, cap, out_len,
+                             err);
 }
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 
-MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, const char *fen,
-                                          MxqError *err) {
-    const MxqStatus rc = mxq::require_core(core, err);
+MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, MxqGameKind game,
+                                          const char *fen, MxqError *err) {
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -37,7 +47,7 @@ MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, const char *fen,
         return MXQ_ERR_ARG_NULL;
     }
     std::string detail;
-    if (!mxq::engine::validate_fen(fen, detail)) {
+    if (!mxq::engine::validate_fen(mxq::engine::variant_of(game), fen, detail)) {
         mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
         return MXQ_ERR_RULES_INVALID_FEN;
     }
@@ -49,12 +59,16 @@ namespace {
 /* Replay once and fill whichever output shape the caller asked for. evaluate
  * and legal_moves differ only in what they report, and sharing the replay is
  * what keeps them from ever disagreeing about the same history. */
-MxqStatus replay_into(MxqCore *core, const char *start_fen,
+MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
                       const char *const *moves, size_t move_count,
                       MxqPosition *out_position, MxqGameStatus *out_status,
                       std::vector<std::string> *out_legal,
                       size_t *out_first_illegal_index, MxqError *err) {
-    const MxqStatus rc = mxq::require_core(core, err);
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -89,8 +103,9 @@ MxqStatus replay_into(MxqCore *core, const char *start_fen,
     mxq::engine::Adjudication adj{};
     size_t first_illegal = 0;
 
-    switch (mxq::engine::replay(start_fen, moves, move_count, fen, in_check, ply,
-                                adj, out_legal, first_illegal, detail)) {
+    switch (mxq::engine::replay(mxq::engine::variant_of(game), start_fen, moves,
+                                move_count, fen, in_check, ply, adj, out_legal,
+                                first_illegal, detail)) {
     case mxq::engine::ReplayError::None:
         break;
     case mxq::engine::ReplayError::IllegalMove:
@@ -135,17 +150,19 @@ MxqStatus replay_into(MxqCore *core, const char *start_fen,
 
 } /* namespace */
 
-MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core, const char *start_fen,
+MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core, MxqGameKind game,
+                                      const char *start_fen,
                                       const char *const *moves, size_t move_count,
                                       MxqPosition *out_position,
                                       MxqGameStatus *out_status,
                                       size_t *out_first_illegal_index,
                                       MxqError *err) {
-    return replay_into(core, start_fen, moves, move_count, out_position,
+    return replay_into(core, game, start_fen, moves, move_count, out_position,
                        out_status, nullptr, out_first_illegal_index, err);
 }
 
-MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, const char *start_fen,
+MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
+                                         const char *start_fen,
                                          const char *const *moves,
                                          size_t move_count, MxqMove *out,
                                          size_t cap, size_t *out_count,
@@ -157,8 +174,8 @@ MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, const char *start_fen,
     *out_count = 0;
 
     std::vector<std::string> legal;
-    const MxqStatus rc = replay_into(core, start_fen, moves, move_count, nullptr,
-                                     nullptr, &legal, nullptr, err);
+    const MxqStatus rc = replay_into(core, game, start_fen, moves, move_count,
+                                     nullptr, nullptr, &legal, nullptr, err);
     if (rc != MXQ_OK) {
         return rc;
     }

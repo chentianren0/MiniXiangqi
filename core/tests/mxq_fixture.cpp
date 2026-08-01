@@ -3,6 +3,7 @@
 #include "mxq_json.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -33,10 +34,25 @@ const std::set<std::string> kStates = {"ongoing", "claimable-draw", "red-wins",
  * reserved for the deferred mutual-violation tranche and are accepted here so
  * that adding one of those fixtures is not also a runner change. */
 const std::set<std::string> kReasons = {
-    "checkmate",           "stalemate",
-    "threefold-repetition", "perpetual-check",
-    "perpetual-chase",     "mutual-perpetual-check",
-    "mutual-perpetual-chase"};
+    "checkmate",             "stalemate",
+    "threefold-repetition",  "perpetual-check",
+    "perpetual-chase",       "mutual-perpetual-check",
+    "mutual-perpetual-chase", "fifty-move-rule"};
+
+/* The ruleset identifiers a fixture may declare, and the game each names. The
+ * identifier prefix a fixture's id must carry goes with it: the two are one
+ * decision, and a file named for one game while declaring the other is a
+ * mistake worth catching at load rather than at a diverging expectation. */
+struct VariantRow {
+    const char *identifier;
+    MxqGameKind game;
+    const char *id_prefix;
+};
+
+const VariantRow kVariants[] = {
+    {"minixiangqi", MXQ_GAME_KIND_MINI_XIANGQI, "mx-"},
+    {"xiangqi", MXQ_GAME_KIND_XIANGQI, "xq-"},
+};
 
 class Loader {
 public:
@@ -182,6 +198,30 @@ bool fixture_load(const std::string &path, Fixture &out, std::string &error) {
     MXQ_TAKE_STRING(out.start_fen, "start_fen");
     MXQ_TAKE_STRING(out.rationale, "rationale");
 #undef MXQ_TAKE_STRING
+
+    /* The declared ruleset, decoded into the game the fixture is replayed
+     * under. An identifier this runner does not know is a load error rather
+     * than a fixture quietly replayed under some default. */
+    {
+        const VariantRow *row = nullptr;
+        for (const VariantRow &candidate : kVariants) {
+            if (out.variant == candidate.identifier) {
+                row = &candidate;
+                break;
+            }
+        }
+        if (row == nullptr) {
+            return load.fail("fixture.variant: \"" + out.variant +
+                             "\" is not a ruleset this runner knows");
+        }
+        out.game = row->game;
+        if (out.id.compare(0, std::strlen(row->id_prefix), row->id_prefix) !=
+            0) {
+            return load.fail("fixture.id: a " + out.variant +
+                             " fixture's id begins with \"" +
+                             row->id_prefix + "\"");
+        }
+    }
 
     v = load.typed(root, "moves", JsonValue::Type::Array, "fixture", false);
     if (v == nullptr || !load.string_list(*v, out.moves, "fixture.moves")) {

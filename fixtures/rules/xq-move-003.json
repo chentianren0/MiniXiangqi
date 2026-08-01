@@ -1,0 +1,35 @@
+{
+  "id": "xq-move-003",
+  "title": "Palace: the general and the advisor never leave it",
+  "area": "move",
+  "variant": "xiangqi",
+  "start_fen": "5k3/9/9/9/9/9/9/9/3K5/3A5 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/9/9/9/9/9/9/3K5/3A5 w - - 0 1",
+    "legal_moves": [
+      "d1e2",
+      "d2d3",
+      "d2e2"
+    ],
+    "rejected_moves": [
+      "d2c2",
+      "d1c2",
+      "d1e1"
+    ],
+    "applied": [
+      {
+        "move": "d1e2",
+        "result_fen": "5k3/9/9/9/9/9/9/9/3KA4/9 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The general on d2 may step to d3 and e2 but not to c2, which is one file outside the palace; the advisor on d1 may step diagonally to e2 but not to c2, outside it, and not to e1, which is inside the palace but not a diagonal. Confinement and step shape are two rules and this position separates them."
+}

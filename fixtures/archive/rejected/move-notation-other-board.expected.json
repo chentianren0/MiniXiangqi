@@ -1,0 +1,7 @@
+{
+  "class": "field validity: move notation",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "is not a move in canonical notation",
+  "why": "Move text is judged against the board of the game rules_id names. \"a1a10\" is a move of the Xiangqi board and no move at all of the Mini Xiangqi one, so a reader carrying a single grammar would accept it here."
+}

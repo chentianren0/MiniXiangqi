@@ -12,6 +12,8 @@
 #ifndef MXQ_TESTS_FIXTURE_HPP
 #define MXQ_TESTS_FIXTURE_HPP
 
+#include "mxq.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -47,7 +49,12 @@ struct Fixture {
     std::string id;
     std::string title;
     std::string area;
+    /* The ruleset the fixture is defined against, as written and as decoded.
+     * The decoded value is what the fixture is replayed under: a fixture set
+     * covering two games that dispatched on anything else — the board implied
+     * by the FEN, the file it sits in — would be replaying its own guess. */
     std::string variant;
+    MxqGameKind game = MXQ_GAME_KIND_MINI_XIANGQI;
     std::string start_fen;
     std::vector<std::string> moves;
 

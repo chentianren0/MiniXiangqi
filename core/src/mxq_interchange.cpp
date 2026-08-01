@@ -232,6 +232,7 @@ MxqStatus MXQ_CALL mxq_store_import(MxqCore *core, const uint8_t *bytes,
     row.game_id = record.game_id;
     row.archive = document;
     row.content_sha256 = content_hash;
+    row.rules_id = mxq::archive::rules_id_text(record.config.game);
     row.mode = mxq::archive::mode_text(record.config.mode);
     row.human_side = mxq::archive::color_text(record.config.human_side);
     row.ai_level = mxq::archive::ai_level_text(record.config.ai_level);

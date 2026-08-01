@@ -63,6 +63,12 @@ bool value_of(const std::string &text, const Value (&domain)[N],
     return false;
 }
 
+bool game_of(const std::string &text, MxqGameKind &out) {
+    static const MxqGameKind domain[] = {MXQ_GAME_KIND_MINI_XIANGQI,
+                                         MXQ_GAME_KIND_XIANGQI};
+    return value_of(text, domain, archive::rules_id_text, out);
+}
+
 bool mode_of(const std::string &text, MxqPlayMode &out) {
     static const MxqPlayMode domain[] = {MXQ_PLAY_MODE_HUMAN_VS_AI,
                                          MXQ_PLAY_MODE_FREE_PLAY};
@@ -108,7 +114,7 @@ bool end_reason_of(const std::string &text, MxqEndReason &out) {
         MXQ_END_REASON_THREEFOLD_REPETITION,   MXQ_END_REASON_PERPETUAL_CHECK,
         MXQ_END_REASON_PERPETUAL_CHASE,        MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK,
         MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE, MXQ_END_REASON_RESIGNATION,
-        MXQ_END_REASON_ENDED_EARLY};
+        MXQ_END_REASON_ENDED_EARLY,            MXQ_END_REASON_FIFTY_MOVE_RULE};
     if (text.empty()) {
         out = MXQ_END_REASON_NONE;
         return true;
@@ -149,13 +155,15 @@ bool provenance_of(const std::string &text, MxqProvenance &out) {
  */
 MxqStatus fill_summary(const Summary &row, bool is_active,
                        MxqRecordSummary *out, MxqError *err) {
+    MxqGameKind game = MXQ_GAME_KIND_MINI_XIANGQI;
     MxqPlayMode mode = MXQ_PLAY_MODE_FREE_PLAY;
     MxqColor human_side = MXQ_COLOR_NONE;
     MxqAiLevel ai_level = MXQ_AI_LEVEL_NONE;
     MxqOutcome outcome = MXQ_OUTCOME_NONE;
     MxqEndReason end_reason = MXQ_END_REASON_NONE;
     MxqProvenance provenance = MXQ_PROVENANCE_LOCALLY_PLAYED;
-    if (!mode_of(row.mode, mode) || !color_of(row.human_side, human_side) ||
+    if (!game_of(row.rules_id, game) || !mode_of(row.mode, mode) ||
+        !color_of(row.human_side, human_side) ||
         !ai_level_of(row.ai_level, ai_level) ||
         !outcome_of(row.outcome, outcome) ||
         !end_reason_of(row.end_reason, end_reason) ||
@@ -185,6 +193,7 @@ MxqStatus fill_summary(const Summary &row, bool is_active,
     out->provenance = provenance;
     out->pinned = row.pinned ? 1u : 0u;
     out->is_active = is_active ? 1u : 0u;
+    out->game = game;
     copy_bounded(out->game_id, sizeof(out->game_id), row.game_id.c_str());
     return MXQ_OK;
 }

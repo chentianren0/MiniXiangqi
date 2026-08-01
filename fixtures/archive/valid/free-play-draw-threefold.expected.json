@@ -2,7 +2,8 @@
   "title": "Free Play, threefold repetition claimed as a draw",
   "why": "The claim commits the draw at the position the facade reports as claimable \u2014 claim eligibility, never a terminal state.",
   "info": {
-    "archive_version": 1,
+    "archive_version": 2,
+    "game": "minixiangqi",
     "move_count": 8,
     "mode": "free-play",
     "human_side": null,

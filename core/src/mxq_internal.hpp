@@ -17,9 +17,9 @@
  * deliberately not public macros: the contract exposes them through
  * mxq_core_version and mxq_archive_supported_versions so that a caller reads
  * the running core's values rather than the ones it compiled against. */
-#define MXQ_ARCHIVE_VERSION_CURRENT      1u
-#define MXQ_ARCHIVE_VERSION_MIN_READABLE 1u
-#define MXQ_STORE_SCHEMA_VERSION         1u
+#define MXQ_ARCHIVE_VERSION_CURRENT      2u
+#define MXQ_ARCHIVE_VERSION_MIN_READABLE 2u
+#define MXQ_STORE_SCHEMA_VERSION         2u
 
 /* The rules interpretation this build implements, owned by
  * docs/xiangqi-rules.md § Rules interpretation version. It increments only when
@@ -28,9 +28,6 @@
  * reproduced here: it is a fifth axis, independent of the four MxqVersion
  * reports, and the archive records it beside rules_id. */
 #define MXQ_RULES_VERSION 1u
-
-/* The frozen starting position, per docs/xiangqi-rules.md. */
-#define MXQ_START_FEN "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
 
 /*
  * An immutable byte buffer owned by the core. Only the codec and the store
@@ -78,6 +75,17 @@ MxqStatus begin_out(void *out, uint32_t declared, uint32_t known,
 /* Validate a caller-supplied in struct the same way, without zeroing. */
 MxqStatus check_in(const void *in, uint32_t declared, uint32_t known,
                    uint32_t min_known, MxqError *err);
+
+/*
+ * The game-axis gate every entry point taking an MxqGameKind passes through: a
+ * value outside the closed vocabulary is a programming error — mxq.h lists "a
+ * game configuration of neither accepted shape" among them — so it asserts in a
+ * debug build and returns MXQ_ERR_ARG_RANGE in a release one.
+ *
+ * It is one function because the alternative is every caller writing the
+ * comparison, and a vocabulary that grows would then grow in a dozen places.
+ */
+MxqStatus require_game(MxqGameKind game, MxqError *err);
 
 /* Copy a NUL-terminated string into a fixed-capacity field, truncating never:
  * a source that does not fit is a core bug and trips an assertion in debug

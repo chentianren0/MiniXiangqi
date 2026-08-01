@@ -1,0 +1,21 @@
+{
+  "id": "xq-end-001",
+  "title": "Checkmate: the general is attacked and every square it could reach is covered",
+  "area": "end",
+  "variant": "xiangqi",
+  "start_fen": "R3k4/R8/9/9/9/9/9/9/9/3K5 b - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "R3k4/R8/9/9/9/9/9/9/9/3K5 b - - 0 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "checkmate"
+    }
+  },
+  "boundary": null,
+  "rationale": "The rook on a10 checks along the tenth rank; the rook on a9 covers d9, e9 and f9, and the tenth-rank rook covers d10 and f10. The general to move is in check and has no legal move, so the game is over and the side that cannot move has lost."
+}

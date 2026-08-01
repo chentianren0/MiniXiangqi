@@ -167,8 +167,8 @@ void exec_refused(sqlite3 *db, const std::string &sql, const std::string &why) {
 const char *const kHex64 =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
-void case_fresh_open_creates_schema_v1() {
-    g_case = "fresh open creates schema v1";
+void case_fresh_open_creates_schema() {
+    g_case = "fresh open creates the schema";
     const fs::path dir = scratch_dir("fresh");
 
     MxqCore *core = nullptr;
@@ -188,7 +188,7 @@ void case_fresh_open_creates_schema_v1() {
         return;
     }
     /* The recorded schema version and the persistent half of the regime. */
-    check_eq(query_text(db, "PRAGMA user_version;"), "1", "user_version");
+    check_eq(query_text(db, "PRAGMA user_version;"), "2", "user_version");
     check_eq(query_text(db, "PRAGMA journal_mode;"), "wal",
              "journal_mode persisted in the file");
     /* The compiled defaults from the hardened option set reach even a fresh
@@ -239,7 +239,7 @@ void case_fresh_open_creates_schema_v1() {
              "1", "no active game on a fresh store");
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
                             "key='created_schema_version';"),
-             "1", "the meta bookkeeping row");
+             "2", "the meta bookkeeping row");
     /* A library that has recorded no mutation is at revision 0, which is what
      * a caller comparing revisions starts from. */
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
@@ -271,28 +271,66 @@ void case_schema_enforces_its_invariants() {
     exec_refused(db, "INSERT INTO library (id, active_record_id) VALUES (2, NULL);",
                  "single-row constraint");
 
+    /* The game axis is a closed vocabulary in the schema, not a label the
+     * writer is trusted with: a row naming a third ruleset is refused where a
+     * mode outside its vocabulary is. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "provenance, started_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-00000000000b', x'7b7d', '") +
+                     kHex64 +
+                     "', 'janggi', 'free-play', 0, 'locally-played', 1000);",
+                 "rules_id vocabulary");
+
+    /* And the one cross-field rule the game axis creates: the move-count rule
+     * is Xiangqi's, so a Mini Xiangqi record cannot have ended by it. A core
+     * that reported the reason for the wrong game would be caught here rather
+     * than shipped into a History row nobody re-derives. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-00000000000c', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'free-play', 4, 'draw', "
+                     "'fifty-move-rule', 'locally-played', 1000, 2000, 3000);",
+                 "the move-count rule belongs to Xiangqi");
+
+    /* The same row is accepted for the game that has the rule, which is what
+     * makes the refusal above about the game rather than about the reason. */
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms) VALUES "
+                            "('00000000-0000-7000-8000-00000000000d', x'7b7d', '") +
+                    kHex64 +
+                    "', 'xiangqi', 'free-play', 4, 'draw', 'fifty-move-rule', "
+                    "'locally-played', 1000, 2000, 3000);");
+
     /* A representative cross-field rule: a draw outcome must carry a draw
      * reason. */
     exec_refused(db,
                  std::string("INSERT INTO game (game_id, archive, "
-                             "content_sha256, mode, move_count, outcome, "
-                             "end_reason, provenance, started_at_ms, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
                              "ended_at_ms, added_at_ms) VALUES "
                              "('00000000-0000-7000-8000-00000000000a', x'7b7d', '") +
                      kHex64 +
-                     "', 'free-play', 4, 'draw', 'checkmate', "
+                     "', 'minixiangqi', 'free-play', 4, 'draw', 'checkmate', "
                      "'locally-played', 1000, 2000, 3000);",
                  "outcome/end_reason well-formedness");
 
     /* A History record: insert, then verify everything but pin state is
      * immutable. */
     exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
-                            "content_sha256, mode, move_count, outcome, "
-                            "end_reason, provenance, started_at_ms, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
                             "ended_at_ms, added_at_ms) VALUES "
                             "('00000000-0000-7000-8000-000000000001', x'7b7d', '") +
                     kHex64 +
-                    "', 'free-play', 4, 'none', 'ended-early', "
+                    "', 'minixiangqi', 'free-play', 4, 'none', 'ended-early', "
                     "'locally-played', 1000, 2000, 3000);");
     exec_refused(db, "UPDATE game SET move_count = 5 WHERE game_id = "
                      "'00000000-0000-7000-8000-000000000001';",
@@ -305,10 +343,11 @@ void case_schema_enforces_its_invariants() {
      * after the reference clears it commits; and the cleared reference can
      * never be pointed at a committed game again. */
     exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
-                            "content_sha256, mode, move_count, provenance, "
-                            "started_at_ms) VALUES "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "provenance, started_at_ms) VALUES "
                             "('00000000-0000-7000-8000-000000000002', x'7b7d', '") +
-                    kHex64 + "', 'free-play', 0, 'locally-played', 1000);");
+                    kHex64 +
+                    "', 'xiangqi', 'free-play', 0, 'locally-played', 1000);");
     exec_ok(db, "UPDATE library SET active_record_id = (SELECT record_id FROM "
                 "game WHERE outcome IS NULL);");
     exec_refused(db,
@@ -358,7 +397,7 @@ void case_reopen_is_idempotent() {
     if (db == nullptr) {
         return;
     }
-    check_eq(query_text(db, "PRAGMA user_version;"), "1",
+    check_eq(query_text(db, "PRAGMA user_version;"), "2",
              "user_version unchanged after reopens");
     check_eq(query_text(db, "SELECT count(*) FROM library;"), "1",
              "still exactly one library row");
@@ -387,7 +426,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 2;");
+    exec_ok(db, "PRAGMA user_version = 3;");
     sqlite3_close(db);
 
     err = make_error();
@@ -405,7 +444,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 1;");
+    exec_ok(db, "PRAGMA user_version = 2;");
     sqlite3_close(db);
 
     err = make_error();
@@ -553,7 +592,7 @@ void case_production_identity_is_real() {
 int main() {
     std::cout << "Mini Xiangqi store-foundation tests\n";
 
-    case_fresh_open_creates_schema_v1();
+    case_fresh_open_creates_schema();
     case_schema_enforces_its_invariants();
     case_reopen_is_idempotent();
     case_newer_schema_is_refused();

@@ -2,6 +2,7 @@
   "title": "Free Play, just created: the row a creation writes",
   "why": "Creation is a durable transition of its own. The active row exists before any move does, with an empty move line, no undo to offer, and the archive shape an active game has — the terminal trio omitted, and in Free Play the four configuration members omitted too.",
   "config": {
+    "game": "minixiangqi",
     "mode": "free-play"
   },
   "moves": [],

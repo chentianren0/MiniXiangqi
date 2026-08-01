@@ -1,0 +1,39 @@
+{
+  "id": "xq-move-004",
+  "title": "Soldier: forward only until the river is crossed, then sideways too, never back",
+  "area": "move",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/2P6/4P4/9/9/9/5K3 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k5/9/9/9/2P6/4P4/9/9/9/5K3 w - - 0 1",
+    "legal_moves": [
+      "c6b6",
+      "c6c7",
+      "c6d6",
+      "e5e6",
+      "f1e1",
+      "f1f2"
+    ],
+    "rejected_moves": [
+      "e5d5",
+      "e5f5",
+      "e5e4",
+      "c6c5"
+    ],
+    "applied": [
+      {
+        "move": "c6d6",
+        "result_fen": "3k5/9/9/9/3P5/4P4/9/9/9/5K3 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The soldier on e5 has not crossed the river and may only advance; d5 and f5 are illegal for it. The soldier on c6 has crossed and adds b6 and d6 to c7. Neither may ever retreat, which e5e4 and c6c5 pin. One position, both sides of the river, so a build that granted the sideways step everywhere or nowhere fails it. The generals stand on files that no move here can leave facing, so nothing in this set turns on that rule."
+}

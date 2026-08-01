@@ -36,21 +36,29 @@ public:
     void close();
     bool is_open() const { return core_ != nullptr; }
 
-    /* Replay `moves` from `start_fen`. On MXQ_ERR_RULES_INVALID_HISTORY,
-     * first_illegal_index names the offending move. */
-    MxqStatus evaluate(const std::string &start_fen,
+    /* Replay `moves` from `start_fen` under `game`'s rules. On
+     * MXQ_ERR_RULES_INVALID_HISTORY, first_illegal_index names the offending
+     * move. */
+    MxqStatus evaluate(MxqGameKind game, const std::string &start_fen,
                        const std::vector<std::string> &moves,
                        MxqPosition &position, MxqGameStatus &status,
                        size_t &first_illegal_index, MxqError &err);
 
     /* The complete legal-move set in the position reached by that replay. */
-    MxqStatus legal_moves(const std::string &start_fen,
+    MxqStatus legal_moves(MxqGameKind game, const std::string &start_fen,
                           const std::vector<std::string> &moves,
                           std::vector<std::string> &out, MxqError &err);
 
 private:
     MxqCore *core_ = nullptr;
 };
+
+/* Whether this runner was built with the facade at all. NOT IMPLEMENTED is the
+ * honest verdict when it was not; when it WAS built, a failed open() is a
+ * broken run and never a skipped one — a scratch store this build cannot read,
+ * or an asset directory without the variant configuration, would otherwise
+ * turn every expectation into a skip and still exit 0. */
+bool rules_facade_built();
 
 /* The fixture identifiers for the core's live game state and end reason, so a
  * mismatch is reported in the fixture's own vocabulary rather than as a

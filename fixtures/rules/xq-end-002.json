@@ -1,0 +1,21 @@
+{
+  "id": "xq-end-002",
+  "title": "Stalemate is a loss for the side that cannot move",
+  "area": "end",
+  "variant": "xiangqi",
+  "start_fen": "4k4/R8/4N4/9/9/9/9/9/9/3K5 b - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "4k4/R8/4N4/9/9/9/9/9/9/3K5 b - - 0 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "stalemate"
+    }
+  },
+  "boundary": null,
+  "rationale": "The rook on a9 covers d9, e9 and f9 and the horse on e8 covers d10 and f10, while nothing attacks e10. The general is not in check and has no legal move. In Xiangqi that is a loss for the player to move, not a draw, and the reason is stalemate rather than checkmate."
+}

@@ -4,6 +4,7 @@
 
 #include "mxq_build_config.h"
 #include "mxq_internal.hpp"
+#include "mxq_notation.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -13,10 +14,10 @@ namespace mxq {
 namespace archive {
 namespace {
 
-/* The in-band type check and the ruleset identity, spelled here exactly as the
- * reader in mxq_archive.cpp requires them. */
+/* The in-band type check, spelled here exactly as the reader in
+ * mxq_archive.cpp requires it. It names the file format rather than either
+ * game: one format carries both, and the game is content.rules_id. */
 constexpr const char *kArchiveFormat = "minixiangqi-game";
-constexpr const char *kRulesId = "minixiangqi";
 
 /*
  * origin.app_version. The core is the only writer of an archive, so the
@@ -205,6 +206,16 @@ std::string timestamp_text(int64_t epoch_ms) {
 /* The closed vocabularies                                                 */
 /* ---------------------------------------------------------------------- */
 
+const char *rules_id_text(MxqGameKind game) {
+    switch (game) {
+    case MXQ_GAME_KIND_MINI_XIANGQI: return "minixiangqi";
+    case MXQ_GAME_KIND_XIANGQI:      return "xiangqi";
+    default: break;
+    }
+    assert(false && "a game outside the closed vocabulary reached the writer");
+    return nullptr;
+}
+
 const char *mode_text(MxqPlayMode mode) {
     switch (mode) {
     case MXQ_PLAY_MODE_HUMAN_VS_AI: return "human-vs-ai";
@@ -267,6 +278,7 @@ const char *end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE: return "mutual-perpetual-chase";
     case MXQ_END_REASON_RESIGNATION:            return "resignation";
     case MXQ_END_REASON_ENDED_EARLY:            return "ended-early";
+    case MXQ_END_REASON_FIFTY_MOVE_RULE:        return "fifty-move-rule";
     default: break;
     }
     return nullptr; /* MXQ_END_REASON_NONE: no end is recorded */
@@ -280,12 +292,15 @@ std::string content_bytes(const Record &record) {
     std::vector<std::pair<const char *, std::string>> members;
     members.reserve(13);
 
-    members.emplace_back("rules_id", json_string(kRulesId));
+    members.emplace_back("rules_id", json_string(rules_id_text(record.config.game)));
     members.emplace_back("rules_version", std::to_string(MXQ_RULES_VERSION));
-    /* Version 1 defines exactly one initial position, so the writer states the
-     * frozen one rather than carrying a start position it would have to
-     * validate. */
-    members.emplace_back("start_fen", json_string(MXQ_START_FEN));
+    /* Version 2 defines exactly one initial position per game, so the writer
+     * states that game's frozen one rather than carrying a start position it
+     * would have to validate. Both members read the same field, which is what
+     * makes a document naming one game and opening from the other's board
+     * unwritable rather than merely refused. */
+    members.emplace_back("start_fen",
+                         json_string(notation::start_fen(record.config.game)));
     members.emplace_back("moves", json_moves(record.moves));
     members.emplace_back("mode", json_string(mode_text(record.config.mode)));
 

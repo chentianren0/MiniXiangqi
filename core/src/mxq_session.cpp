@@ -7,6 +7,7 @@
 #include "mxq_core_state.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_internal.hpp"
+#include "mxq_notation.hpp"
 #include "mxq_sha256.hpp"
 #include "mxq_store.hpp"
 
@@ -163,10 +164,15 @@ MxqStatus replay_prefix(const MxqGame &game, size_t ply_count, bool want_legal,
 
     std::string detail;
     size_t first_illegal = 0;
+    /* The session's own game decides everything: which starting position the
+     * line runs from and which ruleset it is replayed under. Neither is derived
+     * from the other, and neither is a default. */
+    const MxqGameKind kind = game.config.game;
     const engine::ReplayError rc = engine::replay(
-        MXQ_START_FEN, moves.empty() ? nullptr : moves.data(), moves.size(),
-        out.fen, out.in_check, out.ply, out.adj,
-        want_legal ? &out.legal : nullptr, first_illegal, detail);
+        engine::variant_of(kind), notation::start_fen(kind),
+        moves.empty() ? nullptr : moves.data(), moves.size(), out.fen,
+        out.in_check, out.ply, out.adj, want_legal ? &out.legal : nullptr,
+        first_illegal, detail);
     if (rc != engine::ReplayError::None) {
         fill_error(err, MXQ_ERR_INTERNAL_INVARIANT,
                    ("the retained line no longer replays: " + detail).c_str());
@@ -307,28 +313,6 @@ MxqStatus write_moves(const std::vector<std::string> &moves, MxqMove *out,
     return MXQ_OK;
 }
 
-/* The frozen canonical notation: <from><to> over the 7 by 7 board, no
- * suffix. */
-bool well_formed_move(const char *move) {
-    if (move == nullptr || std::strlen(move) != 4) {
-        return false;
-    }
-    for (size_t i = 0; i < 4; i += 2) {
-        if (move[i] < 'a' || move[i] > 'g') {
-            return false;
-        }
-        if (move[i + 1] < '1' || move[i + 1] > '7') {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool well_formed_square(const char *square) {
-    return square != nullptr && std::strlen(square) == 2 && square[0] >= 'a' &&
-           square[0] <= 'g' && square[1] >= '1' && square[1] <= '7';
-}
-
 /* ---------------------------------------------------------------------- */
 /* Writing the one active row                                              */
 /* ---------------------------------------------------------------------- */
@@ -343,6 +327,7 @@ store::ActiveGame row_of(const archive::Record &record,
     row.game_id = record.game_id;
     row.archive = document;
     row.content_sha256 = sha256_hex(content);
+    row.rules_id = archive::rules_id_text(record.config.game);
     row.mode = archive::mode_text(record.config.mode);
     row.human_side = archive::color_text(record.config.human_side);
     row.ai_level = archive::ai_level_text(record.config.ai_level);
@@ -551,10 +536,10 @@ MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
                          "a History record may");
         return MXQ_ERR_STORE_CORRUPT;
     }
-    if (stored.start_fen != MXQ_START_FEN) {
+    if (stored.start_fen != notation::start_fen(stored.config.game)) {
         fill_error(err, MXQ_ERR_STORE_CORRUPT,
-                   "the stored game does not start from the frozen starting "
-                   "position");
+                   "the stored game does not start from its game's frozen "
+                   "starting position");
         return MXQ_ERR_STORE_CORRUPT;
     }
 
@@ -850,6 +835,14 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
      * configuration members exist exactly for human-versus-AI games — and a
      * caller that gets it wrong is a programming error, not a user outcome.
      */
+    /* The game axis is a closed vocabulary of its own and is checked as one:
+     * every game has a game, in both modes, so this is not part of the
+     * mode-to-configuration shape below. */
+    rc = mxq::require_game(config->game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
     bool shape_ok = human_vs_ai || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
     if (human_vs_ai) {
@@ -1166,11 +1159,10 @@ MxqStatus MXQ_CALL mxq_game_legal_moves_from(const MxqGame *game,
     if (rc != MXQ_OK) {
         return rc;
     }
-    if (!mxq::session::well_formed_square(from_square)) {
+    if (!mxq::notation::well_formed_square(game->config.game, from_square)) {
         assert(false && "from_square is not a square of this board");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "from_square is not a two-character square of this "
-                        "board");
+                        "from_square is not a square of this game's board");
         return MXQ_ERR_ARG_RANGE;
     }
     mxq::session::Owner owner(const_cast<MxqGame *>(game));
@@ -1185,9 +1177,13 @@ MxqStatus MXQ_CALL mxq_game_legal_moves_from(const MxqGame *game,
         return rc;
     }
 
+    /* Asked through the notation authority rather than by comparing a fixed
+     * two characters: on a board with a tenth rank "a1" is a prefix of "a10",
+     * and a prefix comparison would answer for the wrong square. */
     std::vector<std::string> from_here;
     for (const std::string &move : replayed.legal) {
-        if (move.compare(0, 2, from_square, 2) == 0) {
+        if (mxq::notation::move_begins_at(game->config.game, move,
+                                          from_square)) {
             from_here.push_back(move);
         }
     }
@@ -1289,9 +1285,10 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     }
     /* Malformed and illegal are always distinguished: one is a caller's
      * mistake and the other is an ordinary answer to a legal question. */
-    if (!mxq::session::well_formed_move(move)) {
+    if (!mxq::notation::well_formed_move(game->config.game, move)) {
         mxq::fill_error(err, MXQ_ERR_RULES_MALFORMED_MOVE,
-                        "the move is not in the canonical <from><to> notation");
+                        "the move is not two squares of this game's board in "
+                        "the canonical <from><to> notation");
         return MXQ_ERR_RULES_MALFORMED_MOVE;
     }
 
@@ -1325,9 +1322,10 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     uint32_t ply = 0;
     mxq::engine::Adjudication adj{};
     size_t first_illegal = 0;
-    switch (mxq::engine::replay(MXQ_START_FEN, texts.data(), texts.size(), fen,
-                                in_check, ply, adj, nullptr, first_illegal,
-                                detail)) {
+    switch (mxq::engine::replay(mxq::engine::variant_of(game->config.game),
+                                mxq::notation::start_fen(game->config.game),
+                                texts.data(), texts.size(), fen, in_check, ply,
+                                adj, nullptr, first_illegal, detail)) {
     case mxq::engine::ReplayError::None:
         break;
     case mxq::engine::ReplayError::IllegalMove:

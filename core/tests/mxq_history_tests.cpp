@@ -515,6 +515,25 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         return false;
     }
 
+    /* The game the scenario is of. Required rather than defaulted: a scenario
+     * that did not say would be played under whichever game the runner
+     * happened to pick, which is the one thing a two-game corpus must not do. */
+    {
+        const mxqtest::JsonValue *game = config->member("game");
+        if (game == nullptr || !game->is_string()) {
+            error = "\"config.game\" is missing";
+            return false;
+        }
+        if (game->string() == "minixiangqi") {
+            out.config.game = MXQ_GAME_KIND_MINI_XIANGQI;
+        } else if (game->string() == "xiangqi") {
+            out.config.game = MXQ_GAME_KIND_XIANGQI;
+        } else {
+            error = "\"config.game\" is not one of the two accepted games";
+            return false;
+        }
+    }
+
     if (const mxqtest::JsonValue *moves = root.member("moves")) {
         for (const mxqtest::JsonValue &move : moves->array()) {
             out.moves.push_back(move.string());
@@ -656,6 +675,7 @@ void check_record(Case &c, const MxqRecordSummary &record,
                where + ": outcome");
     c.check_eq(reason_text(record.end_reason), scenario.end.end_reason,
                where + ": end_reason");
+    c.check_eq(record.game, scenario.config.game, where + ": game");
     c.check_eq(record.mode, scenario.config.mode, where + ": mode");
     c.check_eq(record.human_side, scenario.config.human_side,
                where + ": human_side");

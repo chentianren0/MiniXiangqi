@@ -2,6 +2,7 @@
   "title": "Free Play, saved before another mode: ended early, no result",
   "why": "The fourth archiving path, and the only one that may record ended-early. An ordinary ongoing game keeps no competitive result when it is filed, and its final position must still be non-terminal — which is what the archive's own cross-field rule requires of an ended-early record. Its bytes are the corpus's free-play-ended-early golden.",
   "config": {
+    "game": "minixiangqi",
     "mode": "free-play"
   },
   "moves": ["b1b3", "b7b5"],

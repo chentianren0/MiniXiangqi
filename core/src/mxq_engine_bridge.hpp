@@ -44,6 +44,13 @@ enum class Variant {
     Xiangqi,
 };
 
+/* The variant one game is played under. The two vocabularies are deliberately
+ * separate: MxqGameKind is a ruleset the product offers and an archive records,
+ * engine::Variant is a configuration this engine can be asked to run, and the
+ * mapping between them is this one function rather than an assumption that the
+ * enumerators line up. */
+Variant variant_of(MxqGameKind game);
+
 /* The variant the engine's process-global tables are built for. Its default is
  * MiniXiangqi, which ensure_initialised establishes and deconfigure() restores;
  * configure() is the only thing that changes it. See the serialisation design
@@ -53,6 +60,11 @@ Variant active_variant();
 /* The engine's identifier for a variant: what UCI_Variant is set to, and the
  * prefix its network's basename must begin with. */
 const char *variant_id(Variant variant);
+
+/* The SHA-256 pinned for that variant's network, lowercase hexadecimal. Half of
+ * what identifies the configuration a move was produced by, and the half that
+ * is per-variant. */
+const char *variant_nnue_sha256(Variant variant);
 
 /* Adjudication as the rules contract describes it, independent of how the
  * engine happens to report it. The engine returns one side-to-move-relative
@@ -98,14 +110,32 @@ enum class ReplayError {
     IllegalMove,     /* first_illegal is the offending index */
 };
 
-/* Replay moves from start_fen under the target variant.
+/*
+ * Replay moves from start_fen under `variant`, whichever variant the engine is
+ * configured for.
+ *
+ * The variant is a parameter here and not in search_run(), and the difference
+ * is which engine state each one needs. A search reads the process-global
+ * tables a configuration builds — the PSQT and the evaluation those tables
+ * feed — so it can only run in the active variant. A replay reads the variant
+ * OBJECT for geometry, mobility regions, palace, river and adjudication, and
+ * the only globals it touches besides are the ones UCI::init_variant builds:
+ * pieceMap and the piece attack bitboards. Those are identical for both
+ * variants of this build — pieceMap.init() defines every standard piece type
+ * the same way whatever variant it is handed, neither game declares a custom
+ * piece, and the attack tables are computed over the maximal board rather than
+ * the variant's — so a replay of either game is correct against the tables the
+ * other one left. That is what lets a Xiangqi rules query be answered while the
+ * engine is prepared for Mini Xiangqi, without a table rebuild that would race
+ * a running search.
  *
  * On anything but ReplayError::None the outputs are unspecified, exactly as
  * mxq_rules_evaluate documents. A history is replayed rather than a bare
  * position evaluated, because repetition and violation state derive from
  * history: docs/xiangqi-rules.md, "A bare position carries no prior
- * occurrences." */
-ReplayError replay(const char *start_fen,
+ * occurrences."
+ */
+ReplayError replay(Variant variant, const char *start_fen,
                    const char *const *moves, size_t move_count,
                    std::string &out_fen,
                    bool &out_in_check,
@@ -115,9 +145,11 @@ ReplayError replay(const char *start_fen,
                    size_t &first_illegal,
                    std::string &detail);
 
-/* Structural FEN validation only, per mxq_rules_validate_fen: version 1 applies
- * the frozen encoding and never judges setup legality. */
-bool validate_fen(const char *fen, std::string &detail);
+/* Structural FEN validation only, per mxq_rules_validate_fen: the frozen
+ * encoding of `variant`'s own board, and never a judgment of setup legality. A
+ * position of the other board fails it, because a board is part of what the
+ * encoding fixes. */
+bool validate_fen(Variant variant, const char *fen, std::string &detail);
 
 /* ------------------------------------------------------------------------- */
 /* The search side of the bridge                                             */

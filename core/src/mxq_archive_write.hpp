@@ -9,7 +9,7 @@
  * canonical spelling and the content hash is taken over exactly these bytes.
  *
  * Nothing here knows what a session is. It takes a Record — the complete
- * version 1 document as values — and returns bytes, so that the same writer
+ * version 2 document as values — and returns bytes, so that the same writer
  * serves an attached session's every commit, mxq_archive_encode, and the
  * export path when it lands, and none of them can spell a document its own
  * way.
@@ -28,7 +28,11 @@ namespace mxq {
 namespace archive {
 
 /*
- * One version 1 document, as values.
+ * One version 2 document, as values.
+ *
+ * config.game is what the document's rules_id spells and what its start_fen is
+ * taken from: one field decides both, so a document cannot record one game's
+ * identity beside the other's opening position.
  *
  * The terminal trio is present exactly when completed is true; an active
  * game's stored content omits outcome, end_reason and ended_at, which is the
@@ -72,6 +76,7 @@ std::string timestamp_text(int64_t epoch_ms);
 /* The closed serialised vocabularies, for the store's summary columns as much
  * as for the document. Absence is a null pointer, matching the archive, which
  * omits the member, and the store, which holds SQL NULL. */
+const char *rules_id_text(MxqGameKind game);
 const char *mode_text(MxqPlayMode mode);
 const char *color_text(MxqColor color);
 const char *ai_level_text(MxqAiLevel level);

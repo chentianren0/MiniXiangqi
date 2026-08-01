@@ -77,8 +77,8 @@ static library the core links privately. The target variant `minixiangqiaxf`
 loads from [`assets/minixiangqi-variants.ini`](assets/minixiangqi-variants.ini).
 
 All of `mxq.h` is implemented: the status and blob helpers and the pure queries
-that need no core instance (`mxq_core_version`, `mxq_rules_start_fen`,
-`mxq_archive_supported_versions`, `mxq_engine_plan`); core lifecycle, with the
+that need no core instance (`mxq_core_version`, `mxq_core_game_profile`,
+`mxq_rules_start_fen`, `mxq_archive_supported_versions`, `mxq_engine_plan`); core lifecycle, with the
 SQLite library store opened at `mxq_core_init` and the clock and identity
 provider the deterministic-identity flag configures; the session-free rules
 facade (`mxq_rules_validate_fen`, `mxq_rules_evaluate`, `mxq_rules_legal_moves`);

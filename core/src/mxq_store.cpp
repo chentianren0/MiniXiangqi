@@ -1,6 +1,6 @@
-/* Opening, creating, migrating and closing the library store.
+/* Opening, creating and closing the library store.
  *
- * The schema created here is the one docs/game-data.md accepts as version 1,
+ * The schema created here is the one docs/game-data.md accepts as version 2,
  * transcribed constraint for constraint; the connection regime — write-ahead
  * logging, full synchronous durability, foreign keys on — is the same
  * contract's, applied and then read back rather than assumed. Everything that
@@ -25,8 +25,8 @@ namespace store {
 namespace {
 
 /*
- * Schema version 1, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 1"). Three STRICT tables; the single library row with the
+ * Schema version 2, exactly as accepted in docs/game-data.md ("Library store
+ * schema, version 2"). Three STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship and time ordering as check constraints;
  * History content immutability and the archive-and-clear ordering as
@@ -35,9 +35,11 @@ namespace {
  *
  * Text columns carry the serialized identifier vocabulary of game-data.md
  * verbatim, so the database is self-describing and the closed sets are
- * legible as constraints.
+ * legible as constraints — the game axis, rules_id, among them: a library
+ * holds records of both games, and which game a row is of is a column with a
+ * CHECK rather than something to decode a blob for.
  */
-const char *const kSchemaV1 = R"SQL(
+const char *const kSchemaV2 = R"SQL(
 CREATE TABLE meta (
   key   TEXT NOT NULL PRIMARY KEY,
   value TEXT NOT NULL
@@ -51,6 +53,10 @@ CREATE TABLE game (
   game_id            TEXT    NOT NULL UNIQUE CHECK (length(game_id) = 36),
   archive            BLOB    NOT NULL,
   content_sha256     TEXT    NOT NULL CHECK (length(content_sha256) = 64),
+  -- Which game this record is of: the archive's own rules_id, held as a column
+  -- so a mixed History list can be labelled and ordered without decoding a
+  -- blob per row.
+  rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi')),
   mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play')),
   human_side         TEXT    CHECK (human_side IN ('red', 'black')),
   ai_level           TEXT    CHECK (ai_level IN ('fast', 'standard', 'deep')),
@@ -63,7 +69,8 @@ CREATE TABLE game (
                                                    'perpetual-check', 'perpetual-chase',
                                                    'mutual-perpetual-check',
                                                    'mutual-perpetual-chase',
-                                                   'resignation', 'ended-early')),
+                                                   'resignation', 'ended-early',
+                                                   'fifty-move-rule')),
   provenance         TEXT    NOT NULL CHECK (provenance IN ('locally-played', 'imported')),
   pinned             INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
   started_at_ms      INTEGER NOT NULL CHECK (started_at_ms >= 0),
@@ -84,7 +91,12 @@ CREATE TABLE game (
   CHECK (outcome IS NULL OR ((outcome = 'none') = (end_reason = 'ended-early'))),
   CHECK (outcome IS NULL OR ((outcome = 'draw') =
          (end_reason IN ('threefold-repetition',
-                         'mutual-perpetual-check', 'mutual-perpetual-chase')))),
+                         'mutual-perpetual-check', 'mutual-perpetual-chase',
+                         'fifty-move-rule')))),
+  -- The move-count rule is Xiangqi's; Mini Xiangqi has none, so a record of it
+  -- cannot carry that reason.
+  CHECK (end_reason IS NULL OR end_reason <> 'fifty-move-rule' OR
+         rules_id = 'xiangqi'),
   CHECK (end_reason IS NULL OR end_reason <> 'resignation' OR
          (mode = 'human-vs-ai' AND
           ((human_side = 'red' AND outcome = 'black-wins') OR
@@ -128,6 +140,7 @@ WHEN OLD.outcome IS NOT NULL
    OR NEW.game_id            IS NOT OLD.game_id
    OR NEW.archive            IS NOT OLD.archive
    OR NEW.content_sha256     IS NOT OLD.content_sha256
+   OR NEW.rules_id           IS NOT OLD.rules_id
    OR NEW.mode               IS NOT OLD.mode
    OR NEW.human_side         IS NOT OLD.human_side
    OR NEW.ai_level           IS NOT OLD.ai_level
@@ -170,8 +183,8 @@ END;
 -- The one library row, with no active game.
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
--- Non-authoritative bookkeeping; migration never reads this table.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '1');
+-- Non-authoritative bookkeeping; nothing reads this table to decide anything.
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '2');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh
@@ -277,7 +290,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
 }
 
 /* The structural verification run on every successful open: the three tables
- * of schema version 1 exist and are STRICT, and the single library row is
+ * of schema version 2 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
 MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
@@ -296,7 +309,7 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (value != "3") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                     "the store does not hold the three STRICT tables of schema "
-                    "version 1 (found " + value + ")");
+                    "version 2 (found " + value + ")");
     }
 
     if (!query_first_column(db, "SELECT count(*) FROM library;", value, rc,
@@ -311,22 +324,22 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     return MXQ_OK;
 }
 
-MxqStatus create_schema_v1(sqlite3 *db, MxqError *err) {
+MxqStatus create_schema(sqlite3 *db, MxqError *err) {
     int rc = SQLITE_OK;
     std::string detail;
     if (!exec(db, "BEGIN IMMEDIATE;", rc, detail)) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
-    if (!exec(db, kSchemaV1, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 1;", rc, detail)) {
+    if (!exec(db, kSchemaV2, rc, detail) ||
+        !exec(db, "PRAGMA user_version = 2;", rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 1: " + cause);
+        return fail_sqlite(err, rc, "cannot create schema version 2: " + cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 1: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version 2: " + detail);
     }
     return MXQ_OK;
 }
@@ -489,13 +502,13 @@ MxqStatus read_revision(sqlite3 *db, uint64_t &out, MxqError *err) {
  * row selects exactly this list, so read_summary below can decode any of
  * them. */
 const char *const kSummaryColumns =
-    "record_id, game_id, content_sha256, mode, human_side, ai_level,"
+    "record_id, game_id, content_sha256, rules_id, mode, human_side, ai_level,"
     " ai_movetime_ms, move_count, outcome, end_reason, provenance, pinned,"
     " started_at_ms, ended_at_ms, added_at_ms";
 
 /* Where the archive column lands when a statement selects kSummaryColumns and
  * then the blob. */
-constexpr int kArchiveColumn = 15;
+constexpr int kArchiveColumn = 16;
 
 std::string text_at(sqlite3_stmt *stmt, int column) {
     if (sqlite3_column_type(stmt, column) == SQLITE_NULL) {
@@ -510,18 +523,19 @@ void read_summary(sqlite3_stmt *stmt, Summary &out) {
     out.record_id = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
     out.game_id = text_at(stmt, 1);
     out.content_sha256 = text_at(stmt, 2);
-    out.mode = text_at(stmt, 3);
-    out.human_side = text_at(stmt, 4);
-    out.ai_level = text_at(stmt, 5);
-    out.ai_movetime_ms = sqlite3_column_int64(stmt, 6);
-    out.move_count = sqlite3_column_int64(stmt, 7);
-    out.outcome = text_at(stmt, 8);
-    out.end_reason = text_at(stmt, 9);
-    out.provenance = text_at(stmt, 10);
-    out.pinned = sqlite3_column_int64(stmt, 11) != 0;
-    out.started_at_ms = sqlite3_column_int64(stmt, 12);
-    out.ended_at_ms = sqlite3_column_int64(stmt, 13);
-    out.added_at_ms = sqlite3_column_int64(stmt, 14);
+    out.rules_id = text_at(stmt, 3);
+    out.mode = text_at(stmt, 4);
+    out.human_side = text_at(stmt, 5);
+    out.ai_level = text_at(stmt, 6);
+    out.ai_movetime_ms = sqlite3_column_int64(stmt, 7);
+    out.move_count = sqlite3_column_int64(stmt, 8);
+    out.outcome = text_at(stmt, 9);
+    out.end_reason = text_at(stmt, 10);
+    out.provenance = text_at(stmt, 11);
+    out.pinned = sqlite3_column_int64(stmt, 12) != 0;
+    out.started_at_ms = sqlite3_column_int64(stmt, 13);
+    out.ended_at_ms = sqlite3_column_int64(stmt, 14);
+    out.added_at_ms = sqlite3_column_int64(stmt, 15);
 }
 
 /* The archive column of a row already stepped to, as bytes. A column this
@@ -603,10 +617,12 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
 
     {
         Stmt insert(db,
-                    "INSERT INTO game (game_id, archive, content_sha256, mode,"
-                    " human_side, ai_level, ai_movetime_ms, first_mover_choice,"
-                    " move_count, provenance, started_at_ms)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'locally-played', ?);");
+                    "INSERT INTO game (game_id, archive, content_sha256,"
+                    " rules_id, mode, human_side, ai_level, ai_movetime_ms,"
+                    " first_mover_choice, move_count, provenance,"
+                    " started_at_ms)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'locally-played',"
+                    " ?);");
         if (!insert.ok()) {
             return fail_sqlite(err, insert.rc(),
                                "cannot prepare the insert: " + insert.error(db));
@@ -614,13 +630,14 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
         insert.bind_text(1, row.game_id);
         insert.bind_blob(2, row.archive);
         insert.bind_text(3, row.content_sha256);
-        insert.bind_text(4, row.mode);
-        insert.bind_text(5, row.human_side);
-        insert.bind_text(6, row.ai_level);
-        insert.bind_int64_or_null(7, row.ai_movetime_ms);
-        insert.bind_text(8, row.first_mover_choice);
-        insert.bind_int64(9, row.move_count);
-        insert.bind_int64(10, row.started_at_ms);
+        insert.bind_text(4, row.rules_id);
+        insert.bind_text(5, row.mode);
+        insert.bind_text(6, row.human_side);
+        insert.bind_text(7, row.ai_level);
+        insert.bind_int64_or_null(8, row.ai_movetime_ms);
+        insert.bind_text(9, row.first_mover_choice);
+        insert.bind_int64(10, row.move_count);
+        insert.bind_int64(11, row.started_at_ms);
         const int step = insert.step();
         if (step != SQLITE_DONE) {
             return fail_sqlite(err, step,
@@ -944,12 +961,12 @@ MxqStatus import_game(Store &store, const ImportedGame &row,
          * the library: an imported game is a History record from the moment it
          * exists, and the active game is not this statement's business. */
         Stmt insert(db,
-                    "INSERT INTO game (game_id, archive, content_sha256, mode,"
-                    " human_side, ai_level, ai_movetime_ms, first_mover_choice,"
-                    " move_count, outcome, end_reason, provenance, started_at_ms,"
-                    " ended_at_ms, added_at_ms)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported', ?, ?,"
-                    " ?);");
+                    "INSERT INTO game (game_id, archive, content_sha256,"
+                    " rules_id, mode, human_side, ai_level, ai_movetime_ms,"
+                    " first_mover_choice, move_count, outcome, end_reason,"
+                    " provenance, started_at_ms, ended_at_ms, added_at_ms)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'imported',"
+                    " ?, ?, ?);");
         if (!insert.ok()) {
             return fail_sqlite(err, insert.rc(),
                                "cannot prepare the import insert: " +
@@ -958,17 +975,18 @@ MxqStatus import_game(Store &store, const ImportedGame &row,
         insert.bind_text(1, row.game_id);
         insert.bind_blob(2, row.archive);
         insert.bind_text(3, row.content_sha256);
-        insert.bind_text(4, row.mode);
-        insert.bind_text(5, row.human_side);
-        insert.bind_text(6, row.ai_level);
-        insert.bind_int64_or_null(7, row.ai_movetime_ms);
-        insert.bind_text(8, row.first_mover_choice);
-        insert.bind_int64(9, row.move_count);
-        insert.bind_text(10, row.outcome);
-        insert.bind_text(11, row.end_reason);
-        insert.bind_int64(12, row.started_at_ms);
-        insert.bind_int64(13, row.ended_at_ms);
-        insert.bind_int64(14, row.added_at_ms);
+        insert.bind_text(4, row.rules_id);
+        insert.bind_text(5, row.mode);
+        insert.bind_text(6, row.human_side);
+        insert.bind_text(7, row.ai_level);
+        insert.bind_int64_or_null(8, row.ai_movetime_ms);
+        insert.bind_text(9, row.first_mover_choice);
+        insert.bind_int64(10, row.move_count);
+        insert.bind_text(11, row.outcome);
+        insert.bind_text(12, row.end_reason);
+        insert.bind_int64(13, row.started_at_ms);
+        insert.bind_int64(14, row.ended_at_ms);
+        insert.bind_int64(15, row.added_at_ms);
         const int step = insert.step();
         if (step != SQLITE_DONE) {
             return fail_sqlite(err, step, "cannot insert the imported game: " +
@@ -1411,34 +1429,37 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
             return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                         "the store has content but no recorded schema version");
         }
-        st = create_schema_v1(db, err);
+        st = create_schema(db, err);
         if (st != MXQ_OK) {
             return st;
         }
-    } else if (version > static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
-        return fail(err, MXQ_ERR_STORE_SCHEMA_TOO_NEW,
-                    static_cast<int>(version),
-                    "the store was written by a newer build (schema version " +
-                        std::to_string(version) + "; this build reads up to " +
-                        std::to_string(MXQ_STORE_SCHEMA_VERSION) + ")");
-    } else {
-        /* Forward-only migration dispatch. Version 1 is the first schema ever
-         * shipped, so no step exists yet and this loop cannot run; each future
-         * step migrates N to N+1 inside one transaction and lands as a branch
-         * here, before the refusal:
+    } else if (version != static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
+        /*
+         * One version is defined, and a store recording any other is refused by
+         * the same comparison. The two sides of it read differently to a user
+         * and so carry different statuses: a store from a newer build is a
+         * build that is behind, which the contract requires to be said
+         * distinctly, and anything else is a store this build has no path to.
          *
-         *     if (version == 1) { st = migrate_1_to_2(db, err); ... continue; }
-         *
-         * A switch is not what carries that, and deliberately: with no step
-         * written its only label would be `default`, which is a switch that
-         * dispatches on nothing — MSVC reports exactly that as C4065 — and the
-         * first real step would have to introduce the switch anyway. */
-        while (version < static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
-            return fail(err, MXQ_ERR_STORE_MIGRATION_FAILED,
+         * There is no migration and no dispatch slot waiting for one. Version 2
+         * is the only schema this build defines, writes, verifies or reads, and
+         * nothing here names an older one — a version-1 store is refused for
+         * not being version 2, by the arithmetic, rather than by a branch that
+         * knows what version 1 was.
+         */
+        if (version > static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
+            return fail(err, MXQ_ERR_STORE_SCHEMA_TOO_NEW,
                         static_cast<int>(version),
-                        "no migration path from schema version " +
-                            std::to_string(version));
+                        "the store was written by a newer build (schema "
+                        "version " + std::to_string(version) +
+                            "; this build reads " +
+                            std::to_string(MXQ_STORE_SCHEMA_VERSION) + ")");
         }
+        return fail(err, MXQ_ERR_STORE_MIGRATION_FAILED,
+                    static_cast<int>(version),
+                    "the store records schema version " +
+                        std::to_string(version) + "; this build reads " +
+                        std::to_string(MXQ_STORE_SCHEMA_VERSION));
     }
 
     st = verify_schema(db, err);

@@ -1,0 +1,21 @@
+{
+  "title": "Xiangqi, Free Play, two moves: the same round trip on the 9x10 board",
+  "why": "The whole session round trip under the other game. It pins that a session replays, commits, resumes and encodes under the game its configuration froze rather than under one the core assumes: a core that carried a single starting position or a single ruleset would produce the wrong board here and pass every Mini Xiangqi scenario unchanged.",
+  "config": {
+    "game": "xiangqi",
+    "mode": "free-play"
+  },
+  "moves": ["h3e3", "h8e8"],
+  "archive": "xiangqi-free-play-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": [1, 1]
+}
