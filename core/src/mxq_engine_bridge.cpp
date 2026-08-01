@@ -224,15 +224,17 @@ size_t occurrences_of(const std::vector<std::string> &identities,
  * commit is a draw. So `PERPETUAL_CHECK` with a draw value IS mutual perpetual
  * check, `PERPETUAL_CHASE` with a draw value IS mutual perpetual chase, and
  * `N_FOLD` is the neutral claimable repetition. Nothing here re-derives what
- * that expression already decided.
+ * that expression already decided. `N_MOVE_RULE` is none of them and is taken
+ * first: it is the capture-free move count running out, which Xiangqi has and
+ * the app's variant does not.
  *
  * That exhaustiveness is a property of the pinned configuration and not of the
  * engine, and exactly one thing keeps it: position.cpp applies materialCounting
  * AFTER *rule has been set, overwriting a drawn result with a counted one. In a
  * variant with material counting the engine would therefore report
  * PERPETUAL_CHECK with a decisive value for a MUTUAL violation, and reading the
- * value as "one side did it" would name the wrong loser. minixiangqiaxf has no
- * material counting, so that path is closed here — but neither switch below
+ * value as "one side did it" would name the wrong loser. Neither pinned variant
+ * has material counting, so that path is closed here — but neither switch below
  * guesses past what it was told, for the same reason: a wrong reason is
  * recorded in the archive forever, while an absent one is caught by a
  * fixture. */
@@ -258,6 +260,19 @@ Adjudication adjudicate(Position &pos,
     Value value = VALUE_DRAW;
     OptionalGameEndRule rule = OPTIONAL_END_NONE;
     if (pos.is_optional_game_end(value, 0, 0, &rule)) {
+        /* The move-count rule first, because it is not a repetition and the
+         * engine checks it before them: it reports the game that has run its
+         * capture-free allowance, and its at_occurrence stays 0 because no
+         * position had to stand twice for it. Xiangqi's alone — the app's
+         * variant sets nMoveRule = 0, so this arm is unreachable there — and
+         * automatic rather than claimable, which is why it is a committed draw
+         * and not MXQ_GAME_CLAIMABLE_DRAW. */
+        if (rule == OPTIONAL_END_N_MOVE_RULE) {
+            a.state = MXQ_GAME_DRAW;
+            a.reason = MXQ_END_REASON_FIFTY_MOVE_RULE;
+            return a;
+        }
+
         /* The engine reports that an outcome attached, not where: a violation
          * that was interrupted and resumed attaches at the fourth occurrence,
          * not the third, so this is counted rather than assumed. */
@@ -284,15 +299,15 @@ Adjudication adjudicate(Position &pos,
                 a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
                 break;
             default:
-                /* Unreachable under the pinned configuration, and left unnamed
-                 * rather than folded into the neutral repetition: the other
-                 * drawn branches are the move-count rule, the counting rules
-                 * and the Sittuyin stalemate, none of which minixiangqiaxf
-                 * enables. A rule this build does not know is not evidence
-                 * that a repetition is claimable, and answering ONGOING is the
-                 * honest end of that: the game continues, and a fixture
-                 * catches the silence. The occurrence count goes with it —
-                 * MxqGameStatus.at_occurrence is 0 unless the outcome is
+                /* Unreachable under either pinned configuration, and left
+                 * unnamed rather than folded into the neutral repetition: the
+                 * remaining drawn branches are the Janggi position-repetition
+                 * rule, the counting rules and the Sittuyin stalemate, none of
+                 * which either variant enables. A rule this build does not know
+                 * is not evidence that a repetition is claimable, and answering
+                 * ONGOING is the honest end of that: the game continues, and a
+                 * fixture catches the silence. The occurrence count goes with
+                 * it — MxqGameStatus.at_occurrence is 0 unless the outcome is
                  * repetition-based, and this one is not an outcome at all. */
                 a.at_occurrence = 0;
                 break;
@@ -315,10 +330,13 @@ Adjudication adjudicate(Position &pos,
             a.reason = MXQ_END_REASON_PERPETUAL_CHASE;
             break;
         default:
-            /* Unreachable under the pinned configuration: the other decisive
-             * branches need a move-count rule with material counting or the
-             * Janggi repetition rule, and minixiangqiaxf sets nMoveRule = 0 and
-             * inherits neither. If one ever fires, the reason is left unset
+            /* Unreachable under either pinned configuration: the other decisive
+             * branches need material counting or the Janggi repetition rule,
+             * and neither variant enables either. Material counting is the one
+             * worth naming, because position.cpp applies it AFTER *rule is set
+             * and would hand a decisive value to the move-count rule and to a
+             * mutual violation alike; with it off, the arm above and this one
+             * mean what they say. If one ever fires, the reason is left unset
              * rather than guessed — a wrong reason is recorded in the archive
              * forever, and a fixture catches an absent one. */
             break;
@@ -331,11 +349,30 @@ Adjudication adjudicate(Position &pos,
 
 } /* namespace */
 
+Variant variant_of(MxqGameKind game) {
+    switch (game) {
+    case MXQ_GAME_KIND_XIANGQI:
+        return Variant::Xiangqi;
+    case MXQ_GAME_KIND_MINI_XIANGQI:
+    default:
+        /* The caller has already rejected a game outside the vocabulary — the C
+         * surface answers MXQ_ERR_ARG_RANGE for one — so the default arm is
+         * unreachable rather than a policy. It names the app's own game because
+         * that is the rules posture, and because a switch over an int32_t
+         * vocabulary needs a total answer. */
+        return Variant::MiniXiangqi;
+    }
+}
+
 Variant active_variant() {
     return g_active_variant.load(std::memory_order_acquire);
 }
 
 const char *variant_id(Variant variant) { return pin_of(variant).id; }
+
+const char *variant_nnue_sha256(Variant variant) {
+    return pin_of(variant).nnue_sha256;
+}
 
 InitError ensure_initialised(const char *assets_dir, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_init_mutex);
@@ -355,7 +392,7 @@ InitError ensure_initialised(const char *assets_dir, std::string &detail) {
     return InitError::None;
 }
 
-bool validate_fen(const char *fen, std::string &detail) {
+bool validate_fen(Variant variant, const char *fen, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_ready) {
         detail = "the engine is not initialised";
@@ -365,7 +402,8 @@ bool validate_fen(const char *fen, std::string &detail) {
         detail = "fen was null";
         return false;
     }
-    const FEN::FenValidation v = FEN::validate_fen(std::string(fen), target_variant(), false);
+    const FEN::FenValidation v =
+        FEN::validate_fen(std::string(fen), variant_object(variant), false);
     if (v != FEN::FEN_OK) {
         detail = "the FEN does not satisfy the frozen structural encoding";
         return false;
@@ -373,7 +411,7 @@ bool validate_fen(const char *fen, std::string &detail) {
     return true;
 }
 
-ReplayError replay(const char *start_fen,
+ReplayError replay(Variant variant, const char *start_fen,
                    const char *const *moves, size_t move_count,
                    std::string &out_fen,
                    bool &out_in_check,
@@ -392,7 +430,7 @@ ReplayError replay(const char *start_fen,
         return ReplayError::StartFenInvalid;
     }
 
-    const Stockfish::Variant *v = target_variant();
+    const Stockfish::Variant *v = variant_object(variant);
     if (FEN::validate_fen(std::string(start_fen), v, false) != FEN::FEN_OK) {
         detail = "start_fen does not satisfy the frozen structural encoding";
         return ReplayError::StartFenInvalid;
@@ -400,10 +438,10 @@ ReplayError replay(const char *start_fen,
 
     /* The state list must outlive every do_move: Position holds a pointer into
      * it. A deque rather than a vector because reallocation would invalidate
-     * those pointers. The variant's piece and bitboard tables are NOT
-     * re-initialised here: they were built at initialise_once for the one
-     * pinned variant and never change, and rewriting them per replay would
-     * race a concurrent search's reads. */
+     * those pointers. The piece and bitboard tables are NOT re-initialised
+     * here, whichever variant is being replayed: they are the same tables for
+     * both (see replay() in mxq_engine_bridge.hpp), and rewriting them per
+     * replay would race a concurrent search's reads. */
     auto states = std::make_unique<std::deque<StateInfo>>(1);
     Position pos;
     pos.set(v, std::string(start_fen), false, &states->back(), Threads.main());

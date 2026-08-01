@@ -1,6 +1,6 @@
 # Game Archive Fixtures
 
-This directory holds the approved, executable fixtures for the version 1 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
+This directory holds the approved, executable fixtures for the version 2 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
 
 Normative stance: every expected value comes from the accepted archive format, its serialized vocabularies, its cross-field rules, and its validation order — never from what the codec currently happens to do. A file here that the codec disagrees with is a codec defect until the contract says otherwise.
 
@@ -52,10 +52,12 @@ Every golden asserts three things:
 | `human-vs-ai-checkmate` | human versus AI, complete | `red-wins` / `checkmate` |
 | `human-vs-ai-resignation` | human versus AI, complete | `black-wins` / `resignation` |
 | `human-vs-ai-active` | human versus AI, active, Random resolved to Black | none |
+| `xiangqi-free-play-active` | Xiangqi, Free Play, active | none |
+| `xiangqi-free-play-ended-early` | Xiangqi, Free Play, complete | `none` / `ended-early` |
 
-Between them they cover all four `outcome` values, the four terminal pairs a version 1 file can carry, both modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play omits `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
+Between them they cover both games, all four `outcome` values, the terminal pairs a version 2 file can carry, both modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play omits `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 1 document and not an incomplete one.
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 2 document and not an incomplete one.
 
 ### Sidecar
 
@@ -64,7 +66,8 @@ The active-game shape is the archive as the store holds it while the game is bei
   "title": "…",
   "why": "…",
   "info": {
-    "archive_version": 1,
+    "archive_version": 2,
+    "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
     "human_side": null,
@@ -77,7 +80,7 @@ The active-game shape is the archive as the store holds it while the game is bei
 }
 ```
 
-`info` is `MxqArchiveInfo`, in the serialized vocabulary. `null` spells a NONE constant — `human_side: null` is `MXQ_COLOR_NONE`, `end_reason: null` is `MXQ_END_REASON_NONE`. `MxqOutcome` has no absent constant, so an archive that records no end reads `outcome: "none"` with `end_reason: null` and `ended_at_ms: 0`; **`end_reason` is what separates an ended-early record from a game that has not ended**, and the two active goldens pin that.
+`info` is `MxqArchiveInfo`, in the serialized vocabulary. `game` is the file's own `rules_id`, decoded, and every sidecar states it: there is no absent value for it, so a sidecar that omitted it would fail rather than pass silently. `null` spells a NONE constant — `human_side: null` is `MXQ_COLOR_NONE`, `end_reason: null` is `MXQ_END_REASON_NONE`. `MxqOutcome` has no absent constant, so an archive that records no end reads `outcome: "none"` with `end_reason: null` and `ended_at_ms: 0`; **`end_reason` is what separates an ended-early record from a game that has not ended**, and the two active goldens pin that.
 
 The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY` documents — one per file, so no two goldens claim the same identity — and the timestamps start at the deterministic clock's epoch, so the round-trip fixtures in [`../store/`](../store/README.md) compare these files byte for byte against what the core writes.
 
@@ -127,6 +130,8 @@ One archive per rejection class of the accepted validation order, each stating t
 | closed vocabulary | `vocabulary-outcome` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-end-reason` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `rules-id-wrong` | `MALFORMED` | `MALFORMED` |
+| field validity: move notation | `move-notation-other-board` | `MALFORMED` | `MALFORMED` |
+| rules tier: initial position | `start-fen-other-game` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | field validity: `game_id` | `game-id-not-uuid7` | `MALFORMED` | `MALFORMED` |
 | field validity: timestamp | `timestamp-form` | `MALFORMED` | `MALFORMED` |
 | field validity: move notation | `move-notation` | `MALFORMED` | `MALFORMED` |
@@ -160,11 +165,15 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 }
 ```
 
-`probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member version 1 does not know, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
+`probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member no version of this format knows, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
 
 ### Two versions are dispatched on, not one
 
-`archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of one value: a file naming another ruleset is not a later version of ours, so it is `MALFORMED`.
+`archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of two values: a file naming a third ruleset is not a later version of ours, so it is `MALFORMED`.
+
+### The game axis is read before the rest of `content`
+
+`rules_id` decides how two other members are judged, which is why two rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. Between them they pin that the board and the starting position both follow the named game rather than a constant.
 
 ## What the read path does not enforce
 
@@ -176,7 +185,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The three active shapes are its one deliberate divergence: they are valid version 1 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The three active shapes are its one deliberate divergence: they are valid version 2 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

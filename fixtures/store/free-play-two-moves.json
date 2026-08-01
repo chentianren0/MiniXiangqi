@@ -2,6 +2,7 @@
   "title": "Free Play, two moves: one commit per move, one ply per Undo",
   "why": "The ordinary case. Every accepted move rewrites the one active row and commits before returning, and Free Play removes one ply per Undo with repeated Undo reaching the initial position. Its bytes are the archive corpus's free-play-active golden, which is what makes the writer and the reader the same contract.",
   "config": {
+    "game": "minixiangqi",
     "mode": "free-play"
   },
   "moves": ["b1b3", "b7b5"],

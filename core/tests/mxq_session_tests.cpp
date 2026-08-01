@@ -42,6 +42,7 @@
 #include "sqlite3.h"
 #endif
 
+#include "mxq_notation.hpp"
 #include "mxq_sha256.hpp"
 
 #include <algorithm>
@@ -369,6 +370,25 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         return false;
     }
 
+    /* The game the scenario is of. Required rather than defaulted: a scenario
+     * that did not say would be replayed under whichever game the runner
+     * happened to pick, which is the one thing a two-game corpus must not do. */
+    {
+        const mxqtest::JsonValue *game = config->member("game");
+        if (game == nullptr || !game->is_string()) {
+            error = "\"config.game\" is missing";
+            return false;
+        }
+        if (game->string() == "minixiangqi") {
+            out.config.game = MXQ_GAME_KIND_MINI_XIANGQI;
+        } else if (game->string() == "xiangqi") {
+            out.config.game = MXQ_GAME_KIND_XIANGQI;
+        } else {
+            error = "\"config.game\" is not one of the two accepted games";
+            return false;
+        }
+    }
+
     if (const mxqtest::JsonValue *moves = root.member("moves")) {
         for (const mxqtest::JsonValue &move : moves->array()) {
             out.moves.push_back(move.string());
@@ -525,6 +545,7 @@ void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
     if (rc != MXQ_OK) {
         return;
     }
+    c.check_eq(config.game, scenario.config.game, where + ": game");
     c.check_eq(config.mode, scenario.config.mode, where + ": mode");
     c.check_eq(config.human_side, scenario.config.human_side,
                where + ": human_side");
@@ -543,12 +564,13 @@ void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
  * the conformance corpus rather than against a FEN transcribed into a second
  * file here.
  */
-void check_positions(Case &c, MxqCore *core, const MxqGame *game,
+void check_positions(Case &c, MxqCore *core, MxqGameKind kind,
+                     const MxqGame *game,
                      const std::vector<std::string> &moves,
                      const std::string &where) {
     char start_fen[MXQ_FEN_CAP];
     size_t fen_len = 0;
-    mxq_rules_start_fen(start_fen, sizeof(start_fen), &fen_len, nullptr);
+    mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
 
     for (size_t ply = 0; ply <= moves.size(); ++ply) {
         std::vector<const char *> texts;
@@ -559,7 +581,7 @@ void check_positions(Case &c, MxqCore *core, const MxqGame *game,
 
         MxqPosition expected = make_position();
         MxqError err = make_error();
-        MxqStatus rc = mxq_rules_evaluate(core, start_fen,
+        MxqStatus rc = mxq_rules_evaluate(core, kind, start_fen,
                                           texts.empty() ? nullptr : texts.data(),
                                           texts.size(), &expected, nullptr,
                                           nullptr, &err);
@@ -615,12 +637,13 @@ void check_positions(Case &c, MxqCore *core, const MxqGame *game,
 }
 
 /* The legal-move set, against the same facade, plus the from-square filter. */
-void check_legal_moves(Case &c, MxqCore *core, const MxqGame *game,
+void check_legal_moves(Case &c, MxqCore *core, MxqGameKind kind,
+                       const MxqGame *game,
                        const std::vector<std::string> &moves,
                        const std::string &where) {
     char start_fen[MXQ_FEN_CAP];
     size_t fen_len = 0;
-    mxq_rules_start_fen(start_fen, sizeof(start_fen), &fen_len, nullptr);
+    mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
 
     std::vector<const char *> texts;
     texts.reserve(moves.size());
@@ -630,7 +653,7 @@ void check_legal_moves(Case &c, MxqCore *core, const MxqGame *game,
 
     size_t expected_count = 0;
     MxqError err = make_error();
-    mxq_rules_legal_moves(core, start_fen,
+    mxq_rules_legal_moves(core, kind, start_fen,
                           texts.empty() ? nullptr : texts.data(), texts.size(),
                           nullptr, 0, &expected_count, &err);
     std::vector<MxqMove> expected(expected_count);
@@ -640,7 +663,8 @@ void check_legal_moves(Case &c, MxqCore *core, const MxqGame *game,
     }
     err = make_error();
     MxqStatus rc = mxq_rules_legal_moves(
-        core, start_fen, texts.empty() ? nullptr : texts.data(), texts.size(),
+        core, kind, start_fen,
+        texts.empty() ? nullptr : texts.data(), texts.size(),
         expected.data(), expected.size(), &expected_count, &err);
     c.check(rc == MXQ_OK, where + ": the facade could not list legal moves");
 
@@ -817,8 +841,8 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
     const std::string id_before = game_id_of(game, c, "before the close");
     check_config(c, game, scenario, "before the close");
     check_status(c, game, scenario, "before the close");
-    check_positions(c, core, game, scenario.moves, "before the close");
-    check_legal_moves(c, core, game, scenario.moves, "before the close");
+    check_positions(c, core, scenario.config.game, game, scenario.moves, "before the close");
+    check_legal_moves(c, core, scenario.config.game, game, scenario.moves, "before the close");
     const std::vector<std::string> history_before =
         history_of(game, c, "before the close");
     c.check(history_before == scenario.moves,
@@ -891,7 +915,7 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
                "the identity survives the round trip");
     check_config(c, game, scenario, "after the resume");
     check_status(c, game, scenario, "after the resume");
-    check_positions(c, core, game, scenario.moves, "after the resume");
+    check_positions(c, core, scenario.config.game, game, scenario.moves, "after the resume");
     const std::vector<std::string> history_after =
         history_of(game, c, "after the resume");
     c.check(history_after == history_before,
@@ -966,6 +990,66 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
 /* ---------------------------------------------------------------------- */
 /* Cases that are properties of the interface                              */
 /* ---------------------------------------------------------------------- */
+
+/*
+ * The square-and-move grammar directly, because the two public gates over it
+ * refuse with statuses that assert — those expectations are only observable in
+ * a release build, and this one is worth having in both.
+ *
+ * These are the inputs a length-only or an unbounded-accumulator reading gets
+ * wrong. They need no core: the grammar is a constant of each ruleset.
+ */
+void case_notation_grammar() {
+    Case c("the square-and-move grammar accepts exactly the squares each "
+           "board has");
+
+    const auto square = [](MxqGameKind game, const char *text) {
+        return mxq::notation::well_formed_square(game, text);
+    };
+    const auto move = [](MxqGameKind game, const char *text) {
+        return mxq::notation::well_formed_move(game, text);
+    };
+
+    /* The empty string consumes as many characters as it has, which is what a
+     * length comparison alone reads as agreement. */
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, ""),
+            "the empty string is not a square");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, ""),
+            "on either board");
+    c.check(!move(MXQ_GAME_KIND_MINI_XIANGQI, ""),
+            "and it is not a move");
+
+    /* A digit run long enough to overflow the rank accumulator. Under wrapping
+     * these come back into range and become squares this notation says do not
+     * exist. */
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a4294967297"),
+            "a rank of more digits than an int32_t holds is not a square");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "a4294967297"),
+            "on either board");
+    c.check(!move(MXQ_GAME_KIND_XIANGQI, "a4294967297b1"),
+            "and no move begins with one");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a99999999999999999999"),
+            "nor does a run longer than any integer this core carries");
+
+    /* The squares each board does have, and the ones it does not. */
+    c.check(square(MXQ_GAME_KIND_MINI_XIANGQI, "g7"), "g7 is a Mini square");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "h1"), "h1 is not");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "a8"), "nor is a8");
+    c.check(square(MXQ_GAME_KIND_XIANGQI, "i10"), "i10 is a Xiangqi square");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a11"), "a11 is not");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a01"),
+            "and a leading zero is a second spelling this notation refuses");
+
+    /* The split rule, which is the whole reason the grammar is one module. */
+    c.check(move(MXQ_GAME_KIND_XIANGQI, "a1a10"),
+            "a1a10 reads as a1 then a10");
+    c.check(move(MXQ_GAME_KIND_XIANGQI, "a9a10"),
+            "and a9a10 is the longest move either board spells");
+    c.check(!move(MXQ_GAME_KIND_MINI_XIANGQI, "a1a10"),
+            "the same text is no move at all on the smaller board");
+
+    c.report();
+}
 
 void case_second_active_game() {
     Case c("a second active game is refused");
@@ -1068,6 +1152,22 @@ void case_refused_moves_change_nothing() {
     c.check(rc == MXQ_ERR_RULES_ILLEGAL_MOVE,
             "a move that is legal notation but not legal here is refused too");
 
+    /*
+     * A rank whose digits run past what an int32_t holds. The move text comes
+     * from a caller here and from an archive elsewhere, and the notation's own
+     * grammar says a square has exactly one spelling — so a rank that wrapped
+     * back into range would both be undefined behaviour and invent a second
+     * spelling of a1. The answer must be the malformed one: reaching the
+     * illegal-move rung at all would mean the wrap happened and something
+     * tokenised this as two squares.
+     */
+    err = make_error();
+    rc = mxq_game_apply_move(game, "a4294967297b1", nullptr, nullptr, &err);
+    c.check(rc == MXQ_ERR_RULES_MALFORMED_MOVE,
+            std::string("a rank of more digits than an int32_t holds is "
+                        "malformed, got ") +
+                mxq_status_name(rc));
+
     c.check_eq(encode_of(core, game, c, "after the refusals"), before,
                "the committed state is untouched by every refusal");
 
@@ -1075,6 +1175,39 @@ void case_refused_moves_change_nothing() {
     mxq_game_position(game, &position, nullptr);
     c.check_eq(static_cast<int64_t>(position.position_revision), 1,
                "a refused move does not advance the revision");
+
+    /*
+     * The from-square gate, which is a different rule from the move grammar:
+     * mxq.h promises MXQ_ERR_ARG_RANGE for a string that is not a square of
+     * this board, and the empty string is not one. It is worth its own
+     * expectation because it is the one input a length-only check accepts —
+     * "consumed as many characters as it has" is true of nothing at all.
+     *
+     * These assert in a debug build, as every closed-vocabulary range does, so
+     * the expectations are stated where the assertion is compiled out.
+     */
+#if defined(NDEBUG)
+    {
+        size_t count = 7;
+        err = make_error();
+        rc = mxq_game_legal_moves_from(game, "", nullptr, 0, &count, &err);
+        c.check(rc == MXQ_ERR_ARG_RANGE,
+                std::string("the empty string is not a square of this board, "
+                            "got ") +
+                    mxq_status_name(rc));
+        c.check_eq(static_cast<int64_t>(count), 0,
+                   "and the refusal writes no count");
+
+        count = 7;
+        err = make_error();
+        rc = mxq_game_legal_moves_from(game, "a4294967297", nullptr, 0, &count,
+                                       &err);
+        c.check(rc == MXQ_ERR_ARG_RANGE,
+                std::string("neither is a rank of more digits than an int32_t "
+                            "holds, got ") +
+                    mxq_status_name(rc));
+    }
+#endif
 
     mxq_game_release(game);
     mxq_core_shutdown(core, nullptr);
@@ -1352,7 +1485,7 @@ void case_legal_move_capacity() {
 
     size_t count = 0;
     err = make_error();
-    c.check(mxq_rules_legal_moves(core, kBusiest, nullptr, 0, nullptr, 0,
+    c.check(mxq_rules_legal_moves(core, MXQ_GAME_KIND_MINI_XIANGQI, kBusiest, nullptr, 0, nullptr, 0,
                                   &count, &err) ==
                 MXQ_ERR_ARG_BUFFER_TOO_SMALL,
             "asking for the count alone is the routine buffer refusal");
@@ -1373,7 +1506,8 @@ void case_legal_move_capacity() {
     size_t written = 0;
     err = make_error();
     const MxqStatus held = mxq_rules_legal_moves(
-        core, kBusiest, nullptr, 0, out.data(), out.size(), &written, &err);
+        core, MXQ_GAME_KIND_MINI_XIANGQI, kBusiest, nullptr, 0, out.data(),
+        out.size(), &written, &err);
     c.check(held == MXQ_OK,
             std::string("a 128-element buffer holds it, got ") +
                 mxq_status_name(held));
@@ -1507,6 +1641,7 @@ int main(int argc, char **argv) {
         run_scenario(scenario, archives);
     }
 
+    case_notation_grammar();
     case_second_active_game();
     case_resume_without_a_game();
     case_refused_moves_change_nothing();

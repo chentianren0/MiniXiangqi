@@ -41,6 +41,7 @@ namespace {
 static_assert(sizeof(MxqStatus) == 4, "MxqStatus must be 32 bits");
 static_assert(sizeof(MxqColor) == 4, "MxqColor must be 32 bits");
 static_assert(sizeof(MxqPlayMode) == 4, "MxqPlayMode must be 32 bits");
+static_assert(sizeof(MxqGameKind) == 4, "MxqGameKind must be 32 bits");
 static_assert(sizeof(MxqAiLevel) == 4, "MxqAiLevel must be 32 bits");
 static_assert(sizeof(MxqFirstMoverChoice) == 4,
               "MxqFirstMoverChoice must be 32 bits");
@@ -72,11 +73,14 @@ MXQ_ASSERT_AT(MxqVersion, store_schema_version, 24);
 MXQ_ASSERT_AT(MxqVersion, reserved0, 28);
 MXQ_ASSERT_AT(MxqVersion, core_revision, 32);
 MXQ_ASSERT_AT(MxqVersion, fork_revision, 32 + MXQ_REVISION_CAP);
-MXQ_ASSERT_AT(MxqVersion, variant_id, 32 + 2 * MXQ_REVISION_CAP);
-MXQ_ASSERT_AT(MxqVersion, nnue_sha256,
-              32 + 2 * MXQ_REVISION_CAP + MXQ_VARIANT_ID_CAP);
-MXQ_ASSERT_SIZE(MxqVersion, 32 + 2 * MXQ_REVISION_CAP + MXQ_VARIANT_ID_CAP +
-                                MXQ_SHA256_HEX_CAP);
+MXQ_ASSERT_SIZE(MxqVersion, 32 + 2 * MXQ_REVISION_CAP);
+
+MXQ_ASSERT_BLITTABLE(MxqGameProfile);
+MXQ_ASSERT_AT(MxqGameProfile, game, 4);
+MXQ_ASSERT_AT(MxqGameProfile, variant_id, 8);
+MXQ_ASSERT_AT(MxqGameProfile, nnue_sha256, 8 + MXQ_VARIANT_ID_CAP);
+MXQ_ASSERT_SIZE(MxqGameProfile,
+                8 + MXQ_VARIANT_ID_CAP + MXQ_SHA256_HEX_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqCoreConfig);
 MXQ_ASSERT_AT(MxqCoreConfig, api_major, 4);
@@ -118,7 +122,8 @@ MXQ_ASSERT_AT(MxqGameConfig, human_side, 8);
 MXQ_ASSERT_AT(MxqGameConfig, ai_level, 12);
 MXQ_ASSERT_AT(MxqGameConfig, first_mover_choice, 16);
 MXQ_ASSERT_AT(MxqGameConfig, ai_movetime_ms, 20);
-MXQ_ASSERT_SIZE(MxqGameConfig, 24);
+MXQ_ASSERT_AT(MxqGameConfig, game, 24);
+MXQ_ASSERT_SIZE(MxqGameConfig, 28);
 
 MXQ_ASSERT_BLITTABLE(MxqRecordSummary);
 MXQ_ASSERT_AT(MxqRecordSummary, move_count, 4);
@@ -137,7 +142,9 @@ MXQ_ASSERT_AT(MxqRecordSummary, pinned, 68);
 MXQ_ASSERT_AT(MxqRecordSummary, is_active, 69);
 MXQ_ASSERT_AT(MxqRecordSummary, reserved0, 70);
 MXQ_ASSERT_AT(MxqRecordSummary, game_id, 72);
-MXQ_ASSERT_SIZE(MxqRecordSummary, 72 + MXQ_GAME_ID_CAP);
+MXQ_ASSERT_AT(MxqRecordSummary, game, 72 + MXQ_GAME_ID_CAP);
+MXQ_ASSERT_AT(MxqRecordSummary, reserved1, 76 + MXQ_GAME_ID_CAP);
+MXQ_ASSERT_SIZE(MxqRecordSummary, 80 + MXQ_GAME_ID_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqArchiveInfo);
 MXQ_ASSERT_AT(MxqArchiveInfo, archive_version, 4);
@@ -146,7 +153,7 @@ MXQ_ASSERT_AT(MxqArchiveInfo, mode, 12);
 MXQ_ASSERT_AT(MxqArchiveInfo, human_side, 16);
 MXQ_ASSERT_AT(MxqArchiveInfo, outcome, 20);
 MXQ_ASSERT_AT(MxqArchiveInfo, end_reason, 24);
-MXQ_ASSERT_AT(MxqArchiveInfo, reserved0, 28);
+MXQ_ASSERT_AT(MxqArchiveInfo, game, 28);
 MXQ_ASSERT_AT(MxqArchiveInfo, started_at_ms, 32);
 MXQ_ASSERT_AT(MxqArchiveInfo, ended_at_ms, 40);
 MXQ_ASSERT_AT(MxqArchiveInfo, game_id, 48);

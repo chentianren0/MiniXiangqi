@@ -1,7 +1,7 @@
 /* The library store behind mxq_store_ and the attached-session commits.
  *
  * One embedded SQLite database, opened at mxq_core_init and closed at
- * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 1.
+ * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 2.
  * This header is internal: nothing SQLite-shaped is visible through mxq.h, per
  * docs/architecture.md, and core/CMakeLists.txt links the vendored library
  * PRIVATE for the same reason.
@@ -44,7 +44,7 @@ namespace store {
 
 /* The store's one database file, under the frontend-supplied store directory.
  * The name is part of the accepted contract: docs/game-data.md, "Library store
- * schema, version 1". Write-ahead logging keeps its journal beside it as
+ * schema, version 2". Write-ahead logging keeps its journal beside it as
  * library.sqlite3-wal and library.sqlite3-shm. */
 constexpr const char *kDatabaseFileName = "library.sqlite3";
 
@@ -88,6 +88,7 @@ struct ActiveGame {
     std::string game_id;
     std::string archive;        /* the canonical bytes, verbatim */
     std::string content_sha256; /* 64 lowercase hexadecimal characters */
+    const char *rules_id = nullptr; /* which game; never null */
     const char *mode = nullptr;
     const char *human_side = nullptr;
     const char *ai_level = nullptr;
@@ -194,6 +195,7 @@ struct Summary {
     uint64_t    record_id = 0;
     std::string game_id;
     std::string content_sha256;
+    std::string rules_id;
     std::string mode;
     std::string human_side;
     std::string ai_level;
@@ -226,6 +228,7 @@ struct ImportedGame {
     std::string game_id;
     std::string archive;        /* the canonical bytes, verbatim */
     std::string content_sha256; /* 64 lowercase hexadecimal characters */
+    const char *rules_id = nullptr; /* which game; never null */
     const char *mode = nullptr;
     const char *human_side = nullptr;
     const char *ai_level = nullptr;
@@ -343,14 +346,14 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *
  *   - the required pragmas are applied and then read back and verified:
  *     journal_mode=WAL, synchronous=FULL, foreign_keys=ON;
- *   - a fresh database receives the complete schema version 1 in one
- *     transaction, and its user_version pragma is set to 1;
+ *   - a fresh database receives the complete schema version 2 in one
+ *     transaction, and its user_version pragma is set to 2;
  *   - an existing database is verified: the three tables must exist and be
  *     STRICT, and the single library row must be present;
- *   - a database whose recorded schema version is newer than this build is
- *     refused with MXQ_ERR_STORE_SCHEMA_TOO_NEW; an older recorded version
- *     dispatches forward-only migrations (none exist yet: version 1 is the
- *     first schema ever shipped).
+ *   - a database recording any other schema version is refused, and never
+ *     migrated: version 2 is the only schema this build defines. A newer one
+ *     is MXQ_ERR_STORE_SCHEMA_TOO_NEW, which the contract requires to be said
+ *     distinctly; anything else is MXQ_ERR_STORE_MIGRATION_FAILED.
  *
  * On failure returns the store-domain status, fills err (with the raw SQLite
  * result as subsystem_code where there is one), and leaves out empty; there is

@@ -91,9 +91,9 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 
 ### Rules
 
-- Run the approved conformance fixtures in `fixtures/rules/` for movement, general safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase.
+- Run the approved conformance fixtures in `fixtures/rules/` for movement, general safety, check, mate, stalemate, repetition, perpetual check, and perpetual chase — each under the ruleset it declares, both games in one run.
 - Verify every ply's legal set, resulting position, check state, and final result where applicable.
-- Verify that the custom variant has no move-count draw and recognizes the neutral draw outcome on the third occurrence for search.
+- Verify that the custom variant has no move-count draw, that Xiangqi's draws at the hundredth capture-free ply and not earlier, and that both recognize the neutral draw outcome on the third occurrence for search.
 - Verify that the app-visible rules boundary exposes claim eligibility on that occurrence, continuing keeps the game active, and only an explicit claim commits the draw.
 - Verify that a unilateral perpetual violation becomes terminal automatically at the third sustained occurrence, is attributed to the violating side, and is presented through the standard natural-result flow rather than a claim.
 - Verify unilateral perpetual-check loss, unilateral perpetual-chase loss, mutual same-class draw, check-versus-chase precedence, and general and soldier chase-target exclusion.
@@ -112,7 +112,7 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Verify that undo persists only the retained main line, provides no redo, and remains available after a natural result only until result confirmation or successful **保存并继续**.
 - Test persistence and relaunch of an active game whose current history makes a neutral repetition draw claimable, plus the transition from claimable active game to immutable draw record.
 - Test pin-state persistence, History sorting, replay, permanent deletion, deletion failure rollback, ended-early records, confirmed resignation, and immutable game content.
-- Test every released database schema migration and archive-format migration from file-backed fixtures.
+- Test that a store or an archive recording any version but the defined one is refused, and that nothing migrates it: one version is defined on each axis, per [game-data.md](game-data.md), and a test that named an older shape would be the only thing in the repository that did.
 - Round-trip exported files across iOS, iPadOS, macOS, and Windows.
 - Verify the same game's canonical content bytes and content hash are byte-identical across platforms, and that export, import, and re-export reproduce identical canonical content.
 - Verify the store's schema-enforced invariants directly: History content immutability outside pin state, the single active game, archive-and-clear ordering, and the result vocabulary constraints.
@@ -146,7 +146,7 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Verify that an allocation failure at a budget of at least 256 MiB presents the accepted **无法启动 AI 对手** notice unchanged, that Retry re-probes and recalculates, and that no smaller Hash is substituted.
 - Verify that a missing or hash-mismatched network prevents the AI from starting with no fallback to a different evaluation, that the failure is detected during preparation rather than by the engine's own fatal path, and that Free Play, History, replay, import, and export still work.
 - Verify the build fails rather than packaging when any hash in `pinned-inputs.json` does not match, and that the packaged engine artifact is the static library built from the pinned revision and flags.
-- Verify the variant `minixiangqiaxf` and built-in `minixiangqi` can both be selected in one build.
+- Verify the variant `minixiangqiaxf` and built-in `minixiangqi` can both be selected in one build, and that `minixiangqiaxf` and built-in `xiangqi` — the two the product plays — can be configured one after the other in one process, in both directions and with no teardown between.
 - Verify the engine's effective NNUE state is on after configuration, not merely that the network file exists — a basename that does not begin with the variant identifier disables NNUE silently and the engine plays on classical evaluation.
 - Verify the complete approved fixture set passes against the pinned fork build named in `pinned-inputs.json`, and that the fork's own suite still passes, before that revision is packaged.
 

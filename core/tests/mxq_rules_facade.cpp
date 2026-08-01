@@ -33,10 +33,13 @@ std::string reason_identifier(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE: return "mutual-perpetual-chase";
     case MXQ_END_REASON_RESIGNATION: return "resignation";
     case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
+    case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
 }
+
+bool rules_facade_built() { return MXQ_TEST_RULES_FACADE != 0; }
 
 RulesFacade::~RulesFacade() { close(); }
 
@@ -76,7 +79,7 @@ void RulesFacade::close() {
     core_ = nullptr;
 }
 
-MxqStatus RulesFacade::evaluate(const std::string &start_fen,
+MxqStatus RulesFacade::evaluate(MxqGameKind game, const std::string &start_fen,
                                 const std::vector<std::string> &moves,
                                 MxqPosition &position, MxqGameStatus &status,
                                 size_t &first_illegal_index, MxqError &err) {
@@ -87,12 +90,13 @@ MxqStatus RulesFacade::evaluate(const std::string &start_fen,
         argv.push_back(m.c_str());
     }
     first_illegal_index = 0;
-    return mxq_rules_evaluate(core_, start_fen.c_str(),
+    return mxq_rules_evaluate(core_, game, start_fen.c_str(),
                               argv.empty() ? nullptr : argv.data(), argv.size(),
                               &position, &status, &first_illegal_index, &err);
 }
 
-MxqStatus RulesFacade::legal_moves(const std::string &start_fen,
+MxqStatus RulesFacade::legal_moves(MxqGameKind game,
+                                   const std::string &start_fen,
                                    const std::vector<std::string> &moves,
                                    std::vector<std::string> &out,
                                    MxqError &err) {
@@ -108,7 +112,7 @@ MxqStatus RulesFacade::legal_moves(const std::string &start_fen,
      * caller of a counted output uses. */
     size_t count = 0;
     MxqStatus rc = mxq_rules_legal_moves(
-        core_, start_fen.c_str(), argv.empty() ? nullptr : argv.data(),
+        core_, game, start_fen.c_str(), argv.empty() ? nullptr : argv.data(),
         argv.size(), nullptr, 0, &count, &err);
     if (rc != MXQ_OK && rc != MXQ_ERR_ARG_BUFFER_TOO_SMALL) {
         return rc;
@@ -119,7 +123,7 @@ MxqStatus RulesFacade::legal_moves(const std::string &start_fen,
         m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
     }
     size_t written = 0;
-    rc = mxq_rules_legal_moves(core_, start_fen.c_str(),
+    rc = mxq_rules_legal_moves(core_, game, start_fen.c_str(),
                                argv.empty() ? nullptr : argv.data(), argv.size(),
                                buffer.empty() ? nullptr : buffer.data(),
                                buffer.size(), &written, &err);
@@ -154,10 +158,11 @@ bool RulesFacade::open(const std::string &store_directory,
 
 void RulesFacade::close() {}
 
-MxqStatus RulesFacade::evaluate(const std::string &start_fen,
+MxqStatus RulesFacade::evaluate(MxqGameKind game, const std::string &start_fen,
                                 const std::vector<std::string> &moves,
                                 MxqPosition &position, MxqGameStatus &status,
                                 size_t &first_illegal_index, MxqError &err) {
+    (void)game;
     (void)start_fen;
     (void)moves;
     (void)position;
@@ -168,10 +173,12 @@ MxqStatus RulesFacade::evaluate(const std::string &start_fen,
     return MXQ_ERR_INTERNAL_INVARIANT;
 }
 
-MxqStatus RulesFacade::legal_moves(const std::string &start_fen,
+MxqStatus RulesFacade::legal_moves(MxqGameKind game,
+                                   const std::string &start_fen,
                                    const std::vector<std::string> &moves,
                                    std::vector<std::string> &out,
                                    MxqError &err) {
+    (void)game;
     (void)start_fen;
     (void)moves;
     (void)out;

@@ -1,0 +1,35 @@
+{
+  "id": "xq-move-002",
+  "title": "Elephant: the eye blocks, and the river confines",
+  "area": "move",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/2B6/1p7/9/9/5K3 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k5/9/9/9/9/2B6/1p7/9/9/5K3 w - - 0 1",
+    "legal_moves": [
+      "c5e3",
+      "f1e1",
+      "f1f2"
+    ],
+    "rejected_moves": [
+      "c5a3",
+      "c5a7",
+      "c5e7"
+    ],
+    "applied": [
+      {
+        "move": "c5e3",
+        "result_fen": "3k5/9/9/9/9/9/1p7/4B4/9/5K3 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The elephant on c5 has four two-step diagonals. a3 is blocked by the soldier on its eye at b4; a7 and e7 are across the river, which the elephant never crosses however empty its eye is; e3 alone survives both rules. The two are separate: one is an occupancy question and the other a region the piece may never leave."
+}

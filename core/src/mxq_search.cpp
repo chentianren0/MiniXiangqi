@@ -64,6 +64,7 @@
 #include "mxq_core_state.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_internal.hpp"
+#include "mxq_notation.hpp"
 #include "mxq_session.hpp"
 
 #include <atomic>
@@ -96,6 +97,7 @@ struct Task {
      * of the same game (or an allocator's reuse of the same address) can
      * never stand in for it at delivery. */
     uint64_t                 ticket = 0;
+    MxqGameKind              game = MXQ_GAME_KIND_MINI_XIANGQI;
     std::string              start_fen;
     std::vector<std::string> moves;
     std::string              game_id;
@@ -107,7 +109,8 @@ struct Task {
     void                    *user_data = nullptr;
     std::atomic<bool>        cancelled{false};
 
-    /* Prepare: the applied plan values and the asset directory. */
+    /* Prepare: the game to prepare for, the applied plan values, and the asset
+     * directory. */
     uint32_t    threads = 0;
     uint32_t    hash_mib = 0;
     std::string assets_dir;
@@ -141,24 +144,39 @@ std::atomic<int32_t> g_engine_state{MXQ_ENGINE_STATE_UNINITIALIZED};
 bool g_retained_valid = false;
 MxqSearchResult g_retained{};
 
-/* The profile identifier: the four engine-profile axes MxqVersion carries,
- * composed once into the bounded string mxq_engine_query and every result
- * report. Twelve characters of each revision and of the network hash name a
- * build as unambiguously as the axes themselves do at this scale, and keep
- * the whole under MXQ_PROFILE_ID_CAP. */
-std::string compose_profile_id() {
+/* The profile identifier: the two build revisions MxqVersion reports and the
+ * two per-game facts MxqGameProfile does, composed once into the bounded string
+ * mxq_engine_query and every result report. Twelve characters of each revision
+ * and of the network hash name a build as unambiguously as the axes themselves
+ * do at this scale, and keep the whole under MXQ_PROFILE_ID_CAP. */
+std::string compose_profile_id(engine::Variant variant) {
     const auto first12 = [](const char *value) {
         const std::string s(value);
         return s.size() > 12 ? s.substr(0, 12) : s;
     };
     return first12(MXQ_BUILD_CORE_REVISION) + "-" +
-           first12(MXQ_BUILD_FORK_REVISION) + "-" + MXQ_BUILD_VARIANT_ID +
-           "-" + first12(MXQ_BUILD_NNUE_SHA256);
+           first12(MXQ_BUILD_FORK_REVISION) + "-" +
+           engine::variant_id(variant) + "-" +
+           first12(engine::variant_nnue_sha256(variant));
 }
 
+/* The profile of one variant, composed once each. Two of the four axes are
+ * per-variant, so the identifier is too: a move produced under one variant must
+ * not be attributed to the other's network. */
+const std::string &profile_id_of(engine::Variant variant) {
+    static const std::string mini =
+        compose_profile_id(engine::Variant::MiniXiangqi);
+    static const std::string xiangqi =
+        compose_profile_id(engine::Variant::Xiangqi);
+    return variant == engine::Variant::Xiangqi ? xiangqi : mini;
+}
+
+/* The profile of the configuration a move would be produced by right now: the
+ * variant the engine's tables are built for, which is what a search would run
+ * in. Before any preparation that is the rules posture's variant, and the
+ * bridge is the one place that knows which. */
 const std::string &profile_id() {
-    static const std::string id = compose_profile_id();
-    return id;
+    return profile_id_of(engine::active_variant());
 }
 
 /* Whether a search task is outstanding: queued or running. Caller holds
@@ -178,36 +196,15 @@ bool search_outstanding_locked() {
 /* The frozen canonical notation, checked over the engine's own output: the
  * malformed rung judges the engine exactly as the session surface judges a
  * caller. */
-bool well_formed_move(const std::string &move) {
-    if (move.size() != 4) {
-        return false;
-    }
-    for (size_t i = 0; i < 4; i += 2) {
-        if (move[i] < 'a' || move[i] > 'g') {
-            return false;
-        }
-        if (move[i + 1] < '1' || move[i + 1] > '7') {
-            return false;
-        }
-    }
-    return true;
-}
-
 /* ---------------------------------------------------------------------- */
 /* The engine thread                                                       */
 /* ---------------------------------------------------------------------- */
 
-/* The variant this facade prepares the engine for. The bridge takes it per
- * configuration — the engine can run either of two — and what selects it is a
- * property of the game being played; the C surface this facade sits behind
- * creates games of one variant, so it names that one here rather than reading a
- * choice nothing can yet express. */
-constexpr engine::Variant kFacadeVariant = engine::Variant::MiniXiangqi;
-
 void run_prepare(Task &task) {
     std::string detail;
-    const engine::ConfigureError rc = engine::configure(
-        kFacadeVariant, task.threads, task.hash_mib, task.assets_dir, detail);
+    const engine::ConfigureError rc =
+        engine::configure(engine::variant_of(task.game), task.threads,
+                          task.hash_mib, task.assets_dir, detail);
     task.detail = detail;
     switch (rc) {
     case engine::ConfigureError::None:
@@ -254,8 +251,12 @@ void run_search(Task &task) {
     result.position_revision = task.position_revision;
     result.status = MXQ_OK;
     copy_bounded(result.game_id, sizeof(result.game_id), task.game_id.c_str());
+    /* The profile of the game this search is for, not of whatever the engine
+     * happens to be configured for now: a delivered result names the
+     * configuration it was produced by, and mxq_search_start already refused a
+     * session whose game the engine is not prepared for. */
     copy_bounded(result.profile_id, sizeof(result.profile_id),
-                 profile_id().c_str());
+                 profile_id_of(engine::variant_of(task.game)).c_str());
 
     /* The engine runs only for a job nobody has cancelled on an engine that
      * is still prepared; the ladder below decides what is delivered either
@@ -337,7 +338,9 @@ void run_search(Task &task) {
         result.nodes = output.nodes;
 
         /* 4. Malformed. */
-        if (!well_formed_move(output.move)) {
+        /* Judged against the board of the game this search is for, through
+         * the same authority the session surface judges a caller with. */
+        if (!notation::well_formed_move(task.game, output.move)) {
             result.outcome = MXQ_SEARCH_MALFORMED;
             break;
         }
@@ -360,8 +363,9 @@ void run_search(Task &task) {
             engine::Adjudication adj{};
             size_t first_illegal = 0;
             const engine::ReplayError replayed = engine::replay(
-                task.start_fen.c_str(), line.data(), line.size(), fen,
-                in_check, ply, adj, nullptr, first_illegal, detail);
+                engine::variant_of(task.game), task.start_fen.c_str(),
+                line.data(), line.size(), fen, in_check, ply, adj, nullptr,
+                first_illegal, detail);
             if (replayed != engine::ReplayError::None) {
                 if (replayed == engine::ReplayError::IllegalMove &&
                     first_illegal + 1 == line.size()) {
@@ -559,11 +563,15 @@ MxqStatus cancel_all_and_quiesce(MxqError *err) {
 
 extern "C" {
 
-MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core,
+MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core, MxqGameKind game,
                                       const MxqEngineBudget *budget,
                                       MxqEnginePlan *out_applied,
                                       MxqError *err) {
     MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -596,6 +604,7 @@ MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core,
 
     auto task = std::make_shared<mxq::search::Task>();
     task->kind = mxq::search::Task::Kind::Prepare;
+    task->game = game;
     task->threads = plan.threads;
     task->hash_mib = plan.hash_mib;
     task->assets_dir = core->asset_directory;
@@ -694,9 +703,25 @@ MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
         return MXQ_ERR_ARG_RANGE;
     }
 
+    /*
+     * The engine runs one variant at a time, and it is this session's game that
+     * must be the one: the tables a search reads are the prepared variant's, so
+     * a session of the other game would fail to replay under them and be
+     * delivered as a fault. Refusing here says the true thing instead — the
+     * engine is not ready for THIS game — and the caller prepares for it.
+     */
+    if (mxq::engine::active_variant() !=
+        mxq::engine::variant_of(game->config.game)) {
+        mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
+                        "the engine is prepared for the other game; prepare it "
+                        "for this session's game first");
+        return MXQ_ERR_STATE_ENGINE_NOT_READY;
+    }
+
     auto task = std::make_shared<mxq::search::Task>();
     task->kind = mxq::search::Task::Kind::Search;
-    task->start_fen = MXQ_START_FEN;
+    task->game = game->config.game;
+    task->start_fen = mxq::notation::start_fen(game->config.game);
     task->moves = game->moves;
     task->game_id = game->game_id;
     task->position_revision =

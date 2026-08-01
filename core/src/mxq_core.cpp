@@ -206,19 +206,57 @@ MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err) {
     out->archive_version_min_readable = MXQ_ARCHIVE_VERSION_MIN_READABLE;
     out->store_schema_version = MXQ_STORE_SCHEMA_VERSION;
 
-    /* The engine profile. These are load-bearing rather than diagnostics: a
+    /* The build revisions. These are load-bearing rather than diagnostics: a
      * test report or a saved diagnostic must be able to name the build that
      * produced it. They come from the repository's pinned-input manifest, which
-     * the build reads — never from a value written twice. */
+     * the build reads — never from a value written twice. What a game binds is
+     * mxq_core_game_profile's, because there are two of those and one of
+     * these. */
     mxq::copy_bounded(out->core_revision, sizeof(out->core_revision),
                       MXQ_BUILD_CORE_REVISION);
     mxq::copy_bounded(out->fork_revision, sizeof(out->fork_revision),
                       MXQ_BUILD_FORK_REVISION);
-    mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
-                      MXQ_BUILD_VARIANT_ID);
-    mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
-                      MXQ_BUILD_NNUE_SHA256);
 
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game, MxqGameProfile *out,
+                                         MxqError *err) {
+    MxqStatus rc = mxq::require_game(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::begin_out(out, out != nullptr ? out->struct_size : 0u,
+                        static_cast<uint32_t>(sizeof(MxqGameProfile)),
+                        static_cast<uint32_t>(sizeof(MxqGameProfile)), err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    out->game = game;
+#if defined(MXQ_ENABLE_RULES_FACADE)
+    /* Read from the bridge's own pinned rows rather than from the build
+     * configuration a second time: the bridge is what pairs a variant with the
+     * network it verifies, and a report assembled beside it could name a
+     * pairing the bridge would refuse. */
+    const mxq::engine::Variant variant = mxq::engine::variant_of(game);
+    mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
+                      mxq::engine::variant_id(variant));
+    mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
+                      mxq::engine::variant_nnue_sha256(variant));
+#else
+    /* Without the engine there is no bridge to ask, and the pins are still
+     * build facts this report owes: the manifest reaches them through the same
+     * generated configuration the bridge reads. */
+    mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
+                      game == MXQ_GAME_KIND_XIANGQI
+                          ? MXQ_BUILD_XIANGQI_VARIANT_ID
+                          : MXQ_BUILD_VARIANT_ID);
+    mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
+                      game == MXQ_GAME_KIND_XIANGQI
+                          ? MXQ_BUILD_XIANGQI_NNUE_SHA256
+                          : MXQ_BUILD_NNUE_SHA256);
+#endif
     return MXQ_OK;
 }
 

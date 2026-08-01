@@ -164,6 +164,15 @@ std::string color_text(MxqColor color) {
     return "unknown(" + std::to_string(color) + ")";
 }
 
+std::string game_text(MxqGameKind game) {
+    switch (game) {
+    case MXQ_GAME_KIND_MINI_XIANGQI: return "minixiangqi";
+    case MXQ_GAME_KIND_XIANGQI: return "xiangqi";
+    default: break;
+    }
+    return "unknown(" + std::to_string(game) + ")";
+}
+
 std::string outcome_text(MxqOutcome outcome) {
     switch (outcome) {
     case MXQ_OUTCOME_NONE: return "none";
@@ -187,6 +196,7 @@ std::string end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE: return "mutual-perpetual-chase";
     case MXQ_END_REASON_RESIGNATION: return "resignation";
     case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
+    case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -432,6 +442,9 @@ void check_info(Case &c, const MxqArchiveInfo &info,
                version != nullptr ? static_cast<int64_t>(version->number()) : -1,
                where + ".archive_version");
 
+    c.check_eq(game_text(info.game), text_or_null(want.member("game")),
+               where + ".game");
+
     const mxqtest::JsonValue *moves = want.member("move_count");
     c.check_eq(static_cast<int64_t>(info.move_count),
                moves != nullptr ? static_cast<int64_t>(moves->number()) : -1,
@@ -598,7 +611,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
  */
 std::string document_with_plies(size_t count) {
     std::string doc =
-        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":1,"
+        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":2,"
         "\"content\":{\"mode\":\"free-play\",\"moves\":[";
     for (size_t i = 0; i < count; ++i) {
         if (i != 0) {
@@ -723,8 +736,11 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     err = make_error();
     rc = mxq_archive_supported_versions(&min_readable, &current, &err);
     c.check(rc == MXQ_OK, "mxq_archive_supported_versions failed");
-    c.check_eq(static_cast<int64_t>(min_readable), 1, "minimum readable");
-    c.check_eq(static_cast<int64_t>(current), 1, "current");
+    /* One version is defined, so the window is one version wide: the corpus
+     * above is entirely version 2, and a build that quietly kept reading an
+     * earlier shape would widen this pair rather than fail a fixture. */
+    c.check_eq(static_cast<int64_t>(min_readable), 2, "minimum readable");
+    c.check_eq(static_cast<int64_t>(current), 2, "current");
 
     report(c);
 }

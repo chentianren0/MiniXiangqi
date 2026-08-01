@@ -1,0 +1,34 @@
+{
+  "id": "xq-chk-001",
+  "title": "Unilateral perpetual check: the checking side loses at the third occurrence",
+  "area": "chk",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/3R5/9/9/9/5K3 b - - 0 1",
+  "moves": [
+    "d10e10",
+    "d5e5",
+    "e10d10",
+    "e5d5",
+    "d10e10",
+    "d5e5",
+    "e10d10",
+    "e5d5"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "3k5/9/9/9/9/3R5/9/9/9/5K3 b - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The rook alternates d5 and e5, checking the general after every Red move, while the general shuttles d10 and e10 and never attacks anything. The in-check position stands at plies 0, 4 and 8; on the third the violation is complete and the side giving the checks loses. The outcome names the violator, never the side to move at detection."
+}

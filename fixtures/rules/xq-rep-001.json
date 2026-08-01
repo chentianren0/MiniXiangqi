@@ -1,0 +1,34 @@
+{
+  "id": "xq-rep-001",
+  "title": "Neutral repetition becomes claimable at exactly the third occurrence",
+  "area": "rep",
+  "variant": "xiangqi",
+  "start_fen": "5k3/9/9/9/9/9/9/9/9/3K5 w - - 0 1",
+  "moves": [
+    "d1d2",
+    "f10f9",
+    "d2d1",
+    "f9f10",
+    "d1d2",
+    "f10f9",
+    "d2d1",
+    "f9f10"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/9/9/9/9/9/9/9/3K5 w - - 8 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 4,
+    "expect": "second occurrence of the position; not yet claimable"
+  },
+  "rationale": "Two generals shuttle inside their palaces with no check and no attack by either side. The starting position stands at plies 0, 4 and 8; on the third it becomes eligible for a draw claim and never earlier. A neutral repetition is claimable rather than terminal: the game continues unless the claim is made."
+}

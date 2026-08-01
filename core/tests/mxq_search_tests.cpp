@@ -61,6 +61,10 @@
 
 /* The bridge itself, deliberately: see the header comment. */
 #include "mxq_engine_bridge.hpp"
+/* And the core's own SHA-256, so that "this game's profile names this game's
+ * network" is checked against the staged bytes rather than against a second
+ * copy of the hash written here. */
+#include "mxq_sha256.hpp"
 #endif
 
 #include <atomic>
@@ -361,7 +365,7 @@ void case_prepare_applies_the_plan() {
 
         MxqEnginePlan applied = make_plan();
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_OK, "prepare");
         c.check_eq(applied.threads, pure.threads, "applied threads");
         c.check_eq(applied.hash_mib, pure.hash_mib, "applied hash");
@@ -429,7 +433,7 @@ void case_prepare_applies_the_plan() {
 
         char fen[MXQ_FEN_CAP];
         size_t fen_len = 0;
-        c.check_status(mxq_rules_start_fen(fen, sizeof(fen), &fen_len, &err),
+        c.check_status(mxq_rules_start_fen(MXQ_GAME_KIND_MINI_XIANGQI, fen, sizeof(fen), &fen_len, &err),
                        MXQ_OK, "start fen");
         MxqPosition position;
         std::memset(&position, 0, sizeof(position));
@@ -437,7 +441,7 @@ void case_prepare_applies_the_plan() {
         MxqGameStatus status;
         std::memset(&status, 0, sizeof(status));
         status.struct_size = static_cast<uint32_t>(sizeof(status));
-        c.check_status(mxq_rules_evaluate(core, fen, nullptr, 0, &position,
+        c.check_status(mxq_rules_evaluate(core, MXQ_GAME_KIND_MINI_XIANGQI, fen, nullptr, 0, &position,
                                           &status, nullptr, &err),
                        MXQ_OK, "rules still answer after teardown");
         c.check_eq(static_cast<int64_t>(status.state), MXQ_GAME_ONGOING,
@@ -464,7 +468,7 @@ void case_insufficient_memory_initialises_nothing() {
         const MxqEngineBudget budget = insufficient_budget();
         MxqEnginePlan applied = make_plan();
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY,
                        "prepare below the minimum");
         MxqEngineState state = MXQ_ENGINE_STATE_READY;
@@ -505,6 +509,81 @@ std::string read_file(const fs::path &path) {
                        std::istreambuf_iterator<char>());
 }
 
+/*
+ * mxq_core_game_profile, whole: the four things its contract claims.
+ *
+ * It is the one query with no core parameter and no lock at all — a lookup in
+ * a constexpr table — so "callable before initialisation" is not a convenience
+ * but the shape of the function. The value half is what makes the claim worth
+ * asserting rather than reading: the profile pairs a variant with the network
+ * that variant is verified against, and a report that paired them by position
+ * would be right for one game and silently wrong for the other.
+ */
+void case_game_profile() {
+    Case c("mxq_core_game_profile answers for each game before any core "
+           "exists, and pairs each variant with its own network");
+
+    /* Before initialisation, and deliberately first in the suite's order: no
+     * core has been created yet when this runs. */
+    MxqError err = make_error();
+    MxqGameProfile mini;
+    std::memset(&mini, 0, sizeof(mini));
+    mini.struct_size = static_cast<uint32_t>(sizeof(mini));
+    c.check_status(
+        mxq_core_game_profile(MXQ_GAME_KIND_MINI_XIANGQI, &mini, &err), MXQ_OK,
+        "the app's game, before mxq_core_init");
+
+    MxqGameProfile xiangqi;
+    std::memset(&xiangqi, 0, sizeof(xiangqi));
+    xiangqi.struct_size = static_cast<uint32_t>(sizeof(xiangqi));
+    err = make_error();
+    c.check_status(mxq_core_game_profile(MXQ_GAME_KIND_XIANGQI, &xiangqi, &err),
+                   MXQ_OK, "the other game, before mxq_core_init");
+
+    c.check_eq(static_cast<int64_t>(mini.game), MXQ_GAME_KIND_MINI_XIANGQI,
+               "the profile names the game it was asked about");
+    c.check_eq(static_cast<int64_t>(xiangqi.game), MXQ_GAME_KIND_XIANGQI,
+               "and so does the other");
+
+    /* The variant identifiers come from the manifest through the build
+     * configuration, which is where the bridge reads its own from. */
+    c.check_eq(std::string(mini.variant_id), std::string(kVariantId),
+               "the app's game binds the pinned variant");
+    c.check_eq(std::string(xiangqi.variant_id), std::string(kXiangqiVariantId),
+               "the other game binds the built-in variant");
+
+    /* And the network each names is that variant's own bytes, not the other's.
+     * Hashing the staged file is what makes this a statement about the pairing
+     * rather than about two strings being different from each other. */
+    const std::string mini_bytes =
+        read_file(fs::path(staged_xiangqi_assets()) / kBundledNetworkName);
+    const std::string xiangqi_bytes =
+        read_file(fs::path(staged_xiangqi_assets()) / kXiangqiNetworkName);
+    if (mini_bytes.empty() || xiangqi_bytes.empty()) {
+        c.check(false, "both networks are staged for this case");
+    } else {
+        c.check_eq(std::string(mini.nnue_sha256), mxq::sha256_hex(mini_bytes),
+                   "the app's game names the SHA-256 of the network staged "
+                   "for it");
+        c.check_eq(std::string(xiangqi.nnue_sha256),
+                   mxq::sha256_hex(xiangqi_bytes),
+                   "the other game names the SHA-256 of its own network");
+    }
+
+#if defined(NDEBUG)
+    /* A game outside the closed vocabulary is a programming error, so this
+     * expectation is only observable where the assertion is compiled out. */
+    MxqGameProfile refused;
+    std::memset(&refused, 0, sizeof(refused));
+    refused.struct_size = static_cast<uint32_t>(sizeof(refused));
+    err = make_error();
+    c.check_status(mxq_core_game_profile(static_cast<MxqGameKind>(2), &refused,
+                                         &err),
+                   MXQ_ERR_ARG_RANGE, "a game this core does not play");
+#endif
+    c.report();
+}
+
 void case_missing_network() {
     Case c("a missing network refuses as asset-missing and the AI does not "
            "start");
@@ -518,7 +597,7 @@ void case_missing_network() {
         const MxqEngineBudget budget = sufficient_budget();
         MxqEnginePlan applied = make_plan();
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_ERR_ENGINE_ASSET_MISSING, "prepare");
         MxqEngineState state = MXQ_ENGINE_STATE_READY;
         char profile[MXQ_PROFILE_ID_CAP];
@@ -571,7 +650,7 @@ void case_wrong_basename_network() {
         const MxqEngineBudget budget = sufficient_budget();
         MxqEnginePlan applied = make_plan();
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_ERR_ENGINE_ASSET_MISMATCH, "prepare");
         c.check(std::string(err.detail).find("effective NNUE state") !=
                     std::string::npos,
@@ -614,7 +693,7 @@ void case_corrupt_network() {
         const MxqEngineBudget budget = sufficient_budget();
         MxqEnginePlan applied = make_plan();
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_ERR_ENGINE_ASSET_MISMATCH, "prepare, flipped byte");
         c.check(std::string(err.detail).find("SHA-256") != std::string::npos,
                 std::string("the detail names the hash, got: ") + err.detail);
@@ -632,7 +711,7 @@ void case_corrupt_network() {
             MXQ_OK, "core init against the truncated staging");
         if (core != nullptr) {
             err = make_error();
-            c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+            c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                            MXQ_ERR_ENGINE_ASSET_MISMATCH,
                            "prepare, truncated");
             c.check(std::string(err.detail).find("bytes") != std::string::npos,
@@ -686,6 +765,7 @@ struct ReentrantProbe {
     MxqStatus cancel_status = MXQ_OK;
     MxqStatus plan_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus version_status = MXQ_ERR_ARG_REENTRANT;
+    MxqStatus profile_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus start_fen_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus versions_status = MXQ_ERR_ARG_REENTRANT;
 };
@@ -721,10 +801,16 @@ void reentrant_callback(const MxqSearchResult *result, void *user_data) {
     version.struct_size = static_cast<uint32_t>(sizeof(version));
     probe->version_status = mxq_core_version(&version, nullptr);
 
+    MxqGameProfile profile;
+    std::memset(&profile, 0, sizeof(profile));
+    profile.struct_size = static_cast<uint32_t>(sizeof(profile));
+    probe->profile_status =
+        mxq_core_game_profile(MXQ_GAME_KIND_MINI_XIANGQI, &profile, nullptr);
+
     char fen[MXQ_FEN_CAP];
     size_t len = 0;
     probe->start_fen_status =
-        mxq_rules_start_fen(fen, sizeof(fen), &len, nullptr);
+        mxq_rules_start_fen(MXQ_GAME_KIND_MINI_XIANGQI, fen, sizeof(fen), &len, nullptr);
 
     uint32_t min_readable = 0;
     uint32_t current = 0;
@@ -748,7 +834,7 @@ void case_search_end_to_end() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
 
     const uint32_t movetime = 120;
@@ -843,6 +929,8 @@ void case_search_end_to_end() {
                        "mxq_engine_plan is legal inside the callback");
         c.check_status(probe.version_status, MXQ_OK,
                        "mxq_core_version is legal inside the callback");
+        c.check_status(probe.profile_status, MXQ_OK,
+                       "mxq_core_game_profile is legal inside the callback");
         c.check_status(probe.start_fen_status, MXQ_OK,
                        "mxq_rules_start_fen is legal inside the callback");
         c.check_status(probe.versions_status, MXQ_OK,
@@ -922,7 +1010,7 @@ void case_free_play_owes_no_search() {
     if (core != nullptr) {
         const MxqEngineBudget budget = sufficient_budget();
         MxqEnginePlan applied = make_plan();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_OK, "prepare");
         MxqGameConfig config;
         std::memset(&config, 0, sizeof(config));
@@ -964,7 +1052,7 @@ void case_cancel_before_completion() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 5000; /* never allowed to finish */
     const MxqGameConfig config = hvai_config(movetime);
@@ -1053,7 +1141,7 @@ void case_undo_while_thinking_is_stale() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 600;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1121,7 +1209,7 @@ void case_released_origin_is_stale_even_when_identity_recurs() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
 
     /* The wrong-move shape this regression pins: search at revision 2 of one
@@ -1216,7 +1304,7 @@ void case_released_origin_without_replacement_is_stale() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 600;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1267,7 +1355,7 @@ void case_no_move_on_a_terminal_position_is_failed() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 200;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1342,7 +1430,7 @@ void case_reconfiguration_refused_mid_search() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 4000;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1362,7 +1450,7 @@ void case_reconfiguration_refused_mid_search() {
                        MXQ_OK, "search start");
 
         err = make_error();
-        c.check_status(mxq_engine_prepare(core, &budget, &applied, &err),
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_ERR_STATE_SEARCH_IN_PROGRESS,
                        "prepare mid-search refuses rather than stalling");
         err = make_error();
@@ -1415,7 +1503,7 @@ void case_core_cancel_all_quiesces() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 4000;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1481,7 +1569,7 @@ void case_shutdown_mid_search() {
     }
     const MxqEngineBudget budget = sufficient_budget();
     MxqEnginePlan applied = make_plan();
-    c.check_status(mxq_engine_prepare(core, &budget, &applied, &err), MXQ_OK,
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err), MXQ_OK,
                    "prepare");
     const uint32_t movetime = 4000;
     const MxqGameConfig config = hvai_config(movetime);
@@ -1717,7 +1805,7 @@ void case_teardown_returns_the_bridge_to_the_app_variant() {
 
     char fen[MXQ_FEN_CAP];
     size_t fen_len = 0;
-    c.check_status(mxq_rules_start_fen(fen, sizeof(fen), &fen_len, &err),
+    c.check_status(mxq_rules_start_fen(MXQ_GAME_KIND_MINI_XIANGQI, fen, sizeof(fen), &fen_len, &err),
                    MXQ_OK, "start fen");
     MxqPosition position;
     std::memset(&position, 0, sizeof(position));
@@ -1725,7 +1813,7 @@ void case_teardown_returns_the_bridge_to_the_app_variant() {
     MxqGameStatus status;
     std::memset(&status, 0, sizeof(status));
     status.struct_size = static_cast<uint32_t>(sizeof(status));
-    c.check_status(mxq_rules_evaluate(core, fen, nullptr, 0, &position, &status,
+    c.check_status(mxq_rules_evaluate(core, MXQ_GAME_KIND_MINI_XIANGQI, fen, nullptr, 0, &position, &status,
                                       nullptr, &err),
                    MXQ_OK, "the app's rules answer after the other variant");
     c.check_eq(static_cast<int64_t>(status.state), MXQ_GAME_ONGOING,
@@ -1759,6 +1847,98 @@ void case_teardown_returns_the_bridge_to_the_app_variant() {
                                         cancelled, out, detail) ==
                     mxq::engine::SearchError::None,
                 "the app's variant still searches: " + detail);
+        c.check(out.move.size() == 4 && out.move[0] >= 'a' &&
+                    out.move[0] <= 'g' && out.move[1] >= '1' &&
+                    out.move[1] <= '7',
+                "and its move is in the app's own notation, got: " + out.move);
+    }
+
+    mxq::engine::deconfigure();
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_direct_variant_switch_without_a_teardown() {
+    Case c("configuring one variant straight after the other, with no teardown "
+           "between, selects the new variant's network from the list the "
+           "previous configuration left");
+    const fs::path store = scratch_dir("variant-switch");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init against the two-network directory");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    /*
+     * The shape the other variant cases do not reach. Each of them ends with a
+     * deconfigure(), whose variant restore is conditional and whose option
+     * floor rewrites EvalFile's neighbours; this one goes straight from one
+     * configuration to the other, so at the moment UCI_Variant changes the
+     * engine is still holding the PREVIOUS variant's EvalFile list and the
+     * previous variant's loaded network. What must happen is that assigning
+     * UCI_Variant re-runs the engine's NNUE initialisation and selects, from
+     * that stale list, the token whose basename begins with the new variant's
+     * identifier — which is why configure() can preflight the effective state
+     * afterwards and mean it.
+     *
+     * The failure this pins is silent by construction: the engine leaves
+     * eval_file_loaded naming whatever loaded last, so a switch that did not
+     * reselect would keep searching the new variant's board with the old
+     * variant's network and report Use NNUE true throughout.
+     */
+    const std::string mini_network =
+        (fs::path(staged_xiangqi_assets()) / kBundledNetworkName).string();
+    const std::string xiangqi_network =
+        (fs::path(staged_xiangqi_assets()) / kXiangqiNetworkName).string();
+
+    std::string detail;
+    c.check(configure_for(mxq::engine::Variant::MiniXiangqi,
+                          staged_xiangqi_assets(),
+                          detail) == mxq::engine::ConfigureError::None,
+            "configure for the app's variant first: " + detail);
+    c.check_eq(Stockfish::Eval::eval_file_loaded, mini_network,
+               "the app's network is what is loaded");
+
+    detail.clear();
+    c.check(configure_for(mxq::engine::Variant::Xiangqi,
+                          staged_xiangqi_assets(),
+                          detail) == mxq::engine::ConfigureError::None,
+            "and then for xiangqi, with no teardown between: " + detail);
+    c.check(mxq::engine::active_variant() == mxq::engine::Variant::Xiangqi,
+            "the bridge is on xiangqi");
+    c.check_eq(std::string(Stockfish::Options["UCI_Variant"]),
+               kXiangqiVariantId, "and so is the engine");
+    c.check_eq(Stockfish::Eval::eval_file_loaded, xiangqi_network,
+               "the xiangqi network is what is loaded now");
+    c.check(Stockfish::Eval::useNNUE, "with NNUE effective");
+
+    /* And back, the same way: the switch is not one-directional, and the
+     * app's variant is the one a real session returns to. */
+    detail.clear();
+    c.check(configure_for(mxq::engine::Variant::MiniXiangqi,
+                          staged_xiangqi_assets(),
+                          detail) == mxq::engine::ConfigureError::None,
+            "and back to the app's variant, still with no teardown: " + detail);
+    c.check_eq(Stockfish::Eval::eval_file_loaded, mini_network,
+               "the app's network is loaded again");
+
+    /* The tables followed the variant, not only the option: a search here is
+     * the app's board, in the app's notation. */
+    const Stockfish::Variant *app_variant = engine_variant(kVariantId);
+    c.check(app_variant != nullptr,
+            std::string("the configuration defines ") + kVariantId);
+    if (app_variant != nullptr) {
+        std::atomic<bool> cancelled{false};
+        mxq::engine::SearchOutput out;
+        detail.clear();
+        c.check(mxq::engine::search_run(app_variant->startFen, {}, 250,
+                                        cancelled, out, detail) ==
+                    mxq::engine::SearchError::None,
+                "the app's variant searches after two switches: " + detail);
         c.check(out.move.size() == 4 && out.move[0] >= 'a' &&
                     out.move[0] <= 'g' && out.move[1] >= '1' &&
                     out.move[1] <= '7',
@@ -1890,6 +2070,10 @@ int main() {
      * process-global variant table: see the case's comment. */
     case_variant_load_failure();
 
+    /* First, and it must be: its whole claim is that the profile answers
+     * before any core exists, and every case below creates one. */
+    case_game_profile();
+
     case_query_before_prepare();
     case_prepare_applies_the_plan();
     case_insufficient_memory_initialises_nothing();
@@ -1914,6 +2098,7 @@ int main() {
      * else means no case above can depend on that being true. */
     case_xiangqi_searches_under_its_own_network();
     case_teardown_returns_the_bridge_to_the_app_variant();
+    case_direct_variant_switch_without_a_teardown();
     case_cross_loaded_network_is_refused_by_its_own_pin();
     case_xiangqi_wrong_basename_network();
 #endif

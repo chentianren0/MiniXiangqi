@@ -1,5 +1,7 @@
 #include "mxq_internal.hpp"
 
+#include "mxq_notation.hpp"
+
 #include <cassert>
 #include <cstring>
 
@@ -120,6 +122,16 @@ MxqStatus check_in(const void *in, uint32_t declared, uint32_t known,
     return MXQ_OK;
 }
 
+MxqStatus require_game(MxqGameKind game, MxqError *err) {
+    if (!notation::known_game(game)) {
+        assert(false && "a game outside the closed vocabulary");
+        fill_error(err, MXQ_ERR_ARG_RANGE,
+                   "the game is not one this core plays");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    return MXQ_OK;
+}
+
 void copy_bounded(char *dst, size_t cap, const char *src) {
     assert(dst != nullptr && cap > 0);
     if (src == nullptr) {
@@ -171,7 +183,7 @@ bool in_search_callback() {
 MxqStatus refuse_reentrant(MxqError *err) {
     fill_error(err, MXQ_ERR_ARG_REENTRANT,
                "called from inside a search callback, where only the status "
-               "and blob helpers and the four pure queries are legal");
+               "and blob helpers and the five pure queries are legal");
     return MXQ_ERR_ARG_REENTRANT;
 }
 

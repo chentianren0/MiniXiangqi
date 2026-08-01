@@ -1,0 +1,16 @@
+{
+  "title": "Xiangqi, Free Play, ended early",
+  "why": "The completed shape of the other game: the terminal trio beside a xiangqi rules_id. It is the document a History record of the second game holds, and the one an importer and the store's own constraints must accept.",
+  "info": {
+    "archive_version": 2,
+    "game": "xiangqi",
+    "move_count": 2,
+    "mode": "free-play",
+    "human_side": null,
+    "outcome": "none",
+    "end_reason": "ended-early",
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 1767225603000,
+    "game_id": "019b76da-a808-7000-8000-000000000008"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "xq-cnt-001",
+  "title": "The capture-free move count runs out and draws the game",
+  "area": "cnt",
+  "variant": "xiangqi",
+  "start_fen": "5k2r/9/9/9/9/9/9/9/9/R2K5 w - - 96 49",
+  "moves": [
+    "a1a2",
+    "i10i9",
+    "a2a3",
+    "i9i8"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/8r/9/9/9/9/R8/9/3K5 w - - 100 51",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "draw",
+      "reason": "fifty-move-rule",
+      "at_occurrence": 0
+    }
+  },
+  "boundary": {
+    "prefix_len": 2,
+    "expect": "ninety-eight capture-free plies; still ongoing"
+  },
+  "rationale": "Xiangqi ends a game that has run fifty moves \u2014 a hundred plies \u2014 without a capture. Only a capture resets the count: there is no piece whose move resets it, so four quiet rook moves from a position already at ninety-six carry it to a hundred and the game is drawn, automatically rather than on a claim. The boundary two plies earlier is still ongoing, which is what makes this the rule's exact edge. Mini Xiangqi has no such rule, so this outcome can never arise there; mx-cnt-001 is the same question answered the other way."
+}

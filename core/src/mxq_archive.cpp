@@ -37,10 +37,11 @@
 
 #include "mxq_archive_json.hpp"
 #include "mxq_archive_read.hpp"
+#include "mxq_archive_write.hpp"
 #include "mxq_core_state.hpp"
+#include "mxq_notation.hpp"
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
-#include "mxq_archive_write.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_session.hpp"
 #endif
@@ -89,7 +90,7 @@ json::Limits limits() {
  * The same reader with the two *size* bounds lifted — plies here, the file
  * size at the transport stage — and the three that describe the format's own
  * shape kept. Depth, members per object and string length are properties of a
- * version 1 document rather than of how long a game ran, no document this core
+ * version 2 document rather than of how long a game ran, no document this core
  * writes approaches them, and keeping them means a corrupted row cannot steer
  * the reader into unbounded work.
  */
@@ -99,11 +100,10 @@ json::Limits stored_limits() {
     return l;
 }
 
-/* The in-band type check. The extension and the UTI are hints; this is not. */
+/* The in-band type check. The extension and the UTI are hints; this is not.
+ * It names the file format, which both games share; which game a file records
+ * is content.rules_id. */
 constexpr const char *kArchiveFormat = "minixiangqi-game";
-
-/* The ruleset identity of docs/xiangqi-rules.md, not an engine variant. */
-constexpr const char *kRulesId = "minixiangqi";
 
 /* ---------------------------------------------------------------------- */
 /* The decoded document                                                    */
@@ -112,7 +112,11 @@ constexpr const char *kRulesId = "minixiangqi";
 struct Decoded {
     uint32_t            archive_version = 0;
     std::string         game_id;
-    std::string         rules_id;
+    /* The ruleset identity of docs/xiangqi-rules.md, decoded: which of the two
+     * games this document records, and therefore which board its moves are read
+     * against and which starting position it must open from. Not an engine
+     * variant. */
+    MxqGameKind         game = MXQ_GAME_KIND_MINI_XIANGQI;
     int64_t             rules_version = 0;
     std::string         start_fen;
     std::vector<std::string> moves;
@@ -191,7 +195,7 @@ bool only_known_members(const json::Value &object, const char *const *known,
         if (!found) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           std::string(where) + " has an unknown member \"" +
-                              name + "\" in archive version 1");
+                              name + "\" in archive version 2");
         }
     }
     return true;
@@ -221,23 +225,6 @@ bool valid_game_id(const std::string &id) {
     /* The version nibble and the RFC 9562 variant bits. */
     return id[14] == '7' &&
            (id[19] == '8' || id[19] == '9' || id[19] == 'a' || id[19] == 'b');
-}
-
-/* The frozen canonical move notation of docs/xiangqi-rules.md: <from><to> over
- * the 7 by 7 board, with no suffix. */
-bool valid_move_text(const std::string &move) {
-    if (move.size() != 4) {
-        return false;
-    }
-    for (size_t i = 0; i < 4; i += 2) {
-        if (move[i] < 'a' || move[i] > 'g') {
-            return false;
-        }
-        if (move[i + 1] < '1' || move[i + 1] > '7') {
-            return false;
-        }
-    }
-    return true;
 }
 
 /* Days from 1970-01-01 to y-m-d, proleptic Gregorian. Howard Hinnant's
@@ -328,6 +315,17 @@ bool parse_timestamp(const std::string &text, int64_t &out_ms) {
 /* The closed serialised vocabularies of docs/game-data.md. Unknown values are
  * rejected rather than mapped to a default: a value this build does not know is
  * a value it cannot honour. */
+bool read_rules_id(const std::string &text, MxqGameKind &out) {
+    for (const MxqGameKind game : {MXQ_GAME_KIND_MINI_XIANGQI,
+                                   MXQ_GAME_KIND_XIANGQI}) {
+        if (text == rules_id_text(game)) {
+            out = game;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool read_mode(const std::string &text, MxqPlayMode &out) {
     if (text == "human-vs-ai") {
         out = MXQ_PLAY_MODE_HUMAN_VS_AI;
@@ -441,13 +439,18 @@ bool read_end_reason(const std::string &text, MxqEndReason &out) {
         out = MXQ_END_REASON_ENDED_EARLY;
         return true;
     }
+    if (text == "fifty-move-rule") {
+        out = MXQ_END_REASON_FIFTY_MOVE_RULE;
+        return true;
+    }
     return false;
 }
 
 bool is_draw_reason(MxqEndReason reason) {
     return reason == MXQ_END_REASON_THREEFOLD_REPETITION ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK ||
-           reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE;
+           reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
+           reason == MXQ_END_REASON_FIFTY_MOVE_RULE;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -456,9 +459,9 @@ bool is_draw_reason(MxqEndReason reason) {
 
 bool read_origin(const json::Value &origin, Decoded &out, Reject &err) {
     /* origin describes the export event and is never hashed, never compared,
-     * and never trusted — but it is still part of the version-1 document, so a
-     * malformed one is a malformed file. Nothing read here reaches the
-     * decoded summary. */
+     * and never trusted — but it is still part of the document, so a malformed
+     * one is a malformed file. Nothing read here reaches the decoded
+     * summary. */
     static const char *const kKnown[] = {"app_version", "exported_at"};
     if (!only_known_members(origin, kKnown, 2, "\"origin\"", err)) {
         return false;
@@ -581,11 +584,11 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     if (rules_id == nullptr) {
         return false;
     }
-    if (rules_id->string() != kRulesId) {
+    if (!read_rules_id(rules_id->string(), out.game)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                      "\"rules_id\" is not \"" + std::string(kRulesId) + "\"");
+                      "\"rules_id\" is not one of \"minixiangqi\", "
+                      "\"xiangqi\"");
     }
-    out.rules_id = rules_id->string();
 
     const json::Value *rules_version =
         typed_member(content, "rules_version", json::Value::Type::Integer,
@@ -644,10 +647,14 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     if (moves == nullptr) {
         return false;
     }
+    /* Judged against the board of the game rules_id named, which is why that
+     * member is read first: "a9a10" is a move in one game and nonsense in the
+     * other, and a reader with one grammar would accept or refuse both. */
     out.moves.reserve(moves->elements().size());
     for (size_t i = 0; i < moves->elements().size(); ++i) {
         const json::Value &move = moves->elements()[i];
-        if (!move.is_string() || !valid_move_text(move.string())) {
+        if (!move.is_string() ||
+            !notation::well_formed_move(out.game, move.string())) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           "\"moves\"[" + std::to_string(i) +
                               "] is not a move in canonical notation");
@@ -853,7 +860,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
  * import-facing entry point, which applies the accepted file-size and ply
  * bounds, and the store's own path back into a game it wrote, which must
  * not. Everything else about the ladder is identical, because a stored
- * document is a version 1 document like any other. */
+ * document is a version 2 document like any other. */
 bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
             Reject &err) {
     /* Stage 1: transport and size. */
@@ -886,6 +893,7 @@ bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
 void fill_info(const Decoded &decoded, MxqArchiveInfo *out) {
     out->archive_version = decoded.archive_version;
     out->move_count = static_cast<uint32_t>(decoded.moves.size());
+    out->game = decoded.game;
     out->mode = decoded.mode;
     out->human_side = decoded.human_side;
     /* An archive with no committed end reads MXQ_OUTCOME_NONE and
@@ -904,6 +912,7 @@ void fill_stored(const Decoded &decoded, Stored &out) {
     out.archive_version = decoded.archive_version;
     out.game_id = decoded.game_id;
     out.config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
+    out.config.game = decoded.game;
     out.config.mode = decoded.mode;
     out.config.human_side = decoded.human_side;
     out.config.ai_level = decoded.ai_level;
@@ -1013,10 +1022,11 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
 /*
  * Stage 5, the rules tier, in one place because two entry points run it.
  *
- * The initial position must be exactly the frozen starting FEN — version 1
- * defines no other, and the setup-legality predicate a later version would need
- * does not exist — then every move must be legal in sequence, then the recorded
- * terminal pair must agree with the replayed adjudication.
+ * The initial position must be exactly the frozen starting FEN of the game
+ * rules_id names — version 2 defines no other for either game, and the
+ * setup-legality predicate a later version would need does not exist — then
+ * every move must be legal in sequence, then the recorded terminal pair must
+ * agree with the replayed adjudication.
  *
  * An archive that records no end has no terminal pair to agree with: an
  * unconfirmed natural terminal position remains the active game, so it is as
@@ -1025,10 +1035,10 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  * an import creates rather than about what the rules say.
  */
 MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
-    if (decoded.start_fen != MXQ_START_FEN) {
+    if (decoded.start_fen != notation::start_fen(decoded.game)) {
         fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
-                   "\"start_fen\" is not the frozen starting position, which "
-                   "is the only initial position archive version 1 defines");
+                   "\"start_fen\" is not this game's frozen starting position, "
+                   "which is the only initial position version 2 defines");
         return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
     }
 
@@ -1045,7 +1055,8 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
     engine::Adjudication adj{};
     size_t first_illegal = 0;
 
-    switch (engine::replay(decoded.start_fen.c_str(),
+    switch (engine::replay(engine::variant_of(decoded.game),
+                           decoded.start_fen.c_str(),
                            moves.empty() ? nullptr : moves.data(), moves.size(),
                            fen, in_check, ply, adj, nullptr, first_illegal,
                            detail)) {
@@ -1144,7 +1155,7 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
      *
      * It comes last, after the accepted validation order has run entire, and
      * not among its stages. It is not one of them: those five decide whether
-     * the bytes are a version 1 archive, and this decides whether that archive
+     * the bytes are a version 2 archive, and this decides whether that archive
      * is a game an import may file. Asking it earlier would mask a rejection
      * class the corpus names — an incomplete document with an illegal move
      * would be reported for the shape rather than for the move — and the answer

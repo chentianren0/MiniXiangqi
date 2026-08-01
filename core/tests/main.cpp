@@ -203,7 +203,8 @@ void evaluate_fixture(mxqtest::RulesFacade &facade, const mxqtest::Fixture &fx,
     MxqError err = make_error();
     size_t first_illegal = 0;
     MxqStatus rc =
-        facade.evaluate(fx.start_fen, fx.moves, position, status, first_illegal, err);
+        facade.evaluate(fx.game, fx.start_fen, fx.moves, position, status,
+                        first_illegal, err);
     if (rc != MXQ_OK) {
         if (rc == MXQ_ERR_RULES_INVALID_HISTORY) {
             msgs.push_back("the history is not legal: move index " +
@@ -229,7 +230,7 @@ void evaluate_fixture(mxqtest::RulesFacade &facade, const mxqtest::Fixture &fx,
     bool have_legal = false;
     if (fx.legal_moves.has_value() || fx.rejected_moves.has_value()) {
         err = make_error();
-        rc = facade.legal_moves(fx.start_fen, fx.moves, legal, err);
+        rc = facade.legal_moves(fx.game, fx.start_fen, fx.moves, legal, err);
         if (rc != MXQ_OK) {
             msgs.push_back("mxq_rules_legal_moves failed: " + error_text(err, rc));
         } else {
@@ -288,7 +289,8 @@ void evaluate_fixture(mxqtest::RulesFacade &facade, const mxqtest::Fixture &fx,
 
             err = make_error();
             size_t bad = 0;
-            rc = facade.evaluate(fx.start_fen, moves, after, after_status, bad, err);
+            rc = facade.evaluate(fx.game, fx.start_fen, moves, after,
+                                 after_status, bad, err);
             if (rc != MXQ_OK) {
                 msgs.push_back("applied \"" + probe.move +
                                "\": the core rejected it: " + error_text(err, rc));
@@ -326,7 +328,8 @@ void evaluate_fixture(mxqtest::RulesFacade &facade, const mxqtest::Fixture &fx,
 
         err = make_error();
         size_t bad = 0;
-        rc = facade.evaluate(fx.start_fen, prefix, at, at_status, bad, err);
+        rc = facade.evaluate(fx.game, fx.start_fen, prefix, at, at_status, bad,
+                             err);
         if (rc != MXQ_OK) {
             msgs.push_back("boundary prefix of " +
                            std::to_string(fx.boundary->prefix_len) +
@@ -451,18 +454,35 @@ void print_banner(const fs::path &fixtures_dir, size_t fixture_count) {
                   << version.archive_version_min_readable << ")\n"
                   << "  store schema    v" << version.store_schema_version << "\n"
                   << "  core revision   " << version.core_revision << "\n"
-                  << "  fork revision   " << version.fork_revision << "\n"
-                  << "  variant         " << version.variant_id << "\n"
-                  << "  network         " << version.nnue_sha256 << "\n";
+                  << "  fork revision   " << version.fork_revision << "\n";
     } else {
         std::cout << "  mxq_core_version failed: " << error_text(err, rc) << "\n";
     }
 
-    char start_fen[MXQ_FEN_CAP];
-    size_t len = 0;
-    err = make_error();
-    if (mxq_rules_start_fen(start_fen, sizeof(start_fen), &len, &err) == MXQ_OK) {
-        std::cout << "  start FEN       " << start_fen << "\n";
+    /* Both games, because the corpus covers both: a banner naming one would
+     * describe half the run. */
+    for (const MxqGameKind game : {MXQ_GAME_KIND_MINI_XIANGQI,
+                                   MXQ_GAME_KIND_XIANGQI}) {
+        MxqGameProfile profile;
+        std::memset(&profile, 0, sizeof(profile));
+        profile.struct_size = static_cast<uint32_t>(sizeof(profile));
+        err = make_error();
+        if (mxq_core_game_profile(game, &profile, &err) != MXQ_OK) {
+            std::cout << "  mxq_core_game_profile failed: "
+                      << error_text(err, rc) << "\n";
+            continue;
+        }
+        char start_fen[MXQ_FEN_CAP];
+        size_t len = 0;
+        err = make_error();
+        const bool have_fen =
+            mxq_rules_start_fen(game, start_fen, sizeof(start_fen), &len,
+                                &err) == MXQ_OK;
+        std::cout << "  variant         " << profile.variant_id << "\n"
+                  << "  network         " << profile.nnue_sha256 << "\n";
+        if (have_fen) {
+            std::cout << "  start FEN       " << start_fen << "\n";
+        }
     }
 
     std::cout << "  fixtures        " << fixtures_dir.string() << " ("
@@ -557,6 +577,17 @@ int main(int argc, char **argv) {
     } else {
         std::cout << "  rules facade    UNAVAILABLE\n"
                   << "                  " << unavailable << "\n";
+        /* NOT IMPLEMENTED is for a runner built without the facade, and for
+         * nothing else. A facade that IS in this binary and could not be
+         * brought up is a broken run: a store this build cannot read, or an
+         * asset directory without the variant configuration, would otherwise
+         * skip every expectation in the corpus and still exit 0. */
+        if (mxqtest::rules_facade_built()) {
+            std::cerr << "mxq_core_tests: the rules facade is built into this "
+                         "runner but could not be opened; the corpus was not "
+                         "evaluated.\n";
+            return 2;
+        }
     }
     std::cout << "\n";
 

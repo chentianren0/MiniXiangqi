@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: initial position",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "this game's frozen starting position",
+  "why": "The initial position is checked against the starting position of the game rules_id names, not against one fixed board. This file names Xiangqi and opens from the Mini Xiangqi array, which is a real position of a real game \u2014 the wrong one \u2014 so nothing structural can catch it and the rules tier must."
+}

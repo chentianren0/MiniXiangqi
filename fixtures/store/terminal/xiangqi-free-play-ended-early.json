@@ -1,0 +1,16 @@
+{
+  "title": "Xiangqi, Free Play, saved before a mode change",
+  "why": "An ending on the other game, end to end: the classification is derived from a xiangqi position, the record enters History carrying its own game, and the row satisfies the schema's rules_id constraint. A store that recorded every game as the app's own would pass the Mini Xiangqi endings and fail only here.",
+  "config": {
+    "game": "xiangqi",
+    "mode": "free-play"
+  },
+  "moves": ["h3e3", "h8e8"],
+  "end": {
+    "action": "archive_and_clear",
+    "archive": "xiangqi-free-play-ended-early.mxq",
+    "outcome": "none",
+    "end_reason": "ended-early",
+    "state": "ongoing"
+  }
+}

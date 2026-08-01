@@ -41,7 +41,7 @@
 namespace mxq {
 namespace archive {
 
-/* One version 1 document, decoded whole — a row's or a file's. The terminal
+/* One version 2 document, decoded whole — a row's or a file's. The terminal
  * trio is meaningful exactly when completed is true. written_at_ms is
  * origin.exported_at, which a resumed session carries forward so that
  * re-encoding it reproduces the bytes the store holds, and which an imported

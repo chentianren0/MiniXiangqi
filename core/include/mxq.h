@@ -8,7 +8,12 @@
  * not blittable.
  *
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
- * 54 functions, three opaque handles.
+ * 55 functions, three opaque handles.
+ *
+ * The core plays two games — Mini Xiangqi and Xiangqi — and MxqGameKind is the
+ * axis that names which. Every rules question is asked of one game: the board,
+ * the move notation, the starting position, the adjudication rules and the
+ * engine variant all follow from it, and nothing infers it from a position.
  *
  * Conventions, all from that contract:
  *
@@ -36,8 +41,10 @@
  *     mxq_blob_release.
  *   - Moves use the frozen canonical notation <from><to> and positions the
  *     frozen 6-field FEN, per docs/xiangqi-rules.md. Every rules query is
- *     defined over an initial position plus complete move history, never a bare
- *     FEN, because repetition and violation state derive from history.
+ *     defined over a game, an initial position and a complete move history —
+ *     never a bare FEN, because repetition and violation state derive from
+ *     history, and never without the game, because the rules are not a property
+ *     of the position.
  *
  * Each function below states the thread it may be called from and whether it
  * blocks, and every function that delivers a callback states which thread
@@ -93,19 +100,25 @@ extern "C" {
  * version, the store schema version, and the engine profile — are reported
  * separately by MxqVersion and are never conflated with this one.
  */
-#define MXQ_API_VERSION_MAJOR 1
-#define MXQ_API_VERSION_MINOR 4
+#define MXQ_API_VERSION_MAJOR 2
+#define MXQ_API_VERSION_MINOR 0
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
 /* Capacities                                                                */
 /* ------------------------------------------------------------------------- */
 
-/* "<from><to>" is four characters; 8 leaves room for the NUL and keeps the
- * struct 4-aligned. No move suffix exists in this ruleset. */
+/* "<from><to>", where a square is a file letter and a rank written in decimal:
+ * two characters on a board of seven ranks and up to three on one of ten, so a
+ * move is four to six characters and "a9a10" is the longest either game spells.
+ * 8 leaves room for the NUL and keeps the struct 4-aligned. No move suffix
+ * exists in either ruleset. */
 #define MXQ_MOVE_TEXT_CAP 8
 
-/* A 6-field Mini Xiangqi FEN, NUL-terminated. */
+/* A 6-field FEN of either game, NUL-terminated. The longest position either can
+ * reach is shorter than the 68-byte Xiangqi starting FEN by a wide margin, and
+ * the capacity is fixed rather than per-game so that MxqPosition has one
+ * layout. */
 #define MXQ_FEN_CAP 96
 
 /* MxqError.detail: a short English diagnostic. Final, and measured: the longest
@@ -240,13 +253,20 @@ enum {
     MXQ_ERR_STATE_ENGINE_NOT_READY    = 2013,
 
     /* Rules domain: 3000. Malformed and illegal are always distinguished. */
-    MXQ_ERR_RULES_MALFORMED_MOVE   = 3001, /* not ^[a-g][1-7][a-g][1-7]$ */
+    MXQ_ERR_RULES_MALFORMED_MOVE   = 3001, /* not two squares of the game's own
+                                            * board: a file letter and a rank in
+                                            * decimal without a leading zero,
+                                            * twice, and nothing else.
+                                            * ^([a-g][1-7]){2}$ in Mini Xiangqi
+                                            * and ^([a-i](10|[1-9])){2}$ in
+                                            * Xiangqi */
     MXQ_ERR_RULES_ILLEGAL_MOVE     = 3002, /* well-formed but not legal here */
     MXQ_ERR_RULES_INVALID_FEN      = 3003, /* fails the frozen structural
-                                            * encoding */
-    MXQ_ERR_RULES_ILLEGAL_POSITION = 3004, /* reserved: in version 1 no setup-
-                                            * legality predicate is defined, so
-                                            * this code is never returned */
+                                            * encoding of the game it was asked
+                                            * about */
+    MXQ_ERR_RULES_ILLEGAL_POSITION = 3004, /* reserved: no setup-legality
+                                            * predicate is defined, so this code
+                                            * is never returned */
     MXQ_ERR_RULES_INVALID_HISTORY  = 3005, /* MxqError.detail_index carries the
                                             * first illegal move's index */
 
@@ -359,6 +379,24 @@ enum {
     MXQ_PLAY_MODE_FREE_PLAY   = 1  /* serialised "free-play" */
 };
 
+/*
+ * Which of the two games is being played: the board, the move notation, the
+ * starting position, the adjudication rules and the engine variant all follow
+ * from it. It is the archive's rules_id, and it is deliberately not
+ * MxqPlayMode: how a game is played against whom is a different question from
+ * which game it is, and every combination of the two exists.
+ *
+ * A game's kind is frozen at creation and is never inferred from a position.
+ * The two boards differ in size today, so a FEN happens to imply one — but the
+ * ruleset is not a property of the board, and a core that read it off the
+ * position would be guessing the moment two games shared a geometry.
+ */
+typedef int32_t MxqGameKind;
+enum {
+    MXQ_GAME_KIND_MINI_XIANGQI = 0, /* serialised "minixiangqi"; 7x7 */
+    MXQ_GAME_KIND_XIANGQI      = 1  /* serialised "xiangqi"; 9x10 */
+};
+
 typedef int32_t MxqAiLevel;
 enum {
     MXQ_AI_LEVEL_NONE     = -1,
@@ -406,7 +444,7 @@ enum {
 
 /*
  * The rule reasons are the fixture reason identifiers; the last two are
- * user-scoped. In this ruleset threefold repetition is always a user claim and
+ * user-scoped. In both rulesets threefold repetition is always a user claim and
  * every other rule reason is automatic, so the reason determines the mechanism
  * and no claimed-versus-automatic flag exists.
  */
@@ -424,7 +462,14 @@ enum {
     MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE = 7, /* "mutual-perpetual-chase";
                                                 * reserved likewise */
     MXQ_END_REASON_RESIGNATION            = 8, /* "resignation"; human-vs-AI only */
-    MXQ_END_REASON_ENDED_EARLY            = 9  /* "ended-early" */
+    MXQ_END_REASON_ENDED_EARLY            = 9, /* "ended-early" */
+    MXQ_END_REASON_FIFTY_MOVE_RULE        = 10 /* "fifty-move-rule"; a draw, and
+                                                * Xiangqi's alone: Mini Xiangqi
+                                                * has no move-count rule, so
+                                                * this reason cannot arise
+                                                * there. Automatic, like every
+                                                * rule reason but the neutral
+                                                * repetition */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */
@@ -434,7 +479,7 @@ enum {
     MXQ_PROVENANCE_IMPORTED       = 1, /* "imported" */
     MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved for a future
                                         * start-from-position feature and
-                                        * rejected by archive version 1 */
+                                        * rejected by archive version 2 */
 };
 
 /* The result of a successful mxq_store_import. */
@@ -544,9 +589,14 @@ typedef struct MxqError {
 } MxqError;
 
 /*
- * The four independent version axes. The engine-profile fields are load-bearing
+ * The four independent version axes, and the two build revisions that are facts
+ * about this core rather than about either game. The revisions are load-bearing
  * rather than diagnostics: conformance depends on a fork build, so every test
  * report and saved diagnostic must be able to name the build that produced it.
+ *
+ * What a game binds — its engine variant and that variant's network — is not
+ * here, because there are two of each and one field cannot carry both. It is
+ * MxqGameProfile, asked per game.
  */
 typedef struct MxqVersion {
     uint32_t struct_size;
@@ -560,9 +610,20 @@ typedef struct MxqVersion {
     char     core_revision[MXQ_REVISION_CAP];
     char     fork_revision[MXQ_REVISION_CAP];   /* the pinned Fairy-Stockfish
                                                  * fork revision */
-    char     variant_id[MXQ_VARIANT_ID_CAP];    /* the pinned engine variant */
-    char     nnue_sha256[MXQ_SHA256_HEX_CAP];   /* lowercase hexadecimal */
 } MxqVersion;
+
+/*
+ * What one game binds to: the engine variant its rules are played under and the
+ * network that variant is searched with. Both are pinned per game, and reading
+ * a network against the other game's pins would verify it against nothing —
+ * which is why this is one struct rather than two parallel lookups.
+ */
+typedef struct MxqGameProfile {
+    uint32_t    struct_size;
+    MxqGameKind game;
+    char        variant_id[MXQ_VARIANT_ID_CAP]; /* the pinned engine variant */
+    char        nnue_sha256[MXQ_SHA256_HEX_CAP]; /* lowercase hexadecimal */
+} MxqGameProfile;
 
 /*
  * MxqCoreConfig.flags values. Flags are appended here as they are defined,
@@ -663,6 +724,11 @@ typedef struct MxqGameStatus {
  * human_side is the resolved side: it is MXQ_COLOR_RED or MXQ_COLOR_BLACK in a
  * human-versus-AI game even when first_mover_choice is MXQ_FIRST_MOVER_RANDOM,
  * which is retained only because it cannot be reconstructed later.
+ *
+ * game is frozen with the rest and is what every later question about this
+ * session is asked under: its starting position, its move notation, its
+ * legality and its adjudication. It is required in both modes — every game is
+ * some game.
  */
 typedef struct MxqGameConfig {
     uint32_t            struct_size;
@@ -671,6 +737,7 @@ typedef struct MxqGameConfig {
     MxqAiLevel          ai_level;
     MxqFirstMoverChoice first_mover_choice;
     uint32_t            ai_movetime_ms; /* the exact frozen movetime */
+    MxqGameKind         game;
 } MxqGameConfig;
 
 /*
@@ -699,6 +766,9 @@ typedef struct MxqRecordSummary {
     uint8_t       reserved0[2];
     char          game_id[MXQ_GAME_ID_CAP]; /* version 7 UUID, canonical
                                              * lowercase */
+    MxqGameKind   game;            /* which game this record is of; a History
+                                    * list holds both */
+    uint32_t      reserved1;
 } MxqRecordSummary;
 
 /*
@@ -722,7 +792,8 @@ typedef struct MxqArchiveInfo {
     MxqColor     human_side;
     MxqOutcome   outcome;
     MxqEndReason end_reason;
-    uint32_t     reserved0;
+    MxqGameKind  game;          /* the file's rules_id, decoded: which game it
+                                 * is a record of */
     int64_t      started_at_ms; /* epoch milliseconds, UTC */
     int64_t      ended_at_ms;   /* 0 when the archive records no end */
     char         game_id[MXQ_GAME_ID_CAP];
@@ -817,9 +888,10 @@ typedef struct MxqSearchResult {
  *
  * It must copy and return. Inside it the legal calls are the status and blob
  * helpers — mxq_status_domain, mxq_status_name, mxq_blob_bytes, mxq_blob_len,
- * mxq_blob_release — together with the four pure queries that take no core
- * instance and no lock: mxq_core_version, mxq_rules_start_fen, mxq_engine_plan
- * and mxq_archive_supported_versions. Every other core function that can report
+ * mxq_blob_release — together with the five pure queries that take no core
+ * instance and no lock: mxq_core_version, mxq_core_game_profile,
+ * mxq_rules_start_fen, mxq_engine_plan and mxq_archive_supported_versions.
+ * Every other core function that can report
  * returns MXQ_ERR_ARG_REENTRANT, before it judges any handle it was passed;
  * mxq_game_release returns void and so has nothing to report with, and is
  * forbidden here by the single-owner rule instead, a callback not being the
@@ -888,14 +960,28 @@ MXQ_API void MXQ_CALL mxq_blob_release(MxqBlob *blob);
 /* ------------------------------------------------------------------------- */
 
 /*
- * Report the four independent version axes. Callable before mxq_core_init, as
- * are the other queries that take no core instance: mxq_rules_start_fen,
- * mxq_engine_plan and mxq_archive_supported_versions.
+ * Report the four independent version axes and the two build revisions.
+ * Callable before mxq_core_init, as are the other queries that take no core
+ * instance: mxq_core_game_profile, mxq_rules_start_fen, mxq_engine_plan and
+ * mxq_archive_supported_versions.
  *
  * Thread: any thread, including inside a search callback.
  * Blocking: no.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err);
+
+/*
+ * Report what one game binds to: its engine variant and that variant's pinned
+ * network. A game outside the closed vocabulary is a programming error and
+ * returns MXQ_ERR_ARG_RANGE. Callable before mxq_core_init: these are build
+ * facts, not properties of a core instance.
+ *
+ * Thread: any thread, including inside a search callback.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game,
+                                                 MxqGameProfile *out,
+                                                 MxqError *err);
 
 /*
  * Initialise the core and open the store. Returns
@@ -907,7 +993,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err);
  * config->store_directory, whose leading directories are created as needed. A
  * store that cannot be opened or created fails with its store-domain status;
  * one written by a newer build is refused with MXQ_ERR_STORE_SCHEMA_TOO_NEW
- * rather than opened, per the forward-only migration rule in
+ * rather than opened, and one recording any other schema version is refused
+ * too — one version is defined and there is no migration into it, per
  * docs/game-data.md.
  *
  * Thread: the UI or setup thread; never inside a search callback.
@@ -952,7 +1039,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * value the frontend owns. The four human-versus-AI members must be present
  * exactly in MXQ_PLAY_MODE_HUMAN_VS_AI and must read as the NONE constants and
  * zero in Free Play, matching the archive, which omits them; a configuration
- * that is neither shape is a programming error and returns MXQ_ERR_ARG_RANGE.
+ * that is neither shape is a programming error and returns MXQ_ERR_ARG_RANGE,
+ * as is a game outside the closed vocabulary.
+ *
+ * The single-active-game rule spans both games: the library holds one active
+ * game, of whichever kind, so creating one while any is active returns
+ * MXQ_ERR_STATE_ACTIVE_GAME_EXISTS.
  *
  * Thread: any non-UI thread except inside a search callback — except the
  * store-attached active game, whose own calls docs/core-interface.md's
@@ -1086,10 +1178,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_legal_moves(const MxqGame *game,
                                                 MxqError *err);
 
 /*
- * The legal moves originating at from_square, a two-character square name such
- * as "d1". Same buffer convention as mxq_game_legal_moves. A well-formed square
- * with no legal move yields *out_count 0 and MXQ_OK; a string that is not
- * ^[a-g][1-7]$ is a programming error and returns MXQ_ERR_ARG_RANGE, because a
+ * The legal moves originating at from_square, a square name such as "d1" or
+ * "e10". Same buffer convention as mxq_game_legal_moves. A well-formed square
+ * with no legal move yields *out_count 0 and MXQ_OK; a string that is not a
+ * square of THIS session's game — see MXQ_ERR_RULES_MALFORMED_MOVE for the
+ * grammar — is a programming error and returns MXQ_ERR_ARG_RANGE, because a
  * frontend asking about a square its own board does not have is a frontend
  * bug.
  *
@@ -1243,35 +1336,39 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
 /* ------------------------------------------------------------------------- */
 
 /*
- * Write the frozen starting FEN and its length. Callable before
- * mxq_core_init: it is a constant of the ruleset, not of any core instance.
- * A cap below the required size returns MXQ_ERR_ARG_BUFFER_TOO_SMALL with
- * MxqError.required_size set; MXQ_FEN_CAP is always sufficient.
+ * Write one game's frozen starting FEN and its length. Callable before
+ * mxq_core_init: it is a constant of the ruleset, not of any core instance. A
+ * cap below the required size returns MXQ_ERR_ARG_BUFFER_TOO_SMALL with
+ * MxqError.required_size set; MXQ_FEN_CAP is always sufficient. A game outside
+ * the closed vocabulary is a programming error and returns MXQ_ERR_ARG_RANGE.
  *
  * Thread: any thread, including inside a search callback.
  * Blocking: no.
  */
-MXQ_API MxqStatus MXQ_CALL mxq_rules_start_fen(char *out, size_t cap,
-                                               size_t *out_len, MxqError *err);
+MXQ_API MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out,
+                                               size_t cap, size_t *out_len,
+                                               MxqError *err);
 
 /*
- * Validate a FEN. In version 1 this applies the frozen structural encoding
- * only, returning MXQ_ERR_RULES_INVALID_FEN on failure;
+ * Validate a FEN as a position of game. This applies the frozen structural
+ * encoding only, returning MXQ_ERR_RULES_INVALID_FEN on failure;
  * MXQ_ERR_RULES_ILLEGAL_POSITION is reserved for a future setup-legality
- * predicate and is never returned.
+ * predicate and is never returned. A FEN of the other game's board fails the
+ * encoding here, which is what makes the game a question rather than a hint.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
+                                                  MxqGameKind game,
                                                   const char *fen,
                                                   MxqError *err);
 
 /*
- * Replay moves from start_fen and report the resulting position and game state.
- * This, with mxq_rules_legal_moves, is exactly the surface the approved
- * conformance fixtures replay through: every assertion in a fixture maps onto
- * these outputs.
+ * Replay moves from start_fen under game's rules and report the resulting
+ * position and game state. This, with mxq_rules_legal_moves, is exactly the
+ * surface the approved conformance fixtures replay through: every assertion in
+ * a fixture maps onto these outputs.
  *
  * moves is an array of move_count NUL-terminated strings in canonical notation;
  * move_count 0 evaluates start_fen itself and moves may then be NULL. When a
@@ -1283,7 +1380,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * Thread: any thread except inside a search callback.
  * Blocking: no.
  */
-MXQ_API MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core,
+MXQ_API MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core, MxqGameKind game,
                                               const char *start_fen,
                                               const char *const *moves,
                                               size_t move_count,
@@ -1294,13 +1391,14 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core,
 
 /*
  * The complete legal-move set in the position reached by replaying moves from
- * start_fen. Same history and buffer conventions as mxq_rules_evaluate and
- * mxq_game_legal_moves.
+ * start_fen under game's rules. Same history and buffer conventions as
+ * mxq_rules_evaluate and mxq_game_legal_moves.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core,
+                                                 MxqGameKind game,
                                                  const char *start_fen,
                                                  const char *const *moves,
                                                  size_t move_count,
@@ -1324,22 +1422,27 @@ MXQ_API MxqStatus MXQ_CALL mxq_engine_plan(const MxqEngineBudget *budget,
                                            MxqEnginePlan *out, MxqError *err);
 
 /*
- * Recompute the same plan and apply it: threads, Hash, the pinned variant
- * configuration, and the NNUE. Below MXQ_ENGINE_MIN_HASH_MIB it returns
- * MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY without initialising anything, and never
- * substitutes a smaller Hash. The network is preflighted against the engine's
- * observable load state — the effective NNUE state after configuration, not
- * merely that the file exists and parses — so the engine's own fatal
- * verification path is never reached.
+ * Recompute the same plan and apply it for one game: threads, Hash, that game's
+ * pinned engine variant, and its pinned network. Below MXQ_ENGINE_MIN_HASH_MIB
+ * it returns MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY without initialising anything,
+ * and never substitutes a smaller Hash. The network is preflighted against the
+ * engine's observable load state — the effective NNUE state after
+ * configuration, not merely that the file exists and parses — so the engine's
+ * own fatal verification path is never reached.
+ *
+ * The engine is prepared for exactly one game at a time, because the tables a
+ * search reads are that game's variant's. Preparing for the other game is an
+ * ordinary second call; a search on a session of a game the engine is not
+ * prepared for is refused with MXQ_ERR_STATE_ENGINE_NOT_READY.
  *
  * Returns MXQ_ERR_STATE_SEARCH_IN_PROGRESS rather than stalling if a search is
- * outstanding.
+ * outstanding, and MXQ_ERR_ARG_RANGE for a game outside the closed vocabulary.
  *
  * Thread: any non-UI thread except inside a search callback; the work executes
  * marshalled on the engine thread.
  * Blocking: yes.
  */
-MXQ_API MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core,
+MXQ_API MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core, MxqGameKind game,
                                               const MxqEngineBudget *budget,
                                               MxqEnginePlan *out_applied,
                                               MxqError *err);
@@ -1358,8 +1461,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_engine_teardown(MxqCore *core, MxqError *err);
 
 /*
  * Report the engine's observable state and the profile identifier that
- * identifies the configuration a move would be produced by. Same buffer
- * convention as mxq_rules_start_fen; MXQ_PROFILE_ID_CAP is always sufficient.
+ * identifies the configuration a move would be produced by — which names the
+ * game the engine is prepared for, since the variant and its network are half
+ * of what a profile is. Before any preparation it names the rules posture's
+ * game, MXQ_GAME_KIND_MINI_XIANGQI. Same buffer convention as
+ * mxq_rules_start_fen; MXQ_PROFILE_ID_CAP is always sufficient.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
@@ -1478,9 +1584,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_archive_probe(MxqCore *core,
 /*
  * Full validation: everything mxq_archive_probe does — and on success it fills
  * out identically — then rules replay through the rules facade: the initial
- * position must be exactly the frozen starting FEN in version 1, every move
- * must be legal in sequence, and the recorded terminal pair must agree with the
- * replayed adjudication. Touches no persistent state.
+ * position must be exactly the frozen starting FEN of the game the file names,
+ * every move must be legal in sequence, and the recorded terminal pair must
+ * agree with the replayed adjudication. Touches no persistent state.
  *
  * An archive that records no end has no terminal pair to agree with: an
  * unconfirmed natural terminal position remains the active game, so it is as

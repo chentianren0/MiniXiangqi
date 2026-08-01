@@ -211,6 +211,7 @@ set(MXQ_CORE_SOURCES
   src/mxq_identity.cpp
   src/mxq_interchange.cpp
   src/mxq_internal.cpp
+  src/mxq_notation.cpp
   src/mxq_rules.cpp
   src/mxq_sha256.cpp
   src/mxq_store.cpp

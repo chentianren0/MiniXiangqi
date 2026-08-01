@@ -2,6 +2,7 @@
   "title": "Human versus AI: Undo proceeds by human decision cycles",
   "why": "With the AI's completed reply last, one Undo removes the reply together with the human move that triggered it, and repeated Undo continues by whole cycles until the game is back at its start. This is the two-ply branch of the undo rule; it is unreachable in Free Play, where every ply belongs to the same person.",
   "config": {
+    "game": "minixiangqi",
     "mode": "human-vs-ai",
     "human_side": "red",
     "ai_level": "fast",

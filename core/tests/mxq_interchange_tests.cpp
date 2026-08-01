@@ -513,8 +513,8 @@ void case_the_rejection_corpus_refuses_identically(
 }
 
 /*
- * The three active shapes. They are complete version 1 documents and the codec
- * reads them; what they are not is an exported game, because an export is one
+ * The three active shapes. They are complete documents of the version this
+ * build defines, and the codec reads them; what they are not is an exported game, because an export is one
  * immutable History record and a History record has an ending. Import refuses
  * them before the store is consulted, so the schema's own "a record can only
  * enter this library as imported once it is complete" never has to be the thing

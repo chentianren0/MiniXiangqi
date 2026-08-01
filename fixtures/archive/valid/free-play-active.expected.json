@@ -2,7 +2,8 @@
   "title": "Free Play, active: no terminal triple, no configuration members",
   "why": "An active game's stored content omits outcome, end_reason and ended_at, and Free Play omits the four configuration members rather than writing the NONE constants.",
   "info": {
-    "archive_version": 1,
+    "archive_version": 2,
+    "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
     "human_side": null,

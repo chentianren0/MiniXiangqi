@@ -46,8 +46,9 @@ Every scenario runs the same round trip, and the file states only what differs:
 {
   "title": "…",
   "why": "…",
-  "config": { "mode": "human-vs-ai", "human_side": "black", "ai_level": "deep",
-              "ai_movetime_ms": 5000, "first_mover_choice": "random" },
+  "config": { "game": "minixiangqi", "mode": "human-vs-ai", "human_side": "black",
+              "ai_level": "deep", "ai_movetime_ms": 5000,
+              "first_mover_choice": "random" },
   "moves": ["b1b3", "b7b5"],
   "archive": "human-vs-ai-active.mxq",
   "status": { "state": "ongoing", "reason": null, "at_occurrence": 0,
@@ -57,9 +58,11 @@ Every scenario runs the same round trip, and the file states only what differs:
 }
 ```
 
-`config` is `MxqGameConfig` in the serialised vocabulary of `game-data.md`; Free Play omits the four human-versus-AI members exactly as the archive does. `status` is `MxqGameStatus`, with `null` spelling `MXQ_END_REASON_NONE`. `archive` is optional and names a file in `../archive/valid/`. `undo` lists the plies each successive Undo must remove — `[2, 2]` is two human decision cycles — and an empty list means Undo was never available.
+`config` is `MxqGameConfig` in the serialised vocabulary of `game-data.md`; Free Play omits the four human-versus-AI members exactly as the archive does. `game` is required in every scenario and is the archive's `rules_id` — `minixiangqi` or `xiangqi` — because a scenario that did not say would be played under whichever game the runner happened to pick, which is the one thing a two-game corpus must not do. `status` is `MxqGameStatus`, with `null` spelling `MXQ_END_REASON_NONE`. `archive` is optional and names a file in `../archive/valid/`. `undo` lists the plies each successive Undo must remove — `[2, 2]` is two human decision cycles — and an empty list means Undo was never available.
 
-The move lines are ones the rules corpus already proves legal, so a scenario cannot fail for a reason that belongs to another contract.
+The move lines are ones the rules corpus already proves legal under the scenario's own game, so a scenario cannot fail for a reason that belongs to another contract.
+
+Both games are covered on both sides: `xiangqi-free-play-two-moves.json` is the round trip on the 9-by-10 board and `terminal/xiangqi-free-play-ended-early.json` is an ending on it. A core that carried a single starting position, a single ruleset, or a single `rules_id` in the row it writes would pass every Mini Xiangqi scenario unchanged and fail only those two.
 
 ## The cases that are code rather than data
 
@@ -97,7 +100,7 @@ Each scenario states the game and the one call that ends it, and the runner driv
 {
   "title": "…",
   "why": "…",
-  "config": { "mode": "free-play" },
+  "config": { "game": "minixiangqi", "mode": "free-play" },
   "moves": ["b1b3", "b7b5"],
   "end": { "action": "archive_and_clear", "archive": "free-play-ended-early.mxq",
            "outcome": "none", "end_reason": "ended-early", "state": "ongoing" }
