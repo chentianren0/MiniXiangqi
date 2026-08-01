@@ -1,14 +1,15 @@
-# Copied into every new Claude worktree (gitignore syntax; only gitignored
-# paths are eligible). The prebuilt core is deterministic output of core/, so a
-# fresh worktree starts buildable; re-run apple/build-core-xcframework.sh after
-# any change under core/.
+# Copied into every new agent worktree by its setup workflow; seed-worktree.sh
+# is the same workflow when the harness does not provide one (literal
+# gitignored paths only). The prebuilt core is deterministic output of core/,
+# so a fresh worktree starts buildable; re-run
+# apple/build-core-xcframework.sh after any change under core/.
 apple/Generated/
 apple/MiniXiangqi/Resources/minixiangqi-variants.ini
-# The bundled network, staged from core/assets — which does now carry the bytes,
-# so this line is a convenience rather than the only way they can be had. It
-# stays for the reason apple/check-core-is-current.sh gives about not recreating
-# it: the app's resources are a file-system-synchronized group, enumerated when
-# the build is planned, so a copy that appears during a build lands in the next
-# one. Seeding it means a fresh worktree's first build has it. The name changes
-# with the network, and the manifest is where that change is decided.
+# The bundled networks are staged from core/assets, which carries the bytes, so
+# these lines are conveniences rather than the only way they can be produced.
+# They stay because Resources is a file-system-synchronized group enumerated
+# when Xcode plans the build: a copy appearing during a build lands only in the
+# next one. Seeding them makes the first build complete. Their names remain the
+# manifest's decision.
 apple/MiniXiangqi/Resources/minixiangqiaxf-ad52b8658c9e.nnue
+apple/MiniXiangqi/Resources/xiangqi-c07e94a5c7cb.nnue
