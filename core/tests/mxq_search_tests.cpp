@@ -61,6 +61,10 @@
 
 /* The bridge itself, deliberately: see the header comment. */
 #include "mxq_engine_bridge.hpp"
+/* And the core's one notation authority, so that "this move is in that game's
+ * notation" is asked where the grammar is decided rather than spelled again
+ * here as a character range. */
+#include "mxq_notation.hpp"
 /* And the core's own SHA-256, so that "this game's profile names this game's
  * network" is checked against the staged bytes rather than against a second
  * copy of the hash written here. */
@@ -249,7 +253,8 @@ MxqEngineBudget insufficient_budget() {
     return budget;
 }
 
-MxqGameConfig hvai_config(uint32_t movetime_ms) {
+MxqGameConfig hvai_config(uint32_t movetime_ms,
+                          MxqGameKind game = MXQ_GAME_KIND_MINI_XIANGQI) {
     MxqGameConfig config;
     std::memset(&config, 0, sizeof(config));
     config.struct_size = static_cast<uint32_t>(sizeof(config));
@@ -258,6 +263,7 @@ MxqGameConfig hvai_config(uint32_t movetime_ms) {
     config.ai_level = MXQ_AI_LEVEL_FAST;
     config.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
     config.ai_movetime_ms = movetime_ms;
+    config.game = game;
     return config;
 }
 
@@ -1730,14 +1736,11 @@ void case_xiangqi_searches_under_its_own_network() {
                 "the active variant's network leads the list, got: " +
                     eval_file);
 
-        /* And the whole option value would NOT have discriminated: the name
-         * the engine loaded for the other variant is a substring of it, which
-         * is exactly what the engine's own verification asks and exactly why
-         * the preflight asks something else. */
-        c.check(eval_file.find(Stockfish::Eval::eval_file_loaded) !=
-                    std::string::npos,
-                "the loaded name appears in the option value — the weaker "
-                "test the preflight must not be");
+        /* Searching the whole option value would not have discriminated,
+         * which is why the loaded name is compared above rather than looked
+         * for: the list holds both networks, so the other variant's name is a
+         * substring of it too — exactly what the engine's own verification
+         * asks, and exactly why the preflight asks something else. */
 
         std::atomic<bool> cancelled{false};
         mxq::engine::SearchOutput out;
@@ -1749,14 +1752,13 @@ void case_xiangqi_searches_under_its_own_network() {
                     detail);
         c.check(out.nodes > 0, "nodes were searched");
         c.check(out.depth > 0, "a depth was reached");
-        c.check(out.move.size() >= 4 && out.move[0] >= 'a' &&
-                    out.move[0] <= 'i',
-                "the move names a square of a nine-file board, got: " +
-                    out.move);
 
-        /* The move is legal there, asked the only way that cannot restate the
-         * implementation: replaying it. A move of the wrong board does not
-         * parse, and search_run says so rather than searching on. */
+        /* That the move belongs to the nine-by-ten board is asked the only way
+         * that cannot restate the implementation, and the only way a character
+         * bound does not answer — a move of the app's seven-file board is
+         * inside any bound the wider board admits: replaying it. A move of the
+         * wrong board does not parse, and search_run says so rather than
+         * searching on. */
         mxq::engine::SearchOutput after;
         detail.clear();
         const mxq::engine::SearchError replayed = mxq::engine::search_run(
@@ -1847,9 +1849,8 @@ void case_teardown_returns_the_bridge_to_the_app_variant() {
                                         cancelled, out, detail) ==
                     mxq::engine::SearchError::None,
                 "the app's variant still searches: " + detail);
-        c.check(out.move.size() == 4 && out.move[0] >= 'a' &&
-                    out.move[0] <= 'g' && out.move[1] >= '1' &&
-                    out.move[1] <= '7',
+        c.check(mxq::notation::well_formed_move(MXQ_GAME_KIND_MINI_XIANGQI,
+                                                out.move),
                 "and its move is in the app's own notation, got: " + out.move);
     }
 
@@ -1939,9 +1940,8 @@ void case_direct_variant_switch_without_a_teardown() {
                                         cancelled, out, detail) ==
                     mxq::engine::SearchError::None,
                 "the app's variant searches after two switches: " + detail);
-        c.check(out.move.size() == 4 && out.move[0] >= 'a' &&
-                    out.move[0] <= 'g' && out.move[1] >= '1' &&
-                    out.move[1] <= '7',
+        c.check(mxq::notation::well_formed_move(MXQ_GAME_KIND_MINI_XIANGQI,
+                                                out.move),
                 "and its move is in the app's own notation, got: " + out.move);
     }
 
@@ -2046,6 +2046,186 @@ void case_xiangqi_wrong_basename_network() {
     c.report();
 }
 
+/*
+ * The two cases below reach the second variant through the public surface
+ * rather than through the bridge, which is what every other case in this
+ * section does. Nothing else asserts that mxq_engine_prepare accepts the other
+ * game at all, that a session of it searches, or what a caller is told when the
+ * engine is prepared for the game they are not playing.
+ */
+
+void case_the_c_surface_prepares_the_other_game() {
+    Case c("the C surface prepares the engine for the other game and a session "
+           "of it searches; before any preparation the refusal reports that "
+           "rather than naming a preparation that never happened");
+    const fs::path store = scratch_dir("xiangqi-c-surface");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init against the two-network directory");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    const uint32_t movetime = 120;
+    const MxqGameConfig config = hvai_config(movetime, MXQ_GAME_KIND_XIANGQI);
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "a session of the other game");
+    if (game != nullptr) {
+        std::string human_move;
+        c.check(first_legal_move(game, human_move),
+                "a legal human move on the other game's board");
+        MxqGameStatus status;
+        std::memset(&status, 0, sizeof(status));
+        status.struct_size = static_cast<uint32_t>(sizeof(status));
+        err = make_error();
+        c.check_status(mxq_game_apply_move(game, human_move.c_str(), nullptr,
+                                           &status, &err),
+                       MXQ_OK, "the human move applies");
+        c.check_eq(status.search_expected, 1, "a search is expected");
+
+        /* Nothing has been prepared. The engine's variant is the rules
+         * posture's, which is the app's — so the cross-game comparison is
+         * true here as well, and what the caller must be told is the one they
+         * can act on. */
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &ticket, &err),
+                       MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "a search before any preparation");
+        const std::string unprepared(err.detail);
+        c.check(unprepared.find("not prepared") != std::string::npos,
+                "the detail reports that the engine is not prepared, got: " +
+                    unprepared);
+        c.check(unprepared.find("other game") == std::string::npos,
+                "and does not report a preparation for the other game, got: " +
+                    unprepared);
+
+        const MxqEngineBudget budget = sufficient_budget();
+        MxqEnginePlan applied = make_plan();
+        err = make_error();
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_XIANGQI, &budget,
+                                          &applied, &err),
+                       MXQ_OK, "prepare for the other game");
+        c.check_eq(applied.sufficient, 1, "the applied plan is sufficient");
+
+        MxqEngineState state = MXQ_ENGINE_STATE_UNINITIALIZED;
+        char profile[MXQ_PROFILE_ID_CAP];
+        size_t profile_len = 0;
+        err = make_error();
+        c.check_status(mxq_engine_query(core, &state, profile, sizeof(profile),
+                                        &profile_len, &err),
+                       MXQ_OK, "engine query");
+        c.check_eq(static_cast<int64_t>(state), MXQ_ENGINE_STATE_READY,
+                   "state after preparing the other game");
+        /* The app's variant identifier ends with the built-in one, so the
+         * separators are what make this a field comparison rather than a
+         * substring both would satisfy. */
+        c.check(std::string(profile).find(std::string("-") +
+                                          kXiangqiVariantId + "-") !=
+                    std::string::npos,
+                std::string("the profile names the prepared game's variant, "
+                            "got: ") +
+                    profile);
+
+        err = make_error();
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &ticket, &err),
+                       MXQ_OK, "search start on the other game's session");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        err = make_error();
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the result arrived");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   "the outcome is a move");
+        c.check_eq(std::string(result.profile_id), std::string(profile),
+                   "the result is attributed to the configuration it ran in");
+        c.check(mxq::notation::well_formed_move(MXQ_GAME_KIND_XIANGQI,
+                                                std::string(result.move.text)),
+                std::string("the move is in the other game's notation, got: ") +
+                    result.move.text);
+
+        /* And the session takes it, which is what makes it a move of this
+         * board rather than a string that parses as one. */
+        err = make_error();
+        c.check_status(mxq_game_apply_move(game, result.move.text, nullptr,
+                                           &status, &err),
+                       MXQ_OK, "the session accepts the move it was given");
+        mxq_game_release(game);
+    }
+
+    c.check_status(mxq_engine_teardown(core, nullptr), MXQ_OK, "teardown");
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_a_session_of_the_unprepared_game_is_refused() {
+    Case c("a search on a session of the game the engine is not prepared for "
+           "is refused, and the detail names the preparation that does exist");
+    const fs::path store = scratch_dir("cross-game-refusal");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init against the two-network directory");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    err = make_error();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare for the other game");
+
+    const uint32_t movetime = 120;
+    const MxqGameConfig config = hvai_config(movetime);
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "a session of the app's game");
+    if (game != nullptr) {
+        std::string human_move;
+        c.check(first_legal_move(game, human_move), "a legal human move");
+        MxqGameStatus status;
+        std::memset(&status, 0, sizeof(status));
+        status.struct_size = static_cast<uint32_t>(sizeof(status));
+        err = make_error();
+        c.check_status(mxq_game_apply_move(game, human_move.c_str(), nullptr,
+                                           &status, &err),
+                       MXQ_OK, "the human move applies");
+        c.check_eq(status.search_expected, 1, "a search is expected");
+
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &ticket, &err),
+                       MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "a search for the game the engine is not prepared for");
+        const std::string refusal(err.detail);
+        c.check(refusal.find("other game") != std::string::npos,
+                "the detail names the preparation that exists rather than "
+                "reporting none, got: " + refusal);
+        mxq_game_release(game);
+    }
+
+    c.check_status(mxq_engine_teardown(core, nullptr), MXQ_OK, "teardown");
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 #endif /* MXQ_TEST_RULES_FACADE */
 
 } /* namespace */
@@ -2070,8 +2250,9 @@ int main() {
      * process-global variant table: see the case's comment. */
     case_variant_load_failure();
 
-    /* First, and it must be: its whole claim is that the profile answers
-     * before any core exists, and every case below creates one. */
+    /* Before any core exists, and it must be: that is its whole claim. The
+     * position rather than the order is what looks wrong here — the case
+     * above creates no core, and every case below creates one. */
     case_game_profile();
 
     case_query_before_prepare();
@@ -2095,7 +2276,15 @@ int main() {
     /* The variant axis last: these are the only cases that leave the engine's
      * process-global variant tables anywhere but the app's variant, and each
      * of them puts them back before it returns. Running them after everything
-     * else means no case above can depend on that being true. */
+     * else means no case above can depend on that being true.
+     *
+     * The two that reach the axis through the C surface come first, so that
+     * the facade's own view of the engine and the bridge's are still the same
+     * one when they run: the cases after them configure the bridge directly,
+     * which the facade does not see. */
+    case_the_c_surface_prepares_the_other_game();
+    case_a_session_of_the_unprepared_game_is_refused();
+
     case_xiangqi_searches_under_its_own_network();
     case_teardown_returns_the_bridge_to_the_app_variant();
     case_direct_variant_switch_without_a_teardown();

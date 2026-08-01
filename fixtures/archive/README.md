@@ -86,7 +86,7 @@ The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDEN
 
 ### Provenance: every golden is now produced
 
-All seven files are **produced** rather than hand-written. `fixtures/store/` names each of them from a scenario — the three active shapes from a round-trip scenario, the four completed shapes from a terminal scenario in `fixtures/store/terminal/` — and the runners fail unless `mxq_archive_encode` reproduces the file byte for byte under `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`.
+All nine files are **produced** rather than hand-written. `fixtures/store/` names each of them from a scenario — the four active shapes from a round-trip scenario, the five completed shapes from a terminal scenario in `fixtures/store/terminal/` — and the runners fail unless `mxq_archive_encode` reproduces the file byte for byte under `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`.
 
 The regenerations, in order:
 
@@ -185,7 +185,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The three active shapes are its one deliberate divergence: they are valid version 2 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The four active shapes are its one deliberate divergence: they are valid version 2 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

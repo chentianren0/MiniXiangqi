@@ -47,7 +47,7 @@ The pinned fork carries only focused changes this contract or [xiangqi-rules.md]
 
 Every change must keep the fork's own suite passing and every approved fixture passing.
 
-Preserving other variants' adjudication exactly is the preferred bar, but it is not absolute, and two corrections are accepted exceptions: the repetition-window parity correction and the pinned-chaser correction. Both remove defects rather than change rules, and both reach built-in `xiangqi`, because a chasing rule is what they act on and `xiangqi` is the only built-in variant that sets one. That is not collateral: `xiangqi` is a variant this core searches, so gating the corrections would mean carrying a second code path whose purpose was to preserve two wrong-result defects in one of the two variants the product runs. Neither is a rules difference a variant property could express — the repetition window is the same rule in every chasing variant — and both are inert for any variant that sets no chasing rule, which is every variant in the fork except `xiangqi`, the two variants that inherit from it, and our own.
+Preserving other variants' adjudication exactly is the preferred bar, but it is not absolute, and two corrections are accepted exceptions: the repetition-window parity correction and the pinned-chaser correction. Both remove defects rather than change rules, and both reach built-in `xiangqi`, because a chasing rule is what they act on and `xiangqi` is the only built-in variant that sets one. Neither is a rules difference a variant property could express — the repetition window is the same rule in every chasing variant — and both are inert for any variant that sets no chasing rule, which is every variant in the fork except `xiangqi`, the two variants that inherit from it, and our own.
 
 The two adjudication corrections rest on execution-confirmed defects rather than on the definitions of protection, interruption, and discovered or pinned attacks that [xiangqi-rules.md](xiangqi-rules.md) leaves open, and each lands together with the fixture that pins it.
 
@@ -188,7 +188,7 @@ Each is pinned by exact byte length and SHA-256 in a machine-readable manifest, 
 
 **`xiangqi` — 11,261,932 bytes, SHA-256 `c07e94a5c7cbeae443ed79a8fa412875d833a7f8e04333815e39729c59d52e11`, `xiangqi-c07e94a5c7cb.nnue`.**
 
-- **It is not this project's own and is not retrained here.** It is the network the Fairy-Stockfish project publishes for that variant, trained by the Pikafish developers, taken under its published name because the name is what binds it to the variant.
+- **It is not this project's own and is not retrained here.** The manifest entry's `provenance` records where it comes from.
 - **Redistribution rests on the licence rather than on ownership.** The weights are GPLv3, as this project is, so they travel with the same corresponding-source availability and third-party notices every GPLv3 input here already requires. That obligation is a condition of distributing them, not a formality.
 - **No measured acceptance gate applies to it.** The accepted level definitions describe the app's own variant; nothing in this contract claims a strength result for built-in `xiangqi`, and a claim about it requires its own measurement.
 

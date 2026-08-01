@@ -278,4 +278,4 @@ Every function that takes an `MxqGame *` — including `mxq_search_start`, `mxq_
 
   **Xiangqi: 119.** The same derivation on a 9×10 board, where a chariot's or a cannon's rays span 8 + 9 = 17: 2 chariots at 17, 2 cannons at 17, 2 horses at 8, 2 elephants at 4, 2 advisors at 4, 5 soldiers at 3, and a general at 4. No measured position is pinned for it; the derived bound is what the buffer argument rests on.
 
-  So a fixed `MxqMove[128]` is provably sufficient for both games and a fixed `MxqMove[64]` is not for either, and no constant in `mxq.h` claims otherwise. A frontend that sizes one array for both sizes it for 119.
+  So a fixed `MxqMove[128]` is provably sufficient for both games. A fixed `MxqMove[64]` is provably insufficient for Mini Xiangqi, where the pinned 77-move position exceeds it outright; for Xiangqi it is not provably sufficient, the bound above being 119 with no position measured against it. No constant in `mxq.h` claims otherwise. A frontend that sizes one array for both sizes it for 119.
