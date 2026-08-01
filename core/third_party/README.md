@@ -60,10 +60,8 @@ uncontrolled copy of it.
 
 ## Assets
 
-The bundled variant configuration and the NNUE network are packaging inputs
-rather than build inputs, and neither belongs in this directory. The variant
-configuration lives at
-[`core/assets/minixiangqi-variants.ini`](../assets/minixiangqi-variants.ini). The
-repository never contains the network's bytes in any form; they enter a build
-from a workspace- or CI-provided location, verified against the byte length and
-SHA-256 in the manifest.
+The bundled variant configuration and the NNUE networks are packaging inputs
+rather than build inputs, and none of them belongs in this directory. They live
+in [`core/assets/`](../assets/) — the variant configuration, and one network for
+each variant the core runs — and every consumer verifies a network against the
+byte length and SHA-256 the manifest pins for that variant before staging it.

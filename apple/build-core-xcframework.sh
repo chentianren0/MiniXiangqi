@@ -208,10 +208,17 @@ cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
 # checkout that damaged four megabytes of weights would otherwise be invisible.
 # plutil reads the manifest because it is on every Mac and this script is
 # Apple-only.
-nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+#
+# The manifest pins one network per variant the core can search, keyed by the
+# variant's identifier, and the app bundles the one for the variant it plays.
+# Reading that key through variant.id rather than spelling it here is what keeps
+# "the app's network" a fact of the manifest instead of an agreement between two
+# files.
+variant_id=$(plutil -extract variant.id raw -o - "$root/pinned-inputs.json")
+nnue_name=$(plutil -extract "network.$variant_id.filename" raw -o - "$root/pinned-inputs.json")
 nnue_source="${MXQ_NNUE_SOURCE:-$root/core/assets/$nnue_name}"
-nnue_length=$(plutil -extract network.byte_length raw -o - "$root/pinned-inputs.json")
-nnue_sha256=$(plutil -extract network.sha256 raw -o - "$root/pinned-inputs.json")
+nnue_length=$(plutil -extract "network.$variant_id.byte_length" raw -o - "$root/pinned-inputs.json")
+nnue_sha256=$(plutil -extract "network.$variant_id.sha256" raw -o - "$root/pinned-inputs.json")
 
 if [ ! -f "$nnue_source" ]; then
   echo "error: the NNUE network was not found at $nnue_source" >&2

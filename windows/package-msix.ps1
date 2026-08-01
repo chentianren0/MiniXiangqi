@@ -488,7 +488,7 @@ if (-not (Test-Path (Join-Path $unpacked 'sounds'))) {
 # here. A package whose network is absent or renamed does not crash: the AI
 # declines to start, everything else works, and nobody can tell why.
 $packagedAssets = Join-Path $unpacked 'assets'
-foreach ($asset in @($manifest.variant.filename, $manifest.network.filename)) {
+foreach ($asset in @($manifest.variant.filename, $manifest.network.($manifest.variant.id).filename)) {
     if (-not (Test-Path (Join-Path $packagedAssets $asset))) {
         $missing += "assets\$asset is not in the package."
     }

@@ -109,7 +109,10 @@ if (-not $Revision) {
 }
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
-$network = $manifest.network
+# The manifest pins one network per variant the core can search, keyed by the
+# variant's identifier. This distribution carries the one for the variant the
+# app plays, which is the entry under variant.id.
+$network = $manifest.network.($manifest.variant.id)
 
 $staging = Join-Path $OutputDirectory $productName
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }

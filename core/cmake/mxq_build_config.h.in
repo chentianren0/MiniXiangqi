@@ -21,17 +21,35 @@
 /* pinned-inputs.json: fork.revision */
 #define MXQ_BUILD_FORK_REVISION "@MXQ_BUILD_FORK_REVISION@"
 
-/* pinned-inputs.json: variant.id */
+/* pinned-inputs.json: variant.id — the variant the app plays, and the one the
+ * frontends bundle a network for. */
 #define MXQ_BUILD_VARIANT_ID "@MXQ_BUILD_VARIANT_ID@"
 
-/* pinned-inputs.json: network.sha256 */
+/* The engine's own name for built-in xiangqi, the second variant the core can
+ * search. Not pinned: the engine registers it, this repository does not choose
+ * it. */
+#define MXQ_BUILD_XIANGQI_VARIANT_ID "@MXQ_BUILD_XIANGQI_VARIANT_ID@"
+
+/* One network per variant, from pinned-inputs.json's network.<variant> entries.
+ * A basename must begin with the identifier of the variant it is loaded for or
+ * the engine silently disables NNUE, so these names are not decoration. */
+
+/* network.<variant.id>.sha256 */
 #define MXQ_BUILD_NNUE_SHA256 "@MXQ_BUILD_NNUE_SHA256@"
 
-/* pinned-inputs.json: network.filename — the bundled basename, which must
- * begin with the variant identifier or the engine silently disables NNUE. */
+/* network.<variant.id>.filename */
 #define MXQ_BUILD_NNUE_FILENAME "@MXQ_BUILD_NNUE_FILENAME@"
 
-/* pinned-inputs.json: network.byte_length */
+/* network.<variant.id>.byte_length */
 #define MXQ_BUILD_NNUE_BYTE_LENGTH @MXQ_BUILD_NNUE_BYTE_LENGTH@u
+
+/* network.xiangqi.sha256 */
+#define MXQ_BUILD_XIANGQI_NNUE_SHA256 "@MXQ_BUILD_XIANGQI_NNUE_SHA256@"
+
+/* network.xiangqi.filename */
+#define MXQ_BUILD_XIANGQI_NNUE_FILENAME "@MXQ_BUILD_XIANGQI_NNUE_FILENAME@"
+
+/* network.xiangqi.byte_length */
+#define MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH @MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH@u
 
 #endif /* MXQ_BUILD_CONFIG_H */

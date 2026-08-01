@@ -68,7 +68,10 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Destination = (Resolve-Path $Destination).Path
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
-$network = $manifest.network
+# The manifest pins one network per variant the core can search, keyed by the
+# variant's identifier. This distribution carries the one for the variant the
+# app plays, which is the entry under variant.id.
+$network = $manifest.network.($manifest.variant.id)
 $fork = $manifest.fork
 $sqlite = $manifest.sqlite
 

@@ -58,9 +58,13 @@ fi
 # and both would ship — dead weight at best, and at worst a network this project
 # has no licence to distribute. The runtime would not complain, because the
 # bridge prefers the pinned basename. So this asserts the Windows packaging
-# build's rule on the app's own resources: exactly one network, under the name
-# pinned-inputs.json pins, and anything else stops the build and says which.
-nnue_name=$(plutil -extract network.filename raw -o - "$root/pinned-inputs.json")
+# build's rule on the app's own resources: exactly one network, the one pinned
+# for the variant the app plays, and anything else stops the build and says
+# which. The manifest pins a network for every variant the core can search, and
+# the app bundles one of them — which is why the name comes from the entry keyed
+# by variant.id rather than from "the network".
+variant_id=$(plutil -extract variant.id raw -o - "$root/pinned-inputs.json")
+nnue_name=$(plutil -extract "network.$variant_id.filename" raw -o - "$root/pinned-inputs.json")
 resources="$root/apple/MiniXiangqi/Resources"
 staged_networks=""
 for network in "$resources"/*.nnue; do
@@ -75,7 +79,7 @@ if [ -z "$staged_networks" ]; then
   exit 1
 fi
 if [ "$staged_networks" != "$nnue_name" ]; then
-  echo "error: the app's resources hold [$staged_networks]; pinned-inputs.json pins exactly one, $nnue_name." >&2
+  echo "error: the app's resources hold [$staged_networks]; the app bundles exactly one, $nnue_name." >&2
   echo "note: run ./apple/build-core-xcframework.sh, which removes any other network before staging the pinned one." >&2
   exit 1
 fi
