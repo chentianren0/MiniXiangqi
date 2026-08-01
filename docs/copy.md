@@ -133,7 +133,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.importDuplicate.message` | 文件里的对局和历史中的一盘完全相同，所以没有重复添加。 | The game in this file is identical to one already in History, so it wasn't added again. | alert message | same |
 | `alert.importConflict.title` | 这个文件和历史中的一盘棋冲突 | This File Conflicts with a Game in History | alert title | same |
 | `alert.importConflict.message` | 它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。 | It is the same game as one in History, but its contents differ. History is unchanged. To use this file, delete that game from History first. | alert message | same |
-| `alert.importNewerVersion.title` | 这个文件由更新版本的 Mini Xiangqi 创建 | This File Was Created by a Newer Version of Mini Xiangqi | alert title | [game-data.md](game-data.md) § Migration — the one message the compatibility promise requires to be distinct |
+| `alert.importNewerVersion.title` | 这个文件由更新版本的 Mini Xiangqi 创建 | This File Was Created by a Newer Version of Mini Xiangqi | alert title | [game-data.md](game-data.md) § Versions — the distinct answer for an archive whose version is newer than this build |
 | `alert.importNewerVersion.message` | 当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。 | This version can't read it. Update Mini Xiangqi and try again. History is unchanged. | alert message | same |
 | `alert.importUnreadable.title` | 无法读取这个对局文件 | Can't Read This Game File | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.importUnreadable.message` | 文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。 | The file's contents are invalid or too large to import. History is unchanged. Check that the file is complete, or ask for a new copy. | alert message | same |
