@@ -24,7 +24,17 @@
  * opponent silently playing on classical evaluation. The mistake is a live one
  * even now that the network is committed under its bundled name: minixiangqi
  * and minixiangqiaxf differ by three characters, and only one of them is the
- * variant this app plays.
+ * variant this app plays. It is asserted for both variants, because a preflight
+ * wired to the app's variant alone would pass everything here and still let a
+ * search of the other one run on classical evaluation.
+ *
+ * The variant axis is the third thing reached past the public surface, and the
+ * reason is the same shape as the other two: the bridge is configured for one
+ * of two variants, the C surface above it creates games of one of them, and a
+ * capability nothing above can request is asserted where it is offered or
+ * nowhere at all. Those cases call the bridge on the test thread with no search
+ * outstanding, which is the exclusion configure() documents; they never mix
+ * that with the facade's own engine calls, whose state they would not update.
  *
  * With the engine in the build, a missing or mismatched staged network FAILS
  * this suite with the configure-time message rather than skipping: a suite
@@ -47,6 +57,10 @@
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
+#include "variant.h"
+
+/* The bridge itself, deliberately: see the header comment. */
+#include "mxq_engine_bridge.hpp"
 #endif
 
 #include <atomic>
@@ -127,7 +141,8 @@ struct Case {
 #if MXQ_TEST_RULES_FACADE
 
 /* The staged asset directory: the variant configuration plus the network
- * under its bundled name, placed by the build after verifying the bytes. */
+ * under its bundled name, placed by the build after verifying the bytes. This
+ * is the shipped shape — one network, for the variant the app plays. */
 std::string staged_assets() {
     if (const char *env = std::getenv("MXQ_TEST_ASSETS_DIR")) {
         return env;
@@ -135,12 +150,26 @@ std::string staged_assets() {
     return MXQ_TEST_ASSETS_DIR;
 }
 
-/* All three from pinned-inputs.json through the build, rather than spelled
- * again here: replacing the network is then the bytes and the manifest and
+/* The same, plus the built-in variant's network: the shape a two-variant
+ * configuration is handed, kept apart so that exercising the second variant
+ * cannot change what the cases above see. */
+std::string staged_xiangqi_assets() {
+    if (const char *env = std::getenv("MXQ_TEST_XIANGQI_ASSETS_DIR")) {
+        return env;
+    }
+    return MXQ_TEST_XIANGQI_ASSETS_DIR;
+}
+
+/* All of it from pinned-inputs.json through the build, rather than spelled
+ * again here: replacing a network is then the bytes and the manifest and
  * nothing else. */
 constexpr const char *kBundledNetworkName = MXQ_TEST_NNUE_FILENAME;
 constexpr const char *kVariantId = MXQ_TEST_VARIANT_ID;
 constexpr const char *kBaseVariantId = MXQ_TEST_BASE_VARIANT_ID;
+constexpr const char *kXiangqiNetworkName = MXQ_TEST_XIANGQI_NNUE_FILENAME;
+constexpr const char *kXiangqiVariantId = MXQ_TEST_XIANGQI_VARIANT_ID;
+constexpr int64_t kBundledNetworkBytes = MXQ_TEST_NNUE_BYTE_LENGTH;
+constexpr int64_t kXiangqiNetworkBytes = MXQ_TEST_XIANGQI_NNUE_BYTE_LENGTH;
 constexpr const char *kVariantIniName = "minixiangqi-variants.ini";
 
 /* The same bytes under a basename naming the variant this one derives FROM:
@@ -1523,6 +1552,320 @@ void case_shutdown_mid_search() {
     c.report();
 }
 
+/* ---------------------------------------------------------------------- */
+/* The variant axis                                                        */
+/* ---------------------------------------------------------------------- */
+
+/* The engine's own record for a variant: where its board dimensions and its
+ * start position are decided, and the only honest source for either. */
+const Stockfish::Variant *engine_variant(const char *id) {
+    const auto found = Stockfish::variants.find(std::string(id));
+    return found == Stockfish::variants.end() ? nullptr : found->second;
+}
+
+/* The smallest sufficient preparation, matching sufficient_budget()'s plan, so
+ * that a bridge configuration here is the same configuration the facade makes.
+ */
+constexpr uint32_t kAxisThreads = 2;
+constexpr uint32_t kAxisHashMib = 256;
+
+mxq::engine::ConfigureError configure_for(mxq::engine::Variant variant,
+                                          const std::string &assets,
+                                          std::string &detail) {
+    detail.clear();
+    return mxq::engine::configure(variant, kAxisThreads, kAxisHashMib, assets,
+                                  detail);
+}
+
+void case_xiangqi_searches_under_its_own_network() {
+    Case c("built-in xiangqi prepares under the xiangqi network, from a "
+           "directory holding both, and searches its 9x10 board");
+    const fs::path store = scratch_dir("xiangqi-search");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init against the two-network directory");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    /* The board this case claims to search, from the engine rather than from
+     * this file. Without LARGEBOARDS the engine does not register the variant
+     * at all, and the axis would have one working end. */
+    const Stockfish::Variant *xiangqi = engine_variant(kXiangqiVariantId);
+    c.check(xiangqi != nullptr,
+            std::string("the engine registers ") + kXiangqiVariantId);
+    if (xiangqi != nullptr) {
+        c.check_eq(static_cast<int64_t>(xiangqi->maxFile) + 1, 9,
+                   "nine files");
+        c.check_eq(static_cast<int64_t>(xiangqi->maxRank) + 1, 10,
+                   "ten ranks");
+    }
+
+    std::string detail;
+    const mxq::engine::ConfigureError rc = configure_for(
+        mxq::engine::Variant::Xiangqi, staged_xiangqi_assets(), detail);
+    c.check(rc == mxq::engine::ConfigureError::None,
+            "configure for xiangqi: " + detail);
+
+    if (rc == mxq::engine::ConfigureError::None && xiangqi != nullptr) {
+        const std::string xiangqi_network =
+            (fs::path(staged_xiangqi_assets()) / kXiangqiNetworkName).string();
+        const std::string app_network =
+            (fs::path(staged_xiangqi_assets()) / kBundledNetworkName).string();
+
+        c.check_eq(std::string(Stockfish::Options["UCI_Variant"]),
+                   kXiangqiVariantId, "the engine's variant option");
+        c.check(mxq::engine::active_variant() ==
+                    mxq::engine::Variant::Xiangqi,
+                "the bridge's active variant is the one it was configured for");
+        c.check(Stockfish::Eval::useNNUE,
+                "the engine's effective NNUE state is on — the internal flag, "
+                "not the option, and classical evaluation is what its absence "
+                "would silently mean");
+        c.check_eq(Stockfish::Eval::eval_file_loaded, xiangqi_network,
+                   "the network the engine actually read is the xiangqi one");
+
+        /* EvalFile is the joined list, and the active variant's network leads
+         * it: the engine selects the first token whose basename matches, so
+         * leading with it is what makes the preflight's SELECTED token and the
+         * engine's own choice the same string by construction. */
+        const std::string eval_file =
+            std::string(Stockfish::Options["EvalFile"]);
+        c.check(eval_file.find(Stockfish::UCI::SepChar) != std::string::npos,
+                "EvalFile is a list rather than a path, got: " + eval_file);
+        c.check(eval_file.find(app_network) != std::string::npos,
+                "the app's network is in the list too, got: " + eval_file);
+        c.check(eval_file.rfind(xiangqi_network, 0) == 0,
+                "the active variant's network leads the list, got: " +
+                    eval_file);
+
+        /* And the whole option value would NOT have discriminated: the name
+         * the engine loaded for the other variant is a substring of it, which
+         * is exactly what the engine's own verification asks and exactly why
+         * the preflight asks something else. */
+        c.check(eval_file.find(Stockfish::Eval::eval_file_loaded) !=
+                    std::string::npos,
+                "the loaded name appears in the option value — the weaker "
+                "test the preflight must not be");
+
+        std::atomic<bool> cancelled{false};
+        mxq::engine::SearchOutput out;
+        detail.clear();
+        const mxq::engine::SearchError ran = mxq::engine::search_run(
+            xiangqi->startFen, {}, 250, cancelled, out, detail);
+        c.check(ran == mxq::engine::SearchError::None,
+                "a search from the xiangqi start position completes: " +
+                    detail);
+        c.check(out.nodes > 0, "nodes were searched");
+        c.check(out.depth > 0, "a depth was reached");
+        c.check(out.move.size() >= 4 && out.move[0] >= 'a' &&
+                    out.move[0] <= 'i',
+                "the move names a square of a nine-file board, got: " +
+                    out.move);
+
+        /* The move is legal there, asked the only way that cannot restate the
+         * implementation: replaying it. A move of the wrong board does not
+         * parse, and search_run says so rather than searching on. */
+        mxq::engine::SearchOutput after;
+        detail.clear();
+        const mxq::engine::SearchError replayed = mxq::engine::search_run(
+            xiangqi->startFen, {out.move}, 250, cancelled, after, detail);
+        c.check(replayed == mxq::engine::SearchError::None,
+                "the proposed move replays as legal in the position it was "
+                "found in: " + detail);
+    }
+
+    mxq::engine::deconfigure();
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_teardown_returns_the_bridge_to_the_app_variant() {
+    Case c("a teardown after the other variant restores the app's variant, and "
+           "preparing it again is the shipped one-network shape");
+    const fs::path store = scratch_dir("xiangqi-restore");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    std::string detail;
+    c.check(configure_for(mxq::engine::Variant::Xiangqi,
+                          staged_xiangqi_assets(),
+                          detail) == mxq::engine::ConfigureError::None,
+            "configure for xiangqi: " + detail);
+
+    /* The rules posture is not "whatever the last configuration left". A
+     * teardown that kept the other variant's tables would leave every legality
+     * answer this core gives being answered on a nine-by-ten board. */
+    mxq::engine::deconfigure();
+    c.check(mxq::engine::active_variant() ==
+                mxq::engine::Variant::MiniXiangqi,
+            "the bridge is back on the app's variant");
+    c.check_eq(std::string(Stockfish::Options["UCI_Variant"]), kVariantId,
+               "and so is the engine");
+    c.check(!Stockfish::TT.allocated(),
+            "the transposition table is released whole");
+
+    char fen[MXQ_FEN_CAP];
+    size_t fen_len = 0;
+    c.check_status(mxq_rules_start_fen(fen, sizeof(fen), &fen_len, &err),
+                   MXQ_OK, "start fen");
+    MxqPosition position;
+    std::memset(&position, 0, sizeof(position));
+    position.struct_size = static_cast<uint32_t>(sizeof(position));
+    MxqGameStatus status;
+    std::memset(&status, 0, sizeof(status));
+    status.struct_size = static_cast<uint32_t>(sizeof(status));
+    c.check_status(mxq_rules_evaluate(core, fen, nullptr, 0, &position, &status,
+                                      nullptr, &err),
+                   MXQ_OK, "the app's rules answer after the other variant");
+    c.check_eq(static_cast<int64_t>(status.state), MXQ_GAME_ONGOING,
+               "the start position is ongoing");
+
+    /* And the shipped directory still configures the shipped way: one network,
+     * no list, the same loaded name it has always had. */
+    detail.clear();
+    c.check(configure_for(mxq::engine::Variant::MiniXiangqi, staged_assets(),
+                          detail) == mxq::engine::ConfigureError::None,
+            "configure for the app's variant from the one-network directory: " +
+                detail);
+    const std::string app_network =
+        (fs::path(staged_assets()) / kBundledNetworkName).string();
+    c.check_eq(std::string(Stockfish::Options["EvalFile"]), app_network,
+               "one network in the directory is one path in EvalFile");
+    c.check_eq(Stockfish::Eval::eval_file_loaded, app_network,
+               "and it is what the engine loaded");
+    c.check(Stockfish::Eval::useNNUE, "with NNUE effective");
+
+    const Stockfish::Variant *app_variant = engine_variant(kVariantId);
+    c.check(app_variant != nullptr,
+            std::string("the configuration defines ") + kVariantId);
+    if (app_variant != nullptr) {
+        c.check_eq(static_cast<int64_t>(app_variant->maxFile) + 1, 7,
+                   "the app's board is seven files wide again");
+        std::atomic<bool> cancelled{false};
+        mxq::engine::SearchOutput out;
+        detail.clear();
+        c.check(mxq::engine::search_run(app_variant->startFen, {}, 250,
+                                        cancelled, out, detail) ==
+                    mxq::engine::SearchError::None,
+                "the app's variant still searches: " + detail);
+        c.check(out.move.size() == 4 && out.move[0] >= 'a' &&
+                    out.move[0] <= 'g' && out.move[1] >= '1' &&
+                    out.move[1] <= '7',
+                "and its move is in the app's own notation, got: " + out.move);
+    }
+
+    mxq::engine::deconfigure();
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_cross_loaded_network_is_refused_by_its_own_pin() {
+    Case c("a network staged under the other variant's name is refused by that "
+           "variant's byte pin, before the engine sees it");
+    /* The two networks are structurally different — different feature
+     * dimensions, four megabytes against eleven — so one loaded for the other
+     * variant is not a weaker opponent, it is a load that fails and leaves the
+     * engine's network zeroed. It never gets that far: the pins are per
+     * variant, and the file is checked against the pins of the variant whose
+     * name it carries. Pinning both networks to one byte length and one hash
+     * would pass everything else in this suite and fail here. */
+    const std::string app_bytes =
+        read_file(fs::path(staged_assets()) / kBundledNetworkName);
+    c.check_eq(static_cast<int64_t>(app_bytes.size()), kBundledNetworkBytes,
+               "the staged app network is the length its pin gives");
+
+    const fs::path assets =
+        stage_assets("cross-loaded", kXiangqiNetworkName, &app_bytes);
+    const fs::path store = scratch_dir("cross-loaded-store");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), assets.string(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core != nullptr) {
+        std::string detail;
+        c.check(configure_for(mxq::engine::Variant::Xiangqi, assets.string(),
+                              detail) ==
+                    mxq::engine::ConfigureError::AssetMismatch,
+                "configure for xiangqi refuses: " + detail);
+        c.check(detail.find(std::to_string(kXiangqiNetworkBytes)) !=
+                    std::string::npos,
+                std::string("the detail quotes the xiangqi pin rather than the "
+                            "app's, got: ") +
+                    detail);
+        c.check(detail.find(kXiangqiVariantId) != std::string::npos,
+                std::string("and names the variant whose pin refused, got: ") +
+                    detail);
+        c.check(!Stockfish::TT.allocated(),
+                "nothing was configured: the refusal is before the engine");
+        mxq_core_shutdown(core, nullptr);
+    }
+    c.report();
+}
+
+void case_xiangqi_wrong_basename_network() {
+    Case c("the pinned xiangqi bytes under a basename that does not begin with "
+           "the variant identifier fail the effective-NNUE preflight");
+    /* The same trap as the app's variant, for the second one. This network is
+     * not this project's own, so the plausible rename is to whoever trained
+     * it — and the engine would answer that rename by playing xiangqi on
+     * classical evaluation without a word. A preflight wired to the app's
+     * variant alone passes every other case in this suite and fails here. */
+    const std::string xiangqi_bytes =
+        read_file(fs::path(staged_xiangqi_assets()) / kXiangqiNetworkName);
+    c.check_eq(static_cast<int64_t>(xiangqi_bytes.size()),
+               kXiangqiNetworkBytes,
+               "the staged xiangqi network is the length its pin gives");
+
+    const std::string wrong_name =
+        "pikafish" + std::string(kXiangqiNetworkName)
+                         .substr(std::strlen(kXiangqiVariantId));
+    c.check(!wrong_name.starts_with(kXiangqiVariantId) &&
+                wrong_name.size() > std::strlen(kXiangqiVariantId),
+            std::string("the staged name does NOT begin with the configured "
+                        "variant identifier, which is the whole provocation, "
+                        "got: ") +
+                wrong_name);
+
+    const fs::path assets = stage_assets("xiangqi-wrong-basename",
+                                         wrong_name.c_str(), &xiangqi_bytes);
+    const fs::path store = scratch_dir("xiangqi-wrong-basename-store");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), assets.string(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core != nullptr) {
+        std::string detail;
+        c.check(configure_for(mxq::engine::Variant::Xiangqi, assets.string(),
+                              detail) ==
+                    mxq::engine::ConfigureError::AssetMismatch,
+                "configure for xiangqi refuses: " + detail);
+        c.check(detail.find("effective NNUE state") != std::string::npos,
+                std::string("the detail names the effective state — the bytes "
+                            "and the hash were both right, got: ") +
+                    detail);
+        c.check(!Stockfish::Eval::useNNUE,
+                "the engine's internal NNUE flag really was cleared — the trap "
+                "this preflight exists for, on the second variant too");
+        c.check(!Stockfish::TT.allocated(), "the unwind released the table");
+        c.check(mxq::engine::active_variant() ==
+                    mxq::engine::Variant::MiniXiangqi,
+                "the unwind also put the bridge back on the app's variant");
+        mxq_core_shutdown(core, nullptr);
+    }
+    c.report();
+}
+
 #endif /* MXQ_TEST_RULES_FACADE */
 
 } /* namespace */
@@ -1564,6 +1907,15 @@ int main() {
     case_reconfiguration_refused_mid_search();
     case_core_cancel_all_quiesces();
     case_shutdown_mid_search();
+
+    /* The variant axis last: these are the only cases that leave the engine's
+     * process-global variant tables anywhere but the app's variant, and each
+     * of them puts them back before it returns. Running them after everything
+     * else means no case above can depend on that being true. */
+    case_xiangqi_searches_under_its_own_network();
+    case_teardown_returns_the_bridge_to_the_app_variant();
+    case_cross_loaded_network_is_refused_by_its_own_pin();
+    case_xiangqi_wrong_basename_network();
 #endif
 
     std::error_code cleanup;
