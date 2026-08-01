@@ -91,6 +91,7 @@ struct CopyTests {
             "reason.checkmate", "reason.stalemate", "reason.threefoldRepetition",
             "reason.perpetualCheck", "reason.perpetualChase",
             "reason.mutualPerpetualCheck", "reason.mutualPerpetualChase",
+            "reason.fiftyMoveRule",
             "reason.resignation", "reason.endedEarly",
             "result.redWins", "result.blackWins", "result.draw", "result.announcement",
             "result.recorded",

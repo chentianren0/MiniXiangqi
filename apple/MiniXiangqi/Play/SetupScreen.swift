@@ -22,8 +22,10 @@ import SwiftUI
 
 struct SetupScreen: View {
     let play: PlayState
-    /// Which mode's pre-start page this is.
-    var mode: PlayMode
+    /// Which game and mode this pre-start page will create.
+    var selection: PlaySelection
+
+    private var mode: PlayMode { selection.mode }
 
     @Environment(\.motionPolicy) private var policy
 
@@ -60,7 +62,7 @@ struct SetupScreen: View {
 
     private func preview(_ geometry: BoardGeometry) -> some View {
         BoardView(geometry: geometry,
-                  placement: Placement(fen: Core.startFEN),
+                  placement: Placement(fen: Core.startFEN(for: selection.game)),
                   flipped: previewsFlipped,
                   showsNumerals: true,
                   selected: nil,

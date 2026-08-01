@@ -1441,11 +1441,10 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
          * build that is behind, which the contract requires to be said
          * distinctly, and anything else is a store this build has no path to.
          *
-         * There is no migration and no dispatch slot waiting for one. Version 2
-         * is the only schema this build defines, writes, verifies or reads, and
-         * nothing here names an older one — a version-1 store is refused for
-         * not being version 2, by the arithmetic, rather than by a branch that
-         * knows what version 1 was.
+         * There is no migration and no dispatch slot waiting for one.
+         * MXQ_STORE_SCHEMA_VERSION is the only schema this build defines,
+         * writes, verifies or reads; every other value reaches this generic
+         * unsupported-schema branch.
          */
         if (version > static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
             return fail(err, MXQ_ERR_STORE_SCHEMA_TOO_NEW,

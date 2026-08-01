@@ -212,7 +212,7 @@ final class Opponent {
         guard !suspended, ticket == nil, pendingReply == nil, !preparing,
               preparationFailure == nil, activity != .stalled else { return }
 
-        if engine.engineIsReady() {
+        if engine.engineIsReady(for: game.kind) {
             startSearch()
         } else {
             prepareThenSearch()
@@ -226,7 +226,7 @@ final class Opponent {
         // A fresh probe at every attempt: the retry that follows a refusal has
         // to see the memory the user just freed, and a cached value would
         // answer with the state that produced the refusal.
-        engine.prepareEngine(engine.memoryBudget()) { [weak self] result in
+        engine.prepareEngine(for: game.kind, engine.memoryBudget()) { [weak self] result in
             guard let self, token == attempt else { return }
             preparing = false
             switch result {
@@ -239,8 +239,8 @@ final class Opponent {
     }
 
     private func startSearch() {
-        guard let movetime = game.configuration?.movetimeMilliseconds, movetime > 0
-        else { return }
+        let movetime = game.configuration.movetimeMilliseconds
+        guard movetime > 0 else { return }
         attempt += 1
         let token = attempt
         do {
@@ -249,15 +249,18 @@ final class Opponent {
                 self?.received(result, from: token)
             }
         } catch {
-            // The one refusal with an answer: the engine was torn down under
-            // the search — the suspension path — so it is prepared again,
-            // because a search is owed. Anything else is a failure the player
-            // is told about in the accepted mid-game way.
+            // The readiness refusals have one answer: the engine was torn down
+            // or prepared for the other game between our query and the start,
+            // so it is prepared again because a search is owed. Anything else
+            // is a failure the player is told about in the accepted mid-game
+            // way.
             ticket = nil
-            if error.asCoreError.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED) {
+            let failure = error.asCoreError
+            if failure.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED)
+                || failure.status == MxqStatus(MXQ_ERR_STATE_ENGINE_NOT_READY) {
                 prepareThenSearch()
             } else {
-                report(error.asCoreError)
+                report(failure)
             }
             return
         }

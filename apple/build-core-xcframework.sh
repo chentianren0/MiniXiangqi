@@ -191,72 +191,100 @@ resources="$root/apple/MiniXiangqi/Resources"
 mkdir -p "$resources"
 cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
 
-# The bundled NNUE network, staged the same way and under the same policy the
+# The bundled NNUE networks, staged the same way and under the same policy the
 # core's CMake staging enforces: nothing is consumed on trust.
 #
-# It comes from core/assets, beside the variant configuration it is loaded with,
-# under the name it is bundled as — which has to begin with the variant
+# They come from core/assets, beside the variant configuration they are loaded
+# with, under the names they are bundled as — each has to begin with its variant
 # identifier, because the engine restricts NNUE to the matching variant by that
 # basename and a name that does not match disables NNUE *silently* while the Use
-# NNUE option still reads true. MXQ_NNUE_SOURCE overrides the path, which is how
-# a candidate network is tried before it is committed; nothing has to set it for
-# an ordinary build.
+# NNUE option still reads true. MXQ_NNUE_SOURCE and MXQ_XIANGQI_NNUE_SOURCE
+# override the respective paths, which is how candidate networks are tried
+# before they are committed; nothing has to set either for an ordinary build.
 #
 # Absence or a mismatch stops here rather than producing an app whose AI is
 # quietly a different opponent. It is worth verifying a version-controlled file:
 # the check is what catches an override pointed at the wrong bytes, and a
-# checkout that damaged four megabytes of weights would otherwise be invisible.
+# checkout that damaged the weights would otherwise be invisible.
 # plutil reads the manifest because it is on every Mac and this script is
 # Apple-only.
 #
-# The manifest pins one network per variant the core can search, keyed by the
-# variant's identifier, and the app bundles the one for the variant it plays.
-# Reading that key through variant.id rather than spelling it here is what keeps
-# "the app's network" a fact of the manifest instead of an agreement between two
-# files.
-variant_id=$(plutil -extract variant.id raw -o - "$root/pinned-inputs.json")
-nnue_name=$(plutil -extract "network.$variant_id.filename" raw -o - "$root/pinned-inputs.json")
-nnue_source="${MXQ_NNUE_SOURCE:-$root/core/assets/$nnue_name}"
-nnue_length=$(plutil -extract "network.$variant_id.byte_length" raw -o - "$root/pinned-inputs.json")
-nnue_sha256=$(plutil -extract "network.$variant_id.sha256" raw -o - "$root/pinned-inputs.json")
+# The manifest pins one network per engine variant. Mini Xiangqi's key follows
+# variant.id; Xiangqi's engine identifier is the manifest's xiangqi key.
+mini_variant_id=$(plutil -extract variant.id raw -o - "$root/pinned-inputs.json")
+mini_nnue_name=$(plutil -extract "network.$mini_variant_id.filename" raw -o - "$root/pinned-inputs.json")
+mini_nnue_source="${MXQ_NNUE_SOURCE:-$root/core/assets/$mini_nnue_name}"
+mini_nnue_length=$(plutil -extract "network.$mini_variant_id.byte_length" raw -o - "$root/pinned-inputs.json")
+mini_nnue_sha256=$(plutil -extract "network.$mini_variant_id.sha256" raw -o - "$root/pinned-inputs.json")
 
-if [ ! -f "$nnue_source" ]; then
-  echo "error: the NNUE network was not found at $nnue_source" >&2
-  echo "note: it belongs in core/assets under the name pinned-inputs.json pins, or point MXQ_NNUE_SOURCE at other bytes." >&2
+xiangqi_variant_id=xiangqi
+xiangqi_nnue_name=$(plutil -extract "network.$xiangqi_variant_id.filename" raw -o - "$root/pinned-inputs.json")
+xiangqi_nnue_source="${MXQ_XIANGQI_NNUE_SOURCE:-$root/core/assets/$xiangqi_nnue_name}"
+xiangqi_nnue_length=$(plutil -extract "network.$xiangqi_variant_id.byte_length" raw -o - "$root/pinned-inputs.json")
+xiangqi_nnue_sha256=$(plutil -extract "network.$xiangqi_variant_id.sha256" raw -o - "$root/pinned-inputs.json")
+
+if [ "$mini_nnue_name" = "$xiangqi_nnue_name" ]; then
+  echo "error: pinned-inputs.json gives both games the same bundled network name, $mini_nnue_name." >&2
   exit 1
 fi
-actual_length=$(wc -c < "$nnue_source" | tr -d ' ')
-if [ "$actual_length" != "$nnue_length" ]; then
-  echo "error: the NNUE network at $nnue_source is $actual_length bytes; pinned-inputs.json pins $nnue_length." >&2
-  exit 1
-fi
-actual_sha256=$(shasum -a 256 "$nnue_source" | cut -d' ' -f1)
-if [ "$actual_sha256" != "$nnue_sha256" ]; then
-  echo "error: the NNUE network at $nnue_source does not match the SHA-256 pinned-inputs.json pins." >&2
-  exit 1
-fi
-# Exactly one network ends up in Resources, so any other one goes first.
+
+verify_network() {
+  verify_source=$1
+  verify_name=$2
+  verify_length=$3
+  verify_sha256=$4
+  verify_override=$5
+
+  if [ ! -f "$verify_source" ]; then
+    echo "error: the NNUE network $verify_name was not found at $verify_source" >&2
+    echo "note: it belongs in core/assets under the name pinned-inputs.json pins, or point $verify_override at other bytes." >&2
+    exit 1
+  fi
+  actual_length=$(wc -c < "$verify_source" | tr -d ' ')
+  if [ "$actual_length" != "$verify_length" ]; then
+    echo "error: the NNUE network at $verify_source is $actual_length bytes; pinned-inputs.json pins $verify_length." >&2
+    exit 1
+  fi
+  actual_sha256=$(shasum -a 256 "$verify_source" | cut -d' ' -f1)
+  if [ "$actual_sha256" != "$verify_sha256" ]; then
+    echo "error: the NNUE network at $verify_source does not match the SHA-256 pinned-inputs.json pins." >&2
+    exit 1
+  fi
+}
+
+verify_network "$mini_nnue_source" "$mini_nnue_name" "$mini_nnue_length" \
+               "$mini_nnue_sha256" MXQ_NNUE_SOURCE
+verify_network "$xiangqi_nnue_source" "$xiangqi_nnue_name" "$xiangqi_nnue_length" \
+               "$xiangqi_nnue_sha256" MXQ_XIANGQI_NNUE_SOURCE
+
+# Exactly the two pinned networks end up in Resources, so anything else goes
+# first.
 #
 # This matters the moment the bundled network's NAME changes, which it did when
 # the project's own network replaced the community one. Copying the new name
-# beside the old leaves two, and apple/MiniXiangqi is a file-system-synchronized
-# group: both would be bundled into the .app and both would ship. The runtime
-# would not notice — the bridge prefers the pinned basename — which is exactly
-# why nothing else would catch it.
+# beside the old leaves an extra file, and apple/MiniXiangqi is a
+# file-system-synchronized group: every one would be bundled into the .app and
+# would ship. The runtime would not notice — the bridge prefers the pinned
+# basenames — which is exactly why nothing else would catch it.
 #
 # An unmatched glob expands to the pattern itself in a POSIX shell, so the
 # existence test is what makes "no networks here" a no-op rather than an attempt
 # to delete a file called *.nnue.
 for stale in "$resources"/*.nnue; do
   [ -e "$stale" ] || continue
-  if [ "$(basename "$stale")" != "$nnue_name" ]; then
-    rm -f "$stale"
-    echo "removed a network that is no longer the bundled one: $(basename "$stale")"
-  fi
+  staged_name=$(basename "$stale")
+  case "$staged_name" in
+    "$mini_nnue_name"|"$xiangqi_nnue_name") ;;
+    *)
+      rm -f "$stale"
+      echo "removed a network that is no longer bundled: $staged_name"
+      ;;
+  esac
 done
 
-cp "$nnue_source" "$resources/$nnue_name"
-echo "staged the pinned network as $nnue_name"
+cp "$mini_nnue_source" "$resources/$mini_nnue_name"
+cp "$xiangqi_nnue_source" "$resources/$xiangqi_nnue_name"
+echo "staged the pinned networks as $mini_nnue_name and $xiangqi_nnue_name"
 
 echo "built $output"
 lipo -info "$output"/*/libMiniXiangqiCore.a

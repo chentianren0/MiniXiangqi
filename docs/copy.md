@@ -99,6 +99,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `reason.perpetualChase` | 长捉 | Perpetual Chase | reason line; metadata token | same |
 | `reason.mutualPerpetualCheck` | 双方长将 | Mutual Perpetual Check | reason line; metadata token | same |
 | `reason.mutualPerpetualChase` | 双方长捉 | Mutual Perpetual Chase | reason line; metadata token | same |
+| `reason.fiftyMoveRule` | 五十回合规则 | Fifty-Move Rule | reason line; metadata token | [xiangqi-rules.md](xiangqi-rules.md) § End conditions; `Play/TurnStatus.swift` |
 | `reason.resignation` | 认输 | Resignation | reason line; metadata token | same |
 | `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token; the History row's **result** slot | same; [interaction-design.md](interaction-design.md) § History library — `outcome = none` holds exactly when the reason is ended-early, so the row states the one fact once rather than adding a word for the absence of a winner |
 

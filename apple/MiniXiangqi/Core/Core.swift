@@ -106,11 +106,34 @@ nonisolated enum PlayMode: Sendable {
     }
 }
 
+/// The closed rules vocabulary shared with the core. There is deliberately no
+/// fallback: an unknown C value is a broken boundary, not Mini Xiangqi.
+nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
+    case miniXiangqi, xiangqi
+
+    init?(_ game: MxqGameKind) {
+        if game == MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI) {
+            self = .miniXiangqi
+        } else if game == MxqGameKind(MXQ_GAME_KIND_XIANGQI) {
+            self = .xiangqi
+        } else {
+            return nil
+        }
+    }
+
+    var raw: MxqGameKind {
+        switch self {
+        case .miniXiangqi: MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI)
+        case .xiangqi: MxqGameKind(MXQ_GAME_KIND_XIANGQI)
+        }
+    }
+}
+
 nonisolated enum EndReason: Sendable {
     case none, checkmate, stalemate, threefoldRepetition
     case perpetualCheck, perpetualChase
     case mutualPerpetualCheck, mutualPerpetualChase
-    case resignation, endedEarly
+    case fiftyMoveRule, resignation, endedEarly
 
     init(_ reason: MxqEndReason) {
         switch reason {
@@ -121,6 +144,7 @@ nonisolated enum EndReason: Sendable {
         case MxqEndReason(MXQ_END_REASON_PERPETUAL_CHASE): self = .perpetualChase
         case MxqEndReason(MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK): self = .mutualPerpetualCheck
         case MxqEndReason(MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE): self = .mutualPerpetualChase
+        case MxqEndReason(MXQ_END_REASON_FIFTY_MOVE_RULE): self = .fiftyMoveRule
         case MxqEndReason(MXQ_END_REASON_RESIGNATION): self = .resignation
         case MxqEndReason(MXQ_END_REASON_ENDED_EARLY): self = .endedEarly
         default: self = .none
@@ -214,6 +238,7 @@ nonisolated enum FirstMoverChoice: Sendable, Hashable, CaseIterable {
 /// A game's frozen configuration, as the core holds it. Free Play carries the
 /// absent constants, exactly as the archive omits the members.
 nonisolated struct GameConfiguration: Sendable, Hashable {
+    var game: GameKind
     var mode: PlayMode
     /// The *resolved* human side — set even when the choice was 随机, because
     /// it cannot be reconstructed later.
@@ -222,22 +247,25 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     var firstMoverChoice: FirstMoverChoice?
     var movetimeMilliseconds: UInt32
 
-    static let freePlay = GameConfiguration(mode: .freePlay, humanSide: nil,
-                                            aiLevel: nil, firstMoverChoice: nil,
-                                            movetimeMilliseconds: 0)
+    static func freePlay(game: GameKind) -> GameConfiguration {
+        GameConfiguration(game: game, mode: .freePlay, humanSide: nil,
+                          aiLevel: nil, firstMoverChoice: nil,
+                          movetimeMilliseconds: 0)
+    }
 
     /// A human-versus-AI game, with the first-mover choice already resolved to
     /// a side. Resolution happens in the creation flow, after preparation
     /// succeeds, and is committed only by a successful create.
-    static func humanVersusAI(humanSide: Side, level: AiLevel,
+    static func humanVersusAI(game: GameKind, humanSide: Side, level: AiLevel,
                               choice: FirstMoverChoice) -> GameConfiguration {
-        GameConfiguration(mode: .humanVersusAI, humanSide: humanSide,
+        GameConfiguration(game: game, mode: .humanVersusAI, humanSide: humanSide,
                           aiLevel: level, firstMoverChoice: choice,
                           movetimeMilliseconds: level.movetimeMilliseconds)
     }
 
-    init(mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
-         firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32) {
+    private init(game: GameKind, mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
+                 firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32) {
+        self.game = game
         self.mode = mode
         self.humanSide = humanSide
         self.aiLevel = aiLevel
@@ -245,8 +273,10 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         self.movetimeMilliseconds = movetimeMilliseconds
     }
 
-    init(_ config: MxqGameConfig) {
-        self.init(mode: PlayMode(config.mode),
+    init?(_ config: MxqGameConfig) {
+        guard let game = GameKind(config.game) else { return nil }
+        self.init(game: game,
+                  mode: PlayMode(config.mode),
                   humanSide: Side(config.human_side),
                   aiLevel: AiLevel(config.ai_level),
                   firstMoverChoice: FirstMoverChoice(config.first_mover_choice),
@@ -267,12 +297,12 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         config.first_mover_choice = firstMoverChoice?.raw
             ?? MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
         config.ai_movetime_ms = movetimeMilliseconds
+        config.game = game.raw
         return config
     }
 }
 
-/// A position and the game state, exactly as the core reports them — for a
-/// session, the session's; before one exists, the frozen start position's.
+/// A position and the game state, exactly as the attached session reports it.
 nonisolated struct Evaluation: Sendable {
     var fen: String
     var sideToMove: Side
@@ -474,12 +504,12 @@ final class Core {
 
     // MARK: - The ruleset's constants
 
-    /// The frozen starting FEN. A constant of the ruleset, so it is read from
-    /// the core rather than written a second time here.
-    static var startFEN: String {
+    /// One game's frozen starting FEN. A constant of its ruleset, so it is read
+    /// from the core rather than written a second time here.
+    static func startFEN(for game: GameKind) -> String {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
         var length = 0
-        let status = mxq_rules_start_fen(&buffer, buffer.count, &length, nil)
+        let status = mxq_rules_start_fen(game.raw, &buffer, buffer.count, &length, nil)
         precondition(status == MXQ_OK, "the starting FEN does not fit MXQ_FEN_CAP")
         return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
                       as: UTF8.self)
@@ -552,7 +582,11 @@ extension Core: Rules {
         config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
         var err = freshError()
         try check(mxq_game_config(session, &config, &err), err)
-        return GameConfiguration(config)
+        guard let configuration = GameConfiguration(config) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported an unknown game kind")
+        }
+        return configuration
     }
 
     /// The session's stable identity — the version 7 UUID frozen at creation.
@@ -608,25 +642,15 @@ extension Core: Rules {
     }
 
     func evaluation() throws -> Evaluation {
+        let session = try attachedSession()
         var position = MxqPosition()
         position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
         var err = freshError()
 
-        if let session {
-            try check(mxq_game_position(session, &position, &err), err)
-            try check(mxq_game_status(session, &status, &err), err)
-        } else {
-            // Before a session exists the board shows the frozen start
-            // position, and the stateless facade is what answers for it: the
-            // empty board's state is still the core's to adjudicate, not this
-            // file's to assume.
-            try Core.startFEN.withCString { fen in
-                try check(mxq_rules_evaluate(handle, fen, nil, 0,
-                                                  &position, &status, nil, &err), err)
-            }
-        }
+        try check(mxq_game_position(session, &position, &err), err)
+        try check(mxq_game_status(session, &status, &err), err)
         return try Self.evaluation(position: position, status: status)
     }
 
@@ -648,6 +672,7 @@ extension Core: Rules {
     }
 
     func legalMoves() throws -> [String] {
+        let session = try attachedSession()
         var err = freshError()
         var count = 0
         // One call sized to the widest position this ruleset can reach. The
@@ -655,19 +680,8 @@ extension Core: Rules {
         // rather than a routine outcome to loop on.
         var buffer = [MxqMove](repeating: MxqMove(), count: 128)
 
-        if let session {
-            try check(mxq_game_legal_moves(session, &buffer, buffer.count,
-                                                &count, &err), err)
-        } else {
-            // The empty board again: the start position's moves are a rules
-            // question, and the stateless facade is the session-free way to
-            // ask it.
-            try Core.startFEN.withCString { fen in
-                try check(mxq_rules_legal_moves(handle, fen, nil, 0,
-                                                     &buffer, buffer.count,
-                                                     &count, &err), err)
-            }
-        }
+        try check(mxq_game_legal_moves(session, &buffer, buffer.count,
+                                      &count, &err), err)
         return moveTexts(buffer, count: count)
     }
 
@@ -731,12 +745,10 @@ extension Core {
         }
         let archiver = ActiveGameArchiver(core: handle, active: active)
         // For as long as this window is open the core has no session, so
-        // `evaluation()` and `legalMoves()` answer for the frozen start
-        // position rather than refusing — a path that read the board across it
-        // would be handed a silently wrong position instead of a failure. What
-        // keeps that unreachable is `PlayState`: the flow stands on the Play
-        // home for the whole of the archive, and `resume()` refuses to leave it
-        // while a mode switch is in flight.
+        // `evaluation()` and `legalMoves()` refuse. `PlayState` keeps the
+        // questions unreachable: the flow stands on the Play home for the
+        // whole archive, and `resume()` refuses to leave it while a mode switch
+        // is in flight.
         session = nil
         archiver.run { [self] result in
             Task { @MainActor in
@@ -807,6 +819,7 @@ nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
     /// The store's `record_id`, never reissued after a deletion — so a stale
     /// one dangles rather than naming some later game.
     var id: UInt64
+    var game: GameKind
     var mode: PlayMode
     /// The human's resolved side in human-versus-AI play; absent in Free Play,
     /// where the same person controls both.
@@ -880,7 +893,8 @@ nonisolated struct HistoryStore: @unchecked Sendable {
         try check(mxq_store_history_page(handle, UInt32(offset), UInt32(limit),
                                          &buffer, buffer.count, &written,
                                          &revision, &err), err)
-        return (buffer.prefix(written).map(RecordSummary.init), revision)
+        let records = try buffer.prefix(written).map { try RecordSummary($0) }
+        return (records, revision)
     }
 
     /// Every record, read a page at a time. The target MVP has no search and no
@@ -995,7 +1009,7 @@ nonisolated extension HistoryStore {
         try check(status, err)
         return ImportedGame(outcome: outcome == MxqImportOutcome(MXQ_IMPORT_EXISTING)
                                      ? .existing : .created,
-                            record: RecordSummary(summary))
+                            record: try RecordSummary(summary))
     }
 }
 
@@ -1009,8 +1023,13 @@ nonisolated struct ReplayHandle: @unchecked Sendable {
 }
 
 private nonisolated extension RecordSummary {
-    init(_ summary: MxqRecordSummary) {
+    init(_ summary: MxqRecordSummary) throws {
+        guard let game = GameKind(summary.game) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported an unknown game kind")
+        }
         self.init(id: summary.record_id,
+                  game: game,
                   mode: PlayMode(summary.mode),
                   humanSide: Side(summary.human_side),
                   outcome: Outcome(summary.outcome),
