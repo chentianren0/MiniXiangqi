@@ -1024,31 +1024,30 @@ architectures. This section claimed the opposite until the first packaged run's 
 the reason the zip's does — large, present, and otherwise unaccounted for. The deployment
 mode changed which runtime is *installed*, not which redistributables travel.
 
-### The three placeholders
+### The Store identity
 
-`Package.appxmanifest` carries `MXQPLACEHOLDER` in three fields, and they are deliberately
-not plausible:
+`Package.appxmanifest` carries the identity Partner Center assigned when the name
+**Xiangqi Master** was reserved, read from the dashboard's **View app identity details**
+page for the app:
 
-| Manifest field | Where the real value comes from |
+| Manifest field | Value |
 |---|---|
-| `Identity/@Name` | Partner Center → the app → **View app identity details** → `Package/Identity/Name` |
-| `Identity/@Publisher` | the same page's `Package/Identity/Publisher`, a full `CN=…` string |
-| `Properties/PublisherDisplayName` | the same page's publisher display name |
+| `Identity/@Name` | `Tianren.XiangqiMaster` |
+| `Identity/@Publisher` | `CN=B60A5E70-3747-4342-8C97-BC3427301F8F` |
+| `Properties/PublisherDisplayName` | `Tianren` |
 
-All three are assigned when the app's name is reserved, and a package whose identity does
-not match the reservation is rejected at upload — so a plausible-looking guess would buy
-nothing and cost a reader the ability to tell. **Nothing else changes when they land**: not
-the project, not the scripts, not CI. Three string edits, and the next build is the same
-build.
+All three are assigned with the reservation, and a package whose identity does not match
+it is rejected at upload — they change only if the reservation itself does. Together they
+declare the package family `Tianren.XiangqiMaster_9vydfafgh3mdt`, to which every package
+of the app belongs. `DisplayName` is **Xiangqi Master**, the reserved name.
 
-`Version` is hardcoded — `1.6.0.0` — and bumped by hand, in a commit, before the release
-tag it belongs to is pushed. CI does not stamp it: the Store refuses a version that is not
-higher than the last accepted one and reserves the fourth part for itself, and a version
-that moves on every run is a version nobody chose. What CI does is compare, because the
-tag names the same number: `vX.Y` is `X.Y.0.0` and `vX.Y.Z` is `X.Y.Z.0`, and
+`Version` is hardcoded and bumped by hand, in a commit, before the release tag it belongs
+to is pushed. CI does not stamp it: the Store refuses a version that is not higher than
+the last accepted one and reserves the fourth part for itself, and a version that moves on
+every run is a version nobody chose. What CI does is compare, because the tag names the
+same number: `vX.Y` is `X.Y.0.0` and `vX.Y.Z` is `X.Y.Z.0`, and
 [`release.yml`](../.github/workflows/release.yml) stops a release whose two answers
-differ. `DisplayName` is **Xiangqi Master**, the owner's provisional choice
-(2026-07-31); the reservation fixes the name finally, in the same act as the identity.
+differ.
 
 ### What the manifest declares, and what it deliberately does not
 

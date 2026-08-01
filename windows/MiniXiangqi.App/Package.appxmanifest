@@ -25,11 +25,12 @@
   IgnorableNamespaces="uap rescap">
 
   <!--
-    THE THREE PLACEHOLDERS, AND WHERE THE REAL VALUES COME FROM
+    THE IDENTITY IS ASSIGNED, NOT CHOSEN
 
-    Name, Publisher and PublisherDisplayName are not ours to choose. They are
-    assigned by Partner Center when the app's name is reserved, and they are
-    read from the dashboard's **View app identity details** page for that app:
+    Name, Publisher and PublisherDisplayName are not ours to choose. They were
+    assigned by Partner Center when the name Xiangqi Master was reserved, and
+    they are read from the dashboard's **View app identity details** page for
+    that app:
 
       Package/Identity/@Name            ->  Name
       Package/Identity/@Publisher       ->  Publisher (a full CN=... string,
@@ -37,13 +38,8 @@
       Package/Properties/PublisherDisplayName
 
     A package whose identity does not match the reservation is rejected at
-    upload, so inventing plausible values would be worse than leaving these
-    obviously wrong: MXQPLACEHOLDER cannot be mistaken for a real identity by a
-    reader or by a submission.
-
-    Nothing else in this file, in the project, in package-msix.ps1 or in CI
-    changes when they land. They are three string edits here, and the build that
-    follows is the same build.
+    upload, so these three values change only if the reservation itself does.
+    The package family they declare is Tianren.XiangqiMaster_9vydfafgh3mdt.
 
     Version is hardcoded and bumped by hand, in a commit, before the release tag
     is pushed — because the tag names it too: vX.Y is X.Y.0.0 and vX.Y.Z is
@@ -55,22 +51,21 @@
     acts.
   -->
   <Identity
-    Name="MXQPLACEHOLDER.MiniXiangqi"
-    Publisher="CN=MXQPLACEHOLDER"
-    Version="1.6.0.0" />
+    Name="Tianren.XiangqiMaster"
+    Publisher="CN=B60A5E70-3747-4342-8C97-BC3427301F8F"
+    Version="1.5.1.0" />
 
   <!--
     ProcessorArchitecture is deliberately absent above. The packaging build
     fills it from /p:Platform, which is what makes one manifest produce the x64
     package and the ARM64 package rather than two manifests that can disagree.
 
-    DisplayName is the owner's provisional choice (2026-07-31). The name is
-    finally fixed by the Partner Center reservation, which is also where the
-    identity values above come from, so both settle in the same act.
+    DisplayName is the reserved Store name — fixed by the same Partner Center
+    reservation that assigned the identity values above.
   -->
   <Properties>
     <DisplayName>Xiangqi Master</DisplayName>
-    <PublisherDisplayName>MXQPLACEHOLDER</PublisherDisplayName>
+    <PublisherDisplayName>Tianren</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 

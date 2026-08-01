@@ -85,7 +85,7 @@ jobs:
   # Package.appxmanifest's Identity/@Version is written by hand and deliberately
   # not stamped by CI: a version that moves on every run is a version nobody
   # chose, and the Store refuses one that is not higher than the last it
-  # accepted (windows/README.md § The three placeholders). That decision stands
+  # accepted (windows/README.md § The Store identity). That decision stands
   # — this job writes nothing. What is new is that the tag names a version too,
   # and one build cannot have two version numbers: a .msix declaring one number
   # hanging off a release page showing another is a question with two answers,
