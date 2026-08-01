@@ -16,8 +16,8 @@
  * docs/game-data.md's promise: no record, no revision bump, and the same call
  * succeeding once the store is free.
  *
- * The corpus is the archive corpus, unchanged. The four completed goldens are
- * what an export produces and what an import accepts; the three active shapes
+ * The corpus is the archive corpus, unchanged. The five completed goldens are
+ * what an export produces and what an import accepts; the four active shapes
  * are what the store holds while a game is being played, and importing one is
  * refused — "refusing to import an incomplete one is the importer's rule rather
  * than the codec's", which fixtures/archive/README.md wrote down before this
@@ -513,12 +513,13 @@ void case_the_rejection_corpus_refuses_identically(
 }
 
 /*
- * The three active shapes. They are complete documents of the version this
- * build defines, and the codec reads them; what they are not is an exported game, because an export is one
- * immutable History record and a History record has an ending. Import refuses
- * them before the store is consulted, so the schema's own "a record can only
- * enter this library as imported once it is complete" never has to be the thing
- * that says so — a database constraint is the wrong voice for a file problem.
+ * The four active shapes. They are complete documents of the version this
+ * build defines, and the codec reads them; what they are not is an exported
+ * game, because an export is one immutable History record and a History record
+ * has an ending. Import refuses them before the store is consulted, so the
+ * schema's own "a record can only enter this library as imported once it is
+ * complete" never has to be the thing that says so — a database constraint is
+ * the wrong voice for a file problem.
  */
 void case_an_unfinished_game_is_not_an_import(
     const std::vector<fs::path> &active_shapes) {

@@ -78,16 +78,16 @@ loads from [`assets/minixiangqi-variants.ini`](assets/minixiangqi-variants.ini).
 
 All of `mxq.h` is implemented: the status and blob helpers and the pure queries
 that need no core instance (`mxq_core_version`, `mxq_core_game_profile`,
-`mxq_rules_start_fen`, `mxq_archive_supported_versions`, `mxq_engine_plan`); core lifecycle, with the
-SQLite library store opened at `mxq_core_init` and the clock and identity
-provider the deterministic-identity flag configures; the session-free rules
-facade (`mxq_rules_validate_fen`, `mxq_rules_evaluate`, `mxq_rules_legal_moves`);
-the archive codec's read and write sides over the core's own canonical-JSON
-reader; store-attached sessions with their per-mutation commits; the four
-archiving paths that end a game; the History read surface; the interchange
-pair with its import preview; and the search facade —
-`mxq_engine_prepare`/`teardown`/`query` and the `mxq_search_` group over the
-core's one engine thread.
+`mxq_rules_start_fen`, `mxq_archive_supported_versions`, `mxq_engine_plan`);
+core lifecycle, with the SQLite library store opened at `mxq_core_init` and
+the clock and identity provider the deterministic-identity flag configures;
+the session-free rules facade (`mxq_rules_validate_fen`, `mxq_rules_evaluate`,
+`mxq_rules_legal_moves`); the archive codec's read and write sides over the
+core's own canonical-JSON reader; store-attached sessions with their
+per-mutation commits; the four archiving paths that end a game; the History
+read surface; the interchange pair with its import preview; and the search
+facade — `mxq_engine_prepare`/`teardown`/`query` and the `mxq_search_` group
+over the core's one engine thread.
 
 Seven CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
 `archive_fixtures` over [`fixtures/archive/`](../fixtures/archive/),

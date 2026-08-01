@@ -140,10 +140,17 @@ void initialise_once(const std::string &assets_dir) {
      * guard, so its absence is a build that lost a define rather than a
      * configuration that lost a section, and the two failures are worth
      * separating in the detail rather than in the code. */
-    for (const VariantPin &pin : kVariantPins) {
+    for (size_t i = 0; i < sizeof(kVariantPins) / sizeof(kVariantPins[0]);
+         ++i) {
+        const VariantPin &pin = kVariantPins[i];
         if (variants.find(std::string(pin.id)) == variants.end()) {
             g_init_detail =
-                std::string("the engine does not define the variant ") + pin.id;
+                i == pin_index(Variant::Xiangqi)
+                    ? std::string("the engine does not define the variant ") +
+                          pin.id
+                    : std::string("the bundled variant configuration does not "
+                                  "define the variant ") +
+                          pin.id;
             g_init_error = InitError::VariantLoadFailed;
             return;
         }

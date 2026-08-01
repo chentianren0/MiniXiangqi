@@ -703,21 +703,6 @@ MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
         return MXQ_ERR_ARG_RANGE;
     }
 
-    /*
-     * The engine runs one variant at a time, and it is this session's game that
-     * must be the one: the tables a search reads are the prepared variant's, so
-     * a session of the other game would fail to replay under them and be
-     * delivered as a fault. Refusing here says the true thing instead — the
-     * engine is not ready for THIS game — and the caller prepares for it.
-     */
-    if (mxq::engine::active_variant() !=
-        mxq::engine::variant_of(game->config.game)) {
-        mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
-                        "the engine is prepared for the other game; prepare it "
-                        "for this session's game first");
-        return MXQ_ERR_STATE_ENGINE_NOT_READY;
-    }
-
     auto task = std::make_shared<mxq::search::Task>();
     task->kind = mxq::search::Task::Kind::Search;
     task->game = game->config.game;
@@ -746,6 +731,27 @@ MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
             MXQ_ENGINE_STATE_READY) {
             mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
                             "the engine is not prepared");
+            return MXQ_ERR_STATE_ENGINE_NOT_READY;
+        }
+        /*
+         * The engine runs one variant at a time, and it is this session's game
+         * that must be the one: the tables a search reads are the prepared
+         * variant's, so a session of the other game would fail to replay under
+         * them and be delivered as a fault. Refusing here says the true thing
+         * instead — the engine is not ready for THIS game — and the caller
+         * prepares for it.
+         *
+         * It is asked after the state, not before, because an unprepared
+         * engine's active variant is the rules posture's rather than a
+         * preparation: asking first would answer a session of the other game
+         * with "prepared for the other game" on a core that has prepared
+         * nothing at all, and send the caller to correct the wrong thing.
+         */
+        if (mxq::engine::active_variant() !=
+            mxq::engine::variant_of(game->config.game)) {
+            mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
+                            "the engine is prepared for the other game; "
+                            "prepare it for this session's game first");
             return MXQ_ERR_STATE_ENGINE_NOT_READY;
         }
         task->ticket = mxq::search::g_next_ticket++;

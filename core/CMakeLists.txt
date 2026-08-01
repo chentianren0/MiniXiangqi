@@ -450,9 +450,12 @@ if(MXQ_ENABLE_RULES_FACADE)
                        "${MXQ_BUILD_XIANGQI_NNUE_SHA256}")
   endif()
 
-  # Both or neither. One verified network and one damaged one is a build whose
-  # engine axis is half there, and staging the good half would let the suite
-  # report the missing half as an engine defect rather than as a staging one.
+  # Both or neither: a damaged or absent pinned network stages nothing at all,
+  # for either variant, and the suite fails loudly on the staging problem. That
+  # is deliberately louder than the loss — the distribution zip ships exactly
+  # one network, the app's, so a damaged built-in-xiangqi network breaks no
+  # shipped artifact — because the alternative is staging the good half and
+  # letting the suite report the missing half as an engine defect.
   if(MXQ_TEST_NNUE_PROBLEM STREQUAL "")
     file(MAKE_DIRECTORY "${MXQ_TEST_ASSETS_DIR}")
     file(COPY_FILE "${MXQ_VARIANT_INI}"
