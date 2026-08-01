@@ -63,21 +63,34 @@ size_t square_length(MxqGameKind game, const char *text, size_t len) {
 
     /* The whole digit run, never a prefix of it: a rank is bounded by the next
      * file character or by the end of the text, so stopping early would read
-     * "a1" out of "a10" and call the rest a second square. */
+     * "a1" out of "a10" and call the rest a second square.
+     *
+     * The accumulator is bounded inside the loop rather than after it, and the
+     * reason is that this text is untrusted: an archive's move strings reach
+     * here from a file, and the format's string limit lets a caller spell a
+     * digit run long enough to overflow an int32_t. Signed overflow is
+     * undefined, and where it wrapped it would also invent spellings this
+     * notation says it does not have — a rank that came back into range modulo
+     * 2^32 would make "a4294967297" a square. Ranks only grow as digits are
+     * appended, so a run that has passed the last rank can never return to
+     * one, and stopping at that point is both the range test and the bound. */
     size_t digits = 0;
     int32_t rank = 0;
     while (1 + digits < len && is_digit(text[1 + digits])) {
         rank = rank * 10 + (text[1 + digits] - '0');
         ++digits;
+        if (rank > board.last_rank) {
+            return 0;
+        }
     }
     if (digits == 0 || text[1] == '0') {
         /* No rank at all, or one spelled with a leading zero — which would give
          * a second spelling of a square this notation has exactly one of. */
         return 0;
     }
-    if (rank < 1 || rank > board.last_rank) {
-        return 0;
-    }
+    /* Both bounds hold here without a further test: the loop returned for
+     * anything above the last rank, and a run that begins with a digit other
+     * than '0' is at least 1. */
     return 1 + digits;
 }
 
@@ -86,7 +99,9 @@ bool well_formed_square(MxqGameKind game, const char *text) {
         return false;
     }
     const size_t len = std::strlen(text);
-    return square_length(game, text, len) == len;
+    /* The empty string is not a square, and the length test is what says so:
+     * square_length answers 0 for it, and 0 == 0 would otherwise accept it. */
+    return len != 0 && square_length(game, text, len) == len;
 }
 
 bool well_formed_move(MxqGameKind game, const char *text) {

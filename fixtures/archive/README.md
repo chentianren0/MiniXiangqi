@@ -165,7 +165,7 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 }
 ```
 
-`probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member version 1 does not know, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
+`probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member no version of this format knows, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
 
 ### Two versions are dispatched on, not one
 

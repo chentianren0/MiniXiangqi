@@ -61,6 +61,10 @@
 
 /* The bridge itself, deliberately: see the header comment. */
 #include "mxq_engine_bridge.hpp"
+/* And the core's own SHA-256, so that "this game's profile names this game's
+ * network" is checked against the staged bytes rather than against a second
+ * copy of the hash written here. */
+#include "mxq_sha256.hpp"
 #endif
 
 #include <atomic>
@@ -505,6 +509,81 @@ std::string read_file(const fs::path &path) {
                        std::istreambuf_iterator<char>());
 }
 
+/*
+ * mxq_core_game_profile, whole: the four things its contract claims.
+ *
+ * It is the one query with no core parameter and no lock at all — a lookup in
+ * a constexpr table — so "callable before initialisation" is not a convenience
+ * but the shape of the function. The value half is what makes the claim worth
+ * asserting rather than reading: the profile pairs a variant with the network
+ * that variant is verified against, and a report that paired them by position
+ * would be right for one game and silently wrong for the other.
+ */
+void case_game_profile() {
+    Case c("mxq_core_game_profile answers for each game before any core "
+           "exists, and pairs each variant with its own network");
+
+    /* Before initialisation, and deliberately first in the suite's order: no
+     * core has been created yet when this runs. */
+    MxqError err = make_error();
+    MxqGameProfile mini;
+    std::memset(&mini, 0, sizeof(mini));
+    mini.struct_size = static_cast<uint32_t>(sizeof(mini));
+    c.check_status(
+        mxq_core_game_profile(MXQ_GAME_KIND_MINI_XIANGQI, &mini, &err), MXQ_OK,
+        "the app's game, before mxq_core_init");
+
+    MxqGameProfile xiangqi;
+    std::memset(&xiangqi, 0, sizeof(xiangqi));
+    xiangqi.struct_size = static_cast<uint32_t>(sizeof(xiangqi));
+    err = make_error();
+    c.check_status(mxq_core_game_profile(MXQ_GAME_KIND_XIANGQI, &xiangqi, &err),
+                   MXQ_OK, "the other game, before mxq_core_init");
+
+    c.check_eq(static_cast<int64_t>(mini.game), MXQ_GAME_KIND_MINI_XIANGQI,
+               "the profile names the game it was asked about");
+    c.check_eq(static_cast<int64_t>(xiangqi.game), MXQ_GAME_KIND_XIANGQI,
+               "and so does the other");
+
+    /* The variant identifiers come from the manifest through the build
+     * configuration, which is where the bridge reads its own from. */
+    c.check_eq(std::string(mini.variant_id), std::string(kVariantId),
+               "the app's game binds the pinned variant");
+    c.check_eq(std::string(xiangqi.variant_id), std::string(kXiangqiVariantId),
+               "the other game binds the built-in variant");
+
+    /* And the network each names is that variant's own bytes, not the other's.
+     * Hashing the staged file is what makes this a statement about the pairing
+     * rather than about two strings being different from each other. */
+    const std::string mini_bytes =
+        read_file(fs::path(staged_xiangqi_assets()) / kBundledNetworkName);
+    const std::string xiangqi_bytes =
+        read_file(fs::path(staged_xiangqi_assets()) / kXiangqiNetworkName);
+    if (mini_bytes.empty() || xiangqi_bytes.empty()) {
+        c.check(false, "both networks are staged for this case");
+    } else {
+        c.check_eq(std::string(mini.nnue_sha256), mxq::sha256_hex(mini_bytes),
+                   "the app's game names the SHA-256 of the network staged "
+                   "for it");
+        c.check_eq(std::string(xiangqi.nnue_sha256),
+                   mxq::sha256_hex(xiangqi_bytes),
+                   "the other game names the SHA-256 of its own network");
+    }
+
+#if defined(NDEBUG)
+    /* A game outside the closed vocabulary is a programming error, so this
+     * expectation is only observable where the assertion is compiled out. */
+    MxqGameProfile refused;
+    std::memset(&refused, 0, sizeof(refused));
+    refused.struct_size = static_cast<uint32_t>(sizeof(refused));
+    err = make_error();
+    c.check_status(mxq_core_game_profile(static_cast<MxqGameKind>(2), &refused,
+                                         &err),
+                   MXQ_ERR_ARG_RANGE, "a game this core does not play");
+#endif
+    c.report();
+}
+
 void case_missing_network() {
     Case c("a missing network refuses as asset-missing and the AI does not "
            "start");
@@ -686,6 +765,7 @@ struct ReentrantProbe {
     MxqStatus cancel_status = MXQ_OK;
     MxqStatus plan_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus version_status = MXQ_ERR_ARG_REENTRANT;
+    MxqStatus profile_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus start_fen_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus versions_status = MXQ_ERR_ARG_REENTRANT;
 };
@@ -720,6 +800,12 @@ void reentrant_callback(const MxqSearchResult *result, void *user_data) {
     std::memset(&version, 0, sizeof(version));
     version.struct_size = static_cast<uint32_t>(sizeof(version));
     probe->version_status = mxq_core_version(&version, nullptr);
+
+    MxqGameProfile profile;
+    std::memset(&profile, 0, sizeof(profile));
+    profile.struct_size = static_cast<uint32_t>(sizeof(profile));
+    probe->profile_status =
+        mxq_core_game_profile(MXQ_GAME_KIND_MINI_XIANGQI, &profile, nullptr);
 
     char fen[MXQ_FEN_CAP];
     size_t len = 0;
@@ -843,6 +929,8 @@ void case_search_end_to_end() {
                        "mxq_engine_plan is legal inside the callback");
         c.check_status(probe.version_status, MXQ_OK,
                        "mxq_core_version is legal inside the callback");
+        c.check_status(probe.profile_status, MXQ_OK,
+                       "mxq_core_game_profile is legal inside the callback");
         c.check_status(probe.start_fen_status, MXQ_OK,
                        "mxq_rules_start_fen is legal inside the callback");
         c.check_status(probe.versions_status, MXQ_OK,
@@ -1981,6 +2069,10 @@ int main() {
     /* First, before anything loads the real configuration into the engine's
      * process-global variant table: see the case's comment. */
     case_variant_load_failure();
+
+    /* First, and it must be: its whole claim is that the profile answers
+     * before any core exists, and every case below creates one. */
+    case_game_profile();
 
     case_query_before_prepare();
     case_prepare_applies_the_plan();

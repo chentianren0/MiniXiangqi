@@ -226,7 +226,8 @@ void invalidate_all(const MxqCore *core);
 bool current_revision_of(const MxqCore *core, uint64_t instance,
                          const char *game_id, uint64_t &out_revision);
 
-/* The version 1 document this session's committed state encodes to. */
+/* The document this session's committed state encodes to, in the one archive
+ * version this build defines. */
 archive::Record record_of(const MxqGame &game);
 
 /*

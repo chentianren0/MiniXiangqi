@@ -993,7 +993,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game,
  * config->store_directory, whose leading directories are created as needed. A
  * store that cannot be opened or created fails with its store-domain status;
  * one written by a newer build is refused with MXQ_ERR_STORE_SCHEMA_TOO_NEW
- * rather than opened, per the forward-only migration rule in
+ * rather than opened, and one recording any other schema version is refused
+ * too — one version is defined and there is no migration into it, per
  * docs/game-data.md.
  *
  * Thread: the UI or setup thread; never inside a search callback.

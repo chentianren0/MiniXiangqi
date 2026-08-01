@@ -42,6 +42,7 @@
 #include "sqlite3.h"
 #endif
 
+#include "mxq_notation.hpp"
 #include "mxq_sha256.hpp"
 
 #include <algorithm>
@@ -990,6 +991,66 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
 /* Cases that are properties of the interface                              */
 /* ---------------------------------------------------------------------- */
 
+/*
+ * The square-and-move grammar directly, because the two public gates over it
+ * refuse with statuses that assert — those expectations are only observable in
+ * a release build, and this one is worth having in both.
+ *
+ * These are the inputs a length-only or an unbounded-accumulator reading gets
+ * wrong. They need no core: the grammar is a constant of each ruleset.
+ */
+void case_notation_grammar() {
+    Case c("the square-and-move grammar accepts exactly the squares each "
+           "board has");
+
+    const auto square = [](MxqGameKind game, const char *text) {
+        return mxq::notation::well_formed_square(game, text);
+    };
+    const auto move = [](MxqGameKind game, const char *text) {
+        return mxq::notation::well_formed_move(game, text);
+    };
+
+    /* The empty string consumes as many characters as it has, which is what a
+     * length comparison alone reads as agreement. */
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, ""),
+            "the empty string is not a square");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, ""),
+            "on either board");
+    c.check(!move(MXQ_GAME_KIND_MINI_XIANGQI, ""),
+            "and it is not a move");
+
+    /* A digit run long enough to overflow the rank accumulator. Under wrapping
+     * these come back into range and become squares this notation says do not
+     * exist. */
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a4294967297"),
+            "a rank of more digits than an int32_t holds is not a square");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "a4294967297"),
+            "on either board");
+    c.check(!move(MXQ_GAME_KIND_XIANGQI, "a4294967297b1"),
+            "and no move begins with one");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a99999999999999999999"),
+            "nor does a run longer than any integer this core carries");
+
+    /* The squares each board does have, and the ones it does not. */
+    c.check(square(MXQ_GAME_KIND_MINI_XIANGQI, "g7"), "g7 is a Mini square");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "h1"), "h1 is not");
+    c.check(!square(MXQ_GAME_KIND_MINI_XIANGQI, "a8"), "nor is a8");
+    c.check(square(MXQ_GAME_KIND_XIANGQI, "i10"), "i10 is a Xiangqi square");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a11"), "a11 is not");
+    c.check(!square(MXQ_GAME_KIND_XIANGQI, "a01"),
+            "and a leading zero is a second spelling this notation refuses");
+
+    /* The split rule, which is the whole reason the grammar is one module. */
+    c.check(move(MXQ_GAME_KIND_XIANGQI, "a1a10"),
+            "a1a10 reads as a1 then a10");
+    c.check(move(MXQ_GAME_KIND_XIANGQI, "a9a10"),
+            "and a9a10 is the longest move either board spells");
+    c.check(!move(MXQ_GAME_KIND_MINI_XIANGQI, "a1a10"),
+            "the same text is no move at all on the smaller board");
+
+    c.report();
+}
+
 void case_second_active_game() {
     Case c("a second active game is refused");
     const fs::path store = scratch_dir("second-active");
@@ -1091,6 +1152,22 @@ void case_refused_moves_change_nothing() {
     c.check(rc == MXQ_ERR_RULES_ILLEGAL_MOVE,
             "a move that is legal notation but not legal here is refused too");
 
+    /*
+     * A rank whose digits run past what an int32_t holds. The move text comes
+     * from a caller here and from an archive elsewhere, and the notation's own
+     * grammar says a square has exactly one spelling — so a rank that wrapped
+     * back into range would both be undefined behaviour and invent a second
+     * spelling of a1. The answer must be the malformed one: reaching the
+     * illegal-move rung at all would mean the wrap happened and something
+     * tokenised this as two squares.
+     */
+    err = make_error();
+    rc = mxq_game_apply_move(game, "a4294967297b1", nullptr, nullptr, &err);
+    c.check(rc == MXQ_ERR_RULES_MALFORMED_MOVE,
+            std::string("a rank of more digits than an int32_t holds is "
+                        "malformed, got ") +
+                mxq_status_name(rc));
+
     c.check_eq(encode_of(core, game, c, "after the refusals"), before,
                "the committed state is untouched by every refusal");
 
@@ -1098,6 +1175,39 @@ void case_refused_moves_change_nothing() {
     mxq_game_position(game, &position, nullptr);
     c.check_eq(static_cast<int64_t>(position.position_revision), 1,
                "a refused move does not advance the revision");
+
+    /*
+     * The from-square gate, which is a different rule from the move grammar:
+     * mxq.h promises MXQ_ERR_ARG_RANGE for a string that is not a square of
+     * this board, and the empty string is not one. It is worth its own
+     * expectation because it is the one input a length-only check accepts —
+     * "consumed as many characters as it has" is true of nothing at all.
+     *
+     * These assert in a debug build, as every closed-vocabulary range does, so
+     * the expectations are stated where the assertion is compiled out.
+     */
+#if defined(NDEBUG)
+    {
+        size_t count = 7;
+        err = make_error();
+        rc = mxq_game_legal_moves_from(game, "", nullptr, 0, &count, &err);
+        c.check(rc == MXQ_ERR_ARG_RANGE,
+                std::string("the empty string is not a square of this board, "
+                            "got ") +
+                    mxq_status_name(rc));
+        c.check_eq(static_cast<int64_t>(count), 0,
+                   "and the refusal writes no count");
+
+        count = 7;
+        err = make_error();
+        rc = mxq_game_legal_moves_from(game, "a4294967297", nullptr, 0, &count,
+                                       &err);
+        c.check(rc == MXQ_ERR_ARG_RANGE,
+                std::string("neither is a rank of more digits than an int32_t "
+                            "holds, got ") +
+                    mxq_status_name(rc));
+    }
+#endif
 
     mxq_game_release(game);
     mxq_core_shutdown(core, nullptr);
@@ -1531,6 +1641,7 @@ int main(int argc, char **argv) {
         run_scenario(scenario, archives);
     }
 
+    case_notation_grammar();
     case_second_active_game();
     case_resume_without_a_game();
     case_refused_moves_change_nothing();

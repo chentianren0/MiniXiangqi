@@ -459,9 +459,9 @@ bool is_draw_reason(MxqEndReason reason) {
 
 bool read_origin(const json::Value &origin, Decoded &out, Reject &err) {
     /* origin describes the export event and is never hashed, never compared,
-     * and never trusted — but it is still part of the version-1 document, so a
-     * malformed one is a malformed file. Nothing read here reaches the
-     * decoded summary. */
+     * and never trusted — but it is still part of the document, so a malformed
+     * one is a malformed file. Nothing read here reaches the decoded
+     * summary. */
     static const char *const kKnown[] = {"app_version", "exported_at"};
     if (!only_known_members(origin, kKnown, 2, "\"origin\"", err)) {
         return false;

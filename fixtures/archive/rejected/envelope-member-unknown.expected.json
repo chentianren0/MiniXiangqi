@@ -3,5 +3,5 @@
   "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
   "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
   "detail_contains": "unknown member",
-  "why": "Version 1 knows five envelope members. A sixth is refused rather than ignored, because ignoring it would silently drop whatever it meant."
+  "why": "The envelope has five members. A sixth is refused rather than ignored, because ignoring it would silently drop whatever it meant."
 }
