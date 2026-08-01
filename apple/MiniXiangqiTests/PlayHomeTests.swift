@@ -109,6 +109,13 @@ private func moves(_ count: Int) -> String {
 @MainActor
 struct PlayHomeTests {
 
+    private static let miniAI = PlaySelection(game: .miniXiangqi,
+                                              mode: .humanVersusAI)
+    private static let miniFreePlay = PlaySelection(game: .miniXiangqi,
+                                                    mode: .freePlay)
+    private static let xiangqiAI = PlaySelection(game: .xiangqi,
+                                                 mode: .humanVersusAI)
+
     /// The start position a third time, which is what makes the draw claimable.
     private static let shuffleLine = ["b1b2", "b7b6", "b2b1", "b6b7",
                                       "b1b2", "b7b6", "b2b1", "b6b7"]
@@ -139,8 +146,8 @@ struct PlayHomeTests {
     @Test("A human-versus-AI game names the side the player is holding")
     func aHumanVersusAIGameNamesTheHumanSide() throws {
         let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(humanSide: .red, level: .standard,
-                                       choice: .humanFirst))
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
+                                       level: .standard, choice: .humanFirst))
         let red = try Game(rules: core)
         #expect(red.metadataLine == joined(text("mode.humanVersusAI"),
                                            text("metadata.youRed"),
@@ -149,8 +156,8 @@ struct PlayHomeTests {
                                            moves(0)))
 
         let other = try TestCores.fresh()
-        try other.create(.humanVersusAI(humanSide: .black, level: .fast,
-                                        choice: .aiFirst))
+        try other.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                        level: .fast, choice: .aiFirst))
         let black = try Game(rules: other)
         #expect(black.metadataLine == joined(text("mode.humanVersusAI"),
                                              text("metadata.youBlack"),
@@ -195,9 +202,9 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let state = PlayState(core: core)
 
-        state.choose(.freePlay)
+        state.choose(Self.miniFreePlay)
 
-        #expect(state.page == .setup(.freePlay))
+        #expect(state.page == .setup(Self.miniFreePlay))
         #expect(state.modeSwitch == nil, "nothing to confirm with no game to keep")
     }
 
@@ -205,7 +212,7 @@ struct PlayHomeTests {
     func aModeEntryWithAGameConfirms() throws {
         let core = try TestCores.fresh()
         let state = PlayState(core: core)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board, "a launch with a game to resume opens at the board")
 
@@ -213,9 +220,9 @@ struct PlayHomeTests {
         #expect(state.page == .home)
         #expect(state.activeGame != nil, "leaving the board leaves the game running")
 
-        state.choose(.humanVersusAI)
+        state.choose(Self.miniAI)
 
-        #expect(state.modeSwitch == .confirming(.humanVersusAI))
+        #expect(state.modeSwitch == .confirming(Self.miniAI))
         #expect(state.page == .home, "the confirmation stands between the press and the page")
         #expect(state.activeGame != nil, "and nothing has happened to the game yet")
     }
@@ -224,7 +231,7 @@ struct PlayHomeTests {
     func cancellingDiscardsTheDestination() throws {
         let core = try TestCores.fresh()
         let state = try stateOverAGame(core)
-        state.choose(.humanVersusAI)
+        state.choose(Self.miniAI)
         #expect(state.modeSwitch != nil)
 
         state.dismissConfirmation()
@@ -236,26 +243,27 @@ struct PlayHomeTests {
         #expect(try core.historyCount() == 0, "cancelling files nothing")
     }
 
-    @Test("保存并继续 archives before it navigates, and opens the chosen mode")
-    func saveAndContinueArchivesThenOpensTheMode() throws {
+    @Test("保存并继续 archives before it navigates, and keeps the chosen game and mode")
+    func saveAndContinueArchivesThenOpensTheSelection() throws {
         let core = try TestCores.fresh()
         let (state, archive) = try parkedStateOverAGame(core)
 
-        state.choose(.humanVersusAI)
+        state.choose(Self.xiangqiAI)
         state.saveAndContinue()
 
         #expect(archive.requests == 1, "one press, one archive")
         #expect(archive.isPending)
-        #expect(state.modeSwitch == .saving(.humanVersusAI))
+        #expect(state.modeSwitch == .saving(Self.xiangqiAI))
         #expect(state.page == .home, "nothing opens until the archive has committed")
         // The press is answered before the archive is, and answering it must
         // not discard the archive it started.
         state.dismissConfirmation()
-        #expect(state.modeSwitch == .saving(.humanVersusAI))
+        #expect(state.modeSwitch == .saving(Self.xiangqiAI))
 
         archive.answer(.success(1))
 
-        #expect(state.page == .setup(.humanVersusAI), "the selected mode's pre-start page")
+        #expect(state.page == .setup(Self.xiangqiAI),
+                "the selected game's pre-start page, with no hidden Mini default")
         #expect(state.modeSwitch == nil, "and the remembered destination is spent")
         #expect(state.game == nil, "the game it archived is let go of")
     }
@@ -265,11 +273,11 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let (state, archive) = try parkedStateOverAGame(core)
 
-        state.choose(.humanVersusAI)
+        state.choose(Self.miniAI)
         state.saveAndContinue()
         archive.answerWithRefusal()
 
-        #expect(state.modeSwitch == .failed(.humanVersusAI), "the accepted retry presents")
+        #expect(state.modeSwitch == .failed(Self.miniAI), "the accepted retry presents")
         #expect(state.page == .home, "the pre-start page did not open")
         #expect(state.activeGame != nil, "the game is still here")
         #expect(try core.activeGameExists(), "and still the store's active game")
@@ -278,10 +286,10 @@ struct PlayHomeTests {
         state.saveAndContinue()
 
         #expect(archive.requests == 2, "重试 repeats the same atomic operation")
-        #expect(state.modeSwitch == .saving(.humanVersusAI),
+        #expect(state.modeSwitch == .saving(Self.miniAI),
                 "over the destination the confirmation remembered")
         archive.answer(.success(1))
-        #expect(state.page == .setup(.humanVersusAI))
+        #expect(state.page == .setup(Self.miniAI))
     }
 
     @Test("取消 on the refusal discards the destination and leaves the game")
@@ -289,10 +297,10 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let (state, archive) = try parkedStateOverAGame(core)
 
-        state.choose(.freePlay)
+        state.choose(Self.miniFreePlay)
         state.saveAndContinue()
         archive.answerWithRefusal()
-        #expect(state.modeSwitch == .failed(.freePlay))
+        #expect(state.modeSwitch == .failed(Self.miniFreePlay))
 
         state.dismissArchiveFailure()
 
@@ -304,8 +312,8 @@ struct PlayHomeTests {
 
         // And a fresh choice starts a fresh flow rather than resuming the old
         // one: nothing was left behind to archive.
-        state.choose(.humanVersusAI)
-        #expect(state.modeSwitch == .confirming(.humanVersusAI))
+        state.choose(Self.miniAI)
+        #expect(state.modeSwitch == .confirming(Self.miniAI))
         #expect(archive.requests == 1, "the discarded flow asked for nothing more")
     }
 
@@ -314,14 +322,14 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let (state, archive) = try parkedStateOverAGame(core)
 
-        state.choose(.freePlay)
+        state.choose(Self.miniFreePlay)
         state.saveAndContinue()
         state.saveAndContinue()
         state.saveAndContinue()
 
         #expect(archive.requests == 1)
         archive.answer(.success(1))
-        #expect(state.page == .setup(.freePlay))
+        #expect(state.page == .setup(Self.miniFreePlay))
     }
 
     // MARK: - Resuming, and the game that is no longer active
@@ -343,12 +351,12 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let (state, archive) = try parkedStateOverAGame(core)
 
-        state.choose(.humanVersusAI)
+        state.choose(Self.miniAI)
         state.resume()
         #expect(state.page == .home, "the confirmation is up and the page it is on stays")
 
         state.saveAndContinue()
-        #expect(state.modeSwitch == .saving(.humanVersusAI))
+        #expect(state.modeSwitch == .saving(Self.miniAI))
         state.resume()
         #expect(state.page == .home,
                 "and an archive in flight is not something to walk away from")
@@ -357,7 +365,7 @@ struct PlayHomeTests {
         // belong to the home, so a refusal that arrived over the board would
         // have no page to present the accepted retry on.
         archive.answerWithRefusal()
-        #expect(state.modeSwitch == .failed(.humanVersusAI))
+        #expect(state.modeSwitch == .failed(Self.miniAI))
         #expect(state.page == .home)
 
         // And once the flow is spent, 回到对局 is exactly what it always was.
@@ -371,7 +379,7 @@ struct PlayHomeTests {
     func aFiledGameIsNotOffered() throws {
         let core = try TestCores.fresh()
         let state = PlayState(core: core)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board)
         try state.game?.replay(Self.mateLine)
@@ -385,9 +393,9 @@ struct PlayHomeTests {
         state.leaveTopPage()
         #expect(state.page == .home)
         #expect(state.game == nil)
-        state.choose(.freePlay)
+        state.choose(Self.miniFreePlay)
         #expect(state.modeSwitch == nil)
-        #expect(state.page == .setup(.freePlay))
+        #expect(state.page == .setup(Self.miniFreePlay))
         #expect(try core.historyCount() == 1, "and the game it filed is filed once")
     }
 
@@ -397,7 +405,7 @@ struct PlayHomeTests {
     /// what a player who walked back from the board has.
     private func stateOverAGame(_ core: Core) throws -> PlayState {
         let state = PlayState(core: core)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         state.leaveTopPage()
         #expect(state.page == .home)
@@ -409,7 +417,7 @@ struct PlayHomeTests {
     private func parkedStateOverAGame(_ core: Core) throws -> (PlayState, ParkedArchive) {
         let archive = ParkedArchive(core)
         let state = PlayState(core: core, rules: archive)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board)
         state.leaveTopPage()
@@ -486,7 +494,7 @@ struct CoreArchiveTests {
     func theArchiveCommitsAndClears() async throws {
         let directory = TestCores.scratchDirectory()
         let core = try TestCores.open(at: directory)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         let game = try Game(rules: core)
         try game.replay(Self.openingLine)
         #expect(core.hasSession)
@@ -524,7 +532,7 @@ struct CoreArchiveTests {
     func aRefusedArchiveRestoresTheSession() async throws {
         let directory = TestCores.scratchDirectory()
         let core = try TestCores.open(at: directory)
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         let game = try Game(rules: core)
         try game.replay(Self.mateLine)
         try game.file()
@@ -547,7 +555,7 @@ struct CoreArchiveTests {
         // is what makes the accepted 重试 worth offering.
         let reopened = try TestCores.open(at: directory)
         #expect(try reopened.historyCount() == 1)
-        try reopened.create(.freePlay)
+        try reopened.create(.freePlay(game: .miniXiangqi))
         let next = try Game(rules: reopened)
         try next.replay(Self.openingLine)
 
@@ -590,4 +598,3 @@ private extension Result {
         if case .success = self { true } else { false }
     }
 }
-

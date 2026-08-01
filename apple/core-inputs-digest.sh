@@ -17,6 +17,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # paths are made tree-relative before the digest of digests.
 find "$root/core/src" "$root/core/include" "$root/core/assets" \
      "$root/core/third_party" "$root/core/CMakeLists.txt" \
+     "$root/pinned-inputs.json" \
      "$root/apple/build-core-xcframework.sh" \
      -type f -print0 2>/dev/null \
   | LC_ALL=C sort -z \

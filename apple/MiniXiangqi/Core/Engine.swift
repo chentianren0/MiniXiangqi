@@ -239,19 +239,19 @@ protocol AIEngine: AnyObject {
     /// A fresh probe of this machine. Called at every attempt, never cached.
     func memoryBudget() -> EngineBudget
 
-    /// Whether the engine is ready to search right now.
-    func engineIsReady() -> Bool
+    /// Whether the engine is ready to search this game right now.
+    func engineIsReady(for game: GameKind) -> Bool
 
-    /// Threads, Hash, the pinned variant and the network, applied. The work is
-    /// blocking and is performed away from this thread; the answer comes back
-    /// here.
+    /// Threads, Hash, and this game's pinned variant and network, applied. The
+    /// work is blocking and is performed away from this thread; the answer
+    /// comes back here.
     ///
     /// A completion rather than an `async` call, like every other seam in this
     /// app — the animator, the clock. It buys the same thing they buy: a test
     /// stand-in answers on the spot, so the states this exists to reach are
     /// reached without a suspension point, and the one process-wide core the
     /// suite shares is never handed to another test mid-attempt.
-    func prepareEngine(_ budget: EngineBudget,
+    func prepareEngine(for game: GameKind, _ budget: EngineBudget,
                        completion: @escaping @MainActor (Result<EnginePlan, CoreError>) -> Void)
 
     /// Releases the transposition table whole and returns the engine to the
@@ -297,23 +297,56 @@ extension Core: AIEngine {
 
     func memoryBudget() -> EngineBudget { .probe() }
 
-    func engineIsReady() -> Bool {
-        (try? engineState()) == .ready
+    func engineIsReady(for game: GameKind) -> Bool {
+        guard let query = try? engineQuery(), query.state == .ready,
+              let expectedProfileID = try? engineProfileID(for: game) else {
+            return false
+        }
+        return query.profileID == expectedProfileID
     }
 
     func engineState() throws -> EngineState {
+        try engineQuery().state
+    }
+
+    func engineQuery() throws -> (state: EngineState, profileID: String) {
         var state = MxqEngineState(MXQ_ENGINE_STATE_UNINITIALIZED)
         var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
         var length = 0
         var err = freshError()
         try check(mxq_engine_query(handle, &state, &buffer, buffer.count, &length, &err),
                   err)
-        return EngineState(state)
+        return (EngineState(state),
+                String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
+                       as: UTF8.self))
     }
 
-    func prepareEngine(_ budget: EngineBudget,
+    /// Reconstructs the identifier the core documents for one game's build
+    /// profile. Readiness is both a state and an exact profile match: an engine
+    /// prepared for the other game is not ready for this one.
+    func engineProfileID(for game: GameKind) throws -> String {
+        var version = MxqVersion()
+        version.struct_size = UInt32(MemoryLayout<MxqVersion>.size)
+        var profile = MxqGameProfile()
+        profile.struct_size = UInt32(MemoryLayout<MxqGameProfile>.size)
+        var err = freshError()
+        try check(mxq_core_version(&version, &err), err)
+        try check(mxq_core_game_profile(game.raw, &profile, &err), err)
+        guard let profileGame = GameKind(profile.game), profileGame == game else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported a mismatched game profile")
+        }
+
+        let coreRevision = string(of: version.core_revision, capacity: MXQ_REVISION_CAP)
+        let forkRevision = string(of: version.fork_revision, capacity: MXQ_REVISION_CAP)
+        let variantID = string(of: profile.variant_id, capacity: MXQ_VARIANT_ID_CAP)
+        let networkHash = string(of: profile.nnue_sha256, capacity: MXQ_SHA256_HEX_CAP)
+        return "\(coreRevision.prefix(12))-\(forkRevision.prefix(12))-\(variantID)-\(networkHash.prefix(12))"
+    }
+
+    func prepareEngine(for game: GameKind, _ budget: EngineBudget,
                        completion: @escaping @MainActor (Result<EnginePlan, CoreError>) -> Void) {
-        EngineFacade(handle: handle).prepare(budget) { result in
+        EngineFacade(handle: handle).prepare(for: game, budget) { result in
             Task { @MainActor in completion(result) }
         }
     }
@@ -433,14 +466,14 @@ private nonisolated struct EngineFacade: @unchecked Sendable {
     private static let queue = DispatchQueue(label: "com.chentianren.MiniXiangqi.engine",
                                              qos: .userInitiated)
 
-    func prepare(_ budget: EngineBudget,
+    func prepare(for game: GameKind, _ budget: EngineBudget,
                  completion: @escaping @Sendable (Result<EnginePlan, CoreError>) -> Void) {
         Self.queue.async {
             var raw = budget.raw
             var plan = MxqEnginePlan()
             plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
             var err = freshError()
-            let status = mxq_engine_prepare(handle, &raw, &plan, &err)
+            let status = mxq_engine_prepare(handle, game.raw, &raw, &plan, &err)
             guard status == MXQ_OK else {
                 completion(.failure(CoreError(
                     status: status,

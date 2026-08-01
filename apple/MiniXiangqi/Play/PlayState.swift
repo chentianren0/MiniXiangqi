@@ -63,6 +63,14 @@ struct SetupDraft: Equatable {
     var previewsHumanAsBlack: Bool { firstMover == .aiFirst }
 }
 
+/// One immutable destination from the Play home. Which game is played and how
+/// it is played are independent axes, and both must survive every transient
+/// step between choosing a row and committing the new active game.
+struct PlaySelection: Equatable {
+    var game: GameKind
+    var mode: PlayMode
+}
+
 @Observable
 final class PlayState {
     private let core: Core
@@ -85,8 +93,9 @@ final class PlayState {
         /// The Play home: what to play, and the active game if there is one.
         /// No board anywhere on it.
         case home
-        /// That mode's pre-start state, over a noninteractive preview.
-        case setup(PlayMode)
+        /// That game and mode's pre-start state, over its noninteractive
+        /// starting-position preview.
+        case setup(PlaySelection)
         /// The board.
         case board
     }
@@ -133,16 +142,17 @@ final class PlayState {
     /// nowhere for it to survive them.
     enum ModeSwitch: Equatable {
         /// The accepted 开始新对局？ confirmation is up.
-        case confirming(PlayMode)
+        case confirming(PlaySelection)
         /// 保存并继续 was pressed and the archive is running.
-        case saving(PlayMode)
+        case saving(PlaySelection)
         /// The store refused it. The accepted 无法保存对局 retry is up, and the
         /// game is exactly as it stood.
-        case failed(PlayMode)
+        case failed(PlaySelection)
 
-        var mode: PlayMode {
+        var selection: PlaySelection {
             switch self {
-            case .confirming(let mode), .saving(let mode), .failed(let mode): mode
+            case .confirming(let selection), .saving(let selection), .failed(let selection):
+                selection
             }
         }
     }
@@ -212,14 +222,14 @@ final class PlayState {
     /// the destination waits inside it. A game already filed is neither — it is
     /// a History record the board was still showing, so it is let go of here
     /// and the pre-start page opens as it would have with no game at all.
-    func choose(_ mode: PlayMode) {
+    func choose(_ selection: PlaySelection) {
         guard page == .home, modeSwitch == nil else { return }
         if activeGame != nil {
-            modeSwitch = .confirming(mode)
+            modeSwitch = .confirming(selection)
             return
         }
         if game != nil { release() }
-        openSetup(mode)
+        openSetup(selection)
     }
 
     /// 取消 on the confirmation, and the dismissal that follows every answer to
@@ -254,21 +264,21 @@ final class PlayState {
     /// A refusal commits nothing: the old game is still active, still exactly
     /// as it stood, and the accepted retry presents over it.
     func saveAndContinue() {
-        guard let mode = modeSwitch?.mode, activeGame != nil else { return }
-        guard modeSwitch != .saving(mode) else { return }
-        modeSwitch = .saving(mode)
+        guard let selection = modeSwitch?.selection, activeGame != nil else { return }
+        guard modeSwitch != .saving(selection) else { return }
+        modeSwitch = .saving(selection)
         // What the machine is thinking about is about to stop being the game,
         // and a search outstanding over an archived game answers to nothing.
         opponent?.cancelSearch()
         rules.archiveActiveAndClear { [weak self] result in
-            guard let self, modeSwitch == .saving(mode) else { return }
+            guard let self, modeSwitch == .saving(selection) else { return }
             switch result {
             case .success:
                 release()
                 modeSwitch = nil
-                openSetup(mode)
+                openSetup(selection)
             case .failure:
-                modeSwitch = .failed(mode)
+                modeSwitch = .failed(selection)
                 // The game is unchanged and still owes whatever it owed, so the
                 // machine picks its search back up.
                 opponent?.begin()
@@ -291,10 +301,10 @@ final class PlayState {
         page = .board
     }
 
-    private func openSetup(_ mode: PlayMode) {
+    private func openSetup(_ selection: PlaySelection) {
         draft = SetupDraft.fromDefaults()
         creationFailure = nil
-        page = .setup(mode)
+        page = .setup(selection)
     }
 
     /// The player navigated back to the home from whichever page was over it.
@@ -341,21 +351,21 @@ final class PlayState {
     /// a retry draws again; a persistence failure releases the prepared engine
     /// and creates nothing.
     func startGame(policy: MotionPolicy) {
-        guard case .setup(let mode) = page, !creating else { return }
+        guard case .setup(let selection) = page, !creating else { return }
         creating = true
         creationFailure = nil
         attempt += 1
         let token = attempt
 
-        guard mode == .humanVersusAI else {
-            create(.freePlay, policy: policy, token: token)
+        guard selection.mode == .humanVersusAI else {
+            create(.freePlay(game: selection.game), policy: policy, token: token)
             return
         }
 
         // A fresh probe at every attempt. The prior value is never cached: the
         // retry that follows the insufficient-memory notice exists precisely to
         // see the memory the user just freed.
-        engine.prepareEngine(engine.memoryBudget()) { [weak self] result in
+        engine.prepareEngine(for: selection.game, engine.memoryBudget()) { [weak self] result in
             guard let self else { return }
             guard token == attempt else {
                 // The player left while this was in flight, or pressed 重试 and
@@ -375,8 +385,8 @@ final class PlayState {
             // Everything from here is synchronous, so there is no second window
             // in which a completion could arrive late and commit.
             let human = draft.resolveHumanSide()
-            create(.humanVersusAI(humanSide: human, level: draft.level,
-                                  choice: draft.firstMover),
+            create(.humanVersusAI(game: selection.game, humanSide: human,
+                                  level: draft.level, choice: draft.firstMover),
                    policy: policy, token: token)
         }
     }
@@ -442,10 +452,10 @@ final class PlayState {
     /// exactly as it stood.
     func startNewGame() -> Bool {
         guard let game else { return true }
-        let mode = game.mode
+        let selection = PlaySelection(game: game.kind, mode: game.mode)
         guard file(game) else { return false }
         release()
-        openSetup(mode)
+        openSetup(selection)
         return true
     }
 
@@ -511,14 +521,16 @@ final class PlayState {
             // longer created by its first move: the Free Play game the line
             // belongs to is created here, exactly as 开始对局 would create it.
             if !Self.launchReplayLine.isEmpty, try !core.activeGameExists() {
-                try rules.create(.freePlay)
+                try rules.create(.freePlay(game: .miniXiangqi))
             }
             #endif
-            let resumed = try Game(rules: rules)
-            guard resumed.identity != nil else {
-                page = .home
-                return
+            if !rules.hasSession {
+                guard try rules.resumeActive() else {
+                    page = .home
+                    return
+                }
             }
+            let resumed = try Game(rules: rules)
             #if DEBUG
             try resumed.replay(Self.launchReplayLine)
             #endif
@@ -606,7 +618,7 @@ final class PlayState {
         guard !lines.isEmpty else { return }
         for line in lines {
             core.endSession()
-            guard (try? core.create(.freePlay)) != nil,
+            guard (try? core.create(.freePlay(game: .miniXiangqi))) != nil,
                   let game = try? Game(rules: core), (try? game.replay(line)) != nil
             else { return }
             if game.evaluation.claimAvailable {

@@ -6,14 +6,11 @@
 // pre-start state, which is where the preview board lives.
 //
 // **The game has a section of its own, and that is the whole of the
-// extensibility.** Mini Xiangqi's two ways to play — 人机对弈 and 自由对弈 — are
-// one section, so a second game is a second section beside it rather than a
-// rearrangement of this one. The section carries no header while there is one
-// game: a header naming the only game on a screen that is only that game labels
-// the obvious, and a second game is what would give the sections something to
-// tell apart. History does exactly this with its own two sections, and for the
-// same reason. Nothing here is a registry, and nothing is built for a game that
-// does not exist.
+// extensibility.** PR1 still presents Mini Xiangqi's two ways to play — 人机对弈
+// and 自由对弈 — as the one unlabelled section. Xiangqi's visible section is
+// deferred until its board can be displayed; the selections below nevertheless
+// carry Mini Xiangqi explicitly, so that later section can add its own game
+// without changing what either existing row means.
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": with a game active the page shows its metadata and a direct Resume, and
@@ -93,8 +90,13 @@ struct PlayHome: View {
 
     private var waysToPlay: some View {
         Section {
-            entry(.humanVersusAI, "mode.humanVersusAI", "mode-human-versus-ai")
-            entry(.freePlay, "mode.freePlay", "mode-free-play")
+            // PR1 keeps the accepted two-row Mini Xiangqi home. The game axis
+            // is explicit here so adding Xiangqi later does not turn an
+            // omitted value into a hidden default.
+            entry(PlaySelection(game: .miniXiangqi, mode: .humanVersusAI),
+                  "mode.humanVersusAI", "mode-human-versus-ai")
+            entry(PlaySelection(game: .miniXiangqi, mode: .freePlay),
+                  "mode.freePlay", "mode-free-play")
         }
     }
 
@@ -102,10 +104,10 @@ struct PlayHome: View {
     /// two are a list of things to choose between and neither is the answer; the
     /// chevron says where choosing one goes, which is a page and not a game — a
     /// game is created by 开始对局 on the page it opens, and by nothing else.
-    private func entry(_ mode: PlayMode, _ title: LocalizedStringKey,
+    private func entry(_ selection: PlaySelection, _ title: LocalizedStringKey,
                        _ identifier: String) -> some View {
         Button {
-            play.choose(mode)
+            play.choose(selection)
         } label: {
             HStack(spacing: 8) {
                 Text(title)

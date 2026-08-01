@@ -204,7 +204,7 @@ struct HistoryTests {
     func anEndedEarlyRecordDropsTheReason() {
         // `outcome = none` is true exactly when `end_reason = ended-early`, so
         // the two are one fact and the row states it once.
-        let record = RecordSummary(id: 1, mode: .freePlay, humanSide: nil,
+        let record = RecordSummary(id: 1, game: .miniXiangqi, mode: .freePlay, humanSide: nil,
                                    outcome: .none, reason: .endedEarly,
                                    moveCount: 12, pinned: false, imported: false,
                                    endedAt: .now)
@@ -216,7 +216,8 @@ struct HistoryTests {
 
     @Test("A human-versus-AI record names the human's side")
     func aHumanVersusAIRecordNamesTheSide() {
-        let record = RecordSummary(id: 1, mode: .humanVersusAI, humanSide: .black,
+        let record = RecordSummary(id: 1, game: .miniXiangqi,
+                                   mode: .humanVersusAI, humanSide: .black,
                                    outcome: .redWins, reason: .resignation,
                                    moveCount: 42, pinned: false, imported: false,
                                    endedAt: .now)

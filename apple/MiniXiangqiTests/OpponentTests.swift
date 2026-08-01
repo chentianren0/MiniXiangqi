@@ -36,9 +36,11 @@ final class TestEngine: AIEngine {
     private(set) var startedSearches = 0
     private(set) var lastMovetime: UInt32?
     private(set) var lastBudget: EngineBudget?
-    private(set) var isReady = false
+    private(set) var lastPreparedGame: GameKind?
+    private(set) var preparedGame: GameKind?
 
-    private var held: (@MainActor (Result<EnginePlan, CoreError>) -> Void)?
+    private var held: (game: GameKind, budget: EngineBudget,
+                       completion: @MainActor (Result<EnginePlan, CoreError>) -> Void)?
     private var completion: (@MainActor (SearchResult) -> Void)?
     private var ticket: UInt64 = 0
 
@@ -47,48 +49,55 @@ final class TestEngine: AIEngine {
         return budget
     }
 
-    func engineIsReady() -> Bool { isReady }
+    func engineIsReady(for game: GameKind) -> Bool { preparedGame == game }
 
-    func prepareEngine(_ budget: EngineBudget,
+    func prepareEngine(for game: GameKind, _ budget: EngineBudget,
                        completion: @escaping @MainActor (Result<EnginePlan, CoreError>) -> Void) {
         preparations += 1
+        lastPreparedGame = game
         lastBudget = budget
         guard !holdsPreparation else {
-            held = completion
+            held = (game, budget, completion)
             return
         }
-        answerPreparation(budget, completion)
+        answerPreparation(for: game, budget, completion)
     }
 
     /// Lets a held preparation finish.
     func releasePreparation() {
-        let completion = held
-        held = nil
-        if let completion { answerPreparation(budget, completion) }
+        let held = held
+        self.held = nil
+        if let held { answerPreparation(for: held.game, held.budget, held.completion) }
     }
 
-    private func answerPreparation(_ budget: EngineBudget,
+    private func answerPreparation(for game: GameKind, _ budget: EngineBudget,
                                    _ completion: @MainActor (Result<EnginePlan, CoreError>) -> Void) {
         if let preparationRefusal {
-            isReady = false
+            preparedGame = nil
             completion(.failure(preparationRefusal))
             return
         }
-        isReady = true
+        preparedGame = game
         completion(.success((try? Core.plan(for: budget)) ?? Self.emptyPlan))
     }
+
+    func markReady(for game: GameKind) { preparedGame = game }
 
     private static let emptyPlan = EnginePlan(MxqEnginePlan())
 
     func teardownEngine(then next: (@MainActor () -> Void)?) {
         teardowns += 1
-        isReady = false
+        preparedGame = nil
         next?()
     }
 
     func startSearch(movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
-        if let startRefusal { throw startRefusal }
+        if let startRefusal {
+            self.startRefusal = nil
+            preparedGame = nil
+            throw startRefusal
+        }
         startedSearches += 1
         lastMovetime = movetimeMilliseconds
         self.completion = completion
@@ -161,7 +170,7 @@ private func result(_ outcome: SearchOutcome, move: String, game: Game,
         for (index, byte) in move.utf8.enumerated() { buffer[index] = byte }
     }
     withUnsafeMutableBytes(of: &raw.game_id) { buffer in
-        for (index, byte) in (identity ?? game.identity ?? "").utf8.enumerated() {
+        for (index, byte) in (identity ?? game.identity).utf8.enumerated() {
             buffer[index] = byte
         }
     }
@@ -179,7 +188,8 @@ struct OpponentTests {
     private func makeOpponent(humanSide: Side = .red, level: AiLevel = .fast)
         throws -> (Opponent, Game, PlayMotion, TestEngine, TestTimer, ManualAnimator) {
         let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(humanSide: humanSide, level: level,
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: humanSide,
+                                       level: level,
                                        choice: humanSide == .red ? .humanFirst : .aiFirst))
         let game = try Game(rules: core)
         let animator = ManualAnimator()
@@ -210,9 +220,38 @@ struct OpponentTests {
         #expect(game.searchExpected, "the premise: the AI now owes a move")
         #expect(engine.preparations == 1, "and a search that is owed prepares first")
         #expect(engine.probes == 1, "from a probe taken at the attempt")
+        #expect(engine.lastPreparedGame == .miniXiangqi)
         #expect(engine.startedSearches == 1, "then searches")
         #expect(engine.lastMovetime == 1000, "at the level the game froze")
         animator.completeAll()
+    }
+
+    @Test("Readiness for another game does not satisfy the active game")
+    func readinessIsGameSpecific() throws {
+        let (opponent, _, _, engine, _, _) = try makeOpponent(humanSide: .black)
+        engine.markReady(for: .xiangqi)
+
+        opponent.begin()
+
+        #expect(engine.preparations == 1)
+        #expect(engine.lastPreparedGame == .miniXiangqi)
+        #expect(engine.startedSearches == 1)
+    }
+
+    @Test("A synchronous readiness refusal prepares the active game and retries",
+          arguments: [MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED),
+                      MxqStatus(MXQ_ERR_STATE_ENGINE_NOT_READY)])
+    func aReadinessRaceReprepares(_ status: MxqStatus) throws {
+        let (opponent, _, _, engine, _, _) = try makeOpponent(humanSide: .black)
+        engine.markReady(for: .miniXiangqi)
+        engine.startRefusal = CoreError(status: status, detail: "readiness changed")
+
+        opponent.begin()
+
+        #expect(engine.preparations == 1)
+        #expect(engine.lastPreparedGame == .miniXiangqi)
+        #expect(engine.startedSearches == 1)
+        #expect(engine.hasOutstandingSearch)
     }
 
     @Test("The board takes no input for as long as the AI owes a move")
@@ -462,7 +501,8 @@ struct OpponentTests {
     func aRefusedReplyRetriesSilently() throws {
         let core = try TestCores.fresh()
         let rules = RefusingRules(core)
-        try rules.create(.humanVersusAI(humanSide: .red, level: .fast, choice: .humanFirst))
+        try rules.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
+                                       level: .fast, choice: .humanFirst))
         let game = try Game(rules: rules)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game, animator: animator.animator,

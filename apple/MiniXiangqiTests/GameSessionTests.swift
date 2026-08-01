@@ -1,5 +1,5 @@
-// The game that survives the app: created at the first move, committed as it
-// is played, resumed exactly where it stood, and filed when a new one starts.
+// The game that survives the app: created by 开始对局, committed as it is
+// played, resumed exactly where it stood, and filed when a new one starts.
 //
 // These are the decided Stage 3 semantics from issue #50, each driven through
 // Game against the real core — shut down and reopened over the same store
@@ -7,6 +7,8 @@
 // Nothing asserts a rule; every expectation is the store's or the session's
 // own answer read back.
 
+import Foundation
+import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
@@ -27,15 +29,16 @@ struct GameSessionTests {
         // What 开始对局 performs. Creation is its own act now that a pre-start
         // state stands in front of the first move, so the game exists before a
         // piece has been touched.
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         let game = try Game(rules: core)
 
         #expect(core.hasSession)
         #expect(try core.activeGameExists(), "the game exists before its first move")
         #expect(game.moves.isEmpty, "and has no moves in it")
+        #expect(game.kind == .miniXiangqi)
         #expect(game.mode == .freePlay)
         #expect(game.humanSide == nil, "Free Play has no human side: one person plays both")
-        #expect(game.identity != nil, "a created game has its frozen identity")
+        #expect(!game.identity.isEmpty, "a created game has its frozen identity")
 
         game.tap(Square("b1")!)
         game.tap(Square("b4")!)
@@ -45,10 +48,12 @@ struct GameSessionTests {
     @Test("A created human-versus-AI game freezes its side, level and thinking time")
     func creationFreezesTheConfiguration() throws {
         let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(humanSide: .black, level: .deep, choice: .random))
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                      level: .deep, choice: .random))
         let game = try Game(rules: core)
 
-        let configuration = try #require(game.configuration)
+        let configuration = game.configuration
+        #expect(configuration.game == .miniXiangqi)
         #expect(configuration.mode == .humanVersusAI)
         #expect(configuration.humanSide == .black,
                 "the resolved side, not the choice that produced it")
@@ -70,12 +75,50 @@ struct GameSessionTests {
         #expect(AiLevel.fast.movetimeMilliseconds == 1000)
         #expect(AiLevel.standard.movetimeMilliseconds == 3000)
         #expect(AiLevel.deep.movetimeMilliseconds == 5000)
-        #expect(GameConfiguration.freePlay.movetimeMilliseconds == 0)
-        #expect(GameConfiguration.freePlay.aiLevel == nil)
+        let freePlay = GameConfiguration.freePlay(game: .miniXiangqi)
+        #expect(freePlay.movetimeMilliseconds == 0)
+        #expect(freePlay.aiLevel == nil)
         // The serialized vocabulary, which the preference and the archive share.
         #expect(AiLevel.allCases.map(\.name) == ["fast", "standard", "deep"])
         #expect(FirstMoverChoice.allCases.map(\.name)
                 == ["human-first", "ai-first", "random"])
+    }
+
+    @Test("Both game values survive Swift configuration and core readback",
+          arguments: GameKind.allCases)
+    func gameKindSurvivesConfiguration(_ kind: GameKind) throws {
+        let configurations = [
+            GameConfiguration.freePlay(game: kind),
+            GameConfiguration.humanVersusAI(game: kind, humanSide: .black,
+                                            level: .standard, choice: .random),
+        ]
+
+        for configuration in configurations {
+            let decoded = try #require(GameConfiguration(configuration.raw))
+            #expect(decoded == configuration, "the Swift/C boundary retains the game axis")
+        }
+
+        let core = try TestCores.fresh()
+        try core.create(configurations[0])
+        #expect(try core.configuration() == configurations[0],
+                "the attached session reports the game it was created for")
+    }
+
+    @Test("An unknown core game value has no Swift fallback")
+    func unknownGameKindIsRejected() {
+        var raw = GameConfiguration.freePlay(game: .miniXiangqi).raw
+        raw.game = MxqGameKind(2)
+
+        #expect(GameConfiguration(raw) == nil,
+                "an expanded core vocabulary must not silently become Mini Xiangqi")
+    }
+
+    @Test("The Xiangqi fifty-move reason crosses the C boundary with its copy")
+    func fiftyMoveReasonIsMapped() {
+        let reason = EndReason(MxqEndReason(MXQ_END_REASON_FIFTY_MOVE_RULE))
+
+        #expect(reason == .fiftyMoveRule)
+        #expect(reason.text == String(localized: "reason.fiftyMoveRule"))
     }
 
     @Test("A move is committed when it is accepted, with no separate save")
@@ -187,15 +230,17 @@ struct GameSessionTests {
                 "the core orders the most recently added first")
     }
 
-    @Test("With nothing stored, launch is the empty board and creates nothing")
-    func absenceIsTheEmptyBoard() throws {
+    @Test("With nothing stored, PlayState stays home and Game cannot represent absence")
+    func absenceStaysAtHome() throws {
         let core = try TestCores.fresh()
-        let game = try Game(rules: core)
+        #expect(throws: CoreError.self) { try Game(rules: core) }
 
-        #expect(game.identity == nil, "there is no game to have an identity")
-        #expect(game.moves.isEmpty)
-        #expect(game.notation.isEmpty)
-        #expect(!game.isFinished)
+        let state = PlayState(core: core)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+
+        #expect(state.started)
+        #expect(state.page == .home)
+        #expect(state.game == nil, "absence belongs to PlayState, not to a placeholder Game")
         #expect(!core.hasSession, "absence resumes no session")
         #expect(try !core.activeGameExists(), "and creates none")
     }
@@ -239,7 +284,7 @@ struct GameSessionTests {
         // The screen then releases the session and returns to the pre-start
         // state; the next 开始对局 begins a game of its own.
         core.endSession()
-        try core.create(.freePlay)
+        try core.create(.freePlay(game: .miniXiangqi))
         let next = try Game(rules: core)
         #expect(next.moves.isEmpty)
         next.tap(Square("b1")!)
@@ -334,7 +379,8 @@ struct GameSessionTests {
     @Test("A refused AI reply raises no capsule, because the retry is the app's")
     func aRefusedOpponentReplyIsKeptApart() throws {
         let rules = RefusingRules(try TestCores.fresh())
-        try rules.create(.humanVersusAI(humanSide: .red, level: .fast, choice: .humanFirst))
+        try rules.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
+                                       level: .fast, choice: .humanFirst))
         let game = try Game(rules: rules)
         game.tap(Square("b1")!)
         game.tap(Square("b4")!)

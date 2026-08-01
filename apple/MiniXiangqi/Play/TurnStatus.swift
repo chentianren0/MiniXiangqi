@@ -192,6 +192,7 @@ extension EndReason {
         case .perpetualChase: String(localized: "reason.perpetualChase")
         case .mutualPerpetualCheck: String(localized: "reason.mutualPerpetualCheck")
         case .mutualPerpetualChase: String(localized: "reason.mutualPerpetualChase")
+        case .fiftyMoveRule: String(localized: "reason.fiftyMoveRule")
         case .resignation: String(localized: "reason.resignation")
         case .endedEarly: String(localized: "reason.endedEarly")
         // No reason is no words, in every language.

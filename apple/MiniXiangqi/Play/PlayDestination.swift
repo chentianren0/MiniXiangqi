@@ -122,8 +122,8 @@ struct PlayDestination: View {
         switch play.page {
         case .home:
             PlayHome(play: play)
-        case .setup(let mode):
-            SetupScreen(play: play, mode: mode)
+        case .setup(let selection):
+            SetupScreen(play: play, selection: selection)
         case .board:
             PlayScreen(play: play, replay: replay)
         }

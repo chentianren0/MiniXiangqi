@@ -138,7 +138,8 @@ struct PlayMotionTests {
         // 先手 game resolves the human as Black, so it opens with Black at the
         // bottom; one flip views the same game from the machine's side.
         let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(humanSide: .black, level: .fast, choice: .aiFirst))
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                      level: .fast, choice: .aiFirst))
         let game = try Game(rules: core)
         #expect(game.flipped, "the mode's own orientation: the human's side is at the bottom")
 
@@ -170,7 +171,8 @@ struct PlayMotionTests {
         motion.flip()
         #expect(!game.flipped)
         let next = try TestCores.fresh()
-        try next.create(.humanVersusAI(humanSide: .black, level: .fast, choice: .aiFirst))
+        try next.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                      level: .fast, choice: .aiFirst))
         #expect(try Game(rules: next).flipped,
                 "the next game opens the way its own mode opens it")
     }

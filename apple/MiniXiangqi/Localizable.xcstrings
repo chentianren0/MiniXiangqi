@@ -1535,6 +1535,23 @@
         }
       }
     },
+    "reason.fiftyMoveRule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fifty-Move Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "五十回合规则"
+          }
+        }
+      }
+    },
     "reason.mutualPerpetualChase": {
       "extractionState": "manual",
       "localizations": {

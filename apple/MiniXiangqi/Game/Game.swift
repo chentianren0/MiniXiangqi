@@ -8,6 +8,7 @@
 // the selection, the notation, the orientation — refreshed from the core after
 // every change rather than maintained as a second truth.
 
+import MiniXiangqiCore
 import Observation
 
 /// The rules, as this type asks them. `Core` is the only implementation the app
@@ -22,8 +23,8 @@ import Observation
 /// one is a store commit that can genuinely fail; the queries beneath them are
 /// projections of the same session and pass through untouched.
 protocol Rules: AnyObject {
-    /// Whether a session is attached. The first move of a fresh board begins
-    /// one; everything after speaks to it.
+    /// Whether a session is attached. Creation or resume attaches one;
+    /// everything the board asks speaks to that real game.
     var hasSession: Bool { get }
 
     /// Attach the stored active game, if the library holds one. Absence is
@@ -72,11 +73,10 @@ protocol Rules: AnyObject {
     func archiveActiveAndClear(
         completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void)
 
-    /// The position and state — the session's, or the frozen start's before a
-    /// session exists.
+    /// The attached session's position and state.
     func evaluation() throws -> Evaluation
 
-    /// The session's complete retained line; empty before a session exists.
+    /// The attached session's complete retained line.
     func moveHistory() throws -> [String]
 
     /// The legal moves of the current position.
@@ -120,14 +120,14 @@ final class Game {
     /// there is nothing to tell them and nothing for them to do.
     private(set) var opponentFailure: CoreError?
 
-    /// The created game's frozen configuration, or nil before a session
-    /// exists. Mode, resolved human side, level and thinking time are decided
-    /// once, at creation, and never re-derived above the interface.
-    private(set) var configuration: GameConfiguration?
+    /// The created game's frozen configuration. Which game, mode, resolved
+    /// human side, level and thinking time are decided once, at creation, and
+    /// never re-derived above the interface.
+    private(set) var configuration: GameConfiguration
 
     /// The session's stable identity, frozen at creation. Half of the pair a
     /// search result is checked against before its move is applied.
-    private(set) var identity: String?
+    private(set) var identity: String
 
     /// The last claim or filing the store refused. Separate from `failure`
     /// because the contract routes the two differently: a refused ply is the
@@ -154,23 +154,21 @@ final class Game {
 
     /// Opens the game the session holds.
     ///
-    /// Two callers, one initializer. A session already attached is the game
-    /// 开始对局 just created, and it is taken as it stands; no session means
-    /// launch, and the library's active game is resumed if it holds one. An
-    /// untouched board persists nothing and creates nothing.
+    /// A `Game` is a real attached session, never the absence of one. The
+    /// creation flow attaches before calling this initializer, and the launch
+    /// flow explicitly resumes before calling it. Keeping those two acts above
+    /// this type leaves no default game, starting position, configuration or
+    /// identity for an absent session to invent.
     init(rules: Rules) throws {
-        var moves: [String] = []
-        var notation: [MoveReading] = []
-        var lastMove: Move?
-        var configuration: GameConfiguration?
-        var identity: String?
-        if try rules.hasSession || rules.resumeActive() {
-            configuration = try rules.configuration()
-            identity = try rules.gameID()
-            moves = try rules.moveHistory()
-            notation = try Self.notation(reading: moves, from: rules)
-            lastMove = moves.last.flatMap { Move(text: $0) }
+        guard rules.hasSession else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
+                            detail: "Game requires an attached session")
         }
+        let configuration = try rules.configuration()
+        let identity = try rules.gameID()
+        let moves = try rules.moveHistory()
+        let notation = try Self.notation(reading: moves, from: rules)
+        let lastMove = moves.last.flatMap { Move(text: $0) }
         let evaluation = try rules.evaluation()
         self.rules = rules
         self.moves = moves
@@ -183,7 +181,7 @@ final class Game {
         // The accepted orientation rule, applied once: in human-versus-AI play
         // the human's own side is at the bottom, and Red at the bottom is the
         // unflipped board. Free Play opens unflipped and keeps its flip control.
-        self.flipped = configuration?.humanSide == .black
+        self.flipped = configuration.humanSide == .black
         refreshLegalMoves()
     }
 
@@ -248,12 +246,13 @@ final class Game {
 
     // MARK: - The opponent, where there is one
 
-    var mode: PlayMode { configuration?.mode ?? .freePlay }
+    var kind: GameKind { configuration.game }
+    var mode: PlayMode { configuration.mode }
     var isHumanVersusAI: Bool { mode == .humanVersusAI }
 
     /// The side the player controls, in human-versus-AI play. Free Play has
     /// none: the same person controls both.
-    var humanSide: Side? { isHumanVersusAI ? configuration?.humanSide : nil }
+    var humanSide: Side? { isHumanVersusAI ? configuration.humanSide : nil }
 
     /// Whether the AI owes a move here. The core's own flag, and the whole
     /// definition of "a search is owed": nothing above the interface works it
@@ -483,10 +482,10 @@ private struct RefusedReplayMove: Error, CustomStringConvertible {
 extension Game {
     /// Plays a recorded line before the game is first shown, so a UI test can
     /// start from a position that would otherwise take a dozen clicks to reach.
-    /// It goes through the same path a person's move does — the session is
-    /// created at the first move and every ply commits — so nothing here knows
-    /// a rule the core has not been asked. A refused move is a bug in the line
-    /// rather than a rules outcome, so it is raised rather than skipped.
+    /// It goes through the same path a person's move does — the session already
+    /// exists and every ply commits — so nothing here knows a rule the core has
+    /// not been asked. A refused move is a bug in the line rather than a rules
+    /// outcome, so it is raised rather than skipped.
     ///
     /// Debug only: it is a test affordance, not a product one.
     func replay(_ line: [String]) throws {

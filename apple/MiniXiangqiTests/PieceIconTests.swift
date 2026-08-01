@@ -35,7 +35,7 @@ struct PieceIconTests {
     @Test("The starting position with icons, at the accepted floor")
     func startingPositionWithIcons() throws {
         let geometry = BoardGeometry(pitch: Self.floorPitch)
-        let size = try render(board(Core.startFEN, geometry, symbols: .icons),
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .icons),
                               named: "icons-start-at-the-floor")
         #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
     }
@@ -43,7 +43,7 @@ struct PieceIconTests {
     @Test("The starting position with characters, for comparison")
     func startingPositionWithCharacters() throws {
         let geometry = BoardGeometry(pitch: Self.floorPitch)
-        let size = try render(board(Core.startFEN, geometry, symbols: .hanzi),
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .hanzi),
                               named: "hanzi-start-at-the-floor")
         #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
     }
@@ -51,7 +51,7 @@ struct PieceIconTests {
     @Test("The starting position with icons, large")
     func startingPositionLarge() throws {
         let geometry = BoardGeometry(pitch: Self.largePitch)
-        let size = try render(board(Core.startFEN, geometry, symbols: .icons),
+        let size = try render(board(Core.startFEN(for: .miniXiangqi), geometry, symbols: .icons),
                               named: "icons-start-large")
         #expect(size == CGSize(width: geometry.coreSide, height: geometry.coreSide))
     }
@@ -207,7 +207,7 @@ struct PieceIconTests {
         // canvas's own default is the accepted one, so only a caller that asks
         // for icons gets them.
         let canvas = BoardCanvas(geometry: BoardGeometry(pitch: Self.floorPitch),
-                                 placement: Placement(fen: Core.startFEN),
+                                 placement: Placement(fen: Core.startFEN(for: .miniXiangqi)),
                                  style: .traditional,
                                  policy: MotionPolicy(reduceMotion: false),
                                  phases: BoardPhases())

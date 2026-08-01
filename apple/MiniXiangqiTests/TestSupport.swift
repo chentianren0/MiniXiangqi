@@ -173,7 +173,7 @@ extension Trait where Self == RetiringCores {
 @MainActor
 func openGame(on rules: Rules) throws -> Game {
     if !rules.hasSession, try !rules.resumeActive() {
-        try rules.create(.freePlay)
+        try rules.create(.freePlay(game: .miniXiangqi))
     }
     return try Game(rules: rules)
 }
