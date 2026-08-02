@@ -4,17 +4,13 @@
 // floor to a large window without any dimension being re-tuned and without the
 // relationships between them changing.
 //
-// This is where the exact values live, and deliberately so.
-// docs/interaction-design.md fixes the *relationships* and the gates — a
-// marker stays inside its own cell, a style's decoration stays inside the
-// disc, the contrast ratios each ink must reach, the 44-point floor and the
-// 720-point ceiling — and then says plainly that the exact dimensions are not
-// fixed there, because settling them in prose before anyone had seen a board
-// produced numbers that were internally consistent and unverifiable. They are
-// settled here instead, against a board that renders, and the gates are
-// measured by BoardStyleTests rather than asserted in a comment. The two games
-// share the same board-width footprint; their pitches differ because one has
-// seven files and the other nine.
+// This is where the accepted values are encoded. docs/interaction-design.md
+// fixes the *relationships* and the gates — a marker stays inside its own cell,
+// a style's decoration stays inside the disc, the contrast ratios each ink must
+// reach, the two pitch floors, and the shared maximum-width footprint. The
+// geometry and style suites measure those gates against boards that render.
+// The two games share the same board-width footprint; their pitches differ
+// because one has seven files and the other nine.
 
 import CoreGraphics
 
@@ -197,14 +193,14 @@ struct BoardGeometry {
     /// 1 with Red at the bottom at 0.
     ///
     /// The flipped board is the unflipped board rotated half a turn about its
-    /// centre, so the flip carries every point along the arc of that rotation:
-    /// the arcs are concentric, so no two discs can ever collide mid-flip,
-    /// where interpolating each point along a straight line would drive all
-    /// of them through the centre at once. The rotation alone would swing the
-    /// corner points beyond the core on the diagonals, so the whole position
-    /// is scaled to keep the rotating rectangle inside its own bounds. Every
-    /// disc therefore keeps its clearance from the core's edge. Positions
-    /// rotate; characters and icons stay upright throughout.
+    /// centre, so the flip carries every point along a concentric arc instead
+    /// of interpolating every point through the centre along a straight line.
+    /// The rotation alone would swing the corner points beyond the core on the
+    /// diagonals, so the whole position is scaled to keep the rotating rectangle
+    /// inside its own bounds. That scale preserves distinct point centres and
+    /// keeps every disc inside the core, but can bring adjacent discs over one
+    /// another briefly. Positions rotate; characters and icons stay upright
+    /// throughout.
     func center(of square: Square, flip: Double) -> CGPoint {
         guard flip != 0 else { return center(of: square, flipped: false) }
         guard flip != 1 else { return center(of: square, flipped: true) }

@@ -16,11 +16,13 @@
 // sheet is the surface the contract already allows to cover the board, because
 // the player asked for it and the player dismisses it.
 //
-// The board is square and sized to the largest square fitting both the
-// available width and the height left after the chrome, never below the
-// 44-point floor and never above the 720-point ceiling; surplus space goes to
-// the layout rather than to the board. When space is short the chrome tightens
-// first, and the window stops resizing where either would go below its floor.
+// The selected game's square or tall board is sized to the largest instance of
+// its own aspect ratio fitting both the available width and the height left
+// after the chrome. Mini Xiangqi uses its 44-point pitch floor and Xiangqi its
+// 34-point floor; both stop at the same approximate maximum-width footprint.
+// Surplus space goes to the layout rather than to the board. When space is short
+// the chrome tightens first, and the window stops resizing where either would go
+// below its floor.
 //
 // Motion runs through PlayMotion: every board input passes its gate, so input
 // during a committing transition is discarded here rather than queued, and the

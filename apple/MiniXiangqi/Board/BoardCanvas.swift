@@ -153,8 +153,8 @@ struct BoardCanvas: View, Animatable {
     }
 
     /// A point's centre partway through the flip: the contained rotation
-    /// BoardGeometry defines, under which no two discs can collide and no
-    /// disc leaves the core.
+    /// BoardGeometry defines. Point centres remain distinct and every disc stays
+    /// inside the core; adjacent discs may overlap briefly while it is scaled.
     private func point(_ square: Square, flip: Double) -> CGPoint {
         geometry.center(of: square, flip: flip)
     }
