@@ -80,8 +80,8 @@ struct SetupScreen: View {
                   onFadeArrival: { },
                   onFlipArrival: { })
             // A preview has nothing to interact with, and saying so is what
-            // keeps a screen reader from offering forty-nine points that answer
-            // to nothing.
+            // keeps a screen reader from offering forty-nine or ninety points
+            // that answer to nothing.
             .accessibilityHidden(true)
             .allowsHitTesting(false)
             .frame(maxWidth: .infinity, maxHeight: .infinity)

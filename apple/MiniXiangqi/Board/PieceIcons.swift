@@ -21,11 +21,11 @@
 // Three independent channels, so the pair survives losing any one of them.
 //
 // Two rules of execution, both from the same evidence. **Solid silhouettes,
-// never outline art**: at `symbolSize` — 22 points at the 44-point pitch floor
-// — line work turns to a grey smudge, which is how the one outlined set in the
-// survey failed. And **internal detail is at least 2 points at that size or it
-// is not drawn**: spokes, mane hatching, and an eye are all wasted ink there,
-// so the horse has neither eye nor mane and the wheel has one hub and no
+// never outline art**: at `symbolSize` — 17 points at Xiangqi's 34-point pitch
+// floor — line work turns to a grey smudge, which is how the one outlined set
+// in the survey failed. And **internal detail is at least 2 points at that size
+// or it is not drawn**: spokes, mane hatching, and an eye are all wasted ink
+// there, so the horse has neither eye nor mane and the wheel has one hub and no
 // spokes.
 //
 // Each glyph is a single ink with knocked-out holes, filled even-odd, in the
@@ -114,8 +114,8 @@ nonisolated struct PieceIcon: Shape {
     ///
     /// The band is the one internal feature. It is a separate mass with air
     /// above it rather than a slot cut into one: a slot this thin closes up at
-    /// 22 points, while the gap between two solid masses survives, and the
-    /// contract's floor is 2 points — the gap is 2.6.
+    /// 17 points, while the gap between two solid masses survives, and the
+    /// contract's floor is 2 points — the gap is just over 2.
     static var general: Path {
         var path = Path()
 
@@ -188,7 +188,7 @@ nonisolated struct PieceIcon: Shape {
     /// A two-wheeled war cart in side view: a canopy overhanging the cart bed
     /// on both sides, and the one wheel the whole set is allowed, emerging from
     /// under the bed. Three plain masses — a wide slab, a box, a disc — because
-    /// that is what survives 22 points; an earlier drawing hung the canopy on a
+    /// that is what survives 17 points; an earlier drawing hung the canopy on a
     /// mast, which is the convention, and at the gate size the mast and the
     /// canopy's arch together read as a wrench.
     ///
@@ -198,8 +198,8 @@ nonisolated struct PieceIcon: Shape {
     ///
     /// The wheel is a filled disc with a single hub rather than a spoked one:
     /// twelve spokes at this size are twelve grey smears, which is exactly how
-    /// the wheeled sets in the survey lost this pair. The hub is 3.1 points
-    /// across at the gate size and the rim around it 3.1 — both clear of the
+    /// the wheeled sets in the survey lost this pair. The hub is 2.4 points
+    /// across at the gate size and the rim around it 2.4 — both clear of the
     /// 2-point floor.
     static var chariot: Path {
         let hub = CGPoint(x: 50, y: 74)
@@ -240,7 +240,7 @@ nonisolated struct PieceIcon: Shape {
     /// A horse head in profile, facing right: the one glyph every pictorial set
     /// in the survey draws the same way, east and west, and the most robust of
     /// the five at any size. No mane hatching and no eye — both fall below the
-    /// 2-point floor at 22 points, and the silhouette needs neither.
+    /// 2-point floor at 17 points, and the silhouette needs neither.
     static var horse: Path {
         var path = Path()
         path.move(to: CGPoint(x: 16, y: 96))                              // the neck, behind
