@@ -35,6 +35,7 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Select tests from the contract changed, not only from the files edited.
 - Keep rules, domain, persistence, engine, and UI tests independently runnable where practical.
 - Prefer deterministic, behavior-focused fixtures over snapshots of incidental implementation details.
+- Test length is never a reason to omit necessary evidence. Add and run a long test when it is the smallest honest way to protect load-bearing behavior. The run budget limits duplicate execution, not test scope: one completed passing run of each affected suite under the current code and conditions is sufficient, and an unchanged green suite is not run again. After code, tests, or relevant conditions change, run the affected suites once. Diagnose a failed or interrupted run before retrying it.
 - Report exact commands, environment, results, and anything not run.
 - Keep raw logs, measurements, and historical run results outside this document.
 
