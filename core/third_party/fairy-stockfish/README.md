@@ -7,8 +7,8 @@ links `PRIVATE`.
 | | |
 |---|---|
 | Repository | `https://github.com/ppppvz/Fairy-Stockfish` |
-| Revision | `ede4a811b6bdb7e0d14e8820cfd36097237d3dde` |
-| Committed | 2026-07-30T17:56:31-07:00 |
+| Revision | `d3b4ba2e198fe25891a1c3af8ff90b5710c2539e` |
+| Committed | 2026-08-01T19:33:35-07:00 |
 | Upstream base | `c19b5f6c66894fdb0e88d0dd100e3885f744760a` |
 | License | GPLv3 — [`upstream/Copying.txt`](upstream/Copying.txt) |
 
@@ -63,7 +63,7 @@ paths below. Re-cutting it from a fork checkout must produce byte-identical
 output:
 
 ```sh
-git archive --format=tar ede4a811b6bdb7e0d14e8820cfd36097237d3dde \
+git archive --format=tar d3b4ba2e198fe25891a1c3af8ff90b5710c2539e \
     AUTHORS Copying.txt README.md 'Top CPU Contributors.txt' src \
   | tar -x -C upstream
 rm -f upstream/src/main.cpp upstream/src/pyffish.cpp upstream/src/ffishjs.cpp \
@@ -93,7 +93,7 @@ or a network dependency. The platform headers it reaches for are `<windows.h>`
 in three places — `misc.cpp`, for large-page allocation and thread affinity;
 `syzygy/tbprobe.cpp`, for memory-mapped tablebase files; and
 `thread_win32_osx.h`, for the MSVC thread creation that gives search threads
-their 8 MiB stack — plus `<pthread.h>` and `<process.h>` in that same header,
+their 64 MiB stack — plus `<pthread.h>` and `<process.h>` in that same header,
 which do the same job on the other platforms. There is no socket, HTTP or TLS
 code anywhere in the snapshot.
 

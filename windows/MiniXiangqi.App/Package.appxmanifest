@@ -53,7 +53,7 @@
   <Identity
     Name="Tianren.XiangqiMaster"
     Publisher="CN=B60A5E70-3747-4342-8C97-BC3427301F8F"
-    Version="1.5.1.0" />
+    Version="1.5.2.0" />
 
   <!--
     ProcessorArchitecture is deliberately absent above. The packaging build
