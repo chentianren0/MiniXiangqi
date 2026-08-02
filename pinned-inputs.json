@@ -116,9 +116,10 @@
           "docs/engine-integration.md",
           "docs/architecture.md"
         ],
-        "merge_revision": "f0929cabc0ac416599b552b25527c03147148c73",
+        "merge_revision": "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e",
         "commits": [
-          "1e651bf0"
+          "1e651bf0",
+          "a4206117"
         ]
       }
     ],
