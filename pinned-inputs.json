@@ -5,12 +5,12 @@
   "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. A packaging build now exists and has consumed part of it — windows/package-zip.ps1, first run in CI on 2026-07-31 — but only the Windows entry's, so the names below are still a proposal rather than a frozen schema and the Apple entries are still waiting on their own. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. Three fields have been added under that licence rather than by fixing the schema, all in build_flags.platforms.windows: toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times and one boolean over one 'toolchain' object cannot say that half of it is measured; packaging_flags, for the same reason one step further on, since the deployment settings a packaging build applies and the compile flags it does not are two different measurements; and toolchain_core's per-architecture split, because two machines established it and one of them is a CI runner. manifest_version stays 1: nothing existing changed shape except toolchain_core, whose only reader is a human, and the reader in core/CMakeLists.txt asks for none of this. The network section was added to under the same licence on 2026-07-31, when the project's own network replaced the community one: path, which is not a new shape at all — the variant entry beside it already carried one, and the network needed one for the same reason, because it is now a file in this repository rather than bytes fetched from elsewhere; and provenance, which is what the old network never had and is the whole reason this one exists. network._ci_delivery was removed rather than rewritten: there is no delivery left to describe. One more was added on the same licence later that day, when the Microsoft Store became the intended public channel: build_flags.platforms.windows.packaging_flags.store_package, because the deployment settings of two distributions are two measurements and the flat fields beside it — which were the whole of packaging_flags until then — describe the zip alone. Nothing in packaging_flags changed shape or value; the new object sits beside what was there, carries its own 'established' flag for the same reason toolchain_core does, and holds null in every field only a run can answer. The network section was reshaped on 2026-08-01, when the core gained a second variant to search: it is no longer one flat entry but a map of one entry per variant, keyed by that variant's engine identifier, each carrying what the flat entry carried. That one does have machine readers, and they changed with it — core/CMakeLists.txt, apple/build-core-xcframework.sh, apple/check-core-is-current.sh and windows/package-zip.ps1 all address a network by its variant key now. manifest_version still stays 1: every reader of the old flat shape was moved to the map in the same change, so no consumer is left that a version bump would be telling anything.",
   "fork": {
     "repository": "https://github.com/ppppvz/Fairy-Stockfish",
-    "revision": "ede4a811b6bdb7e0d14e8820cfd36097237d3dde",
-    "revision_committed_at": "2026-07-30T17:56:31-07:00",
+    "revision": "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e",
+    "revision_committed_at": "2026-08-01T19:33:35-07:00",
     "upstream_repository": "https://github.com/fairy-stockfish/Fairy-Stockfish",
     "upstream_base_revision": "c19b5f6c66894fdb0e88d0dd100e3885f744760a",
     "upstream_base_committed_at": "2026-07-23T19:20:28+02:00",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts eight focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. docs/engine-integration.md accepts nine focused changes, and every one of them has landed: patches_pending is empty, so what the app consumes and what the contract requires are the same thing.",
     "patches": [
       {
         "id": "soldier-chase-target-exclusion",
@@ -108,6 +108,19 @@
         "commits": [
           "64f51506"
         ]
+      },
+      {
+        "id": "search-thread-stack-reservation-64mib",
+        "summary": "Raises pthread and MSVC search-thread stack reservations from 8 MiB to 64 MiB. In an ALLVARS build, the MovePicker arrays alone can require about 15.4 MiB at MAX_PLY, so the previous ceiling could not contain the deepest search. Windows reserves the address space without eagerly committing it, and supported pthread platforms request the same ceiling.",
+        "required_by": [
+          "docs/engine-integration.md",
+          "docs/architecture.md"
+        ],
+        "merge_revision": "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e",
+        "commits": [
+          "1e651bf0",
+          "a4206117"
+        ]
       }
     ],
     "patches_pending": [],
@@ -139,7 +152,7 @@
       ],
       "_excluded_about": "The engine's own main(), its Python bindings, its JavaScript/WebAssembly bindings, the fork's build system, and the fork's sample variant configuration. setup.py, pyffish.pyi, MANIFEST.in, tests/, .github/, appveyor.yml and test.py are outside source_paths and so are not present either.",
       "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
-      "file_manifest_sha256": "ccce66043b24565dda110a3aa6739b1558ff6733a552e5f73f6238a5fb222b04",
+      "file_manifest_sha256": "85e6fbb2ff9b59c39cc58c7b1e54d7053a2047674d266d0aaae20ad041f1f305",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     }
   },

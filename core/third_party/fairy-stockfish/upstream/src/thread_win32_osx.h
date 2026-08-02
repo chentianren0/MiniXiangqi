@@ -21,11 +21,9 @@
 
 #include <thread>
 
-/// On OSX threads other than the main thread are created with a reduced stack
-/// size of 512KB by default, this is too low for deep searches, which require
-/// somewhat more than 1MB stack, so adjust it to TH_STACK_SIZE.
-/// The implementation calls pthread_create() with the stack size parameter
-/// equal to the linux 8MB default, on platforms that support it.
+/// Search recursively keeps large move-picker storage at every active ply.
+/// Reserve enough stack for MAX_PLY searches built with the largest move list;
+/// supported operating systems back the reservation with pages as it is used.
 
 #if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
 
@@ -33,7 +31,7 @@
 
 namespace Stockfish {
 
-static const size_t TH_STACK_SIZE = 8 * 1024 * 1024;
+static const size_t TH_STACK_SIZE = 64 * 1024 * 1024;
 
 template <class T, class P = std::pair<T*, void(T::*)()>>
 void* start_routine(void* ptr)
@@ -66,19 +64,17 @@ public:
 
 /// Under MSVC neither mechanism above is available: there is no
 /// pthread_attr_setstacksize(), and std::thread cannot be asked for a stack
-/// size, so a search thread would run on the 1MB the linker reserves by
-/// default. That is the OSX problem above one size class up. Built with
-/// LARGEBOARDS, MAX_MOVES is 8192, so the ExtMove array every MovePicker holds
-/// is 64KB, and search() and qsearch() nest one MovePicker per ply on top of a
-/// StateInfo that is itself larger on a large board. Deep searches run off the
-/// end of 1MB, and on Windows a stack overflow terminates the process rather
-/// than raising something a caller could report.
+/// size, so a search thread would run on the 1 MiB the linker reserves by
+/// default. Built with ALLVARS, MAX_MOVES is 8192, so the ExtMove array every
+/// MovePicker holds is 64 KiB, and search() and qsearch() nest one MovePicker per
+/// ply on top of a StateInfo that is itself larger on a large board. At the
+/// engine's MAX_PLY, an 8 MiB stack is not enough; on Windows a stack overflow
+/// terminates the process rather than raising something a caller could report.
 /// _beginthreadex() is the one creation path that takes a stack size, so ask it
-/// for the same 8MB the pthread branch asks for. STACK_SIZE_PARAM_IS_A_RESERVATION
+/// for the same 64 MiB the pthread branch asks for. STACK_SIZE_PARAM_IS_A_RESERVATION
 /// makes that a reservation of address space; without it the size would be an
-/// initial commit, and every thread would take 8MB of real memory it will
-/// almost never touch. Pages are committed as the stack grows into them either
-/// way.
+/// initial commit, charging 64 MiB of committed memory per thread before it is
+/// needed. Pages are committed as the stack grows into them either way.
 /// MinGW does not reach here: it is matched above and keeps pthreads.
 
 #include <process.h>
@@ -92,7 +88,7 @@ public:
 
 namespace Stockfish {
 
-static const size_t TH_STACK_SIZE = 8 * 1024 * 1024;
+static const size_t TH_STACK_SIZE = 64 * 1024 * 1024;
 
 template <class T, class P = std::pair<T*, void(T::*)()>>
 unsigned __stdcall start_routine(void* ptr)
