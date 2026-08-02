@@ -8,8 +8,8 @@
 // is.
 //
 // Win2D was chosen over XAML shapes for exactly that reason. The board is a
-// picture, not forty-nine views: it has a grid, two palaces, up to twenty-four
-// discs and four families of state marker, all of them derived from one pitch,
+// picture, not forty-nine or ninety views: it has a grid, two palaces, up to
+// thirty-two discs and four families of state marker, all derived from one pitch,
 // and the marker vocabulary in docs/interaction-design.md is stated in strokes,
 // radii and dash patterns rather than in elements. Immediate-mode drawing takes
 // that description literally. XAML shapes would mean a retained tree that has
@@ -62,8 +62,9 @@ public static class BoardPainter
         BoardGeometry geometry,
         BoardStyle style)
     {
-        float block = (float)geometry.BlockSide;
-        session.FillRectangle(new Rect(0, 0, block, block), Convert(style.BoardSurface));
+        session.FillRectangle(
+            new Rect(0, 0, (float)geometry.BlockWidth, (float)geometry.BlockHeight),
+            Convert(style.BoardSurface));
 
         DrawCoordinates(session, scene, geometry, style);
 
@@ -92,30 +93,61 @@ public static class BoardPainter
         Color ink = Convert(style.Grid);
         float stroke = (float)geometry.GridStroke;
 
-        for (int index = 0; index < Square.Count; index++)
+        // Interleave ranks and files as the original 7-by-7 painter did. That
+        // keeps Mini Xiangqi's established render order while the max count
+        // naturally admits Xiangqi's extra rank.
+        int tracks = Math.Max(geometry.Board.FileCount, geometry.Board.RankCount);
+        for (int index = 0; index < tracks; index++)
         {
-            Vector2 rankStart = Point(geometry, new Square(0, index));
-            Vector2 rankEnd = Point(geometry, new Square(Square.Count - 1, index));
-            session.DrawLine(rankStart, rankEnd, ink, stroke);
+            if (index < geometry.Board.RankCount)
+            {
+                Vector2 rankStart = Point(geometry, new Square(0, index));
+                Vector2 rankEnd = Point(
+                    geometry,
+                    new Square(geometry.Board.FileCount - 1, index));
+                session.DrawLine(rankStart, rankEnd, ink, stroke);
+            }
 
-            Vector2 fileStart = Point(geometry, new Square(index, 0));
-            Vector2 fileEnd = Point(geometry, new Square(index, Square.Count - 1));
-            session.DrawLine(fileStart, fileEnd, ink, stroke);
+            if (index < geometry.Board.FileCount)
+            {
+                Vector2 first = Point(geometry, new Square(index, 0));
+                Vector2 last = Point(
+                    geometry,
+                    new Square(index, geometry.Board.RankCount - 1));
+                if (geometry.Board.RiverAfterRank is { } river &&
+                    index != 0 && index != geometry.Board.FileCount - 1)
+                {
+                    session.DrawLine(
+                        first,
+                        Point(geometry, new Square(index, river)),
+                        ink,
+                        stroke);
+                    session.DrawLine(
+                        Point(geometry, new Square(index, river + 1)),
+                        last,
+                        ink,
+                        stroke);
+                }
+                else
+                {
+                    session.DrawLine(first, last, ink, stroke);
+                }
+            }
         }
 
         // Each palace is a 3-by-3 block of points, its two diagonals drawn
         // corner point to corner point at the same stroke weight as the grid,
         // so the palace reads as part of the board rather than as decoration.
-        foreach (int start in (int[])[0, 4])
+        foreach (BoardDefinition.Palace palace in geometry.Board.Palaces)
         {
             session.DrawLine(
-                Point(geometry, new Square(2, start)),
-                Point(geometry, new Square(4, start + 2)),
+                Point(geometry, new Square(palace.FirstFile, palace.FirstRank)),
+                Point(geometry, new Square(palace.LastFile, palace.LastRank)),
                 ink,
                 stroke);
             session.DrawLine(
-                Point(geometry, new Square(4, start)),
-                Point(geometry, new Square(2, start + 2)),
+                Point(geometry, new Square(palace.LastFile, palace.FirstRank)),
+                Point(geometry, new Square(palace.FirstFile, palace.LastRank)),
                 ink,
                 stroke);
         }
@@ -251,9 +283,9 @@ public static class BoardPainter
         bool lifted)
     {
         List<(Square Square, Piece Piece)> discs = [];
-        for (int rank = 0; rank < Square.Count; rank++)
+        for (int rank = 0; rank < geometry.Board.RankCount; rank++)
         {
-            for (int file = 0; file < Square.Count; file++)
+            for (int file = 0; file < geometry.Board.FileCount; file++)
             {
                 Square square = new(file, rank);
                 bool held = scene.Selected == square;
@@ -375,19 +407,47 @@ public static class BoardPainter
         float pitch = (float)geometry.Pitch;
         float margin = (float)geometry.Margin;
 
-        for (int index = 0; index < Square.Count; index++)
+        for (int index = 0; index < geometry.Board.FileCount; index++)
         {
             // A coordinate is absolute: a1 is a1 whichever way the board is
             // facing, so flipping re-orders the labels and never renames them.
-            string file = ((char)('a' + (scene.Flipped ? Square.Count - 1 - index : index))).ToString();
-            string rank = ((scene.Flipped ? index : Square.Count - 1 - index) + 1)
-                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string file = ((char)('a' + (scene.Flipped
+                ? geometry.Board.FileCount - 1 - index
+                : index))).ToString();
 
             float along = strip + margin + (index * pitch);
             Label(session, file, new Rect(along - (pitch / 2), 0, pitch, strip), ink, format);
-            Label(session, file, new Rect(along - (pitch / 2), strip + (float)geometry.CoreSide, pitch, strip), ink, format);
+            Label(
+                session,
+                file,
+                new Rect(
+                    along - (pitch / 2),
+                    strip + (float)geometry.CoreHeight,
+                    pitch,
+                    strip),
+                ink,
+                format);
+        }
+
+        for (int index = 0; index < geometry.Board.RankCount; index++)
+        {
+            string rank = ((scene.Flipped
+                ? index
+                : geometry.Board.RankCount - 1 - index) + 1)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            float along = strip + margin + (index * pitch);
             Label(session, rank, new Rect(0, along - (pitch / 2), strip, pitch), ink, format);
-            Label(session, rank, new Rect(strip + (float)geometry.CoreSide, along - (pitch / 2), strip, pitch), ink, format);
+            Label(
+                session,
+                rank,
+                new Rect(
+                    strip + (float)geometry.CoreWidth,
+                    along - (pitch / 2),
+                    strip,
+                    pitch),
+                ink,
+                format);
         }
     }
 

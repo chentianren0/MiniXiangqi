@@ -13,7 +13,7 @@
     <Error Condition="!Exists('$(MxqArtifactsDir)mxqcore.dll')"
            Text="The shared core was not found at $(MxqArtifactsDir)mxqcore.dll. Run windows/build-core-dll.ps1 before building the Windows frontend, and again after any change under core/." />
     <Error Condition="!Exists('$(MxqArtifactsDir)assets')"
-           Text="The staged asset directory was not found at $(MxqArtifactsDir)assets. Run windows/build-core-dll.ps1, which stages the pinned variant configuration and the verified NNUE network there." />
+           Text="The staged asset directory was not found at $(MxqArtifactsDir)assets. Run windows/build-core-dll.ps1, which stages the pinned variant configuration and both verified NNUE networks there." />
   </Target>
 
   <ItemGroup>

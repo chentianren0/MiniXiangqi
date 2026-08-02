@@ -26,9 +26,9 @@ revision is worse than one that tells them nothing. Every value in it comes from
 pinned-inputs.json.
 
 There is no NETWORK.md any more. It existed to tell a reader about a file that
-was not in the distribution; the file is in it, so the honest length of that
-document is zero. What a reader may still want — which network, and how to check
-it survived the download — is one row in NOTICE.md and the self-check.
+was not in the distribution; both files are in it, so the honest length of that
+document is zero. What a reader may still want — which networks, and how to
+check they survived the download — belongs in NOTICE.md and the self-check.
 
 .PARAMETER Destination
 The directory to write LICENSE and NOTICE.md into. It must exist.
@@ -68,10 +68,8 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Destination = (Resolve-Path $Destination).Path
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
-# The manifest pins one network per variant the core can search, keyed by the
-# variant's identifier. This distribution carries the one for the variant the
-# app plays, which is the entry under variant.id.
-$network = $manifest.network.($manifest.variant.id)
+$projectNetwork = $manifest.network.($manifest.variant.id)
+$xiangqiNetwork = $manifest.network.xiangqi
 $fork = $manifest.fork
 $sqlite = $manifest.sqlite
 
@@ -126,10 +124,10 @@ Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
 full text is in ``LICENSE`` beside this file. The project's source is at
 <https://github.com/ppppvz/MiniXiangqi>.
 
-What else is in this build, and under what terms. One section below is not a
-third-party component at all — the neural network is this project's own — and it
-is here because a reader looking for where the AI's evaluation came from will
-look here first.
+What else is in this build, and under what terms. One network below is this
+project's own and one is redistributed under GPL-3.0-or-later; both are named
+because a reader looking for where the AI's evaluation came from will look here
+first.
 
 ## Fairy-Stockfish — GPL-3.0
 
@@ -161,11 +159,11 @@ the variant configuration.
 
 | | |
 |---|---|
-| File name | ``$($network.filename)`` |
-| Size | $('{0:N0}' -f $network.byte_length) bytes |
-| SHA-256 | ``$($network.sha256)`` |
-| Pipeline | <$($network.provenance.pipeline_repository)> |
-| Pipeline revision | ``$($network.provenance.pipeline_revision)`` |
+| File name | ``$($projectNetwork.filename)`` |
+| Size | $('{0:N0}' -f $projectNetwork.byte_length) bytes |
+| SHA-256 | ``$($projectNetwork.sha256)`` |
+| Pipeline | <$($projectNetwork.provenance.pipeline_repository)> |
+| Pipeline revision | ``$($projectNetwork.provenance.pipeline_revision)`` |
 
 The pipeline above is public and is the provenance: it generates its own training
 data with the engine revision named in this file and the variant configuration
@@ -176,7 +174,28 @@ The packaging build verified this file against the size and hash above before
 putting it here. To confirm it survived the download:
 
 ``````powershell
-Get-FileHash .\assets\$($network.filename) -Algorithm SHA256
+Get-FileHash .\assets\$($projectNetwork.filename) -Algorithm SHA256
+``````
+
+## The Xiangqi neural network — GPL-3.0-or-later
+
+Standard Xiangqi uses the network published for that variant by the
+Fairy-Stockfish project and trained by $($xiangqiNetwork.provenance.trained_by).
+It is redistributed under **$($xiangqiNetwork.license)** rather than claimed as
+this project's own work.
+
+| | |
+|---|---|
+| File name | ``$($xiangqiNetwork.filename)`` |
+| Size | $('{0:N0}' -f $xiangqiNetwork.byte_length) bytes |
+| SHA-256 | ``$($xiangqiNetwork.sha256)`` |
+| Source | <$($xiangqiNetwork.provenance.source_repository)> |
+| Source file | <$($xiangqiNetwork.provenance.source_url)> |
+
+The packaging build verifies these bytes too. To confirm them after download:
+
+``````powershell
+Get-FileHash .\assets\$($xiangqiNetwork.filename) -Algorithm SHA256
 ``````
 
 ## SQLite — public domain

@@ -31,8 +31,8 @@ WHAT THE ZIP CONTAINS
                                the Visual C++ runtime, and this app's own
                                assemblies — self-contained, so the machine that
                                unpacks it installs nothing
-    assets/                    the pinned variant configuration and the AI's
-                               neural network
+    assets/                    the pinned variant configuration and both AI
+                               networks
     sounds/                    the board's four voices
     LICENSE                    GPL-3.0, this project's own
     NOTICE.md                  what else is inside and under what terms
@@ -47,14 +47,15 @@ established, and a GitHub Actions artifact on a public repository is downloadabl
 by any logged-in account, so the published zip could not carry it whatever
 anybody intended.
 
-That network is gone. The one this project trained is in this repository, ours to
-publish, and this build carries it like every other asset. So there is one
-artifact, it is complete, and nobody unpacking it has a file to go and find.
+That network is gone. Both networks the two-game app uses are committed in this
+repository under their established licences, and this build carries them like
+every other asset. So there is one artifact, it is complete, and nobody
+unpacking it has a file to go and find.
 
 What survives from the old arrangement is the check, inverted. The publish copies
 the asset directory windows/build-core-dll.ps1 staged — the verified one — and
-this script then confirms the network is there and is the network: exactly one
-.nnue, the manifest's name, the manifest's byte length, the manifest's SHA-256.
+this script then confirms both networks are there and are the networks: the exact
+set of .nnue names, lengths, and SHA-256 values the manifest records.
 A zip whose AI silently does not start is the failure this guards, and it is
 cheaper to catch here than in somebody's hands.
 
@@ -109,10 +110,9 @@ if (-not $Revision) {
 }
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
-# The manifest pins one network per variant the core can search, keyed by the
-# variant's identifier. This distribution carries the one for the variant the
-# app plays, which is the entry under variant.id.
-$network = $manifest.network.($manifest.variant.id)
+$networkEntries = @($manifest.network.PSObject.Properties |
+    Where-Object { -not $_.Name.StartsWith('_') } |
+    ForEach-Object { $_.Value })
 
 $staging = Join-Path $OutputDirectory $productName
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
@@ -187,59 +187,54 @@ Write-Host ("  {0}  {1:N0} bytes" -f $priName, (Get-Item $priPath).Length)
 Write-Host ("  {0} compiled XAML file(s): {1}" -f $xbf.Count, (($xbf | ForEach-Object { $_.Name }) -join ', '))
 
 # ---------------------------------------------------------------------------
-# The network is in here, checked rather than assumed
+# Both networks are in here, checked rather than assumed
 # ---------------------------------------------------------------------------
 #
 # The publish above copied the asset directory windows/build-core-dll.ps1
-# staged, and that directory is the verified one: CMake checked the network's
-# byte length and SHA-256 against pinned-inputs.json before writing it, and
+# staged, and that directory is the verified one: CMake checked both networks'
+# byte lengths and SHA-256 values against pinned-inputs.json before writing them, and
 # staged nothing that failed. Shipping that staging rather than assembling a
 # second one is what keeps the zip's assets the bytes that were verified.
 #
 # Checking them again here is not the same check twice. What CMake verified was
 # the file it was given; what this verifies is the file that survived a publish,
 # a copy and whatever an MSBuild pipeline did in between — and the failure it
-# catches is silent in a way the others are not. An app whose network is absent,
+# catches is silent in a way the others are not. An app whose game network is absent,
 # renamed or corrupt does not crash: the AI refuses to start, every other
 # feature works, and the person who unpacked it has no way to know why. So:
-# exactly one .nnue, under the manifest's name, at the manifest's length, with
-# the manifest's hash. No value is restated here — all three come from the
+# exactly the manifest's .nnue set, under its names, at its lengths, with its
+# hashes. No value is restated here — all three come from the
 # manifest, as docs/architecture.md's input rule requires.
 
 $stagedAssets = Join-Path $staging 'assets'
 Write-Host ''
-Write-Host 'Checking the network the zip carries'
+Write-Host 'Checking the networks the zip carries'
 $networks = @(Get-ChildItem -Path $stagedAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue)
-if ($networks.Count -ne 1) {
+if ($networks.Count -ne $networkEntries.Count) {
     $found = if ($networks.Count -eq 0) { 'none' } else { ($networks | ForEach-Object { $_.Name }) -join ', ' }
-    throw ("Expected exactly one .nnue in $stagedAssets; found $($networks.Count) ($found). More than one " +
-           "usually means windows/artifacts/assets kept a network from an earlier build after the bundled " +
-           "name changed — delete windows/artifacts and re-run windows/build-core-dll.ps1, which now clears " +
-           "them itself. None means the core staged no network at all, which that script refuses to finish " +
-           "without. Either way, stop rather than shipping a zip whose AI may not start.")
+    throw ("Expected $($networkEntries.Count) .nnue files in $stagedAssets; found $($networks.Count) " +
+           "($found). Re-run windows/build-core-dll.ps1 rather than shipping a zip whose AI may not start.")
 }
-$stagedNetwork = $networks[0]
-# -cne, not -ne: PowerShell's string comparison is case-insensitive by default,
-# and the rule this gate defends is not. The engine matches the file's basename
-# against the variant identifier case-sensitively, so a network whose name
-# differs only in case passes -ne and is then ignored in silence at runtime,
-# which is the one failure this whole check exists to catch.
-if ($stagedNetwork.Name -cne $network.filename) {
-    throw ("The staged network is named $($stagedNetwork.Name); pinned-inputs.json pins $($network.filename). " +
-           "The engine restricts NNUE to the matching variant by this basename, and a name that does not " +
-           "match disables NNUE silently while the app still reports it in use.")
+foreach ($network in $networkEntries) {
+    $matching = @($networks | Where-Object { $_.Name -ceq $network.filename })
+    if ($matching.Count -ne 1) {
+        throw ("The staged networks do not contain the exact case-sensitive name $($network.filename). " +
+               "A renamed network is silently ignored by the engine.")
+    }
+
+    $stagedNetwork = $matching[0]
+    if ($stagedNetwork.Length -ne $network.byte_length) {
+        throw ("$($stagedNetwork.Name) is $('{0:N0}' -f $stagedNetwork.Length) bytes; pinned-inputs.json pins " +
+               "$('{0:N0}' -f $network.byte_length). Refusing to package unverified bytes.")
+    }
+    $stagedHash = (Get-FileHash $stagedNetwork.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($stagedHash -ne $network.sha256) {
+        throw ("$($stagedNetwork.Name) hashes to $stagedHash; pinned-inputs.json pins $($network.sha256). " +
+               "Refusing to package unverified bytes.")
+    }
+    Write-Host ("  {0}  {1:N0} bytes  sha256 {2}" -f $stagedNetwork.Name, $stagedNetwork.Length, $stagedHash)
 }
-if ($stagedNetwork.Length -ne $network.byte_length) {
-    throw ("$($stagedNetwork.Name) is $('{0:N0}' -f $stagedNetwork.Length) bytes; pinned-inputs.json pins " +
-           "$('{0:N0}' -f $network.byte_length). Refusing to package unverified bytes.")
-}
-$stagedHash = (Get-FileHash $stagedNetwork.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($stagedHash -ne $network.sha256) {
-    throw ("$($stagedNetwork.Name) hashes to $stagedHash; pinned-inputs.json pins $($network.sha256). " +
-           "Refusing to package unverified bytes.")
-}
-Write-Host ("  {0}  {1:N0} bytes  sha256 {2}" -f $stagedNetwork.Name, $stagedNetwork.Length, $stagedHash)
-Write-Host '  name, length and hash all match pinned-inputs.json'
+Write-Host '  names, lengths and hashes all match pinned-inputs.json'
 
 # ---------------------------------------------------------------------------
 # The Visual C++ runtime
@@ -353,8 +348,8 @@ Write-Host 'Writing the licence and the attribution note'
 Set-Content -Path (Join-Path $staging 'README.md') -Encoding UTF8 -Value @"
 # Mini Xiangqi for Windows ($Architecture)
 
-A native Mini Xiangqi app for learning the game: play against the AI or in Free
-Play, with a saved history you can replay, export and import. Everything happens
+A native app for Mini Xiangqi and standard Xiangqi: play either against the AI
+or in Free Play, with a saved history you can replay, export and import. Everything happens
 on this machine — the app never uses the network.
 
 ## Running it
@@ -364,8 +359,8 @@ There is nothing to install: the .NET runtime, the Windows App Runtime and the
 Visual C++ runtime are all in this folder.
 
 This is the whole app. Nothing is missing from it and there is nothing to add:
-the AI's neural network is in ``assets`` with everything else, and ``NOTICE.md``
-says what it is and where it came from.
+the AI's two neural networks are in ``assets`` with everything else, and ``NOTICE.md``
+says what they are and where they came from.
 
 ## What this machine needs
 

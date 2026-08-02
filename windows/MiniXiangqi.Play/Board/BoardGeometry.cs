@@ -1,42 +1,37 @@
 // Every board dimension as a multiple of the cell pitch `p`.
 //
 // The values are apple/MiniXiangqi/Board/BoardGeometry.swift's, deliberately
-// and to the digit: docs/interaction-design.md fixes the *relationships* and
-// the gates — a marker stays inside its own cell, a style's decoration stays
-// inside the disc, the 44-point floor and the 720-point ceiling — and says
-// plainly that the exact dimensions are settled against a rendered board
-// rather than in prose. They were settled once, on a rendered board, and
-// "the board, pieces, and game-state markers form one shared visual identity
-// across platforms" is what makes re-settling them here wrong rather than
-// merely wasteful.
+// and to the digit: docs/interaction-design.md fixes the relationships and the
+// gates, and the two games share one approximate width footprint. Mini Xiangqi
+// uses a 44...102 point pitch; Xiangqi fits nine files into the same footprint
+// with a 34...79 point pitch.
 //
-// Two things differ from the Mac, and only two. Both are consequences of the
-// Windows MVP's move record being the core's canonical coordinate text rather
-// than a notation rendering, and both are described in the pull request that
-// introduced them:
-//
-//   * the edge labels are the canonical coordinates — files a–g and ranks 1–7
-//     — rather than the two file-numeral strips, because the strips exist so a
-//     player can map the record to the board, and a 一二三 edge maps to nothing
-//     in `d1d3`;
-//   * so there are four strips rather than two, and the board block is square.
-//
-// Nothing in the motion vocabulary is here: this frontend draws states rather
-// than travel, per issue #80's trimmed scope, so the emphasis and swell
-// functions the Mac's geometry carries have no caller yet.
+// Windows carries canonical coordinates on all four edges while its record is
+// canonical coordinate text. Its block therefore adds the same strip extent to
+// all four sides, but the block is not necessarily square: Xiangqi's ten ranks
+// make it taller than its nine-file width.
+
+using MiniXiangqi.Core;
 
 namespace MiniXiangqi.Play;
 
-public readonly record struct BoardGeometry(double Pitch)
+public readonly record struct BoardGeometry(BoardDefinition Board, double Pitch)
 {
-    /// <summary>The accepted floor on every interactive board, on every platform.</summary>
-    public const double MinimumPitch = 44;
+    /// <summary>The accepted shared approximate core-width range.</summary>
+    public const double MinimumCoreWidth = 308;
 
-    /// <summary>
-    /// The largest whole-point pitch inside the contract's 720-point bound on
-    /// the board core: 102, for a core of 714.
-    /// </summary>
-    public const double MaximumPitch = 102;
+    public const double MaximumCoreWidth = 714;
+
+    public BoardGeometry(GameKind game, double pitch)
+        : this(BoardDefinition.For(game), pitch)
+    {
+    }
+
+    public static double MinimumPitch(BoardDefinition board) =>
+        Math.Floor(MinimumCoreWidth / board.FileCount);
+
+    public static double MaximumPitch(BoardDefinition board) =>
+        Math.Floor(MaximumCoreWidth / board.FileCount);
 
     // The board itself.
 
@@ -46,8 +41,12 @@ public readonly record struct BoardGeometry(double Pitch)
     /// </summary>
     public double Margin => 0.5 * Pitch;
 
-    /// <summary>7 points plus a half-cell margin on each side.</summary>
-    public double CoreSide => 7 * Pitch;
+    /// <summary>Every point plus a half-cell margin on each outer edge.</summary>
+    public double CoreWidth => Board.FileCount * Pitch;
+
+    public double CoreHeight => Board.RankCount * Pitch;
+
+    public (double Width, double Height) CoreSize => (CoreWidth, CoreHeight);
 
     /// <summary>
     /// <c>0.026 p</c>, clamped to between 0.80 and 1.60 points, so the lines
@@ -61,13 +60,17 @@ public readonly record struct BoardGeometry(double Pitch)
 
     public double SymbolSize => 0.50 * Pitch;
 
+    /// <summary>A style's own rings and edge strokes live at or inside <c>0.40 p</c>.</summary>
+    public double StyleDecorationLimit => 0.40 * Pitch;
+
     /// <summary>
     /// The centre-line radius of a disc's edge stroke. The stroke is drawn
-    /// inside the disc's own edge rather than centred on it, which is what
-    /// keeps a heavy edge — 传统's Black disc carries one — from reaching past
-    /// the style-decoration limit and into the band markers occupy.
+    /// inside the disc's own edge rather than centred on it.
     /// </summary>
     public double DiscEdgeRadius(double stroke) => (DiscDiameter / 2) - (stroke / 2);
+
+    public double DecorationExtent(double edgeStroke) =>
+        DiscEdgeRadius(edgeStroke) + (edgeStroke / 2);
 
     // Markers.
 
@@ -112,9 +115,8 @@ public readonly record struct BoardGeometry(double Pitch)
     public double LastMoveStroke => 0.045 * Pitch;
 
     /// <summary>
-    /// The origin's brackets: the destination's shape, ink, inset, and
-    /// containment, at 0.6 of the weight, so the pair says which way the move
-    /// went rather than only which two points it touched.
+    /// The origin's brackets have the destination's shape and ink at 0.6 of
+    /// its weight, so the pair says which way the move went.
     /// </summary>
     public double LastMoveOriginStroke => 0.6 * LastMoveStroke;
 
@@ -126,21 +128,26 @@ public readonly record struct BoardGeometry(double Pitch)
 
     // Edge coordinates.
 
-    /// <summary><c>0.32 p</c>, rounded to the nearest point and clamped to between 13 and 20.</summary>
-    public double LabelSize => Math.Clamp(Math.Round(0.32 * Pitch), 13, 20);
+    /// <summary><c>0.32 p</c>, rounded and clamped to between 13 and 20.</summary>
+    public double LabelSize => Math.Clamp(
+        Math.Round(0.32 * Pitch, MidpointRounding.AwayFromZero),
+        13,
+        20);
 
     /// <summary>
-    /// <c>0.08 p + 0.887 s</c>: the first term is clear space between the
-    /// board's outer line and the tallest label. One extent for all four
-    /// strips, which is what keeps the board block square.
+    /// <c>0.08 p + 0.887 s</c>: clear space between the outer line and label.
+    /// One extent serves all four coordinate strips.
     /// </summary>
-    public double StripExtent => Math.Round((0.08 * Pitch) + (0.887 * LabelSize));
+    public double StripExtent => Math.Round(
+        (0.08 * Pitch) + (0.887 * LabelSize),
+        MidpointRounding.AwayFromZero);
 
-    /// <summary>
-    /// The board core together with its four coordinate strips — the rectangle
-    /// no resident surface may intersect.
-    /// </summary>
-    public double BlockSide => CoreSide + (2 * StripExtent);
+    /// <summary>The board core together with its four coordinate strips.</summary>
+    public double BlockWidth => CoreWidth + (2 * StripExtent);
+
+    public double BlockHeight => CoreHeight + (2 * StripExtent);
+
+    public (double Width, double Height) BlockSize => (BlockWidth, BlockHeight);
 
     // Placing points.
 
@@ -150,51 +157,45 @@ public readonly record struct BoardGeometry(double Pitch)
     /// </summary>
     public (double X, double Y) Center(Square square, bool flipped)
     {
-        int file = flipped ? Square.Count - 1 - square.File : square.File;
-        int rank = flipped ? square.Rank : Square.Count - 1 - square.Rank;
+        int file = flipped ? Board.FileCount - 1 - square.File : square.File;
+        int rank = flipped ? square.Rank : Board.RankCount - 1 - square.Rank;
         return (Margin + (file * Pitch), Margin + (rank * Pitch));
     }
 
     /// <summary>
     /// The point a click at (<paramref name="x"/>, <paramref name="y"/>)
-    /// addresses, or null when it fell outside every cell — the half-cell
-    /// margin means every location inside the board core belongs to exactly one
-    /// point.
+    /// addresses, or null when it fell outside every cell.
     /// </summary>
     public Square? SquareAt(double x, double y, bool flipped)
     {
         int column = (int)Math.Round((x - Margin) / Pitch, MidpointRounding.AwayFromZero);
         int row = (int)Math.Round((y - Margin) / Pitch, MidpointRounding.AwayFromZero);
-        if ((uint)column >= Square.Count || (uint)row >= Square.Count)
+        if ((uint)column >= (uint)Board.FileCount || (uint)row >= (uint)Board.RankCount)
         {
             return null;
         }
 
         return new Square(
-            flipped ? Square.Count - 1 - column : column,
-            flipped ? row : Square.Count - 1 - row);
+            flipped ? Board.FileCount - 1 - column : column,
+            flipped ? row : Board.RankCount - 1 - row);
     }
 
     /// <summary>
-    /// The largest pitch whose board block fits a square of
-    /// <paramref name="side"/>, bounded by the accepted floor and ceiling, or
-    /// null when even the floor does not fit.
-    ///
-    /// It refuses rather than clamping, exactly as the Apple frontend's
-    /// geometry does: a board below the accepted 44-point floor is a decision
-    /// about a contract, and a decision made silently inside an arithmetic
-    /// helper is one nobody can see. The caller decides what to do about it.
+    /// The largest whole-point pitch whose rectangular board block fits both
+    /// dimensions, or null when even this board's accepted floor does not fit.
     /// </summary>
-    public static BoardGeometry? Fitting(double side)
+    public static BoardGeometry? Fitting(
+        double width,
+        double height,
+        BoardDefinition board,
+        double? floor = null)
     {
-        // block = 7p + 2 * round(0.08p + 0.887 * clamp(round(0.32p), 13, 20)),
-        // which rises monotonically with p, so stepping down from the pitch the
-        // core alone would allow lands on the largest that fits.
-        double pitch = Math.Min(Math.Floor(side / 7), MaximumPitch);
-        while (pitch >= MinimumPitch)
+        double acceptedFloor = floor ?? MinimumPitch(board);
+        double pitch = Math.Min(Math.Floor(width / board.FileCount), MaximumPitch(board));
+        while (pitch >= acceptedFloor)
         {
-            BoardGeometry candidate = new(pitch);
-            if (candidate.BlockSide <= side)
+            BoardGeometry candidate = new(board, pitch);
+            if (candidate.BlockWidth <= width && candidate.BlockHeight <= height)
             {
                 return candidate;
             }
@@ -204,4 +205,11 @@ public readonly record struct BoardGeometry(double Pitch)
 
         return null;
     }
+
+    public static BoardGeometry? Fitting(
+        double width,
+        double height,
+        GameKind game,
+        double? floor = null) =>
+        Fitting(width, height, BoardDefinition.For(game), floor);
 }

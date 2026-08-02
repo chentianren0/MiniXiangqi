@@ -45,6 +45,18 @@ internal static unsafe class Program
     private static int _checks;
     private static int _failures;
 
+    /// <summary>
+    /// The Play home's visible order: the full-size game first, then Mini
+    /// Xiangqi, with human-versus-AI before Free Play inside each game.
+    /// </summary>
+    private static readonly PlaySelection[] OrderedPlaySelections =
+    [
+        new(GameKind.Xiangqi, PlayMode.HumanVersusAi),
+        new(GameKind.Xiangqi, PlayMode.FreePlay),
+        new(GameKind.MiniXiangqi, PlayMode.HumanVersusAi),
+        new(GameKind.MiniXiangqi, PlayMode.FreePlay),
+    ];
+
     private static int Main(string[] args)
     {
         string assets = Argument(args, "--assets") ?? Path.Combine(AppContext.BaseDirectory, "assets");
@@ -69,9 +81,11 @@ internal static unsafe class Program
             MxqEngineBudget budget = Probe();
             Run(store, assets, budget);
             WhatTheWindowDoes(store, assets);
+            TheTwoGames(assets, budget);
             CopyTable(copyTable);
             ThePlayScreen(store, assets);
             TheFlows(store, assets);
+            QueuedCompletionsAfterDispose(assets);
             // Each of these opens its own core, and the core is singleton-enforced
             // — a second mxq_core_init before shutdown is
             // MXQ_ERR_STATE_ALREADY_INITIALIZED — so they are sequential rather
@@ -120,6 +134,7 @@ internal static unsafe class Program
         Section("1. Struct layout as the generated bindings declare it");
         Console.WriteLine($"    MxqError            {sizeof(MxqError),4} bytes");
         Console.WriteLine($"    MxqVersion          {sizeof(MxqVersion),4} bytes");
+        Console.WriteLine($"    MxqGameProfile      {sizeof(MxqGameProfile),4} bytes");
         Console.WriteLine($"    MxqCoreConfig       {sizeof(MxqCoreConfig),4} bytes");
         Console.WriteLine($"    MxqMove             {sizeof(MxqMove),4} bytes");
         Console.WriteLine($"    MxqPosition         {sizeof(MxqPosition),4} bytes");
@@ -133,6 +148,23 @@ internal static unsafe class Program
         Console.WriteLine($"    MxqSearchResult     {sizeof(MxqSearchResult),4} bytes");
         Console.WriteLine($"    size_t              {sizeof(nuint),4} bytes (nuint)");
 
+        Check("the API 2 value layouts match the public C header",
+            sizeof(MxqError) == 160
+            && sizeof(MxqVersion) == 128
+            && sizeof(MxqGameProfile) == 112
+            && sizeof(MxqCoreConfig) == 40
+            && sizeof(MxqMove) == 12
+            && sizeof(MxqPosition) == 120
+            && sizeof(MxqGameStatus) == 24
+            && sizeof(MxqGameConfig) == 28
+            && sizeof(MxqRecordSummary) == 120
+            && sizeof(MxqArchiveInfo) == 88
+            && sizeof(MxqEngineBudget) == 24
+            && sizeof(MxqEnginePlan) == 40
+            && sizeof(MxqSearchRequest) == 8
+            && sizeof(MxqSearchResult) == 168
+            && sizeof(nuint) == 8);
+
         // Every one of them is unmanaged, which is what "blittable by
         // construction" means in C#: no reference, no auto layout, nothing the
         // runtime would have to marshal. The bindings assembly also carries
@@ -142,15 +174,29 @@ internal static unsafe class Program
 
         // The trailing fixed-capacity arrays are where a layout disagreement
         // would show first, so their offsets are stated rather than trusted.
+        MxqGameProfile profile = default;
         MxqPosition position = default;
+        MxqGameConfig configuration = default;
+        MxqRecordSummary summary = default;
         MxqSearchResult result = default;
+        Console.WriteLine($"    MxqGameProfile.game at       {Offset(ref profile, ref profile.game)}");
+        Console.WriteLine($"    MxqGameProfile.variant_id at {Offset(ref profile, ref profile.variant_id)}");
         Console.WriteLine($"    MxqPosition.fen at offset      {Offset(ref position, ref position.fen)}");
+        Console.WriteLine($"    MxqGameConfig.game at          {Offset(ref configuration, ref configuration.game)}");
+        Console.WriteLine($"    MxqRecordSummary.game at       {Offset(ref summary, ref summary.game)}");
         Console.WriteLine($"    MxqSearchResult.profile_id at  {Offset(ref result, ref result.profile_id)}");
+        Check("the API 2 game fields are at their published offsets",
+            Offset(ref profile, ref profile.game) == 4
+            && Offset(ref profile, ref profile.variant_id) == 8
+            && Offset(ref configuration, ref configuration.game) == 24
+            && Offset(ref summary, ref summary.game) == 112);
     }
 
     private static bool AllUnmanaged() =>
         !RuntimeHelpers.IsReferenceOrContainsReferences<MxqError>()
         && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqVersion>()
+        && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqGameProfile>()
+        && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqCoreConfig>()
         && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqMove>()
         && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqPosition>()
         && !RuntimeHelpers.IsReferenceOrContainsReferences<MxqGameStatus>()
@@ -183,57 +229,112 @@ internal static unsafe class Program
 
         string coreRevision = Utf8.Read(version.core_revision);
         string forkRevision = Utf8.Read(version.fork_revision);
-        string variantId = Utf8.Read(version.variant_id);
-        string nnueSha = Utf8.Read(version.nnue_sha256);
 
         Console.WriteLine($"    api                 {version.api_major}.{version.api_minor}.{version.api_patch}");
         Console.WriteLine($"    archive             current {version.archive_version_current}, min readable {version.archive_version_min_readable}");
         Console.WriteLine($"    store schema        {version.store_schema_version}");
         Console.WriteLine($"    core revision       {coreRevision}");
         Console.WriteLine($"    fork revision       {forkRevision}");
-        Console.WriteLine($"    variant             {variantId}");
-        Console.WriteLine($"    nnue sha256         {nnueSha}");
 
-        Check("api version is the one this binding compiled against",
-            version.api_major == (uint)Mxq.MXQ_API_VERSION_MAJOR
+        Check("the generated binding and native core agree on API 2.0.0",
+            Mxq.MXQ_API_VERSION_MAJOR == 2
+            && Mxq.MXQ_API_VERSION_MINOR == 0
+            && Mxq.MXQ_API_VERSION_PATCH == 0
+            && version.api_major == (uint)Mxq.MXQ_API_VERSION_MAJOR
             && version.api_minor == (uint)Mxq.MXQ_API_VERSION_MINOR
             && version.api_patch == (uint)Mxq.MXQ_API_VERSION_PATCH);
 
-        // MxqVersion's four fixed-capacity arrays are its last four fields, so
-        // reading all of them correctly is an end-to-end statement about the
-        // whole struct's layout rather than about its prefix.
+        // MxqVersion's two fixed-capacity arrays are its last two fields. The
+        // two variants and networks do not fit in one version value: API 2 asks
+        // for one MxqGameProfile per game instead.
         Check("fork revision is a full hexadecimal revision", IsHex(forkRevision, 40));
-        Check("nnue sha256 is lowercase hexadecimal", IsHex(nnueSha, 64));
-        Check("variant identifier is the pinned one", variantId == "minixiangqiaxf");
 
-        // And the network the core says it was built against is the network
-        // staged beside this executable, which is the only claim here that
-        // reaches outside the process.
-        string stagedSha = StagedNetworkSha(assets);
-        Console.WriteLine($"    staged nnue sha256  {stagedSha}");
-        Check("the staged network is the one the core reports", stagedSha == nnueSha);
+        GameKind[] games = [GameKind.MiniXiangqi, GameKind.Xiangqi];
+        Dictionary<GameKind, GameProfile> profiles = [];
+        Dictionary<GameKind, string> starts = [];
+        foreach (GameKind game in games)
+        {
+            MxqGameProfile raw = default;
+            raw.struct_size = (uint)sizeof(MxqGameProfile);
+            err = MxqCall.Error();
+            MxqCall.Check(
+                Mxq.mxq_core_game_profile(game.Code(), &raw, &err),
+                in err,
+                nameof(Mxq.mxq_core_game_profile));
 
-        sbyte* fenBuffer = stackalloc sbyte[Mxq.MXQ_FEN_CAP];
-        nuint fenLength;
-        err = MxqCall.Error();
-        MxqCall.Check(
-            Mxq.mxq_rules_start_fen(fenBuffer, (nuint)Mxq.MXQ_FEN_CAP, &fenLength, &err),
-            in err,
-            nameof(Mxq.mxq_rules_start_fen));
-        string startFen = Utf8.Read(new ReadOnlySpan<sbyte>(fenBuffer, (int)fenLength));
-        Console.WriteLine($"    start fen           {startFen}");
-        Check("start fen has six fields", startFen.Split(' ').Length == 6);
-        Check("start fen length agrees with out_len", (int)fenLength == startFen.Length);
+            GameProfile profile = new(
+                GameVocabulary.Kind(raw.game),
+                Utf8.Read(raw.variant_id),
+                Utf8.Read(raw.nnue_sha256));
+            profiles[game] = profile;
+            Console.WriteLine($"    {game,-20} {profile.VariantId} / {profile.NnueSha256}");
 
-        // The routine buffer-too-small answer, which is not a programming error
-        // and carries the size the call needs.
-        sbyte* tiny = stackalloc sbyte[4];
-        nuint ignored;
-        err = MxqCall.Error();
-        int status = Mxq.mxq_rules_start_fen(tiny, 4, &ignored, &err);
-        Console.WriteLine($"    undersized buffer   {MxqCall.StatusName(status)}, required_size {err.required_size}");
-        Check("an undersized buffer is MXQ_ERR_ARG_BUFFER_TOO_SMALL",
-            status == Mxq.MXQ_ERR_ARG_BUFFER_TOO_SMALL && err.required_size == (ulong)(startFen.Length + 1));
+            Check($"{game} profile returns the game it was asked for", profile.Game == game);
+            Check($"{game} profile carries a lowercase SHA-256", IsHex(profile.NnueSha256, 64));
+            Check($"the managed {game} profile is the raw API 2 profile",
+                MiniXiangqiCore.Profile(game) == profile);
+
+            sbyte* fenBuffer = stackalloc sbyte[Mxq.MXQ_FEN_CAP];
+            nuint fenLength;
+            err = MxqCall.Error();
+            MxqCall.Check(
+                Mxq.mxq_rules_start_fen(
+                    game.Code(), fenBuffer, (nuint)Mxq.MXQ_FEN_CAP, &fenLength, &err),
+                in err,
+                nameof(Mxq.mxq_rules_start_fen));
+            string startFen = Utf8.Read(new ReadOnlySpan<sbyte>(fenBuffer, (int)fenLength));
+            starts[game] = startFen;
+            Console.WriteLine($"    {game,-20} {startFen}");
+            Check($"{game} start FEN has six fields", startFen.Split(' ').Length == 6);
+            Check($"{game} start FEN length agrees with out_len", (int)fenLength == startFen.Length);
+            Check($"the managed {game} start FEN is the raw API 2 answer",
+                MiniXiangqiCore.StartFen(game) == startFen);
+
+            // The routine buffer-too-small answer, which is not a programming
+            // error and carries the size this game's call needs.
+            sbyte* tiny = stackalloc sbyte[4];
+            nuint ignored;
+            err = MxqCall.Error();
+            int status = Mxq.mxq_rules_start_fen(game.Code(), tiny, 4, &ignored, &err);
+            Check($"an undersized {game} FEN buffer reports the required size",
+                status == Mxq.MXQ_ERR_ARG_BUFFER_TOO_SMALL
+                && err.required_size == (ulong)(startFen.Length + 1));
+        }
+
+        Check("the two engine variants are the pinned Mini Xiangqi and Xiangqi variants",
+            profiles[GameKind.MiniXiangqi].VariantId == "minixiangqiaxf"
+            && profiles[GameKind.Xiangqi].VariantId == "xiangqi");
+        Check("the two frozen starting positions are the standard positions",
+            starts[GameKind.MiniXiangqi]
+                == "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
+            && starts[GameKind.Xiangqi]
+                == "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1");
+
+        IReadOnlyList<StagedNetwork> staged = StagedNetworks(assets);
+        foreach (StagedNetwork network in staged)
+        {
+            Console.WriteLine($"    staged network      {network.Name} / {network.Sha256}");
+        }
+
+        Check("the staged asset directory contains both manifest networks", staged.Count == games.Length);
+        foreach (GameKind game in games)
+        {
+            GameProfile profile = profiles[game];
+            string manifestName =
+                $"{profile.VariantId}-{profile.NnueSha256[..12]}.nnue";
+            StagedNetwork[] matches =
+            [
+                .. staged.Where(network =>
+                    network.Sha256 == profile.NnueSha256
+                    && network.Name == manifestName),
+            ];
+            Check($"the staged {game} network has its manifest identity", matches.Length == 1);
+        }
+
+        Check("an unknown managed game is rejected before it can become a native code",
+            Throws<ArgumentOutOfRangeException>(() => _ = ((GameKind)int.MaxValue).Code()));
+        Check("an unknown native game never maps silently to a managed game",
+            Throws<InvalidDataException>(() => _ = GameVocabulary.Kind(int.MaxValue)));
 
         uint minReadable;
         uint current;
@@ -289,6 +390,7 @@ internal static unsafe class Program
         config.ai_level = Mxq.MXQ_AI_LEVEL_FAST;
         config.first_mover_choice = Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST;
         config.ai_movetime_ms = Mxq.MXQ_MOVETIME_FAST_MS;
+        config.game = GameKind.MiniXiangqi.Code();
 
         MxqGame* game;
         MxqError err = MxqCall.Error();
@@ -316,7 +418,7 @@ internal static unsafe class Program
         Console.WriteLine($"    affordances         claim {status.claim_available}, undo {status.undo_available}, resign {status.resign_available}, search expected {status.search_expected}");
 
         Check("a new game starts at the frozen starting position",
-            Utf8.Read(position.fen) == MiniXiangqiCore.StartFen);
+            Utf8.Read(position.fen) == MiniXiangqiCore.StartFen(GameKind.MiniXiangqi));
         Check("red moves first", position.side_to_move == Mxq.MXQ_COLOR_RED);
         Check("a new game is ongoing", status.state == Mxq.MXQ_GAME_ONGOING);
         Check("resignation is available in human-versus-AI play", status.resign_available == 1);
@@ -352,7 +454,8 @@ internal static unsafe class Program
         Array.Sort(moveText, StringComparer.Ordinal);
         Console.WriteLine($"    moves               {string.Join(' ', moveText)}");
         Check("the two calls agree on the count", moveText.Length == (int)count);
-        Check("every move is canonical <from><to>", Array.TrueForAll(moveText, IsCanonicalMove));
+        Check("every move is canonical <from><to>",
+            Array.TrueForAll(moveText, move => IsCanonicalMove(move, GameKind.MiniXiangqi)));
 
         Section("8. mxq_game_apply_move");
         string chosen = moveText[0];
@@ -396,7 +499,7 @@ internal static unsafe class Program
         // directly. The wrapper shadows this call exactly, so calling the raw
         // one here would leave the helper the frontend will actually use with
         // no run behind it.
-        EnginePlan applied = core.PrepareEngine(budget);
+        EnginePlan applied = core.PrepareEngine(GameKind.MiniXiangqi, budget);
         Console.WriteLine($"    applied threads     {applied.Threads}");
         Console.WriteLine($"    applied hash        {applied.HashMib} MiB");
 
@@ -411,6 +514,9 @@ internal static unsafe class Program
         Console.WriteLine($"    engine state        {engineState}");
         Console.WriteLine($"    profile             {Utf8.Read(new ReadOnlySpan<sbyte>(profileBuffer, (int)profileLength))}");
         Check("the engine is ready", engineState == Mxq.MXQ_ENGINE_STATE_READY);
+        Check("the wrapper recognises the ready Mini Xiangqi profile",
+            core.EngineReadyFor(GameKind.MiniXiangqi)
+            && !core.EngineReadyFor(GameKind.Xiangqi));
 
         Section("11. mxq_search_start with an [UnmanagedCallersOnly] callback");
         string aiMove = Search(core, game, gameId, after.position_revision);
@@ -445,6 +551,8 @@ internal static unsafe class Program
         Console.WriteLine($"    blob length         {length} bytes");
         Console.WriteLine($"    first line          {document.Split('\n')[0]}");
         Check("the archive carries this game's identity", document.Contains(gameId, StringComparison.Ordinal));
+        Check("the archive carries the explicit Mini Xiangqi rules identity",
+            document.Contains("\"rules_id\":\"minixiangqi\"", StringComparison.Ordinal));
         Check("the archive carries both moves",
             document.Contains(chosen, StringComparison.Ordinal) && document.Contains(aiMove, StringComparison.Ordinal));
         Mxq.mxq_blob_release(blob);
@@ -487,6 +595,7 @@ internal static unsafe class Program
         Console.WriteLine($"    summary provenance  {summary.provenance}, pinned {summary.pinned}, active {summary.is_active}");
         Check("the page wrote one record", written == 1);
         Check("the summary names the game just archived", summaryId == gameId);
+        Check("the summary carries the game kind", summary.game == GameKind.MiniXiangqi.Code());
         Check("the summary counts both plies", summary.move_count == 2);
         Check("an early save records no competitive result",
             summary.outcome == Mxq.MXQ_OUTCOME_NONE && summary.end_reason == Mxq.MXQ_END_REASON_ENDED_EARLY);
@@ -515,7 +624,8 @@ internal static unsafe class Program
 
         CoreVersion version = MiniXiangqiCore.Version;
         Console.WriteLine($"    api                 {version.ApiVersion}");
-        Console.WriteLine($"    variant             {version.VariantId}");
+        Console.WriteLine($"    Mini profile        {MiniXiangqiCore.Profile(GameKind.MiniXiangqi).VariantId}");
+        Console.WriteLine($"    Xiangqi profile     {MiniXiangqiCore.Profile(GameKind.Xiangqi).VariantId}");
 
         using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
         Console.WriteLine("    core re-initialised over the same store");
@@ -523,10 +633,12 @@ internal static unsafe class Program
         // The previous section archived its game, so the library holds no
         // active one and this is the create half of resume-or-create.
         using GameSession session = core.ResumeOrCreate(
+            GameKind.MiniXiangqi,
             humanSide: Mxq.MXQ_COLOR_RED,
             aiLevel: Mxq.MXQ_AI_LEVEL_FAST,
             firstMoverChoice: Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
-            movetimeMs: Mxq.MXQ_MOVETIME_FAST_MS);
+            movetimeMs: Mxq.MXQ_MOVETIME_FAST_MS,
+            mode: Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI);
 
         BoardPosition position = session.Position();
         GameState state = session.State();
@@ -540,7 +652,10 @@ internal static unsafe class Program
         Console.WriteLine($"    legal moves         {legal.Count}");
         Console.WriteLine($"    history             {history.Count}");
 
-        Check("a second core opened over the same store", position.Fen == MiniXiangqiCore.StartFen);
+        Check("a second core opened over the same store",
+            position.Fen == MiniXiangqiCore.StartFen(GameKind.MiniXiangqi));
+        Check("resume-or-create froze the explicit Mini Xiangqi game",
+            session.Configuration().Game == GameKind.MiniXiangqi);
         Check("the wrapper read the legal-move set", legal.Count > 0);
         Check("a new game has no retained line", history.Count == 0);
 
@@ -595,6 +710,230 @@ internal static unsafe class Program
     }
 
     // ---------------------------------------------------------------------
+    // 16a. The two independent axes API 2 added: which game, and how it is
+    //      played. This owns a fresh library so each of the four configurations
+    //      can be created and filed without disturbing the long-lived Mini
+    //      Xiangqi evidence above and below it.
+    // ---------------------------------------------------------------------
+    private static void TheTwoGames(string assets, MxqEngineBudget budget)
+    {
+        Section("16a. Both games, every mode, and the one prepared engine profile");
+
+        string store = Path.Combine(
+            Path.GetTempPath(), "mxq-two-games-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using MiniXiangqiCore core = MiniXiangqiCore.Start(store, assets);
+
+            Check("the Play home exposes four selections in the accepted order",
+                OrderedPlaySelections is
+                [
+                    { Game: GameKind.Xiangqi, Mode: PlayMode.HumanVersusAi },
+                    { Game: GameKind.Xiangqi, Mode: PlayMode.FreePlay },
+                    { Game: GameKind.MiniXiangqi, Mode: PlayMode.HumanVersusAi },
+                    { Game: GameKind.MiniXiangqi, Mode: PlayMode.FreePlay },
+                ]);
+
+            foreach (PlaySelection selection in OrderedPlaySelections)
+            {
+                bool versusAi = selection.Mode == PlayMode.HumanVersusAi;
+                using GameSession game = core.Create(
+                    selection.Game,
+                    versusAi ? Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI : Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+                    versusAi ? Mxq.MXQ_COLOR_RED : Mxq.MXQ_COLOR_NONE,
+                    versusAi ? Mxq.MXQ_AI_LEVEL_FAST : Mxq.MXQ_AI_LEVEL_NONE,
+                    versusAi ? Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST : Mxq.MXQ_FIRST_MOVER_NONE,
+                    versusAi ? Mxq.MXQ_MOVETIME_FAST_MS : 0);
+
+                GameConfiguration configuration = game.Configuration();
+                Console.WriteLine(
+                    $"    {selection.Game,-20} {selection.Mode,-16} "
+                    + $"native {configuration.Game.Code()} / {configuration.Mode}");
+                Check($"{selection.Game} {selection.Mode} freezes both axes",
+                    configuration.Game == selection.Game
+                    && configuration.Mode == (versusAi
+                        ? Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI
+                        : Mxq.MXQ_PLAY_MODE_FREE_PLAY));
+                Check($"{selection.Game} {selection.Mode} starts on its own board",
+                    game.Position().Fen == MiniXiangqiCore.StartFen(selection.Game));
+                Check($"{selection.Game} {selection.Mode} has the accepted configuration shape",
+                    versusAi
+                        ? configuration is
+                        {
+                            HumanSide: Mxq.MXQ_COLOR_RED,
+                            AiLevel: Mxq.MXQ_AI_LEVEL_FAST,
+                            FirstMoverChoice: Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST,
+                            MovetimeMs: Mxq.MXQ_MOVETIME_FAST_MS,
+                        }
+                        : configuration is
+                        {
+                            HumanSide: Mxq.MXQ_COLOR_NONE,
+                            AiLevel: Mxq.MXQ_AI_LEVEL_NONE,
+                            FirstMoverChoice: Mxq.MXQ_FIRST_MOVER_NONE,
+                            MovetimeMs: 0,
+                        });
+
+                ulong recordId = core.ArchiveAndClear(game);
+                Check($"History retains {selection.Game} after {selection.Mode} is filed",
+                    core.HistoryRecord(recordId).Game == selection.Game);
+            }
+
+            Check("an unprepared engine is ready for neither game",
+                !core.EngineReadyFor(GameKind.MiniXiangqi)
+                && !core.EngineReadyFor(GameKind.Xiangqi));
+
+            core.PrepareEngine(GameKind.MiniXiangqi, budget);
+            string miniIdentifier = core.Engine.Profile;
+            Check("preparing Mini Xiangqi makes only its exact profile ready",
+                core.EngineReadyFor(GameKind.MiniXiangqi)
+                && !core.EngineReadyFor(GameKind.Xiangqi)
+                && miniIdentifier
+                    == MiniXiangqiCore.Profile(GameKind.MiniXiangqi)
+                        .Identifier(MiniXiangqiCore.Version));
+
+            core.PrepareEngine(GameKind.Xiangqi, budget);
+            string xiangqiIdentifier = core.Engine.Profile;
+            Check("preparing Xiangqi switches the one engine to its exact profile",
+                core.EngineReadyFor(GameKind.Xiangqi)
+                && !core.EngineReadyFor(GameKind.MiniXiangqi)
+                && xiangqiIdentifier
+                    == MiniXiangqiCore.Profile(GameKind.Xiangqi)
+                        .Identifier(MiniXiangqiCore.Version)
+                && xiangqiIdentifier != miniIdentifier);
+
+            core.TeardownEngine();
+            Check("teardown clears readiness for both profiles",
+                !core.EngineReadyFor(GameKind.MiniXiangqi)
+                && !core.EngineReadyFor(GameKind.Xiangqi));
+
+            // The resume half carries the stored game's identity rather than
+            // manufacturing it from the create arguments a caller happened to
+            // have ready for an empty library.
+            string standingId;
+            using (GameSession standing = core.Create(
+                GameKind.Xiangqi,
+                Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+                Mxq.MXQ_COLOR_NONE,
+                Mxq.MXQ_AI_LEVEL_NONE,
+                Mxq.MXQ_FIRST_MOVER_NONE,
+                0))
+            {
+                standingId = standing.Id;
+            }
+
+            using GameSession resumed = core.ResumeOrCreate(
+                GameKind.Xiangqi,
+                Mxq.MXQ_COLOR_NONE,
+                Mxq.MXQ_AI_LEVEL_NONE,
+                Mxq.MXQ_FIRST_MOVER_NONE,
+                0,
+                Mxq.MXQ_PLAY_MODE_FREE_PLAY);
+            Check("resume-or-create carries the stored Xiangqi game",
+                resumed.Id == standingId
+                && resumed.Configuration() is
+                {
+                    Game: GameKind.Xiangqi,
+                    Mode: Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+                });
+            core.ArchiveAndClear(resumed);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(store, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch directory; failing to remove it is not a result.
+            }
+        }
+
+        TheTwoBoardVocabularies();
+    }
+
+    private static void TheTwoBoardVocabularies()
+    {
+        BoardDefinition mini = BoardDefinition.For(GameKind.MiniXiangqi);
+        BoardDefinition xiangqi = BoardDefinition.For(GameKind.Xiangqi);
+        Check("the two board definitions expose 49 and 90 points",
+            mini.SquareCount == 49 && xiangqi.SquareCount == 90);
+        Check("an empty placement still carries its explicit game and board",
+            Placement.EmptyFor(GameKind.MiniXiangqi) is
+                { Game: GameKind.MiniXiangqi, Board: var emptyMini }
+            && emptyMini == mini
+            && Placement.EmptyFor(GameKind.Xiangqi) is
+                { Game: GameKind.Xiangqi, Board: var emptyXiangqi }
+            && emptyXiangqi == xiangqi);
+
+        Placement standard = new(
+            MiniXiangqiCore.StartFen(GameKind.Xiangqi), GameKind.Xiangqi);
+        List<(Square Square, Piece Piece)> pieces = [];
+        for (int rank = 0; rank < xiangqi.RankCount; rank++)
+        {
+            for (int file = 0; file < xiangqi.FileCount; file++)
+            {
+                Square square = new(file, rank);
+                if (standard[square] is { } piece)
+                {
+                    pieces.Add((square, piece));
+                }
+            }
+        }
+
+        Check("the standard Xiangqi placement has all 32 pieces on its 90-point board",
+            pieces.Count == 32 && standard.Board == xiangqi && standard.Game == GameKind.Xiangqi);
+        Check("the Xiangqi-only advisors and elephants are parsed for both sides",
+            pieces.Count(item => item.Piece.Kind == PieceKind.Advisor) == 4
+            && pieces.Count(item => item.Piece.Kind == PieceKind.Elephant) == 4
+            && standard[new Square(3, 0)] == new Piece(PieceKind.Advisor, Side.Red)
+            && standard[new Square(2, 0)] == new Piece(PieceKind.Elephant, Side.Red)
+            && standard[new Square(3, 9)] == new Piece(PieceKind.Advisor, Side.Black)
+            && standard[new Square(2, 9)] == new Piece(PieceKind.Elephant, Side.Black));
+
+        Check("rank 10 is canonical Xiangqi square grammar",
+            Square.Parse("i10", xiangqi) == new Square(8, 9)
+            && Square.Parse("a10", xiangqi) == new Square(0, 9)
+            && Square.Parse("a01", xiangqi) is null
+            && Square.Parse("a11", xiangqi) is null
+            && Square.Parse("i10", mini) is null);
+        Check("moves containing rank 10 parse only against the Xiangqi board",
+            Move.Parse("a1a10", xiangqi)?.Text == "a1a10"
+            && Move.Parse("a9a10", xiangqi)?.Text == "a9a10"
+            && Move.Parse("a1a10", mini) is null);
+
+        (GameKind Game, BoardDefinition Board)[] boards =
+        [
+            (GameKind.MiniXiangqi, mini),
+            (GameKind.Xiangqi, xiangqi),
+        ];
+        foreach ((GameKind game, BoardDefinition board) in boards)
+        {
+            foreach (double pitch in (double[])
+                [BoardGeometry.MinimumPitch(board), BoardGeometry.MaximumPitch(board)])
+            {
+                BoardGeometry geometry = new(board, pitch);
+                foreach (bool flipped in (bool[])[false, true])
+                {
+                    bool roundTrips = true;
+                    for (int rank = 0; rank < board.RankCount && roundTrips; rank++)
+                    {
+                        for (int file = 0; file < board.FileCount && roundTrips; file++)
+                        {
+                            Square square = new(file, rank);
+                            (double x, double y) = geometry.Center(square, flipped);
+                            roundTrips = geometry.SquareAt(x, y, flipped) == square;
+                        }
+                    }
+
+                    Check($"{game} centre hits round-trip at pitch {pitch}, flipped {flipped}",
+                        roundTrips);
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // 17. The string table against docs/copy.md.
     //
     // docs/copy.md's localization process asks for "one check that this table
@@ -607,6 +946,43 @@ internal static unsafe class Program
     private static void CopyTable(string? path)
     {
         Section("17. The string table against docs/copy.md");
+
+        string[] dualGameRows =
+        [
+            "game.xiangqi",
+            "game.miniXiangqi",
+            "piece.advisor",
+            "piece.elephant",
+            "reason.fiftyMoveRule",
+        ];
+        Check("the five dual-game copy rows are present",
+            dualGameRows.All(Strings.Table.ContainsKey));
+        Check("the two game names and Xiangqi-only piece names have both languages",
+            Strings.Table["game.xiangqi"] == new LocalizedString("象棋", "Xiangqi")
+            && Strings.Table["game.miniXiangqi"] == new LocalizedString("迷你象棋", "Mini Xiangqi")
+            && Strings.Table["piece.advisor"].English == "Advisor"
+            && Strings.Table["piece.elephant"].English == "Elephant");
+
+        RecordSummary fiftyMove = new(
+            0,
+            GameKind.Xiangqi,
+            Mxq.MXQ_PLAY_MODE_FREE_PLAY,
+            Mxq.MXQ_COLOR_NONE,
+            Mxq.MXQ_AI_LEVEL_NONE,
+            Mxq.MXQ_OUTCOME_DRAW,
+            Mxq.MXQ_END_REASON_FIFTY_MOVE_RULE,
+            Mxq.MXQ_PROVENANCE_LOCALLY_PLAYED,
+            false,
+            100,
+            0,
+            0,
+            0,
+            string.Empty);
+        Check("the Xiangqi fifty-move result routes to its new reason copy",
+            fiftyMove.ReasonText() == Strings.Get("reason.fiftyMoveRule")
+            && Strings.Table["reason.fiftyMoveRule"]
+                == new LocalizedString("五十回合规则", "Fifty-Move Rule"));
+
         if (path is null)
         {
             Console.WriteLine("    (no --copy-table given; the contract was not read)");
@@ -630,7 +1006,7 @@ internal static unsafe class Program
             // The piece names are the one row shape whose Chinese cell is a
             // description rather than a value — docs/copy.md writes
             // "帅 (red) / 将 (black)", because the string itself is the
-            // placeholder that lets the character through, and the ten piece
+            // placeholder that lets the character through, and the fourteen piece
             // characters are game content that never enters a string table.
             // Its English half is a value like any other.
             bool chineseIsDescription = key.StartsWith("piece.", StringComparison.Ordinal);
@@ -733,6 +1109,7 @@ internal static unsafe class Program
         }
 
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
             Mxq.MXQ_COLOR_RED,
             Mxq.MXQ_AI_LEVEL_FAST,
@@ -852,7 +1229,8 @@ internal static unsafe class Program
 
         Check("the AI answered every human move", aiMoves > 0 && aiMoves >= humanMoves - 1);
         Check("the record is the core's own canonical coordinate text",
-            play.MoveRecord.Count == plies && play.MoveRecord.All(IsCanonicalMove));
+            play.MoveRecord.Count == plies
+            && play.MoveRecord.All(move => IsCanonicalMove(move, play.Game)));
         Check("the record is what the core retained",
             play.MoveRecord.SequenceEqual(game.MoveHistory()));
         Check("a search ran long enough to show the thinking indicator", sawThinking);
@@ -927,6 +1305,7 @@ internal static unsafe class Program
         Section("19. Free Play, through the same session");
 
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -1000,6 +1379,7 @@ internal static unsafe class Program
         Section("20. A repetition, claimed");
 
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -1015,7 +1395,8 @@ internal static unsafe class Program
         {
             foreach (string text in shuffle)
             {
-                if (Move.Parse(text) is not { } move || !play.LegalMoves().Contains(text))
+                if (Move.Parse(text, play.Scene.Board) is not { } move
+                    || !play.LegalMoves().Contains(text))
                 {
                     Console.WriteLine($"    {text} is not legal here; the shuffle does not reach a repetition");
                     core.ArchiveAndClear(game);
@@ -1071,6 +1452,7 @@ internal static unsafe class Program
         Section("21. Undo and 认输 against a search in flight");
 
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
             Mxq.MXQ_COLOR_RED,
             Mxq.MXQ_AI_LEVEL_DEEP,
@@ -1340,18 +1722,31 @@ internal static unsafe class Program
         Check("and creates nothing", flow.Session is null && flow.ActiveGame is null);
         Check("so the home has no current game to describe", flow.ActiveGameLine is null);
 
-        flow.Choose(PlayMode.HumanVersusAi);
-        Console.WriteLine($"    after 人机对弈       {flow.Page} / {flow.SetupMode}");
-        Check("choosing a mode opens that mode's pre-start state",
-            flow is { Page: PlayPage.Setup, SetupMode: PlayMode.HumanVersusAi });
+        foreach (PlaySelection entry in OrderedPlaySelections)
+        {
+            flow.Choose(entry);
+            Check($"the {entry.Game} {entry.Mode} entry opens its exact pre-start state",
+                flow.Page == PlayPage.Setup && flow.SetupSelection == entry
+                && flow.PreviewScene.Game == entry.Game);
+            flow.LeaveTopPage();
+        }
+
+        PlaySelection miniVersusAi = new(GameKind.MiniXiangqi, PlayMode.HumanVersusAi);
+        flow.Choose(miniVersusAi);
+        Console.WriteLine($"    after 人机对弈       {flow.Page} / {flow.SetupSelection}");
+        Check("choosing a game and mode opens that exact pre-start state",
+            flow is { Page: PlayPage.Setup }
+            && flow.SetupSelection == miniVersusAi);
         Check("the pre-start state is not an active game", flow.Session is null);
         Check("the draft is the Settings defaults",
             flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
-        Placement frozen = new(MiniXiangqiCore.StartFen);
+        Placement frozen = new(
+            MiniXiangqiCore.StartFen(GameKind.MiniXiangqi), GameKind.MiniXiangqi);
+        BoardDefinition previewBoard = BoardDefinition.For(GameKind.MiniXiangqi);
         bool previewsTheStart = true;
-        for (int rank = 0; rank < Square.Count && previewsTheStart; rank++)
+        for (int rank = 0; rank < previewBoard.RankCount && previewsTheStart; rank++)
         {
-            for (int file = 0; file < Square.Count && previewsTheStart; file++)
+            for (int file = 0; file < previewBoard.FileCount && previewsTheStart; file++)
             {
                 Square point = new(file, rank);
                 previewsTheStart = flow.PreviewScene.Placement[point] == frozen[point];
@@ -1371,26 +1766,78 @@ internal static unsafe class Program
         flow.LeaveTopPage();
         Check("the back control returns to the home", flow.Page == PlayPage.Home);
         Check("and no game was created", flow.Session is null);
-        flow.Choose(PlayMode.HumanVersusAi);
+        flow.Choose(miniVersusAi);
         Console.WriteLine($"    re-entered          {flow.Draft.FirstMover} / {flow.Draft.Level}");
         Check("the draft is discarded on leaving and afresh on entry",
             flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
 
-        // An attempt the player walks out of commits nothing, even though the
-        // preparation it started will succeed.
+        // An attempt the player walks out of commits nothing, even though its
+        // preparation succeeds later. Free Play may be created while that old
+        // completion is queued; because Free Play owns no engine, the stale
+        // completion releases what it prepared without touching the game.
         flow.StartGame();
         Check("开始对局 cannot be invoked again while creation is in progress", flow.Creating);
         flow.StartGame();
         Check("and a second press changes nothing", flow.Page == PlayPage.Setup);
         flow.LeaveTopPage();
-        scheduler.PumpUntil(() => false, TimeSpan.FromSeconds(3));
-        Console.WriteLine($"    left mid-attempt    {flow.Page}, session {flow.Session is not null}");
-        Check("leaving invalidates the attempt and creates no game",
-            flow is { Page: PlayPage.Home, Session: null, Creating: false });
+        PlaySelection xiangqiFreePlay = new(GameKind.Xiangqi, PlayMode.FreePlay);
+        flow.Choose(xiangqiFreePlay);
+        flow.StartGame();
+        Check("Free Play can replace an abandoned preparation immediately",
+            flow is { Page: PlayPage.Board, Creating: false }
+            && flow.Session is { Game: GameKind.Xiangqi, IsHumanVersusAi: false });
+
+        bool staleDelivered = scheduler.PumpUntil(scheduler.Pump, TimeSpan.FromSeconds(30));
+        Console.WriteLine(
+            $"    stale → Free Play   delivered {staleDelivered}, engine {core.Engine.State}");
+        Check("the stale preparation creates nothing over the Free Play game",
+            staleDelivered
+            && flow.Session is { Game: GameKind.Xiangqi, IsHumanVersusAi: false });
+        // Teardown is blocking and therefore queued off the interface thread.
+        // Its observable promise is eventual release, not that Pump returns only
+        // after the engine thread has freed its resources.
+        bool engineReleased = scheduler.PumpUntil(
+            () => !core.EngineReadyFor(GameKind.MiniXiangqi)
+                && !core.EngineReadyFor(GameKind.Xiangqi),
+            TimeSpan.FromSeconds(10));
+        Check("and releases the engine Free Play does not own",
+            engineReleased);
+
+        // File that transient Xiangqi game through the real confirmation and
+        // return to Mini Xiangqi setup for the other ordering: a stale Mini
+        // preparation followed by a newer Xiangqi preparation. The first
+        // completion must not tear down the profile the newer attempt needs.
+        flow.LeaveTopPage();
+        flow.Choose(miniVersusAi);
+        flow.SaveAndContinue();
+        scheduler.PumpUntil(() => flow.Page == PlayPage.Setup, TimeSpan.FromSeconds(10));
+        Check("saving the replacement carries Mini Xiangqi back into setup",
+            flow.SetupSelection == miniVersusAi);
+
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        flow.LeaveTopPage();
+        PlaySelection xiangqiVersusAi = new(GameKind.Xiangqi, PlayMode.HumanVersusAi);
+        flow.Choose(xiangqiVersusAi);
+        flow.ChooseLevel(AiLevel.Fast);
+        flow.StartGame();
+        bool replacementOpened = scheduler.PumpUntil(
+            () => flow.Page == PlayPage.Board || flow.Alert != FlowAlert.None,
+            TimeSpan.FromSeconds(30));
+        Check("a newer Xiangqi preparation survives the stale Mini completion",
+            replacementOpened
+            && flow.Session is { Game: GameKind.Xiangqi, IsHumanVersusAi: true }
+            && core.EngineReadyFor(GameKind.Xiangqi));
+
+        // File the ordering fixture and arrive at the Mini setup used for the
+        // ordinary entry path below.
+        flow.LeaveTopPage();
+        flow.Choose(miniVersusAi);
+        flow.SaveAndContinue();
+        scheduler.PumpUntil(() => flow.Page == PlayPage.Setup, TimeSpan.FromSeconds(10));
 
         // And the real thing: 我先手 at 快速, so the human moves first and the
         // section below has a game to leave standing.
-        flow.Choose(PlayMode.HumanVersusAi);
         flow.ChooseLevel(AiLevel.Fast);
         flow.StartGame();
         bool opened = scheduler.PumpUntil(
@@ -1412,7 +1859,8 @@ internal static unsafe class Program
             + $"human {play.Configuration.HumanSide}, level {play.Configuration.AiLevel}, "
             + $"movetime {play.Configuration.MovetimeMs} ms");
         Check("the created game froze the draft",
-            play.Configuration.Mode == Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI
+            play.Configuration.Game == GameKind.MiniXiangqi
+            && play.Configuration.Mode == Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI
             && play.Configuration.HumanSide == Mxq.MXQ_COLOR_RED
             && play.Configuration.AiLevel == Mxq.MXQ_AI_LEVEL_FAST
             && play.Configuration.FirstMoverChoice == Mxq.MXQ_FIRST_MOVER_HUMAN_FIRST
@@ -1435,6 +1883,7 @@ internal static unsafe class Program
         Console.WriteLine($"    当前对局             {flow.ActiveGameLine}");
         Check("the home's card describes the game the core is holding",
             flow.ActiveGameLine is { Length: > 0 } line
+            && line.Contains(Strings.Get("game.miniXiangqi"), StringComparison.Ordinal)
             && line.Contains(Strings.Get("mode.humanVersusAI"), StringComparison.Ordinal)
             && line.Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
             && line.Contains(Strings.Get("metadata.inProgress"), StringComparison.Ordinal));
@@ -1474,12 +1923,16 @@ internal static unsafe class Program
         Console.WriteLine($"    at launch           {flow.Page}");
         Check("a launch with a game to resume opens at the board, not at the home",
             flow.Page == PlayPage.Board);
-        Check("the resumed game is the one the last section left", flow.ActiveGame is not null);
+        Check("the resumed game carries the Mini Xiangqi selection the last section created",
+            flow.ActiveGame is not null
+            && flow.Session is { Game: GameKind.MiniXiangqi } resumed
+            && resumed.Configuration.Game == GameKind.MiniXiangqi);
 
         uint before = HistoryCount(core);
+        PlaySelection xiangqiFreePlay = new(GameKind.Xiangqi, PlayMode.FreePlay);
 
         flow.LeaveTopPage();
-        flow.Choose(PlayMode.FreePlay);
+        flow.Choose(xiangqiFreePlay);
         Console.WriteLine($"    after 自由对弈       page {flow.Page}, alert {flow.Alert}");
         Check("a mode entry with an active game presents the confirmation",
             flow.Alert == FlowAlert.NewGame);
@@ -1487,19 +1940,23 @@ internal static unsafe class Program
 
         flow.DismissAlert();
         Check("取消 leaves the active game completely unchanged",
-            flow is { Alert: FlowAlert.None, Page: PlayPage.Home } && flow.ActiveGame is not null);
+            flow is { Alert: FlowAlert.None, Page: PlayPage.Home }
+            && flow.ActiveGame is not null
+            && flow.Session?.Game == GameKind.MiniXiangqi
+            && flow.SetupSelection is null);
 
-        flow.Choose(PlayMode.FreePlay);
+        flow.Choose(xiangqiFreePlay);
         flow.SaveAndContinue();
         bool archived = scheduler.PumpUntil(
             () => flow.Page == PlayPage.Setup || flow.Alert == FlowAlert.ArchiveFailed,
             TimeSpan.FromSeconds(10));
 
         uint after = HistoryCount(core);
-        Console.WriteLine($"    after 保存并继续      page {flow.Page} / {flow.SetupMode}, "
+        Console.WriteLine($"    after 保存并继续      page {flow.Page} / {flow.SetupSelection}, "
             + $"history {before} → {after}");
-        Check("保存并继续 archives the active game and opens the selected mode's pre-start state",
-            archived && flow is { Page: PlayPage.Setup, SetupMode: PlayMode.FreePlay });
+        Check("保存并继续 archives the active game and carries the selected game and mode",
+            archived && flow.Page == PlayPage.Setup
+            && flow.SetupSelection == xiangqiFreePlay);
         Check("the game went to History", after == before + 1);
         Check("and it created no new game", flow.Session is null && flow.ActiveGame is null);
 
@@ -1508,11 +1965,13 @@ internal static unsafe class Program
             + $"reason {filed.end_reason}, {filed.move_count} ply");
         Check("an ordinary ongoing game is archived as ended early without a result",
             filed.outcome == Mxq.MXQ_OUTCOME_NONE
-            && filed.end_reason == Mxq.MXQ_END_REASON_ENDED_EARLY);
+            && filed.end_reason == Mxq.MXQ_END_REASON_ENDED_EARLY
+            && filed.game == GameKind.MiniXiangqi.Code());
 
         // The Free Play pre-start state: the same preview, no 本局设置 group,
         // and the line that says what Free Play is.
-        Check("Free Play previews Red at the bottom", !flow.PreviewScene.Flipped);
+        Check("Xiangqi Free Play previews its own game with Red at the bottom",
+            flow.PreviewScene.Game == GameKind.Xiangqi && !flow.PreviewScene.Flipped);
         Console.WriteLine($"    explanation         {Strings.Get("setup.freePlayExplanation")}");
 
         flow.StartGame();
@@ -1520,17 +1979,20 @@ internal static unsafe class Program
             () => flow.Page == PlayPage.Board || flow.Alert != FlowAlert.None,
             TimeSpan.FromSeconds(10));
         Console.WriteLine($"    after 开始对局       {flow.Page}, alert {flow.Alert}");
-        Check("开始对局 commits the active Free Play game", started && flow.Page == PlayPage.Board);
+        Check("开始对局 commits the selected Xiangqi Free Play game",
+            started && flow.Page == PlayPage.Board
+            && flow.Session?.Configuration.Game == GameKind.Xiangqi);
 
         if (flow.Session is { } play)
         {
             Check("Free Play starts with Red at the bottom and cannot resign",
-                !play.Scene.Flipped && !play.CanResign);
+                play.Game == GameKind.Xiangqi && !play.Scene.Flipped && !play.CanResign);
             Check("the board is interactive and Red is to move",
                 play.AcceptsInput && play.SideToMove == Side.Red);
             Console.WriteLine($"    当前对局             {flow.ActiveGameLine}");
             Check("Free Play's card carries no 执子 token",
                 flow.ActiveGameLine is { } line
+                && line.Contains(Strings.Get("game.xiangqi"), StringComparison.Ordinal)
                 && !line.Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
                 && !line.Contains(Strings.Get("metadata.youBlack"), StringComparison.Ordinal));
 
@@ -1574,7 +2036,8 @@ internal static unsafe class Program
         Check("the home is where a launch with nothing to resume opens",
             flow is { Page: PlayPage.Home, Session: null });
 
-        flow.Choose(PlayMode.HumanVersusAi);
+        PlaySelection xiangqiVersusAi = new(GameKind.Xiangqi, PlayMode.HumanVersusAi);
+        flow.Choose(xiangqiVersusAi);
         flow.ChooseLevel(AiLevel.Fast);
         flow.StartGame();
         scheduler.PumpUntil(() => flow.Page == PlayPage.Board, TimeSpan.FromSeconds(30));
@@ -1583,6 +2046,9 @@ internal static unsafe class Program
             Check("a game was created to conclude", false);
             return;
         }
+        Check("the game created for the concluding actions is Xiangqi",
+            play.Game == GameKind.Xiangqi
+            && play.Configuration.Game == GameKind.Xiangqi);
 
         // Turned over before it is concluded, so that the next game can be asked
         // whether it inherited the orientation. It must not: 翻转棋盘 is the
@@ -1602,10 +2068,12 @@ internal static unsafe class Program
         // 开始新对局 files the game and opens that game's own mode's pre-start
         // state. It does not deal the next game.
         flow.StartNewGame();
-        Console.WriteLine($"    after 开始新对局      {flow.Page} / {flow.SetupMode}, "
+        Console.WriteLine($"    after 开始新对局      {flow.Page} / {flow.SetupSelection}, "
             + $"session {flow.Session is not null}");
-        Check("开始新对局 opens the finished game's own mode's pre-start state",
-            flow is { Page: PlayPage.Setup, SetupMode: PlayMode.HumanVersusAi });
+        Check("开始新对局 carries the finished game's game and mode to setup",
+            flow.Page == PlayPage.Setup
+            && flow.SetupSelection == xiangqiVersusAi
+            && flow.PreviewScene.Game == GameKind.Xiangqi);
         Check("and deals no game", flow.Session is null && flow.ActiveGame is null);
         Check("the side and the level are chosen again rather than inherited",
             flow.Draft is { FirstMover: FirstMoverChoice.HumanFirst, Level: AiLevel.Standard });
@@ -1621,7 +2089,7 @@ internal static unsafe class Program
         }
 
         Check("a new game starts the right way up rather than inheriting the flip",
-            !second.Scene.Flipped);
+            second.Game == GameKind.Xiangqi && !second.Scene.Flipped);
 
         second.RequestResign();
         second.ConfirmResign();
@@ -1660,7 +2128,7 @@ internal static unsafe class Program
         Console.WriteLine($"    starved plan        {refused.HashMib} MiB, sufficient {refused.Sufficient}");
         Check("the starved probe is below the accepted minimum", !refused.Sufficient);
 
-        flow.Choose(PlayMode.HumanVersusAi);
+        flow.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.HumanVersusAi));
         flow.ChooseLevel(AiLevel.Fast);
         flow.StartGame();
         bool refusedGame = scheduler.PumpUntil(
@@ -1762,7 +2230,7 @@ internal static unsafe class Program
             return;
         }
 
-        flow.Choose(PlayMode.FreePlay);
+        flow.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.FreePlay));
         flow.SaveAndContinue();
         scheduler.PumpUntil(() => flow.Page == PlayPage.Setup, TimeSpan.FromSeconds(10));
         flow.LeaveTopPage();
@@ -1828,6 +2296,7 @@ internal static unsafe class Program
         // has something to collide with. Deliberately not through the flow: the
         // flow cannot reach this state, which is the point.
         using GameSession standing = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -1838,7 +2307,7 @@ internal static unsafe class Program
         // open the board on it, and what this needs is a destination on its home
         // page that does not know the library is occupied.
         using PlayFlow flow = new(core, scheduler, NoPreferences.Instance);
-        flow.Choose(PlayMode.FreePlay);
+        flow.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.FreePlay));
         Check("the pre-start page opened", flow.Page == PlayPage.Setup);
 
         flow.StartGame();
@@ -1866,6 +2335,81 @@ internal static unsafe class Program
 
         core.ArchiveAndClear(standing);
         Console.WriteLine("    (the standing game filed; the library is empty again)");
+    }
+
+    /// <summary>
+    /// A preparation task is complete once it has posted its answer, not once
+    /// the interface thread has run that answer. Closing may therefore release
+    /// the flow or session and shut the core down while one scheduler delegate
+    /// remains queued. Both owners invalidate that delegate before quiescing.
+    /// </summary>
+    private static void QueuedCompletionsAfterDispose(string assets)
+    {
+        Section("28a. Queued preparation completions after disposal and core shutdown");
+
+        string flowStore = Path.Combine(
+            Path.GetTempPath(), "mxq-disposed-flow-" + Guid.NewGuid().ToString("N"));
+        string sessionStore = Path.Combine(
+            Path.GetTempPath(), "mxq-disposed-session-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            PumpScheduler flowScheduler = new();
+            MiniXiangqiCore flowCore = MiniXiangqiCore.Start(flowStore, assets);
+            PlayFlow flow = new(flowCore, flowScheduler, NoPreferences.Instance);
+            flow.Start();
+            flow.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.HumanVersusAi));
+            flow.ChooseLevel(AiLevel.Fast);
+            flow.StartGame();
+
+            // Dispose waits for preparation, whose completion is now queued,
+            // then the owner shuts down the native core before that queue runs.
+            flow.Dispose();
+            flowCore.Dispose();
+            bool flowCompletionRan = false;
+            bool flowCompletionWasInert = Silently(
+                () => flowCompletionRan = flowScheduler.Pump());
+            Check("the disposed flow left a completion queued", flowCompletionRan);
+            Check("a queued flow completion touches nothing after core shutdown",
+                flowCompletionWasInert);
+
+            PumpScheduler sessionScheduler = new();
+            MiniXiangqiCore sessionCore = MiniXiangqiCore.Start(sessionStore, assets);
+            GameSession game = sessionCore.Create(
+                GameKind.MiniXiangqi,
+                Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
+                Mxq.MXQ_COLOR_BLACK,
+                Mxq.MXQ_AI_LEVEL_FAST,
+                Mxq.MXQ_FIRST_MOVER_AI_FIRST,
+                Mxq.MXQ_MOVETIME_FAST_MS);
+            PlaySession play = new(sessionCore, game, sessionScheduler);
+            play.Begin();
+
+            // AI moves first, so Begin started an off-thread preparation. The
+            // session waits for it after invalidating the attempt; its answer is
+            // deliberately not pumped until the core no longer exists.
+            play.Dispose();
+            sessionCore.Dispose();
+            bool sessionCompletionRan = false;
+            bool sessionCompletionWasInert = Silently(
+                () => sessionCompletionRan = sessionScheduler.Pump());
+            Check("the disposed session left a completion queued", sessionCompletionRan);
+            Check("a queued session completion touches nothing after core shutdown",
+                sessionCompletionWasInert);
+        }
+        finally
+        {
+            foreach (string store in (string[])[flowStore, sessionStore])
+            {
+                try
+                {
+                    Directory.Delete(store, recursive: true);
+                }
+                catch (IOException)
+                {
+                    // Scratch stores; failing to remove one is not a result.
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1928,15 +2472,24 @@ internal static unsafe class Program
         Console.WriteLine($"    ended-early row     {early.WhenLine()}");
         Console.WriteLine($"                        {early.MetadataLine()}");
 
-        Check("a human-versus-AI row names the mode and the human's side",
+        Check("History read both games from the native summary field",
+            loss.Game == GameKind.MiniXiangqi && early.Game == GameKind.Xiangqi);
+        Check("a human-versus-AI row names the game, mode and human's side",
             loss.MetadataLine().StartsWith(
-                Strings.Join(Strings.Get("mode.humanVersusAI"), Strings.Get("metadata.youRed")),
+                Strings.Join(
+                    Strings.Join(
+                        Strings.Get("game.miniXiangqi"),
+                        Strings.Get("mode.humanVersusAI")),
+                    Strings.Get("metadata.youRed")),
                 StringComparison.Ordinal));
         Check("a resignation keeps its reason beside the result",
             loss.MetadataLine().Contains(Strings.Get("reason.resignation"), StringComparison.Ordinal)
             && loss.MetadataLine().Contains(Strings.Get("result.blackWins"), StringComparison.Ordinal));
-        Check("a Free Play row omits 执子",
-            !early.MetadataLine().Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
+        Check("a Xiangqi Free Play row names its game and omits 执子",
+            early.MetadataLine().StartsWith(
+                Strings.Join(Strings.Get("game.xiangqi"), Strings.Get("mode.freePlay")),
+                StringComparison.Ordinal)
+            && !early.MetadataLine().Contains(Strings.Get("metadata.youRed"), StringComparison.Ordinal)
             && !early.MetadataLine().Contains(Strings.Get("metadata.youBlack"), StringComparison.Ordinal));
         Check("an ended-early row says 提前结束 once, in the result slot",
             Occurrences(early.MetadataLine(), Strings.Get("reason.endedEarly")) == 1);
@@ -2107,6 +2660,7 @@ internal static unsafe class Program
             for (int index = 0; index < wanted; index++)
             {
                 using GameSession game = core.Create(
+                    GameKind.MiniXiangqi,
                     Mxq.MXQ_PLAY_MODE_FREE_PLAY,
                     Mxq.MXQ_COLOR_NONE,
                     Mxq.MXQ_AI_LEVEL_NONE,
@@ -2183,10 +2737,11 @@ internal static unsafe class Program
         Check("opening a record opens the viewer page", history.Page == HistoryPageKind.Viewer);
         Check("replay begins at the game's initial position", viewer.Ply == 0 && viewer.IsAtStart);
         Check("the initial position is the frozen starting FEN",
-            viewer.Position.Fen == MiniXiangqiCore.StartFen);
+            viewer.Position.Fen == MiniXiangqiCore.StartFen(viewer.Record.Game));
         Check("no move produced the initial position", viewer.Scene.LastMove is null);
         Check("the record is the core's own canonical coordinate text",
-            viewer.MoveRecord.Count > 0 && viewer.MoveRecord.All(IsCanonicalMove));
+            viewer.MoveRecord.Count > 0
+            && viewer.MoveRecord.All(move => IsCanonicalMove(move, viewer.Record.Game)));
         Check("the record's length is the record's move count",
             viewer.MoveRecord.Count == (int)viewer.Record.MoveCount);
 
@@ -2195,6 +2750,10 @@ internal static unsafe class Program
         // built from the call under test.
         Check("progress is shown ply over recorded plies",
             viewer.Progress == $"0 / {viewer.Plies}");
+        Check("the Xiangqi record carries its game through replay",
+            viewer.Record.Game == GameKind.Xiangqi
+            && viewer.Scene.Game == GameKind.Xiangqi
+            && viewer.Scene.Board == BoardDefinition.Xiangqi);
         Check("Free Play history opens with Red at the bottom", !viewer.Flipped);
 
         // The board is read-only: nothing on the scene is an affordance.
@@ -2257,7 +2816,7 @@ internal static unsafe class Program
         // perspective, which for a Red human is Red at the bottom.
         history.Open(versusAi);
         Check("human-versus-AI history opens on the human's own side",
-            history.Viewer is { Flipped: false });
+            history.Viewer is { Flipped: false, Record.Game: GameKind.MiniXiangqi });
         Check("a resigned record's committed outcome is the store's, not the position's",
             history.Viewer!.Record.Outcome == Mxq.MXQ_OUTCOME_BLACK_WINS
             && history.Viewer.Record.EndReason == Mxq.MXQ_END_REASON_RESIGNATION);
@@ -2383,6 +2942,8 @@ internal static unsafe class Program
         ulong source = history.Records[0].RecordId;
         RecordSummary exported = history.Records[0];
         string path = Path.Combine(directory, exported.SuggestedFileName());
+        Check("the interchange source is a Xiangqi history record",
+            exported.Game == GameKind.Xiangqi);
 
         Console.WriteLine($"    suggested name      {exported.SuggestedFileName()}");
         Check("the exported name is built from the game's own end, machine-ordered",
@@ -2401,8 +2962,23 @@ internal static unsafe class Program
             document.StartsWith("{\"archive_format\":\"minixiangqi-game\"", StringComparison.Ordinal));
         Check("it carries this game's frozen identity",
             document.Contains(exported.GameId, StringComparison.Ordinal));
+        Check("it carries the Xiangqi rules identity",
+            document.Contains("\"rules_id\":\"xiangqi\"", StringComparison.Ordinal));
         Check("it is one canonical line", !document.Contains('\n') && !document.Contains('\r'));
         Check("it is inside the accepted import bound", bytes.Length <= HistoryFlow.ImportSizeLimit);
+
+        MxqArchiveInfo info = default;
+        info.struct_size = (uint)sizeof(MxqArchiveInfo);
+        fixed (byte* archive = bytes)
+        {
+            MxqError err = MxqCall.Error();
+            MxqCall.Check(
+                Mxq.mxq_archive_probe(core.Handle, archive, (nuint)bytes.Length, &info, &err),
+                in err,
+                nameof(Mxq.mxq_archive_probe));
+        }
+        Check("the API 2 archive summary decodes the exported game",
+            GameVocabulary.Kind(info.game) == exported.Game);
 
         // 1. The duplicate. The record is still there, so the same bytes are the
         //    same game with the same content: a success that deliberately does
@@ -2426,8 +3002,12 @@ internal static unsafe class Program
         //    on explicitly, and this is the one message the data contract requires
         //    to be distinct.
         string newer = Path.Combine(directory, "newer.mxq");
+        string currentVersion =
+            $"\"archive_version\":{MiniXiangqiCore.Version.ArchiveVersionCurrent}";
+        string futureVersion =
+            $"\"archive_version\":{MiniXiangqiCore.Version.ArchiveVersionCurrent + 1}";
         File.WriteAllBytes(newer, Encoding.UTF8.GetBytes(
-            document.Replace("\"archive_version\":1", "\"archive_version\":2", StringComparison.Ordinal)));
+            document.Replace(currentVersion, futureVersion, StringComparison.Ordinal)));
         Answer(history, scheduler, newer, HistoryAlert.ImportNewerVersion, "a newer archive version is its own answer");
         history.DismissAlert();
 
@@ -2524,8 +3104,10 @@ internal static unsafe class Program
         Console.WriteLine($"    restored row        {restored.WhenLine()}");
         Console.WriteLine($"                        {restored.MetadataLine()}");
         Check("the stable identity survived the round trip", restored.GameId == exported.GameId);
-        Check("so did the result, the reason and the move count",
-            restored.Outcome == exported.Outcome
+        Check("so did the game, result, reason and move count",
+            restored.Game == exported.Game
+            && restored.Game == GameKind.Xiangqi
+            && restored.Outcome == exported.Outcome
             && restored.EndReason == exported.EndReason
             && restored.MoveCount == exported.MoveCount
             && restored.EndedAtMs == exported.EndedAtMs);
@@ -2540,6 +3122,8 @@ internal static unsafe class Program
         history.Open(restored.RecordId);
         Check("the imported game replays from its own file's move line",
             history.Viewer is { } replay
+            && replay.Record.Game == GameKind.Xiangqi
+            && replay.Scene.Game == GameKind.Xiangqi
             && replay.MoveRecord.Count == (int)exported.MoveCount
             && document.Contains(replay.MoveRecord[0], StringComparison.Ordinal));
         history.CloseViewer();
@@ -2629,6 +3213,7 @@ internal static unsafe class Program
     private static ulong FileAResignation(MiniXiangqiCore core, PumpScheduler scheduler)
     {
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
             Mxq.MXQ_COLOR_RED,
             Mxq.MXQ_AI_LEVEL_FAST,
@@ -2648,6 +3233,7 @@ internal static unsafe class Program
     private static ulong FileAnEndedEarlyFreePlayGame(MiniXiangqiCore core)
     {
         using GameSession game = core.Create(
+            GameKind.Xiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -2749,9 +3335,10 @@ internal static unsafe class Program
     /// <summary>A point with no legal move to it from the piece the player holds.</summary>
     private static Square Illegal(PlaySession play)
     {
-        for (int rank = 0; rank < Square.Count; rank++)
+        BoardDefinition board = play.Scene.Board;
+        for (int rank = 0; rank < board.RankCount; rank++)
         {
-            for (int file = 0; file < Square.Count; file++)
+            for (int file = 0; file < board.FileCount; file++)
             {
                 Square square = new(file, rank);
                 if (!play.Scene.Destinations.Contains(square)
@@ -2772,7 +3359,7 @@ internal static unsafe class Program
         Dictionary<Square, int> counts = [];
         foreach (string text in play.LegalMoves())
         {
-            if (Move.Parse(text) is { } move)
+            if (Move.Parse(text, play.Scene.Board) is { } move)
             {
                 counts[move.From] = counts.GetValueOrDefault(move.From) + 1;
             }
@@ -2789,14 +3376,16 @@ internal static unsafe class Program
     {
         List<string> legal = [.. play.LegalMoves()];
         legal.Sort(StringComparer.Ordinal);
-        return legal.Count == 0 ? null : Move.Parse(legal[rng.Next(legal.Count)]);
+        return legal.Count == 0
+            ? null
+            : Move.Parse(legal[rng.Next(legal.Count)], play.Scene.Board);
     }
 
     private static Square FirstMover(PlaySession play)
     {
         List<string> legal = [.. play.LegalMoves()];
         legal.Sort(StringComparer.Ordinal);
-        return Move.Parse(legal[0])!.Value.From;
+        return Move.Parse(legal[0], play.Scene.Board)!.Value.From;
     }
 
     // ---------------------------------------------------------------------
@@ -2927,7 +3516,7 @@ internal static unsafe class Program
             using (PlayFlow flow = new(core, scheduler, new FilePreferenceStore(path)))
             {
                 flow.Start();
-                flow.Choose(PlayMode.HumanVersusAi);
+                flow.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.HumanVersusAi));
                 Console.WriteLine(
                     $"    the page opens on   {flow.Draft.FirstMover} / {flow.Draft.Level}, "
                     + $"preview flipped {flow.PreviewScene.Flipped}");
@@ -3172,6 +3761,7 @@ internal static unsafe class Program
         Feedback recording = Feedback.Gating(NoPreferences.Instance, heard.Add);
 
         GameSession game = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -3266,6 +3856,7 @@ internal static unsafe class Program
         // The repetition shuffle section 20 uses: two cannons step off their own
         // file and back until the starting position stands for the third time.
         GameSession repeating = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_FREE_PLAY,
             Mxq.MXQ_COLOR_NONE,
             Mxq.MXQ_AI_LEVEL_NONE,
@@ -3299,7 +3890,8 @@ internal static unsafe class Program
             {
                 foreach (string text in shuffle)
                 {
-                    if (Move.Parse(text) is not { } move || !play.LegalMoves().Contains(text))
+                    if (Move.Parse(text, play.Scene.Board) is not { } move
+                        || !play.LegalMoves().Contains(text))
                     {
                         Check("the repetition shuffle is playable", false);
                         core.ArchiveAndClear(repeating);
@@ -3326,6 +3918,7 @@ internal static unsafe class Program
         // no search is ever owed and no engine is ever prepared. What is under
         // test is the commit, not the opponent.
         GameSession conceding = core.Create(
+            GameKind.MiniXiangqi,
             Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
             Mxq.MXQ_COLOR_RED,
             Mxq.MXQ_AI_LEVEL_FAST,
@@ -3360,32 +3953,69 @@ internal static unsafe class Program
     {
         Section("38. The board's space, and the line that asks for more of it");
 
-        double block = WindowFloor.BoardBlockAtFloor;
-        Console.WriteLine($"    board block at 44   {block}");
+        BoardDefinition mini = BoardDefinition.For(GameKind.MiniXiangqi);
+        BoardDefinition xiangqi = BoardDefinition.For(GameKind.Xiangqi);
+        BoardGeometry miniFloor = new(mini, BoardGeometry.MinimumPitch(mini));
+        BoardGeometry miniCeiling = new(mini, BoardGeometry.MaximumPitch(mini));
+        BoardGeometry xiangqiFloor = new(xiangqi, BoardGeometry.MinimumPitch(xiangqi));
+        BoardGeometry xiangqiCeiling = new(xiangqi, BoardGeometry.MaximumPitch(xiangqi));
+
+        Console.WriteLine(
+            $"    Mini Xiangqi       p {miniFloor.Pitch}...{miniCeiling.Pitch}, "
+            + $"block {miniFloor.BlockWidth} x {miniFloor.BlockHeight}..."
+            + $"{miniCeiling.BlockWidth} x {miniCeiling.BlockHeight}");
+        Console.WriteLine(
+            $"    Xiangqi            p {xiangqiFloor.Pitch}...{xiangqiCeiling.Pitch}, "
+            + $"block {xiangqiFloor.BlockWidth} x {xiangqiFloor.BlockHeight}..."
+            + $"{xiangqiCeiling.BlockWidth} x {xiangqiCeiling.BlockHeight}");
         Console.WriteLine($"    content floor       {WindowFloor.ContentWidth} x {WindowFloor.ContentHeight}");
         Console.WriteLine($"    window floor        {WindowFloor.WindowWidth} x {WindowFloor.WindowHeight}");
 
-        // The block the whole floor is derived from. It is 340 rather than the
-        // Mac's 308 because this board carries the canonical coordinates on four
-        // edges, and the contract's Windows clause states that number.
-        Check("the board block at the accepted pitch floor is 340 square", block == 340);
-        Check("the play content's floor is 648 by 388",
-            WindowFloor.ContentWidth == 648 && WindowFloor.ContentHeight == 388);
+        Check("Mini Xiangqi has the exact 44...102 pitch range",
+            miniFloor.Pitch == 44 && miniCeiling.Pitch == 102);
+        Check("Mini Xiangqi's floor and ceiling blocks are exact",
+            miniFloor.CoreSize == (308, 308)
+            && miniFloor.BlockSize == (340, 340)
+            && miniCeiling.CoreSize == (714, 714)
+            && miniCeiling.BlockSize == (766, 766));
+        Check("Xiangqi has the exact 34...79 pitch range",
+            xiangqiFloor.Pitch == 34 && xiangqiCeiling.Pitch == 79);
+        Check("Xiangqi's rectangular floor and ceiling blocks are exact",
+            xiangqiFloor.CoreSize == (306, 340)
+            && xiangqiFloor.BlockSize == (334, 368)
+            && xiangqiCeiling.CoreSize == (711, 790)
+            && xiangqiCeiling.BlockSize == (759, 838));
+        Check("the cross-game floor takes Mini's width and Xiangqi's height",
+            WindowFloor.BoardBlockWidthAtFloor == 340
+            && WindowFloor.BoardBlockHeightAtFloor == 368);
+        Check("the play content's floor is 648 by 416",
+            WindowFloor.ContentWidth == 648 && WindowFloor.ContentHeight == 416);
         Check("the window's floor is the content's plus the rail and the navigation row",
-            WindowFloor.WindowWidth == 696 && WindowFloor.WindowHeight == 432);
+            WindowFloor.WindowWidth == 696 && WindowFloor.WindowHeight == 460);
 
-        // The floor's own promise, read the way the window reads it: take the
-        // chrome back off the window floor, hand what is left to the board, and
-        // the board fits at exactly the accepted pitch. (That the room comes out
-        // at the block is arithmetic rather than a finding — the floor was built
-        // by adding the chrome to it — so what is asserted is the pitch, and how
-        // little room there is to spare is the check below.)
-        double hostAtTheFloor = WindowFloor.WindowWidth - WindowFloor.CompactRailWidth
+        // Take the chrome back off the cross-game floor. Both profiles fit the
+        // same host at their own accepted floor, although one supplies its width
+        // and the other its height.
+        double hostWidthAtTheFloor = WindowFloor.WindowWidth - WindowFloor.CompactRailWidth
             - WindowFloor.PanelWidth - (2 * WindowFloor.Air);
-        BoardSpace atTheFloor = BoardSpace.Of(hostAtTheFloor, hostAtTheFloor);
-        Console.WriteLine($"    host at the floor   {hostAtTheFloor}  pitch {atTheFloor.Board?.Pitch}");
-        Check("at the window's floor the board fits, at the accepted pitch floor",
-            atTheFloor.Board is { } floored && floored.Pitch == BoardGeometry.MinimumPitch);
+        double hostHeightAtTheFloor = WindowFloor.WindowHeight - WindowFloor.NavigationBarHeight
+            - (2 * WindowFloor.Air);
+        BoardSpace miniAtTheFloor = BoardSpace.Of(
+            hostWidthAtTheFloor, hostHeightAtTheFloor, GameKind.MiniXiangqi);
+        BoardSpace xiangqiAtTheFloor = BoardSpace.Of(
+            hostWidthAtTheFloor, hostHeightAtTheFloor, GameKind.Xiangqi);
+        Console.WriteLine(
+            $"    host at the floor   {hostWidthAtTheFloor} x {hostHeightAtTheFloor}; "
+            + $"p {miniAtTheFloor.Board?.Pitch} / {xiangqiAtTheFloor.Board?.Pitch}");
+        Check("the window floor fits both games at their own pitch floors",
+            miniAtTheFloor.Board is { Pitch: 44 }
+            && xiangqiAtTheFloor.Board is { Pitch: 34 });
+
+        Check("an exact ceiling block fits at the ceiling and no higher",
+            BoardGeometry.Fitting(
+                miniCeiling.BlockWidth, miniCeiling.BlockHeight, mini)?.Pitch == 102
+            && BoardGeometry.Fitting(
+                xiangqiCeiling.BlockWidth, xiangqiCeiling.BlockHeight, xiangqi)?.Pitch == 79);
 
         // **The pane cannot squeeze it.** The shell's display mode is the
         // platform's own and this app sets none of it, so what matters is the
@@ -3412,18 +4042,23 @@ internal static unsafe class Program
             WindowFloor.WindowWidth >= WindowFloor.CompactModeThresholdWidth
             && WindowFloor.WindowWidth < WindowFloor.ExpandedModeThresholdWidth);
 
-        // One point under the block is where the refusal begins, and the refusal
-        // is what the notice answers. The board is not drawn small; it is not
-        // drawn.
-        BoardSpace justUnder = BoardSpace.Of(block - 1, block);
-        BoardSpace tooShort = BoardSpace.Of(block, block - 1);
-        BoardSpace none = BoardSpace.Of(0, 0);
-        Console.WriteLine($"    at {block - 1} wide         board {justUnder.ShowsBoard}");
-        Check("one point under the block, no board is drawn",
-            !justUnder.ShowsBoard && justUnder.Board is null);
-        Check("the height bounds it exactly as the width does", !tooShort.ShowsBoard);
+        // One point under each profile's own floor is where its refusal begins.
+        BoardSpace miniNarrow = BoardSpace.Of(
+            miniFloor.BlockWidth - 1, miniFloor.BlockHeight, GameKind.MiniXiangqi);
+        BoardSpace miniShort = BoardSpace.Of(
+            miniFloor.BlockWidth, miniFloor.BlockHeight - 1, GameKind.MiniXiangqi);
+        BoardSpace xiangqiNarrow = BoardSpace.Of(
+            xiangqiFloor.BlockWidth - 1, xiangqiFloor.BlockHeight, GameKind.Xiangqi);
+        BoardSpace xiangqiShort = BoardSpace.Of(
+            xiangqiFloor.BlockWidth, xiangqiFloor.BlockHeight - 1, GameKind.Xiangqi);
+        BoardSpace none = BoardSpace.Of(0, 0, GameKind.Xiangqi);
+        Check("one point under Mini Xiangqi's floor draws no Mini board",
+            !miniNarrow.ShowsBoard && !miniShort.ShowsBoard);
+        Check("one point under Xiangqi's rectangular floor draws no Xiangqi board",
+            !xiangqiNarrow.ShowsBoard && !xiangqiShort.ShowsBoard);
         Check("a host with no room at all is the same answer", !none.ShowsBoard);
-        Check("and a host that has the room still gets its board", atTheFloor.ShowsBoard);
+        Check("and the cross-game host draws both boards",
+            miniAtTheFloor.ShowsBoard && xiangqiAtTheFloor.ShowsBoard);
 
         // The line itself, published by the state rather than fetched beside it.
         // **A key with no row answers with itself**, which is the one thing this
@@ -3436,7 +4071,7 @@ internal static unsafe class Program
         foreach (bool chinese in (bool[])[true, false])
         {
             Strings.PrefersChinese = chinese;
-            string? line = justUnder.Notice;
+            string? line = xiangqiShort.Notice;
             Console.WriteLine($"    {(chinese ? "中文" : "en  ")}                {line}");
             if (chinese)
             {
@@ -3453,7 +4088,8 @@ internal static unsafe class Program
             inChinese is { Length: > 0 } && inEnglish is { Length: > 0 }
             && inChinese != "board.tooSmall" && inEnglish != "board.tooSmall"
             && inChinese != inEnglish);
-        Check("and a drawn board publishes none", atTheFloor.Notice is null);
+        Check("and drawn boards publish none",
+            miniAtTheFloor.Notice is null && xiangqiAtTheFloor.Notice is null);
     }
 
     /// <summary>
@@ -3471,13 +4107,13 @@ internal static unsafe class Program
         }
 
         List<Move> captures = [.. legal
-            .Select(Move.Parse)
+            .Select(text => Move.Parse(text, play.Scene.Board))
             .Where(move => move is { } candidate && play.Scene.Placement[candidate.To] is not null)
             .Select(move => move!.Value)];
 
         return captures.Count > 0
             ? captures[rng.Next(captures.Count)]
-            : Move.Parse(legal[rng.Next(legal.Count)]);
+            : Move.Parse(legal[rng.Next(legal.Count)], play.Scene.Board);
     }
 
     /// <summary>The file's members, in the order they are written.</summary>
@@ -3618,7 +4254,8 @@ internal static unsafe class Program
             Check("the result is not stale", delivered.position_revision == revision);
             Check("the result names this game", deliveredGameId == gameId);
             Check("the result carries a profile identifier", profile.Length > 0);
-            Check("the move is canonical <from><to>", IsCanonicalMove(move));
+            Check("the move is canonical <from><to>",
+                IsCanonicalMove(move, GameKind.MiniXiangqi));
 
             return move;
         }
@@ -3668,26 +4305,48 @@ internal static unsafe class Program
         return status;
     }
 
-    private static string StagedNetworkSha(string assets)
+    private readonly record struct StagedNetwork(string Name, string Sha256);
+
+    /// <summary>
+    /// Every staged network, by its load-bearing filename and content hash.
+    /// There are two manifest networks now; identity is established by the
+    /// profile's variant prefix and full SHA-256 rather than by directory order.
+    /// </summary>
+    private static IReadOnlyList<StagedNetwork> StagedNetworks(string assets)
     {
         string[] networks = Directory.Exists(assets)
             ? Directory.GetFiles(assets, "*.nnue")
             : [];
-        if (networks.Length != 1)
+        Array.Sort(networks, StringComparer.Ordinal);
+
+        List<StagedNetwork> staged = [];
+        foreach (string path in networks)
         {
-            return $"<{networks.Length} networks in {assets}>";
+            using FileStream file = File.OpenRead(path);
+            staged.Add(new StagedNetwork(
+                Path.GetFileName(path),
+                Convert.ToHexStringLower(SHA256.HashData(file))));
         }
 
-        using FileStream file = File.OpenRead(networks[0]);
-        return Convert.ToHexStringLower(SHA256.HashData(file));
+        return staged;
     }
 
-    private static bool IsCanonicalMove(string move) =>
-        move.Length == 4
-        && move[0] is >= 'a' and <= 'g'
-        && move[1] is >= '1' and <= '7'
-        && move[2] is >= 'a' and <= 'g'
-        && move[3] is >= '1' and <= '7';
+    private static bool IsCanonicalMove(string move, GameKind game) =>
+        Move.Parse(move, BoardDefinition.For(game))?.Text == move;
+
+    private static bool Throws<T>(Action work)
+        where T : Exception
+    {
+        try
+        {
+            work();
+            return false;
+        }
+        catch (T)
+        {
+            return true;
+        }
+    }
 
     private static bool IsHex(string value, int length) =>
         value.Length == length && value.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));

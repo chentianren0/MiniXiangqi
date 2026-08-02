@@ -78,6 +78,7 @@ public sealed unsafe class GameSession : IDisposable
         MxqCall.Check(Mxq.mxq_game_config(Live, &config, &err), in err, nameof(Mxq.mxq_game_config));
 
         return new GameConfiguration(
+            GameVocabulary.Kind(config.game),
             config.mode,
             config.human_side,
             config.ai_level,

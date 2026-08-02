@@ -99,24 +99,28 @@ internal static class Program
     {
         Studio studio = new(core, device, directory);
 
-        // The board at the accepted 44-point pitch floor, and at a size an
-        // ordinary desktop window actually gives it.
-        studio.Shot("start-floor", 44, _ => { });
-        studio.Shot("start-large", 84, _ => { });
+        // Keep the original Mini Xiangqi renders unchanged in name and
+        // scenario: they remain the Windows board's regression evidence.
+        studio.Shot(GameKind.MiniXiangqi, "start-floor", 44, _ => { });
+        studio.Shot(GameKind.MiniXiangqi, "start-large", 84, _ => { });
 
         // Red at the top, which is what a human playing Black sees. A
         // coordinate is absolute, so the labels re-order and never rename.
-        studio.Shot("start-flipped", 84, play => play.FlipBoard());
+        studio.Shot(GameKind.MiniXiangqi, "start-flipped", 84, play => play.FlipBoard());
 
         // The pointer's own report of where it is, which is never a game state
         // and never previews what is legal.
-        studio.Shot("pointer-hover", 84, play => play.Hover(new Square(3, 3)));
+        studio.Shot(
+            GameKind.MiniXiangqi,
+            "pointer-hover",
+            84,
+            play => play.Hover(new Square(3, 3)));
 
         // A selection and its legal destinations, on a position a few plies in.
         // The piece chosen is whichever of the mover's own has the most legal
         // moves, so the picture shows the marker vocabulary under load rather
         // than a piece with two places to go.
-        studio.Shot("selection-and-destinations", 84, play =>
+        studio.Shot(GameKind.MiniXiangqi, "selection-and-destinations", 84, play =>
         {
             Advance(play, 6);
             play.Tap(Busiest(play));
@@ -124,7 +128,7 @@ internal static class Program
 
         // A capture available: the dashed ring around an enemy disc, beside the
         // filled dots of the same piece's quiet moves.
-        studio.Shot("capture-available", 84, play =>
+        studio.Shot(GameKind.MiniXiangqi, "capture-available", 84, play =>
         {
             if (Reach(play, 12, () => Capturable(play).Count > 0))
             {
@@ -134,7 +138,28 @@ internal static class Program
 
         // A general in check: the double ring, which the turn status's 将军
         // token accompanies during play.
-        studio.Shot("check", 84, play => Reach(play, 24, () => play.Position.InCheck));
+        studio.Shot(
+            GameKind.MiniXiangqi,
+            "check",
+            84,
+            play => Reach(play, 24, () => play.Position.InCheck));
+
+        // Xiangqi is a genuinely rectangular picture: nine file labels, ten
+        // rank labels (including 10), two data-driven palaces, a river, and all
+        // seven character-only piece kinds. The selected scene also exercises
+        // markers on that 90-point topology.
+        studio.Shot(GameKind.Xiangqi, "xiangqi-start-floor", 34, _ => { });
+        studio.Shot(GameKind.Xiangqi, "xiangqi-start-large", 68, _ => { });
+        studio.Shot(
+            GameKind.Xiangqi,
+            "xiangqi-start-flipped",
+            68,
+            play => play.FlipBoard());
+        studio.Shot(GameKind.Xiangqi, "xiangqi-selection-and-destinations", 68, play =>
+        {
+            Advance(play, 6);
+            play.Tap(Busiest(play));
+        });
 
         // The pre-start state's preview, both ways round.
         //
@@ -149,8 +174,18 @@ internal static class Program
         // picture at all, because it has no board on it: that is the contract's
         // own direction for it, and its evidence is what the smoke harness
         // composes.
-        studio.Preview("setup-preview", 84, PlayMode.HumanVersusAi, FirstMoverChoice.HumanFirst);
-        studio.Preview("setup-preview-ai-first", 84, PlayMode.HumanVersusAi, FirstMoverChoice.AiFirst);
+        studio.Preview(
+            GameKind.MiniXiangqi,
+            "setup-preview",
+            84,
+            PlayMode.HumanVersusAi,
+            FirstMoverChoice.HumanFirst);
+        studio.Preview(
+            GameKind.MiniXiangqi,
+            "setup-preview-ai-first",
+            84,
+            PlayMode.HumanVersusAi,
+            FirstMoverChoice.AiFirst);
 
         // The step-through viewer, mid-replay: a filed game reopened through
         // mxq_store_history_open and stepped to a ply in the middle of it, so the
@@ -158,7 +193,7 @@ internal static class Program
         // marked. It is a *different* picture from anything play produces — the
         // board carries a last move and no selection, destinations, capture ring
         // or hover, because replay offers none of them.
-        studio.Replay("replay-mid", 84, plies: 10, at: 5);
+        studio.Replay(GameKind.MiniXiangqi, "replay-mid", 84, plies: 10, at: 5);
 
         // And the same viewer at ply 0, which is the frozen initial position and
         // therefore byte-identical to start-large. **Drawn and uploaded, not
@@ -166,7 +201,7 @@ internal static class Program
         // is that the viewer's own path reaches the real board at the real
         // starting position, and a second copy of a file already in the
         // repository would be weight rather than evidence.
-        studio.Replay("replay-start", 84, plies: 10, at: 0);
+        studio.Replay(GameKind.MiniXiangqi, "replay-start", 84, plies: 10, at: 0);
     }
 
     /// <summary>
@@ -175,9 +210,14 @@ internal static class Program
     /// </summary>
     private sealed class Studio(MiniXiangqiCore core, CanvasDevice device, string directory)
     {
-        internal void Shot(string name, double pitch, Action<PlaySession> arrange)
+        internal void Shot(
+            GameKind gameKind,
+            string name,
+            double pitch,
+            Action<PlaySession> arrange)
         {
             GameSession game = core.Create(
+                gameKind,
                 Mxq.MXQ_PLAY_MODE_FREE_PLAY,
                 Mxq.MXQ_COLOR_NONE,
                 Mxq.MXQ_AI_LEVEL_NONE,
@@ -207,10 +247,15 @@ internal static class Program
         /// is not an active game — so nothing here is filed and nothing is
         /// played.
         /// </summary>
-        internal void Preview(string name, double pitch, PlayMode mode, FirstMoverChoice choice)
+        internal void Preview(
+            GameKind game,
+            string name,
+            double pitch,
+            PlayMode mode,
+            FirstMoverChoice choice)
         {
             using PlayFlow flow = new(core, new PumpScheduler(), NoPreferences.Instance);
-            flow.Choose(mode);
+            flow.Choose(new PlaySelection(game, mode));
             flow.ChooseFirstMover(choice);
             Save(name, flow.PreviewScene, pitch, plies: 0);
         }
@@ -224,9 +269,15 @@ internal static class Program
         /// that ply, so the board below is the core's own account of what the
         /// position was rather than a placement this harness worked out.
         /// </summary>
-        internal void Replay(string name, double pitch, int plies, int at)
+        internal void Replay(
+            GameKind gameKind,
+            string name,
+            double pitch,
+            int plies,
+            int at)
         {
             GameSession game = core.Create(
+                gameKind,
                 Mxq.MXQ_PLAY_MODE_FREE_PLAY,
                 Mxq.MXQ_COLOR_NONE,
                 Mxq.MXQ_AI_LEVEL_NONE,
@@ -260,9 +311,10 @@ internal static class Program
 
         private void Save(string name, BoardScene scene, double pitch, int plies)
         {
-            BoardGeometry geometry = new(pitch);
-            float side = (float)geometry.BlockSide;
-            using CanvasRenderTarget target = new(device, side, side, 96);
+            BoardGeometry geometry = new(scene.Board, pitch);
+            float width = (float)geometry.BlockWidth;
+            float height = (float)geometry.BlockHeight;
+            using CanvasRenderTarget target = new(device, width, height, 96);
             using (CanvasDrawingSession session = target.CreateDrawingSession())
             {
                 BoardPainter.Draw(session, scene, geometry, BoardStyle.Traditional);
@@ -271,7 +323,7 @@ internal static class Program
             string path = Path.Combine(directory, name + ".png");
             target.SaveAsync(path, CanvasBitmapFileFormat.Png).AsTask().GetAwaiter().GetResult();
             Console.WriteLine(
-                $"    {name,-28} pitch {pitch,3}  {side:F0}x{side:F0}  {plies,3} ply  "
+                $"    {name,-36} pitch {pitch,3}  {width:F0}x{height:F0}  {plies,3} ply  "
                 + $"{new FileInfo(path).Length,7:N0} bytes");
         }
     }
@@ -289,7 +341,7 @@ internal static class Program
         {
             List<string> legal = [.. play.LegalMoves()];
             legal.Sort(StringComparer.Ordinal);
-            if (legal.Count == 0 || Move.Parse(legal[0]) is not { } move)
+            if (legal.Count == 0 || Move.Parse(legal[0], play.Scene.Board) is not { } move)
             {
                 return;
             }
@@ -312,7 +364,8 @@ internal static class Program
         {
             List<string> legal = [.. play.LegalMoves()];
             legal.Sort(StringComparer.Ordinal);
-            if (legal.Count == 0 || Move.Parse(legal[rng.Next(legal.Count)]) is not { } move)
+            if (legal.Count == 0 ||
+                Move.Parse(legal[rng.Next(legal.Count)], play.Scene.Board) is not { } move)
             {
                 return;
             }
@@ -337,7 +390,7 @@ internal static class Program
             string? fallback = null;
             foreach (string text in legal)
             {
-                if (Move.Parse(text) is not { } move)
+                if (Move.Parse(text, play.Scene.Board) is not { } move)
                 {
                     continue;
                 }
@@ -353,7 +406,7 @@ internal static class Program
                 play.Undo();
             }
 
-            if (fallback is null || Move.Parse(fallback) is not { } chosen)
+            if (fallback is null || Move.Parse(fallback, play.Scene.Board) is not { } chosen)
             {
                 return false;
             }
@@ -371,7 +424,7 @@ internal static class Program
         Dictionary<Square, int> counts = [];
         foreach (string text in play.LegalMoves())
         {
-            if (Move.Parse(text) is { } move)
+            if (Move.Parse(text, play.Scene.Board) is { } move)
             {
                 counts[move.From] = counts.GetValueOrDefault(move.From) + 1;
             }
@@ -389,7 +442,8 @@ internal static class Program
         List<Square> origins = [];
         foreach (string text in play.LegalMoves())
         {
-            if (Move.Parse(text) is { } move && play.Scene.Placement[move.To] is not null
+            if (Move.Parse(text, play.Scene.Board) is { } move &&
+                play.Scene.Placement[move.To] is not null
                 && !origins.Contains(move.From))
             {
                 origins.Add(move.From);

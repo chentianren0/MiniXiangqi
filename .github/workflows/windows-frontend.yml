@@ -64,16 +64,16 @@
 # decides a job's home is which changes should start it, and a fixtures change
 # starts core-suites.yml and not this workflow.
 #
-# THE NETWORK IS IN THE ARTIFACT, AND THE ZIP IS THE WHOLE APP
+# BOTH NETWORKS ARE IN THE ARTIFACT, AND THE ZIP IS THE WHOLE APP
 #
 # It used to be the one thing the zip deliberately left out: a public
 # repository's artifacts are downloadable by any logged-in account, and the
 # community-trained network's redistribution licence was never established, so
 # the zip carried a NETWORK.md naming a file its holder had to add. That
-# network is gone. The one this project trained is in the repository, ours to
-# publish, and it travels in the zip like every other asset — so there is one
-# artifact, complete, and the harness that runs from inside the unpacked copy
-# below is running against exactly what a person downloads.
+# network is gone. The project-trained Mini Xiangqi network and the GPL Xiangqi
+# network are both in the repository and travel in the zip like every other
+# asset — so there is one artifact, complete, and the harness that runs from
+# inside the unpacked copy below is running against exactly what a person downloads.
 #
 # WHAT THIS WORKFLOW NAMES THAT THE REPOSITORY DOES NOT: the runner images and
 # the .NET SDK feature band. Both are for the reason core-suites.yml gives about
@@ -198,25 +198,50 @@ jobs:
       # MXQ_BUILD_SHARED_LIBRARY=ON, which is the export path #85 added and the
       # thing this job exists to keep from breaking silently. The script builds
       # for the machine it is on, so this line is the same on both runners and
-      # the architecture comes from the runner. The network needs no argument:
-      # it is in the checkout, and core/CMakeLists.txt verifies it against
-      # pinned-inputs.json before staging a byte of it.
+      # the architecture comes from the runner. The networks need no arguments:
+      # they are in the checkout, and core/CMakeLists.txt verifies them against
+      # pinned-inputs.json before staging any bytes.
       - name: Build the core as a DLL
         shell: pwsh
         run: pwsh windows/build-core-dll.ps1 -Architecture ${{ matrix.arch }}
 
       # A Mxq.g.cs that differs from what the generator writes is a
       # transcription of the header rather than the header.
-      - name: Regenerate the bindings and fail on any difference
+      - name: Regenerate the bindings
         if: matrix.source_checks
         shell: pwsh
         run: |
           pwsh windows/bindings/generate.ps1
           if ($LASTEXITCODE -ne 0) { throw 'The bindings generator did not run.' }
-          git diff --exit-code -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
-          if ($LASTEXITCODE -ne 0) {
-            throw 'The committed bindings differ from what ClangSharp generates from core/include/mxq.h. Run windows/bindings/generate.ps1 and commit the result.'
-          }
+
+      # A stale generated file must still be replaced only by the real
+      # generator. When the developer machine cannot run the Windows toolchain,
+      # preserve that exact output as the diagnosis rather than asking anyone to
+      # transcribe a header or a log. A current file uploads nothing.
+      - name: Check whether the generated bindings changed
+        id: bindings
+        if: matrix.source_checks
+        shell: pwsh
+        run: |
+          git diff --quiet -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
+          $diffExit = $LASTEXITCODE
+          if ($diffExit -gt 1) { exit $diffExit }
+          "changed=$($diffExit -eq 1)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.source_checks && steps.bindings.outputs.changed == 'true'
+        with:
+          name: generated-bindings
+          path: windows/MiniXiangqi.Core/Generated/Mxq.g.cs
+          if-no-files-found: error
+
+      - name: Fail when the committed bindings are stale
+        if: matrix.source_checks && steps.bindings.outputs.changed == 'true'
+        shell: pwsh
+        run: |
+          git diff -- windows/MiniXiangqi.Core/Generated/Mxq.g.cs
+          throw 'The committed bindings differ from what ClangSharp generates from core/include/mxq.h. Download the generated-bindings artifact from this run and commit its Mxq.g.cs.'
 
       # The board's four voices are one set of samples with one generator,
       # apple/Sounds/generate.py, and both frontends bundle its output. They are
@@ -281,7 +306,7 @@ jobs:
       # ---------------------------------------------------------------------
       #
       # windows/package-zip.ps1 publishes the app and the self-check
-      # self-contained into one directory, verifies the staged network against
+      # self-contained into one directory, verifies the staged networks against
       # pinned-inputs.json, adds the licence and the attribution note, checks
       # that every native binary is this architecture, and zips it. Everything
       # it decides is argued there rather than here.
@@ -293,7 +318,7 @@ jobs:
       #
       # The artifact is unpacked into a directory of its own and the harness that
       # came out of the zip is run against the zip's own layout — its own
-      # mxqcore.dll, its own assets, its own network, its own runtime, at the
+      # mxqcore.dll, its own assets, its own networks, its own runtime, at the
       # paths a person who unpacked it would have. Nothing from the build tree is
       # on that path, and nothing is added to the unpacked tree: what runs here
       # is byte-for-byte what a person downloads, which is what this step could

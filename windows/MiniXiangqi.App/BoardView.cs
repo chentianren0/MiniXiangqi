@@ -1,4 +1,4 @@
-// The board, on screen: one Win2D canvas, and forty-nine points over it.
+// The board, on screen: one Win2D canvas, and forty-nine or ninety points over it.
 //
 // The picture is BoardPainter's, which is the same code the offscreen renders
 // use. What this adds is what a picture cannot have: points a pointer can hit
@@ -17,6 +17,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using MiniXiangqi.Board;
+using MiniXiangqi.Core;
 using MiniXiangqi.Play;
 
 namespace MiniXiangqi.App;
@@ -26,19 +27,30 @@ public sealed partial class BoardView : Grid
     private readonly CanvasControl _canvas = new();
     private readonly Canvas _points = new();
     private readonly Dictionary<Square, Button> _buttons = [];
+    private readonly bool _interactive;
 
-    private BoardScene _scene = BoardScene.Of(Placement.Empty);
-    private BoardGeometry _geometry = new(BoardGeometry.MinimumPitch);
+    private BoardScene _scene;
+    private BoardGeometry _geometry;
 
+    /// <param name="initialGame">
+    /// The explicit topology this otherwise-empty view has before its first
+    /// scene is assigned. It is initial layout state, never a fallback for a
+    /// scene whose game is unknown.
+    /// </param>
     /// <param name="interactive">
     /// Whether the board has points at all. The pre-start preview does not: it
     /// "shows the initial board as a noninteractive preview", and a preview has
     /// nothing to interact with — saying so is what keeps a screen reader from
-    /// offering forty-nine points that answer to nothing, and what keeps a click
+    /// offering forty-nine or ninety points that answer to nothing, and keeps a click
     /// on it from meaning anything.
     /// </param>
-    public BoardView(bool interactive = true)
+    public BoardView(GameKind initialGame, bool interactive = true)
     {
+        _interactive = interactive;
+        BoardDefinition initialBoard = BoardDefinition.For(initialGame);
+        _scene = BoardScene.Of(Placement.EmptyFor(initialGame));
+        _geometry = new BoardGeometry(initialBoard, BoardGeometry.MinimumPitch(initialBoard));
+
         // **A board view is born at the size its geometry says.**
         //
         // This is the hole the owner's tour actually fell into, and it is worth
@@ -56,8 +68,8 @@ public sealed partial class BoardView : Grid
         // keeps the invariant this class's own rather than the caller's: it holds
         // from construction, and every set that changes anything re-establishes
         // it. The guard below stays what it was for — the work, not the size.
-        Width = _geometry.BlockSide;
-        Height = _geometry.BlockSide;
+        Width = _geometry.BlockWidth;
+        Height = _geometry.BlockHeight;
 
         _canvas.Draw += OnDraw;
         _canvas.ClearColor = Microsoft.UI.Colors.Transparent;
@@ -72,38 +84,7 @@ public sealed partial class BoardView : Grid
             return;
         }
 
-        for (int rank = 0; rank < Square.Count; rank++)
-        {
-            for (int file = 0; file < Square.Count; file++)
-            {
-                Square square = new(file, rank);
-                Button button = new()
-                {
-                    Tag = square,
-                    Style = (Style)Application.Current.Resources["BoardPointStyle"],
-                };
-                button.Click += (_, _) => PointTapped?.Invoke(square);
-
-                // A point's tap is answered by its own Click and stops here.
-                //
-                // This is the fix for a reported defect: selecting a piece
-                // appeared to need a *double* click. What was wrong is below, in
-                // OnTapped — the filter that was supposed to let a point's tap
-                // pass unanswered could not match — and the effect of the tap
-                // reaching the board's own handler is a background cancel
-                // arriving immediately behind the selection the same click had
-                // just made. The double click worked because the second tap of a
-                // double tap raises DoubleTapped rather than Tapped, so no
-                // cancel followed it and the selection stood.
-                button.Tapped += (_, tapped) => tapped.Handled = true;
-
-                button.PointerEntered += (_, _) => PointerOverChanged?.Invoke(square);
-                button.PointerExited += (_, _) => PointerOverChanged?.Invoke(null);
-                AutomationProperties.SetAutomationId(button, $"point-{square.Name}");
-                _buttons[square] = button;
-                _points.Children.Add(button);
-            }
-        }
+        RebuildButtons();
 
         Tapped += OnTapped;
         PointerExited += (_, _) => PointerOverChanged?.Invoke(null);
@@ -125,7 +106,7 @@ public sealed partial class BoardView : Grid
     /// <summary>
     /// The geometry this view draws at, and the size it takes.
     ///
-    /// The guard is about the work — replacing forty-nine buttons' positions and
+    /// The guard is about the work — replacing every button's position and
     /// invalidating the canvas — and never about the size, which the constructor
     /// has already stated and which only a *changed* geometry can move. Setting
     /// the same geometry twice is a no-op that leaves a correctly sized view;
@@ -142,8 +123,8 @@ public sealed partial class BoardView : Grid
             }
 
             _geometry = value;
-            Width = value.BlockSide;
-            Height = value.BlockSide;
+            Width = value.BlockWidth;
+            Height = value.BlockHeight;
             Place();
             _canvas.Invalidate();
         }
@@ -155,8 +136,13 @@ public sealed partial class BoardView : Grid
         set
         {
             bool reorient = _scene.Flipped != value.Flipped;
+            bool rebuild = _scene.Game != value.Game;
             _scene = value;
-            if (reorient)
+            if (rebuild)
+            {
+                RebuildButtons();
+            }
+            else if (reorient)
             {
                 Place();
             }
@@ -173,8 +159,13 @@ public sealed partial class BoardView : Grid
     /// </summary>
     public void Release() => _canvas.RemoveFromVisualTree();
 
-    private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args) =>
-        BoardPainter.Draw(args.DrawingSession, _scene, _geometry, PieceStyle);
+    private void OnDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        if (_geometry.Board == _scene.Board)
+        {
+            BoardPainter.Draw(args.DrawingSession, _scene, _geometry, PieceStyle);
+        }
+    }
 
     /// <summary>
     /// A tap on the board that was not a point's. Anything else on the board —
@@ -224,8 +215,58 @@ public sealed partial class BoardView : Grid
         return false;
     }
 
+    /// <summary>
+    /// Build exactly one disjoint pitch-sized hit element for every point in
+    /// the scene's selected game. A single view can survive a game switch, so
+    /// these are topology rather than constructor state.
+    /// </summary>
+    private void RebuildButtons()
+    {
+        _points.Children.Clear();
+        _buttons.Clear();
+        if (!_interactive)
+        {
+            return;
+        }
+
+        for (int rank = 0; rank < _scene.Board.RankCount; rank++)
+        {
+            for (int file = 0; file < _scene.Board.FileCount; file++)
+            {
+                Square square = new(file, rank);
+                Button button = new()
+                {
+                    Tag = square,
+                    Style = (Style)Application.Current.Resources["BoardPointStyle"],
+                };
+                button.Click += (_, _) => PointTapped?.Invoke(square);
+
+                // A point's tap is answered by its own Click and stops here.
+                // Otherwise the board's background handler would cancel the
+                // selection immediately behind the click that made it.
+                button.Tapped += (_, tapped) => tapped.Handled = true;
+
+                button.PointerEntered += (_, _) => PointerOverChanged?.Invoke(square);
+                button.PointerExited += (_, _) => PointerOverChanged?.Invoke(null);
+                AutomationProperties.SetAutomationId(button, $"point-{square.Name}");
+                _buttons[square] = button;
+                _points.Children.Add(button);
+            }
+        }
+
+        Place();
+    }
+
     private void Place()
     {
+        // Scene and geometry are assigned separately by the host. A game switch
+        // sets the scene first and immediately refits it; do not briefly place a
+        // 9-by-10 hit topology through the previous game's geometry in between.
+        if (_geometry.Board != _scene.Board)
+        {
+            return;
+        }
+
         double strip = _geometry.StripExtent;
         double pitch = _geometry.Pitch;
         foreach ((Square square, Button button) in _buttons)

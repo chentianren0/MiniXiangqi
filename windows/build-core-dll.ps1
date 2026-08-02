@@ -19,7 +19,7 @@ What it produces:
   windows/artifacts/concrt140.dll    toolset that just compiled it
   windows/artifacts/assets/          the asset directory MxqCoreConfig points
                                      at: the pinned variant configuration and
-                                     the NNUE network under its bundled name
+                                     both NNUE networks under their bundled names
 
 The C++ runtime is staged here, beside the core, because it belongs to the core:
 mxqcore.dll is MSVC's output and links it dynamically, so the runtime is a
@@ -31,7 +31,7 @@ the Store package, whose payload is a build output that no script gets to add
 files to afterwards.
 
 The asset directory is copied from the staging the core's own CMake performs,
-which verifies the network's byte length and SHA-256 against pinned-inputs.json
+which verifies both networks' byte lengths and SHA-256 values against pinned-inputs.json
 before writing a byte. Staging it a second time here would mean verifying it a
 second time, or not verifying it at all. windows/package-zip.ps1 is the
 packaging build, and it ships this staging for the same reason: the assets in
@@ -46,11 +46,15 @@ windows/artifacts/, so the directory holds one architecture's core at a time;
 the build tree is per-architecture, so switching back does not recompile.
 
 .PARAMETER NnueSource
-An override for the NNUE network's bytes, defaulting to the MXQ_NNUE_SOURCE
+An override for the Mini Xiangqi NNUE network's bytes, defaulting to the MXQ_NNUE_SOURCE
 environment variable and then to nothing at all — in which case core/CMakeLists.txt
 uses the network in the repository, which is the ordinary case and needs no
 argument. Pass this only to build against a candidate network that has not been
 committed yet.
+
+.PARAMETER XiangqiNnueSource
+The corresponding override for standard Xiangqi, defaulting to
+MXQ_XIANGQI_NNUE_SOURCE and otherwise to the committed network.
 
 .PARAMETER BuildDirectory
 The CMake build tree. core/.build-windows-<architecture> by default, which
@@ -66,6 +70,7 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string] $Architecture = $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }),
     [string] $NnueSource = $env:MXQ_NNUE_SOURCE,
+    [string] $XiangqiNnueSource = $env:MXQ_XIANGQI_NNUE_SOURCE,
     [string] $BuildDirectory
 )
 
@@ -135,19 +140,28 @@ foreach ($tool in @(@{ Name = 'cmake'; Path = (Join-Path $vsCMake 'CMake\bin') }
     }
 }
 
-# -DMXQ_NNUE_SOURCE only when one was asked for. Left alone, CMake's own default
-# is the network in core/assets, which is what every ordinary build wants; passing
-# a path here unconditionally would mean this script had to know one, and the
-# whole point of committing the network is that nothing has to.
+# A source override is passed only when one was asked for. Left alone, CMake's
+# own defaults are both networks in core/assets, which is what every ordinary
+# build wants; passing paths here unconditionally would make this script a
+# second source of their locations.
 $configureOptions = @(
     "-DCMAKE_BUILD_TYPE=$Configuration"
     '-DMXQ_ENABLE_RULES_FACADE=ON'
     '-DMXQ_BUILD_SHARED_LIBRARY=ON'
     '-DBUILD_TESTING=OFF'
+    # An override belongs to this invocation, not to the architecture's reused
+    # CMake cache. Unset both first; the -D below restores only one explicitly
+    # supplied now, while CMake supplies the committed default for the other.
+    '-UMXQ_NNUE_SOURCE'
+    '-UMXQ_XIANGQI_NNUE_SOURCE'
 )
 if ($NnueSource) {
-    Write-Host "Overriding the network with $NnueSource"
+    Write-Host "Overriding the Mini Xiangqi network with $NnueSource"
     $configureOptions += "-DMXQ_NNUE_SOURCE=$($NnueSource -replace '\\', '/')"
+}
+if ($XiangqiNnueSource) {
+    Write-Host "Overriding the Xiangqi network with $XiangqiNnueSource"
+    $configureOptions += "-DMXQ_XIANGQI_NNUE_SOURCE=$($XiangqiNnueSource -replace '\\', '/')"
 }
 
 Write-Host "Configuring $BuildDirectory ($Configuration, $Architecture)"
@@ -260,17 +274,16 @@ if (-not (Test-Path (Join-Path $artifacts 'vcruntime140.dll'))) {
            "without Visual Studio. Check the C++ redistributable component for $Architecture.")
 }
 
-# The staged, verified asset directory. Configuration warns and stages nothing
-# when the network is missing or does not match its pins, so an empty staging
+# The staged, verified two-game asset directory. Configuration warns and stages
+# nothing when either network is missing or does not match its pins, so an incomplete staging
 # directory here means exactly that, and is reported rather than shipped past.
-$staged = Join-Path $BuildDirectory 'test-assets'
+$staged = Join-Path $BuildDirectory 'test-assets-xiangqi'
 $stagedFiles = @()
 if (Test-Path $staged) { $stagedFiles = @(Get-ChildItem -File $staged) }
-if ($stagedFiles.Count -lt 2) {
-    $where = if ($NnueSource) { $NnueSource } else { 'core/assets, under the name pinned-inputs.json pins' }
-    throw ("The core staged no verified assets in $staged. The NNUE network at " +
-           "$where is missing, or does not match the byte length and SHA-256 " +
-           "pinned-inputs.json pins. The configure log above says which.")
+if ($stagedFiles.Count -lt 3) {
+    throw ("The core did not stage the variant configuration and both verified networks in $staged. " +
+           "A network is missing or does not match the byte length and SHA-256 pinned-inputs.json pins. " +
+           "The configure log above says which.")
 }
 $stagedFiles | ForEach-Object { Copy-Item $_.FullName $artifactAssets -Force }
 

@@ -41,29 +41,51 @@ public sealed unsafe partial class MiniXiangqiCore : IDisposable
                 version.archive_version_min_readable,
                 version.store_schema_version,
                 Utf8.Read(version.core_revision),
-                Utf8.Read(version.fork_revision),
-                Utf8.Read(version.variant_id),
-                Utf8.Read(version.nnue_sha256));
+                Utf8.Read(version.fork_revision));
         }
     }
 
     /// <summary>
-    /// The frozen starting FEN. A constant of the ruleset rather than of any
-    /// core instance, so this too is callable before initialisation.
+    /// The engine variant and network pinned for <paramref name="game"/>. A
+    /// build fact rather than core-instance state, so it is callable before
+    /// initialisation.
     /// </summary>
-    public static string StartFen
+    public static GameProfile Profile(GameKind game)
     {
-        get
+        MxqGameProfile profile = default;
+        profile.struct_size = (uint)sizeof(MxqGameProfile);
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_core_game_profile(game.Code(), &profile, &err),
+            in err,
+            nameof(Mxq.mxq_core_game_profile));
+        GameKind reported = GameVocabulary.Kind(profile.game);
+        if (reported != game)
         {
-            sbyte* buffer = stackalloc sbyte[Mxq.MXQ_FEN_CAP];
-            nuint length;
-            MxqError err = MxqCall.Error();
-            MxqCall.Check(
-                Mxq.mxq_rules_start_fen(buffer, (nuint)Mxq.MXQ_FEN_CAP, &length, &err),
-                in err,
-                nameof(Mxq.mxq_rules_start_fen));
-            return Utf8.Read(new ReadOnlySpan<sbyte>(buffer, (int)length));
+            throw new InvalidDataException("The core returned a mismatched game profile");
         }
+
+        return new GameProfile(
+            reported,
+            Utf8.Read(profile.variant_id),
+            Utf8.Read(profile.nnue_sha256));
+    }
+
+    /// <summary>
+    /// The frozen starting FEN for one explicit game. A constant of its
+    /// ruleset rather than of any core instance, so this too is callable before
+    /// initialisation.
+    /// </summary>
+    public static string StartFen(GameKind game)
+    {
+        sbyte* buffer = stackalloc sbyte[Mxq.MXQ_FEN_CAP];
+        nuint length;
+        MxqError err = MxqCall.Error();
+        MxqCall.Check(
+            Mxq.mxq_rules_start_fen(game.Code(), buffer, (nuint)Mxq.MXQ_FEN_CAP, &length, &err),
+            in err,
+            nameof(Mxq.mxq_rules_start_fen));
+        return Utf8.Read(new ReadOnlySpan<sbyte>(buffer, (int)length));
     }
 
     /// <summary>
@@ -115,13 +137,14 @@ public sealed unsafe partial class MiniXiangqiCore : IDisposable
     /// only successful creation commits a resolved side.
     /// </summary>
     public GameSession ResumeOrCreate(
+        GameKind game,
         int humanSide,
         int aiLevel,
         int firstMoverChoice,
         uint movetimeMs,
-        int mode = Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI)
+        int mode)
     {
-        return ResumeActive() ?? Create(mode, humanSide, aiLevel, firstMoverChoice, movetimeMs);
+        return ResumeActive() ?? Create(game, mode, humanSide, aiLevel, firstMoverChoice, movetimeMs);
     }
 
     /// <summary>
@@ -145,13 +168,13 @@ public sealed unsafe partial class MiniXiangqiCore : IDisposable
     /// Apply the plan for a fresh probe: threads, Hash, the pinned variant
     /// configuration, and the NNUE.
     /// </summary>
-    public EnginePlan PrepareEngine(MxqEngineBudget budget)
+    public EnginePlan PrepareEngine(GameKind game, MxqEngineBudget budget)
     {
         MxqEnginePlan applied = default;
         applied.struct_size = (uint)sizeof(MxqEnginePlan);
         MxqError err = MxqCall.Error();
         MxqCall.Check(
-            Mxq.mxq_engine_prepare(Live, &budget, &applied, &err),
+            Mxq.mxq_engine_prepare(Live, game.Code(), &budget, &applied, &err),
             in err,
             nameof(Mxq.mxq_engine_prepare));
         return Describe(applied);
@@ -189,12 +212,29 @@ public sealed unsafe partial class MiniXiangqiCore : IDisposable
     }
 
     /// <summary>
+    /// Whether the ready engine is configured for this exact game and build.
+    /// A ready engine for the other game is not reusable.
+    /// </summary>
+    public bool EngineReadyFor(GameKind game)
+    {
+        (int state, string identifier) = Engine;
+        return state == Mxq.MXQ_ENGINE_STATE_READY
+            && identifier == Profile(game).Identifier(Version);
+    }
+
+    /// <summary>
     /// Create a game with the supplied frozen configuration. A
     /// <c>MXQ_FIRST_MOVER_RANDOM</c> choice is resolved into
     /// <paramref name="humanSide"/> before this call, because only successful
     /// creation commits a resolved side.
     /// </summary>
-    public GameSession Create(int mode, int humanSide, int aiLevel, int firstMoverChoice, uint movetimeMs)
+    public GameSession Create(
+        GameKind game,
+        int mode,
+        int humanSide,
+        int aiLevel,
+        int firstMoverChoice,
+        uint movetimeMs)
     {
         MxqGameConfig config = default;
         config.struct_size = (uint)sizeof(MxqGameConfig);
@@ -203,11 +243,15 @@ public sealed unsafe partial class MiniXiangqiCore : IDisposable
         config.ai_level = aiLevel;
         config.first_mover_choice = firstMoverChoice;
         config.ai_movetime_ms = movetimeMs;
+        config.game = game.Code();
 
-        MxqGame* game;
+        MxqGame* nativeGame;
         MxqError err = MxqCall.Error();
-        MxqCall.Check(Mxq.mxq_game_create(Live, &config, &game, &err), in err, nameof(Mxq.mxq_game_create));
-        return new GameSession(game);
+        MxqCall.Check(
+            Mxq.mxq_game_create(Live, &config, &nativeGame, &err),
+            in err,
+            nameof(Mxq.mxq_game_create));
+        return new GameSession(nativeGame);
     }
 
     /// <summary>

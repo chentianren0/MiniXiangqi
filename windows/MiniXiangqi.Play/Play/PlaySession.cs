@@ -115,7 +115,7 @@ public sealed class PlaySession : IDisposable
     private string _gameId;
     private GameConfiguration _configuration;
 
-    private Placement _placement = Placement.Empty;
+    private Placement _placement = null!;
     private Square? _selected;
     private ImmutableHashSet<Square> _destinations = [];
     private ImmutableHashSet<Square> _captures = [];
@@ -217,7 +217,9 @@ public sealed class PlaySession : IDisposable
     /// </summary>
     public bool MoveNotSaved { get; private set; }
 
-    public BoardScene Scene { get; private set; } = BoardScene.Of(Placement.Empty);
+    public BoardScene Scene { get; private set; } = null!;
+
+    public GameKind Game => _configuration.Game;
 
     public bool IsHumanVersusAi => _configuration.Mode == Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI;
 
@@ -647,6 +649,11 @@ public sealed class PlaySession : IDisposable
     /// </summary>
     public void Dispose()
     {
+        // A preparation task completes when it posts its scheduler answer. Make
+        // that answer, and any already-posted search answer, stale before their
+        // native/session resources are released below.
+        _attempt++;
+        _preparing = false;
         StopIndicator();
         _search.Dispose();
         Quiesce(_preparation);
@@ -678,9 +685,10 @@ public sealed class PlaySession : IDisposable
         Status = _game.State();
         ResultState = _committed is { } record ? StateOf(record.Outcome) : Status.State;
         ResultReason = _committed is { } filed ? filed.EndReason : Status.EndReason;
-        _placement = new Placement(Position.Fen);
+        BoardDefinition board = BoardDefinition.For(_configuration.Game);
+        _placement = new Placement(Position.Fen, _configuration.Game);
         MoveRecord = _game.MoveHistory();
-        _lastMove = MoveRecord.Count > 0 ? Move.Parse(MoveRecord[^1]) : null;
+        _lastMove = MoveRecord.Count > 0 ? Move.Parse(MoveRecord[^1], board) : null;
         _checkedGeneral = Position.InCheck ? _placement.General(SideToMove) : null;
         Compose();
     }
@@ -696,7 +704,7 @@ public sealed class PlaySession : IDisposable
             ImmutableHashSet<Square>.Builder taken = ImmutableHashSet.CreateBuilder<Square>();
             foreach (string text in _game.LegalMovesFrom(point.Name))
             {
-                if (Move.Parse(text) is not { } move)
+                if (Move.Parse(text, _placement.Board) is not { } move)
                 {
                     continue;
                 }
@@ -924,7 +932,7 @@ public sealed class PlaySession : IDisposable
             return;
         }
 
-        if (_core.Engine.State == Mxq.MXQ_ENGINE_STATE_READY)
+        if (_core.EngineReadyFor(_configuration.Game))
         {
             StartSearch();
         }
@@ -956,7 +964,7 @@ public sealed class PlaySession : IDisposable
             MxqException? failure = null;
             try
             {
-                _core.PrepareEngine(budget);
+                _core.PrepareEngine(_configuration.Game, budget);
             }
             catch (MxqException caught)
             {
@@ -1053,7 +1061,7 @@ public sealed class PlaySession : IDisposable
                 // covers both race directions.
                 if (answer.GameId != _gameId
                     || answer.PositionRevision != Position.PositionRevision
-                    || Move.Parse(answer.Move) is not { } move)
+                    || Move.Parse(answer.Move, _placement.Board) is not { } move)
                 {
                     Publish();
                     return;

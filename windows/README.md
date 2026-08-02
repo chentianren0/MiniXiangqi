@@ -2,8 +2,8 @@
 
 The WinUI 3 frontend, over the same shared core as the Apple frontend. What is here
 is the core built as a DLL, C# declarations generated from `core/include/mxq.h`, the
-Play destination — the home where what to play is chosen, each mode's pre-start state,
-and the board with a live game against the AI — the History destination with its
+Play destination — four Xiangqi and Mini Xiangqi entries, each selection's pre-start
+state, and the board with a live game against the AI — the History destination with its
 step-through viewer and its import, the Settings destination and the board's four
 voices, two headless harnesses that are how any of it is verified on a machine
 nobody is logged into, and the packaging build that turns all of it into the zip
@@ -22,7 +22,7 @@ menus rather than recreated Apple styling.
 | | |
 |---|---|
 | `build-core-dll.ps1` | builds `mxqcore.dll` and stages the engine's assets and the C++ runtime into `artifacts/` |
-| `package-zip.ps1` | the direct distribution: publishes, checks the network it carries, and writes the zip |
+| `package-zip.ps1` | the direct distribution: publishes, checks both networks it carries, and writes the zip |
 | `package-msix.ps1` | the [Store package](#the-store-package): builds the unsigned `.msix`, then unpacks it and checks what the Store would read |
 | `New-DistributionNotices.ps1` | writes `LICENSE` and `NOTICE.md` into either distribution, from `pinned-inputs.json` |
 | `Get-PeMachine.ps1` | one PE-header reader, dot-sourced by the three scripts above that ask what architecture a binary is |
@@ -105,11 +105,10 @@ pwsh windows\build-core-dll.ps1
 dotnet build windows\MiniXiangqi.slnx -c Release
 ```
 
-The NNUE network needs no argument: it is in this repository at `core/assets`
-([`docs/engine-integration.md`](../docs/engine-integration.md)), and CMake verifies its
-byte length and SHA-256 against [`pinned-inputs.json`](../pinned-inputs.json) before
-staging anything. `-NnueSource` is still there as an override, for trying a candidate
-network that has not been committed yet. Building the C# projects without having run the
+The two NNUE networks need no arguments: both are in this repository at `core/assets`
+([`docs/engine-integration.md`](../docs/engine-integration.md)), and CMake verifies their
+byte lengths and SHA-256 values against [`pinned-inputs.json`](../pinned-inputs.json)
+before staging anything. Building the C# projects without having run the
 script first fails with a message that says so rather than producing an executable that
 cannot find its core.
 
@@ -181,7 +180,7 @@ shape came out as:
 - **`[DllImport]`, not `[LibraryImport]`.** ClangSharp 21.1.8.4 has no `LibraryImport`
   mode: `--library-path` is documented as "the string to use in the DllImport attribute",
   and there is no generation feature for the other. The two cannot both be had from the
-  generator, and generation is the half worth keeping — it is what stops 54 signatures
+  generator, and generation is the half worth keeping — it is what stops 55 signatures
   from being transcribed by hand. The generated declarations are
   `[DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]`,
   which under `DisableRuntimeMarshalling` performs no marshalling either. `core-interface.md`
@@ -212,12 +211,12 @@ translation units compiled again with `MXQ_BUILD_SHARED` defined, which is the s
 `mxq.h` already carries — it turns `MXQ_API` into `__declspec(dllexport)` under MSVC.
 
 CMake's `WINDOWS_EXPORT_ALL_SYMBOLS` was the alternative and was rejected on the
-merits. The header marks the export macro on its 54 functions and on nothing else, so
+merits. The header marks the export macro on its 55 functions and on nothing else, so
 the macro produces a DLL whose exported surface is exactly the contract; exporting all
 symbols would instead publish everything the link pulled in, which here is the whole
 vendored Fairy-Stockfish fork and the whole SQLite amalgamation — components
 `docs/architecture.md` requires to stay invisible through `mxq.h`. `dumpbin /exports`
-on the built DLL reports 54 symbols and no others.
+on the built DLL reports 55 symbols and no others.
 
 ## The board
 
@@ -720,7 +719,7 @@ Apple bundle's, builds every project, runs the smoke harness against `docs/copy.
 renders the board, builds the distribution zip, and builds the Store package. It uploads
 four artifacts on every run — the board renders, the zip per architecture, the `.msix`
 per architecture, and the `.msixupload` that carries both packages to Partner Center —
-and it takes no secrets: the network the AI needs is in the checkout, and the package is
+and it takes no secrets: both networks the AI needs are in the checkout, and the package is
 unsigned because the Store signs what it accepts.
 
 **It is a matrix over two architectures**, each on its own native runner: `windows-2025`
@@ -863,26 +862,26 @@ places. **The build tree was never evidence for the zip on this point**: it runs
 it was built, and this is precisely the class of thing that is only wrong after a
 publish.
 
-**The network is in the zip, and the zip is the whole app.** *(2026-07-31.)* It used to be
+**Both networks are in the zip, and the zip is the whole app.** It used to be
 the one thing deliberately left out: this repository is public, a GitHub Actions artifact
 on a public repository can be downloaded by any logged-in GitHub account, and the network
 then bundled was community-trained with a redistribution licence nobody had established.
-The network [`docs/engine-integration.md`](../docs/engine-integration.md) now records is
-this project's own, so there is nothing the artifact cannot carry and no second, more
-complete package to build.
+The Mini Xiangqi network is this project's own; the standard Xiangqi network is the
+Fairy-Stockfish project's published GPL network. Both may travel with this GPL app, so
+there is no second, more complete package to build.
 
 What survives that change is the check, inverted. The publish copies the verified asset
 directory — the staging CMake produced, not a second uncontrolled copy — and the script
-then confirms the network is in it and *is* the network: exactly one `.nnue`, under the
-manifest's name, at the manifest's byte length, with the manifest's SHA-256. The failure
+then confirms both networks are present as the exact `.nnue` set under the manifest's
+names, byte lengths, and SHA-256 values. The failure
 it guards is the quiet one. A network that is absent, renamed or damaged does not crash
 anything: the AI declines to start, every other feature works, and whoever unpacked the
 zip has no way to know why. Name matters as much as bytes, because the engine restricts
 NNUE to the matching variant by the file's leading name and ignores a mismatch in silence.
 
 `NOTICE.md` names Fairy-Stockfish with the pinned fork revision, SQLite's public-domain
-dedication, the Microsoft redistributables, and the network — which filename, which byte
-length, which SHA-256, and which pipeline revision produced it — all generated from
+dedication, the Microsoft redistributables, and both networks — including which one this
+project trained and where the Xiangqi network came from — all generated from
 [`pinned-inputs.json`](../pinned-inputs.json) rather than transcribed, so the note and
 the manifest cannot disagree. `LICENSE` is the repository's own GPL-3.0. There is no
 `NETWORK.md`: it existed to describe a file that was not in the zip.
@@ -903,7 +902,7 @@ read back.
 **The zip is proved runnable rather than assumed to be.** The workflow unpacks the
 artifact it just built into a directory of its own and runs the `MiniXiangqi.Smoke.exe`
 that came out of the zip against the zip's own layout: its own core DLL, its own assets,
-its own network, its own runtime, at the paths somebody who unpacked it would have, with
+its own networks, its own runtime, at the paths somebody who unpacked it would have, with
 nothing from the build tree on that path and nothing added to it. That last clause is new
 and is worth the sentence — the run used to need the network dropped in first, so what it
 exercised was the zip plus a step, and it now exercises the zip. The harness is in the zip
@@ -912,9 +911,9 @@ is sound before they sit down with it.
 
 **Runnable, and the word has a limit worth stating.** What that run proves is the layer
 the harness touches: the core DLL loads from the unpacked folder, the C++ runtime is
-there, the assets and the network are found at the paths a person would have. It has no
-window and no XAML, which is what lets it run on a runner with no desktop — and means it
-passed, 361 checks and no failures, on a zip whose app could not open a window at all.
+there, and the assets and networks are found at the paths a person would have. It has no
+window and no XAML, which is what lets it run on a runner with no desktop — and means a
+green harness still cannot prove that the app can open its window.
 The app's own launch is not something a headless run can reach on Windows, because a
 WinUI process cannot open one in session 0 at all
 ([above](#the-windows-floor-and-the-board-that-will-not-fit) has the fuller version). So
@@ -1100,7 +1099,7 @@ names.
 Then, on the unpacked tree, the things whose absence is silent until somebody installs it:
 a resource index and at least one `.xbf`, without which the app dies before its first
 window exactly as the zip once did; `mxqcore.dll`, `vcruntime140.dll`, `hostfxr.dll` and
-`coreclr.dll`; `sounds\`; `assets\` holding the variant configuration and the network under
+`coreclr.dll`; `sounds\`; `assets\` holding the variant configuration and both networks under
 the names `pinned-inputs.json` pins; `LICENSE` and `NOTICE.md`; and a PE machine-type sweep
 over every `.dll` and `.exe`, because an ARM64 package that quietly resolved x64 natives
 builds, uploads, passes certification and fails on every machine it is for.

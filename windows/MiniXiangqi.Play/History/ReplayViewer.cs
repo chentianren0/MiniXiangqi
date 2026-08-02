@@ -71,7 +71,7 @@ public sealed class ReplayViewer : IDisposable
     public int Plies => MoveRecord.Count;
 
     /// <summary>The board, read-only: no selection, no destinations, no hover.</summary>
-    public BoardScene Scene { get; private set; } = BoardScene.Of(Placement.Empty);
+    public BoardScene Scene { get; private set; } = null!;
 
     /// <summary>The position the core reported at <see cref="Ply"/>.</summary>
     public BoardPosition Position { get; private set; }
@@ -135,8 +135,10 @@ public sealed class ReplayViewer : IDisposable
     /// </summary>
     private void Compose()
     {
-        Placement placement = new(Position.Fen);
-        Move? last = Ply > 0 ? Move.Parse(MoveRecord[Ply - 1]) : null;
+        Placement placement = new(Position.Fen, Record.Game);
+        Move? last = Ply > 0
+            ? Move.Parse(MoveRecord[Ply - 1], placement.Board)
+            : null;
         Side toMove = Position.SideToMove == Mxq.MXQ_COLOR_BLACK ? Side.Black : Side.Red;
 
         Scene = new BoardScene
