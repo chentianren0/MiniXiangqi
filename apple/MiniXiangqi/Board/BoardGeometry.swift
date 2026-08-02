@@ -12,26 +12,39 @@
 // fixed there, because settling them in prose before anyone had seen a board
 // produced numbers that were internally consistent and unverifiable. They are
 // settled here instead, against a board that renders, and the gates are
-// measured by BoardStyleTests rather than asserted in a comment.
+// measured by BoardStyleTests rather than asserted in a comment. The two games
+// share the same board-width footprint; their pitches differ because one has
+// seven files and the other nine.
 
 import CoreGraphics
 
 struct BoardGeometry {
+    var board: BoardDefinition
+
     /// The distance between two adjacent points.
     var pitch: CGFloat
 
-    /// The accepted floor on every interactive board, on every platform.
-    static let minimumPitch: CGFloat = 44
+    /// The accepted shared approximate width range. Each game's pitch remains
+    /// a whole point so every derived dimension stays on stable pixel bounds:
+    /// Mini Xiangqi is 44...102 and Xiangqi is 34...79.
+    static let minimumCoreWidth: CGFloat = 308
+    static let maximumCoreWidth: CGFloat = 714
 
-    /// The largest whole-point pitch inside the contract's 720-point bound on
-    /// the board core: 102, for a core of 714. The bound divides by seven to
-    /// 102.857, and a pitch that is not a whole number buys six points of core
-    /// at the cost of every dimension derived from it landing between points.
-    /// Beyond this the two palaces drift far enough apart on a large display to
-    /// cost more in eye movement than the extra size returns, and a disc passes
-    /// 81 points, which no physical set resembles. Surplus space goes to the
-    /// surrounding layout rather than to the board.
-    static let maximumPitch: CGFloat = 102
+    static func minimumPitch(for board: BoardDefinition) -> CGFloat {
+        (minimumCoreWidth / CGFloat(board.fileCount)).rounded(.down)
+    }
+
+    static func maximumPitch(for board: BoardDefinition) -> CGFloat {
+        (maximumCoreWidth / CGFloat(board.fileCount)).rounded(.down)
+    }
+
+    var minimumPitch: CGFloat { Self.minimumPitch(for: board) }
+    var maximumPitch: CGFloat { Self.maximumPitch(for: board) }
+
+    init(board: BoardDefinition, pitch: CGFloat) {
+        self.board = board
+        self.pitch = pitch
+    }
 
     // MARK: - The board itself
 
@@ -39,8 +52,11 @@ struct BoardGeometry {
     /// edge disc from being clipped and contains the outermost points' markers.
     var margin: CGFloat { 0.5 * pitch }
 
-    /// 7 points plus a half-cell margin on each side.
-    var coreSide: CGFloat { 7 * pitch }
+    /// Every point plus a half-cell margin on each outer edge.
+    var coreSize: CGSize {
+        CGSize(width: CGFloat(board.fileCount) * pitch,
+               height: CGFloat(board.rankCount) * pitch)
+    }
 
     /// `0.026 p`, clamped to between 0.80 and 1.60 points, so the lines never
     /// coarsen as the board grows. The palace diagonals match it exactly.
@@ -163,7 +179,7 @@ struct BoardGeometry {
     /// The board core together with the two file-numeral strips — the rectangle
     /// no glass surface may intersect.
     var blockSize: CGSize {
-        CGSize(width: coreSide, height: coreSide + 2 * stripHeight)
+        CGSize(width: coreSize.width, height: coreSize.height + 2 * stripHeight)
     }
 
     // MARK: - Placing points
@@ -171,8 +187,8 @@ struct BoardGeometry {
     /// The centre of a point within the board core, with the board core's own
     /// origin at (0, 0). `flipped` puts Black at the bottom.
     func center(of square: Square, flipped: Bool) -> CGPoint {
-        let file = flipped ? Square.count - 1 - square.file : square.file
-        let rank = flipped ? square.rank : Square.count - 1 - square.rank
+        let file = flipped ? board.fileCount - 1 - square.file : square.file
+        let rank = flipped ? square.rank : board.rankCount - 1 - square.rank
         return CGPoint(x: margin + CGFloat(file) * pitch,
                        y: margin + CGFloat(rank) * pitch)
     }
@@ -186,21 +202,22 @@ struct BoardGeometry {
     /// where interpolating each point along a straight line would drive all
     /// of them through the centre at once. The rotation alone would swing the
     /// corner points beyond the core on the diagonals, so the whole position
-    /// is scaled by `1/(|cos| + |sin|)` — the rotating square held inside its
-    /// own bounding square — which keeps the outermost points riding exactly
-    /// along the outer grid lines: every disc keeps the same clearance from
-    /// the core's edge mid-flip that it has at rest. Positions rotate; the
-    /// characters are never rotated, so they stay upright throughout.
+    /// is scaled to keep the rotating rectangle inside its own bounds. Every
+    /// disc therefore keeps its clearance from the core's edge. Positions
+    /// rotate; characters and icons stay upright throughout.
     func center(of square: Square, flip: Double) -> CGPoint {
         guard flip != 0 else { return center(of: square, flipped: false) }
         guard flip != 1 else { return center(of: square, flipped: true) }
         let base = center(of: square, flipped: false)
-        let mid = coreSide / 2
+        let mid = CGPoint(x: coreSize.width / 2, y: coreSize.height / 2)
         let angle = Double.pi * flip
-        let squeeze = 1 / (abs(cos(angle)) + abs(sin(angle)))
-        let dx = base.x - mid, dy = base.y - mid
-        return CGPoint(x: mid + (dx * cos(angle) - dy * sin(angle)) * squeeze,
-                       y: mid + (dx * sin(angle) + dy * cos(angle)) * squeeze)
+        let cosine = abs(cos(angle)), sine = abs(sin(angle))
+        let width = coreSize.width, height = coreSize.height
+        let squeeze = min(width / (width * cosine + height * sine),
+                          height / (width * sine + height * cosine))
+        let dx = base.x - mid.x, dy = base.y - mid.y
+        return CGPoint(x: mid.x + (dx * cos(angle) - dy * sin(angle)) * squeeze,
+                       y: mid.y + (dx * sin(angle) + dy * cos(angle)) * squeeze)
     }
 
     /// The point a tap at `location` addresses, or nil when the tap fell
@@ -209,26 +226,28 @@ struct BoardGeometry {
     func square(at location: CGPoint, flipped: Bool) -> Square? {
         let column = Int(((location.x - margin) / pitch).rounded())
         let row = Int(((location.y - margin) / pitch).rounded())
-        guard (0..<Square.count).contains(column), (0..<Square.count).contains(row) else {
+        guard (0..<board.fileCount).contains(column),
+              (0..<board.rankCount).contains(row) else {
             return nil
         }
-        return Square(file: flipped ? Square.count - 1 - column : column,
-                      rank: flipped ? row : Square.count - 1 - row)
+        return Square(file: flipped ? board.fileCount - 1 - column : column,
+                      rank: flipped ? row : board.rankCount - 1 - row)
     }
 
     /// The largest pitch whose board block fits `size`, or nil when even the
     /// floor does not fit.
     ///
-    /// `floor` is the accepted interactive floor by default. A pre-start
+    /// `floor` is the board's accepted interactive floor by default. A pre-start
     /// preview passes a lower one: the floor exists to protect interaction, and
     /// a preview has none to protect, so it yields space to the setup controls
     /// whenever they need it.
-    static func fitting(_ size: CGSize, floor: CGFloat = minimumPitch) -> BoardGeometry? {
-        // stripHeight depends on the pitch, so solve by trying the width-bound
-        // pitch and stepping down until the block's height fits too.
-        var pitch = min((size.width / 7).rounded(.down), maximumPitch)
+    static func fitting(_ size: CGSize, board: BoardDefinition,
+                        floor: CGFloat? = nil) -> BoardGeometry? {
+        let floor = floor ?? minimumPitch(for: board)
+        var pitch = min((size.width / CGFloat(board.fileCount)).rounded(.down),
+                        maximumPitch(for: board))
         while pitch >= floor {
-            let candidate = BoardGeometry(pitch: pitch)
+            let candidate = BoardGeometry(board: board, pitch: pitch)
             if candidate.blockSize.height <= size.height { return candidate }
             pitch -= 1
         }

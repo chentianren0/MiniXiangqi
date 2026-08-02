@@ -98,10 +98,10 @@ struct MoveReading: Hashable {
     /// the sitting itself did. Quadratic in the line's length, because each
     /// placement is a walk from the start; a game's own length is the measure
     /// of what reading it is worth.
-    static func line(for moves: [String],
+    static func line(for moves: [String], on board: BoardDefinition,
                      placementBefore: (Int) throws -> Placement) throws -> [MoveReading] {
         try moves.enumerated().map { ply, text in
-            guard let move = Move(text: text) else {
+            guard let move = Move(text: text, on: board) else {
                 throw UnreadableStoredMove(ply: ply)
             }
             return MoveReading(of: move, in: try placementBefore(ply))

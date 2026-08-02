@@ -3,7 +3,7 @@
 //
 // docs/interaction-design.md, "Layout shapes": two arrangements chosen by the
 // available space rather than by device identity, so a resized Mac window and a
-// windowed iPad behave the same way as each other. `BoardLayout.shape(in:)` is
+// windowed iPad behave the same way as each other. `BoardLayout.shape(in:game:)` is
 // that rule, and this is where it is held to the shapes the contract names —
 // on a phone, on an iPad in both orientations, and at the accepted macOS floor,
 // where the answer is load-bearing in the other direction: that floor was
@@ -30,15 +30,25 @@ import Testing
 @Suite("Layout shapes")
 @MainActor
 struct BoardLayoutTests {
+    private let mini = GameKind.miniXiangqi
+
+    private var miniMinimumPitch: CGFloat {
+        BoardGeometry.minimumPitch(for: mini.board)
+    }
+
+    private var miniMaximumPitch: CGFloat {
+        BoardGeometry.maximumPitch(for: mini.board)
+    }
 
     // MARK: - The shapes the contract names
 
     @Test("A phone stacks: the panel leaves nothing that is still a board")
     func phonePortraitStacks() {
         let phone = CGSize(width: 440, height: 770)
-        #expect(BoardLayout.shape(in: phone) == .stacked)
+        #expect(BoardLayout.shape(in: phone, game: mini) == .stacked)
         // And what it stacks is a real board, above the accepted floor.
-        #expect(BoardLayout.stackedGeometry(in: phone).pitch >= BoardGeometry.minimumPitch)
+        #expect(BoardLayout.stackedGeometry(in: phone, game: mini).pitch
+                >= miniMinimumPitch)
     }
 
     /// The narrower phone the device policy actually names, and the one every
@@ -66,14 +76,15 @@ struct BoardLayoutTests {
           arguments: [CGFloat(672), CGFloat(720)])
     func phone402PortraitStacks(height: CGFloat) {
         let phone = CGSize(width: 402, height: height)
-        #expect(BoardLayout.shape(in: phone) == .stacked)
-        #expect(BoardLayout.stackedGeometry(in: phone).pitch >= BoardGeometry.minimumPitch)
+        #expect(BoardLayout.shape(in: phone, game: mini) == .stacked)
+        #expect(BoardLayout.stackedGeometry(in: phone, game: mini).pitch
+                >= miniMinimumPitch)
 
         // Play's chrome leaves the board well clear of its floor: this phone is
         // not a phone that draws floor-sized boards.
-        #expect(BoardLayout.stackedGeometry(in: phone,
+        #expect(BoardLayout.stackedGeometry(in: phone, game: mini,
                                             chrome: BoardLayout.stackedChromeHeight).pitch
-                > BoardGeometry.minimumPitch)
+                > miniMinimumPitch)
 
         // Replay's chrome is the header above the board plus the panel beneath
         // it. Asking for the whole of the panel's side-by-side height put that
@@ -86,11 +97,11 @@ struct BoardLayoutTests {
         // rather than for arithmetic: what is asserted is the relation between
         // the ask, the grant and the floor, not either number.
         let asked: CGFloat = 69 + 200
-        let chrome = BoardLayout.stackedChrome(in: phone, asking: asked)
+        let chrome = BoardLayout.stackedChrome(in: phone, game: mini, asking: asked)
         #expect(chrome == asked, "the ask fits, so it is granted whole")
-        #expect(chrome < phone.height - BoardLayout.minimumBoardHeight)
-        let board = BoardLayout.stackedGeometry(in: phone, chrome: chrome)
-        #expect(board.pitch > BoardGeometry.minimumPitch, "the board is off its floor")
+        #expect(chrome < phone.height - BoardLayout.minimumBoardHeight(for: mini))
+        let board = BoardLayout.stackedGeometry(in: phone, game: mini, chrome: chrome)
+        #expect(board.pitch > miniMinimumPitch, "the board is off its floor")
         #expect(board.blockSize.height <= phone.height - chrome)
 
         // The grant still tightens where the space really is short — a header
@@ -98,12 +109,28 @@ struct BoardLayoutTests {
         // the chrome yields, the board stands exactly on its floor, and the
         // block still fits the slot it is left.
         let outsized: CGFloat = 200 + 200
-        let tightened = BoardLayout.stackedChrome(in: phone, asking: outsized)
+        let tightened = BoardLayout.stackedChrome(in: phone, game: mini,
+                                                  asking: outsized)
         #expect(tightened < outsized, "the chrome is what tightens, not the board")
-        #expect(tightened == phone.height - BoardLayout.minimumBoardHeight)
-        let floored = BoardLayout.stackedGeometry(in: phone, chrome: tightened)
-        #expect(floored.pitch == BoardGeometry.minimumPitch)
+        #expect(tightened == phone.height - BoardLayout.minimumBoardHeight(for: mini))
+        let floored = BoardLayout.stackedGeometry(in: phone, game: mini,
+                                                  chrome: tightened)
+        #expect(floored.pitch == miniMinimumPitch)
         #expect(floored.blockSize.height <= phone.height - tightened)
+    }
+
+    @Test("Xiangqi keeps Mini Xiangqi's width footprint and uses the extra height")
+    func xiangqiKeepsTheWidthFootprint() {
+        let phone = CGSize(width: 402, height: 720)
+        let miniBoard = BoardLayout.stackedGeometry(in: phone, game: .miniXiangqi)
+        let xiangqiBoard = BoardLayout.stackedGeometry(in: phone, game: .xiangqi)
+
+        #expect(BoardLayout.shape(in: phone, game: .xiangqi) == .stacked)
+        #expect(abs(miniBoard.coreSize.width - xiangqiBoard.coreSize.width) <= 3)
+        #expect(xiangqiBoard.pitch == 39)
+        #expect(xiangqiBoard.coreSize.height > miniBoard.coreSize.height)
+        #expect(xiangqiBoard.blockSize.height <= phone.height
+                - BoardLayout.stackedChromeHeight)
     }
 
     /// What hiding the destination bar bought this phone, stated as the relation
@@ -121,11 +148,12 @@ struct BoardLayoutTests {
         let replayChrome: CGFloat = 69 + 200
         func boards(in height: CGFloat) -> (play: CGFloat, replay: CGFloat) {
             let phone = CGSize(width: 402, height: height)
-            return (BoardLayout.stackedGeometry(in: phone,
+            return (BoardLayout.stackedGeometry(in: phone, game: mini,
                                                 chrome: BoardLayout.stackedChromeHeight).pitch,
                     BoardLayout.stackedGeometry(
-                        in: phone,
-                        chrome: BoardLayout.stackedChrome(in: phone, asking: replayChrome)).pitch)
+                        in: phone, game: mini,
+                        chrome: BoardLayout.stackedChrome(in: phone, game: mini,
+                                                         asking: replayChrome)).pitch)
         }
 
         let withTheBar = boards(in: 672)
@@ -140,30 +168,45 @@ struct BoardLayoutTests {
     @Test("An iPad in portrait stacks: the panel would cost the board more than it returns")
     func padPortraitStacks() {
         let padPortrait = CGSize(width: 834, height: 1130)
-        #expect(BoardLayout.shape(in: padPortrait) == .stacked)
+        #expect(BoardLayout.shape(in: padPortrait, game: mini) == .stacked)
         // The stacked board there is the largest the contract allows; the panel
         // beside it would have been less than two thirds of that.
-        #expect(BoardLayout.stackedGeometry(in: padPortrait).pitch == BoardGeometry.maximumPitch)
-        #expect(BoardLayout.geometry(in: padPortrait).pitch < BoardGeometry.maximumPitch)
+        #expect(BoardLayout.stackedGeometry(in: padPortrait, game: mini).pitch
+                == miniMaximumPitch)
+        #expect(BoardLayout.geometry(in: padPortrait, game: mini).pitch
+                < miniMaximumPitch)
     }
 
     @Test("An iPad in landscape goes side by side: the height is what bounds the board there")
     func padLandscapeGoesSideBySide() {
         let padLandscape = CGSize(width: 929, height: 790)
-        #expect(BoardLayout.shape(in: padLandscape) == .sideBySide)
-        #expect(BoardLayout.geometry(in: padLandscape).pitch
-                > BoardLayout.stackedGeometry(in: padLandscape).pitch)
+        #expect(BoardLayout.shape(in: padLandscape, game: mini) == .sideBySide)
+        #expect(BoardLayout.geometry(in: padLandscape, game: mini).pitch
+                > BoardLayout.stackedGeometry(in: padLandscape, game: mini).pitch)
     }
 
-    @Test("The accepted macOS floor stays side by side, at exactly the 44-point pitch")
+    @Test("Xiangqi uses the same adaptive shapes on iPad")
+    func xiangqiUsesTheAdaptiveShapes() {
+        #expect(BoardLayout.shape(in: CGSize(width: 834, height: 1130),
+                                  game: .xiangqi) == .stacked)
+        #expect(BoardLayout.shape(in: CGSize(width: 929, height: 790),
+                                  game: .xiangqi) == .sideBySide)
+    }
+
+    @Test("The unified macOS floor holds either game side by side")
     func macOSFloorStaysSideBySide() {
-        // 616 by 388 is the accepted play-content floor, and the board sits
-        // exactly on its own floor inside it. The stacked shape cannot be drawn
-        // at that height at all, which is what settles the choice.
+        // The width is Mini Xiangqi's existing side-by-side floor; Xiangqi's
+        // taller floor sets the shared height. Either game can therefore be
+        // switched in without changing the window's minimum.
         let floor = CGSize(width: BoardLayout.minimumWidth, height: BoardLayout.minimumHeight)
-        #expect(floor == CGSize(width: 616, height: 388))
-        #expect(BoardLayout.shape(in: floor) == .sideBySide)
-        #expect(BoardLayout.geometry(in: floor).pitch == BoardGeometry.minimumPitch)
+        #expect(floor == CGSize(width: 616, height: 416))
+        #expect(BoardLayout.minimumBoardHeight(for: .miniXiangqi) == 388)
+        #expect(BoardLayout.minimumBoardHeight(for: .xiangqi) == 416)
+        for game in GameKind.allCases {
+            #expect(BoardLayout.shape(in: floor, game: game) == .sideBySide)
+            #expect(BoardLayout.geometry(in: floor, game: game).pitch
+                    == BoardGeometry.minimumPitch(for: game.board))
+        }
     }
 
     @Test("An ordinary Mac window stays side by side")
@@ -171,7 +214,7 @@ struct BoardLayoutTests {
         // The window sizes the macOS screenshot series is taken at, less the
         // navigation container's own sidebar and toolbar.
         for size in [CGSize(width: 656, height: 508), CGSize(width: 1566, height: 998)] {
-            #expect(BoardLayout.shape(in: size) == .sideBySide,
+            #expect(BoardLayout.shape(in: size, game: mini) == .sideBySide,
                     "\(size) is a Mac window the accepted look was photographed at")
         }
     }
@@ -187,17 +230,20 @@ struct BoardLayoutTests {
         // it is bound by the width there, so no extra height helps it — while
         // one more point of height is exactly what buys the stacked board a
         // 50th, and 50 beats 49.
-        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 573)) == .sideBySide)
-        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 574)) == .stacked)
+        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 573), game: mini)
+                == .sideBySide)
+        #expect(BoardLayout.shape(in: CGSize(width: 656, height: 574), game: mini)
+                == .stacked)
     }
 
     @Test("A tie goes to side by side, which costs the board nothing and shows the list")
     func aTieGoesToSideBySide() {
         // Wide enough and tall enough for both shapes to reach the ceiling.
         let ample = CGSize(width: 1200, height: 1200)
-        #expect(BoardLayout.geometry(in: ample).pitch == BoardGeometry.maximumPitch)
-        #expect(BoardLayout.stackedGeometry(in: ample).pitch == BoardGeometry.maximumPitch)
-        #expect(BoardLayout.shape(in: ample) == .sideBySide)
+        #expect(BoardLayout.geometry(in: ample, game: mini).pitch == miniMaximumPitch)
+        #expect(BoardLayout.stackedGeometry(in: ample, game: mini).pitch
+                == miniMaximumPitch)
+        #expect(BoardLayout.shape(in: ample, game: mini) == .sideBySide)
     }
 
     @Test("A space too small for either shape is stacked, not squeezed side by side")
@@ -205,7 +251,8 @@ struct BoardLayoutTests {
         // Neither arrangement fits a board at its floor here. The stacked one is
         // what is drawn: the space is too narrow rather than too short, and the
         // shape whose board is bounded by the width is the one that says so.
-        #expect(BoardLayout.shape(in: CGSize(width: 300, height: 300)) == .stacked)
+        #expect(BoardLayout.shape(in: CGSize(width: 300, height: 300), game: mini)
+                == .stacked)
     }
 
     // MARK: - What the stacked shape gives the board
@@ -213,11 +260,13 @@ struct BoardLayoutTests {
     @Test("The stacked board honours the same floor and ceiling as the side-by-side one")
     func stackedRespectsFloorAndCeiling() {
         let vast = CGSize(width: 4000, height: 4000)
-        #expect(BoardLayout.stackedGeometry(in: vast).pitch == BoardGeometry.maximumPitch)
+        #expect(BoardLayout.stackedGeometry(in: vast, game: mini).pitch
+                == miniMaximumPitch)
         // Below the floor the geometry falls back to the floor rather than to
         // something smaller: the board may not be driven below it.
         let cramped = CGSize(width: 100, height: 100)
-        #expect(BoardLayout.stackedGeometry(in: cramped).pitch == BoardGeometry.minimumPitch)
+        #expect(BoardLayout.stackedGeometry(in: cramped, game: mini).pitch
+                == miniMinimumPitch)
     }
 
     @Test("Chrome grown by an accessibility text size takes its room from the board")
@@ -225,9 +274,9 @@ struct BoardLayoutTests {
         // A height-bound space, so the chrome is what the board is competing
         // with. Doubling the chrome cannot leave the board the same size.
         let space = CGSize(width: 1000, height: 700)
-        let ordinary = BoardLayout.stackedGeometry(in: space,
+        let ordinary = BoardLayout.stackedGeometry(in: space, game: mini,
                                                    chrome: BoardLayout.stackedChromeHeight)
-        let grown = BoardLayout.stackedGeometry(in: space,
+        let grown = BoardLayout.stackedGeometry(in: space, game: mini,
                                                 chrome: 2 * BoardLayout.stackedChromeHeight)
         #expect(grown.pitch < ordinary.pitch)
     }
@@ -248,16 +297,21 @@ struct BoardLayoutTests {
         let widths: [CGFloat] = [320, 402, 440, 616, 656, 676, 744, 834, 1024, 1210, 1566]
         let asking: [CGFloat] = [0, 116, 140, 260, 400]
         var overflowing: [String] = []
-        for width in widths {
-            for height in stride(from: BoardLayout.minimumBoardHeight, through: 1400, by: 1) {
-                let size = CGSize(width: width, height: height)
-                for wanted in asking {
-                    let chrome = BoardLayout.stackedChrome(in: size, asking: wanted)
-                    let block = BoardLayout.stackedGeometry(in: size, chrome: chrome)
-                        .blockSize.height
-                    if block > size.height - chrome {
-                        overflowing.append("\(width)×\(height) asking \(wanted): "
-                                           + "\(block) drawn into \(size.height - chrome)")
+        for game in GameKind.allCases {
+            for width in widths {
+                for height in stride(from: BoardLayout.minimumBoardHeight(for: game),
+                                     through: 1400, by: 1) {
+                    let size = CGSize(width: width, height: height)
+                    for wanted in asking {
+                        let chrome = BoardLayout.stackedChrome(in: size, game: game,
+                                                               asking: wanted)
+                        let block = BoardLayout.stackedGeometry(in: size, game: game,
+                                                                chrome: chrome)
+                            .blockSize.height
+                        if block > size.height - chrome {
+                            overflowing.append("\(game) \(width)×\(height) asking \(wanted): "
+                                               + "\(block) drawn into \(size.height - chrome)")
+                        }
                     }
                 }
             }
@@ -274,14 +328,15 @@ struct BoardLayoutTests {
         // block that cannot go below 340 — 65 points of board over the panel
         // and off the bottom of the window.
         let window = CGSize(width: 616, height: 535)
-        #expect(BoardLayout.shape(in: window) == .stacked)
-        let chrome = BoardLayout.stackedChrome(in: window, asking: 260)
+        #expect(BoardLayout.shape(in: window, game: mini) == .stacked)
+        let chrome = BoardLayout.stackedChrome(in: window, game: mini, asking: 260)
         #expect(chrome < 260, "the chrome is what tightens, not the board")
-        #expect(BoardLayout.stackedGeometry(in: window, chrome: chrome).blockSize.height
+        #expect(BoardLayout.stackedGeometry(in: window, game: mini,
+                                            chrome: chrome).blockSize.height
                 <= window.height - chrome)
         // And where there is room for both, the chrome asks and receives.
         let ample = CGSize(width: 834, height: 1130)
-        #expect(BoardLayout.stackedChrome(in: ample, asking: 260) == 260)
+        #expect(BoardLayout.stackedChrome(in: ample, game: mini, asking: 260) == 260)
     }
 
     @Test("A preview yields to the controls under it, below the interactive floor")
@@ -290,8 +345,9 @@ struct BoardLayoutTests {
         // page whose controls need the room gets a smaller preview rather than
         // a clipped one.
         let space = CGSize(width: 440, height: 500)
-        let preview = BoardLayout.stackedPreviewGeometry(in: space, chrome: 300)
-        #expect(preview.pitch < BoardGeometry.minimumPitch)
+        let preview = BoardLayout.stackedPreviewGeometry(in: space, game: mini,
+                                                         chrome: 300)
+        #expect(preview.pitch < miniMinimumPitch)
         #expect(preview.pitch >= BoardLayout.previewFloorPitch)
     }
 }

@@ -8,7 +8,7 @@
 // board and the play controls below it, with the board centred between them —
 // is what an iPhone and a portrait iPad take, and what a Mac window narrow
 // enough for the panel to cost the board more than it returns takes too.
-// `BoardLayout.shape(in:)` is the rule; this screen only draws both answers.
+// `BoardLayout.shape(in:game:)` is the rule; this screen only draws both answers.
 //
 // In the stacked shape the move list is reached on demand rather than shown by
 // default, so neither the board nor the controls give up space to something
@@ -140,7 +140,7 @@ struct PlayScreen: View {
 
     private func layout(_ game: Game, _ motion: PlayMotion) -> some View {
         GeometryReader { proxy in
-            switch BoardLayout.shape(in: proxy.size) {
+            switch BoardLayout.shape(in: proxy.size, game: game.kind) {
             case .sideBySide: sideBySide(game, motion, in: proxy.size)
             case .stacked: stacked(game, motion, in: proxy.size)
             }
@@ -236,7 +236,7 @@ struct PlayScreen: View {
     /// The board on one side, the panel beside it.
     private func sideBySide(_ game: Game, _ motion: PlayMotion, in size: CGSize) -> some View {
         HStack(spacing: 0) {
-            boardBlock(game, motion, BoardLayout.geometry(in: size))
+            boardBlock(game, motion, BoardLayout.geometry(in: size, game: game.kind))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // Tapping outside the board cancels the selection.
                 .contentShape(Rectangle())
@@ -281,7 +281,7 @@ struct PlayScreen: View {
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusHeight = $0 }
 
             boardBlock(game, motion,
-                       BoardLayout.stackedGeometry(in: size,
+                       BoardLayout.stackedGeometry(in: size, game: game.kind,
                                                    chrome: statusHeight + controlsHeight))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())

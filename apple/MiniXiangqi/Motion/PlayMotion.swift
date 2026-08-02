@@ -166,7 +166,14 @@ final class PlayMotion {
     func undo() {
         guard canUndo else { return }
         let plies = max(game.evaluation.undoPlies, 1)
-        let played = game.moves.suffix(plies).compactMap { Move(text: $0) }
+        var played: [Move] = []
+        for text in game.moves.suffix(plies) {
+            guard let move = Move(text: text, on: game.kind.board) else {
+                assertionFailure("the core retained an unreadable move")
+                return
+            }
+            played.append(move)
+        }
         guard played.count == plies, let last = played.last,
               let mover = game.placement[last.to] else { return }
 
@@ -181,7 +188,7 @@ final class PlayMotion {
         // longer of the two journeys so neither is hurried.
         let distance = max(Motion.distance(of: last),
                            first.map(Motion.distance(of:)) ?? 0)
-        let travel = Motion.travel(distance: distance)
+        let travel = Motion.travel(distance: distance, on: game.kind.board)
 
         begin(.undo)
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
@@ -318,7 +325,7 @@ final class PlayMotion {
     private func commit(_ move: Move, apply: () -> Void) {
         guard let piece = game.placement[move.from] else { return }
         let captured = game.placement[move.to]
-        let travel = Motion.travel(distance: Motion.distance(of: move))
+        let travel = Motion.travel(distance: Motion.distance(of: move), on: game.kind.board)
         begin(.move)
         // The plan, resolved once and before anything can arrive: a removal is
         // drawn for a capture in full motion, and the gate waits for exactly

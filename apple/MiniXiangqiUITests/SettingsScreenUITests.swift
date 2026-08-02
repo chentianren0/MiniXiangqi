@@ -31,9 +31,9 @@ final class SettingsScreenUITests: XCTestCase {
     /// HistoryScreenUITests files, so a row deleted here is a row that suite
     /// would recognise.
     private static let threeGames = [
-        "b1b3,b7b6,b3d3",
-        "b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7",
-        "b1b2,b7b6,b2b1,b6b7,b1b3,b7b6,b3d3",
+        "minixiangqi:b1b3,b7b6,b3d3",
+        "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7",
+        "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b3,b7b6,b3d3",
     ].joined(separator: ";")
 
     /// A language to run the interface in, and the strings docs/copy.md accepts
@@ -73,7 +73,7 @@ final class SettingsScreenUITests: XCTestCase {
             iMoveFirst: "我先手", standardLevel: "标准",
             defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
             deleteTitle: "删除这盘棋？", delete: "删除", cancel: "取消",
-            oldestRow: "自由对弈 · 红方获胜 · 将死 · 3 步")
+            oldestRow: "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步")
 
         static let english = Language(
             code: "en", short: "en",
@@ -89,7 +89,7 @@ final class SettingsScreenUITests: XCTestCase {
             iMoveFirst: "I Move First", standardLevel: "Standard",
             defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.",
             deleteTitle: "Delete this game?", delete: "Delete", cancel: "Cancel",
-            oldestRow: "Free Play · Red Wins · Checkmate · 3 moves")
+            oldestRow: "Mini Xiangqi · Free Play · Red Wins · Checkmate · 3 moves")
     }
 
     /// A name for a store nobody keeps. It resolves inside the app's own
@@ -155,7 +155,8 @@ final class SettingsScreenUITests: XCTestCase {
         // The Play destination settling is what says the seeding has finished.
         // With every seeded game filed there is no active game left, so what
         // arrives is the Play home's mode entries rather than a board.
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 15))
         return app
     }
 

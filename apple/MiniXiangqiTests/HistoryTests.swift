@@ -181,13 +181,14 @@ struct HistoryTests {
 
     // MARK: - The metadata line
 
-    @Test("The line names the mode, the result, the reason, and the move count")
+    @Test("The line names the game, mode, result, reason, and move count")
     func theMetadataLineComposes() throws {
         let core = try TestCores.fresh()
         try file([GameTests.mateLine], into: core)
         let record = try #require(library(over: core).records.first)
 
         let line = record.metadataLine
+        #expect(line.contains(record.game.localizedName))
         #expect(line.contains(record.modeText))
         #expect(line.contains(record.resultText))
         #expect(line.contains(try #require(record.reasonText)),
@@ -196,22 +197,23 @@ struct HistoryTests {
         // Free Play has no controller label, exactly as the turn status has
         // none, because one person controls both sides.
         #expect(record.humanSide == nil)
-        #expect(line.split(separator: "·").count == 4,
-                "mode · result · reason · moves, and nothing else")
+        #expect(line.split(separator: "·").count == 5,
+                "game · mode · result · reason · moves, and nothing else")
     }
 
     @Test("An ended-early record says why instead of saying it twice")
     func anEndedEarlyRecordDropsTheReason() {
         // `outcome = none` is true exactly when `end_reason = ended-early`, so
         // the two are one fact and the row states it once.
-        let record = RecordSummary(id: 1, game: .miniXiangqi, mode: .freePlay, humanSide: nil,
+        let record = RecordSummary(id: 1, game: .xiangqi, mode: .freePlay, humanSide: nil,
                                    outcome: .none, reason: .endedEarly,
                                    moveCount: 12, pinned: false, imported: false,
                                    endedAt: .now)
         #expect(record.reasonText == nil)
         #expect(record.resultText == EndReason.endedEarly.text)
-        #expect(record.metadataLine.split(separator: "·").count == 3,
-                "mode · ended early · moves")
+        #expect(record.metadataLine.hasPrefix(record.game.localizedName))
+        #expect(record.metadataLine.split(separator: "·").count == 4,
+                "game · mode · ended early · moves")
     }
 
     @Test("A human-versus-AI record names the human's side")
@@ -224,8 +226,8 @@ struct HistoryTests {
         #expect(record.metadataLine.contains(String(localized: "metadata.youBlack")))
         #expect(record.reasonText != nil,
                 "a resignation keeps its reason: 红方获胜 alone does not say whether the player was mated")
-        #expect(record.metadataLine.split(separator: "·").count == 5,
-                "mode · side · result · reason · moves")
+        #expect(record.metadataLine.split(separator: "·").count == 6,
+                "game · mode · side · result · reason · moves")
     }
 }
 
@@ -358,7 +360,7 @@ struct ReplayTests {
         #expect(replay.checkedGeneral == nil)
         replay.goToEnd()
         #expect(replay.position.inCheck, "the core reports the check")
-        #expect(replay.checkedGeneral == Square("d7"),
+        #expect(replay.checkedGeneral == Square("d7", on: GameKind.miniXiangqi.board),
                 "and the rings go round the general it is about")
         replay.stepBack()
         #expect(replay.checkedGeneral == nil, "walking back walks the check back too")
@@ -420,17 +422,20 @@ struct ReplayTests {
         let transit = try #require(replay.transit,
                                    "the board is given a disc to draw on its way")
         #expect(transit.kind == .move)
-        #expect(transit.move == Move(text: GameTests.mateLine[0]))
+        #expect(transit.move == Move(text: GameTests.mateLine[0],
+                                    on: GameKind.miniXiangqi.board))
         #expect(transit.piece == Piece(kind: .cannon, side: .red))
         #expect(transit.fading == nil, "nothing stood on b3")
         // The position arrives with the departure — the transit is drawn over
         // it — so the walk is never behind what the transport says.
         #expect(replay.ply == 1)
-        #expect(replay.lastMove == Move(text: GameTests.mateLine[0]))
+        #expect(replay.lastMove == Move(text: GameTests.mateLine[0],
+                                       on: GameKind.miniXiangqi.board))
 
         animator.completeAll()
         #expect(replay.transit == nil, "and the disc is a resting piece again")
-        #expect(replay.placement[Square("b3")!] == Piece(kind: .cannon, side: .red),
+        #expect(replay.placement[Square("b3", on: GameKind.miniXiangqi.board)!]
+                == Piece(kind: .cannon, side: .red),
                 "standing where the ply put it")
     }
 
@@ -450,14 +455,15 @@ struct ReplayTests {
         #expect(transit.kind == .move)
         #expect(transit.fading?.piece == Piece(kind: .soldier, side: .red),
                 "the disc that gives way is the one that was standing there")
-        #expect(transit.fading?.at == Square("d4"))
+        #expect(transit.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
         #expect(replay.transitFade == 1, "and its removal is scheduled against the arrival")
 
         animator.completeNext()   // the travel: the arrival
         #expect(replay.transit != nil, "the removal's 50 ms tail is still being drawn")
         animator.completeNext()   // the removal's tail
         #expect(replay.transit == nil)
-        #expect(replay.placement[Square("d4")!] == Piece(kind: .soldier, side: .black))
+        #expect(replay.placement[Square("d4", on: GameKind.miniXiangqi.board)!]
+                == Piece(kind: .soldier, side: .black))
     }
 
     @Test("A step back travels the move in reverse and brings the taken piece back")
@@ -470,17 +476,20 @@ struct ReplayTests {
         replay.stepBack()
         let transit = try #require(replay.transit)
         #expect(transit.kind == .undo, "read backwards, exactly as an Undo is drawn")
-        #expect(transit.move == Move(from: Square("d4")!, to: Square("d5")!),
+        #expect(transit.move == Move(
+            from: Square("d4", on: GameKind.miniXiangqi.board)!,
+            to: Square("d5", on: GameKind.miniXiangqi.board)!),
                 "the mover returns the way it came")
         #expect(transit.piece == Piece(kind: .soldier, side: .black))
         #expect(transit.fading?.piece == Piece(kind: .soldier, side: .red),
                 "and what it took reappears where it stood")
-        #expect(transit.fading?.at == Square("d4"))
+        #expect(transit.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
         #expect(replay.transitFade == 1, "the return is scheduled with the departure")
 
         animator.completeAll()
         #expect(replay.ply == 3)
-        #expect(replay.placement[Square("d4")!] == Piece(kind: .soldier, side: .red))
+        #expect(replay.placement[Square("d4", on: GameKind.miniXiangqi.board)!]
+                == Piece(kind: .soldier, side: .red))
         #expect(replay.transit == nil)
     }
 
@@ -546,7 +555,7 @@ struct ReplayTests {
         // capture's separate removal is not scheduled at all, because there is
         // no arrival for it to be scheduled against.
         let transit = try #require(replay.transit, "the step still arrives")
-        #expect(transit.fading?.at == Square("d4"))
+        #expect(transit.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
         #expect(replay.transitFade == 0, "no removal is drawn beside a dissolve")
         #expect(replay.position.fen == fens[4])
 

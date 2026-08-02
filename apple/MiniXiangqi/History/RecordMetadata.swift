@@ -1,11 +1,11 @@
 // What one stored game says about itself.
 //
 // docs/interaction-design.md, "History library": each entry shows its date,
-// mode, result or end reason, and move count, and human-versus-AI entries also
-// show the human side. The composition below invents no vocabulary at all — it
-// is the metadata line the save-and-continue confirmation already accepted,
-// 人机对弈 · 你执红 · 红方获胜 · 将死 · 42 步, applied to a filed game rather
-// than to the active one, joined by the same accepted middot.
+// game, mode, result or end reason, and move count, and human-versus-AI entries
+// also show the human side. The composition below invents no vocabulary at all
+// — it is the metadata line the save-and-continue confirmation already
+// accepted, 象棋 · 人机对弈 · 你执红 · 红方获胜 · 将死 · 42 步, applied to a
+// filed game rather than to the active one, joined by the same middot.
 //
 // Two rules about what is *left out*, both because the line would otherwise say
 // one thing twice:
@@ -26,9 +26,9 @@
 import Foundation
 
 extension RecordSummary {
-    /// The metadata line: mode, human side, result, reason, move count.
+    /// The metadata line: game, mode, human side, result, reason, move count.
     var metadataLine: String {
-        var parts = [modeText]
+        var parts = [game.localizedName, modeText]
         if mode == .humanVersusAI, let humanSide {
             parts.append(humanSide == .red
                          ? String(localized: "metadata.youRed")

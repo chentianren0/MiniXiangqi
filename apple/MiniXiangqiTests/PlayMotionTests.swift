@@ -42,14 +42,14 @@ struct PlayMotionTests {
     func aMoveHoldsTheGate() throws {
         let (motion, animator, _) = try makeMotion()
 
-        motion.tap(Square("b1")!)
-        #expect(motion.game.selected == Square("b1"))
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        #expect(motion.game.selected == Square("b1", on: GameKind.miniXiangqi.board))
         #expect(!motion.isCommitting, "a lift is presentational, not committing")
 
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.moves == ["b1b4"], "the move commits at once")
         #expect(motion.committing == .move)
-        #expect(motion.transit?.move == Move(text: "b1b4"))
+        #expect(motion.transit?.move == Move(text: "b1b4", on: GameKind.miniXiangqi.board))
         #expect(motion.transit?.fading == nil, "nothing stood on b4")
         #expect(!motion.canUndo, "Undo is unavailable during the transition")
 
@@ -62,14 +62,14 @@ struct PlayMotionTests {
     @Test("Input during a committing transition is discarded, never queued")
     func inputDuringATransitionIsDiscarded() throws {
         let (motion, animator, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(motion.isCommitting)
 
         // A tap that would select, and one that would move: both discarded.
-        motion.tap(Square("a2")!)
+        motion.tap(Square("a2", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.selected == nil, "a selection tap during a transition is discarded")
-        motion.tap(Square("a3")!)
+        motion.tap(Square("a3", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.moves == ["b1b4"], "no queued move plays afterwards")
         #expect(recorder.events.isEmpty,
                 "discarded input is silent: no beat, no landing, nothing")
@@ -78,7 +78,7 @@ struct PlayMotionTests {
         #expect(motion.game.moves == ["b1b4"], "completion replays nothing")
 
         // The same taps after the transition are ordinary input again.
-        motion.tap(Square("a2")!)
+        motion.tap(Square("a2", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.selected == nil, "a2 is Black's turn now — nothing to select")
     }
 
@@ -103,8 +103,8 @@ struct PlayMotionTests {
     @Test("A flip during a move is deferred, then applied when it lands")
     func aFlipDuringAMoveIsDeferred() throws {
         let (motion, animator, _) = try makeMotion()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
         motion.flip()
         #expect(!motion.game.flipped, "the flip waits for the landing")
@@ -118,8 +118,8 @@ struct PlayMotionTests {
     @Test("Two flips during a move cancel out, and an idle flip is immediate")
     func flipsCompose() throws {
         let (motion, animator, _) = try makeMotion()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         motion.flip()
         motion.flip()
         animator.completeAll()
@@ -189,7 +189,7 @@ struct PlayMotionTests {
         #expect(motion.isFlipping)
         #expect(motion.game.flipped, "the orientation changes at once; the drawing catches up")
 
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.selected == nil, "a tap mid-flip is discarded")
         #expect(recorder.events.isEmpty,
                 "and discarded silently: the player asked for this flip")
@@ -202,8 +202,8 @@ struct PlayMotionTests {
         animator.completeAll()
         #expect(!motion.isFlipping, "the backstop reports the same arrival, not another")
 
-        motion.tap(Square("b1")!)
-        #expect(motion.game.selected == Square("b1"), "and taps are ordinary input again")
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        #expect(motion.game.selected == Square("b1", on: GameKind.miniXiangqi.board), "and taps are ordinary input again")
     }
 
     @Test("A second press during a flip turns the board back")
@@ -214,15 +214,15 @@ struct PlayMotionTests {
         #expect(!motion.game.flipped,
                 "a flip is presentational, so it re-targets: the board turns back")
         #expect(motion.isFlipping, "and is still turning, so input is still discarded")
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         #expect(motion.game.selected == nil)
 
         animator.completeNext()   // the turn the second press replaced
         #expect(motion.isFlipping, "the replaced turn's completion is not this one's")
         animator.completeNext()
         #expect(!motion.isFlipping)
-        motion.tap(Square("b1")!)
-        #expect(motion.game.selected == Square("b1"))
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        #expect(motion.game.selected == Square("b1", on: GameKind.miniXiangqi.board))
     }
 
     // MARK: - Captures
@@ -231,12 +231,12 @@ struct PlayMotionTests {
     func aCaptureHoldsTheGateForItsTail() throws {
         // Black's soldier takes the red soldier on d4.
         let (motion, animator, recorder) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"])
-        motion.tap(Square("d5")!)
-        motion.tap(Square("d4")!)
+        motion.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("d4", on: GameKind.miniXiangqi.board)!)
 
         #expect(motion.committing == .move)
         #expect(motion.transit?.fading?.piece == Piece(kind: .soldier, side: .red))
-        #expect(motion.transit?.fading?.at == Square("d4"))
+        #expect(motion.transit?.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
 
         animator.completeNext()   // the selection lift
         #expect(recorder.events.isEmpty, "nothing has landed yet")
@@ -258,23 +258,23 @@ struct PlayMotionTests {
         // good, the result notice unreachable.
         let (reduced, _, _) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"],
                                              reduceMotion: true)
-        reduced.tap(Square("d5")!)
-        reduced.tap(Square("d4")!)
+        reduced.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
+        reduced.tap(Square("d4", on: GameKind.miniXiangqi.board)!)
         #expect(reduced.committing == .move)
 
         reduced.policy = MotionPolicy(reduceMotion: false)
         reduced.travelArrived()
         #expect(!reduced.isCommitting, "the gate opens on what was scheduled")
         #expect(reduced.canUndo, "so 悔棋 comes back")
-        reduced.tap(Square("a2")!)
-        #expect(reduced.game.selected == Square("a2"), "and the board accepts input again")
+        reduced.tap(Square("a2", on: GameKind.miniXiangqi.board)!)
+        #expect(reduced.game.selected == Square("a2", on: GameKind.miniXiangqi.board), "and the board accepts input again")
 
         // And the other way round: a removal that *was* scheduled still holds
         // the gate through its tail, however the policy reads by the time it
         // gets there.
         let (full, _, _) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"])
-        full.tap(Square("d5")!)
-        full.tap(Square("d4")!)
+        full.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
+        full.tap(Square("d4", on: GameKind.miniXiangqi.board)!)
         full.policy = MotionPolicy(reduceMotion: true)
         full.travelArrived()
         #expect(full.isCommitting, "the removal it scheduled still holds the gate")
@@ -292,16 +292,16 @@ struct PlayMotionTests {
         #expect(motion.game.moves == ["d2d3", "d6d5", "d3d4"])
         let transit = try #require(motion.transit)
         #expect(transit.kind == .undo)
-        #expect(transit.move == Move(from: Square("d4")!, to: Square("d5")!),
+        #expect(transit.move == Move(from: Square("d4", on: GameKind.miniXiangqi.board)!, to: Square("d5", on: GameKind.miniXiangqi.board)!),
                 "the piece travels back the way it came")
         #expect(transit.fading?.piece == Piece(kind: .soldier, side: .red),
                 "the captured piece returns where it stood")
-        #expect(transit.fading?.at == Square("d4"))
+        #expect(transit.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
         #expect(motion.transitFade == 1, "the return is scheduled with the departure")
 
         animator.completeAll()
         #expect(!motion.isCommitting)
-        #expect(motion.game.placement[Square("d4")!] == Piece(kind: .soldier, side: .red))
+        #expect(motion.game.placement[Square("d4", on: GameKind.miniXiangqi.board)!] == Piece(kind: .soldier, side: .red))
     }
 
     // MARK: - The two arrival wires
@@ -309,8 +309,8 @@ struct PlayMotionTests {
     @Test("The board's own arrival report lands the move; the backstop cannot double it")
     func arrivalWiresAreIdempotent() throws {
         let (motion, animator, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
         motion.travelArrived()   // the canvas frame reaching its target
         #expect(!motion.isCommitting, "the arrival opens the gate")
@@ -323,8 +323,8 @@ struct PlayMotionTests {
     @Test("A capture's gate waits for both wires, in either order")
     func captureArrivalsCompose() throws {
         let (motion, _, recorder) = try makeMotion(playing: ["d2d3", "d6d5", "d3d4"])
-        motion.tap(Square("d5")!)
-        motion.tap(Square("d4")!)
+        motion.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("d4", on: GameKind.miniXiangqi.board)!)
 
         motion.travelArrived()
         #expect(recorder.events == [.landing])
@@ -349,10 +349,10 @@ struct PlayMotionTests {
         let rules = RefusingRules(try TestCores.fresh())
         let (refused, refusedAnimator, refusedFeedback) = try makeMotion(rules: rules)
 
-        refused.tap(Square("b1")!)
+        refused.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         refusedAnimator.completeAll()
         rules.refuses = true
-        refused.tap(Square("b4")!)
+        refused.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
         #expect(refused.game.moves.isEmpty, "the refused ply did not happen")
         #expect(refused.game.failure != nil, "and the failure is recorded rather than swallowed")
@@ -371,15 +371,15 @@ struct PlayMotionTests {
         // move can be in flight. The token is what keeps it from being heard
         // as that move's landing and opening a gate it does not hold.
         let (motion, animator, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         animator.completeNext()          // the lift
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         motion.travelArrived()           // the canvas reports the landing
         #expect(!motion.isCommitting)
         #expect(recorder.events == [.landing])
 
-        motion.tap(Square("a6")!)        // Black replies
-        motion.tap(Square("a5")!)
+        motion.tap(Square("a6", on: GameKind.miniXiangqi.board)!)        // Black replies
+        motion.tap(Square("a5", on: GameKind.miniXiangqi.board)!)
         #expect(motion.committing == .move, "the second move holds the gate")
 
         animator.completeNext()          // the first move's completion, arriving late
@@ -397,8 +397,8 @@ struct PlayMotionTests {
     @Test("Landing feedback fires at the landing, not the lift")
     func landingFiresAtTheLanding() throws {
         let (motion, animator, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(recorder.events.isEmpty, "commitment is not arrival")
 
         animator.completeNext()   // the lift's completion
@@ -410,15 +410,15 @@ struct PlayMotionTests {
     @Test("An illegal tap answers at the touch and strengthens the markers")
     func illegalTapAnswers() throws {
         let (motion, animator, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
-        motion.tap(Square("c3")!)   // no cannon move reaches c3
+        motion.tap(Square("c3", on: GameKind.miniXiangqi.board)!)   // no cannon move reaches c3
         #expect(recorder.events == [.acknowledgement],
                 "the touch is answered before anything is drawn")
         #expect(recorder.sounds.isEmpty,
                 "and answered silently: learning where a piece may go is not a failure")
-        #expect(motion.game.selected == Square("b1"), "the selection is retained")
+        #expect(motion.game.selected == Square("b1", on: GameKind.miniXiangqi.board), "the selection is retained")
         #expect(motion.markerEmphasis == 1, "the legal destinations strengthen")
 
         animator.completeAll()
@@ -428,17 +428,17 @@ struct PlayMotionTests {
     @Test("Under Reduce Motion the markers strengthen once and stay")
     func illegalTapUnderReduceMotion() throws {
         let (motion, animator, recorder) = try makeMotion(reduceMotion: true)
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
 
-        motion.tap(Square("c3")!)
+        motion.tap(Square("c3", on: GameKind.miniXiangqi.board)!)
         #expect(recorder.events == [.acknowledgement])
         #expect(motion.markerEmphasis == 1)
         animator.completeAll()
         #expect(motion.markerEmphasis == 1,
                 "a single state change, no pulse: the answer stays")
 
-        motion.tap(Square("a2")!)   // switching the selection clears it
+        motion.tap(Square("a2", on: GameKind.miniXiangqi.board)!)   // switching the selection clears it
         #expect(motion.markerEmphasis == 0)
     }
 
@@ -446,7 +446,7 @@ struct PlayMotionTests {
     func emptyTapGetsTheBeat() throws {
         let (motion, animator, recorder) = try makeMotion()
 
-        motion.tap(Square("d4")!)   // empty, and nothing is selected
+        motion.tap(Square("d4", on: GameKind.miniXiangqi.board)!)   // empty, and nothing is selected
         #expect(recorder.events == [.acknowledgement])
         #expect(recorder.sounds.isEmpty, "refused input is felt, never heard")
         #expect(motion.beatEmphasis == 1, "the background rises to full emphasis")
@@ -466,7 +466,9 @@ struct PlayMotionTests {
     private func landing(_ line: [String],
                          defaults: UserDefaults? = nil) throws
         -> (PlayMotion, FeedbackRecorder) {
-        let last = try #require(line.last.flatMap(Move.init(text:)))
+        let last = try #require(line.last.flatMap {
+            Move(text: $0, on: GameKind.miniXiangqi.board)
+        })
         let (motion, animator, recorder) = try makeMotion(playing: Array(line.dropLast()),
                                                           defaults: defaults)
         motion.tap(last.from)
@@ -504,7 +506,7 @@ struct PlayMotionTests {
         // The premise, so this test proves what it claims to be about: the
         // horse takes the soldier and the general is in check, both at once.
         #expect(motion.game.evaluation.inCheck)
-        #expect(motion.game.placement[Square("c5")!] == Piece(kind: .horse, side: .red))
+        #expect(motion.game.placement[Square("c5", on: GameKind.miniXiangqi.board)!] == Piece(kind: .horse, side: .red))
         #expect(recorder.sounds == [.capture],
                 "the take is the louder fact, and the rings say the rest")
     }
@@ -597,14 +599,14 @@ struct PlayMotionTests {
         // launch.
         let toggled = try ScratchDefaults.make(soundEnabled: false)
         let (motion, animator, recorder) = try makeMotion(defaults: toggled)
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(recorder.sounds.isEmpty)
 
         Preferences.sound.set(true, in: toggled)
-        motion.tap(Square("a6")!)
-        motion.tap(Square("a5")!)
+        motion.tap(Square("a6", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("a5", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(recorder.sounds == [.plain])
         ScratchDefaults.clear()
@@ -629,9 +631,9 @@ struct PlayMotionTests {
         defer { ScratchDefaults.clear() }
         let (motion, animator, recorder) = try makeMotion(defaults: defaults)
 
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
-        motion.tap(Square("c3")!)   // no cannon move reaches c3
+        motion.tap(Square("c3", on: GameKind.miniXiangqi.board)!)   // no cannon move reaches c3
 
         #expect(recorder.events.isEmpty, "the switch covers both patterns, not just the landing")
         #expect(recorder.sounds.isEmpty, "an illegal tap was always silent")
@@ -651,14 +653,14 @@ struct PlayMotionTests {
         // Read at the event rather than cached, exactly as the sound gate is.
         let toggled = try ScratchDefaults.make(hapticsEnabled: false)
         let (motion, animator, recorder) = try makeMotion(defaults: toggled)
-        motion.tap(Square("b1")!)
-        motion.tap(Square("b4")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(recorder.events.isEmpty)
 
         Preferences.haptics.set(true, in: toggled)
-        motion.tap(Square("a6")!)
-        motion.tap(Square("a5")!)
+        motion.tap(Square("a6", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("a5", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(recorder.events == [.landing])
         ScratchDefaults.clear()
@@ -681,8 +683,8 @@ struct PlayMotionTests {
     @Test("A checking move pulses the rings at its landing, not its commit")
     func checkPulsesAtTheLanding() throws {
         let (motion, animator, _) = try makeMotion(playing: ["b1b3", "d6d5"])
-        motion.tap(Square("b3")!)
-        motion.tap(Square("d3")!)
+        motion.tap(Square("b3", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("d3", on: GameKind.miniXiangqi.board)!)
 
         #expect(motion.game.checkedGeneral != nil, "the line gives check")
         #expect(motion.checkEmphasis == 0, "no pulse while the move still travels")
@@ -698,8 +700,8 @@ struct PlayMotionTests {
     func checkPulseRemovedUnderReduceMotion() throws {
         let (motion, animator, _) = try makeMotion(playing: ["b1b3", "d6d5"],
                                                    reduceMotion: true)
-        motion.tap(Square("b3")!)
-        motion.tap(Square("d3")!)
+        motion.tap(Square("b3", on: GameKind.miniXiangqi.board)!)
+        motion.tap(Square("d3", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(motion.game.checkedGeneral != nil)
         #expect(motion.checkEmphasis == 0,
@@ -711,7 +713,7 @@ struct PlayMotionTests {
     @Test("Tapping outside the board cancels the selection and nothing else")
     func outsideTapCancels() throws {
         let (motion, _, recorder) = try makeMotion()
-        motion.tap(Square("b1")!)
+        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.cancelSelection()
         #expect(motion.game.selected == nil)
         #expect(recorder.events.isEmpty, "a cancel is accepted input — no beat")

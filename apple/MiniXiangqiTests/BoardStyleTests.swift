@@ -91,7 +91,9 @@ struct BoardStyleTests {
     @Test("A style's decoration stays inside the band markers are kept out of",
           arguments: [0.010, 0.028, 0.060, 0.100] as [CGFloat])
     func decorationClearsTheMarkerBand(strokeInPitches: CGFloat) {
-        let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+        let geometry = BoardGeometry(
+            board: GameKind.miniXiangqi.board,
+            pitch: BoardGeometry.minimumPitch(for: GameKind.miniXiangqi.board))
         let stroke = strokeInPitches * geometry.pitch
 
         // The stroke is drawn inside the disc's own edge, so however heavy it
@@ -105,7 +107,9 @@ struct BoardStyleTests {
 
     @Test("The styles in use satisfy that with room to spare", arguments: [Side.red, .black])
     func styleStrokesAreWithinTheLimit(side: Side) {
-        let geometry = BoardGeometry(pitch: BoardGeometry.minimumPitch)
+        let geometry = BoardGeometry(
+            board: GameKind.miniXiangqi.board,
+            pitch: BoardGeometry.minimumPitch(for: GameKind.miniXiangqi.board))
         let stroke = style.discEdgeStroke(side) * geometry.pitch
         #expect(geometry.decorationExtent(edgeStroke: stroke) <= geometry.styleDecorationLimit)
         #expect(geometry.discEdgeRadius(stroke: stroke) > geometry.symbolSize / 2)

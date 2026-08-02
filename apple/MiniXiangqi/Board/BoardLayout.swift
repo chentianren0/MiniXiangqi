@@ -8,7 +8,7 @@
 // Mac window and a windowed iPad behave the same way as each other.
 //
 // **The choice is which arrangement gives the board more.** Both shapes fit the
-// same square into the same rectangle and differ only in what they take out of
+// same board block into the same rectangle and differ only in what they take out of
 // it first: side by side takes 260 points of width, stacked takes the chrome's
 // height. Whichever leaves the larger board wins, and a tie goes to side by
 // side, which costs the board nothing and shows the move list for free.
@@ -76,8 +76,9 @@ enum BoardLayout {
     /// Where neither fits, the stacked shape is what is drawn: it is the one
     /// whose board is bounded by the width, and a space too small for either is
     /// a space too narrow rather than too short.
-    static func shape(in size: CGSize) -> Shape {
-        switch (sideBySidePitch(in: size), stackedPitch(in: size)) {
+    static func shape(in size: CGSize, game: GameKind) -> Shape {
+        switch (sideBySidePitch(in: size, game: game),
+                stackedPitch(in: size, game: game)) {
         case (nil, _): .stacked
         case (_, nil): .sideBySide
         case (let beside?, let above?): beside >= above ? .sideBySide : .stacked
@@ -86,16 +87,17 @@ enum BoardLayout {
 
     /// The largest pitch the side-by-side shape can draw here, or nil where
     /// even the accepted floor does not fit beside the panel.
-    private static func sideBySidePitch(in size: CGSize) -> CGFloat? {
-        BoardGeometry.fitting(sideBySideSpace(in: size))
-            .map { min($0.pitch, BoardGeometry.maximumPitch) }
+    private static func sideBySidePitch(in size: CGSize, game: GameKind) -> CGFloat? {
+        BoardGeometry.fitting(sideBySideSpace(in: size), board: game.board)
+            .map { min($0.pitch, BoardGeometry.maximumPitch(for: game.board)) }
     }
 
     /// The same, for the stacked shape, spending the chrome allowance rather
     /// than the panel's width.
-    private static func stackedPitch(in size: CGSize) -> CGFloat? {
-        BoardGeometry.fitting(stackedSpace(in: size, chrome: stackedChromeHeight))
-            .map { min($0.pitch, BoardGeometry.maximumPitch) }
+    private static func stackedPitch(in size: CGSize, game: GameKind) -> CGFloat? {
+        BoardGeometry.fitting(stackedSpace(in: size, chrome: stackedChromeHeight),
+                              board: game.board)
+            .map { min($0.pitch, BoardGeometry.maximumPitch(for: game.board)) }
     }
 
     // MARK: - Side by side
@@ -107,10 +109,12 @@ enum BoardLayout {
 
     /// The largest board that fits beside the panel, bounded by the accepted
     /// floor and ceiling.
-    static func geometry(in size: CGSize) -> BoardGeometry {
-        let fitted = BoardGeometry.fitting(sideBySideSpace(in: size))
-            ?? BoardGeometry(pitch: BoardGeometry.minimumPitch)
-        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
+    static func geometry(in size: CGSize, game: GameKind) -> BoardGeometry {
+        let board = game.board
+        let fitted = BoardGeometry.fitting(sideBySideSpace(in: size), board: board)
+            ?? BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
+        return BoardGeometry(board: board,
+                             pitch: min(fitted.pitch, BoardGeometry.maximumPitch(for: board)))
     }
 
     // MARK: - Stacked
@@ -126,8 +130,10 @@ enum BoardLayout {
     /// It is the same quantity a resizable window's own height floor is, and
     /// for the same reason — below it there is no smaller board to draw, only
     /// a floor-sized one drawn over whatever is beneath it.
-    static var minimumBoardHeight: CGFloat {
-        BoardGeometry(pitch: BoardGeometry.minimumPitch).blockSize.height + 2 * boardPadding
+    static func minimumBoardHeight(for game: GameKind) -> CGFloat {
+        let board = game.board
+        return BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
+            .blockSize.height + 2 * boardPadding
     }
 
     /// What the stacked shape *grants* chrome asking for `wanted` points of
@@ -145,8 +151,9 @@ enum BoardLayout {
     /// Only a space shorter than a floor-sized board leaves the board larger
     /// than its slot, and no division of such a space avoids that. A window
     /// that reaches this shape is never that short.
-    static func stackedChrome(in size: CGSize, asking wanted: CGFloat) -> CGFloat {
-        max(0, min(wanted, size.height - minimumBoardHeight))
+    static func stackedChrome(in size: CGSize, game: GameKind,
+                              asking wanted: CGFloat) -> CGFloat {
+        max(0, min(wanted, size.height - minimumBoardHeight(for: game)))
     }
 
     /// The largest board that fits between the status above it and the controls
@@ -155,11 +162,14 @@ enum BoardLayout {
     /// `chrome` is what those two actually came to, so a status line grown by an
     /// accessibility text size takes its room from the board rather than
     /// overflowing the screen.
-    static func stackedGeometry(in size: CGSize,
+    static func stackedGeometry(in size: CGSize, game: GameKind,
                                 chrome: CGFloat = stackedChromeHeight) -> BoardGeometry {
-        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome))
-            ?? BoardGeometry(pitch: BoardGeometry.minimumPitch)
-        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
+        let board = game.board
+        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome),
+                                           board: board)
+            ?? BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
+        return BoardGeometry(board: board,
+                             pitch: min(fitted.pitch, BoardGeometry.maximumPitch(for: board)))
     }
 
     // MARK: - Previews
@@ -170,21 +180,27 @@ enum BoardLayout {
     static let previewFloorPitch: CGFloat = 18
 
     /// The board a pre-start page previews. It is noninteractive and has no
-    /// touch targets, so the accepted 44-point floor does not apply to it and
-    /// the setup controls take the space they need first.
-    static func previewGeometry(in size: CGSize) -> BoardGeometry {
-        let fitted = BoardGeometry.fitting(sideBySideSpace(in: size), floor: previewFloorPitch)
-            ?? BoardGeometry(pitch: previewFloorPitch)
-        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
+    /// touch targets, so the selected game's interactive floor does not apply
+    /// to it and the setup controls take the space they need first.
+    static func previewGeometry(in size: CGSize, game: GameKind) -> BoardGeometry {
+        let board = game.board
+        let fitted = BoardGeometry.fitting(sideBySideSpace(in: size), board: board,
+                                           floor: previewFloorPitch)
+            ?? BoardGeometry(board: board, pitch: previewFloorPitch)
+        return BoardGeometry(board: board,
+                             pitch: min(fitted.pitch, BoardGeometry.maximumPitch(for: board)))
     }
 
     /// The same preview in the stacked shape, with the setup controls beneath
     /// it in place of the panel beside it.
-    static func stackedPreviewGeometry(in size: CGSize, chrome: CGFloat) -> BoardGeometry {
+    static func stackedPreviewGeometry(in size: CGSize, game: GameKind,
+                                       chrome: CGFloat) -> BoardGeometry {
+        let board = game.board
         let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome),
-                                           floor: previewFloorPitch)
-            ?? BoardGeometry(pitch: previewFloorPitch)
-        return BoardGeometry(pitch: min(fitted.pitch, BoardGeometry.maximumPitch))
+                                           board: board, floor: previewFloorPitch)
+            ?? BoardGeometry(board: board, pitch: previewFloorPitch)
+        return BoardGeometry(board: board,
+                             pitch: min(fitted.pitch, BoardGeometry.maximumPitch(for: board)))
     }
 
     // MARK: - The window's floor
@@ -200,12 +216,17 @@ enum BoardLayout {
     /// rather than by the app, and a minimum wider than an iPhone would be a
     /// layout asking to be clipped rather than one asking to be stacked.
     static var minimumWidth: CGFloat {
-        BoardGeometry(pitch: BoardGeometry.minimumPitch).coreSide
-            + panelWidth + 2 * boardPadding
+        GameKind.allCases.map { game in
+            let board = game.board
+            return BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
+                .coreSize.width
+        }.max()! + panelWidth + 2 * boardPadding
     }
 
     /// The same quantity the stacked shape reserves for the board above its
     /// chrome: what a window stops shrinking at is what a board block cannot
     /// be given less than.
-    static var minimumHeight: CGFloat { minimumBoardHeight }
+    static var minimumHeight: CGFloat {
+        GameKind.allCases.map { minimumBoardHeight(for: $0) }.max()!
+    }
 }

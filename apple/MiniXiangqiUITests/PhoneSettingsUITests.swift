@@ -103,7 +103,8 @@ final class PhoneSettingsUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "the app should reach the foreground")
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 30),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 30),
                       "the Play home settling is what says the launch has finished")
         return app
     }
@@ -338,7 +339,8 @@ final class PhoneSettingsUITests: XCTestCase {
 
         // Away and back, which tears the screen down and rebuilds it.
         destination(app, 0).tap()
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"]
+            .waitForExistence(timeout: 20))
         openSettings(app, language)
         XCTAssertTrue(control(app, "settings-confirm-delete").waitForExistence(timeout: 10))
         XCTAssertFalse(isOn(control(app, "settings-confirm-delete")),

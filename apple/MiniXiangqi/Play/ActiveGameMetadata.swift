@@ -2,18 +2,15 @@
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": the Play destination shows the active game's metadata, identifying at
-// least the mode, the human's side where there is one, and the move count, plus
-// the side to move for an ongoing game, the result and reason for a terminal
-// one, and claim availability where it applies. The accepted example lines are
-// 人机对弈 · 你执红, 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步 and
-// 进行中 · 可判和 · 42 步.
+// least the game, the mode, the human's side where there is one, and the move
+// count, plus the side to move for an ongoing game, the result and reason for a
+// terminal one, and claim availability where it applies. The accepted example
+// lines begin 象棋 · 人机对弈 or 迷你象棋 · 自由对弈 before those facts.
 //
-// It is the same composition the History row applies to a filed game — mode,
-// side, state, count, joined by the accepted middot — with the one difference
-// that a live game has a live state where a record has a committed result. So
-// the three state classes below are the whole of what is new here, and every
-// token in them already exists in the register: 进行中, the two side-to-move
-// lines, 可判和, the three result words, and the reason vocabulary.
+// It is the same composition the History row applies to a filed game — game,
+// mode, side, state, count, joined by the accepted middot — with the one
+// difference that a live game has a live state where a record has a committed
+// result. The three state classes below are the whole of what differs.
 //
 // **Every fact is read, not worked out.** The mode and the human side come from
 // the configuration frozen at creation; the state, the reason, the claim and the
@@ -22,11 +19,23 @@
 
 import Foundation
 
+extension GameKind {
+    /// The one display name for a game, shared by section headings, setup and
+    /// every metadata line. The application name remains Mini Xiangqi; this is
+    /// the name of the ruleset a particular row or game belongs to.
+    var localizedName: String {
+        switch self {
+        case .miniXiangqi: String(localized: "game.miniXiangqi")
+        case .xiangqi: String(localized: "game.xiangqi")
+        }
+    }
+}
+
 extension Game {
-    /// The metadata line: mode, human side, what is true of the game now, and
-    /// the move count.
+    /// The metadata line: game, mode, human side, what is true of the game now,
+    /// and the move count.
     var metadataLine: String {
-        var parts = [modeText]
+        var parts = [kind.localizedName, modeText]
         if let humanSide {
             parts.append(humanSide == .red
                          ? String(localized: "metadata.youRed")

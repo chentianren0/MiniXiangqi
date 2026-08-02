@@ -40,8 +40,8 @@ struct GameSessionTests {
         #expect(game.humanSide == nil, "Free Play has no human side: one person plays both")
         #expect(!game.identity.isEmpty, "a created game has its frozen identity")
 
-        game.tap(Square("b1")!)
-        game.tap(Square("b4")!)
+        game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        game.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(game.moves == ["b1b4"])
     }
 
@@ -104,6 +104,24 @@ struct GameSessionTests {
                 "the attached session reports the game it was created for")
     }
 
+    @Test("A Xiangqi game presents every legal move the core returns")
+    func xiangqiLegalMovesAreNeverDroppedByPresentationParsing() throws {
+        let core = try TestCores.fresh()
+        try core.create(.freePlay(game: .xiangqi))
+
+        let game = try Game(rules: core)
+        let canonical = try core.legalMoves()
+
+        #expect(game.kind == .xiangqi)
+        #expect(game.failure == nil)
+        #expect(game.legalMoves.map(\.text) == canonical,
+                "a canonical core move must not disappear in a compactMap")
+        #expect(game.placement[Square("d1", on: GameKind.xiangqi.board)!]
+                == Piece(kind: .advisor, side: .red))
+        #expect(game.placement[Square("c10", on: GameKind.xiangqi.board)!]
+                == Piece(kind: .elephant, side: .black))
+    }
+
     @Test("An unknown core game value has no Swift fallback")
     func unknownGameKindIsRejected() {
         var raw = GameConfiguration.freePlay(game: .miniXiangqi).raw
@@ -158,7 +176,7 @@ struct GameSessionTests {
         #expect(resumed.evaluation.fen == fen, "the position is the same position")
         #expect(resumed.notation == notation,
                 "the notation reads back through the same rules that wrote it")
-        #expect(resumed.lastMove == Move(text: "d5d4"),
+        #expect(resumed.lastMove == Move(text: "d5d4", on: GameKind.miniXiangqi.board),
                 "the brackets mark the move that produced the position")
         #expect(resumed.evaluation.sideToMove == .red)
         #expect(resumed.canUndo, "the resumed game is the same game to play on")
@@ -201,7 +219,7 @@ struct GameSessionTests {
         #expect(resumed.moves == Self.longLine, "the whole line came back")
         #expect(resumed.notation == notation, "and reads in the same forty words")
         #expect(resumed.evaluation.fen == fen)
-        #expect(resumed.lastMove == Move(text: "a6a7"))
+        #expect(resumed.lastMove == Move(text: "a6a7", on: GameKind.miniXiangqi.board))
         #expect(resumed.evaluation.claimAvailable,
                 "the repetition the line ends on is still on offer")
         #expect(!resumed.isFinished, "and a claimable repetition is not an ending")
@@ -287,8 +305,8 @@ struct GameSessionTests {
         try core.create(.freePlay(game: .miniXiangqi))
         let next = try Game(rules: core)
         #expect(next.moves.isEmpty)
-        next.tap(Square("b1")!)
-        next.tap(Square("b4")!)
+        next.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        next.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(try core.activeGameExists())
         #expect(try core.historyCount() == 1, "playing on files nothing further")
     }
@@ -361,8 +379,8 @@ struct GameSessionTests {
         let game = try openGame(on: rules)
 
         rules.refuses = true
-        game.tap(Square("b1")!)
-        game.tap(Square("b4")!)
+        game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        game.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
         #expect(game.failure != nil, "the ply was refused")
         #expect(game.moves.isEmpty, "the move did not happen")
@@ -371,7 +389,7 @@ struct GameSessionTests {
                 "a refusal of the player's own move is the player's, and raises the capsule")
 
         rules.refuses = false
-        game.tap(Square("b4")!)
+        game.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(game.failure == nil, "the retry is the same first move")
         #expect(game.moves == ["b1b4"])
     }
@@ -382,12 +400,12 @@ struct GameSessionTests {
         try rules.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
                                        level: .fast, choice: .humanFirst))
         let game = try Game(rules: rules)
-        game.tap(Square("b1")!)
-        game.tap(Square("b4")!)
+        game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
+        game.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(game.searchExpected, "the premise: the AI owes a reply")
 
         rules.refuses = true
-        game.playOpponent(Move(text: "a6a5")!)
+        game.playOpponent(Move(text: "a6a5", on: GameKind.miniXiangqi.board)!)
 
         #expect(game.opponentFailure != nil, "the refusal is recorded")
         #expect(game.failure == nil,

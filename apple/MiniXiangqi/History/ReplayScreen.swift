@@ -115,10 +115,11 @@ struct ReplayScreen: View {
 
     private func layout(_ replay: Replay) -> some View {
         GeometryReader { proxy in
-            switch BoardLayout.shape(in: proxy.size) {
+            switch BoardLayout.shape(in: proxy.size, game: record.game) {
             case .sideBySide:
                 HStack(spacing: 0) {
-                    board(replay, BoardLayout.geometry(in: proxy.size))
+                    board(replay, BoardLayout.geometry(in: proxy.size,
+                                                       game: record.game))
                     panel(replay, showsHeader: true, edge: .top)
                         .frame(width: BoardLayout.panelWidth)
                 }
@@ -156,7 +157,7 @@ struct ReplayScreen: View {
     /// cannot be drawn over either of them. A fixed block taken whole out of a
     /// short space would leave the board a slot its own floor does not fit in,
     /// which is a board drawn over the panel rather than a smaller one.
-    /// `BoardLayout.stackedChrome(in:asking:)` reserves the board's floor first
+    /// `BoardLayout.stackedChrome(in:game:asking:)` reserves the board's floor first
     /// and hands the chrome the rest, on every platform: the reachable Mac
     /// windows that take this shape start at 535 points of content height, and
     /// an iPadOS window is sized by the system with no floor of the app's to
@@ -164,13 +165,14 @@ struct ReplayScreen: View {
     /// the header is a fact about the game and the list below it is what can be
     /// read a row at a time.
     private func stacked(_ replay: Replay, in size: CGSize) -> some View {
-        let chrome = BoardLayout.stackedChrome(in: size,
+        let chrome = BoardLayout.stackedChrome(in: size, game: record.game,
                                                asking: headerHeight + panelHeight)
         return VStack(spacing: 0) {
             headerBlock(replay, airBelow: 0)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { headerHeight = $0 }
 
-            board(replay, BoardLayout.stackedGeometry(in: size, chrome: chrome))
+            board(replay, BoardLayout.stackedGeometry(in: size, game: record.game,
+                                                       chrome: chrome))
 
             panel(replay, showsHeader: false, edge: .bottom)
                 .frame(height: max(0, chrome - headerHeight))

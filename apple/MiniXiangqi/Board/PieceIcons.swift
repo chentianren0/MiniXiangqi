@@ -1,4 +1,4 @@
-// The 图标 symbol set: five glyphs, drawn for this board.
+// The 图标 symbol set: seven glyphs, drawn for this board.
 //
 // docs/interaction-design.md § Piece symbols is the contract. These are
 // original drawings rather than an adopted set, for the reason recorded there:
@@ -79,7 +79,7 @@ nonisolated struct PieceIcon: Shape {
     }
 
     /// The side of the square design box every glyph below is drawn in, `y`
-    /// down as the canvas is. Holding all five in one box is what keeps their
+    /// down as the canvas is. Holding all seven in one box is what keeps their
     /// sizes relative to one another wherever they are drawn.
     static let designSide: CGFloat = 100
 
@@ -96,6 +96,8 @@ nonisolated struct PieceIcon: Shape {
     static func design(for kind: PieceKind) -> Path {
         switch kind {
         case .general: general
+        case .advisor: advisor
+        case .elephant: elephant
         case .chariot: chariot
         case .horse: horse
         case .cannon: cannon
@@ -135,6 +137,49 @@ nonisolated struct PieceIcon: Shape {
         path.addLine(to: CGPoint(x: 4, y: 92))
         path.closeSubpath()
 
+        return path
+    }
+
+    // MARK: - 仕 / 士 — the ceremonial tablet
+
+    /// The court advisor's 笏板: a tall ceremonial tablet held before the body.
+    /// Its gently bowed sides, rounded crown, and small foot are one solid mass,
+    /// deliberately spare enough to remain a tablet at the smallest pitch.
+    static var advisor: Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 36, y: 96))
+        path.addLine(to: CGPoint(x: 29, y: 87))
+        path.addQuadCurve(to: CGPoint(x: 34, y: 15), control: CGPoint(x: 27, y: 50))
+        path.addQuadCurve(to: CGPoint(x: 50, y: 3), control: CGPoint(x: 38, y: 4))
+        path.addQuadCurve(to: CGPoint(x: 66, y: 15), control: CGPoint(x: 62, y: 4))
+        path.addQuadCurve(to: CGPoint(x: 71, y: 87), control: CGPoint(x: 73, y: 50))
+        path.addLine(to: CGPoint(x: 64, y: 96))
+        path.addLine(to: CGPoint(x: 57, y: 90))
+        path.addLine(to: CGPoint(x: 43, y: 90))
+        path.closeSubpath()
+        return path
+    }
+
+    // MARK: - 相 / 象 — the elephant head
+
+    /// An elephant head in profile: domed forehead, broad ear, one tusk, and a
+    /// trunk curling forward. All identifying features live in the silhouette;
+    /// there is no eye or other internal line to disappear under downsampling.
+    static var elephant: Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 8, y: 88))                               // trunk tip
+        path.addQuadCurve(to: CGPoint(x: 22, y: 64), control: CGPoint(x: 8, y: 75))
+        path.addQuadCurve(to: CGPoint(x: 18, y: 40), control: CGPoint(x: 18, y: 53))
+        path.addQuadCurve(to: CGPoint(x: 50, y: 14), control: CGPoint(x: 27, y: 20))
+        path.addQuadCurve(to: CGPoint(x: 82, y: 27), control: CGPoint(x: 70, y: 14))
+        path.addQuadCurve(to: CGPoint(x: 94, y: 55), control: CGPoint(x: 98, y: 41))
+        path.addQuadCurve(to: CGPoint(x: 70, y: 75), control: CGPoint(x: 91, y: 70))
+        path.addLine(to: CGPoint(x: 88, y: 88))                           // tusk
+        path.addQuadCurve(to: CGPoint(x: 61, y: 81), control: CGPoint(x: 76, y: 90))
+        path.addQuadCurve(to: CGPoint(x: 35, y: 72), control: CGPoint(x: 48, y: 84))
+        path.addQuadCurve(to: CGPoint(x: 25, y: 89), control: CGPoint(x: 34, y: 83))
+        path.addQuadCurve(to: CGPoint(x: 8, y: 88), control: CGPoint(x: 15, y: 94))
+        path.closeSubpath()
         return path
     }
 

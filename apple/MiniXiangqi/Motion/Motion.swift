@@ -29,8 +29,13 @@ enum Motion {
 
     /// The distance of a one-point step, in cell pitches.
     static let shortestStep: Double = 1
-    /// The longest crossing this board offers, corner to corner: √(6² + 6²).
-    static let longestCrossing: Double = (72.0).squareRoot()
+    /// The longest crossing one game's board offers, corner to corner. Mini
+    /// Xiangqi is √(6² + 6²); Xiangqi is √(8² + 9²).
+    static func longestCrossing(on board: BoardDefinition) -> Double {
+        let files = Double(board.fileCount - 1)
+        let ranks = Double(board.rankCount - 1)
+        return (files * files + ranks * ranks).squareRoot()
+    }
 
     /// The accepted mapping is a chosen proportion, not a derived quantity.
     /// The choice: linear in Euclidean distance between the two accepted
@@ -38,8 +43,8 @@ enum Motion {
     /// extra pitch of distance buys the same extra time — and the band is
     /// narrow enough that no curve within it could read differently.
     /// Monotone by construction; clamped so no move leaves the band.
-    static func travel(distance: Double) -> TimeInterval {
-        let span = (distance - shortestStep) / (longestCrossing - shortestStep)
+    static func travel(distance: Double, on board: BoardDefinition) -> TimeInterval {
+        let span = (distance - shortestStep) / (longestCrossing(on: board) - shortestStep)
         return travelFloor + (travelCeiling - travelFloor) * min(max(span, 0), 1)
     }
 

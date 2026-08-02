@@ -8,10 +8,10 @@
 //
 // The rules are docs/interaction-design.md, "WXF rendering" — clauses W1 to W8,
 // and the readings recorded beneath them. A move is `[piece][origin][direction]
-// [value]` with no spaces. The piece letters are K, R, H, C and P. Files are
-// numbered 1 to 7 from each player's own right, in Arabic numerals for both
-// sides — which is where WXF parts company with the traditional reading's 一 to
-// 七 for Red. The directions are `+` advance, `-` retreat and `=` traverse. The
+// [value]` with no spaces. The piece letters are K, A, E, R, H, C and P. Files
+// are numbered from each player's own right, in Arabic numerals for both sides
+// — which is where WXF parts company with traditional notation for Red. The
+// directions are `+` advance, `-` retreat and `=` traverse. The
 // value is the number of ranks moved when the move stays on its file, and the
 // destination file when it does not.
 //
@@ -31,6 +31,7 @@ enum WXFNotation {
     /// The move as the player reads it, given the placement *before* it.
     static func text(for move: Move, in placement: Placement) -> String {
         guard let piece = placement[move.from] else { return move.text }
+        let board = placement.board
 
         // W1's first two slots. The piece slot carries the type's letter unless
         // an index has replaced it; the origin slot carries the file unless a
@@ -38,7 +39,8 @@ enum WXFNotation {
         let opening: String
         switch origin(of: piece, at: move.from, in: placement) {
         case .file:
-            opening = letter(piece.kind) + number(file: move.from.file, for: piece.side)
+            opening = letter(piece.kind) + number(file: move.from.file, for: piece.side,
+                                                  on: board)
         case .marker(let marker):
             // W3: the marker stands in the file's own slot, after the letter —
             // R+=3, not +R=3 — and the file itself goes.
@@ -46,7 +48,8 @@ enum WXFNotation {
         case .index(let index):
             // W4 and W5: the index stands in the letter's slot instead, and the
             // file stays where it was.
-            opening = String(index) + number(file: move.from.file, for: piece.side)
+            opening = String(index) + number(file: move.from.file, for: piece.side,
+                                             on: board)
         }
 
         // `+` is toward the opponent, which is up the board for Red and down for
@@ -63,13 +66,11 @@ enum WXFNotation {
 
         // W2 is geometry rather than a list of piece types: a move that stays on
         // its file counts the ranks it crossed, and a move that leaves its file
-        // names the file it arrived on. On this board the horse is the only
-        // piece that leaves its file while changing rank, so it is the only one
-        // that names a file after `+` or `-` — but the clause never has to say
-        // so.
+        // names the file it arrived on. That covers Mini Xiangqi's horse and
+        // Xiangqi's horse, advisor, and elephant without a piece-type branch.
         let value = move.to.file == move.from.file
             ? String(abs(move.to.rank - move.from.rank))
-            : number(file: move.to.file, for: piece.side)
+            : number(file: move.to.file, for: piece.side, on: board)
         return opening + direction + value
     }
 
@@ -97,7 +98,7 @@ enum WXFNotation {
     /// unaffected by which way the board is facing.
     private static func origin(of piece: Piece, at square: Square,
                                in placement: Placement) -> Origin {
-        let onFile = (0..<Square.count)
+        let onFile = (0..<placement.board.rankCount)
             .map { Square(file: square.file, rank: $0) }
             .filter { placement[$0] == piece }
         guard onFile.count > 1, let index = onFile.firstIndex(of: square) else {
@@ -120,8 +121,8 @@ enum WXFNotation {
     /// doubled files is this board's maximum. A soldier alone on its file is
     /// never counted and keeps the plain form.
     private static func doubledFiles(of piece: Piece, in placement: Placement) -> Int {
-        (0..<Square.count).count { file in
-            (0..<Square.count).count { rank in
+        (0..<placement.board.fileCount).count { file in
+            (0..<placement.board.rankCount).count { rank in
                 placement[Square(file: file, rank: rank)] == piece
             } >= 2
         }
@@ -140,6 +141,8 @@ enum WXFNotation {
     private static func letter(_ kind: PieceKind) -> String {
         switch kind {
         case .general: "K"
+        case .advisor: "A"
+        case .elephant: "E"
         case .chariot: "R"
         case .horse: "H"
         case .cannon: "C"
@@ -147,10 +150,10 @@ enum WXFNotation {
         }
     }
 
-    /// Files are numbered from each player's own right: Red's right is file g,
-    /// Black's is file a. Arabic for both sides — unlike the traditional
-    /// reading, WXF has no second script for Red.
-    private static func number(file: Int, for side: Side) -> String {
-        String(side == .red ? Square.count - file : file + 1)
+    /// Files are numbered from each player's own right, in Arabic for both
+    /// sides. The board supplies whether the first number is seven or nine.
+    private static func number(file: Int, for side: Side,
+                               on board: BoardDefinition) -> String {
+        String(side == .red ? board.fileCount - file : file + 1)
     }
 }

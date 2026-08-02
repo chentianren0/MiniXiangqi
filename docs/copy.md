@@ -25,6 +25,8 @@ Contract sections are cited by document and section name rather than by line num
 | `nav.settings` | 设置 | Settings | navigation destination; screen title | same; 设置 is attested inside 本局设置 and 人机对弈默认设置; `ContentView.swift`, `Settings/SettingsScreen.swift` |
 | `nav.resumeGame` | 回到对局 | Resume Game | button | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode — English only there; `Play/PlayHome.swift` |
 | `nav.moveList` | 棋谱 | Moves | toolbar item; sheet title | [interaction-design.md](interaction-design.md) § The move list during play — the stacked layout reaches the list on demand, and this names both the item that reaches it and the sheet it opens; `Play/PlayScreen.swift`. 谱 is attested inside 记谱法 |
+| `game.xiangqi` | 象棋 | Xiangqi | Play-home section header; pre-start game name; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Starting and configuring a game, § Saving the active game before choosing a new mode; `Play/PlayHome.swift`, `Play/SetupScreen.swift`, `Play/ActiveGameMetadata.swift` |
+| `game.miniXiangqi` | 迷你象棋 | Mini Xiangqi | Play-home section header; pre-start game name; metadata token | same — this is the game name inside the application, while `app.displayName` remains the product name |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
 
@@ -131,7 +133,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.importDuplicate.message` | 文件里的对局和历史中的一盘完全相同，所以没有重复添加。 | The game in this file is identical to one already in History, so it wasn't added again. | alert message | same |
 | `alert.importConflict.title` | 这个文件和历史中的一盘棋冲突 | This File Conflicts with a Game in History | alert title | same |
 | `alert.importConflict.message` | 它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。 | It is the same game as one in History, but its contents differ. History is unchanged. To use this file, delete that game from History first. | alert message | same |
-| `alert.importNewerVersion.title` | 这个文件由更新版本的 Mini Xiangqi 创建 | This File Was Created by a Newer Version of Mini Xiangqi | alert title | [game-data.md](game-data.md) § Migration — the one message the compatibility promise requires to be distinct |
+| `alert.importNewerVersion.title` | 这个文件由更新版本的 Mini Xiangqi 创建 | This File Was Created by a Newer Version of Mini Xiangqi | alert title | [game-data.md](game-data.md) § Versions — the distinct answer for an archive whose version is newer than this build |
 | `alert.importNewerVersion.message` | 当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。 | This version can't read it. Update Mini Xiangqi and try again. History is unchanged. | alert message | same |
 | `alert.importUnreadable.title` | 无法读取这个对局文件 | Can't Read This Game File | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.importUnreadable.message` | 文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。 | The file's contents are invalid or too large to import. History is unchanged. Check that the file is complete, or ask for a new copy. | alert message | same |
@@ -236,7 +238,7 @@ Nothing here offers an interface language, and no key exists for one: the operat
 
 **`metadata.moveCount.one` is that pattern's other half, for a platform that has no pattern.** A String Catalog holds one key with plural variants and the platform selects between them, which is what the Apple frontend reads; the Windows frontend's string table is a table of pairs and has no such mechanism, so the **one** variant is a key and the frontend selects. It is one row rather than a full CLDR set because English has exactly two forms here and Chinese has one — a `zero`, `two`, `few` or `many` row would be a variant no supported language distinguishes. Both rows carry the same Chinese, deliberately: 步 does not change, and a row that pretended otherwise would be a translation nobody asked for. The key is only read where there is no catalog; nothing on Apple platforms looks it up.
 
-`metadata.join` composes the accepted metadata lines — 人机对弈 · 你执红, 进行中 · 轮到黑方 · 42 步, 红方获胜 · 将死 · 42 步, 进行中 · 可判和 · 42 步 — and is applied repeatedly rather than once per line length. The middot and its surrounding spaces are the same in both languages.
+`metadata.join` composes the accepted metadata lines, beginning with the game and mode — 象棋 · 人机对弈 · 你执红 · 进行中 · 轮到黑方 · 42 步, or 迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 42 步 — and is applied repeatedly rather than once per line length. The middot and its surrounding spaces are the same in both languages.
 
 ### History and replay
 
@@ -262,7 +264,7 @@ The five transport controls are icon-only, so every one of these is what a scree
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `board.tooSmall` | 窗口太小，放不下棋盘。请把窗口调大一些。 | The window is too small to fit the board. Please make it larger. | line in the board's place | [interaction-design.md](interaction-design.md) § Layout shapes — the accepted 44-point floor, and the refusal that keeps a board from being drawn under it; `windows/MiniXiangqi.Play/Board/BoardSpace.cs` |
+| `board.tooSmall` | 窗口太小，放不下棋盘。请把窗口调大一些。 | The window is too small to fit the board. Please make it larger. | line in the board's place | [interaction-design.md](interaction-design.md) § Layout shapes — the Mini Xiangqi 44-point and Xiangqi 34-point floors, and the refusal that keeps either board from being drawn below its own; `windows/MiniXiangqi.Play/Board/BoardSpace.cs` |
 
 **It is not a failure screen and does not join that family.** Nothing went wrong, nothing was lost, and the reader can put it right with one drag of a window edge — so it takes no 无法 title, carries no diagnostic beneath it, and is one line where a failure screen is a title and a description. It says the fact and then the remedy, in that order, and stops.
 
@@ -289,6 +291,8 @@ English piece names are accepted in [interaction-design.md](interaction-design.m
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
 | `piece.general` | 帅 (red) / 将 (black) | General | help text; accessibility label | [interaction-design.md](interaction-design.md) § Piece representation; `Board/Board.swift` |
+| `piece.advisor` | 仕 / 士 | Advisor | accessibility label | same |
+| `piece.elephant` | 相 / 象 | Elephant | accessibility label | same |
 | `piece.chariot` | 俥 / 车 | Chariot | help text; accessibility label | same |
 | `piece.horse` | 傌 / 马 | Horse | help text; accessibility label | same |
 | `piece.cannon` | 炮 / 砲 | Cannon | help text; accessibility label | same |
@@ -317,9 +321,9 @@ These are decisions, not oversights, and a mechanical one-to-one check will flag
 
 Game content is identical in every supported language. It is not copy, it carries no key, and it never enters the String Catalog.
 
-- **The ten piece characters** — 帅 将 俥 车 傌 马 炮 砲 兵 卒. Fixed in [interaction-design.md](interaction-design.md) § Piece representation: the pieces are Chinese characters, this is a teaching application, and the board presents the real characters rather than a translated substitute.
+- **The fourteen piece characters** — 帅 将 仕 士 相 象 俥 车 傌 马 炮 砲 兵 卒. Fixed in [interaction-design.md](interaction-design.md) § Piece representation: the pieces are Chinese characters, this is a teaching application, and the board presents the real characters rather than a translated substitute.
 - **The notation direction and position tokens** — 进, 退, 平, and the leading 前, 中, 后 — and the numbered forms that replace them when four or more pieces of a type share a file: 一兵, 二兵, and so on. Fixed in [interaction-design.md](interaction-design.md) § User-visible notation, which also fixes that a piece is named in a move by its own side's character form.
-- **The Chinese numerals in notation and in the file-numeral strip** — 一 二 三 四 五 六 七. Red writes every number in a move in Chinese numerals and Black in Arabic ones, and the numeral strips show each player their own. Fixed in [interaction-design.md](interaction-design.md) § User-visible notation.
+- **The Chinese numerals in notation and in the file-numeral strip** — 一 二 三 四 五 六 七 八 九. Red writes every number in a move in Chinese numerals and Black in Arabic ones, and each game's numeral strips show the files it has. Fixed in [interaction-design.md](interaction-design.md) § User-visible notation.
 - **Pictorial piece icons**, when that symbol set is selected. They are game presentation and do not change with the interface language, per [interaction-design.md](interaction-design.md) § Piece symbols.
 
 A reader using icon symbols still reads a character-based move list, because traditional notation names pieces by their characters.

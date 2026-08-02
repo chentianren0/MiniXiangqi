@@ -26,10 +26,11 @@ final class PlayScreenUITests: XCTestCase {
 
     /// The shortest checkmate from the start position. Red's cannon reaches the
     /// general's file, screened by Black's own soldier.
-    private static let mateLine = "b1b3,b7b6,b3d3"
+    private static let mateLine = "minixiangqi:b1b3,b7b6,b3d3"
 
     /// The start position a third time, which is what makes the draw claimable.
-    private static let shuffleLine = "b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7"
+    private static let shuffleLine =
+        "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7"
 
     /// A language to run the interface in, and the strings docs/copy.md
     /// accepts for it.
@@ -173,8 +174,8 @@ final class PlayScreenUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
             if point(app, "d1").exists { return true }
-            if app.buttons["mode-free-play"].exists {
-                app.buttons["mode-free-play"].click()
+            if app.buttons["mode-mini-xiangqi-free-play"].exists {
+                app.buttons["mode-mini-xiangqi-free-play"].click()
                 XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
                 app.buttons["setup-start"].click()
                 return point(app, "d1").waitForExistence(timeout: 15)
@@ -664,7 +665,8 @@ final class PlayScreenUITests: XCTestCase {
         destination(app, 1).click()
         XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10),
                       "保存 filed the game")
-        XCTAssertTrue(historyRow(app, 0).label.contains("自由对弈 · 红方获胜 · 将死 · 3 步"),
+        XCTAssertTrue(historyRow(app, 0).label.contains(
+            "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步"),
                       "the row reads the saved game — it reads \(historyRow(app, 0).label)")
         XCTAssertFalse(historyRow(app, 1).exists, "one game was played, so one record exists")
 
@@ -678,9 +680,10 @@ final class PlayScreenUITests: XCTestCase {
         // 完成 is the way out of the recorded state: back to the Play home,
         // with nothing filed a second time on the way.
         app.buttons["result-done"].click()
-        XCTAssertTrue(app.buttons["mode-free-play"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-free-play"].waitForExistence(timeout: 5),
                       "完成 returns to the Play home")
-        XCTAssertTrue(app.buttons["mode-human-versus-ai"].exists, "with both modes on offer")
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-human-versus-ai"].exists,
+                      "with both Mini Xiangqi modes on offer")
         XCTAssertFalse(app.staticTexts["result-title"].exists, "the notice is gone")
         XCTAssertFalse(app.staticTexts["无法保存对局"].exists,
                        "a game already filed is not filed again, so nothing refused it")
@@ -888,7 +891,7 @@ final class PlayScreenUITests: XCTestCase {
     /// ring around the general after its one-time pulse has settled; the
     /// pulse itself, and every travel, is judged by running the app.
     func testTheCheckStateRingsTheGeneral() {
-        let app = launch(replaying: "b1b3,d6d5,b3d3")
+        let app = launch(replaying: "minixiangqi:b1b3,d6d5,b3d3")
 
         XCTAssertEqual(point(app, "d7").label, "d7 黑 将 被将军",
                        "the checked general carries the state")
@@ -903,7 +906,7 @@ final class PlayScreenUITests: XCTestCase {
     /// post-state: the taken soldier gone, the taker on its point, the
     /// brackets on the move that did it.
     func testTheBoardAfterACapture() {
-        let app = launch(replaying: "d2d3,d6d5,d3d4,d5d4")
+        let app = launch(replaying: "minixiangqi:d2d3,d6d5,d3d4,d5d4")
 
         XCTAssertEqual(point(app, "d4").label, "d4 黑 卒",
                        "the taker stands where the taken stood")
@@ -1171,7 +1174,7 @@ final class PlayScreenUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["-AppleLanguages", "(\(language.code))",
                                    "-mxq-store-name", scratchStoreName(),
-                                   "-mxq-replay", "d1d7"]
+                                   "-mxq-replay", "minixiangqi:d1d7"]
             app.launch()
             XCTAssertTrue(app.staticTexts[language.gameDidNotStart].waitForExistence(timeout: 20),
                           "a refused replay line should say so in \(language.code)")
@@ -1208,7 +1211,7 @@ final class PlayScreenUITests: XCTestCase {
     /// screen into a claimable draw. Every move of it goes through the core, so
     /// a move that stopped being legal fails this test where it launches.
     private static let evidenceLine =
-        "d2d3,d6d5,d3d4,d5d4,b1b2,b7b6,b2b1,b6b7,a2a3,a6a5"
+        "minixiangqi:d2d3,d6d5,d3d4,d5d4,b1b2,b7b6,b2b1,b6b7,a2a3,a6a5"
 
     /// The cell pitch the running app settled on. Each tap target is one cell,
     /// placed from the same geometry that draws the board, so the board's size

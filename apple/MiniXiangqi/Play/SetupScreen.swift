@@ -36,10 +36,11 @@ struct SetupScreen: View {
 
     var body: some View {
         GeometryReader { proxy in
-            switch BoardLayout.shape(in: proxy.size) {
+            switch BoardLayout.shape(in: proxy.size, game: selection.game) {
             case .sideBySide:
                 HStack(spacing: 0) {
-                    preview(BoardLayout.previewGeometry(in: proxy.size))
+                    preview(BoardLayout.previewGeometry(in: proxy.size,
+                                                        game: selection.game))
                     panel(fillingHeight: true)
                         .frame(width: BoardLayout.panelWidth)
                 }
@@ -50,6 +51,7 @@ struct SetupScreen: View {
                 // take what they need and it fits into what is left.
                 VStack(spacing: 0) {
                     preview(BoardLayout.stackedPreviewGeometry(in: proxy.size,
+                                                               game: selection.game,
                                                                chrome: controlsHeight))
                     panel(fillingHeight: false)
                         .onGeometryChange(for: CGFloat.self, of: \.size.height) {
@@ -62,7 +64,8 @@ struct SetupScreen: View {
 
     private func preview(_ geometry: BoardGeometry) -> some View {
         BoardView(geometry: geometry,
-                  placement: Placement(fen: Core.startFEN(for: selection.game)),
+                  placement: Placement(fen: Core.startFEN(for: selection.game),
+                                       game: selection.game),
                   flipped: previewsFlipped,
                   showsNumerals: true,
                   selected: nil,
@@ -100,6 +103,10 @@ struct SetupScreen: View {
     @ViewBuilder
     private func panel(fillingHeight: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text(selection.game.localizedName)
+                .font(.title3.weight(.semibold))
+                .accessibilityIdentifier("setup-game")
+
             switch mode {
             case .humanVersusAI: humanVersusAISetup
             case .freePlay: freePlaySetup

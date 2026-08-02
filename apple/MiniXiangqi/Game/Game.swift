@@ -167,8 +167,11 @@ final class Game {
         let configuration = try rules.configuration()
         let identity = try rules.gameID()
         let moves = try rules.moveHistory()
-        let notation = try Self.notation(reading: moves, from: rules)
-        let lastMove = moves.last.flatMap { Move(text: $0) }
+        let notation = try Self.notation(reading: moves, game: configuration.game,
+                                         from: rules)
+        let lastMove = try moves.last.map {
+            try Self.move(reading: $0, on: configuration.game.board)
+        }
         let evaluation = try rules.evaluation()
         self.rules = rules
         self.moves = moves
@@ -177,7 +180,7 @@ final class Game {
         self.evaluation = evaluation
         self.configuration = configuration
         self.identity = identity
-        self.placement = Placement(fen: evaluation.fen)
+        self.placement = Placement(fen: evaluation.fen, game: configuration.game)
         // The accepted orientation rule, applied once: in human-versus-AI play
         // the human's own side is at the bottom, and Red at the bottom is the
         // unflipped board. Free Play opens unflipped and keeps its flip control.
@@ -188,15 +191,22 @@ final class Game {
     /// The stored line, read as it was written — the same reading a History
     /// record's replay gets, so a relaunch and a replay say the same words
     /// about the same game.
-    private static func notation(reading moves: [String],
+    private static func notation(reading moves: [String], game: GameKind,
                                  from rules: Rules) throws -> [MoveReading] {
         do {
-            return try MoveReading.line(for: moves) {
-                Placement(fen: try rules.fen(atPly: $0))
+            return try MoveReading.line(for: moves, on: game.board) {
+                Placement(fen: try rules.fen(atPly: $0), game: game)
             }
         } catch {
             throw CoreError(wrapping: error)
         }
+    }
+
+    private static func move(reading text: String, on board: BoardDefinition) throws -> Move {
+        guard let move = Move(text: text, on: board) else {
+            throw UnreadableCoreMove(text: text)
+        }
+        return move
     }
 
     // MARK: - Derived board state
@@ -334,7 +344,7 @@ final class Game {
             // The brackets always mark the move that produced the position on
             // screen, so an Undo moves them to the move that is now last, and
             // an initial position carries none.
-            lastMove = moves.last.flatMap { Move(text: $0) }
+            lastMove = try moves.last.map { try Self.move(reading: $0, on: kind.board) }
             selected = nil
             refreshLegalMoves()
         } catch {
@@ -390,7 +400,7 @@ final class Game {
     /// which is this.
     func placement(atPly ply: Int) -> Placement? {
         guard let fen = try? rules.fen(atPly: ply) else { return nil }
-        return Placement(fen: fen)
+        return Placement(fen: fen, game: kind)
     }
 
     /// Files the finished game in History: what the notice's 保存 does on its
@@ -459,17 +469,24 @@ final class Game {
     /// committed game, asked again after every change.
     private func refresh() throws {
         evaluation = try rules.evaluation()
-        placement = Placement(fen: evaluation.fen)
+        placement = Placement(fen: evaluation.fen, game: kind)
     }
 
     private func refreshLegalMoves() {
         do {
-            legalMoves = try rules.legalMoves().compactMap(Move.init(text:))
+            legalMoves = try rules.legalMoves().map {
+                try Self.move(reading: $0, on: kind.board)
+            }
         } catch {
             legalMoves = []
             failure = CoreError(wrapping: error)
         }
     }
+}
+
+private struct UnreadableCoreMove: Error, CustomStringConvertible {
+    var text: String
+    var description: String { "the core returned an unreadable move: \(text)" }
 }
 
 #if DEBUG
@@ -490,7 +507,7 @@ extension Game {
     /// Debug only: it is a test affordance, not a product one.
     func replay(_ line: [String]) throws {
         for text in line {
-            guard let move = Move(text: text), legalMoves.contains(move) else {
+            guard let move = Move(text: text, on: kind.board), legalMoves.contains(move) else {
                 throw CoreError(wrapping: RefusedReplayMove(text: text))
             }
             play(move)
