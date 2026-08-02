@@ -27,6 +27,8 @@
 // honest residue — a display scale that rounds badly, a platform default that
 // moves — where the refusal is right and silence is not.
 
+using MiniXiangqi.Core;
+
 namespace MiniXiangqi.Play;
 
 /// <summary>
@@ -54,16 +56,16 @@ public readonly record struct BoardSpace
 
     /// <summary>
     /// What a host of this inner size — its padding already taken off — shows.
-    ///
-    /// The board is square and is sized to the largest square fitting **both**
-    /// the width and the height, which is the accepted rule and is why a short
-    /// window bounds it exactly as a narrow one does.
+    /// The selected game's own rectangular profile is fitted against both
+    /// dimensions, so Xiangqi's ten-rank board never overflows a short host.
     /// </summary>
-    public static BoardSpace Of(double width, double height)
-    {
-        double side = Math.Min(width, height);
-        return new BoardSpace(side > 0 ? BoardGeometry.Fitting(side) : null);
-    }
+    public static BoardSpace Of(double width, double height, GameKind game) =>
+        Of(width, height, BoardDefinition.For(game));
+
+    public static BoardSpace Of(double width, double height, BoardDefinition board) =>
+        new(width > 0 && height > 0
+            ? BoardGeometry.Fitting(width, height, board)
+            : null);
 }
 
 /// <summary>
@@ -106,25 +108,33 @@ public static class WindowFloor
 
     public const double OpenPaneLength = 320;
 
-    /// <summary>The board block at the accepted pitch floor: 340 square.</summary>
-    public static double BoardBlockAtFloor => new BoardGeometry(BoardGeometry.MinimumPitch).BlockSide;
+    /// <summary>
+    /// The widest floor-sized block across both games: Mini Xiangqi's 340.
+    /// </summary>
+    public static double BoardBlockWidthAtFloor => BoardDefinition.All.Max(board =>
+        new BoardGeometry(board, BoardGeometry.MinimumPitch(board)).BlockWidth);
 
     /// <summary>
-    /// The play content's floor on Windows: **648** wide.
-    ///
-    /// Not the 616 docs/interaction-design.md § Layout shapes states, because
-    /// this board block is 340 wide rather than 308 — the Windows board carries
-    /// the canonical coordinates on four edges rather than the file numerals on
-    /// two.
+    /// The tallest floor-sized block across both games: Xiangqi's 368.
     /// </summary>
-    public static double ContentWidth => BoardBlockAtFloor + (2 * Air) + PanelWidth;
+    public static double BoardBlockHeightAtFloor => BoardDefinition.All.Max(board =>
+        new BoardGeometry(board, BoardGeometry.MinimumPitch(board)).BlockHeight);
 
-    /// <summary>The play content's floor in height: **388**, the board host alone.</summary>
-    public static double ContentHeight => BoardBlockAtFloor + (2 * Air);
+    /// <summary>
+    /// The play content's floor on Windows: **648** wide. Mini Xiangqi supplies
+    /// the maximum floor-width block; the four coordinate strips make it 340.
+    /// </summary>
+    public static double ContentWidth => BoardBlockWidthAtFloor + (2 * Air) + PanelWidth;
+
+    /// <summary>
+    /// The play content's floor in height: **416**. Xiangqi supplies the
+    /// maximum floor-height block: 340 points of core plus two 14-point strips.
+    /// </summary>
+    public static double ContentHeight => BoardBlockHeightAtFloor + (2 * Air);
 
     /// <summary>
     /// The window's own floor in device-independent pixels, before the display
-    /// scale and before the frame the presenter's minimum includes: 696 by 432.
+    /// scale and before the frame the presenter's minimum includes: 696 by 460.
     /// The content's floor plus the chrome around it — the rail, which costs
     /// width, and the navigation row, which costs height.
     /// </summary>

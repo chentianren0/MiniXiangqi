@@ -47,7 +47,7 @@ and every assertion below is made against what came out of it.
 The tree assertions are there because each names a failure that is silent until
 somebody installs the thing. A package without the resource index or the
 compiled XAML installs and dies before its first window. A package whose assets
-directory lost the network installs, runs, and declines to think. An ARM64
+directory lost either network installs, runs, and declines to think in that game. An ARM64
 package that quietly resolved x64 natives builds, uploads, passes certification
 and fails on every machine it is for.
 
@@ -93,6 +93,9 @@ $null = New-Item -ItemType Directory -Force -Path $OutputDirectory
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 
 $manifest = Get-Content (Join-Path $repoRoot 'pinned-inputs.json') -Raw | ConvertFrom-Json
+$networkEntries = @($manifest.network.PSObject.Properties |
+    Where-Object { -not $_.Name.StartsWith('_') } |
+    ForEach-Object { $_.Value })
 
 # ---------------------------------------------------------------------------
 # MSBuild
@@ -488,9 +491,35 @@ if (-not (Test-Path (Join-Path $unpacked 'sounds'))) {
 # here. A package whose network is absent or renamed does not crash: the AI
 # declines to start, everything else works, and nobody can tell why.
 $packagedAssets = Join-Path $unpacked 'assets'
-foreach ($asset in @($manifest.variant.filename, $manifest.network.($manifest.variant.id).filename)) {
+$requiredAssets = @($manifest.variant.filename) + @($networkEntries | ForEach-Object { $_.filename })
+foreach ($asset in $requiredAssets) {
     if (-not (Test-Path (Join-Path $packagedAssets $asset))) {
         $missing += "assets\$asset is not in the package."
+    }
+}
+
+$packagedNetworks = @(Get-ChildItem -Path $packagedAssets -Filter '*.nnue' -File -ErrorAction SilentlyContinue)
+if ($packagedNetworks.Count -ne $networkEntries.Count) {
+    $missing += ("assets contains $($packagedNetworks.Count) .nnue files; pinned-inputs.json requires " +
+                 "$($networkEntries.Count).")
+}
+foreach ($network in $networkEntries) {
+    $matching = @($packagedNetworks | Where-Object { $_.Name -ceq $network.filename })
+    if ($matching.Count -ne 1) {
+        $missing += "assets does not contain the exact case-sensitive network name $($network.filename)."
+        continue
+    }
+
+    $file = $matching[0]
+    if ($file.Length -ne $network.byte_length) {
+        $missing += ("assets\$($file.Name) is $('{0:N0}' -f $file.Length) bytes; pinned-inputs.json " +
+                     "requires $('{0:N0}' -f $network.byte_length).")
+        continue
+    }
+
+    $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $network.sha256) {
+        $missing += "assets\$($file.Name) hashes to $hash; pinned-inputs.json requires $($network.sha256)."
     }
 }
 

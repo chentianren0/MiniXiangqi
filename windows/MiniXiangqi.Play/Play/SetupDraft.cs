@@ -23,6 +23,12 @@ public enum PlayMode
     FreePlay,
 }
 
+/// <summary>
+/// One immutable destination from the Play home. Game and mode are independent
+/// axes, and both survive every transient step before creation commits them.
+/// </summary>
+public readonly record struct PlaySelection(GameKind Game, PlayMode Mode);
+
 /// <summary>**我先手**, **AI 先手**, **随机**.</summary>
 public enum FirstMoverChoice
 {

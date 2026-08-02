@@ -15,7 +15,7 @@ c
 --namespace
 MiniXiangqi.Core.Interop
 
-# The static class the 54 functions and every named constant land on.
+# The static class the 55 functions and every named constant land on.
 --method-class-name
 Mxq
 

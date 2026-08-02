@@ -95,13 +95,13 @@ public sealed class PlayFlow : IDisposable
     private Placement? _preview;
 
     /// <summary>
-    /// The mode the player asked for while a game was active. It is remembered
+    /// The game and mode the player asked for while a game was active. They are remembered
     /// only while the confirmation or its retry exists, which is the accepted
     /// rule — "the requested destination remains temporary only while this
     /// confirmation or retry flow exists" — and there is nowhere here for it to
     /// survive them.
     /// </summary>
-    private PlayMode? _requested;
+    private PlaySelection? _requested;
 
     /// <summary>
     /// True between 保存并继续 and the archive answering. It is not the same as
@@ -126,13 +126,16 @@ public sealed class PlayFlow : IDisposable
     private int _archiveAttempt;
 
     /// <summary>
-    /// Every engine preparation still in flight, not merely the newest.
+    /// Every blocking engine operation still in flight, not merely the newest.
     ///
     /// A single field would be wrong, and reachably so: leaving the pre-start
     /// page mid-preparation, re-entering it and pressing **开始对局** again puts
     /// two <c>mxq_engine_prepare</c> calls in flight at once — the first
     /// attempt's is not cancelled, only disowned — and a field would leave
-    /// disposal waiting on the newer one alone. Closing the window then shuts
+    /// disposal waiting on the newer one alone. Teardown belongs on this same
+    /// queue: it is blocking too, and putting it after the work whose ownership
+    /// it releases keeps it off the UI thread without racing a later prepare.
+    /// Closing the window then shuts
     /// the core down with the older call still inside it, which is precisely
     /// what docs/core-interface.md's shutdown promise says the core does not
     /// defend against: "the caller quiesces its own threads before shutting the
@@ -141,9 +144,10 @@ public sealed class PlayFlow : IDisposable
     /// Only ever touched on this object's own thread: added to in
     /// <see cref="StartGame"/> and drained in <see cref="Dispose"/>.
     /// </summary>
-    private readonly List<Task> _preparations = [];
+    private readonly List<Task> _engineWork = [];
 
     private bool _started;
+    private bool _disposed;
 
     public PlayFlow(
         MiniXiangqiCore core,
@@ -165,8 +169,8 @@ public sealed class PlayFlow : IDisposable
 
     public PlayPage Page { get; private set; } = PlayPage.Home;
 
-    /// <summary>Which mode's pre-start page <see cref="PlayPage.Setup"/> is.</summary>
-    public PlayMode SetupMode { get; private set; }
+    /// <summary>Which game and mode the pre-start page will create.</summary>
+    public PlaySelection? SetupSelection { get; private set; }
 
     /// <summary>
     /// The game on the board, filed or not. Null before the first game of a
@@ -210,11 +214,21 @@ public sealed class PlayFlow : IDisposable
     /// interactive, with the human's own side at the bottom. **随机** remains
     /// unresolved and previews Red.
     /// </summary>
-    public BoardScene PreviewScene => new()
+    public BoardScene PreviewScene
     {
-        Placement = _preview ??= new Placement(MiniXiangqiCore.StartFen),
-        Flipped = SetupMode == PlayMode.HumanVersusAi && Draft.PreviewsHumanAsBlack,
-    };
+        get
+        {
+            PlaySelection selection = SetupSelection
+                ?? throw new InvalidOperationException("A preview exists only on the setup page");
+            return new BoardScene
+            {
+                Placement = _preview ??= new Placement(
+                    MiniXiangqiCore.StartFen(selection.Game), selection.Game),
+                Flipped = selection.Mode == PlayMode.HumanVersusAi
+                    && Draft.PreviewsHumanAsBlack,
+            };
+        }
+    }
 
     // MARK: Launch.
 
@@ -254,7 +268,7 @@ public sealed class PlayFlow : IDisposable
     // MARK: The home.
 
     /// <summary>
-    /// A mode entry was chosen on the home.
+    /// A game-and-mode entry was chosen on the home.
     ///
     /// With no active game it opens that mode's pre-start page. With one it
     /// opens nothing at all: the accepted confirmation presents instead, and the
@@ -262,7 +276,7 @@ public sealed class PlayFlow : IDisposable
     /// History record the board was still showing, so it is let go of here and
     /// the pre-start page opens as it would have with no game at all.
     /// </summary>
-    public void Choose(PlayMode mode)
+    public void Choose(PlaySelection selection)
     {
         if (Page != PlayPage.Home || Alert != FlowAlert.None || _saving)
         {
@@ -271,14 +285,14 @@ public sealed class PlayFlow : IDisposable
 
         if (ActiveGame is not null)
         {
-            _requested = mode;
+            _requested = selection;
             Alert = FlowAlert.NewGame;
             Publish();
             return;
         }
 
         Release();
-        OpenSetup(mode);
+        OpenSetup(selection);
     }
 
     /// <summary>
@@ -338,7 +352,7 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     public void SaveAndContinue()
     {
-        if (_requested is not { } mode || ActiveGame is not { } live || _saving)
+        if (_requested is not { } selection || ActiveGame is not { } live || _saving)
         {
             return;
         }
@@ -370,7 +384,7 @@ public sealed class PlayFlow : IDisposable
             if (failure is null)
             {
                 Release();
-                OpenSetup(mode);
+                OpenSetup(selection);
                 return;
             }
 
@@ -421,7 +435,7 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     public void StartGame()
     {
-        if (Page != PlayPage.Setup || Creating)
+        if (Page != PlayPage.Setup || Creating || SetupSelection is not { } selection)
         {
             return;
         }
@@ -431,9 +445,9 @@ public sealed class PlayFlow : IDisposable
         int token = ++_attempt;
         Publish();
 
-        if (SetupMode == PlayMode.FreePlay)
+        if (selection.Mode == PlayMode.FreePlay)
         {
-            Create(PlayMode.FreePlay, humanSide: null);
+            Create(selection, humanSide: null);
             return;
         }
 
@@ -446,15 +460,18 @@ public sealed class PlayFlow : IDisposable
         // and the threading contract keeps it off the UI thread. Every task is
         // kept, not just the newest, because the same contract puts quiescence
         // on the caller and an abandoned attempt is still a call inside the
-        // core. Finished ones are dropped here rather than from the completion,
-        // so the list is only ever touched on this thread.
-        _preparations.RemoveAll(finished => finished.IsCompleted);
-        _preparations.Add(Task.Run(() =>
+        // core. They are chained in request order: two games share one native
+        // engine, so an abandoned older prepare must never finish after its
+        // replacement and leave the engine on the wrong game's profile.
+        // Finished ones are dropped when the next operation is enqueued rather
+        // than from their completion, so the list is only ever touched on this
+        // thread.
+        EnqueueEngineWork(() =>
         {
             MxqException? failure = null;
             try
             {
-                _core.PrepareEngine(budget);
+                _core.PrepareEngine(selection.Game, budget);
             }
             catch (MxqException caught)
             {
@@ -472,7 +489,8 @@ public sealed class PlayFlow : IDisposable
                     // because the engine is one engine and a stale completion
                     // must not pull it out from under the attempt that replaced
                     // it.
-                    if (!Creating)
+                    if (!_disposed && !Creating
+                        && (_session is null || !_session.IsHumanVersusAi))
                     {
                         TeardownEngine();
                     }
@@ -490,9 +508,9 @@ public sealed class PlayFlow : IDisposable
 
                 // Everything from here is synchronous, so there is no second
                 // window in which a completion could arrive late and commit.
-                Create(PlayMode.HumanVersusAi, Draft.ResolveHumanSide());
+                Create(selection, Draft.ResolveHumanSide());
             });
-        }));
+        });
     }
 
     /// <summary>
@@ -513,18 +531,20 @@ public sealed class PlayFlow : IDisposable
             ? FlowAlert.AiUnavailable
             : FlowAlert.GameNotStarted;
 
-    private void Create(PlayMode mode, Side? humanSide)
+    private void Create(PlaySelection selection, Side? humanSide)
     {
         try
         {
-            GameSession game = mode == PlayMode.FreePlay
+            GameSession game = selection.Mode == PlayMode.FreePlay
                 ? _core.Create(
+                    selection.Game,
                     Mxq.MXQ_PLAY_MODE_FREE_PLAY,
                     Mxq.MXQ_COLOR_NONE,
                     Mxq.MXQ_AI_LEVEL_NONE,
                     Mxq.MXQ_FIRST_MOVER_NONE,
                     0)
                 : _core.Create(
+                    selection.Game,
                     Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI,
                     humanSide == Side.Black ? Mxq.MXQ_COLOR_BLACK : Mxq.MXQ_COLOR_RED,
                     Draft.Level.Code(),
@@ -533,6 +553,8 @@ public sealed class PlayFlow : IDisposable
 
             Adopt(game);
             Creating = false;
+            SetupSelection = null;
+            _preview = null;
             Page = PlayPage.Board;
             Publish();
             _session!.Begin();
@@ -545,7 +567,7 @@ public sealed class PlayFlow : IDisposable
             // game to keep.
             Creating = false;
             Alert = FlowAlert.GameNotStarted;
-            if (mode == PlayMode.HumanVersusAi)
+            if (selection.Mode == PlayMode.HumanVersusAi)
             {
                 // The engine was prepared for a game that does not exist.
                 TeardownEngine();
@@ -593,6 +615,8 @@ public sealed class PlayFlow : IDisposable
         _attempt++;
         Creating = false;
         Alert = FlowAlert.None;
+        SetupSelection = null;
+        _preview = null;
         Page = PlayPage.Home;
         Publish();
     }
@@ -619,9 +643,11 @@ public sealed class PlayFlow : IDisposable
             return;
         }
 
-        PlayMode mode = PlayVocabulary.Mode(live.Configuration.Mode);
+        PlaySelection selection = new(
+            live.Configuration.Game,
+            PlayVocabulary.Mode(live.Configuration.Mode));
         Release();
-        OpenSetup(mode);
+        OpenSetup(selection);
     }
 
     /// <summary>
@@ -642,10 +668,11 @@ public sealed class PlayFlow : IDisposable
 
     // MARK: The game, and the engine behind it.
 
-    private void OpenSetup(PlayMode mode)
+    private void OpenSetup(PlaySelection selection)
     {
         _requested = null;
-        SetupMode = mode;
+        SetupSelection = selection;
+        _preview = null;
         Draft = SetupDraft.FromDefaults(_preferences);
         Alert = FlowAlert.None;
         Creating = false;
@@ -708,16 +735,38 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     private void TeardownEngine()
     {
-        try
+        // The native operation is blocking and the threading contract excludes
+        // the UI thread. Queue it behind every earlier prepare or teardown, so a
+        // later preparation is in turn queued behind this release.
+        EnqueueEngineWork(() =>
         {
-            if (_core.Engine.State == Mxq.MXQ_ENGINE_STATE_READY)
+            try
             {
-                _core.TeardownEngine();
+                if (_core.Engine.State == Mxq.MXQ_ENGINE_STATE_READY)
+                {
+                    _core.TeardownEngine();
+                }
             }
-        }
-        catch (MxqException)
-        {
-        }
+            catch (MxqException)
+            {
+            }
+        });
+    }
+
+    /// <summary>
+    /// Serialize one blocking engine operation on a pool thread and retain it
+    /// until shutdown has quiesced everything this flow started.
+    /// </summary>
+    private void EnqueueEngineWork(Action operation)
+    {
+        _engineWork.RemoveAll(finished => finished.IsCompleted);
+        Task prior = _engineWork.LastOrDefault() ?? Task.CompletedTask;
+        Task work = prior.ContinueWith(
+            _ => operation(),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+        _engineWork.Add(work);
     }
 
     private void Publish() => Changed?.Invoke();
@@ -729,28 +778,36 @@ public sealed class PlayFlow : IDisposable
     /// </summary>
     public void Dispose()
     {
+        // A task is complete once it has posted its answer, not once that answer
+        // has run. Invalidate the answer before waiting so a queued completion
+        // cannot create a game or touch the core after this flow is released.
+        _disposed = true;
+        _attempt++;
+        Creating = false;
+
         // Nothing this object started may still be inside the core when whoever
         // owns the core shuts it down. An archive answering after this decides
-        // nothing, and every preparation still running is waited for — every
-        // one, including an attempt the player walked out of.
+        // nothing, and every blocking engine operation still running is waited
+        // for — including a preparation attempt the player walked out of.
         _archiveAttempt++;
         _saving = false;
 
-        foreach (Task preparation in _preparations)
+        foreach (Task work in _engineWork)
         {
             try
             {
-                preparation.Wait();
+                work.Wait();
             }
             catch (AggregateException)
             {
-                // The preparation's own failure was already reported through the
-                // scheduler, or will never be delivered because the window is
-                // closing. Either way there is nobody left to tell.
+                // A preparation's own failure was already reported through the
+                // scheduler, and teardown is best-effort. If either answer has
+                // not been delivered, the window is closing and there is nobody
+                // left to tell.
             }
         }
 
-        _preparations.Clear();
+        _engineWork.Clear();
         if (_session is { } live)
         {
             live.Changed -= Publish;

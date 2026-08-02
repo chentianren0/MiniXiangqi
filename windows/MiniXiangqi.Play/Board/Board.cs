@@ -1,4 +1,4 @@
-// The board's vocabulary: points, pieces, and the position a FEN denotes.
+// The board's vocabulary: games, points, pieces, and the position a FEN denotes.
 //
 // This file reads FEN; it never judges one. Legality, adjudication, and the
 // legal-move set all come from the core, and nothing here re-derives them. It
@@ -7,7 +7,55 @@
 // identity across platforms, and two frontends that disagree about what a
 // square is called would not have one.
 
+using System.Collections.Immutable;
+using MiniXiangqi.Core;
+
 namespace MiniXiangqi.Play;
+
+/// <summary>
+/// The dimensions and fixed markings of one game's board. Rules and legality
+/// still belong to the core; this is only the topology the Windows UI presents.
+/// </summary>
+public readonly record struct BoardDefinition(
+    int FileCount,
+    int RankCount,
+    ImmutableArray<BoardDefinition.Palace> Palaces,
+    int? RiverAfterRank)
+{
+    /// <summary>A three-by-three palace, expressed as inclusive point indices.</summary>
+    public readonly record struct Palace(
+        int FirstFile,
+        int LastFile,
+        int FirstRank,
+        int LastRank);
+
+    public static BoardDefinition MiniXiangqi { get; } = new(
+        7,
+        7,
+        [new Palace(2, 4, 0, 2), new Palace(2, 4, 4, 6)],
+        RiverAfterRank: null);
+
+    public static BoardDefinition Xiangqi { get; } = new(
+        9,
+        10,
+        [new Palace(3, 5, 0, 2), new Palace(3, 5, 7, 9)],
+        RiverAfterRank: 4);
+
+    /// <summary>The two profiles, for dimensions that must survive a game switch.</summary>
+    public static ImmutableArray<BoardDefinition> All { get; } = [MiniXiangqi, Xiangqi];
+
+    public int SquareCount => FileCount * RankCount;
+
+    public bool Contains(Square square) =>
+        (uint)square.File < (uint)FileCount && (uint)square.Rank < (uint)RankCount;
+
+    public static BoardDefinition For(GameKind game) => game switch
+    {
+        GameKind.MiniXiangqi => MiniXiangqi,
+        GameKind.Xiangqi => Xiangqi,
+        _ => throw new ArgumentOutOfRangeException(nameof(game), game, "Unknown game kind."),
+    };
+}
 
 /// <summary>Which side a piece belongs to.</summary>
 public enum Side
@@ -17,35 +65,50 @@ public enum Side
 }
 
 /// <summary>
-/// One of the 49 points, named <c>a1</c> through <c>g7</c>: files <c>a</c>–<c>g</c>
-/// from Red's left, ranks <c>1</c>–<c>7</c> from Red's back rank.
+/// One point, named by a file from Red's left and a rank from Red's back rank.
+/// The board definition, not the value itself, decides whether it is in bounds.
 /// </summary>
 public readonly record struct Square(int File, int Rank)
 {
-    /// <summary>Seven points a side. Not a count of cells: the grid is 6 by 6.</summary>
-    public const int Count = 7;
-
     /// <summary>The canonical name, which is what the core exchanges.</summary>
     public string Name => $"{(char)('a' + File)}{Rank + 1}";
 
-    public bool OnBoard => (uint)File < Count && (uint)Rank < Count;
+    public bool On(BoardDefinition board) => board.Contains(this);
 
-    public static Square? Parse(ReadOnlySpan<char> name)
+    /// <summary>Parse one canonical coordinate against an explicit board.</summary>
+    public static Square? Parse(ReadOnlySpan<char> name, BoardDefinition board)
     {
-        if (name.Length != 2)
+        if (name.Length < 2 || name[0] is < 'a' or > 'z' || name[1] == '0')
         {
             return null;
         }
 
-        Square square = new(name[0] - 'a', name[1] - '1');
-        return square.OnBoard ? square : null;
+        int displayedRank = 0;
+        foreach (char digit in name[1..])
+        {
+            if (digit is < '0' or > '9')
+            {
+                return null;
+            }
+
+            displayedRank = (displayedRank * 10) + (digit - '0');
+            if (displayedRank > board.RankCount)
+            {
+                return null;
+            }
+        }
+
+        Square square = new(name[0] - 'a', displayedRank - 1);
+        return square.On(board) ? square : null;
     }
 }
 
-/// <summary>The five piece types this variant has. No advisors and no elephants.</summary>
+/// <summary>The seven Xiangqi piece types; Mini Xiangqi uses five of them.</summary>
 public enum PieceKind
 {
     General,
+    Advisor,
+    Elephant,
     Chariot,
     Horse,
     Cannon,
@@ -64,6 +127,10 @@ public static class PieceKinds
     {
         (PieceKind.General, Side.Red) => "帅",
         (PieceKind.General, Side.Black) => "将",
+        (PieceKind.Advisor, Side.Red) => "仕",
+        (PieceKind.Advisor, Side.Black) => "士",
+        (PieceKind.Elephant, Side.Red) => "相",
+        (PieceKind.Elephant, Side.Black) => "象",
         (PieceKind.Chariot, Side.Red) => "俥",
         (PieceKind.Chariot, Side.Black) => "车",
         (PieceKind.Horse, Side.Red) => "傌",
@@ -71,17 +138,20 @@ public static class PieceKinds
         (PieceKind.Cannon, Side.Red) => "炮",
         (PieceKind.Cannon, Side.Black) => "砲",
         (PieceKind.Soldier, Side.Red) => "兵",
-        _ => "卒",
+        (PieceKind.Soldier, Side.Black) => "卒",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown piece kind."),
     };
 
     /// <summary>The FEN letter, lowercase, as the placement field spells it.</summary>
-    public static PieceKind? FromFen(char letter) => char.ToLowerInvariant(letter) switch
+    public static PieceKind? FromFen(char letter) => letter switch
     {
-        'k' => PieceKind.General,
-        'r' => PieceKind.Chariot,
-        'n' => PieceKind.Horse,
-        'c' => PieceKind.Cannon,
-        'p' => PieceKind.Soldier,
+        'k' or 'K' => PieceKind.General,
+        'a' or 'A' => PieceKind.Advisor,
+        'b' or 'B' => PieceKind.Elephant,
+        'r' or 'R' => PieceKind.Chariot,
+        'n' or 'N' => PieceKind.Horse,
+        'c' or 'C' => PieceKind.Cannon,
+        'p' or 'P' => PieceKind.Soldier,
         _ => null,
     };
 }
@@ -94,56 +164,35 @@ public readonly record struct Piece(PieceKind Kind, Side Side);
 /// </summary>
 public sealed class Placement
 {
-    private readonly Piece?[] _pieces = new Piece?[Square.Count * Square.Count];
+    private readonly Piece?[] _pieces;
 
-    public static readonly Placement Empty = new();
-
-    private Placement()
+    private Placement(GameKind game)
     {
+        Game = game;
+        Board = BoardDefinition.For(game);
+        _pieces = new Piece?[Board.SquareCount];
     }
 
+    public GameKind Game { get; }
+
+    public BoardDefinition Board { get; }
+
+    public static Placement EmptyFor(GameKind game) => new(game);
+
     /// <summary>
-    /// Parses the piece-placement field, which lists rank 7 first and rank 1
-    /// last. A malformed field yields an empty board rather than a throw: the
-    /// FEN came from the core, so a failure here is a bug to see on screen.
+    /// Parses the piece-placement field, which lists the highest rank first and
+    /// rank 1 last. A malformed field yields an empty board rather than a throw:
+    /// the FEN came from the core, so a failure here is a bug to see on screen.
     /// </summary>
-    public Placement(string fen)
+    public Placement(string fen, GameKind game)
     {
-        int space = fen.IndexOf(' ');
-        ReadOnlySpan<char> placement = space < 0 ? fen : fen.AsSpan(0, space);
-
-        int row = 0;
-        int file = 0;
-        foreach (char character in placement)
-        {
-            if (character == '/')
-            {
-                row++;
-                file = 0;
-                continue;
-            }
-
-            if (char.IsAsciiDigit(character))
-            {
-                file += character - '0';
-                continue;
-            }
-
-            int rank = Square.Count - 1 - row;
-            Side side = char.IsAsciiLetterUpper(character) ? Side.Red : Side.Black;
-            PieceKind? kind = PieceKinds.FromFen(character);
-            Square square = new(file, rank);
-            if (kind is { } known && square.OnBoard)
-            {
-                _pieces[Index(square)] = new Piece(known, side);
-            }
-
-            file++;
-        }
+        Game = game;
+        Board = BoardDefinition.For(game);
+        _pieces = Parse(fen, Board);
     }
 
     public Piece? this[Square square] =>
-        square.OnBoard ? _pieces[Index(square)] : null;
+        square.On(Board) ? _pieces[Index(square)] : null;
 
     /// <summary>
     /// Where a side's general stands. Not a rule and not an adjudication — the
@@ -156,14 +205,64 @@ public sealed class Placement
         {
             if (_pieces[index] is { Kind: PieceKind.General } piece && piece.Side == side)
             {
-                return new Square(index % Square.Count, index / Square.Count);
+                return new Square(index % Board.FileCount, index / Board.FileCount);
             }
         }
 
         return null;
     }
 
-    private static int Index(Square square) => (square.Rank * Square.Count) + square.File;
+    private int Index(Square square) => (square.Rank * Board.FileCount) + square.File;
+
+    private static Piece?[] Parse(string fen, BoardDefinition board)
+    {
+        Piece?[] empty = new Piece?[board.SquareCount];
+        int space = fen.IndexOf(' ');
+        string placement = space < 0 ? fen : fen[..space];
+        string[] lines = placement.Split('/', StringSplitOptions.None);
+        if (lines.Length != board.RankCount)
+        {
+            return empty;
+        }
+
+        Piece?[] parsed = new Piece?[board.SquareCount];
+        for (int row = 0; row < lines.Length; row++)
+        {
+            int rank = board.RankCount - 1 - row;
+            int file = 0;
+            foreach (char character in lines[row])
+            {
+                if (character is >= '1' and <= '9')
+                {
+                    int skip = character - '0';
+                    if (file + skip > board.FileCount)
+                    {
+                        return empty;
+                    }
+
+                    file += skip;
+                    continue;
+                }
+
+                PieceKind? kind = PieceKinds.FromFen(character);
+                if (kind is not { } known || file >= board.FileCount)
+                {
+                    return empty;
+                }
+
+                Side side = character is >= 'A' and <= 'Z' ? Side.Red : Side.Black;
+                parsed[(rank * board.FileCount) + file] = new Piece(known, side);
+                file++;
+            }
+
+            if (file != board.FileCount)
+            {
+                return empty;
+            }
+        }
+
+        return parsed;
+    }
 }
 
 /// <summary>
@@ -174,19 +273,29 @@ public readonly record struct Move(Square From, Square To)
 {
     public string Text => From.Name + To.Name;
 
-    public static Move? Parse(string? text)
+    public static Move? Parse(string? text, BoardDefinition board)
     {
-        if (text is not { Length: 4 })
+        if (text is null || text.Length is < 4 or > 6)
         {
             return null;
         }
 
-        if (Square.Parse(text.AsSpan(0, 2)) is not { } from ||
-            Square.Parse(text.AsSpan(2, 2)) is not { } to)
+        ReadOnlySpan<char> characters = text.AsSpan();
+        Move? parsed = null;
+        int matches = 0;
+        foreach (int split in (int[])[2, 3])
         {
-            return null;
+            if (split >= characters.Length ||
+                Square.Parse(characters[..split], board) is not { } from ||
+                Square.Parse(characters[split..], board) is not { } to)
+            {
+                continue;
+            }
+
+            parsed = new Move(from, to);
+            matches++;
         }
 
-        return new Move(from, to);
+        return matches == 1 ? parsed : null;
     }
 }

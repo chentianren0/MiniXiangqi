@@ -3,7 +3,7 @@
 // docs/interaction-design.md § History library fixes the row exactly: it is two
 // lines, the first is when the game ended, and the second is the accepted
 // metadata composition applied to a filed game —
-// `模式 · [执子] · 结果 · [结束原因] · 步数` — "which is the save-and-continue
+// `游戏 · 模式 · [执子] · 结果 · [结束原因] · 步数` — "which is the save-and-continue
 // confirmation's own vocabulary rather than a second one invented here". That is
 // literally true of this file: every token below comes from the same table
 // PlayText composes the active game's line from, and the middot between two of
@@ -54,6 +54,7 @@ public static class HistoryText
     {
         List<string> parts =
         [
+            Strings.GameName(record.Game),
             Strings.Get(record.Mode == Mxq.MXQ_PLAY_MODE_HUMAN_VS_AI
                 ? "mode.humanVersusAI"
                 : "mode.freePlay"),
@@ -131,6 +132,7 @@ public static class HistoryText
             Mxq.MXQ_END_REASON_PERPETUAL_CHASE => Strings.Get("reason.perpetualChase"),
             Mxq.MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK => Strings.Get("reason.mutualPerpetualCheck"),
             Mxq.MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE => Strings.Get("reason.mutualPerpetualChase"),
+            Mxq.MXQ_END_REASON_FIFTY_MOVE_RULE => Strings.Get("reason.fiftyMoveRule"),
             Mxq.MXQ_END_REASON_RESIGNATION => Strings.Get("reason.resignation"),
             Mxq.MXQ_END_REASON_ENDED_EARLY => Strings.Get("reason.endedEarly"),
             _ => null,

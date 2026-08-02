@@ -232,7 +232,7 @@ set(MXQ_CORE_TARGETS mxq_core)
 # default-visibility attribute elsewhere.
 #
 # The alternative — CMake's WINDOWS_EXPORT_ALL_SYMBOLS — was rejected, and not
-# on taste. The header declares the export macro on all 54 functions and on
+# on taste. The header declares the export macro on all 55 functions and on
 # nothing else, so the macro produces a DLL whose exported surface is exactly
 # the contract in docs/core-interface.md. Exporting all symbols would instead
 # publish every non-static symbol the link pulled in, which here means the whole
@@ -319,7 +319,7 @@ endforeach()
 # A shared library exports what its objects say is exportable, and the vendored
 # components are compiled as their own targets: hiding mxq_core_shared's own
 # symbols says nothing about theirs. On Windows nothing is exported without
-# __declspec(dllexport), so the DLL is already exactly mxq.h's 54 functions and
+# __declspec(dllexport), so the DLL is already exactly mxq.h's 55 functions and
 # this changes nothing there. Where the default is the opposite — Mach-O, and
 # ELF by the same rule — the library also publishes every sqlite3_ entry point
 # and much of the engine, components docs/architecture.md requires to stay
@@ -387,18 +387,13 @@ endif()
 # With the engine enabled this stages two asset directories in the build tree,
 # byte length and SHA-256 verified against the manifest before a byte is copied:
 #
-#   test-assets            the variant configuration plus the app's network, and
-#                          nothing else. It is the shipped shape — one network,
-#                          for the variant the app plays — and it is also what
-#                          windows/build-core-dll.ps1 copies into the
-#                          distribution's asset directory, so what it holds is
-#                          what a distribution holds.
-#   test-assets-xiangqi    the variant configuration plus BOTH networks, which is
-#                          the shape a two-variant engine configuration is given:
+#   test-assets            the variant configuration plus the Mini Xiangqi
+#                          network, for focused single-game tests.
+#   test-assets-xiangqi    the variant configuration plus both networks, which is
+#                          the shape a two-game frontend and engine configuration use:
 #                          EvalFile is a list and the engine selects from it by
-#                          basename. Kept apart from the directory above so that
-#                          exercising the second variant cannot change what any
-#                          frontend stages.
+#                          basename. windows/build-core-dll.ps1 copies this one
+#                          into the distribution's asset directory.
 #
 # That verification is not ceremony for files that are version-controlled: it is
 # the same gate every other consumer applies, and it is what catches an override
@@ -442,6 +437,12 @@ if(MXQ_ENABLE_RULES_FACADE)
   set(MXQ_TEST_XIANGQI_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets-xiangqi")
   set(MXQ_TEST_NNUE_STAGED 0)
 
+  # These directories are configuration output, not a cache. Clear an earlier
+  # successful staging before verification so a missing, damaged or renamed
+  # input cannot leave old bytes for a later build or distribution to consume.
+  file(REMOVE_RECURSE "${MXQ_TEST_ASSETS_DIR}"
+                      "${MXQ_TEST_XIANGQI_ASSETS_DIR}")
+
   mxq_verify_network(MXQ_TEST_NNUE_PROBLEM "${MXQ_NNUE_SOURCE}"
                      ${MXQ_BUILD_NNUE_BYTE_LENGTH} "${MXQ_BUILD_NNUE_SHA256}")
   if(MXQ_TEST_NNUE_PROBLEM STREQUAL "")
@@ -452,10 +453,9 @@ if(MXQ_ENABLE_RULES_FACADE)
 
   # Both or neither: a damaged or absent pinned network stages nothing at all,
   # for either variant, and the suite fails loudly on the staging problem. That
-  # is deliberately louder than the loss — the distribution zip ships exactly
-  # one network, the app's, so a damaged built-in-xiangqi network breaks no
-  # shipped artifact — because the alternative is staging the good half and
-  # letting the suite report the missing half as an engine defect.
+  # is deliberately louder than the loss because the two-game app ships and
+  # searches with both; staging only the good half would make an incomplete
+  # distribution look valid.
   if(MXQ_TEST_NNUE_PROBLEM STREQUAL "")
     file(MAKE_DIRECTORY "${MXQ_TEST_ASSETS_DIR}")
     file(COPY_FILE "${MXQ_VARIANT_INI}"

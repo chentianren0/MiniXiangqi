@@ -132,28 +132,56 @@
                 </StackPanel>
 
                 <!--
-                    The game's ways to play. One section, and it carries no
-                    header while there is one game: a header naming the only game
-                    on a screen that is only that game labels the obvious. A
-                    second game would be a second section beside this one rather
-                    than a rearrangement of it.
+                    A game is a headed section and its ways to play are the
+                    rows. The order is part of the accepted home: Xiangqi first,
+                    then Mini Xiangqi; Human versus AI first in each, then Free
+                    Play. All four remain entries while a game is active — the
+                    flow presents the same save-and-continue confirmation for
+                    whichever destination was chosen.
                 -->
-                <Border CornerRadius="8"
-                        BorderThickness="1"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                    <StackPanel>
-                        <Button x:Name="ModeHumanVersusAi"
-                                Click="OnChooseHumanVersusAi"
-                                Style="{StaticResource ModeEntryStyle}"
-                                AutomationProperties.AutomationId="mode-human-versus-ai" />
-                        <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <Button x:Name="ModeFreePlay"
-                                Click="OnChooseFreePlay"
-                                Style="{StaticResource ModeEntryStyle}"
-                                AutomationProperties.AutomationId="mode-free-play" />
-                    </StackPanel>
-                </Border>
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="XiangqiHeader"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Border CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
+                            <Button x:Name="ModeXiangqiHumanVersusAi"
+                                    Click="OnChooseXiangqiHumanVersusAi"
+                                    Style="{StaticResource ModeEntryStyle}"
+                                    AutomationProperties.AutomationId="mode-xiangqi-human-versus-ai" />
+                            <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                            <Button x:Name="ModeXiangqiFreePlay"
+                                    Click="OnChooseXiangqiFreePlay"
+                                    Style="{StaticResource ModeEntryStyle}"
+                                    AutomationProperties.AutomationId="mode-xiangqi-free-play" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="MiniXiangqiHeader"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Border CornerRadius="8"
+                            BorderThickness="1"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel>
+                            <Button x:Name="ModeMiniXiangqiHumanVersusAi"
+                                    Click="OnChooseMiniXiangqiHumanVersusAi"
+                                    Style="{StaticResource ModeEntryStyle}"
+                                    AutomationProperties.AutomationId="mode-mini-xiangqi-human-versus-ai" />
+                            <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                            <Button x:Name="ModeMiniXiangqiFreePlay"
+                                    Click="OnChooseMiniXiangqiFreePlay"
+                                    Style="{StaticResource ModeEntryStyle}"
+                                    AutomationProperties.AutomationId="mode-mini-xiangqi-free-play" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
@@ -177,6 +205,14 @@
                   BorderThickness="1,0,0,0"
                   BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
                 <StackPanel Spacing="14" VerticalAlignment="Top">
+
+                    <!-- The selected game is named before either mode's own
+                         content, using the same game name as the home and
+                         metadata. -->
+                    <TextBlock x:Name="SetupGame"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="setup-game" />
 
                     <!-- 人机对弈's 本局设置 group. Absent in Free Play, which
                          has no side selector, no AI controls and no pre-start

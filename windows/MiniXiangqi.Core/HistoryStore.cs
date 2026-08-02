@@ -284,6 +284,7 @@ public sealed unsafe partial class MiniXiangqiCore
 
     private static RecordSummary Describe(MxqRecordSummary summary) => new(
         summary.record_id,
+        GameVocabulary.Kind(summary.game),
         summary.mode,
         summary.human_side,
         summary.ai_level,

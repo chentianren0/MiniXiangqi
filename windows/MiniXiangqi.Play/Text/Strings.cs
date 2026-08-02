@@ -27,6 +27,7 @@
 
 using System.Collections.Immutable;
 using System.Globalization;
+using MiniXiangqi.Core;
 
 namespace MiniXiangqi.Play;
 
@@ -63,6 +64,14 @@ public static class Strings
     /// <summary>Joins two metadata tokens with the accepted middot format.</summary>
     public static string Join(string first, string second) => Format("metadata.join", first, second);
 
+    /// <summary>The shared display name for one explicit game.</summary>
+    public static string GameName(GameKind game) => Get(game switch
+    {
+        GameKind.Xiangqi => "game.xiangqi",
+        GameKind.MiniXiangqi => "game.miniXiangqi",
+        _ => throw new ArgumentOutOfRangeException(nameof(game), game, "Unknown game kind."),
+    });
+
     /// <summary>
     /// The table. Composed strings hold .NET's placeholders rather than
     /// docs/copy.md's `%1$@`; the mechanical check translates between the two
@@ -83,6 +92,8 @@ public static class Strings
             // destination this contract names would be a second source of truth.
             ["nav.settings"] = new("设置", "Settings"),
             ["nav.resumeGame"] = new("回到对局", "Resume Game"),
+            ["game.xiangqi"] = new("象棋", "Xiangqi"),
+            ["game.miniXiangqi"] = new("迷你象棋", "Mini Xiangqi"),
             ["mode.humanVersusAI"] = new("人机对弈", "Human versus AI"),
             ["mode.freePlay"] = new("自由对弈", "Free Play"),
 
@@ -154,6 +165,7 @@ public static class Strings
             ["reason.perpetualChase"] = new("长捉", "Perpetual Chase"),
             ["reason.mutualPerpetualCheck"] = new("双方长将", "Mutual Perpetual Check"),
             ["reason.mutualPerpetualChase"] = new("双方长捉", "Mutual Perpetual Chase"),
+            ["reason.fiftyMoveRule"] = new("五十回合规则", "Fifty-Move Rule"),
             ["reason.resignation"] = new("认输", "Resignation"),
             ["reason.endedEarly"] = new("提前结束", "Ended Early"),
 
@@ -350,9 +362,11 @@ public static class Strings
             // because that is what the board shows and what the reader is
             // learning; English names it by its piece name and never by the
             // character. So `b1 红 炮 已选择` is `b1 Red Cannon Selected`. The
-            // character is the argument rather than the string, because the ten
+            // character is the argument rather than the string, because the fourteen
             // piece characters are game content and never enter a string table.
             ["piece.general"] = new("{0}", "General"),
+            ["piece.advisor"] = new("{0}", "Advisor"),
+            ["piece.elephant"] = new("{0}", "Elephant"),
             ["piece.chariot"] = new("{0}", "Chariot"),
             ["piece.horse"] = new("{0}", "Horse"),
             ["piece.cannon"] = new("{0}", "Cannon"),
@@ -368,10 +382,13 @@ public static class Strings
         string key = kind switch
         {
             PieceKind.General => "piece.general",
+            PieceKind.Advisor => "piece.advisor",
+            PieceKind.Elephant => "piece.elephant",
             PieceKind.Chariot => "piece.chariot",
             PieceKind.Horse => "piece.horse",
             PieceKind.Cannon => "piece.cannon",
-            _ => "piece.soldier",
+            PieceKind.Soldier => "piece.soldier",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown piece kind."),
         };
         return Format(key, kind.Character(side));
     }

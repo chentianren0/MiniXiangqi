@@ -11,12 +11,18 @@
 // board and the offscreen PNGs the pull request carries as evidence.
 
 using System.Collections.Immutable;
+using MiniXiangqi.Core;
 
 namespace MiniXiangqi.Play;
 
 public sealed record BoardScene
 {
     public required Placement Placement { get; init; }
+
+    /// <summary>The explicit game and topology carried by the placement.</summary>
+    public GameKind Game => Placement.Game;
+
+    public BoardDefinition Board => Placement.Board;
 
     /// <summary>Red at the bottom unless this says otherwise.</summary>
     public bool Flipped { get; init; }

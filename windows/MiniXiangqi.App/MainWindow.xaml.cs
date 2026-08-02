@@ -1,4 +1,4 @@
-// The Play destination on screen: the home, the two pre-start states, and the
+// The Play destination on screen: the home, the pre-start states, and the
 // board.
 //
 // Everything below is presentation and wiring. Which page is showing, what a
@@ -33,8 +33,8 @@ namespace MiniXiangqi.App;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly BoardView _board = new();
-    private readonly BoardView _preview = new(interactive: false);
+    private readonly BoardView _board = new(GameKind.MiniXiangqi);
+    private readonly BoardView _preview = new(GameKind.MiniXiangqi, interactive: false);
 
     /// <summary>
     /// The viewer's board: noninteractive, exactly as the pre-start preview is.
@@ -42,7 +42,7 @@ public sealed partial class MainWindow : Window
     /// start a game from the displayed position — so it has no points for a
     /// pointer to hit or a screen reader to offer.
     /// </summary>
-    private readonly BoardView _replayBoard = new(interactive: false);
+    private readonly BoardView _replayBoard = new(GameKind.MiniXiangqi, interactive: false);
 
     /// <summary>
     /// The line each board host shows when it has no room for a board, one per
@@ -356,6 +356,18 @@ public sealed partial class MainWindow : Window
         Fit(_replayBoard, ReplayHost, _replayTooSmall, args.NewSize);
 
     /// <summary>
+    /// Refit after a host starts showing a different game's scene. Its size may
+    /// not change when the game does, so <c>SizeChanged</c> alone cannot keep a
+    /// Mini Xiangqi square or a Xiangqi rectangle at that game's own profile.
+    /// </summary>
+    private static void FitCurrent(BoardView view, Grid host, TextBlock notice) =>
+        Fit(
+            view,
+            host,
+            notice,
+            new Windows.Foundation.Size(host.ActualWidth, host.ActualHeight));
+
+    /// <summary>
     /// A host, and what it shows for the room it has.
     ///
     /// The decision is <see cref="BoardSpace"/>'s, where a headless run can reach
@@ -385,7 +397,8 @@ public sealed partial class MainWindow : Window
     {
         BoardSpace space = BoardSpace.Of(
             available.Width - host.Padding.Left - host.Padding.Right,
-            available.Height - host.Padding.Top - host.Padding.Bottom);
+            available.Height - host.Padding.Top - host.Padding.Bottom,
+            view.Scene.Game);
 
         if (space.Board is { } fitted)
         {
@@ -475,11 +488,17 @@ public sealed partial class MainWindow : Window
 
     private void OnResume(object sender, RoutedEventArgs args) => _flow?.Resume();
 
-    private void OnChooseHumanVersusAi(object sender, RoutedEventArgs args) =>
-        _flow?.Choose(PlayMode.HumanVersusAi);
+    private void OnChooseXiangqiHumanVersusAi(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(new PlaySelection(GameKind.Xiangqi, PlayMode.HumanVersusAi));
 
-    private void OnChooseFreePlay(object sender, RoutedEventArgs args) =>
-        _flow?.Choose(PlayMode.FreePlay);
+    private void OnChooseXiangqiFreePlay(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(new PlaySelection(GameKind.Xiangqi, PlayMode.FreePlay));
+
+    private void OnChooseMiniXiangqiHumanVersusAi(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.HumanVersusAi));
+
+    private void OnChooseMiniXiangqiFreePlay(object sender, RoutedEventArgs args) =>
+        _flow?.Choose(new PlaySelection(GameKind.MiniXiangqi, PlayMode.FreePlay));
 
     // The pre-start page.
 
@@ -1040,6 +1059,7 @@ public sealed partial class MainWindow : Window
     private void ShowViewer(ReplayViewer viewer)
     {
         _replayBoard.Scene = viewer.Scene;
+        FitCurrent(_replayBoard, ReplayHost, _replayTooSmall);
 
         ReplayProgress.Text = viewer.Progress;
         ReplayMetadata.Text = viewer.MetadataLine;
@@ -1156,11 +1176,16 @@ public sealed partial class MainWindow : Window
         CurrentGameLine.Text = flow.ActiveGameLine ?? string.Empty;
         ResumeGame.Content = Strings.Get("nav.resumeGame");
 
-        // Both mode entries remain interactive whenever a game is active:
-        // selecting one presents the accepted confirmation rather than opening
-        // anything.
-        ModeEntry(ModeHumanVersusAi, "mode.humanVersusAI");
-        ModeEntry(ModeFreePlay, "mode.freePlay");
+        XiangqiHeader.Text = Strings.Get("game.xiangqi");
+        MiniXiangqiHeader.Text = Strings.Get("game.miniXiangqi");
+
+        // All four game-and-mode entries remain interactive whenever a game is
+        // active: selecting one presents the accepted confirmation rather than
+        // opening anything.
+        ModeEntry(ModeXiangqiHumanVersusAi, "mode.humanVersusAI");
+        ModeEntry(ModeXiangqiFreePlay, "mode.freePlay");
+        ModeEntry(ModeMiniXiangqiHumanVersusAi, "mode.humanVersusAI");
+        ModeEntry(ModeMiniXiangqiFreePlay, "mode.freePlay");
     }
 
     /// <summary>
@@ -1202,9 +1227,20 @@ public sealed partial class MainWindow : Window
 
     private void ShowSetup(PlayFlow flow)
     {
-        _preview.Scene = flow.PreviewScene;
+        PlaySelection selection = flow.SetupSelection
+            ?? throw new InvalidOperationException("The setup page requires a game and mode");
 
-        bool versusAi = flow.SetupMode == PlayMode.HumanVersusAi;
+        _preview.Scene = flow.PreviewScene;
+        FitCurrent(_preview, PreviewHost, _previewTooSmall);
+
+        SetupGame.Text = Strings.GameName(selection.Game);
+
+        bool versusAi = selection.Mode switch
+        {
+            PlayMode.HumanVersusAi => true,
+            PlayMode.FreePlay => false,
+            _ => throw new InvalidOperationException("The setup page requires a known mode"),
+        };
         ThisGame.Visibility = Shown(versusAi);
         FreePlayExplanation.Visibility = Shown(!versusAi);
         FreePlayExplanation.Text = Strings.Get("setup.freePlayExplanation");
@@ -1302,6 +1338,7 @@ public sealed partial class MainWindow : Window
     private void ShowBoard(PlaySession play)
     {
         _board.Scene = play.Scene;
+        FitCurrent(_board, BoardHost, _boardTooSmall);
 
         StatusPrimary.Text = play.PrimaryStatus();
         StatusSecondary.Text = play.SecondaryStatus() ?? string.Empty;

@@ -1,9 +1,37 @@
 namespace MiniXiangqi.Core;
 
+/// <summary>The closed rules vocabulary shared with the native core.</summary>
+public enum GameKind
+{
+    MiniXiangqi,
+    Xiangqi,
+}
+
 /// <summary>
-/// The four independent version axes, read back from <c>mxq_core_version</c>.
-/// The engine-profile fields are load-bearing rather than diagnostics: a saved
-/// diagnostic must be able to name the build that produced it.
+/// The one translation between managed game identity and the C boundary.
+/// An unknown native value is a broken boundary and never means Mini Xiangqi.
+/// </summary>
+public static class GameVocabulary
+{
+    public static int Code(this GameKind game) => game switch
+    {
+        GameKind.MiniXiangqi => Interop.Mxq.MXQ_GAME_KIND_MINI_XIANGQI,
+        GameKind.Xiangqi => Interop.Mxq.MXQ_GAME_KIND_XIANGQI,
+        _ => throw new ArgumentOutOfRangeException(nameof(game), game, "Unknown game kind"),
+    };
+
+    public static GameKind Kind(int code) => code switch
+    {
+        Interop.Mxq.MXQ_GAME_KIND_MINI_XIANGQI => GameKind.MiniXiangqi,
+        Interop.Mxq.MXQ_GAME_KIND_XIANGQI => GameKind.Xiangqi,
+        _ => throw new InvalidDataException($"The core returned unknown game kind {code}"),
+    };
+}
+
+/// <summary>
+/// The four independent version axes and two build revisions, read back from
+/// <c>mxq_core_version</c>. Per-game engine facts live in
+/// <see cref="GameProfile"/> rather than being collapsed into one value here.
 /// </summary>
 public readonly record struct CoreVersion(
     uint ApiMajor,
@@ -13,11 +41,22 @@ public readonly record struct CoreVersion(
     uint ArchiveVersionMinReadable,
     uint StoreSchemaVersion,
     string CoreRevision,
-    string ForkRevision,
+    string ForkRevision)
+{
+    public string ApiVersion => $"{ApiMajor}.{ApiMinor}.{ApiPatch}";
+}
+
+/// <summary>The pinned engine variant and network for one game.</summary>
+public readonly record struct GameProfile(
+    GameKind Game,
     string VariantId,
     string NnueSha256)
 {
-    public string ApiVersion => $"{ApiMajor}.{ApiMinor}.{ApiPatch}";
+    /// <summary>The exact identifier reported by a prepared engine.</summary>
+    public string Identifier(CoreVersion version) =>
+        $"{Prefix(version.CoreRevision)}-{Prefix(version.ForkRevision)}-{VariantId}-{Prefix(NnueSha256)}";
+
+    private static string Prefix(string value) => value[..Math.Min(12, value.Length)];
 }
 
 /// <summary>A session's current position, exactly as the core reports it.</summary>
@@ -49,6 +88,7 @@ public readonly record struct GameState(
 /// matching the archive, which simply omits them.
 /// </summary>
 public readonly record struct GameConfiguration(
+    GameKind Game,
     int Mode,
     int HumanSide,
     int AiLevel,
@@ -90,6 +130,7 @@ public readonly record struct SearchAnswer(
 /// </summary>
 public readonly record struct RecordSummary(
     ulong RecordId,
+    GameKind Game,
     int Mode,
     int HumanSide,
     int AiLevel,

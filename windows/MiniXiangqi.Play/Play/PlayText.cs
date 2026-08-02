@@ -10,6 +10,7 @@
 // separator hard-coded here would be one language's punctuation wrapped around
 // the other language's words.
 
+using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
 
 namespace MiniXiangqi.Play;
@@ -64,6 +65,7 @@ public static class PlayText
         Mxq.MXQ_END_REASON_PERPETUAL_CHASE => Strings.Get("reason.perpetualChase"),
         Mxq.MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK => Strings.Get("reason.mutualPerpetualCheck"),
         Mxq.MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE => Strings.Get("reason.mutualPerpetualChase"),
+        Mxq.MXQ_END_REASON_FIFTY_MOVE_RULE => Strings.Get("reason.fiftyMoveRule"),
         Mxq.MXQ_END_REASON_RESIGNATION => Strings.Get("reason.resignation"),
         Mxq.MXQ_END_REASON_ENDED_EARLY => Strings.Get("reason.endedEarly"),
 
@@ -107,6 +109,7 @@ public static class PlayText
     {
         List<string> parts =
         [
+            Strings.GameName(play.Game),
             Strings.Get(play.IsHumanVersusAi ? "mode.humanVersusAI" : "mode.freePlay"),
         ];
 
