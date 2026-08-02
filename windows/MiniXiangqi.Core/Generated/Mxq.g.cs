@@ -83,12 +83,6 @@ public partial struct MxqVersion
     [NativeTypeName("char[48]")]
     public _fork_revision_e__FixedBuffer fork_revision;
 
-    [NativeTypeName("char[32]")]
-    public _variant_id_e__FixedBuffer variant_id;
-
-    [NativeTypeName("char[72]")]
-    public _nnue_sha256_e__FixedBuffer nnue_sha256;
-
     [InlineArray(48)]
     public partial struct _core_revision_e__FixedBuffer
     {
@@ -100,6 +94,21 @@ public partial struct MxqVersion
     {
         public sbyte e0;
     }
+}
+
+public partial struct MxqGameProfile
+{
+    [NativeTypeName("uint32_t")]
+    public uint struct_size;
+
+    [NativeTypeName("MxqGameKind")]
+    public int game;
+
+    [NativeTypeName("char[32]")]
+    public _variant_id_e__FixedBuffer variant_id;
+
+    [NativeTypeName("char[72]")]
+    public _nnue_sha256_e__FixedBuffer nnue_sha256;
 
     [InlineArray(32)]
     public partial struct _variant_id_e__FixedBuffer
@@ -241,6 +250,9 @@ public partial struct MxqGameConfig
 
     [NativeTypeName("uint32_t")]
     public uint ai_movetime_ms;
+
+    [NativeTypeName("MxqGameKind")]
+    public int game;
 }
 
 public partial struct MxqRecordSummary
@@ -296,6 +308,12 @@ public partial struct MxqRecordSummary
     [NativeTypeName("char[40]")]
     public _game_id_e__FixedBuffer game_id;
 
+    [NativeTypeName("MxqGameKind")]
+    public int game;
+
+    [NativeTypeName("uint32_t")]
+    public uint reserved1;
+
     [InlineArray(2)]
     public partial struct _reserved0_e__FixedBuffer
     {
@@ -332,8 +350,8 @@ public partial struct MxqArchiveInfo
     [NativeTypeName("MxqEndReason")]
     public int end_reason;
 
-    [NativeTypeName("uint32_t")]
-    public uint reserved0;
+    [NativeTypeName("MxqGameKind")]
+    public int game;
 
     [NativeTypeName("int64_t")]
     public long started_at_ms;
@@ -535,6 +553,9 @@ public static unsafe partial class Mxq
     public const int MXQ_PLAY_MODE_HUMAN_VS_AI = 0;
     public const int MXQ_PLAY_MODE_FREE_PLAY = 1;
 
+    public const int MXQ_GAME_KIND_MINI_XIANGQI = 0;
+    public const int MXQ_GAME_KIND_XIANGQI = 1;
+
     public const int MXQ_AI_LEVEL_NONE = -1;
     public const int MXQ_AI_LEVEL_FAST = 0;
     public const int MXQ_AI_LEVEL_STANDARD = 1;
@@ -566,6 +587,7 @@ public static unsafe partial class Mxq
     public const int MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE = 7;
     public const int MXQ_END_REASON_RESIGNATION = 8;
     public const int MXQ_END_REASON_ENDED_EARLY = 9;
+    public const int MXQ_END_REASON_FIFTY_MOVE_RULE = 10;
 
     public const int MXQ_PROVENANCE_LOCALLY_PLAYED = 0;
     public const int MXQ_PROVENANCE_IMPORTED = 1;
@@ -607,6 +629,10 @@ public static unsafe partial class Mxq
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
     public static extern int mxq_core_version(MxqVersion* @out, MxqError* err);
+
+    [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    [return: NativeTypeName("MxqStatus")]
+    public static extern int mxq_core_game_profile([NativeTypeName("MxqGameKind")] int game, MxqGameProfile* @out, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
@@ -689,19 +715,19 @@ public static unsafe partial class Mxq
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
-    public static extern int mxq_rules_start_fen([NativeTypeName("char *")] sbyte* @out, [NativeTypeName("size_t")] nuint cap, [NativeTypeName("size_t *")] nuint* out_len, MxqError* err);
+    public static extern int mxq_rules_start_fen([NativeTypeName("MxqGameKind")] int game, [NativeTypeName("char *")] sbyte* @out, [NativeTypeName("size_t")] nuint cap, [NativeTypeName("size_t *")] nuint* out_len, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
-    public static extern int mxq_rules_validate_fen(MxqCore* core, [NativeTypeName("const char *")] sbyte* fen, MxqError* err);
+    public static extern int mxq_rules_validate_fen(MxqCore* core, [NativeTypeName("MxqGameKind")] int game, [NativeTypeName("const char *")] sbyte* fen, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
-    public static extern int mxq_rules_evaluate(MxqCore* core, [NativeTypeName("const char *")] sbyte* start_fen, [NativeTypeName("const char *const *")] sbyte** moves, [NativeTypeName("size_t")] nuint move_count, MxqPosition* out_position, MxqGameStatus* out_status, [NativeTypeName("size_t *")] nuint* out_first_illegal_index, MxqError* err);
+    public static extern int mxq_rules_evaluate(MxqCore* core, [NativeTypeName("MxqGameKind")] int game, [NativeTypeName("const char *")] sbyte* start_fen, [NativeTypeName("const char *const *")] sbyte** moves, [NativeTypeName("size_t")] nuint move_count, MxqPosition* out_position, MxqGameStatus* out_status, [NativeTypeName("size_t *")] nuint* out_first_illegal_index, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
-    public static extern int mxq_rules_legal_moves(MxqCore* core, [NativeTypeName("const char *")] sbyte* start_fen, [NativeTypeName("const char *const *")] sbyte** moves, [NativeTypeName("size_t")] nuint move_count, MxqMove* @out, [NativeTypeName("size_t")] nuint cap, [NativeTypeName("size_t *")] nuint* out_count, MxqError* err);
+    public static extern int mxq_rules_legal_moves(MxqCore* core, [NativeTypeName("MxqGameKind")] int game, [NativeTypeName("const char *")] sbyte* start_fen, [NativeTypeName("const char *const *")] sbyte** moves, [NativeTypeName("size_t")] nuint move_count, MxqMove* @out, [NativeTypeName("size_t")] nuint cap, [NativeTypeName("size_t *")] nuint* out_count, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
@@ -709,7 +735,7 @@ public static unsafe partial class Mxq
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
-    public static extern int mxq_engine_prepare(MxqCore* core, [NativeTypeName("const MxqEngineBudget *")] MxqEngineBudget* budget, MxqEnginePlan* out_applied, MxqError* err);
+    public static extern int mxq_engine_prepare(MxqCore* core, [NativeTypeName("MxqGameKind")] int game, [NativeTypeName("const MxqEngineBudget *")] MxqEngineBudget* budget, MxqEnginePlan* out_applied, MxqError* err);
 
     [DllImport("mxqcore", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("MxqStatus")]
@@ -799,11 +825,11 @@ public static unsafe partial class Mxq
     [return: NativeTypeName("MxqStatus")]
     public static extern int mxq_store_import(MxqCore* core, [NativeTypeName("const uint8_t *")] byte* bytes, [NativeTypeName("size_t")] nuint len, [NativeTypeName("MxqImportOutcome *")] int* out_outcome, [NativeTypeName("uint64_t *")] ulong* out_record_id, MxqRecordSummary* out_summary, MxqError* err);
 
-    [NativeTypeName("#define MXQ_API_VERSION_MAJOR 1")]
-    public const int MXQ_API_VERSION_MAJOR = 1;
+    [NativeTypeName("#define MXQ_API_VERSION_MAJOR 2")]
+    public const int MXQ_API_VERSION_MAJOR = 2;
 
-    [NativeTypeName("#define MXQ_API_VERSION_MINOR 4")]
-    public const int MXQ_API_VERSION_MINOR = 4;
+    [NativeTypeName("#define MXQ_API_VERSION_MINOR 0")]
+    public const int MXQ_API_VERSION_MINOR = 0;
 
     [NativeTypeName("#define MXQ_API_VERSION_PATCH 0")]
     public const int MXQ_API_VERSION_PATCH = 0;
