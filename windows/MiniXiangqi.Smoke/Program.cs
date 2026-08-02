@@ -1793,9 +1793,15 @@ internal static unsafe class Program
         Check("the stale preparation creates nothing over the Free Play game",
             staleDelivered
             && flow.Session is { Game: GameKind.Xiangqi, IsHumanVersusAi: false });
+        // Teardown is blocking and therefore queued off the interface thread.
+        // Its observable promise is eventual release, not that Pump returns only
+        // after the engine thread has freed its resources.
+        bool engineReleased = scheduler.PumpUntil(
+            () => !core.EngineReadyFor(GameKind.MiniXiangqi)
+                && !core.EngineReadyFor(GameKind.Xiangqi),
+            TimeSpan.FromSeconds(10));
         Check("and releases the engine Free Play does not own",
-            !core.EngineReadyFor(GameKind.MiniXiangqi)
-            && !core.EngineReadyFor(GameKind.Xiangqi));
+            engineReleased);
 
         // File that transient Xiangqi game through the real confirmation and
         // return to Mini Xiangqi setup for the other ordering: a stale Mini
