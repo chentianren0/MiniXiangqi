@@ -12,6 +12,7 @@
 // form. A frontend that invented a fourth spelling would be a frontend whose
 // preferences the other one could not read.
 
+using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
 
 namespace MiniXiangqi.Play;
