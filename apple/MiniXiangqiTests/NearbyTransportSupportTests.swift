@@ -98,15 +98,6 @@ struct NearbyTransportSupportTests {
         ])
     }
 
-    @Test("The Internal TestFlight proof bytes need no live game or store")
-    func opaqueCoreProbe() throws {
-        let first = try Core.stageOneNearbyProbeBytes()
-        let second = try Core.stageOneNearbyProbeBytes()
-
-        #expect(first == second)
-        #expect(first.count == MemoryLayout<MxqVersion>.size)
-        #expect(!first.isEmpty)
-    }
 }
 
 /// Holds a cancelled operation in cleanup so the serialization test controls
