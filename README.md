@@ -68,6 +68,7 @@ ctest --test-dir build --output-on-failure
 - [Game data](docs/game-data.md) — the library store, versioned game archive, saving, history, migrations, import, and export.
 - [Engine integration](docs/engine-integration.md) — the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
 - [Testing](docs/testing.md) — durable validation requirements and release gates.
+- [BoardGame Nearby Protocol v1](docs/boardgame-nearby-protocol.md) — the approved non-binding protocol and nearby-play implementation target tracked by campaign #114.
 
 ## Distribution and license
 
