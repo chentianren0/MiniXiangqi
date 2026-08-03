@@ -247,6 +247,7 @@ private final class NearbyProofModel {
     private(set) var selectedID: WAPairedDevice.ID?
     private(set) var availability = NearbyTransportSupport.current
     private var phase: Phase = .idle
+    private var connectionState: String?
     private let lifecycle = NearbySerializedOperation()
 
     var isBusy: Bool {
@@ -278,13 +279,14 @@ private final class NearbyProofModel {
     }
 
     var statusMessage: String {
-        switch phase {
+        let connectionStateSuffix = connectionState.map { " [state: \($0)]" } ?? ""
+        return switch phase {
         case .idle: "Idle."
         case .refreshing: "Refreshing the system paired-device list…"
         case .stopping: "Waiting for the previous nearby operation to stop…"
         case .hosting: "Hosting for the selected paired device…"
         case .browsing: "Browsing only for the selected paired device…"
-        case .connecting: "Opening the selected-peer TLS 1.3 connection…"
+        case .connecting: "Opening the selected-peer TLS 1.3 connection…\(connectionStateSuffix)"
         case .exchanging: "The selected peer and TLS 1.3 passed; exchanging the opaque probe…"
         case .passed: "PASS: the selected peer echoed the exact opaque probe over TLS 1.3."
         case .failed(let message): "FAIL: \(message)"
@@ -378,9 +380,15 @@ private final class NearbyProofModel {
                 try await listener.run { connection in
                     try self.requireCurrent(token)
                     self.phase = .connecting
+                    self.observeConnection(connection, token: token)
+                    // A one-to-one TLS connection has no explicit start call.
+                    // Queue a receive before waiting for ready, matching the
+                    // receiver-first lifecycle in Apple's Wi-Fi Aware sample.
+                    async let pendingProbe = connection.receive(exactly: expected.count)
                     try await self.verify(connection, selectedID: selectedID)
                     self.phase = .exchanging
-                    let received = try await connection.receive(exactly: expected.count).content
+                    let receivedMessage = try await pendingProbe
+                    let received = receivedMessage.content
                     guard received == expected else { throw Failure.probeMismatch }
                     try await connection.send(received)
                     try self.requireCurrent(token)
@@ -417,10 +425,15 @@ private final class NearbyProofModel {
             let expected = try Core.stageOneNearbyProbeBytes()
             let connection = NetworkConnection(to: endpoint, using: { Self.wifiAwareTLS() })
             try self.requireCurrent(token)
+            self.observeConnection(connection, token: token)
+            // Priming a receive is the documented pre-ready operation for this
+            // one-to-one stream; no proof byte is sent before verification.
+            async let pendingEcho = connection.receive(exactly: expected.count)
             try await self.verify(connection, selectedID: selectedID)
             self.phase = .exchanging
             try await connection.send(expected)
-            let echoed = try await connection.receive(exactly: expected.count).content
+            let echoedMessage = try await pendingEcho
+            let echoed = echoedMessage.content
             guard echoed == expected else { throw Failure.probeMismatch }
             try self.requireCurrent(token)
             self.phase = .passed
@@ -442,6 +455,7 @@ private final class NearbyProofModel {
             guard let self else { return }
             do {
                 try self.requireCurrent(token)
+                self.connectionState = nil
                 self.phase = initial
                 try await work(token)
             } catch is CancellationError {
@@ -481,6 +495,24 @@ private final class NearbyProofModel {
             let left = displayName(for: $0)
             let right = displayName(for: $1)
             return left == right ? $0.id < $1.id : left.localizedStandardCompare(right) == .orderedAscending
+        }
+    }
+
+    private func observeConnection(
+        _ connection: NetworkConnection<TLS>,
+        token: UInt64
+    ) {
+        connection.onStateUpdate { [weak self] _, state in
+            guard let self, self.lifecycle.accepts(token) else { return }
+            self.connectionState = switch state {
+            case .setup: "setup"
+            case .preparing: "preparing"
+            case .waiting: "waiting"
+            case .ready: "ready"
+            case .failed: "failed"
+            case .cancelled: "cancelled"
+            @unknown default: "unknown"
+            }
         }
     }
 
