@@ -19,6 +19,8 @@ The core plays two games, and `MxqGameKind` is the axis that names which: `MXQ_G
 
 Six groups, 55 functions.
 
+Stage 1 changes none of that public inventory: the C API remains 2.0.0, with exactly three handles, six groups, and 55 functions. The Apple proof lab may obtain a fixed opaque diagnostic payload through a private binding helper backed by an existing query. That helper is not C API, and its bytes have no message, framing, schema, compatibility, or wire-version meaning; the proof may compare and echo them but must not parse, persist, or promote them into a protocol.
+
 ### Common prelude
 
 ```c

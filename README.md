@@ -6,7 +6,7 @@ Mini Xiangqi is a native, fully offline Mini Xiangqi application for iOS, iPadOS
 
 - **Windows 11 (x64 or ARM):** download the zip for your machine from [the latest release](https://github.com/ppppvz/MiniXiangqi/releases/latest) — `MiniXiangqi-windows-x64.zip` for Intel/AMD machines, `MiniXiangqi-windows-arm64.zip` for ARM machines — unzip it anywhere, open the folder, and run `MiniXiangqi.App.exe`. If Windows SmartScreen warns about an unrecognized app the first time, choose **More info**, then **Run anyway**. There is no installer and no administrator prompt, and deleting the folder removes the app completely. The Microsoft Store is the intended future public channel.
 - **macOS, iPhone, and iPad:** the app ships to internal testers through TestFlight. There is no public Apple download: the project's GPL-3.0 licence and the App Store's terms are incompatible, and the project ships internally rather than papering over that.
-- The app is fully offline and collects nothing. The source is this repository — every release is built by CI from the tagged revision — and the licence is the [GNU General Public License version 3](LICENSE); the Windows zip carries `LICENSE` and `NOTICE.md` beside the app.
+- The app needs no Internet service, account, server, relay, cloud state, or telemetry, and it collects nothing. The source is this repository — every release is built by CI from the tagged revision — and the licence is the [GNU General Public License version 3](LICENSE); the Windows zip carries `LICENSE` and `NOTICE.md` beside the app.
 
 ## Target MVP
 
@@ -19,7 +19,7 @@ Mini Xiangqi is a native, fully offline Mini Xiangqi application for iOS, iPadOS
 - `Play`, `History`, and `Settings` as the top-level destinations.
 - Native interaction on every platform: Liquid Glass on Apple platforms and WinUI 3 Fluent design on Windows.
 
-The MVP has no game clock, network features, accounts, online play, lessons or drills, or multiple main windows.
+The MVP has no game clock, Internet or online play, accounts, lessons or drills, or multiple main windows. The iOS and iPadOS source includes the non-product nearby transport lab tracked by campaign #114 in ordinary Release builds intended only for Internal TestFlight; it is development evidence, not a third play mode.
 
 ## Platforms and architecture
 
