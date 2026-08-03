@@ -31,10 +31,9 @@ import XCTest
 @MainActor
 final class PhoneSettingsUITests: XCTestCase {
 
-    /// A language to run the interface in, and every product Settings string
-    /// docs/copy.md accepts for it — 触感 included, for the device that offers
-    /// it. The temporary English-only internal transport diagnostics are
-    /// deliberately outside that product-copy contract.
+    /// A language to run the interface in, and the strings docs/copy.md accepts
+    /// for it. Every string on the Settings screen is here, which is the whole
+    /// screen — 触感 included, for the device that offers it.
     private struct Language {
         let code: String
         let short: String
@@ -198,34 +197,6 @@ final class PhoneSettingsUITests: XCTestCase {
     /// now, and every launch here names it, so 中文 is what both should show.
     func testTheSettingsScreenFollowsTheLanguageTheLaunchNames() {
         photographSettings(in: .english)
-    }
-
-    /// The Stage 1 harness is reachable in an ordinary iOS build, but remains
-    /// a page below Settings rather than a primary destination or Play mode.
-    /// This assertion is hardware-independent: an unsupported Simulator still
-    /// has to expose the page so it can state why the transport is unavailable.
-    func testTheInternalNearbyTransportLabIsReachableFromSettings() {
-        let language = Language.english
-        let app = launch(in: language)
-        openSettings(app, language)
-
-        let lab = control(app, "settings-nearby-transport-lab")
-        for _ in 0..<3 where !lab.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(lab.waitForExistence(timeout: 10),
-                      "the Internal TestFlight transport lab should be under Settings")
-        XCTAssertTrue(lab.isHittable, "the transport lab entry should be reachable by touch")
-        lab.tap()
-
-        XCTAssertTrue(app.navigationBars["Nearby Transport Lab"]
-            .waitForExistence(timeout: 10),
-                      "the internal entry should open the Stage 1 proof page")
-        XCTAssertTrue(app.staticTexts[
-            "Internal Stage 1 proof only. This does not start, resume, or save a game."
-        ].exists)
-        XCTAssertEqual(app.tabBars.firstMatch.buttons.count, 3,
-                       "the lab must not become a fourth primary destination")
     }
 
     private func photographSettings(in language: Language) {

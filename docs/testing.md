@@ -50,14 +50,6 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Archive changes verify cross-platform round-trips and version dispatch, including rejection of unsupported versions.
 - C-interface changes verify both platform bindings against the threading and error contract in [core-interface.md](core-interface.md).
 
-### Nearby transport proof
-
-Stage 1A is the automated foundation gate. It requires the lab to compile in the ordinary iOS and iPadOS Release build intended for Internal TestFlight with the Wi-Fi Aware entitlement and exact service declaration, to remain under Settings rather than the primary destinations or Play rows, and to carry no runtime guess about the TestFlight channel. Tests cover capability and declaration gates, exact selected-peer identifier matching including missing and wrong identifiers, stale-lifecycle rejection, replacement waiting for cancelled-operation teardown, and repeatable equality of the opaque diagnostic probe. Simulator work may validate compilation, launch, and refusal on unsupported hardware; it is never evidence of Wi-Fi Aware discovery, pairing, transport, or TLS peer authentication.
-
-Stage 1B is a separate, mandatory physical proof on two supported devices. The devices pair through DeviceDiscoveryUI, each side explicitly selects the other, the connection negotiates TLS 1.3 with required peer authentication and no 0-RTT or tickets, the post-connect Wi-Fi Aware identifier equals the selected peer, and the fixed opaque bytes make one successful send-and-echo round trip. Cancellation and a fresh attempt must leave no stale listener, browser, connection, callback, game, archive, or store change. Until that proof is recorded, Stage 1 has not established physical success.
-
-A third supported device is not part of the minimum Stage 1B matrix. It is needed only when performing a live wrong-peer attempt; deterministic missing-, wrong-, and stale-identifier rejection remains required in Stage 1A regardless.
-
 ### Product and interaction
 
 - Review affected product and interaction contracts.

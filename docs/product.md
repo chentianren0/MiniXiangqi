@@ -12,8 +12,8 @@ This document owns the product definition, the target platforms, and the feature
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing. There is no public App Store plan.
 - **Every build contains both AI network files, the Windows zip included**, so there is no file a recipient has to add. What the bundled networks play like is measured in [engine-integration.md](engine-integration.md).
-- The application is fully offline: gameplay and persistence have no dependency on Internet access, an account, an app-operated or third-party server, a relay, cloud storage or synchronization, telemetry, or any network fallback. Loss of network service cannot change whether a local game can start, continue, be saved, or be replayed.
-- Fully offline constrains the product and its dependencies, not the platform beneath it. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here. Ordinary iOS and iPadOS Release builds intended only for Internal TestFlight include the non-product Wi-Fi Aware proof lab defined in [architecture.md](architecture.md); its direct nearby diagnostic exchange is development evidence, not a product feature or dependency, and it must not be promoted to any broader distribution.
+- The application is fully offline and must not require an Internet connection.
+- Fully offline constrains the app, not the platform beneath it: the app itself never touches the network. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
 ## Target platforms
 
@@ -29,7 +29,7 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Play modes
 
-- Xiangqi and Mini Xiangqi each offer exactly the same two modes, yielding exactly four Play rows. An internal transport lab is not a third mode or a fifth row.
+- Xiangqi and Mini Xiangqi each offer the same two modes.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - Human-versus-AI setup offers **我先手** (I Move First), **AI 先手** (AI Moves First), and **随机** (Random). Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
@@ -91,7 +91,7 @@ Detailed navigation behavior and presentation belong in [interaction-design.md](
 
 ## Exclusions
 
-- Internet-, account-, server-, relay-, cloud-, telemetry-, or fallback-dependent product features. The internal-test-only proof lab above is not a product feature.
+- Network-dependent features.
 - Chess clocks.
 - Multiple main windows.
 - Structured lessons, practice drills, and AI hints.

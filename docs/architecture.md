@@ -9,7 +9,7 @@ This document defines the system's stable boundaries: the shared core, the nativ
 - One product runs on iOS, iPadOS, macOS, and Windows with identical game behavior and persisted meaning.
 - Everything correctness-critical is implemented exactly once, in a shared core, and validated by one test suite.
 - Each platform's frontend is native — SwiftUI on Apple platforms, WinUI 3 on Windows — and owns only presentation and platform services.
-- All gameplay works offline. Neither frontend nor core may depend on Internet access, an account, a server, a relay, cloud services, telemetry, or a network fallback.
+- All gameplay works offline. Nothing may depend on networking or cloud services.
 - The application has one main window per platform.
 
 ## Shared core
@@ -34,17 +34,6 @@ Each frontend renders state, collects user intentions, and calls core operations
 - the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game are passed as arguments to game creation, where they are frozen into the game.
 
 Frontends must not reimplement rules, result classification, archive parsing, or library invariants, and must not reach around the core to its storage or the engine.
-
-## Internal nearby transport proof
-
-Stage 1 is an iOS-and-iPadOS transport proof, not nearby gameplay. The ordinary Release build intended only for Internal TestFlight includes a non-product lab under Settings using DeviceDiscoveryUI and Wi-Fi Aware. It is neither a Play mode nor a primary destination, must not be treated as the product's future Nearby UI, and must not be promoted to any broader distribution. That scope is a distribution policy, not a condition the app attempts to infer at runtime from TestFlight.
-
-- DeviceDiscoveryUI owns first pairing. One serialized app lifecycle owner owns paired-device refresh and selection, publishing or browsing, listening or connecting, cancellation, and shutdown. It invalidates superseded work immediately, rejects callbacks from an older lifecycle generation, and does not start replacement network work until the cancelled operation has returned from teardown. Pairing controls are disabled while that app-owned operation is active or stopping.
-- Every listener and browser is restricted to the explicitly selected paired device. Before any bytes are exchanged, the connected path's Wi-Fi Aware device identifier must equal that selected identifier; a missing or different identifier closes the connection.
-- The connection requires TLS 1.3, required peer authentication, disabled 0-RTT, and disabled session tickets. There is no plaintext path, trust bypass, alternate transport, server or relay, or fallback when any requirement fails.
-- The lab exchanges only an opaque diagnostic probe and never calls gameplay, archive, or store operations. It creates no game, changes no game or preference, and persists no app-owned data; DeviceDiscoveryUI owns the system pairing record.
-
-Compilation, Simulator execution, and automated tests cannot establish how the selected pairing is bound to TLS peer authentication on real devices. That behavior remains a mandatory physical-device proof gate: failure closes the connection and blocks advancement of the design rather than weakening authentication or adding a fallback.
 
 ## Dependency direction
 
