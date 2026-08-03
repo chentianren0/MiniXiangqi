@@ -17,8 +17,6 @@ The shared core owns persistence through an embedded SQLite library store, behin
 - A library holds records of both games. Which game a record is of is `rules_id`, and it is a summary column as well as archive content, so a mixed History list is labelled and ordered without decoding a blob per row.
 - The core enforces the single-library and single-active-game invariants even where the schema cannot express them as constraints.
 
-The internal nearby proof changes neither version-2 axis and owns no durable data. Neither the archive nor the store records nearby transport state, peer identifiers or names, host or guest role, seat assignment, transport event identifiers or counters, TLS metadata, keys, or secrets. The opaque diagnostic probe is not game data and is never persisted.
-
 ## Versioned game archive
 
 The archive is independent of the database schema and is also the export and import interchange format, so it must be portable across platforms and app versions. It contains enough information to reproduce and validate a game, including:
@@ -175,5 +173,3 @@ An archive version that permits initial positions other than a game's frozen sta
 ## Local-only boundary
 
 The app does not use cloud synchronization, remote storage, or network backup on any platform. Its data model must not assume multiple devices or concurrent writers. Normal operating-system device backups are outside the app's synchronization design.
-
-The internal nearby proof does not extend this data model: it has no store table, archive member, preference key, resume state, or migration, and it leaves both schema and archive at version 2.

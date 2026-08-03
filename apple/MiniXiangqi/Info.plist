@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  The structured keys the generated Info.plist cannot carry: the game archive's
-  type and the Wi-Fi Aware service declaration.
+  The one key the generated Info.plist cannot carry: the game archive's type.
 
   GENERATE_INFOPLIST_FILE stays on and this file is its base, so every
   INFOPLIST_KEY_* build setting still lands in the built plist and only what is
@@ -22,16 +21,6 @@
 -->
 <plist version="1.0">
 <dict>
-	<key>WiFiAwareServices</key>
-	<dict>
-		<key>_boardgame._tcp</key>
-		<dict>
-			<key>Publishable</key>
-			<dict/>
-			<key>Subscribable</key>
-			<dict/>
-		</dict>
-	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

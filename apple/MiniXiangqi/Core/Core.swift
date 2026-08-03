@@ -392,23 +392,6 @@ final class Core {
     /// docs/core-interface.md's threading contract.
     private var session: OpaquePointer?
 
-    /// Opaque bytes for the Stage 1 Wi-Fi Aware transport proof.
-    ///
-    /// This deliberately reuses a pure, fixed-size value the shared core
-    /// already owns rather than adding a temporary nearby function to the
-    /// public C ABI. The Apple proof harness may compare and echo these bytes;
-    /// it must not interpret them as a frame or give them stable wire meaning.
-    /// The helper is internal to the Apple frontend even in the Release build
-    /// used for Internal TestFlight; it does not add or change any public C API.
-    nonisolated static func stageOneNearbyProbeBytes() throws -> Data {
-        var version = MxqVersion()
-        version.struct_size = UInt32(MemoryLayout<MxqVersion>.size)
-        var err = MxqError()
-        err.struct_size = UInt32(MemoryLayout<MxqError>.size)
-        try check(mxq_core_version(&version, &err), err)
-        return withUnsafeBytes(of: &version) { Data($0) }
-    }
-
     /// Whether `shared` was ever asked for, so that termination can shut down
     /// a core that exists without creating one that does not.
     private static var sharedWasCreated = false
