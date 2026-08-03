@@ -153,7 +153,7 @@ struct NearbyProofScreen: View {
         } header: {
             Text(verbatim: "Opaque byte proof")
         } footer: {
-            Text(verbatim: "TLS is fixed to 1.3 with required peer authentication, no early data, and no session tickets.")
+            Text(verbatim: "Uses Apple's Wi-Fi Aware TLS configuration and exchanges bytes only after the selected peer and TLS 1.3 are verified.")
         }
     }
 
@@ -205,6 +205,7 @@ private final class NearbyProofModel {
         case hosting
         case browsing
         case connecting
+        case exchanging
         case passed
         case failed(String)
     }
@@ -250,14 +251,14 @@ private final class NearbyProofModel {
 
     var isBusy: Bool {
         switch phase {
-        case .refreshing, .stopping, .hosting, .browsing, .connecting: true
+        case .refreshing, .stopping, .hosting, .browsing, .connecting, .exchanging: true
         case .idle, .passed, .failed: false
         }
     }
 
     var canStop: Bool {
         switch phase {
-        case .refreshing, .hosting, .browsing, .connecting: true
+        case .refreshing, .hosting, .browsing, .connecting, .exchanging: true
         case .idle, .stopping, .passed, .failed: false
         }
     }
@@ -283,7 +284,8 @@ private final class NearbyProofModel {
         case .stopping: "Waiting for the previous nearby operation to stop…"
         case .hosting: "Hosting for the selected paired device…"
         case .browsing: "Browsing only for the selected paired device…"
-        case .connecting: "Checking the selected peer and TLS 1.3, then exchanging bytes…"
+        case .connecting: "Opening the selected-peer TLS 1.3 connection…"
+        case .exchanging: "The selected peer and TLS 1.3 passed; exchanging the opaque probe…"
         case .passed: "PASS: the selected peer echoed the exact opaque probe over TLS 1.3."
         case .failed(let message): "FAIL: \(message)"
         }
@@ -368,14 +370,16 @@ private final class NearbyProofModel {
             let expected = try Core.stageOneNearbyProbeBytes()
             let listener = try NetworkListener(
                 for: .wifiAware(.connecting(to: service, from: .selected([device]))),
-                using: { Self.strictTLS() }
+                using: { Self.wifiAwareTLS() }
             )
             .newConnectionLimit(1)
 
             do {
                 try await listener.run { connection in
                     try self.requireCurrent(token)
+                    self.phase = .connecting
                     try await self.verify(connection, selectedID: selectedID)
+                    self.phase = .exchanging
                     let received = try await connection.receive(exactly: expected.count).content
                     guard received == expected else { throw Failure.probeMismatch }
                     try await connection.send(received)
@@ -411,9 +415,10 @@ private final class NearbyProofModel {
             try self.requireCurrent(token)
             self.phase = .connecting
             let expected = try Core.stageOneNearbyProbeBytes()
-            let connection = NetworkConnection(to: endpoint, using: { Self.strictTLS() })
+            let connection = NetworkConnection(to: endpoint, using: { Self.wifiAwareTLS() })
             try self.requireCurrent(token)
             try await self.verify(connection, selectedID: selectedID)
+            self.phase = .exchanging
             try await connection.send(expected)
             let echoed = try await connection.receive(exactly: expected.count).content
             guard echoed == expected else { throw Failure.probeMismatch }
@@ -514,12 +519,11 @@ private final class NearbyProofModel {
         guard lifecycle.accepts(token) else { throw CancellationError() }
     }
 
-    private nonisolated static func strictTLS() -> TLS {
+    private nonisolated static func wifiAwareTLS() -> TLS {
+        // Match Apple's Wi-Fi Aware TCP/TLS example. The connection is still
+        // rejected before application bytes if its authenticated Wi-Fi Aware
+        // path is not the selected paired device or TLS 1.3 was not negotiated.
         TLS()
-            .peerAuthentication(.required)
-            .version(min: .TLSv13, max: .TLSv13)
-            .earlyDataEnabled(false)
-            .ticketsEnabled(false)
     }
 }
 #endif
