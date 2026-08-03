@@ -30,6 +30,12 @@ The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and W
 
 **Titles say where you are, and their alignment is the platform's.** A destination's root carries the platform's large title — leading on iOS and iPadOS, in the toolbar on macOS — and a page walked into from one carries the inline title beside the control that walks back out, which on iPhone and iPad is centred and on a Mac is not. Every page in the app is one or the other, and the app overrides neither: which alignment a title takes belongs to the platform, and the same page's title reading differently on a Mac and on a phone is that rule working rather than an inconsistency. A large title is also most of the spare height the stacked layout has, which is the second reason a page over a board does not take one. **What the app owns is the page beneath the title**, and there the rule is its own: every text block on a page begins on **one leading edge** — 16 points in, the same inset the panel's sections take — in both layout shapes, so a page reads down one column whatever the title above it is doing.
 
+## Internal nearby proof lab
+
+The DeviceDiscoveryUI and Wi-Fi Aware lab is an internal testing surface under Settings, not product interaction. Ordinary iOS and iPadOS Release builds intended only for Internal TestFlight expose only the controls and status needed to pair, select one peer, choose the proof role, run or stop the diagnostic exchange, and inspect its result. The app does not attempt to detect the TestFlight channel at runtime, and the lab must not be promoted to any broader distribution.
+
+The lab is not a primary destination, game setup, play mode, or nearby-play design. It never appears among the Play rows, never creates or restores a game, and never applies a move, Undo, result, archive, or store change. The Play home remains exactly the two headed sections and four rows defined below.
+
 ## Platform visual language
 
 Each platform uses its own current native visual system rather than an imitation of another platform's.

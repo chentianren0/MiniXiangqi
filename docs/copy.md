@@ -179,7 +179,13 @@ Each screen carries a technical description beneath the title. That description 
 
 ### Settings
 
-The Settings destination is four groups, and every string on it is below.
+The product Settings destination is four preference groups, and every product
+string in them is below. During nearby campaign #114, ordinary iOS and iPadOS
+Release builds intended only for Internal TestFlight also include the temporary
+transport lab defined in [interaction-design.md](interaction-design.md). Its English `Text(verbatim:)`
+diagnostics are engineering evidence rather than localized product copy: they
+must not enter this table, preferences, Play, or broader distribution, and the
+lab is removed when its campaign purpose ends.
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
@@ -216,7 +222,7 @@ And the keys no surface reads. They are kept so that none is reused for somethin
 
 **中文** names the notation by the language it is written in, not by 传统, which names a piece style: a screen that offered 传统 in two groups for two unrelated things would teach the wrong word. **WXF** is a name and is never translated, like **AI** in `status.controller.ai`; it carries a key all the same, because it is a control label and both languages have to answer for it.
 
-There are two footers on the screen, and only two. `settings.confirmDelete.footer` says what turning the switch off costs and that the cost is permanent — the permanence is [product.md](product.md)'s own rule, not a warning invented here. `settings.defaults.footer` says what the two values above it are *for*, which is the one thing a reader cannot work out from the labels: they initialize the next game's setup and never reach the game already on the board. Every other group goes without, because a footer under every group is a screen nobody reads.
+There are exactly two footers among the product preference groups. `settings.confirmDelete.footer` says what turning the switch off costs and that the cost is permanent — the permanence is [product.md](product.md)'s own rule, not a warning invented here. `settings.defaults.footer` says what the two values above it are *for*, which is the one thing a reader cannot work out from the labels: they initialize the next game's setup and never reach the game already on the board. Every other product group goes without. The temporary internal transport lab has its own English diagnostic footer outside this product-copy contract; it does not change the two product footers.
 
 **The Windows frontend draws three of the four groups**, per the Settings scope in [product.md](product.md), so eight of the keys above carry no Windows string: `settings.section.board`, `settings.symbols.*`, `settings.notation.*` and `settings.haptics.label` — one group header, two rows of a label and two options each, and one switch. Nothing about the *rows* changes — they are one contract for both frontends and the Apple app draws every one of them — and no key is retired, because each is a preference the Windows frontend has no surface for rather than one it disagrees with. **Both footers survive the trim**, which is why the paragraph above still reads the same on that platform: the two groups they belong to are among the three that ship, and an absent row explains itself by not being there rather than by needing a third footer to say so. The six option words the two default rows offer are `setup.iMoveFirst`, `setup.aiMovesFirst`, `setup.random` and the three `setup.level.*`, keyed once under **Pre-start setup** and read by both screens; `windows/MiniXiangqi.Play/Text/Strings.cs` is where the Windows half lives.
 

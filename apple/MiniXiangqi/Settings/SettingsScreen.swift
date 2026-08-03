@@ -1,4 +1,5 @@
-// The Settings destination: the preferences the app keeps, and nothing else.
+// The Settings destination: the preferences the app keeps, plus one clearly
+// marked internal transport proof while nearby Stage 1 is under test.
 //
 // docs/product.md, "Product navigation": Settings is the third primary
 // destination, it holds the persistent preferences, it stores no game data, and
@@ -6,9 +7,10 @@
 // control either — the operating system owns the language, and a control of ours
 // would be a second source of truth for it.
 //
-// Issue #64's Stage 5 design fixes the shape, and Stage 4's opponent added to
-// it: a grouped Form of four groups. The board's two choices sit together under
-// 棋盘 because both are about what the board shows and because they are
+// Issue #64's Stage 5 design fixes the product shape, and Stage 4's opponent
+// added to it: a grouped Form of four preference groups. The board's two
+// choices sit together under 棋盘 because both are about what the board shows
+// and because they are
 // independent of each other — a learner may want 图标 discs beside the 中文 list
 // they are learning to read. 人机对弈默认设置 is next, headed and footed, because
 // its two values need saying what they are for: they initialize the next game's
@@ -56,6 +58,9 @@ struct SettingsScreen: View {
                 humanVersusAIDefaults
                 feedback
                 deletion
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                nearbyTransportLab
+                #endif
             }
             // The macOS-native presentation of a preference list, and the one
             // that gives a section its header and its footer.
@@ -76,9 +81,9 @@ struct SettingsScreen: View {
         .onChange(of: aiLevel) { Preferences.defaultAiLevel.set(aiLevel) }
     }
 
-    // The four groups, each its own property: one Form body carrying all of
-    // them stopped type-checking in reasonable time, and a section is a
-    // self-contained thing anyway.
+    // The four preference groups, each its own property: one Form body carrying
+    // all of them stopped type-checking in reasonable time, and a section is a
+    // self-contained thing anyway. The iOS-only internal lab is separate below.
 
     /// The tags are the stored names themselves. A picker row is a choice being
     /// written to a preference, and the preference holds a name: a type in
@@ -156,4 +161,29 @@ struct SettingsScreen: View {
                 .accessibilityIdentifier("settings-confirm-delete-footer")
         }
     }
+
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    /// A temporary internal-distribution proof surface, not a preference or a
+    /// play mode. It lives at the edge of Settings so Stage 1 can be exercised
+    /// from TestFlight without changing the four product groups above.
+    private var nearbyTransportLab: some View {
+        Section {
+            NavigationLink {
+                NearbyProofScreen()
+            } label: {
+                VStack(alignment: .leading) {
+                    Text(verbatim: "Nearby Transport Lab")
+                    Text(verbatim: "Internal Stage 1 proof")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("settings-nearby-transport-lab")
+        } header: {
+            Text(verbatim: "Internal")
+        } footer: {
+            Text(verbatim: "Pairs two devices and verifies the nearby byte transport. It does not create or save a game.")
+        }
+    }
+    #endif
 }
