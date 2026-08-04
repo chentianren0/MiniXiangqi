@@ -24,11 +24,11 @@ Every message is one JSON object with exactly one member: the message's name, wh
 
 ## Session states
 
-Between one pair of peers there is at most one session, in one of four states, and every message's validity is decided by its receiver at arrival from the state it holds:
+Between one pair of peers at most one session is proposed or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** beside the pair's dealings until a new proposal retires it. Every message's validity is decided by its receiver at arrival from the state it holds:
 
 - **proposed** — a `propose` is unanswered. A proposal is scoped to the connection it travelled on: `accept` and `decline` are effective only there, and an unanswered proposal dies with its connection.
 - **active** — the proposal was accepted; play is on.
-- **ended** — the game has a result. An ended session still answers `resume`, and a terminal message arriving for it merges by the precedence rule below; every other message arriving for it is discarded, never a violation.
+- **ended** — the game has a result. An ended session still answers `resume`; it applies an arriving valid in-sequence `move` — any rules-decided end that yields merges by the precedence rule — and merges arriving terminals by the same rule; every other message arriving for it is discarded, never a violation. A new proposal in either direction retires it, and a `resume` for a retired session meets `unknown_session`.
 - **void** — the session was destroyed without a result, by a violation or an `unknown_session` answer. A device forgets a void session.
 
 ## Messages
@@ -55,7 +55,7 @@ The proposer mints the session identifier and sends `propose`. The receiver acce
 
 `proposer_moves` is `first` or `second`: which mover the proposer takes. Proposing is choosing — the proposer picks the sides, and the other player's power is to decline.
 
-`busy` answers a `propose` that arrives while an **active** or **ended** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding is always the crossing case, and is never answered: the proposal whose session identifier sorts lower byte-wise survives, and the other is void without an answer.
+A `propose`, sent or received, retires the pair's lingering ended session. `busy` answers a `propose` that arrives while an **active** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding with that peer — on any connection — is always the crossing case, and is never answered: for that instant the pair holds two proposed sessions, and the one whose session identifier sorts lower byte-wise survives while the other is void without an answer.
 
 A rematch is a new `propose` — there is no rematch vocabulary.
 
@@ -67,27 +67,27 @@ Plies are numbered from zero; a session's `count` is the number of plies it hold
 
 Only the off-turn peer opens a negotiation, and at most one stands at a time. `offer_draw` and `request_undo` carry `at`, the sender's `count` when it sent them; an arrival whose `at` differs from the receiver's `count` is stale — silently void, because a move crossed it, and the sender learns the same from that move's arrival. While its item stands, the off-turn peer sends nothing further except `resign`.
 
-The on-turn peer answers by accepting or by moving; moving on is the only refusal there is. `accept_draw` ends the game as a draw. `accept_undo` must repeat the standing request's `keep`: every ply beyond the first `keep` is retracted, play continues at ply `keep` with the turn parity gives it, and the session's `undos` — its count of accepted retractions, zero at birth — rises by one. `keep` ranges from 0, the initial position, to one less than the sender's `count`; anything else is malformed. An acceptance that matches no standing item is a violation.
+The on-turn peer answers by accepting or by moving; moving on is the only refusal there is. `accept_draw` ends the game as a draw. `accept_undo` must repeat the standing request's `keep`: every ply beyond the first `keep` is retracted, play continues at ply `keep` with the turn parity gives it, and the session's `undos` — its count of accepted retractions, zero at birth — rises by one. `keep` ranges from 0, the initial position, to one less than the sender's `count`; anything else is malformed. An acceptance that neither answers a standing item nor re-states a terminal in reconciliation is a violation.
 
 A retraction both players want but only the on-turn player may grant is reached from the other side: the off-turn peer requests it, the on-turn peer accepts. Pending offers and requests do not survive a connection's end: each peer voids its knowledge of them when the connection carrying them dies, and the off-turn peer may simply open them again.
 
 ## Ending
 
-Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly.
+Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly. Delivery is never assumed: a peer that sent a terminal holds the session **unsettled** until a resume exchange completes for it or a new proposal retires it.
 
-Enders can cross, so one precedence rule decides every collision, applied identically by both peers whenever they learn of more than one end for a session: a rules-decided end from the reconciled plies outranks everything; then a draw by agreement; then, if both peers resigned, the game is a draw; then a single resignation stands. A terminal message arriving for an **ended** session merges by this rule rather than being discarded.
+Enders can cross, so one precedence rule decides every collision, applied identically by both peers whenever they learn of more than one end for a session: a rules-decided end from the reconciled plies outranks everything; then a draw by agreement; then, if both peers resigned, the game is a draw; then a single resignation stands.
 
 ## Interruption and resume
 
-The transport names the peer device behind every connection, so a peer holding a session in **active** or **ended** recognises its opponent on a fresh connection and sends `resume` after `hello`: `undos` and `count` as it holds them, and `keep` — the surviving count of the last accepted retraction, meaningful when `undos` is above zero, otherwise echoed as the sender's `count`.
+The transport names the peer device behind every connection, so a peer recognises its opponent on a fresh connection. It initiates `resume`, after `hello`, for a session that is **active**, or **ended** and unsettled; a settled or retired game asks for nothing. Either peer may send the first `resume`, but the exchange completes — and the session re-binds — on the connection the *proposer's* `resume` travelled on, which the proposer sends on exactly one connection of its choosing; every other `resume` either peer sent is void once it does. Neither peer sends a `move` for the session until it holds the other's `resume` on that connection.
 
-When both peers know the session, reconciliation is mechanical, in this order. If one peer's `undos` is higher — it can only be higher by one, since retractions need a live connection — the other truncates its plies to that peer's `keep`. Then the peer holding more plies resends the missing ones as ordinary `move` messages. Then a peer whose session is **ended** by a terminal message re-sends that terminal, and the precedence rule merges it. Play continues wherever that leaves the session. The resumed session re-binds to the connection the session's *proposer* sent its `resume` on; a surplus connection then carries no session again, and either peer may close it, which means nothing.
+`resume` states the session as the sender holds it: `undos` and `count`, and `keep` — the surviving count of the last accepted retraction, meaningful when `undos` is above zero, otherwise echoed as the sender's `count`. Reconciliation is then mechanical, in this order. If one peer's `undos` is higher — it can only be higher by one, since retractions need a live connection — the other truncates its plies to that peer's `keep`. Then the peer holding more plies resends the missing ones as ordinary `move` messages, which an ended receiver applies like any other. Then a peer that *sent* a terminal re-sends that same message, and the precedence rule merges it. The exchange is then complete on both sides, the session is settled, and play continues wherever reconciliation left it.
 
-A peer that genuinely does not know the session — it holds nothing for it, or only a proposal that died with its connection — answers `decline` with `unknown_session`, and the session is void on both sides. What a device keeps of a game that ended void is its own business.
+A peer that genuinely does not know the session — it holds nothing for it, it retired it, or it holds only a proposal that died with its connection — answers `decline` with `unknown_session`, and the session is void on both sides. What a device keeps of a game that ended void is its own business.
 
 ## Violations
 
-A malformed message, a message before `hello`, a message for an unknown session outside the resume exchange, a `move` off turn or with the wrong `index` beyond resume's refill, an illegal move, an out-of-range `keep`, or an acceptance matching no standing item is a protocol violation: the detecting peer closes the connection and the session is void. The peers are honest implementations on an authenticated transport, so a violation is a bug — it surfaces loudly and is never repaired silently.
+A malformed message, a message before `hello`, a message for an unknown session outside the resume exchange, a `move` off turn or with the wrong `index` beyond resume's refill, an illegal move, an out-of-range `keep`, or an acceptance that neither answers a standing item nor re-states a terminal in reconciliation is a protocol violation. So is any message with no lawful meaning in the receiver's session state, beyond the stale-item, ended-state, and reconciliation allowances above. The detecting peer closes the connection and the session is void. The peers are honest implementations on an authenticated transport, so a violation is a bug — it surfaces loudly and is never repaired silently.
 
 ## Versions
 
@@ -104,4 +104,4 @@ The protocol above needs only the stream its model states. One binding is define
 
 ## Deliberately absent
 
-Clocks and every time control · spectators and third peers · hidden information · chat · cryptography of our own · rematch vocabulary · per-game parameter vocabulary (a configuration is a `rules_id`) · graceful version degradation · normative dependence on any other document.
+Clocks and every time control · spectators and third peers · hidden information · chat · cryptography of our own · rematch vocabulary · per-game parameter vocabulary (a configuration is a `rules_id`) · delivery acknowledgements (settlement rides the resume exchange) · graceful version degradation · normative dependence on any other document.
