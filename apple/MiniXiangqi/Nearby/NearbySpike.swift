@@ -147,6 +147,11 @@ final class NearbySpikeSession {
 
     func log(_ text: String) {
         nearbySpikeLogger.info("\(text, privacy: .public)")
+        #if DEBUG
+        // `devicectl --console` bridges stdout only, not OSLog: a driven
+        // device run reads the spike through this print.
+        print("[nearby] \(text)")
+        #endif
         lines.append(LogLine(at: Date(), text: text))
         if lines.count > 300 { lines.removeFirst(lines.count - 300) }
     }
@@ -232,10 +237,14 @@ final class NearbySpikeSession {
                             self.listenerState = Self.describe(state)
                             self.log("Listener: \(Self.describe(state))")
                             if case .failed(let error) = state { self.logFailure("Listener", error) }
+                            if case .waiting(let error) = state { self.logFailure("Listener (waiting)", error) }
                         }
                     }
+                    // Await the adoption inside the closure — the sample does,
+                    // and an early return here proved to tear the incoming
+                    // connection down (instant ENOTCONN) before adoption ran.
                     .run { connection in
-                        Task { @MainActor in self.adopt(connection, direction: .incoming) }
+                        await self.adopt(connection, direction: .incoming)
                     }
                 case .udpRealtime:
                     try await NetworkListener(
@@ -254,10 +263,14 @@ final class NearbySpikeSession {
                             self.listenerState = Self.describe(state)
                             self.log("Listener: \(Self.describe(state))")
                             if case .failed(let error) = state { self.logFailure("Listener", error) }
+                            if case .waiting(let error) = state { self.logFailure("Listener (waiting)", error) }
                         }
                     }
+                    // Await the adoption inside the closure — the sample does,
+                    // and an early return here proved to tear the incoming
+                    // connection down (instant ENOTCONN) before adoption ran.
                     .run { connection in
-                        Task { @MainActor in self.adopt(connection, direction: .incoming) }
+                        await self.adopt(connection, direction: .incoming)
                     }
                 }
             } catch {
@@ -362,6 +375,10 @@ final class NearbySpikeSession {
                     self.update(connection.id) { $0.isReady = true }
                     await self.send(.hello(deviceName: Self.localDeviceName), on: connection)
                     await self.refreshPath(of: connection)
+                case .waiting(let error):
+                    // Transient by contract, but on this path it is where the
+                    // stall lives — surface the Wi-Fi Aware error beneath it.
+                    self.logFailure("Connection \(connection.id.suffix(8)) (waiting)", error)
                 case .failed(let error):
                     self.logFailure("Connection \(connection.id.suffix(8))", error)
                     self.drop(connection.id, reason: "connection failed")

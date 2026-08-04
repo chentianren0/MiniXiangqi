@@ -212,6 +212,16 @@ private struct Destinations: View {
             try? await Task.sleep(for: .seconds(2))
             destination = .history
         }
+        // `-mxq-open-nearby` opens the spike's tab at launch, so a driven
+        // device run reaches the experiment without UI walking. The tab's
+        // content is built lazily, so its own launch arguments (roles, stack,
+        // autostart) are read by the screen when it appears.
+        #if os(iOS)
+        .task {
+            guard DebugLaunch.contains("-mxq-open-nearby") else { return }
+            destination = .nearby
+        }
+        #endif
         #endif
     }
 

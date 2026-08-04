@@ -34,7 +34,29 @@ struct NearbySpikeScreen: View {
             }
             .navigationTitle(Text(verbatim: "Nearby (spike)"))
         }
-        .task { session.watchPairedDevices() }
+        .task {
+            session.watchPairedDevices()
+            applyLaunchConfiguration()
+        }
+    }
+
+    /// Driven-run support, in the repo's `DebugLaunch` style: a harness can
+    /// preset the experiment and start it from the command line —
+    /// `-mxq-nearby-roles both|publish|subscribe`, `-mxq-nearby-stack tcp|udp`,
+    /// `-mxq-nearby-autostart` — instead of walking the pickers by tap.
+    private func applyLaunchConfiguration() {
+        #if DEBUG
+        if let roles = DebugLaunch.argument(after: "-mxq-nearby-roles"),
+           let chosen = SpikeRoles(rawValue: roles) {
+            session.roles = chosen
+        }
+        if let stack = DebugLaunch.argument(after: "-mxq-nearby-stack") {
+            session.transport = stack == "udp" ? .udpRealtime : .tcpBulk
+        }
+        if DebugLaunch.contains("-mxq-nearby-autostart") {
+            session.start()
+        }
+        #endif
     }
 
     private var supported: some View {
