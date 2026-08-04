@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  The one key the generated Info.plist cannot carry: the game archive's type.
+  The keys the generated Info.plist cannot carry: the game archive's type, and
+  — on the nearby-spike branch only — the Wi-Fi Aware service declaration.
 
   GENERATE_INFOPLIST_FILE stays on and this file is its base, so every
   INFOPLIST_KEY_* build setting still lands in the built plist and only what is
@@ -18,9 +19,27 @@
   where the list is already on screen to receive the result, and a Finder or
   Files handler would be a second entry path with its own launch-time state that
   no accepted contract asks for.
+
+  WiFiAwareServices declares the nearby-play service for the issue #114
+  connectivity spike: `_boardgame._tcp` (the owner's chosen name, 2026-08-04,
+  final only when the feature ships), both Publishable and Subscribable because
+  the experiment runs both roles on every device. Apple crashes the app on an
+  invalid service name, and the name rules are RFC 6763 §4.1.2 / RFC 6335 §5.1.
+  The `com.apple.developer.wifi-aware` entitlement in MiniXiangqi.entitlements
+  is this declaration's other half.
 -->
 <plist version="1.0">
 <dict>
+	<key>WiFiAwareServices</key>
+	<dict>
+		<key>_boardgame._tcp</key>
+		<dict>
+			<key>Publishable</key>
+			<dict/>
+			<key>Subscribable</key>
+			<dict/>
+		</dict>
+	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

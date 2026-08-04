@@ -140,7 +140,12 @@ private struct Destinations: View {
     /// be invisible to the copy being looked at.
     @State private var library: HistoryLibrary
 
-    private enum Destination: Hashable { case play, history, settings }
+    private enum Destination: Hashable {
+        case play, history, settings
+        #if os(iOS)
+        case nearby
+        #endif
+    }
 
     init(core: Core) {
         self.core = core
@@ -168,6 +173,22 @@ private struct Destinations: View {
             Tab("nav.settings", systemImage: "gearshape", value: Destination.settings) {
                 SettingsScreen()
             }
+
+            // The nearby-play connectivity spike (issue #114): branch-only
+            // experiment, never product. iOS only — the Wi-Fi Aware framework
+            // does not exist on macOS. Its title is verbatim because spike
+            // copy stays out of the catalog.
+            #if os(iOS)
+            Tab(value: Destination.nearby) {
+                NearbySpikeScreen()
+            } label: {
+                Label {
+                    Text(verbatim: "Nearby")
+                } icon: {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                }
+            }
+            #endif
         }
         .tabViewStyle(.sidebarAdaptable)
         // The two launch arguments that are about the *window* rather than
