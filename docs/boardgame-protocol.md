@@ -20,15 +20,15 @@ Every message is one JSON object with exactly one member: the message's name, wh
 {"move": {"session": "0b34…", "index": 7, "move": "b1b3"}}
 ```
 
-`protocol` is an integer. `session` is an opaque string, minted by the proposer as a lowercase UUID, echoed verbatim, and compared byte-wise. `hello` is the first message on every connection, in both directions, before anything else.
+`protocol` is an integer. `session` is an opaque string, minted by the proposer as a lowercase UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `end` is the string `resign` or `accept_draw`. A message carries exactly its named fields — `end` alone may be omitted — and an extra or missing member is malformed. `hello` is the first message on every connection, in both directions, before anything else.
 
 ## Session states
 
-Between one pair of peers at most one session is proposed or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** beside the pair's dealings until a new proposal retires it. Every message's validity is decided by its receiver at arrival from the state it holds:
+Between one pair of peers at most one session is proposed or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** beside the pair's dealings until, settled, a new proposal retires it. Every message's validity is decided by its receiver at arrival from the state it holds:
 
 - **proposed** — a `propose` is unanswered. A proposal is scoped to the connection it travelled on: `accept` and `decline` are effective only there, and an unanswered proposal dies with its connection.
 - **active** — the proposal was accepted; play is on.
-- **ended** — the game has a result. An ended session still answers `resume`; it applies an arriving valid in-sequence `move` — any rules-decided end that yields merges by the precedence rule — and merges arriving terminals by the same rule; every other message arriving for it is discarded, never a violation. A new proposal in either direction retires it, and a `resume` for a retired session meets `unknown_session`.
+- **ended** — the game has a result. An ended session still answers `resume`; it applies an arriving valid in-sequence `move` — any rules-decided end that yields merges by the precedence rule — and merges arriving terminals by the same rule; every other message arriving for it is discarded, never a violation. A new proposal in either direction retires it once it is settled, and a `resume` for a retired session meets `unknown_session`.
 - **void** — the session was destroyed without a result, by a violation or an `unknown_session` answer. A device forgets a void session.
 
 ## Messages
@@ -55,7 +55,7 @@ The proposer mints the session identifier and sends `propose`. The receiver acce
 
 `proposer_moves` is `first` or `second`: which mover the proposer takes. Proposing is choosing — the proposer picks the sides, and the other player's power is to decline.
 
-A `propose`, sent or received, retires the pair's lingering ended session. `busy` answers a `propose` that arrives while an **active** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding with that peer — on any connection — is always the crossing case, and is never answered: for that instant the pair holds two proposed sessions, and the one whose session identifier sorts lower byte-wise survives while the other is void without an answer.
+A `propose`, sent or received, retires the pair's lingering **settled** ended session. A peer holding the pair's session unsettled does not propose: it settles first — one exchange on a live connection — or learns from that exchange that the session is void. `busy` answers a `propose` that arrives while an **active** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding with that peer — on any connection — is the crossing case, and the crossing itself is never answered: for that instant the pair holds two proposed sessions, the one whose session identifier sorts lower byte-wise survives while the other is void without an answer, and the survivor then stands as an ordinary proposal, answered on its own connection like any other.
 
 A rematch is a new `propose` — there is no rematch vocabulary.
 
@@ -73,7 +73,7 @@ A retraction both players want but only the on-turn player may grant is reached 
 
 ## Ending
 
-Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly. An end is final: no confirmation attends it, and no retraction follows it — reopening a finished game is a new proposal. Delivery is never assumed: a peer that sent a terminal holds the session **unsettled** until a resume exchange completes for it or a new proposal retires it.
+Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly. An end is final: no confirmation attends it, and no retraction follows it — reopening a finished game is a new proposal. Delivery is never assumed: a peer that sent a terminal holds the session **unsettled** until a resume exchange completes for it or an `unknown_session` answer voids it.
 
 Enders can cross, so one precedence rule decides every collision, applied identically by both peers whenever they learn of more than one end for a session: a rules-decided end from the reconciled plies outranks everything; then a draw by agreement; then, if both peers resigned, the game is a draw; then a single resignation stands.
 
