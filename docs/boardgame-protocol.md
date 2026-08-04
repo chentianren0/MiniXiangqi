@@ -83,7 +83,7 @@ A peer that genuinely does not know the session — it holds nothing for it, it 
 
 ## Violations
 
-A malformed message, an illegal move, or any message with no lawful meaning in the receiver's session state — beyond the stale-item, ended-state, and reconciliation allowances above — is a protocol violation: the detecting peer closes the connection and the session is void.
+A malformed message, an illegal move, or any message with no lawful meaning in the receiver's connection and session state — beyond the stale-item, ended-state, and reconciliation allowances above — is a protocol violation: the detecting peer closes the connection and the session is void.
 
 ## Versions
 
