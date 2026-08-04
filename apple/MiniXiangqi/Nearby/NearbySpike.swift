@@ -2,23 +2,28 @@
 //
 // Branch-only experiment code (issue #114). This is not product behaviour and
 // no docs/ contract governs it; it exists to answer the transport questions the
-// protocol draft depends on, on real devices, before that draft is written:
+// protocol draft depends on, on real devices, before that draft is written.
 //
-// - Can both devices run publisher and subscriber at once, so that starting a
-//   game needs no host/guest choice? What happens when the two connections
-//   cross — do we get one link or two?
-// - What does the link do when a screen locks, the app backgrounds, or the
-//   players walk apart — and does a dropped link come back by itself?
-// - What round-trip time and signal do moves actually see in `.bulk` mode?
+// First device run (2026-08-04, internal TestFlight): pairing, discovery, and
+// the crossed both-direction connections all worked; every data path then
+// failed or stalled with POSIX 50 "Network is down", and the log carried only
+// that generic code. This revision turns the spike into an experiment matrix:
 //
-// Everything here is deliberately symmetric: the one Start button runs a
-// `NetworkListener` (publish) and a `NetworkBrowser` (subscribe) together on
-// the same `_boardgame._tcp` service, exactly what Adopting Wi-Fi Aware says an
-// app may do. Peers exchange a hello and then ping/pong every two seconds; the
-// screen shows every connection, its round-trip time, its signal, and a log.
+// - **Roles** — Both / Publish only / Subscribe only. Isolates whether four
+//   simultaneous radio operations between the same two devices (listener,
+//   browser, and a crossing connection on each side) exhaust the radio —
+//   `WAError.noRadioResources` documents exactly that remedy.
+// - **Stack** — TCP + `.bulk` (the game's natural shape) versus UDP +
+//   `.realtime` + `interactiveVideo`, the exact shape of Apple's known-working
+//   sample. One variable at a time.
+// - Every failure now also logs `NWError.wifiAware`, the Wi-Fi Aware-specific
+//   error beneath the POSIX code.
+// - A 20-second watchdog drops a connection stuck before `.ready`, so the
+//   browser loop retries instead of waiting forever on a dead attempt.
 //
-// The service name `_boardgame._tcp` is the owner's chosen name (2026-08-04),
-// final only when the feature ships.
+// The service names `_boardgame._tcp` / `_boardgame._udp` are declared in the
+// Info.plist; "boardgame" is the owner's chosen name (2026-08-04), final only
+// when the feature ships.
 
 #if os(iOS)
 
@@ -31,13 +36,45 @@ import WiFiAware
 
 let nearbySpikeLogger = Logger(subsystem: "com.ppppvz.minixiangqi", category: "nearby-spike")
 
-/// The declared service, named once. `nil` — never a crash — if the Info.plist
-/// declaration and this constant ever disagree, and the screen says so.
+/// Which of the two Wi-Fi Aware roles this device runs. `both` is the
+/// symmetric shape the feature wants; the single roles exist to isolate
+/// failures.
+nonisolated enum SpikeRoles: String, CaseIterable, Identifiable {
+    case both, publish, subscribe
+    var id: String { rawValue }
+}
+
+/// The protocol stack under test. `tcpBulk` is the shape a board game wants;
+/// `udpRealtime` is the exact shape of Apple's known-working sample app.
+nonisolated enum SpikeTransport: String, CaseIterable, Identifiable {
+    case tcpBulk, udpRealtime
+    var id: String { rawValue }
+
+    var serviceName: String {
+        switch self {
+        case .tcpBulk: "_boardgame._tcp"
+        case .udpRealtime: "_boardgame._udp"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .tcpBulk: "TCP + bulk"
+        case .udpRealtime: "UDP + realtime"
+        }
+    }
+}
+
+/// The declared services, named once. `nil` — never a crash — if the
+/// Info.plist declaration and these constants ever disagree.
 /// `nonisolated`: the network stack reads these off the main actor.
 nonisolated enum NearbySpikeService {
-    static let name = "_boardgame._tcp"
-    static var publishable: WAPublishableService? { WAPublishableService.allServices[name] }
-    static var subscribable: WASubscribableService? { WASubscribableService.allServices[name] }
+    static func publishable(_ transport: SpikeTransport) -> WAPublishableService? {
+        WAPublishableService.allServices[transport.serviceName]
+    }
+    static func subscribable(_ transport: SpikeTransport) -> WASubscribableService? {
+        WASubscribableService.allServices[transport.serviceName]
+    }
 }
 
 /// What the spike sends: a greeting, then heartbeats. `sentAt` comes back in
@@ -87,6 +124,10 @@ final class NearbySpikeSession {
     private(set) var peers: [SpikePeer] = []
     private(set) var lines: [LogLine] = []
 
+    /// The experiment variables, chosen on the screen before Start.
+    var roles: SpikeRoles = .both
+    var transport: SpikeTransport = .tcpBulk
+
     /// Restart publish/subscribe after a failure instead of stopping — the
     /// reconnection half of the experiment.
     var autoRestart = true
@@ -97,6 +138,7 @@ final class NearbySpikeSession {
     private var pairedDevicesTask: Task<Void, Never>?
     private var connections: [String: SpikeConnection] = [:]
     private var receiveTasks: [String: Task<Void, Never>] = [:]
+    private var watchdogs: [String: Task<Void, Never>] = [:]
     private var nextPingSeq = 0
 
     private static let localDeviceName = UIDevice.current.name
@@ -107,6 +149,12 @@ final class NearbySpikeSession {
         nearbySpikeLogger.info("\(text, privacy: .public)")
         lines.append(LogLine(at: Date(), text: text))
         if lines.count > 300 { lines.removeFirst(lines.count - 300) }
+    }
+
+    /// The failure line that matters: the Wi-Fi Aware error beneath the
+    /// generic POSIX code, when there is one.
+    private func logFailure(_ what: String, _ error: NWError) {
+        log("\(what) failed: \(error) — wifiAware: \(String(describing: error.wifiAware))")
     }
 
     // MARK: - Paired devices
@@ -126,19 +174,23 @@ final class NearbySpikeSession {
 
     // MARK: - Start and stop
 
-    /// The symmetric start: publish and subscribe together. Neither device is
-    /// a host; whichever browser finds the other's listener first connects,
-    /// and if both do, the screen shows the crossed pair.
     func start() {
         guard !isRunning else { return }
-        guard NearbySpikeService.publishable != nil, NearbySpikeService.subscribable != nil else {
-            log("Service \(NearbySpikeService.name) is missing from WiFiAwareServices — check Info.plist.")
+        let transport = self.transport
+        guard NearbySpikeService.publishable(transport) != nil,
+              NearbySpikeService.subscribable(transport) != nil else {
+            log("Service \(transport.serviceName) is missing from WiFiAwareServices — check Info.plist.")
             return
         }
         isRunning = true
-        log("Starting publisher and subscriber for \(NearbySpikeService.name).")
-        listenerTask = Task { await self.runListenerLoop() }
-        browserTask = Task { await self.runBrowserLoop() }
+        log("Starting: roles=\(roles.rawValue) stack=\(transport.label) service=\(transport.serviceName)")
+        log("Capabilities: features=\(WACapabilities.supportedFeatures) maxDevices=\(WACapabilities.maximumConnectableDevices) maxPublish=\(WACapabilities.maximumPublishableServices) maxSubscribe=\(WACapabilities.maximumSubscribableServices)")
+        if roles != .subscribe {
+            listenerTask = Task { await self.runListenerLoop(transport) }
+        }
+        if roles != .publish {
+            browserTask = Task { await self.runBrowserLoop(transport) }
+        }
         heartbeatTask = Task { await self.runHeartbeatLoop() }
     }
 
@@ -159,28 +211,53 @@ final class NearbySpikeSession {
 
     // MARK: - Publisher
 
-    private func runListenerLoop() async {
+    private func runListenerLoop(_ transport: SpikeTransport) async {
+        guard let service = NearbySpikeService.publishable(transport) else { return }
         while !Task.isCancelled {
             do {
-                try await NetworkListener(
-                    for: .wifiAware(.connecting(to: .spikeService, from: .allPairedDevices)),
-                    using: .parameters {
-                        Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
-                              using: NetworkJSONCoder()) {
-                            TCP()
+                switch transport {
+                case .tcpBulk:
+                    try await NetworkListener(
+                        for: .wifiAware(.connecting(to: service, from: .allPairedDevices)),
+                        using: .parameters {
+                            Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
+                                  using: NetworkJSONCoder()) {
+                                TCP()
+                            }
+                        }
+                        .wifiAware { $0.performanceMode = .bulk }
+                    )
+                    .onStateUpdate { _, state in
+                        Task { @MainActor in
+                            self.listenerState = Self.describe(state)
+                            self.log("Listener: \(Self.describe(state))")
+                            if case .failed(let error) = state { self.logFailure("Listener", error) }
                         }
                     }
-                    .wifiAware { $0.performanceMode = .bulk }
-                )
-                .onStateUpdate { _, state in
-                    Task { @MainActor in
-                        self.listenerState = Self.describe(state)
-                        self.log("Listener: \(Self.describe(state))")
+                    .run { connection in
+                        Task { @MainActor in self.adopt(connection, direction: .incoming) }
                     }
-                }
-                .run { connection in
-                    Task { @MainActor in
-                        self.adopt(connection, direction: .incoming)
+                case .udpRealtime:
+                    try await NetworkListener(
+                        for: .wifiAware(.connecting(to: service, from: .allPairedDevices)),
+                        using: .parameters {
+                            Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
+                                  using: NetworkJSONCoder()) {
+                                UDP()
+                            }
+                        }
+                        .wifiAware { $0.performanceMode = .realtime }
+                        .serviceClass(.interactiveVideo)
+                    )
+                    .onStateUpdate { _, state in
+                        Task { @MainActor in
+                            self.listenerState = Self.describe(state)
+                            self.log("Listener: \(Self.describe(state))")
+                            if case .failed(let error) = state { self.logFailure("Listener", error) }
+                        }
+                    }
+                    .run { connection in
+                        Task { @MainActor in self.adopt(connection, direction: .incoming) }
                     }
                 }
             } catch {
@@ -197,7 +274,8 @@ final class NearbySpikeSession {
 
     // MARK: - Subscriber
 
-    private func runBrowserLoop() async {
+    private func runBrowserLoop(_ transport: SpikeTransport) async {
+        guard let service = NearbySpikeService.subscribable(transport) else { return }
         while !Task.isCancelled {
             let hasOutgoing = peers.contains { $0.direction == .outgoing }
             if hasOutgoing {
@@ -206,12 +284,13 @@ final class NearbySpikeSession {
             }
             do {
                 let browser = NetworkBrowser(
-                    for: .wifiAware(.connecting(to: .allPairedDevices, from: .spikeService))
+                    for: .wifiAware(.connecting(to: .allPairedDevices, from: service))
                 )
                 .onStateUpdate { _, state in
                     Task { @MainActor in
                         self.browserState = Self.describe(state)
                         self.log("Browser: \(Self.describe(state))")
+                        if case .failed(let error) = state { self.logFailure("Browser", error) }
                     }
                 }
                 let endpoint = try await browser.run { endpoints in
@@ -221,19 +300,36 @@ final class NearbySpikeSession {
                     return .continue
                 }
                 await MainActor.run { self.log("Discovered endpoint: \(endpoint)") }
-                let connection = SpikeConnection(
-                    to: endpoint,
-                    using: .parameters {
-                        Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
-                              using: NetworkJSONCoder()) {
-                            TCP()
+
+                let connection: SpikeConnection
+                switch transport {
+                case .tcpBulk:
+                    connection = SpikeConnection(
+                        to: endpoint,
+                        using: .parameters {
+                            Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
+                                  using: NetworkJSONCoder()) {
+                                TCP()
+                            }
                         }
-                    }
-                    .wifiAware { $0.performanceMode = .bulk }
-                )
+                        .wifiAware { $0.performanceMode = .bulk }
+                    )
+                case .udpRealtime:
+                    connection = SpikeConnection(
+                        to: endpoint,
+                        using: .parameters {
+                            Coder(receiving: SpikeMessage.self, sending: SpikeMessage.self,
+                                  using: NetworkJSONCoder()) {
+                                UDP()
+                            }
+                        }
+                        .wifiAware { $0.performanceMode = .realtime }
+                        .serviceClass(.interactiveVideo)
+                    )
+                }
                 await MainActor.run { self.adopt(connection, direction: .outgoing) }
                 // Wait until this outgoing connection leaves the peer list
-                // before browsing again; the loop's head re-checks.
+                // (ready-then-dead, watchdog, or stop) before browsing again.
                 while !Task.isCancelled, self.connections[connection.id] != nil {
                     try await Task.sleep(for: .seconds(1))
                 }
@@ -261,14 +357,30 @@ final class NearbySpikeSession {
                 self.log("Connection \(connection.id.suffix(8)): \(Self.describe(state))")
                 switch state {
                 case .ready:
+                    self.watchdogs[connection.id]?.cancel()
+                    self.watchdogs[connection.id] = nil
                     self.update(connection.id) { $0.isReady = true }
                     await self.send(.hello(deviceName: Self.localDeviceName), on: connection)
                     await self.refreshPath(of: connection)
-                case .failed, .cancelled:
-                    self.drop(connection.id, reason: "connection \(Self.describe(state))")
+                case .failed(let error):
+                    self.logFailure("Connection \(connection.id.suffix(8))", error)
+                    self.drop(connection.id, reason: "connection failed")
+                case .cancelled:
+                    self.drop(connection.id, reason: "connection cancelled")
                 default:
                     break
                 }
+            }
+        }
+
+        // A connection stuck before `.ready` blocks the browser loop forever
+        // and holds radio resources; give it 20 seconds, then retry fresh.
+        watchdogs[id] = Task {
+            try? await Task.sleep(for: .seconds(20))
+            guard !Task.isCancelled else { return }
+            if let peer = self.peers.first(where: { $0.id == id }), !peer.isReady {
+                self.log("Connection \(id.suffix(8)) not ready after 20 s — dropping to retry.")
+                self.drop(id, reason: "connect watchdog")
             }
         }
 
@@ -287,6 +399,8 @@ final class NearbySpikeSession {
     private func drop(_ id: String, reason: String) {
         guard connections[id] != nil else { return }
         log("Dropping connection \(id.suffix(8)) (\(reason)).")
+        watchdogs[id]?.cancel()
+        watchdogs[id] = nil
         receiveTasks[id]?.cancel()
         receiveTasks[id] = nil
         connections[id] = nil
@@ -363,12 +477,14 @@ final class NearbySpikeSession {
     }
 }
 
+/// The pairing views are pinned to the `_tcp` service: pairing grants access
+/// to the *device*, and every declared service can reach a paired device.
 extension WAPublishableService {
-    static var spikeService: WAPublishableService { NearbySpikeService.publishable! }
+    static var spikeService: WAPublishableService { NearbySpikeService.publishable(.tcpBulk)! }
 }
 
 extension WASubscribableService {
-    static var spikeService: WASubscribableService { NearbySpikeService.subscribable! }
+    static var spikeService: WASubscribableService { NearbySpikeService.subscribable(.tcpBulk)! }
 }
 
 #endif

@@ -41,11 +41,40 @@ struct NearbySpikeScreen: View {
         Form {
             pairing
             pairedDevices
+            mode
             controls
             peers
             log
         }
         .formStyle(.grouped)
+    }
+
+    /// The experiment variables. One at a time: the roles picker isolates the
+    /// four-radio-operations question, the stack picker holds Apple's
+    /// known-working sample shape (UDP + realtime) against the game's shape
+    /// (TCP + bulk).
+    private var mode: some View {
+        Section {
+            Picker(selection: $session.roles) {
+                Text(verbatim: "Both").tag(SpikeRoles.both)
+                Text(verbatim: "Publish only").tag(SpikeRoles.publish)
+                Text(verbatim: "Subscribe only").tag(SpikeRoles.subscribe)
+            } label: {
+                Text(verbatim: "Roles")
+            }
+
+            Picker(selection: $session.transport) {
+                Text(verbatim: SpikeTransport.tcpBulk.label).tag(SpikeTransport.tcpBulk)
+                Text(verbatim: SpikeTransport.udpRealtime.label).tag(SpikeTransport.udpRealtime)
+            } label: {
+                Text(verbatim: "Stack")
+            }
+        } header: {
+            Text(verbatim: "Experiment mode")
+        } footer: {
+            Text(verbatim: "Set before Start; both devices must use the same stack. For role isolation, set one device to Publish only and the other to Subscribe only.")
+        }
+        .disabled(session.isRunning)
     }
 
     /// The one place the two devices differ, once per pair of devices: someone
