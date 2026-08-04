@@ -73,7 +73,7 @@ A retraction both players want but only the on-turn player may grant is reached 
 
 ## Ending
 
-Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly. Delivery is never assumed: a peer that sent a terminal holds the session **unsettled** until a resume exchange completes for it or a new proposal retires it.
+Ends decided by the game's rules need no message: both devices reach the same verdict from the same plies, so a result message would only be a channel for disagreement. `resign` — valid from either peer at any point of an active session — and `accept_draw` end the game explicitly. An end is final: no confirmation attends it, and no retraction follows it — reopening a finished game is a new proposal. Delivery is never assumed: a peer that sent a terminal holds the session **unsettled** until a resume exchange completes for it or a new proposal retires it.
 
 Enders can cross, so one precedence rule decides every collision, applied identically by both peers whenever they learn of more than one end for a session: a rules-decided end from the reconciled plies outranks everything; then a draw by agreement; then, if both peers resigned, the game is a draw; then a single resignation stands.
 
@@ -104,4 +104,4 @@ The protocol above needs only the stream its model states. One binding is define
 
 ## Deliberately absent
 
-Clocks and every time control · spectators and third peers · hidden information · chat · cryptography of our own · rematch vocabulary · per-game parameter vocabulary (a configuration is a `rules_id`) · delivery acknowledgements (settlement rides the resume exchange) · graceful version degradation · normative dependence on any other document.
+Clocks and every time control · spectators and third peers · hidden information · chat · cryptography of our own · rematch vocabulary · per-game parameter vocabulary (a configuration is a `rules_id`) · game-specific rights such as draw claims (a game's rules may express them as turn actions in its own grammar) · end confirmation and post-end retraction · delivery acknowledgements (settlement rides the resume exchange) · graceful version degradation · normative dependence on any other document.
