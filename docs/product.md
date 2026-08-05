@@ -10,7 +10,7 @@ This document owns the product definition, the target platforms, and the feature
 - The product exists for Xiangqi education inside a small internal group. Education means learning through complete games of **Xiangqi** or **Mini Xiangqi**, against the AI or in Free Play. Structured lessons, practice drills, and AI hints are not part of the product.
 - The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
-- On Apple platforms, distribution is TestFlight internal testing. There is no public App Store plan.
+- On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
 - **Every build contains both AI network files, the Windows zip included**, so there is no file a recipient has to add. What the bundled networks play like is measured in [engine-integration.md](engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
 - Fully offline constrains the app, not the platform beneath it: the app itself never touches the network. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.

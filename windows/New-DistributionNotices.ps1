@@ -124,10 +124,9 @@ Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
 full text is in ``LICENSE`` beside this file. The project's source is at
 <https://github.com/ppppvz/MiniXiangqi>.
 
-What else is in this build, and under what terms. One network below is this
-project's own and one is redistributed under GPL-3.0-or-later; both are named
-because a reader looking for where the AI's evaluation came from will look here
-first.
+What else is in this build, and under what terms. Both networks below are
+named because a reader looking for where the AI's evaluation came from will
+look here first.
 
 ## Fairy-Stockfish — GPL-3.0
 
@@ -177,7 +176,7 @@ putting it here. To confirm it survived the download:
 Get-FileHash .\assets\$($projectNetwork.filename) -Algorithm SHA256
 ``````
 
-## The Xiangqi neural network — GPL-3.0-or-later
+## The Xiangqi neural network — $($xiangqiNetwork.license)
 
 Standard Xiangqi uses the network published for that variant by the
 Fairy-Stockfish project and trained by $($xiangqiNetwork.provenance.trained_by).

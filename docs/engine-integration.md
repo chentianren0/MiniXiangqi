@@ -190,7 +190,7 @@ Each is pinned by exact byte length and SHA-256 in a machine-readable manifest, 
 **`xiangqi` — 11,261,932 bytes, SHA-256 `c07e94a5c7cbeae443ed79a8fa412875d833a7f8e04333815e39729c59d52e11`, `xiangqi-c07e94a5c7cb.nnue`.**
 
 - **It is not this project's own and is not retrained here.** The manifest entry's `provenance` records where it comes from.
-- **Redistribution rests on the licence rather than on ownership.** The weights are GPLv3, as this project is, so they travel with the same corresponding-source availability and third-party notices every GPLv3 input here already requires. That obligation is a condition of distributing them, not a formality.
+- **Redistribution rests on the licence rather than on ownership.** The weights are CC0, dedicated by their trainers; they impose no notice or source obligation of their own, and the manifest's `provenance` records where the dedication is stated.
 - **No measured acceptance gate applies to it.** The accepted level definitions describe the app's own variant; nothing in this contract claims a strength result for built-in `xiangqi`, and a claim about it requires its own measurement.
 
 ### Network failure policy
