@@ -257,7 +257,7 @@ struct InterchangeTests {
     @Test("The game type is the accepted one, declared and conforming to JSON")
     func theTypeIsTheAcceptedOne() throws {
         let type = UTType.miniXiangqiGame
-        #expect(type.identifier == "com.ppppvz.minixiangqi.game")
+        #expect(type.identifier == "com.chentianren.minixiangqi.game")
         #expect(type.conforms(to: .json), "the archive is one canonical-JSON document")
         #expect(type.preferredFilenameExtension == "mxq")
         #expect(type.isDeclared, "the app's Info.plist is what registers it")
