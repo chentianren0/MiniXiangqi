@@ -702,17 +702,6 @@ final class NearbyFlow {
         }
         wake()
     }
-
-    /// The window is going away, on the platform where a window can go without
-    /// the app. The radio stops and the surfaces come down; the game is in the
-    /// library, where it has been since its first ply.
-    func windowClosed() {
-        boardSessionID = nil
-        boardVoid = nil
-        boardHeld = nil
-        proposing = nil
-        if radio.isRunning { radio.stop() }
-    }
 }
 
 extension NearbyFlow: ActiveGameHolder {
