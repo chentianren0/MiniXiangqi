@@ -354,20 +354,14 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *     transaction, and its user_version pragma is set to 3;
  *   - an existing database is verified: the three tables must exist and be
  *     STRICT, and the single library row must be present;
- *   - a database recording a schema below this build's is discarded — the file
- *     and the two write-ahead-logging files beside it are removed — and a fresh
- *     library is created in its place, so the open succeeds and is empty.
- *     Nothing is migrated: version 3 is the only schema this build defines, and
- *     a store recording an abandoned one holds no game this build can read;
- *   - a database recording a newer schema is MXQ_ERR_STORE_SCHEMA_TOO_NEW and
- *     is left exactly as it is: it is a later build's real data;
- *   - a database this build cannot identify at all is MXQ_ERR_STORE_CORRUPT and
- *     is likewise left alone. What cannot be identified is not replaced.
+ *   - a database recording any other schema version is refused, and never
+ *     migrated: version 3 is the only schema this build defines. A newer one
+ *     is MXQ_ERR_STORE_SCHEMA_TOO_NEW, which the contract requires to be said
+ *     distinctly; anything else is MXQ_ERR_STORE_MIGRATION_FAILED.
  *
  * On failure returns the store-domain status, fills err (with the raw SQLite
  * result as subsystem_code where there is one), and leaves out empty; there is
- * no partially open store. A removal that itself fails is the filesystem's own
- * error, reported as one.
+ * no partially open store.
  */
 MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
                MxqError *err);

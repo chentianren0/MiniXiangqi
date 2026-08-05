@@ -175,7 +175,7 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 
 `archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of two values: a file naming a third ruleset is not a later version of ours, so it is `MALFORMED`.
 
-`archive_version` is also dispatched on in both directions, and `version-newer` and `version-older` are the pair: a file from ahead of this build and a file from behind it are different sentences to a reader, and both are refusals. Neither is anything else — no archive file is ever removed or rewritten, whichever side of the window it falls on.
+`archive_version` is dispatched on in both directions, and `version-newer` and `version-older` are the pair. A file from ahead of this build and a file from behind it are different sentences to a reader — one says the build is old, the other says the file is — and each carries the diagnostic that says which. Both are refusals, and a refusal is the whole of what happens: the file is not read, and nothing else is done to it.
 
 ### The game axis is read before the rest of `content`
 
