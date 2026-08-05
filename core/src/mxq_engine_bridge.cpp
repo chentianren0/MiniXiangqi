@@ -212,7 +212,7 @@ size_t occurrences_of(const std::vector<std::string> &identities,
 }
 
 /* The engine reports one side-to-move-relative Value, a flag, and — since the
- * fork's accessor (ppppvz/Fairy-Stockfish#2) — which rule produced the end. The
+ * fork's accessor (chentianren0/Fairy-Stockfish#2) — which rule produced the end. The
  * contract wants a state and a reason:
  *
  *  - checkmate and stalemate from there being no legal move, and from whether

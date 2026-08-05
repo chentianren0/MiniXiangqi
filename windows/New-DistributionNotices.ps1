@@ -122,7 +122,7 @@ Set-Content -Path (Join-Path $Destination 'NOTICE.md') -Encoding UTF8 -Value @"
 
 Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
 full text is in ``LICENSE`` beside this file. The project's source is at
-<https://github.com/ppppvz/MiniXiangqi>.
+<https://github.com/chentianren0/MiniXiangqi>.
 
 What else is in this build, and under what terms. Both networks below are
 named because a reader looking for where the AI's evaluation came from will

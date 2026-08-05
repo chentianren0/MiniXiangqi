@@ -1,12 +1,12 @@
 # Vendored Fairy-Stockfish
 
-The pinned `ppppvz/Fairy-Stockfish` fork, vendored as a **copied source snapshot**
+The pinned `chentianren0/Fairy-Stockfish` fork, vendored as a **copied source snapshot**
 and compiled into the static library `mxq::fairy-stockfish`, which `mxq_core`
 links `PRIVATE`.
 
 | | |
 |---|---|
-| Repository | `https://github.com/ppppvz/Fairy-Stockfish` |
+| Repository | `https://github.com/chentianren0/Fairy-Stockfish` |
 | Revision | `d3b4ba2e198fe25891a1c3af8ff90b5710c2539e` |
 | Committed | 2026-08-01T19:33:35-07:00 |
 | Upstream base | `c19b5f6c66894fdb0e88d0dd100e3885f744760a` |
