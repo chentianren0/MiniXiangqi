@@ -135,8 +135,14 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
     /// The resume exchange: what each peer has sent, what it holds, and what
     /// reconciliation still owes it.
     struct Exchange: Sendable, Equatable {
-        /// The connections this peer's own `resume` has travelled on.
-        var sentOn: Set<ConnectionID> = []
+        /// The connections this peer's own `resume` has travelled, each with
+        /// the `end` that resume carried.
+        ///
+        /// Per connection, because the exchange completes on whichever one the
+        /// proposer chose, and a terminal taken between two resumes is stated
+        /// by the later and not by the earlier. One value for the whole
+        /// exchange would let a terminal a peer never read pass for one it did.
+        var sentEnds: [ConnectionID: Terminal?] = [:]
         /// The other peer's `resume` on the completing connection, which is the
         /// only one that ever counts.
         var received: BoardGameMessage.Resume?
@@ -145,10 +151,28 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
         var completing: ConnectionID?
         /// Plies reconciliation still owes this peer.
         var owed = 0
-        /// The `end` this peer's own resume carried on the completing
-        /// connection. A terminal taken after that resume travelled has ridden
-        /// nothing, and this is what tells the two apart.
-        var statedEnd: Terminal?
+
+        /// Whether this peer's own resume has travelled that connection.
+        func sent(on connection: ConnectionID) -> Bool {
+            sentEnds.index(forKey: connection) != nil
+        }
+
+        /// The `end` this peer's resume carried there — and none where it never
+        /// went, which is the same answer for the purpose it serves.
+        func end(statedOn connection: ConnectionID) -> Terminal? {
+            sentEnds[connection] ?? nil
+        }
+
+        /// A resume of this peer's going out, and what it states.
+        mutating func record(_ end: Terminal?, sentOn connection: ConnectionID) {
+            sentEnds.updateValue(end, forKey: connection)
+        }
+
+        /// Every resume of this peer's on another connection is void once the
+        /// exchange has a connection to complete on.
+        mutating func keepOnly(_ connection: ConnectionID) {
+            sentEnds = sentEnds.filter { $0.key == connection }
+        }
     }
 
     // MARK: - Everything derived
@@ -213,7 +237,7 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
         if state == .proposed {
             return proposer == .local && self.connection == connection
         }
-        return exchange?.sentOn.contains(connection) ?? false
+        return exchange?.sent(on: connection) ?? false
     }
 
     /// Learn of a terminal the other peer sent. Terminals merge by the

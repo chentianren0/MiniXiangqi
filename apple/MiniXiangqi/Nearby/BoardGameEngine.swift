@@ -164,8 +164,8 @@ nonisolated final class BoardGameEngine {
                 if exchange.completing == connection {
                     session.exchange = nil
                 } else {
-                    exchange.sentOn.remove(connection)
-                    let empty = exchange.completing == nil && exchange.sentOn.isEmpty
+                    exchange.sentEnds.removeValue(forKey: connection)
+                    let empty = exchange.completing == nil && exchange.sentEnds.isEmpty
                     session.exchange = empty ? nil : exchange
                 }
             }
@@ -504,10 +504,7 @@ nonisolated final class BoardGameEngine {
             // on; every other resume either peer sent is void once it does.
             if exchange.completing != connection {
                 exchange.completing = connection
-                exchange.sentOn = exchange.sentOn.intersection([connection])
-                // What this peer's resume stated stands only if that resume
-                // travelled the connection the exchange now completes on.
-                if exchange.sentOn.isEmpty { exchange.statedEnd = nil }
+                exchange.keepOnly(connection)
             }
         } else if let completing = exchange.completing {
             // This peer proposed and has chosen its connection already, so
@@ -541,10 +538,9 @@ nonisolated final class BoardGameEngine {
 
         // `resume` states the session as the sender holds it, so this peer's
         // own goes out before reconciliation changes anything.
-        if !exchange.sentOn.contains(connection) {
+        if !exchange.sent(on: connection) {
             effects.append(.send(.resume(session.resumeMessage), on: connection))
-            exchange.sentOn.insert(connection)
-            exchange.statedEnd = session.localTerminal
+            exchange.record(session.localTerminal, sentOn: connection)
         }
 
         let ourKeep = session.reportedKeep
@@ -594,7 +590,9 @@ nonisolated final class BoardGameEngine {
         session.exchange = nil
         session.item = nil
 
-        guard let held = session.localTerminal, exchange.statedEnd != held else {
+        guard let held = session.localTerminal,
+              exchange.end(statedOn: completing) != held
+        else {
             session.settled = true
             return []
         }
@@ -772,11 +770,10 @@ nonisolated final class BoardGameEngine {
         // Once this peer's resume has travelled a connection, saying it again
         // states nothing new and would re-send plies the other peer already
         // holds.
-        guard !exchange.sentOn.contains(connection) else { throw .resumeOutstanding }
+        guard !exchange.sent(on: connection) else { throw .resumeOutstanding }
 
         if session.proposer == .local { exchange.completing = connection }
-        exchange.sentOn.insert(connection)
-        exchange.statedEnd = session.localTerminal
+        exchange.record(session.localTerminal, sentOn: connection)
         session.exchange = exchange
         // Nothing an interrupted session was negotiating survives the exchange
         // that re-binds it.

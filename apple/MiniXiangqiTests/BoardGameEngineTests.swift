@@ -938,6 +938,39 @@ struct BoardGameEngineTests {
                                             ending: .resignation(.local)))
     }
 
+    @Test("A terminal taken between two resumes is judged by the one that travelled the completing connection")
+    func aTerminalTakenBetweenTwoResumes() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        try play(["b1b2"], into: engine, id)
+        engine.connectionDied(.first)
+        // Both connections of a crossed bring-up are up, and this peer did not
+        // propose, so it does not decide which one the exchange completes on.
+        _ = connect(engine, .second)
+        _ = connect(engine, .third)
+
+        #expect(sent(try engine.resume(id, on: .second))
+                == [.resume(.init(session: id, undos: 0, count: 1, keep: 1, end: nil))])
+
+        #expect(try engine.resign(in: id).isEmpty, "mid-exchange there is nowhere to send it")
+
+        #expect(sent(try engine.resume(id, on: .third))
+                == [.resume(.init(session: id, undos: 0, count: 1, keep: 1, end: .resign))],
+                "the later resume states the terminal; the earlier one could not have")
+
+        // The proposer took the first of the two — the one this peer's resume
+        // crossed with no end on it — and every resume on the other is void.
+        let effects = engine.receive(.resume(.init(session: id, undos: 0, count: 1,
+                                                    keep: 1, end: nil)), on: .second)
+        #expect(sent(effects) == [.resign(.init(session: id))],
+                "nothing the other peer read carried the terminal, so it goes as itself")
+        let session = try #require(engine.session(id))
+        #expect(session.connection == .second)
+        #expect(!session.settled)
+        #expect(session.end == BoardGameEnd(result: .moverWins(.first),
+                                            ending: .resignation(.local)))
+    }
+
     @Test("A standing offer does not survive the exchange that re-binds the session")
     func theExchangeVoidsAStandingItem() throws {
         let engine = try connected()
