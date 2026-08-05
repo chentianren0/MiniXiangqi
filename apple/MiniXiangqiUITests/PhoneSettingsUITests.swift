@@ -3,10 +3,11 @@
 // The screen is the same groups it is on a Mac, 关于 at the foot of them
 // included, and this file does not re-prove the copy the Mac's suite already
 // proves. What it proves is what only a phone can say: that the accepted
-// controls arrive as this platform's own controls — a picker row that is a button carrying its selection, a switch that
-// is a switch — that they answer a finger, that a preference written by one
-// survives leaving the screen, and that the whole of it follows the language the
-// launch names rather than the one the Simulator was left in.
+// controls arrive as this platform's own controls — a picker row that is a
+// button carrying its selection, a switch that is a switch — that they answer
+// a finger, that a preference written by one survives leaving the screen, and
+// that the whole of it follows the language the launch names rather than the
+// one the Simulator was left in.
 //
 // **触感 is the row this file exists for.** The Mac's suite requires it
 // unconditionally and says out loud that an iOS suite cannot copy that: the row
