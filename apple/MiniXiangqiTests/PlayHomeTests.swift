@@ -131,24 +131,35 @@ struct PlayHomeTests {
         #expect(GameKind.miniXiangqi.localizedName == text("game.miniXiangqi"))
     }
 
+    /// What the home reads: the store's summary of the active game, with no
+    /// session attached to it. The session that played the line is ended first,
+    /// so what these tests assert is what the card can actually see.
+    private func cardLine(on core: Core) throws -> String {
+        core.endSession()
+        let summary = try #require(try core.activeGameSummary(),
+                                   "the store should hold the active game")
+        return summary.metadataLine
+    }
+
     @Test("An ongoing game reads as its mode, that it is going, and whose turn it is")
     func anOngoingGameReadsAsItsTurn() throws {
         let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        _ = try openGame(on: core)
 
-        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
-                                            text("mode.freePlay"),
-                                            text("metadata.inProgress"),
-                                            text("status.redToMove"),
-                                            moves(0)))
+        #expect(try cardLine(on: core) == joined(text("game.miniXiangqi"),
+                                                 text("mode.freePlay"),
+                                                 text("metadata.inProgress"),
+                                                 text("status.redToMove"),
+                                                 moves(0)))
 
-        try game.replay(["b1b3"])
-        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
-                                            text("mode.freePlay"),
-                                            text("metadata.inProgress"),
-                                            text("status.blackToMove"),
-                                            moves(1)),
-                "the side to move and the count are the game's own, read after every ply")
+        let resumed = try openGame(on: core)
+        try resumed.replay(["b1b3"])
+        #expect(try cardLine(on: core) == joined(text("game.miniXiangqi"),
+                                                 text("mode.freePlay"),
+                                                 text("metadata.inProgress"),
+                                                 text("status.blackToMove"),
+                                                 moves(1)),
+                "one ply on the turn has passed, which is the ply count's parity")
     }
 
     @Test("A human-versus-AI game names the side the player is holding")
@@ -156,24 +167,22 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
                                        level: .standard, choice: .humanFirst))
-        let red = try Game(rules: core)
-        #expect(red.metadataLine == joined(text("game.miniXiangqi"),
-                                           text("mode.humanVersusAI"),
-                                           text("metadata.youRed"),
-                                           text("metadata.inProgress"),
-                                           text("status.redToMove"),
-                                           moves(0)))
+        #expect(try cardLine(on: core) == joined(text("game.miniXiangqi"),
+                                                 text("mode.humanVersusAI"),
+                                                 text("metadata.youRed"),
+                                                 text("metadata.inProgress"),
+                                                 text("status.redToMove"),
+                                                 moves(0)))
 
         let other = try TestCores.fresh()
         try other.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
                                         level: .fast, choice: .aiFirst))
-        let black = try Game(rules: other)
-        #expect(black.metadataLine == joined(text("game.miniXiangqi"),
-                                             text("mode.humanVersusAI"),
-                                             text("metadata.youBlack"),
-                                             text("metadata.inProgress"),
-                                             text("status.redToMove"),
-                                             moves(0)),
+        #expect(try cardLine(on: other) == joined(text("game.miniXiangqi"),
+                                                  text("mode.humanVersusAI"),
+                                                  text("metadata.youBlack"),
+                                                  text("metadata.inProgress"),
+                                                  text("status.redToMove"),
+                                                  moves(0)),
                 "the side the human holds is not the side to move")
     }
 
@@ -184,11 +193,11 @@ struct PlayHomeTests {
         try game.replay(Self.shuffleLine)
         #expect(game.evaluation.claimAvailable, "the line should have made the claim available")
 
-        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
-                                            text("mode.freePlay"),
-                                            text("metadata.inProgress"),
-                                            text("status.drawAvailable"),
-                                            moves(8)),
+        #expect(try cardLine(on: core) == joined(text("game.miniXiangqi"),
+                                                 text("mode.freePlay"),
+                                                 text("metadata.inProgress"),
+                                                 text("status.drawAvailable"),
+                                                 moves(8)),
                 "the claim takes the side-to-move slot, as the accepted example line does")
     }
 
@@ -199,11 +208,11 @@ struct PlayHomeTests {
         try game.replay(Self.mateLine)
         #expect(game.isFinished)
 
-        #expect(game.metadataLine == joined(text("game.miniXiangqi"),
-                                            text("mode.freePlay"),
-                                            text("result.redWins"),
-                                            text("reason.checkmate"),
-                                            moves(3)),
+        #expect(try cardLine(on: core) == joined(text("game.miniXiangqi"),
+                                                 text("mode.freePlay"),
+                                                 text("result.redWins"),
+                                                 text("reason.checkmate"),
+                                                 moves(3)),
                 "the longer result register, and the reason beside it")
     }
 
@@ -226,17 +235,14 @@ struct PlayHomeTests {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board, "a launch with a game to resume opens at the board")
-
-        state.leaveTopPage()
-        #expect(state.page == .home)
-        #expect(state.activeGame != nil, "leaving the board leaves the game running")
+        #expect(state.page == .home, "a fresh launch opens at the home")
+        #expect(state.activeSummary != nil, "over the game it resumed, still running")
 
         state.choose(Self.miniAI)
 
         #expect(state.modeSwitch == .confirming(Self.miniAI))
         #expect(state.page == .home, "the confirmation stands between the press and the page")
-        #expect(state.activeGame != nil, "and nothing has happened to the game yet")
+        #expect(state.activeSummary != nil, "and nothing has happened to the game yet")
     }
 
     @Test("取消 discards the remembered destination and changes nothing")
@@ -250,7 +256,7 @@ struct PlayHomeTests {
 
         #expect(state.modeSwitch == nil, "the destination lives no longer than the flow")
         #expect(state.page == .home)
-        #expect(state.activeGame != nil)
+        #expect(state.activeSummary != nil)
         #expect(try core.activeGameExists())
         #expect(try core.historyCount() == 0, "cancelling files nothing")
     }
@@ -277,7 +283,8 @@ struct PlayHomeTests {
         #expect(state.page == .setup(Self.xiangqiAI),
                 "the selected game's pre-start page, with no hidden Mini default")
         #expect(state.modeSwitch == nil, "and the remembered destination is spent")
-        #expect(state.game == nil, "the game it archived is let go of")
+        #expect(state.game == nil && !core.hasSession,
+                "the whole flow stood on the home, which holds neither")
     }
 
     @Test("A refused archive keeps the game, and 重试 asks for the same thing again")
@@ -291,7 +298,7 @@ struct PlayHomeTests {
 
         #expect(state.modeSwitch == .failed(Self.miniAI), "the accepted retry presents")
         #expect(state.page == .home, "the pre-start page did not open")
-        #expect(state.activeGame != nil, "the game is still here")
+        #expect(state.activeSummary != nil, "the game is still here")
         #expect(try core.activeGameExists(), "and still the store's active game")
         #expect(try core.historyCount() == 0, "nothing was filed")
 
@@ -318,7 +325,7 @@ struct PlayHomeTests {
 
         #expect(state.modeSwitch == nil, "the destination goes with the flow that held it")
         #expect(state.page == .home)
-        #expect(state.activeGame != nil)
+        #expect(state.activeSummary != nil)
         #expect(try core.activeGameExists(), "the game the retry was about is still active")
         #expect(try core.historyCount() == 0)
 
@@ -346,16 +353,92 @@ struct PlayHomeTests {
 
     // MARK: - Resuming, and the game that is no longer active
 
-    @Test("回到对局 opens the board on the game that was left")
+    @Test("回到对局 opens the board, and the session with it, on the game that was left")
     func resumeOpensTheBoard() throws {
         let core = try TestCores.fresh()
-        let state = try stateOverAGame(core)
-        try state.game?.replay(["b1b3"])
+        let played = try openGame(on: core)
+        try played.replay(["b1b3"])
+        core.endSession()
 
-        state.resume()
+        let state = PlayState(core: core)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .home)
+        #expect(state.game == nil, "the home describes the game rather than holding it")
+        #expect(!core.hasSession)
+
+        state.resume(policy: MotionPolicy(reduceMotion: true))
 
         #expect(state.page == .board)
+        #expect(core.hasSession, "the board is what opens the session")
         #expect(state.game?.moves == ["b1b3"], "the same game, exactly where it was left")
+    }
+
+    @Test("Leaving the board puts down the session, the engine and the search it opened")
+    func leavingTheBoardPutsDownWhatItOpened() throws {
+        let core = try TestCores.fresh()
+        let engine = TestEngine()
+        let state = PlayState(core: core, engine: engine)
+        // A game the machine opens, so that entering its board is what makes
+        // the machine think and leaving it is what stops it.
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                       level: .fast, choice: .aiFirst))
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .home)
+        #expect(!core.hasSession, "a launch opens no session")
+        #expect(engine.preparations == 0, "and prepares nothing")
+
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        #expect(core.hasSession, "the board opens the session")
+        #expect(engine.preparations == 1, "prepares the engine")
+        #expect(engine.startedSearches == 1, "and asks for the reply the game owes")
+
+        state.leaveTopPage()
+
+        #expect(state.page == .home)
+        #expect(engine.cancelledTickets.count == 1, "leaving cancels the search")
+        #expect(engine.cancelAlls == 1,
+                "quiesces the engine, the teardown behind it refusing rather than waiting")
+        #expect(engine.teardowns == 1, "releases the engine")
+        #expect(!core.hasSession, "and ends the session")
+        #expect(state.game == nil, "the game went with the board it was on")
+        #expect(try core.activeGameExists(),
+                "while the game itself stays committed and active")
+        #expect(state.activeSummary?.moveCount == 0,
+                "and the home's card describes it from the store, having no session to ask")
+    }
+
+    @Test("A nearby board over the local pages takes the local game down with it")
+    func aNearbyBoardTakesTheLocalGameDown() throws {
+        let core = try TestCores.fresh()
+        let engine = TestEngine()
+        let state = PlayState(core: core, engine: engine)
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                       level: .fast, choice: .aiFirst))
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        #expect(core.hasSession)
+        #expect(engine.startedSearches == 1, "the machine is thinking on the local board")
+
+        // A nearby game's board is drawn over every page of this destination,
+        // so the local board is no longer the board on screen.
+        state.nearbyBoardPresented(true, policy: MotionPolicy(reduceMotion: true))
+
+        #expect(!core.hasSession, "the local session goes with the board it was on")
+        #expect(engine.cancelledTickets.count == 1)
+        #expect(engine.cancelAlls == 1)
+        #expect(engine.teardowns == 1, "and the machine stops thinking about it")
+        #expect(state.game == nil)
+        #expect(state.page == .board, "the local page is still standing underneath")
+        #expect(try core.activeGameExists(), "the local game is committed and untouched")
+
+        // And when the nearby board comes down, the page underneath is a board
+        // again.
+        state.nearbyBoardPresented(false, policy: MotionPolicy(reduceMotion: true))
+
+        #expect(core.hasSession, "which opens its game again")
+        #expect(state.game != nil)
+        #expect(engine.startedSearches == 2,
+                "and asks again for the reply that game still owes")
     }
 
     @Test("回到对局 is no way off the home while a mode switch is in flight")
@@ -364,12 +447,12 @@ struct PlayHomeTests {
         let (state, archive) = try parkedStateOverAGame(core)
 
         state.choose(Self.miniAI)
-        state.resume()
+        state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .home, "the confirmation is up and the page it is on stays")
 
         state.saveAndContinue()
         #expect(state.modeSwitch == .saving(Self.miniAI))
-        state.resume()
+        state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .home,
                 "and an archive in flight is not something to walk away from")
 
@@ -382,9 +465,9 @@ struct PlayHomeTests {
 
         // And once the flow is spent, 回到对局 is exactly what it always was.
         state.dismissArchiveFailure()
-        state.resume()
+        state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board)
-        #expect(state.activeGame != nil, "over the game that was never archived")
+        #expect(state.activeSummary != nil, "over the game that was never archived")
     }
 
     @Test("A filed game is not an active game, and the home does not offer it")
@@ -393,12 +476,14 @@ struct PlayHomeTests {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board)
+        #expect(state.page == .home)
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .board, "the card is the way into the game")
         try state.game?.replay(Self.mateLine)
-        try state.game?.file()
+        #expect(state.save(), "保存 files it")
         #expect(state.game != nil, "the board still stands at the result it reached")
 
-        #expect(state.activeGame == nil, "but the store's active game is gone")
+        #expect(state.activeSummary == nil, "but the store's active game is gone")
 
         // Going back to the home lets it go, and a mode entry then opens its
         // pre-start page with no confirmation: there is nothing left to save.
@@ -414,12 +499,11 @@ struct PlayHomeTests {
     // MARK: -
 
     /// A state holding an active Free Play game, sitting on the home — which is
-    /// what a player who walked back from the board has.
+    /// what every launch over a stored game has.
     private func stateOverAGame(_ core: Core) throws -> PlayState {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        state.leaveTopPage()
         #expect(state.page == .home)
         return state
     }
@@ -431,8 +515,6 @@ struct PlayHomeTests {
         let state = PlayState(core: core, rules: archive)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board)
-        state.leaveTopPage()
         #expect(state.page == .home)
         return (state, archive)
     }
