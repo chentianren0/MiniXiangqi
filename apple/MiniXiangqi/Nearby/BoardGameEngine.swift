@@ -184,7 +184,12 @@ nonisolated final class BoardGameEngine {
 
     func receive(_ message: BoardGameMessage, on connection: ConnectionID) -> [BoardGameEffect] {
         guard let record = connections[connection] else {
-            preconditionFailure("a message arrived on a connection the engine was not told about")
+            // A close verdict leaves this engine at once and the transport acts
+            // on it afterwards, so a message its receive loop had already taken
+            // arrives for a connection this engine has forgotten. That race is
+            // the transport's ordinary noise rather than a fault, and there is
+            // nothing left here for the message to mean.
+            return []
         }
         let peer = record.peer
 
@@ -325,7 +330,10 @@ nonisolated final class BoardGameEngine {
     private func receive(_ proposal: BoardGameMessage.Propose, from peer: PeerDeviceID,
                          on connection: ConnectionID) -> [BoardGameEffect] {
         // An arriving propose retires the receiver's ended copy whatever its
-        // settledness.
+        // settledness, and before anything can call the arriving identifier a
+        // duplicate: a new proposal retires the ended session even where it
+        // reuses that session's own identifier, and what stands afterwards is a
+        // proposal of a session this peer holds nothing for.
         if let lingering = lingeringSession(with: peer) { forget(lingering) }
 
         // The crossing case is judged before anything can call the arriving
@@ -501,7 +509,11 @@ nonisolated final class BoardGameEngine {
 
         if session.proposer == .peer {
             // The proposer's resume names the connection the exchange completes
-            // on; every other resume either peer sent is void once it does.
+            // on; every other resume either peer sent is void once it does. A
+            // later one of theirs on another connection re-targets the exchange
+            // rather than being refused: a proposer that watched its first
+            // connection die is choosing again, which is legitimate from its own
+            // view while this side still holds that connection up.
             if exchange.completing != connection {
                 exchange.completing = connection
                 exchange.keepOnly(connection)
@@ -517,6 +529,12 @@ nonisolated final class BoardGameEngine {
             // until the proposer's resume has travelled one.
             exchange.completing = connection
         }
+        // A second resume of theirs on the completing connection reconciles
+        // again. Only a peer that broke "sends on exactly one connection", or
+        // re-sent where nothing was owed, states one twice, and reconciling
+        // twice converges: the same stated session yields the same truncation
+        // and the same merge, and the plies it re-sends are ones that peer
+        // already holds.
         exchange.received = resume
         // Nothing an interrupted session was negotiating survives the exchange
         // that re-binds it.

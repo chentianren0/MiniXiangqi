@@ -51,6 +51,20 @@ struct BoardGameEngineTests {
         #expect(effects == [.close(.first, .unsupportedVersion(2))])
     }
 
+    @Test("A negative protocol version reads as the integer it is, and the engine refuses it")
+    func aNegativeVersionIsReadAndRefused() throws {
+        // The contract types `protocol` as an integer, not a non-negative one,
+        // so the codec has nothing to refuse in these bytes: a version this
+        // peer will not speak is answered by closing the connection.
+        let hello = try JSONDecoder().decode(BoardGameMessage.self,
+                                             from: Data(#"{"hello":{"protocol":-1}}"#.utf8))
+        #expect(hello == .hello(.init(protocolVersion: -1)))
+
+        let engine = try engine()
+        _ = engine.connectionOpened(.first, with: .peer)
+        #expect(engine.receive(hello, on: .first) == [.close(.first, .unsupportedVersion(-1))])
+    }
+
     @Test("A second hello on one connection has no lawful meaning")
     func helloOpensOnce() throws {
         let engine = try connected()
@@ -662,6 +676,22 @@ struct BoardGameEngineTests {
                                                         ending: .rulesDecided(.checkmate)))
     }
 
+    @Test("A resignation arriving after the draw the peer agreed to does not lower it")
+    func aResignationArrivingAfterTheAgreedDraw() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        _ = try engine.offerDraw(in: id)
+        _ = engine.receive(.acceptDraw(.init(session: id)), on: .first)
+        #expect(engine.session(id)?.end?.ending == .agreedDraw)
+
+        // Their resignation crossed their own acceptance: the merge keeps the
+        // terminal that outranks rather than taking whichever arrived last.
+        _ = engine.receive(.resign(.init(session: id)), on: .first)
+        let session = try #require(engine.session(id))
+        #expect(session.peerTerminal == .acceptDraw)
+        #expect(session.end == BoardGameEnd(result: .draw, ending: .agreedDraw))
+    }
+
     @Test("An ended session discards everything but a move, a terminal, and a resume")
     func theEndedSessionDiscardsTheRest() throws {
         let engine = try connected()
@@ -1051,6 +1081,23 @@ struct BoardGameEngineTests {
         #expect(sent(effects) == [.decline(.init(session: "S-nobody", reason: .unknownSession))])
     }
 
+    @Test("A resume for a session this peer retired is answered with unknown_session")
+    func aRetiredSessionIsUnknown() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        _ = engine.receive(.resign(.init(session: id)), on: .first)
+        _ = peerProposes(engine, "S-next")
+        #expect(engine.session(id) == nil, "the arriving proposal retired the ended copy")
+
+        // Their resume for the old session crossed the proposal that retired
+        // it, and this peer genuinely does not know it any more: the answer is
+        // the one that voids it on both sides.
+        let effects = engine.receive(.resume(.init(session: id, undos: 0, count: 0,
+                                                    keep: 0, end: .resign)), on: .first)
+        #expect(sent(effects) == [.decline(.init(session: id, reason: .unknownSession))])
+        #expect(engine.session("S-next")?.state == .proposed, "and the new proposal stands")
+    }
+
     @Test("An unknown_session answer voids the session on this side too")
     func unknownSessionVoidsIt() throws {
         let engine = try connected()
@@ -1097,6 +1144,26 @@ struct BoardGameEngineTests {
         // The transport will not hand the engine that identifier again, and the
         // engine is ready for a fresh connection under it.
         #expect(sent(engine.connectionOpened(.first, with: .peer)) == [.hello(.init())])
+    }
+
+    @Test("A message delivered after this peer's own close verdict is discarded")
+    func aMessageAfterTheCloseVerdict() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        _ = connect(engine, .second)
+
+        // A second connection, carrying no session, closed by a message for a
+        // session this peer does not hold.
+        #expect(closed(engine.receive(.resign(.init(session: "S-nobody")), on: .second))
+                == [.second])
+        let held = try #require(engine.session(id))
+
+        // The transport's receive loop had already taken this one when the
+        // verdict went out.
+        #expect(engine.receive(.move(.init(session: id, index: 0, move: "b1b2")),
+                               on: .second).isEmpty)
+        #expect(engine.session(id) == held, "nothing it says has anywhere to apply")
+        #expect(engine.sessions.count == 1)
     }
 
     @Test("A message the transport could not read is malformed")

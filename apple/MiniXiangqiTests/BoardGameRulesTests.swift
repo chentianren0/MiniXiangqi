@@ -21,6 +21,11 @@ struct BoardGameRulesTests {
     static let shuffleLine = ["b1b2", "b7b6", "b2b1", "b6b7",
                               "b1b2", "b7b6", "b2b1", "b6b7"]
 
+    /// The same on the 9×10 board: both horses out and back twice, capturing
+    /// nothing and checking nothing, so the repetition is the neutral one.
+    static let xiangqiShuffleLine = ["b1c3", "b10c8", "c3b1", "c8b10",
+                                     "b1c3", "b10c8", "c3b1", "c8b10"]
+
     private func rules() throws -> CoreBoardGameRules {
         try TestCores.fresh().boardGameRules
     }
@@ -120,6 +125,20 @@ struct BoardGameRulesTests {
                               after: Array(Self.shuffleLine.prefix(7)), of: "minixiangqi")
                 == .unlawful,
                 "one occurrence short is not claimable")
+    }
+
+    @Test("The claim is lawful on the 9×10 board too, and ends that game as the draw it claims")
+    func theClaimOnTheLargerBoard() throws {
+        let rules = try rules()
+        #expect(rules.standing(after: Array(Self.xiangqiShuffleLine.prefix(7)), of: "xiangqi")
+                == .ongoing)
+        #expect(rules.standing(after: Self.xiangqiShuffleLine, of: "xiangqi") == .claimable)
+        #expect(rules.verdict(for: TurnAction.claim, after: Self.xiangqiShuffleLine,
+                              of: "xiangqi")
+                == .lawful(.decided(.draw, .threefoldRepetition)))
+        #expect(rules.standing(after: Self.xiangqiShuffleLine + [TurnAction.claim],
+                               of: "xiangqi")
+                == .decided(.draw, .threefoldRepetition))
     }
 
     @Test("A claimed game stands as the draw it claimed, and nothing is in sequence after it")
