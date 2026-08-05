@@ -95,6 +95,7 @@ enum NearbyStage: String, CaseIterable {
 final class NearbyStagedDriver: NearbyDriving {
     private(set) var sessions: [BoardGameSession]
     let declines: [NearbyDecline] = []
+    let ownMoveRefusals = 0
 
     private let stage: NearbyStage
 

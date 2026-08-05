@@ -120,6 +120,10 @@ final class NearbyDriver {
     private(set) var peers: [ConnectionID: PeerDeviceID] = [:]
     /// The refusals the other peer sent, oldest first.
     private(set) var declines: [NearbyDecline] = []
+    /// How many of this device's own plies the library has refused to record.
+    /// It only grows, so the board can tell a fresh refusal from one it has
+    /// already spoken about.
+    private(set) var ownMoveRefusals = 0
 
     /// The store's memory of the game being played, where this driver has one.
     /// Absent in the tests that are about the protocol and on the staged board,
@@ -441,6 +445,7 @@ final class NearbyDriver {
         // game is, and this hands it that whole answer once per input instead
         // of a list of the changes somebody remembered to report.
         record?.follow(sessions)
+        if let record { ownMoveRefusals = record.ownMoveRefusals }
     }
 
     /// The line a finished game leaves behind, said once, when the session's

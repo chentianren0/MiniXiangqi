@@ -196,7 +196,8 @@ private struct Destinations: View {
         // The library is the store's memory of the game: created with the
         // driver, because a ply can land while the board is down and the
         // driver is what every engine input funnels through.
-        let record = NearbyRecord(library: core, log: log)
+        let record = NearbyRecord(library: core, rules: core.boardGameRules,
+                                  log: log)
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: record)
         let transport = NearbyTransport(driver: driver, log: log)
@@ -299,26 +300,27 @@ private struct Destinations: View {
                 play.leaveBoard()
             }
         }
-        // The window's own lifecycle, which is a different question on the two
-        // platforms and is answered separately for that reason.
+        #if os(iOS)
+        // Coming back from a suspension. Nothing about the game is at stake —
+        // every ply was committed as it landed — but the radio's publisher and
+        // browser stopped with the app, and the system's pairing snapshots can
+        // end on their own, so both are taken up again. Returning to the page
+        // that was showing stays in place.
+        //
+        // **Only `.active` is read here, and deliberately.**
+        // docs/engine-integration.md is explicit that a teardown's trigger is
+        // the platform's own suspension or memory-pressure signal and never a
+        // change of visibility; `Suspension` subscribes to those signals and
+        // this must not become a second, looser answer to the same question.
         .onChange(of: scenePhase) { _, phase in
-            #if os(iOS)
-            // Coming back from a suspension. Nothing about the game is at
-            // stake — every ply was committed as it landed — but the radio's
-            // publisher and browser stopped with the app, and the system's
-            // pairing snapshots can end on their own, so both are taken up
-            // again. Returning to the page that was showing stays in place.
             if phase == .active { nearby.returnedToForeground() }
-            #else
-            // The window closing, which on this platform is not the app
-            // quitting: the scene goes to the background and the app stays.
-            // The board's session, the engine's preparation and any owed
-            // search belong to the surface that has gone, so they go with it —
-            // the same putting-down leaving the board does, and nothing is
-            // lost by it.
-            if phase == .background { play.leaveBoard() }
-            #endif
         }
+        #else
+        // The window closing, which on this platform is not the app quitting.
+        // The session and any search owed to it go with the surface they
+        // belonged to; the engine stays, because a window is not sleep.
+        .background(WindowCloseWatcher { play.windowClosed() })
+        #endif
         // The two launch arguments that are about the *window* rather than
         // about a destination sit here, above the container: applied to a
         // destination they would be re-applied every time the player came back
@@ -413,6 +415,70 @@ private struct LaunchWindowSizer: NSViewRepresentable {
             DispatchQueue.main.async { [weak window] in
                 window?.setContentSize(contentSize)
                 window?.center()
+            }
+        }
+    }
+}
+#endif
+
+#if os(macOS)
+/// The window this view is in, closing.
+///
+/// SwiftUI offers no scene-teardown signal to hang this on. `scenePhase`
+/// reports *visibility*, which docs/engine-integration.md forbids treating as a
+/// teardown on a platform where an unfocused window is still a running app, and
+/// a view's `onDisappear` fires while a window is still coming up. What is
+/// unambiguous is AppKit's own `willCloseNotification`.
+///
+/// It is observed **for this view's own window** rather than from the
+/// notification centre at large, which is the whole reason it is a view and not
+/// a modifier: a save panel, an open panel and a sheet are windows too, and
+/// each posts the same notification. A player exporting a game mid-board must
+/// not have their session put down by the panel closing.
+private struct WindowCloseWatcher: NSViewRepresentable {
+    var closed: @MainActor () -> Void
+
+    func makeNSView(context: Context) -> NSView { Watcher(closed: closed) }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        (view as? Watcher)?.closed = closed
+    }
+
+    private final class Watcher: NSView {
+        var closed: @MainActor () -> Void
+        private var observation: NSObjectProtocol?
+
+        init(closed: @escaping @MainActor () -> Void) {
+            self.closed = closed
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+        /// The window arrives after the view does, and can be replaced. The
+        /// observation follows it, so this watches whatever window is holding
+        /// the view now and never one it has left.
+        ///
+        /// This is also where the observation is given up, and it is enough:
+        /// a window retains its view tree, so a view is taken out of its
+        /// window before it is deallocated, and this runs with a nil window
+        /// when that happens. A `deinit` would be the belt to this pair of
+        /// braces, and it cannot have one — the token is not `Sendable` and a
+        /// `deinit` is nonisolated.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observation {
+                NotificationCenter.default.removeObserver(observation)
+                self.observation = nil
+            }
+            guard let window else { return }
+            observation = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: window,
+                queue: .main
+            ) { [weak self] _ in
+                // The main queue is where this was asked to arrive.
+                MainActor.assumeIsolated { self?.closed() }
             }
         }
     }

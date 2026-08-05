@@ -170,8 +170,22 @@ CREATE TABLE nearby_session (
 -- A wire session belongs to a nearby game being played on this device, and to
 -- nothing else. The mode and provenance pair is the same one that makes
 -- local_side present, so a row here is exactly a row with a local side.
+--
+-- Both rules are stated on insert and on update, because a row is written by an
+-- insert with an explicit conflict clause and either arm can be the one that
+-- runs: a guard on half of them would be a guard the contract could not state
+-- flatly.
 CREATE TRIGGER nearby_session_is_a_local_nearby_game
 BEFORE INSERT ON nearby_session
+WHEN (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+  OR (SELECT provenance FROM game WHERE record_id = NEW.record_id)
+       IS NOT 'locally-played'
+BEGIN
+  SELECT RAISE(ABORT, 'a wire session belongs to a nearby game played here');
+END;
+
+CREATE TRIGGER nearby_session_stays_a_local_nearby_game
+BEFORE UPDATE ON nearby_session
 WHEN (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
   OR (SELECT provenance FROM game WHERE record_id = NEW.record_id)
        IS NOT 'locally-played'
@@ -183,6 +197,13 @@ END;
 -- over, and the session it was played over is not something to keep.
 CREATE TRIGGER nearby_session_is_an_unfinished_game
 BEFORE INSERT ON nearby_session
+WHEN (SELECT outcome FROM game WHERE record_id = NEW.record_id) IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a wire session belongs to an unfinished game');
+END;
+
+CREATE TRIGGER nearby_session_stays_an_unfinished_game
+BEFORE UPDATE ON nearby_session
 WHEN (SELECT outcome FROM game WHERE record_id = NEW.record_id) IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'a wire session belongs to an unfinished game');

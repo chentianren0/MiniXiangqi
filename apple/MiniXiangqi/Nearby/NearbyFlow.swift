@@ -108,6 +108,11 @@ protocol NearbyRadio: AnyObject {
 protocol NearbyDriving: AnyObject {
     var sessions: [BoardGameSession] { get }
     var declines: [NearbyDecline] { get }
+    /// How many of this device's own plies the library has refused to record.
+    /// It only grows; the board watches it, because a move of the player's own
+    /// that the library would not keep is the one thing about a nearby ply they
+    /// are owed a word about.
+    var ownMoveRefusals: Int { get }
 
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
                  proposerMoves: Mover) throws(BoardGameRefusal)

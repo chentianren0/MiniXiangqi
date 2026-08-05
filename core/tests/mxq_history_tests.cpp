@@ -1645,6 +1645,37 @@ void case_the_wire_session_lives_with_its_game() {
                    MXQ_OK, "the Free Play game is archived to make room");
     mxq_game_release(free_play);
 
+    /* The fifth archiving path takes the wire session too. An interrupted
+     * nearby game the player files before starting something else is a game
+     * that stopped: ended early, no competitive result, and nothing of the
+     * session it was played over left behind. */
+    MxqGame *interrupted = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &interrupted,
+                                          &err),
+                   MXQ_OK, "an interrupted nearby game is created");
+    mxq_game_apply_move(interrupted, "b1b3", nullptr, nullptr, nullptr);
+    mxq_game_apply_move(interrupted, "b7b5", nullptr, nullptr, nullptr);
+    c.check_eq(row_count("count(*)"), "1",
+               "which is being played over a wire session");
+    uint64_t stopped = 0;
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, interrupted, &stopped,
+                                               &err),
+                   MXQ_OK, "and archive-and-clear files it");
+    c.check_eq(row_count("count(*)"), "0",
+               "in the transaction that took its wire session with it");
+    MxqRecordSummary stopped_record = make_summary();
+    err = make_error();
+    mxq_store_history_get(core, stopped, &stopped_record, &err);
+    c.check_eq(reason_text(stopped_record.end_reason), "ended-early",
+               "recorded as the game that stopped");
+    c.check_eq(outcome_text(stopped_record.outcome), "none",
+               "with no competitive result");
+    c.check_eq(stopped_record.local_side, MXQ_COLOR_RED,
+               "and the local perspective it was played from");
+    mxq_game_release(interrupted);
+
     /* The cascade, which is the second line of defence rather than the one
      * that fires at a filing: a game row that goes takes its wire session with
      * it, whatever removed it. */

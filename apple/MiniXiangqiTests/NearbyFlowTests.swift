@@ -998,6 +998,7 @@ private final class FakeDriver: NearbyDriving {
 
     var sessions: [BoardGameSession] = []
     var declines: [NearbyDecline] = []
+    var ownMoveRefusals = 0
     /// What every intent answers with, where the test wants a refusal.
     var refuses: BoardGameRefusal?
     /// The identifier the engine would mint for the next proposal.

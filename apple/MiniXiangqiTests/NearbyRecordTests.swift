@@ -6,6 +6,7 @@
 // opinion about that, which is exactly the thing worth not having.
 
 import Foundation
+import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
@@ -28,8 +29,34 @@ struct NearbyRecordTests {
     }
 
     private func memory(over core: Core) -> NearbyRecord {
-        NearbyRecord(library: core, log: NearbyLog())
+        NearbyRecord(library: core, rules: core.boardGameRules, log: NearbyLog())
     }
+
+    /// The same, over a library whose archive-and-clear this suite answers. It
+    /// is the one call that cannot answer inside itself — the threading
+    /// contract keeps it off this actor — so the result-less filing path is
+    /// reached by parking it, exactly as the Play home's suite parks the same
+    /// seam.
+    private func memory(over parked: ParkedNearbyArchive) -> NearbyRecord {
+        NearbyRecord(library: parked, rules: parked.core.boardGameRules,
+                     log: NearbyLog())
+    }
+
+    /// A session this device's *peer* proposed: local takes the second mover,
+    /// which is Black, so a line's even-indexed plies are the peer's.
+    private func peerProposed(plies: [String] = []) -> BoardGameSession {
+        var session = BoardGameSession(id: Self.identifier, peer: Self.peer,
+                                       rulesID: GameKind.miniXiangqi.rulesID,
+                                       rulesVersion: "1", proposerMoves: .first,
+                                       proposer: .peer)
+        session.accepted = true
+        session.plies = plies
+        return session
+    }
+
+    /// The mating line: three plies, and the third — index 2, an even index —
+    /// is the first mover's.
+    private static let mate = ["b1b3", "a6a5", "b3d3"]
 
     // MARK: - Becoming the library's active game
 
@@ -255,6 +282,152 @@ struct NearbyRecordTests {
         #expect(!restored.settled)
     }
 
+    @Test("A game this device's own ply ended comes back owing a resume")
+    func ourOwnDecisivePlyRestoresUnsettled() throws {
+        let directory = TestCores.scratchDirectory()
+        do {
+            let core = try TestCores.open(at: directory)
+            let record = memory(over: core)
+            record.follow([session()])
+            // The mate is committed and the filing has not happened: this
+            // device's own ply decided the end, so the session is unsettled and
+            // the record leaves it standing.
+            var mated = session(plies: Self.mate)
+            mated.rulesEnd = RulesDecision(result: .moverWins(.first),
+                                           reason: .checkmate)
+            mated.settled = false
+            record.follow([mated])
+            #expect(try core.activeGameSummary() != nil,
+                    "an unsettled ending is not filed")
+            #expect(try core.nearbyWireSession()?.sentEnd == nil,
+                    "and no terminal was sent — the plies decided it")
+            record.release()
+        }
+
+        let relaunched = try TestCores.open(at: directory)
+        let restored = try #require(try memory(over: relaunched).standing())
+        #expect(restored.plies == Self.mate)
+        #expect(restored.rulesEnd?.reason == .checkmate,
+                "the end is read off the line, not out of the row")
+        #expect(restored.ownPlyDecidedTheEnd)
+        #expect(!restored.settled,
+                "a peer whose own ply decided the end owes a resume exchange")
+        #expect(try relaunched.activeGameSummary() != nil,
+                "so nothing was filed on the way back in")
+    }
+
+    @Test("A game the other player's ply ended comes back settled, and files")
+    func theirDecisivePlyRestoresSettledAndFiles() throws {
+        let directory = TestCores.scratchDirectory()
+        do {
+            let core = try TestCores.open(at: directory)
+            let record = memory(over: core)
+            record.follow([peerProposed()])
+            // Settled here the moment it arrived, so it would have been filed —
+            // a row still standing over it is a filing that did not commit,
+            // which is the only way this state is reached.
+            var mated = peerProposed(plies: Self.mate)
+            mated.rulesEnd = RulesDecision(result: .moverWins(.first),
+                                           reason: .checkmate)
+            mated.settled = false
+            record.follow([mated])
+            #expect(try core.activeGameSummary() != nil)
+            record.release()
+        }
+
+        let relaunched = try TestCores.open(at: directory)
+        let record = memory(over: relaunched)
+        let restored = try #require(try record.standing())
+        #expect(!restored.ownPlyDecidedTheEnd, "the mating ply was the peer's")
+        #expect(restored.settled)
+
+        record.follow([restored])
+        #expect(try relaunched.activeGameSummary() == nil,
+                "a settled ending files on the publication after the restore")
+        let library = HistoryLibrary(store: relaunched.history)
+        library.load()
+        #expect(library.records.first?.reason == .checkmate)
+    }
+
+    @Test("A claim the other player made comes back settled")
+    func theirClaimRestoresSettled() throws {
+        let directory = TestCores.scratchDirectory()
+        let repeated = ["b1b3", "b7b5", "b3b1", "b5b7",
+                        "b1b3", "b7b5", "b3b1", "b5b7"]
+        do {
+            let core = try TestCores.open(at: directory)
+            let record = memory(over: core)
+            record.follow([peerProposed()])
+            var claimed = peerProposed(plies: repeated + [TurnAction.claim])
+            claimed.rulesEnd = RulesDecision(result: .draw,
+                                             reason: .threefoldRepetition)
+            claimed.settled = false
+            record.follow([claimed])
+            #expect(try core.nearbyWireSession()?.claimed == true)
+            record.release()
+        }
+
+        let relaunched = try TestCores.open(at: directory)
+        let restored = try #require(try memory(over: relaunched).standing())
+        #expect(restored.plies.last == TurnAction.claim)
+        #expect(!restored.ownPlyDecidedTheEnd,
+                "the claim is a ply, and this one is at an even index")
+        #expect(restored.settled, "so this device owes no exchange for it")
+    }
+
+    // MARK: - A session the protocol parted with, and no result at all
+
+    @Test("A parted session with no result asks the library to file it, once")
+    func aPartedSessionWithNoResultIsFiled() throws {
+        let core = try TestCores.fresh()
+        let parked = ParkedNearbyArchive(core)
+        let record = memory(over: parked)
+
+        record.follow([session()])
+        record.follow([session(plies: ["b1b3", "b7b5"])])
+        #expect(try core.activeGameSummary() != nil)
+        #expect(try core.moveHistory() == ["b1b3", "b7b5"])
+
+        // `unknown_session`, a violation, or the peer's fresh proposal: the
+        // engine no longer holds it, and there is no result to file it by, so
+        // what a game that stopped is worth is the store's own to decide.
+        record.follow([])
+        #expect(parked.requests == 1, "the store's own classification is asked for")
+        #expect(parked.endSessions == 0,
+                "the archive takes the session with it, so nothing releases it here")
+
+        parked.answer(.success(1))
+        #expect(parked.endSessions == 0, "and a commit still releases nothing here")
+        // The record is holding nothing now, which is what lets a later session
+        // begin: one that still thought it held a game would follow the game
+        // that has gone instead.
+        record.release()
+        #expect(parked.endSessions == 0,
+                "a record that let go has nothing left to let go of")
+        #expect(parked.requests == 1, "and it does not ask again by itself")
+    }
+
+    @Test("A refused archive of a parted session lets the session go")
+    func aRefusedArchiveOfAPartedSessionLetsGo() throws {
+        let core = try TestCores.fresh()
+        let parked = ParkedNearbyArchive(core)
+        let record = memory(over: parked)
+
+        record.follow([session()])
+        record.follow([])
+        #expect(parked.requests == 1)
+
+        parked.answerWithRefusal()
+        #expect(parked.endSessions == 1,
+                "a refusal puts the session back, and this record lets it go")
+        #expect(try core.activeGameSummary() != nil,
+                "and the game is still the library's, exactly as it stood")
+
+        record.release()
+        #expect(parked.endSessions == 1, "with nothing left to release twice")
+        #expect(parked.requests == 1, "and it does not ask again by itself")
+    }
+
     @Test("A library with no nearby game gives nothing back")
     func nothingToComeBackTo() throws {
         let core = try TestCores.fresh()
@@ -264,5 +437,84 @@ struct NearbyRecordTests {
         core.endSession()
         #expect(try memory(over: core).standing() == nil,
                 "a local active game is not a nearby one")
+    }
+}
+
+
+/// A library whose archive-and-clear this suite answers, over a real core.
+///
+/// It is the one call in `NearbyLibrary` that cannot answer inside itself — the
+/// threading contract keeps it off this actor — so a case that wants to see what
+/// follows it parks it, exactly as the Play home's suite parks the same seam.
+@MainActor
+final class ParkedNearbyArchive: NearbyLibrary {
+    let core: Core
+
+    private(set) var requests = 0
+    /// How many times the record let go of the store's session on its own. It
+    /// is the whole of the bookkeeping the two archive arms differ in: the
+    /// archive takes the session with it when it commits, and hands it back
+    /// when it refuses.
+    private(set) var endSessions = 0
+    private var parked: (@MainActor (Result<UInt64, CoreError>) -> Void)?
+
+    init(_ core: Core) { self.core = core }
+
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
+    ) {
+        requests += 1
+        parked = completion
+    }
+
+    /// Answers the archive in flight, as the queue would. The real
+    /// archive-and-clear is deliberately not performed: what it records and
+    /// what it deletes are the core suite's to pin, and it cannot answer inside
+    /// its own call, so a case that waited for it would suspend while holding
+    /// this suite's one core.
+    func answer(_ result: Result<UInt64, CoreError>) {
+        let completion = parked
+        parked = nil
+        completion?(result)
+    }
+
+    /// The store-domain refusal, which puts the session back.
+    func answerWithRefusal() {
+        answer(.failure(CoreError(status: MxqStatus(MXQ_ERR_STORE_IO),
+                                  detail: "refused by this suite")))
+    }
+
+    var hasSession: Bool { core.hasSession }
+    func endSession() {
+        endSessions += 1
+        core.endSession()
+    }
+    func resumeActive() throws -> Bool { try core.resumeActive() }
+    func create(_ configuration: GameConfiguration) throws { try core.create(configuration) }
+    func configuration() throws -> GameConfiguration { try core.configuration() }
+    func gameID() throws -> String { try core.gameID() }
+    func resign() throws -> UInt64 { try core.resign() }
+    func apply(_ move: String) throws { try core.apply(move) }
+    func undo() throws -> Int { try core.undo() }
+    func claimDraw() throws -> UInt64 { try core.claimDraw() }
+    func confirmResult() throws -> UInt64 { try core.confirmResult() }
+    func evaluation() throws -> Evaluation { try core.evaluation() }
+    func moveHistory() throws -> [String] { try core.moveHistory() }
+    func legalMoves() throws -> [String] { try core.legalMoves() }
+    func fen(atPly ply: Int) throws -> String { try core.fen(atPly: ply) }
+    func activeGameSummary() throws -> ActiveGameSummary? { try core.activeGameSummary() }
+    func createNearby(_ configuration: GameConfiguration,
+                      wire: NearbyWireSession) throws {
+        try core.createNearby(configuration, wire: wire)
+    }
+    func nearbyWireSession() throws -> NearbyWireSession? { try core.nearbyWireSession() }
+    func setNearbyWireSession(_ wire: NearbyWireSession) throws {
+        try core.setNearbyWireSession(wire)
+    }
+    func retractNearby(to keep: Int, wire: NearbyWireSession) throws {
+        try core.retractNearby(to: keep, wire: wire)
+    }
+    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UInt64 {
+        try core.commitNearbyEnd(ending)
     }
 }

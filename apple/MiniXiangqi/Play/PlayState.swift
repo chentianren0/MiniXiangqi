@@ -296,8 +296,17 @@ final class PlayState {
     /// every answer to it. It clears the failure and nothing else, for the
     /// reason above: 重试 starts the same archive again and must survive its own
     /// alert going away.
+    ///
+    /// It clears the pending nearby act with it, for the reason the
+    /// confirmation's own dismissal does: the act was remembered only for the
+    /// flow that asked for it, and a flow the player cancelled is over. A
+    /// closure left standing here would run on the *next* mode switch that
+    /// succeeded, and open a surface nobody asked for.
     func dismissArchiveFailure() {
-        if case .failed = modeSwitch { modeSwitch = nil }
+        if case .failed = modeSwitch {
+            modeSwitch = nil
+            pendingNearby = nil
+        }
     }
 
     /// **保存并继续**, and the 重试 that repeats it.
@@ -470,6 +479,27 @@ final class PlayState {
             putDownGame()
             refreshActiveSummary()
         }
+    }
+
+    /// The window holding this game has closed.
+    ///
+    /// The navigation exclusions give the app one main window, so a window that
+    /// closes is the board going away — and on macOS that is not the app going
+    /// away, which is why this exists at all. What goes with it is the session
+    /// and any search owed to it, per the engine contract's cancellation
+    /// clause. **The engine does not**: a window closing is not sleep, not
+    /// termination and not memory pressure, and releasing gigabytes of Hash
+    /// because somebody closed a window is the mistake
+    /// docs/engine-integration.md exists to forbid.
+    ///
+    /// The game is untouched. Every ply was committed as it was made, so the
+    /// store still holds it and the home's card is the way back into it —
+    /// which is where a window opened again lands, in every mode.
+    func windowClosed() {
+        guard game != nil else { return }
+        putDownGame(releasingTheEngine: false)
+        page = .home
+        refreshActiveSummary()
     }
 
     /// A nearby game's board went up over the local pages, or came down off
@@ -649,14 +679,22 @@ final class PlayState {
     /// It says nothing about whether the game is over. Everything it holds is
     /// the board surface's, and everything the game *is* was committed as it
     /// was played.
-    private func putDownGame() {
+    ///
+    /// - Parameter releasingTheEngine: whether the engine goes with the board.
+    ///   It does when the board is left, because the search was owed to a
+    ///   surface that is gone. It does *not* when the window closes:
+    ///   docs/engine-integration.md's teardown trigger is the platform's own
+    ///   suspension or memory-pressure signal and never a window coming or
+    ///   going, and `Suspension` already owns those three. The session and the
+    ///   search are the board's; the Hash is the app's.
+    private func putDownGame(releasingTheEngine: Bool = true) {
         let wasHumanVersusAI = game?.isHumanVersusAI ?? false
         opponent?.cancelSearch()
         opponent = nil
         motion = nil
         game = nil
         core.endSession()
-        if wasHumanVersusAI {
+        if wasHumanVersusAI, releasingTheEngine {
             // **The quiesce between the cancel and the teardown**, which is
             // what the suspension path does and what this needs for the same
             // reason: `mxq_search_cancel` is cooperative and returns before the

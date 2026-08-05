@@ -81,7 +81,7 @@ Contract sections are cited by document and section name rather than by line num
 | `status.redWins` | 红方胜 | Red Wins | status line | `Play/TurnStatus.swift` |
 | `status.blackWins` | 黑方胜 | Black Wins | status line | same |
 | `status.draw` | 和局 | Draw | status line | same |
-| `status.saveFailed` | 无法保存这一步，请重试。 | Couldn't save that move. Please try again. | transient capsule at the turn status | [interaction-design.md](interaction-design.md) § Game-state markers, § Move input |
+| `status.saveFailed` | 无法保存这一步，请重试。 | Couldn't save that move. Please try again. | transient capsule at the turn status, on the local board and on the nearby one | [interaction-design.md](interaction-design.md) § Game-state markers, § Move input, § Nearby play |
 
 ### Result notice
 

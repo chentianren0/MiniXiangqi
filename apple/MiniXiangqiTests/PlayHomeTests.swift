@@ -558,6 +558,31 @@ struct PlayHomeTests {
         #expect(state.activeSummary != nil, "and the game is exactly as it stood")
     }
 
+    @Test("A cancelled save failure leaves no act to hijack the next switch")
+    func aCancelledSaveFailureTakesThePendingActWithIt() throws {
+        let core = try TestCores.fresh()
+        let (state, archive) = try parkedStateOverAGame(core)
+        let opened = Asked()
+
+        // Room asked for, the archive refused, and the accepted retry cancelled.
+        state.makeRoom(for: .miniXiangqi) { opened.record(.miniXiangqi) }
+        state.saveAndContinue()
+        archive.answerWithRefusal()
+        #expect(state.modeSwitch == .failed(PlaySelection(game: .miniXiangqi,
+                                                          mode: .nearby)))
+        state.dismissArchiveFailure()
+        #expect(state.modeSwitch == nil)
+
+        // A different mode chosen afterwards opens *its* page, not the surface
+        // the abandoned flow was going to.
+        state.choose(Self.xiangqiAI)
+        state.saveAndContinue()
+        archive.answer(.success(1))
+        #expect(opened.games.isEmpty, "the abandoned act did not come back")
+        #expect(state.page == .setup(Self.xiangqiAI),
+                "and the page the player asked for opened")
+    }
+
     @Test("With nothing in the library, the room is already made")
     func anEmptyLibraryNeedsNoRoomMaking() throws {
         let core = try TestCores.fresh()

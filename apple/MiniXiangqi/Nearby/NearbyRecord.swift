@@ -42,13 +42,34 @@ protocol NearbyRecording: AnyObject {
     /// Let go of the store's session without ending the game. The library keeps
     /// its active game, and the next `standing()` reads it back.
     func release()
+
+    /// How many committed writes the library has refused on a ply of this
+    /// device's player's own. It only grows, so the board can tell a fresh
+    /// refusal from one it has already spoken about.
+    ///
+    /// A refusal following the *other* player's ply is not here: the store
+    /// re-applies on the next publication, the retry is the app's rather than
+    /// the player's, and the local board keeps exactly the same two apart.
+    var ownMoveRefusals: Int { get }
 }
 
 /// The store's memory of a nearby game, over the shared core's library.
 @MainActor
 final class NearbyRecord: NearbyRecording {
     private let library: any NearbyLibrary
+    /// The rules the restore asks one question of: what the stored line
+    /// decides. It is the same oracle the protocol engine asks, over the same
+    /// core, so a restored session's settledness cannot disagree with the
+    /// engine's own reading of the same plies.
+    private let rules: any BoardGameRules
     private let log: NearbyLog
+
+    private(set) var ownMoveRefusals = 0
+
+    /// The session a no-room refusal was last logged for. The retry itself is
+    /// harmless and self-heals, but a line per wire message is a line that
+    /// pushes the rest of a bounded log out.
+    private var refusedRoomFor: String?
 
     /// The session this record is the memory of, as it last stood, and whether
     /// the store's session is attached to its game.
@@ -65,8 +86,9 @@ final class NearbyRecord: NearbyRecording {
     /// publication tries again.
     private var written: NearbyWireSession?
 
-    init(library: any NearbyLibrary, log: NearbyLog) {
+    init(library: any NearbyLibrary, rules: any BoardGameRules, log: NearbyLog) {
         self.library = library
+        self.rules = rules
         self.log = log
     }
 
@@ -93,7 +115,8 @@ final class NearbyRecord: NearbyRecording {
         }
         let session = Self.session(over: wire, game: summary.game,
                                    localSide: localSide,
-                                   moves: try library.moveHistory())
+                                   moves: try library.moveHistory(),
+                                   rules: rules)
         held = session
         written = wire
         log.note("Rebuilt \(NearbyDriver.short(session.id)) from the library: "
@@ -117,8 +140,8 @@ final class NearbyRecord: NearbyRecording {
     /// per-connection by construction. The session comes back interrupted,
     /// which is what it is.
     private static func session(over wire: NearbyWireSession, game: GameKind,
-                                localSide: Side,
-                                moves: [String]) -> BoardGameSession {
+                                localSide: Side, moves: [String],
+                                rules: any BoardGameRules) -> BoardGameSession {
         let localMover: Mover = localSide == .red ? .first : .second
         let proposerMoves = wire.proposedLocally ? localMover : localMover.opponent
         var session = BoardGameSession(
@@ -136,13 +159,24 @@ final class NearbyRecord: NearbyRecording {
         case .acceptDraw: session.localTerminal = .acceptDraw
         case nil: break
         }
-        // Settledness, by the contract's own rule: a peer that sent a terminal,
-        // or whose own ply decided the end, holds the session unsettled until a
-        // resume exchange completes for it. A game the *other* peer's terminal
-        // or ply ended was settled here the moment it arrived, and a settled
-        // game was filed rather than left standing — so an interrupted game
-        // with an end of its own is one this device owes an exchange for.
-        session.settled = wire.sentEnd == nil && !wire.claimed
+        // What the stored line decides, asked of the same oracle the engine
+        // asks. It is not read out of the row: an end the rules decided is a
+        // property of the plies, and a second copy of it in the store would be
+        // a second place for it to be wrong.
+        session.rulesEnd = rules.standing(after: session.plies,
+                                          of: session.rulesID).decision
+        // Settledness, by the contract's own rule and by both of its halves: a
+        // peer that sent a terminal, **or whose own ply decided the end**,
+        // holds the session unsettled until a resume exchange completes for it.
+        // The second half is every rules-decided end this device played —
+        // a mate, a stalemate, a claim — and not the claim alone.
+        //
+        // A game the *other* peer's terminal or ply ended was settled here the
+        // moment it arrived, so it was filed rather than left standing; a row
+        // still holding one is a filing that did not commit, and it comes back
+        // settled and files on the next publication.
+        session.settled = session.localTerminal == nil
+            && !session.ownPlyDecidedTheEnd
         return session
     }
 
@@ -199,15 +233,19 @@ final class NearbyRecord: NearbyRecording {
         // that puts one down: the nearby entry asks for the slot before a
         // session is ever accepted, so reaching this means the slot was taken
         // between the asking and the acceptance.
+        //
+        // The attempt itself is repeated on every publication, because the room
+        // can be made at any moment and the next wire message is as good a time
+        // to notice as any; what is said about it is not. A line per message
+        // would push the rest of a bounded log out of it, so the refusal is
+        // stated once per session.
         guard !library.hasSession else {
-            log.note("No room in the library for \(NearbyDriver.short(session.id)): "
-                     + "another surface holds the active game.")
+            noteNoRoom(session, "another surface holds the active game.")
             return
         }
         do {
             guard try library.activeGameSummary() == nil else {
-                log.note("No room in the library for "
-                         + "\(NearbyDriver.short(session.id)).")
+                noteNoRoom(session, "it holds another game.")
                 return
             }
         } catch {
@@ -230,9 +268,18 @@ final class NearbyRecord: NearbyRecording {
         attached = true
         held = session
         written = birth
+        refusedRoomFor = nil
         log.note("\(NearbyDriver.short(session.id)) is the library's active "
                  + "game, \(localSide == .red ? "red" : "black") here.")
         adopt(session)
+    }
+
+    /// The no-room refusal, said once for the session it is about.
+    private func noteNoRoom(_ session: BoardGameSession, _ why: String) {
+        guard refusedRoomFor != session.id else { return }
+        refusedRoomFor = session.id
+        log.note("No room in the library for "
+                 + "\(NearbyDriver.short(session.id)): \(why)")
     }
 
     // MARK: - Keeping the library in step
@@ -256,7 +303,13 @@ final class NearbyRecord: NearbyRecording {
                           proposedLocally: written?.proposedLocally
                               ?? (session.proposer == .local),
                           undos: session.undos,
-                          keep: session.reportedKeep,
+                          // The surviving count of the last accepted
+                          // retraction, and zero where there has been none —
+                          // deliberately not `reportedKeep`, which is the live
+                          // count there and would move with every ply, making
+                          // every accepted ply a second committed transaction
+                          // for a value the restore then ignores.
+                          keep: session.retractedTo ?? 0,
                           sentEnd: Self.terminal(session.localTerminal),
                           claimed: session.plies.last == TurnAction.claim)
     }
@@ -305,12 +358,24 @@ final class NearbyRecord: NearbyRecording {
             }
             return true
         } catch {
-            // Nothing was committed that the engine has not agreed to, and the
-            // next publication tries again from whatever the library holds. A
-            // move whose commit fails did not happen — the store's own rule.
+            // **A nearby ply is not left at its pre-mutation state, because it
+            // is not this device's to take back.** It has gone on the wire and
+            // the other peer has accepted it; the game the two devices are
+            // playing has it, and what failed is the library's memory of it.
+            // The next publication realigns from whatever the library holds, so
+            // this heals itself in the ordinary case.
+            //
+            // The player is told, and only about a ply of their own: a refusal
+            // following the other player's ply is the app's to heal rather than
+            // theirs to act on, which is the same line the local board draws
+            // between its own two refusals.
             log.note("The library would not follow "
                      + "\(NearbyDriver.short(session.id)): "
                      + "\(CoreError(wrapping: error)).")
+            if session.count > 0,
+               Mover.atPly(session.count - 1) == session.localMover {
+                ownMoveRefusals += 1
+            }
             return false
         }
     }

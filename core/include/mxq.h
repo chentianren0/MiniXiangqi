@@ -821,8 +821,12 @@ typedef struct MxqGameConfig {
  *   proposer    which peer proposed, which decides the completing connection of
  *               a resume exchange
  *   undos       accepted retractions, zero at birth
- *   keep        the surviving ply count of the last accepted retraction, and the
- *               session's own count where there has been none
+ *   keep        the surviving ply count of the last accepted retraction, and
+ *               zero while undos is zero and there has been none. It is
+ *               deliberately not the session's own count there: the protocol's
+ *               resume echoes the count in that case and reads this only when
+ *               undos is above zero, and a value that moved with every ply
+ *               would make every ply a second transaction
  *   sent_end    the terminal this device has sent, if it has sent one
  *   claimed     1 when the session's last ply is the rules contract's claim turn
  *               action, which the archive deliberately does not record: an
