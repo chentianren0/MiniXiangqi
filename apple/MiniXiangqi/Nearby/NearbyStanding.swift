@@ -1,16 +1,16 @@
 // What a nearby game's board draws, asked of the core.
 //
 // A nearby session is a list of plies held by the protocol engine, and nothing
-// else: no store, no active game, no session handle. So the board behind it is
-// projected rather than attached — the position and the legal moves after those
-// plies, from `mxq_rules_evaluate` and `mxq_rules_legal_moves`, which are the
-// core's *session-free* rules facade and take exactly `(game, start_fen,
-// moves[])`.
+// else. So the board behind it is projected rather than attached — the position
+// and the legal moves after those plies, from `mxq_rules_evaluate` and
+// `mxq_rules_legal_moves`, which are the core's *session-free* rules facade and
+// take exactly `(game, start_fen, moves[])`.
 //
-// That is what keeps this stage free of the store. A nearby game persists
-// nothing until Stage 3 gives it archives, and a projection has nothing to
-// persist: it is the same authority the app's own games are decided by, asked
-// without a session in between.
+// **The library is elsewhere, and deliberately.** A nearby game does live in
+// the store, but a ply reaches it through the driver's own publication rather
+// than through the board — plies land while the board is down — so what draws
+// the game and what records it are two paths from one authority, and this one
+// asks without a session in between.
 //
 // **Nothing here decides a rule.** The position, the legality, the check and the
 // result are the core's answers; what this file adds is the call and the type

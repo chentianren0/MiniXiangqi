@@ -510,35 +510,10 @@ struct PlayScreen: View {
         return game.evaluation.sideToMove == humanSide ? .you : .ai
     }
 
-    /// The transient save-failure capsule: the accepted words, a warning
-    /// symbol in place of the warning haptic a Mac does not have, and nothing
-    /// modal about it. The board shows nothing because the position did not
-    /// change; this small surface at the status element is the whole report.
-    /// It withdraws by itself, and a screen reader hears it arrive rather
-    /// than having to catch it.
+    /// The transient save-failure capsule, which the nearby board raises too:
+    /// the shape is shared, and what is this screen's is when it goes up.
     private var saveFailureCapsule: some View {
-        Label("status.saveFailed", systemImage: "exclamationmark.triangle")
-            .font(.callout)
-            .multilineTextAlignment(.leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .glassEffect(.regular, in: .rect(cornerRadius: 14))
-            .accessibilityIdentifier("save-failure")
-            .onAppear {
-                AccessibilityNotification
-                    .Announcement(String(localized: "status.saveFailed"))
-                    .post()
-            }
-            .task {
-                // Transient by its own clock: long enough to read twice, gone
-                // without being asked. A retry that fails again re-raises it —
-                // the failure passes through nil as the new attempt starts, so
-                // a fresh capsule gets a fresh withdrawal.
-                try? await Task.sleep(for: .seconds(4))
-                withAnimation(policy.fade(Motion.stateFadeAnimation)) {
-                    saveFailureShown = false
-                }
-            }
+        SaveFailureCapsule { saveFailureShown = false }
     }
 
     /// The play control cluster: the one custom glass surface on screen during

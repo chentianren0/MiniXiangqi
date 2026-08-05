@@ -196,19 +196,19 @@ void case_fresh_open_creates_schema() {
     check_eq(query_text(db, "PRAGMA foreign_keys;"), "1",
              "SQLITE_DEFAULT_FOREIGN_KEYS=1 took effect");
 
-    /* The three tables, all STRICT. */
+    /* The four tables, all STRICT. */
     check_eq(query_text(db, "SELECT count(*) FROM sqlite_schema WHERE "
                             "type='table' AND name IN "
-                            "('meta','game','library');"),
-             "3", "the three tables exist");
+                            "('meta','game','library','nearby_session');"),
+             "4", "the four tables exist");
     check_eq(query_text(db, "SELECT count(*) FROM sqlite_schema WHERE "
                             "type='table' AND name IN "
-                            "('meta','game','library') AND sql LIKE "
-                            "'%STRICT%';"),
-             "3", "all three tables are STRICT");
+                            "('meta','game','library','nearby_session') AND "
+                            "sql LIKE '%STRICT%';"),
+             "4", "all four tables are STRICT");
     check_eq(query_text(db, "SELECT count(*) FROM sqlite_schema WHERE "
                             "type='table' AND name NOT LIKE 'sqlite_%';"),
-             "3", "no tables beyond the three");
+             "4", "no tables beyond the four");
 
     /* record_id is never reused: the History tie-break is this column, so a
      * reused rowid would let a stale id resolve to some later game. */

@@ -496,7 +496,120 @@ struct PlayHomeTests {
         #expect(try core.historyCount() == 1, "and the game it filed is filed once")
     }
 
+    // MARK: - The one active game, when it is a nearby one
+
+    @Test("The card leads back into a nearby game on its own board, not this one")
+    func aNearbyActiveGameIsResumedByItsOwnBoard() throws {
+        let core = try TestCores.fresh()
+        let state = try nearbyStateOverAGame(core)
+        let asked = Asked()
+        state.resumeNearby = { game in asked.record(game) }
+
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        #expect(asked.games == [.miniXiangqi])
+        #expect(state.page == .home, "the local board is not where a nearby game is played")
+        #expect(state.game == nil)
+        #expect(!core.hasSession, "and no session was opened over it")
+    }
+
+    @Test("A nearby active game is never opened on the local board")
+    func theLocalBoardRefusesANearbyGame() throws {
+        let core = try TestCores.fresh()
+        let state = try nearbyStateOverAGame(core)
+
+        // The board coming back with its container, which is the one path that
+        // enters it without going through the card.
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        state.enterBoard(policy: MotionPolicy(reduceMotion: true))
+
+        #expect(state.game == nil)
+        #expect(state.page == .home)
+        #expect(!core.hasSession)
+        #expect(state.activeSummary?.mode == .nearby, "and the game is still there")
+    }
+
+    @Test("Making room for a nearby game is the accepted confirmation")
+    func makingRoomIsTheAcceptedFlow() throws {
+        let core = try TestCores.fresh()
+        let (state, archive) = try parkedStateOverAGame(core)
+        let opened = Asked()
+
+        state.makeRoom(for: .xiangqi) { opened.record(.xiangqi) }
+        #expect(state.modeSwitch == .confirming(PlaySelection(game: .xiangqi, mode: .nearby)))
+        #expect(opened.games.isEmpty, "nothing opens until the game is filed")
+
+        state.saveAndContinue()
+        archive.answer(.success(1))
+        #expect(opened.games == [.xiangqi])
+        #expect(state.page == .home, "and no pre-start page opened over it")
+        #expect(state.modeSwitch == nil)
+    }
+
+    @Test("Cancelling the confirmation makes no room and opens nothing")
+    func cancellingMakesNoRoom() throws {
+        let core = try TestCores.fresh()
+        let state = try stateOverAGame(core)
+        let opened = Asked()
+
+        state.makeRoom(for: .xiangqi) { opened.record(.xiangqi) }
+        state.dismissConfirmation()
+        #expect(state.modeSwitch == nil)
+        #expect(opened.games.isEmpty)
+        #expect(state.activeSummary != nil, "and the game is exactly as it stood")
+    }
+
+    @Test("A cancelled save failure leaves no act to hijack the next switch")
+    func aCancelledSaveFailureTakesThePendingActWithIt() throws {
+        let core = try TestCores.fresh()
+        let (state, archive) = try parkedStateOverAGame(core)
+        let opened = Asked()
+
+        // Room asked for, the archive refused, and the accepted retry cancelled.
+        state.makeRoom(for: .miniXiangqi) { opened.record(.miniXiangqi) }
+        state.saveAndContinue()
+        archive.answerWithRefusal()
+        #expect(state.modeSwitch == .failed(PlaySelection(game: .miniXiangqi,
+                                                          mode: .nearby)))
+        state.dismissArchiveFailure()
+        #expect(state.modeSwitch == nil)
+
+        // A different mode chosen afterwards opens *its* page, not the surface
+        // the abandoned flow was going to.
+        state.choose(Self.xiangqiAI)
+        state.saveAndContinue()
+        archive.answer(.success(1))
+        #expect(opened.games.isEmpty, "the abandoned act did not come back")
+        #expect(state.page == .setup(Self.xiangqiAI),
+                "and the page the player asked for opened")
+    }
+
+    @Test("With nothing in the library, the room is already made")
+    func anEmptyLibraryNeedsNoRoomMaking() throws {
+        let core = try TestCores.fresh()
+        let state = PlayState(core: core)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        let opened = Asked()
+
+        state.makeRoom(for: .miniXiangqi) { opened.record(.miniXiangqi) }
+        #expect(opened.games == [.miniXiangqi])
+        #expect(state.modeSwitch == nil)
+    }
+
     // MARK: -
+
+    /// A state holding an active *nearby* game, sitting on the home. The game is
+    /// created the way the nearby layer creates one, because what these cases
+    /// are about is what the home does with a game of that mode.
+    private func nearbyStateOverAGame(_ core: Core) throws -> PlayState {
+        try core.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
+                              wire: NearbyWireSession(sessionID: "S", peerID: "P",
+                                                      proposedLocally: true))
+        core.endSession()
+        let state = PlayState(core: core)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.activeSummary?.mode == .nearby)
+        return state
+    }
 
     /// A state holding an active Free Play game, sitting on the home — which is
     /// what every launch over a stored game has.
@@ -691,4 +804,14 @@ private extension Result {
     var isSuccess: Bool {
         if case .success = self { true } else { false }
     }
+}
+
+/// What a callback was asked for. A box rather than a local, because the
+/// callbacks these cases set are escaping and a local would be captured by
+/// value.
+@MainActor
+final class Asked {
+    private(set) var games: [GameKind] = []
+
+    func record(_ game: GameKind) { games.append(game) }
 }

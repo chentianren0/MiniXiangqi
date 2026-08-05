@@ -125,6 +125,42 @@ nonisolated final class BoardGameEngine {
 
     func session(_ id: String) -> BoardGameSession? { sessionsByID[WireBytes(id)] }
 
+    /// Take up a session this peer already held, rebuilt from outside the
+    /// engine: the interrupted game a relaunched application reads back.
+    ///
+    /// The contract has no message for it and needs none — an interrupted
+    /// session is one the resume exchange continues, and this is that session
+    /// arriving from the only other place it can survive. What comes back is
+    /// what the store keeps and nothing more: no connection, no exchange, and no
+    /// standing offer or request, because the protocol voids each peer's
+    /// knowledge of those when the connection carrying them dies and a relaunch
+    /// is at least that.
+    ///
+    /// A session this peer already holds is not replaced. The engine is the
+    /// authority on a live session, and a stored copy of one it is playing is
+    /// behind by definition.
+    func adopt(_ session: BoardGameSession) {
+        guard sessionsByID[session.key] == nil else { return }
+        var restored = session
+        restored.connection = nil
+        restored.exchange = nil
+        restored.item = nil
+        restored.rulesEnd = rules.standing(after: restored.plies,
+                                           of: restored.rulesID).decision
+        store(restored)
+    }
+
+    /// A session this device is giving up on, without a message.
+    ///
+    /// The protocol has no vocabulary for abandoning a game, and this invents
+    /// none: what it does is exactly what a void does here — the session is
+    /// forgotten, and the other peer learns of it from the `unknown_session`
+    /// its next resume is answered with, which is the contract's own path for a
+    /// peer that no longer holds a session.
+    func abandon(_ id: String) {
+        sessionsByID[WireBytes(id)] = nil
+    }
+
     /// The proposed-or-active session with one peer. At most one stands.
     func session(with peer: PeerDeviceID) -> BoardGameSession? {
         sessionsByID.values.first { $0.peer == peer && $0.state != .ended }

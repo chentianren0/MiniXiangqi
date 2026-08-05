@@ -44,6 +44,12 @@ struct NearbyBoardScreen: View {
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
     @State private var controlsHeight = BoardLayout.stackedChromeHeight / 2
 
+    /// Whether the save-failure capsule is up. Raised when the library refuses
+    /// a ply of this device's player's own, and transient: it answers the touch
+    /// and withdraws by itself. View state, and rightly so — it has a
+    /// four-second life and nothing to say to a screen that is not on show.
+    @State private var saveFailureShown = false
+
     @Environment(\.motionPolicy) private var policy
     @Environment(\.horizontalSizeClass) private var widthClass
 
@@ -69,6 +75,14 @@ struct NearbyBoardScreen: View {
             play?.sync(with: session)
         }
         .onChange(of: flow.boardVoid) { _, _ in wentAway() }
+        // The library refusing a move of the player's own. The count only
+        // grows, so a second refusal raises a second capsule rather than
+        // extending the first.
+        .onChange(of: flow.driver.ownMoveRefusals) { _, _ in
+            withAnimation(policy.fade(Motion.stateFadeAnimation)) {
+                saveFailureShown = true
+            }
+        }
         .onChange(of: policy) { play?.policy = policy }
         // A board turned round stays turned round: the model is rebuilt on
         // every entry, so which way the player last had it is remembered where
@@ -220,6 +234,18 @@ struct NearbyBoardScreen: View {
                     .padding(.horizontal, 12)
                     .transition(.opacity)
                     .accessibilityIdentifier("nearby-connection")
+            }
+
+            // The accepted brief save-failure feedback, in the place this
+            // board keeps its quiet lines: beneath the turn status, which is
+            // where the contract anchors it, and in the same shape the local
+            // board raises. What it reports here is not a move to try again —
+            // a nearby ply has already gone to the other device and stands —
+            // but that this device's own library did not keep it.
+            if saveFailureShown {
+                SaveFailureCapsule { saveFailureShown = false }
+                    .padding(.horizontal, 12)
+                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -454,8 +480,10 @@ struct NearbyBoardScreen: View {
 ///
 /// Its actions are the ones a nearby game has. Every action the local notice
 /// carries is a filing act — 保存, 保存并开始新对局, 回放 — and a nearby game is
-/// filed by nothing until the stage that gives it archives; what is left is the
-/// way out, which is 完成. A fresh proposal is the rematch, so nothing here
+/// filed by nobody: it goes into History the moment the two devices have
+/// settled on how it ended, because a result one player confirms and the other
+/// does not would be two libraries disagreeing about one game. What is left is
+/// the way out, which is 完成. A fresh proposal is the rematch, so nothing here
 /// offers one.
 private struct NearbyNotice: View {
     /// The result, or the fact that the game ended. Resolved by the caller,

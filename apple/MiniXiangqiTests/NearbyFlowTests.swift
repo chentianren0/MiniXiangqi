@@ -821,6 +821,99 @@ struct NearbyFlowTests {
         #expect(NearbyRefusal.refused(.peerIsBusy).titleKey == "alert.nearbyDeclined.title")
     }
 
+    // MARK: - The library's one active game
+
+    @Test("A proposal is not made until there is room in the library for the game")
+    func aProposalWaitsForTheRoomItsGameWillNeed() {
+        let radio = FakeRadio(isSupported: true)
+        let flow = flow(radio: radio)
+        let room = FakeRoom()
+        flow.room = room
+
+        flow.open(.miniXiangqi)
+        #expect(room.asked == [.miniXiangqi])
+        #expect(flow.proposing == nil, "nothing is composed while the room is being made")
+
+        room.grant()
+        #expect(flow.proposing == .miniXiangqi)
+    }
+
+    @Test("An invitation is answered only once its game has somewhere to live")
+    func acceptingWaitsForTheRoomToo() {
+        let radio = FakeRadio(isSupported: true)
+        let driver = FakeDriver()
+        driver.sessions = [session(id: "S", proposer: .peer)]
+        let flow = flow(driver: driver, radio: radio)
+        let room = FakeRoom()
+        flow.room = room
+
+        flow.accept("S")
+        #expect(driver.answers.isEmpty,
+                "an accepted proposal is a game in progress, and it needs a home first")
+
+        room.grant()
+        #expect(driver.answers == [FakeDriver.Answer(session: "S", accepting: true)])
+        #expect(flow.boardSessionID == "S")
+    }
+
+    @Test("A nearby row leads back into the interrupted game the library holds")
+    func theRowLeadsBackIntoTheStoredGame() {
+        let radio = FakeRadio(isSupported: true)
+        let driver = FakeDriver()
+        driver.stored = with(session(id: "S", proposer: .local, accepted: true)) {
+            $0.plies = ["b1b3"]
+        }
+        let flow = flow(driver: driver, radio: radio)
+        let room = FakeRoom()
+        room.standingNearbyGame = .miniXiangqi
+        flow.room = room
+
+        flow.open(.miniXiangqi)
+        #expect(room.asked.isEmpty, "the room is already this game's")
+        #expect(driver.resumedStored == 1)
+        #expect(flow.boardSessionID == "S")
+        #expect(radio.isRunning, "and the radio is up for the resume that follows")
+    }
+
+    @Test("A game the library cannot give back opens nothing")
+    func nothingToComeBackTo() {
+        let radio = FakeRadio(isSupported: true)
+        let driver = FakeDriver()
+        let flow = flow(driver: driver, radio: radio)
+
+        flow.reenter(.miniXiangqi)
+        #expect(driver.resumedStored == 1)
+        #expect(flow.boardSessionID == nil)
+    }
+
+    @Test("Giving up the active game lets the session go and takes the board down")
+    func givingUpTheActiveGame() {
+        let radio = FakeRadio(isSupported: true)
+        let driver = FakeDriver()
+        driver.sessions = [session(id: "S", proposer: .local, accepted: true)]
+        let flow = flow(driver: driver, radio: radio)
+        flow.openBoard("S")
+
+        flow.giveUpActiveGame()
+        #expect(driver.abandoned == 1)
+        #expect(flow.boardSessionID == nil)
+    }
+
+    @Test("Coming back from a suspension takes the radio up again, and only then")
+    func comingBackFromASuspension() {
+        let radio = FakeRadio(isSupported: true)
+        let driver = FakeDriver()
+        let flow = flow(driver: driver, radio: radio)
+
+        flow.returnedToForeground()
+        #expect(!radio.isRunning, "nothing is owed and no surface is up")
+
+        driver.sessions = [session(id: "S", proposer: .local, accepted: true)]
+        flow.returnedToForeground()
+        #expect(radio.isRunning)
+        #expect(radio.watches > 0, "and the pairing watch is taken again")
+    }
+
     // MARK: - The suite's own parts
 
     private func flow(driver: any NearbyDriving = FakeDriver(),
@@ -905,6 +998,7 @@ private final class FakeDriver: NearbyDriving {
 
     var sessions: [BoardGameSession] = []
     var declines: [NearbyDecline] = []
+    var ownMoveRefusals = 0
     /// What every intent answers with, where the test wants a refusal.
     var refuses: BoardGameRefusal?
     /// The identifier the engine would mint for the next proposal.
@@ -978,6 +1072,46 @@ private final class FakeDriver: NearbyDriving {
     func claimStands(in session: BoardGameSession) -> Bool {
         claimsAsked.append(session.id)
         return claimStandsAnswer
+    }
+
+    /// The interrupted game the library would give back, where a case has set
+    /// one up, and what it was asked.
+    var stored: BoardGameSession?
+    private(set) var resumedStored = 0
+    private(set) var abandoned = 0
+
+    func resumeStoredGame() -> String? {
+        resumedStored += 1
+        guard let stored else { return nil }
+        sessions.append(stored)
+        return stored.id
+    }
+
+    func abandonStoredGame() {
+        abandoned += 1
+        sessions.removeAll { $0.state != .proposed }
+        stored = nil
+    }
+}
+
+/// The library's one active game, as the flow asks about it: what it is holding,
+/// and the making of room that is somebody else's flow.
+@MainActor
+private final class FakeRoom: NearbyRoom {
+    var standingNearbyGame: GameKind?
+    private(set) var asked: [GameKind] = []
+    private var pending: (@MainActor () -> Void)?
+
+    func makeRoom(for game: GameKind, then opening: @escaping @MainActor () -> Void) {
+        asked.append(game)
+        pending = opening
+    }
+
+    /// The room was made — the archive committed, or there was nothing to file.
+    func grant() {
+        let opening = pending
+        pending = nil
+        opening?()
     }
 }
 

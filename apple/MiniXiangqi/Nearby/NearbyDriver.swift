@@ -120,6 +120,15 @@ final class NearbyDriver {
     private(set) var peers: [ConnectionID: PeerDeviceID] = [:]
     /// The refusals the other peer sent, oldest first.
     private(set) var declines: [NearbyDecline] = []
+    /// How many of this device's own plies the library has refused to record.
+    /// It only grows, so the board can tell a fresh refusal from one it has
+    /// already spoken about.
+    private(set) var ownMoveRefusals = 0
+
+    /// The store's memory of the game being played, where this driver has one.
+    /// Absent in the tests that are about the protocol and on the staged board,
+    /// neither of which has a library.
+    @ObservationIgnored private let record: (any NearbyRecording)?
 
     @ObservationIgnored private var links: [ConnectionID: any NearbyLink] = [:]
     /// What is waiting to go out on each connection, and which connections have
@@ -129,10 +138,55 @@ final class NearbyDriver {
     @ObservationIgnored private var pumping: Set<ConnectionID> = []
 
     init(rules: any BoardGameRules, log: NearbyLog,
+         record: (any NearbyRecording)? = nil,
          sessionIDs: @escaping @Sendable () -> String = { UUID().uuidString }) {
         self.rules = rules
         self.log = log
+        self.record = record
         self.engine = BoardGameEngine(rules: rules, sessionIDs: sessionIDs)
+    }
+
+    // MARK: - The game the library is holding
+
+    /// Take up the interrupted nearby game the library holds, if it holds one,
+    /// so that the connection the transport is about to make finds a session to
+    /// resume. Answers the session's identifier where there was one.
+    ///
+    /// It is called when the player comes back to the game and never at launch:
+    /// a nearby game needs the other person, so recovery is theirs to start.
+    func resumeStoredGame() -> String? {
+        guard let record else { return nil }
+        let stored: BoardGameSession?
+        do {
+            stored = try record.standing()
+        } catch {
+            log.note("The library would not give back its nearby game: "
+                     + "\(CoreError(wrapping: error)).")
+            return nil
+        }
+        guard let stored else { return nil }
+        engine.adopt(stored)
+        publish()
+        // Whatever connections already stand are owed the resume the contract
+        // says an interrupted session initiates.
+        for (connection, peer) in peers where peer == stored.peer {
+            initiateResumes(with: peer, on: connection)
+        }
+        return stored.id
+    }
+
+    /// Give up the game the library holds: the player filed it, or started
+    /// another one over it. The session is forgotten here as a void one is, and
+    /// the other peer learns of it from its next resume.
+    func abandonStoredGame() {
+        guard let record else { return }
+        for session in engine.sessions where session.state != .proposed {
+            engine.abandon(session.id)
+            log.note("\(Self.short(session.id)) given up: the library holds "
+                     + "another game now.")
+        }
+        record.release()
+        publish()
     }
 
     // MARK: - What the transport reports
@@ -386,6 +440,12 @@ final class NearbyDriver {
         let before = sessions
         sessions = engine.sessions
         noteEnds(after: before)
+        // The library follows every publication rather than selected events:
+        // the engine is the authority on what the two devices have agreed the
+        // game is, and this hands it that whole answer once per input instead
+        // of a list of the changes somebody remembered to report.
+        record?.follow(sessions)
+        if let record { ownMoveRefusals = record.ownMoveRefusals }
     }
 
     /// The line a finished game leaves behind, said once, when the session's

@@ -108,6 +108,11 @@ protocol NearbyRadio: AnyObject {
 protocol NearbyDriving: AnyObject {
     var sessions: [BoardGameSession] { get }
     var declines: [NearbyDecline] { get }
+    /// How many of this device's own plies the library has refused to record.
+    /// It only grows; the board watches it, because a move of the player's own
+    /// that the library would not keep is the one thing about a nearby ply they
+    /// are owed a word about.
+    var ownMoveRefusals: Int { get }
 
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
                  proposerMoves: Mover) throws(BoardGameRefusal)
@@ -126,6 +131,18 @@ protocol NearbyDriving: AnyObject {
     /// own oracle answers it — the same question the engine asks when the claim
     /// is played — so the affordance and the legality are one answer.
     func claimStands(in session: BoardGameSession) -> Bool
+
+    /// Take up the interrupted nearby game the library holds, and answer its
+    /// identifier where there was one. Called when the player comes back to it,
+    /// never at launch: continuing needs the other person, so it is theirs to
+    /// start.
+    func resumeStoredGame() -> String?
+
+    /// Give up whatever game is being played, because the library is about to
+    /// hold another one. Nothing is sent: the contract has no vocabulary for
+    /// abandoning a game, and the other peer learns of it from the
+    /// `unknown_session` its next resume is answered with.
+    func abandonStoredGame()
 }
 
 extension NearbyDriver: NearbyDriving { }
@@ -230,6 +247,17 @@ final class NearbyFlow {
     /// here: the answer belongs to the hardware, and a test has to be able to
     /// show a screen with the rows and a screen without them.
     let isAvailable: Bool
+
+    /// The library's one active game, as something to ask for and to come back
+    /// into. A nearby game *is* an active game now, so the way in depends on
+    /// what the library is already holding, and making room for a new one is
+    /// the accepted flow's rather than this object's.
+    weak var room: (any NearbyRoom)?
+
+    /// Told after the library's active game has changed under it, so the Play
+    /// home's card is drawn from what the store says rather than from what this
+    /// object last saw.
+    var libraryChanged: (@MainActor () -> Void)?
 
     /// The propose sheet, up for the game whose row raised it: pairing, the
     /// devices in the room, the side this device would take, and the invitation.
@@ -427,7 +455,46 @@ final class NearbyFlow {
             openBoard(live.id)
             return
         }
-        proposing = game
+        // The interrupted game the library is holding is the same destination
+        // by another route: after a relaunch the engine holds nothing, and the
+        // row still names the game that is waiting.
+        if room?.standingNearbyGame == game {
+            reenter(game)
+            return
+        }
+        // One active game, and a nearby game is one of the ways to have one. A
+        // proposal is not made until there is somewhere for the game it starts
+        // to live.
+        makingRoom(for: game) { [weak self] in self?.proposing = game }
+    }
+
+    /// Back into the nearby game the library is holding: the session is rebuilt
+    /// from what the store kept of it, and the board opens on it. The radio
+    /// wakes with the board, the transport dials, and the resume the contract
+    /// owes an interrupted session goes out by itself.
+    ///
+    /// Where the library has nothing to give back — a game the protocol already
+    /// parted with, or a store that would not answer — nothing opens, and the
+    /// game stays on the home as a record the player can file.
+    func reenter(_ game: GameKind) {
+        wake()
+        guard let session = driver.resumeStoredGame() else {
+            libraryChanged?()
+            return
+        }
+        openBoard(session)
+        libraryChanged?()
+    }
+
+    /// The accepted 保存并继续, asked for on behalf of a nearby game about to
+    /// exist. It runs the act at once where the library is already free.
+    private func makingRoom(for game: GameKind,
+                            _ opening: @escaping @MainActor () -> Void) {
+        guard let room else {
+            opening()
+            return
+        }
+        room.makeRoom(for: game, then: opening)
     }
 
     /// Into a session's board — from the sheet when a proposal is answered, and
@@ -489,11 +556,20 @@ final class NearbyFlow {
     /// The consent prompt's two answers. Accepting opens the board at once: the
     /// game has begun, and the board is where it is played.
     func accept(_ session: String) {
-        do {
-            try driver.answer(session, accepting: true)
-            openBoard(session)
-        } catch {
-            refusal = .refused(error)
+        // The room is made before the proposal is answered, not after: an
+        // accepted proposal is a game in progress, and a game in progress with
+        // nowhere in the library to live is a game whose moves nothing records.
+        guard let game = driver.sessions.first(where: { $0.id == session })
+            .flatMap({ GameKind(rulesID: $0.rulesID) })
+        else { return }
+        makingRoom(for: game) { [weak self] in
+            guard let self else { return }
+            do throws(BoardGameRefusal) {
+                try driver.answer(session, accepting: true)
+                openBoard(session)
+            } catch {
+                refusal = .refused(error)
+            }
         }
     }
 
@@ -532,6 +608,11 @@ final class NearbyFlow {
                 refusal = .declined(decline.reason)
             }
         }
+        // A publication is also where the library's active game can have moved
+        // under the home: a nearby game is created when a session becomes
+        // active and filed when the two devices settle on an ending, and the
+        // card is drawn from what the store says.
+        libraryChanged?()
     }
 
     /// The board's session is either still held or it is not, and a session the
@@ -606,5 +687,35 @@ final class NearbyFlow {
         guard proposing == nil, boardSessionID == nil, !holdsSomething,
               radio.isRunning else { return }
         radio.stop()
+    }
+
+    // MARK: - The application's own lifecycle
+
+    /// The app was suspended and has come back.
+    ///
+    /// **Nothing about the game is at stake here**: every ply was committed as
+    /// it landed, and the wire session went with it, so what a suspension costs
+    /// is the radio and nothing else. What is taken up again is exactly that —
+    /// the pairing watch, whose snapshots the system can end on its own, and
+    /// the publisher and browser, which a suspension stops. The connection
+    /// itself is not chased: it idles out between moves by the radio's own
+    /// design, and the browser dials again by itself, which is the ordinary
+    /// motion this feature was built on rather than a recovery.
+    func returnedToForeground() {
+        guard proposing != nil || boardSessionID != nil || holdsSomething else {
+            return
+        }
+        wake()
+    }
+}
+
+extension NearbyFlow: ActiveGameHolder {
+    /// The library is about to hold another game. The session this one was
+    /// played over is given up — the store's memory of it with it — and the
+    /// board comes down, because the game it was showing is not this device's
+    /// any more.
+    func giveUpActiveGame() {
+        driver.abandonStoredGame()
+        if boardSessionID != nil { leaveBoard() }
     }
 }

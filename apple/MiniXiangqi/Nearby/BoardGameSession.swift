@@ -192,6 +192,19 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
     /// or this peer's own count where there has been none.
     var reportedKeep: Int { retractedTo ?? count }
 
+    /// Whether the ply that decided this game was this peer's own.
+    ///
+    /// It is one half of the contract's settledness rule — "a peer that sent a
+    /// terminal, **or whose own ply decided the end**, holds the session
+    /// unsettled" — and the half that cannot be read off a terminal, because
+    /// no terminal was sent for it. The claim is one instance and not a
+    /// special case: it is a ply, and its mover is the ply list's parity like
+    /// any other's.
+    var ownPlyDecidedTheEnd: Bool {
+        guard rulesEnd != nil, count > 0 else { return false }
+        return Mover.atPly(count - 1) == localMover
+    }
+
     /// The result, by the precedence rule, or nil while the game has none.
     var end: BoardGameEnd? {
         if let rulesEnd {

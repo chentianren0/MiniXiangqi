@@ -76,6 +76,34 @@ struct PlaySelection: Equatable {
     var mode: PlayMode
 }
 
+/// Whatever is holding the library's active game while it is a nearby one.
+///
+/// The library holds one active game, and nearby play is one of the ways to
+/// have one; the wire session it is being played over is held above this
+/// object. So the paths that take the active game away say so first, and the
+/// session goes with the game rather than being left writing to one that is
+/// gone.
+@MainActor
+protocol ActiveGameHolder: AnyObject {
+    func giveUpActiveGame()
+}
+
+/// Making room in a library that holds one active game, as the nearby surfaces
+/// need it: a nearby game is created the moment two devices agree to play one,
+/// and there is no room for it until whatever stands is filed.
+@MainActor
+protocol NearbyRoom: AnyObject {
+    /// The nearby game the library is holding, where the one active game is
+    /// one. It is what tells a nearby entry row that the way in is back into
+    /// the interrupted game rather than on to a new proposal.
+    var standingNearbyGame: GameKind? { get }
+
+    /// Ask for the active-game slot. `then` runs once it is free — at once
+    /// where it already was, and after the accepted 保存并继续 otherwise. It
+    /// does not run at all if the player cancels or the archive is refused.
+    func makeRoom(for game: GameKind, then: @escaping @MainActor () -> Void)
+}
+
 @Observable
 final class PlayState {
     private let core: Core
@@ -168,6 +196,16 @@ final class PlayState {
 
     private(set) var modeSwitch: ModeSwitch?
 
+    /// What the room being made is for, where a nearby surface asked for it.
+    /// It lives inside the flow exactly as the remembered destination does, and
+    /// is discarded with it.
+    private var pendingNearby: (@MainActor () -> Void)?
+
+    /// Whatever holds the active game while it is a nearby one. Set by the
+    /// destination that assembles both; absent on macOS and in the tests that
+    /// have no nearby layer.
+    weak var nearbyHolder: (any ActiveGameHolder)?
+
     /// Whether a creation attempt is in flight. **开始对局** cannot be invoked
     /// again while it is.
     private(set) var creating = false
@@ -248,15 +286,27 @@ final class PlayState {
     /// dismissal arrives *after* the button's action: 保存并继续 would otherwise
     /// be followed by a cancel that discarded the archive it had just started.
     func dismissConfirmation() {
-        if case .confirming = modeSwitch { modeSwitch = nil }
+        if case .confirming = modeSwitch {
+            modeSwitch = nil
+            pendingNearby = nil
+        }
     }
 
     /// 取消 on the accepted 无法保存对局 retry, and the dismissal that follows
     /// every answer to it. It clears the failure and nothing else, for the
     /// reason above: 重试 starts the same archive again and must survive its own
     /// alert going away.
+    ///
+    /// It clears the pending nearby act with it, for the reason the
+    /// confirmation's own dismissal does: the act was remembered only for the
+    /// flow that asked for it, and a flow the player cancelled is over. A
+    /// closure left standing here would run on the *next* mode switch that
+    /// succeeded, and open a surface nobody asked for.
     func dismissArchiveFailure() {
-        if case .failed = modeSwitch { modeSwitch = nil }
+        if case .failed = modeSwitch {
+            modeSwitch = nil
+            pendingNearby = nil
+        }
     }
 
     /// **保存并继续**, and the 重试 that repeats it.
@@ -280,13 +330,23 @@ final class PlayState {
         guard let selection = modeSwitch?.selection, activeSummary != nil else { return }
         guard modeSwitch != .saving(selection) else { return }
         modeSwitch = .saving(selection)
+        // The game about to be archived may be one two devices are playing, and
+        // the session it is played over is held above this object. It is given
+        // up before the transaction rather than left writing to a game that is
+        // gone.
+        if activeSummary?.mode == .nearby { nearbyHolder?.giveUpActiveGame() }
         rules.archiveActiveAndClear { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
             refreshActiveSummary()
             switch result {
             case .success:
                 modeSwitch = nil
-                openSetup(selection)
+                if let opening = pendingNearby {
+                    pendingNearby = nil
+                    opening()
+                } else {
+                    openSetup(selection)
+                }
             case .failure:
                 modeSwitch = .failed(selection)
             }
@@ -307,10 +367,23 @@ final class PlayState {
     /// This is where the game becomes live: the board it opens is what opens
     /// the session, prepares the engine and asks for the reply the game owes.
     func resume(policy: MotionPolicy) {
-        guard page == .home, modeSwitch == nil, activeSummary != nil else { return }
+        guard page == .home, modeSwitch == nil, let summary = activeSummary else { return }
+        // A nearby game is continued on its own board, over the session it was
+        // played on: the card is the one way back into the active game whatever
+        // mode it is, and which board that is follows from the mode.
+        if summary.mode == .nearby {
+            resumeNearby?(summary.game)
+            return
+        }
         page = .board
         enterBoard(policy: policy)
     }
+
+    /// How a nearby active game is come back into. Set by the destination that
+    /// assembles the nearby layer; absent where there is none, and then the
+    /// card simply does nothing rather than opening a nearby game on a local
+    /// board.
+    var resumeNearby: (@MainActor (GameKind) -> Void)?
 
     private func openSetup(_ selection: PlaySelection) {
         draft = SetupDraft.fromDefaults()
@@ -358,6 +431,17 @@ final class PlayState {
                     page = .home
                     return
                 }
+                // A nearby game is not played on this board: it is played over
+                // a session with another device, on a board of its own, and the
+                // home's card is what opens it. Asked of the game rather than of
+                // the summary because this is the answer that decides whether a
+                // session stays attached.
+                if try rules.configuration().mode == .nearby {
+                    core.endSession()
+                    page = .home
+                    refreshActiveSummary()
+                    return
+                }
             }
             adopt(try Game(rules: rules), policy: policy)
             opponent?.begin()
@@ -395,6 +479,27 @@ final class PlayState {
             putDownGame()
             refreshActiveSummary()
         }
+    }
+
+    /// The window holding this game has closed.
+    ///
+    /// The navigation exclusions give the app one main window, so a window that
+    /// closes is the board going away — and on macOS that is not the app going
+    /// away, which is why this exists at all. What goes with it is the session
+    /// and any search owed to it, per the engine contract's cancellation
+    /// clause. **The engine does not**: a window closing is not sleep, not
+    /// termination and not memory pressure, and releasing gigabytes of Hash
+    /// because somebody closed a window is the mistake
+    /// docs/engine-integration.md exists to forbid.
+    ///
+    /// The game is untouched. Every ply was committed as it was made, so the
+    /// store still holds it and the home's card is the way back into it —
+    /// which is where a window opened again lands, in every mode.
+    func windowClosed() {
+        guard game != nil else { return }
+        putDownGame(releasingTheEngine: false)
+        page = .home
+        refreshActiveSummary()
     }
 
     /// A nearby game's board went up over the local pages, or came down off
@@ -574,14 +679,22 @@ final class PlayState {
     /// It says nothing about whether the game is over. Everything it holds is
     /// the board surface's, and everything the game *is* was committed as it
     /// was played.
-    private func putDownGame() {
+    ///
+    /// - Parameter releasingTheEngine: whether the engine goes with the board.
+    ///   It does when the board is left, because the search was owed to a
+    ///   surface that is gone. It does *not* when the window closes:
+    ///   docs/engine-integration.md's teardown trigger is the platform's own
+    ///   suspension or memory-pressure signal and never a window coming or
+    ///   going, and `Suspension` already owns those three. The session and the
+    ///   search are the board's; the Hash is the app's.
+    private func putDownGame(releasingTheEngine: Bool = true) {
         let wasHumanVersusAI = game?.isHumanVersusAI ?? false
         opponent?.cancelSearch()
         opponent = nil
         motion = nil
         game = nil
         core.endSession()
-        if wasHumanVersusAI {
+        if wasHumanVersusAI, releasingTheEngine {
             // **The quiesce between the cancel and the teardown**, which is
             // what the suspension path does and what this needs for the same
             // reason: `mxq_search_cancel` is cooperative and returns before the
@@ -623,6 +736,14 @@ final class PlayState {
     /// changes under it.
     func adopt(_ policy: MotionPolicy) {
         motion?.policy = policy
+    }
+
+    /// Re-reads the store's answer from outside, for the surfaces that change
+    /// the active game without going through this object: a nearby game is
+    /// created, filed and given up above it, and the home's card is drawn from
+    /// what the store says.
+    func activeGameChanged() {
+        refreshActiveSummary()
     }
 
     // MARK: - Launch
@@ -806,4 +927,34 @@ final class PlayState {
         }
     }
     #endif
+}
+
+// MARK: - The one active game, and nearby play's claim on it
+
+extension PlayState: NearbyRoom {
+    var standingNearbyGame: GameKind? {
+        guard let activeSummary, activeSummary.mode == .nearby else { return nil }
+        return activeSummary.game
+    }
+
+    /// The accepted flow, asked for by a nearby surface rather than by a mode
+    /// row: the library holds one active game, so a nearby game that is about to
+    /// exist needs whatever stands to be filed first, and the confirmation that
+    /// files it is the one the contract already accepts.
+    ///
+    /// The board is left before the asking, because both of that flow's alerts
+    /// belong to the home — the same invariant 回到对局 relies on.
+    func makeRoom(for game: GameKind, then opening: @escaping @MainActor () -> Void) {
+        guard modeSwitch == nil else { return }
+        if page == .board {
+            leaveBoard()
+            page = .home
+        }
+        guard activeSummary != nil else {
+            opening()
+            return
+        }
+        pendingNearby = opening
+        modeSwitch = .confirming(PlaySelection(game: game, mode: .nearby))
+    }
 }
