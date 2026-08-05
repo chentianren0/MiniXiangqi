@@ -226,11 +226,8 @@ struct PlayHomeTests {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board, "a launch with a game to resume opens at the board")
-
-        state.leaveTopPage()
-        #expect(state.page == .home)
-        #expect(state.activeGame != nil, "leaving the board leaves the game running")
+        #expect(state.page == .home, "a fresh launch opens at the home")
+        #expect(state.activeGame != nil, "over the game it resumed, still running")
 
         state.choose(Self.miniAI)
 
@@ -393,7 +390,9 @@ struct PlayHomeTests {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board)
+        #expect(state.page == .home)
+        state.resume()
+        #expect(state.page == .board, "the card is the way into the game")
         try state.game?.replay(Self.mateLine)
         try state.game?.file()
         #expect(state.game != nil, "the board still stands at the result it reached")
@@ -414,12 +413,11 @@ struct PlayHomeTests {
     // MARK: -
 
     /// A state holding an active Free Play game, sitting on the home — which is
-    /// what a player who walked back from the board has.
+    /// what every launch over a stored game has.
     private func stateOverAGame(_ core: Core) throws -> PlayState {
         let state = PlayState(core: core)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        state.leaveTopPage()
         #expect(state.page == .home)
         return state
     }
@@ -431,8 +429,6 @@ struct PlayHomeTests {
         let state = PlayState(core: core, rules: archive)
         try core.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
-        #expect(state.page == .board)
-        state.leaveTopPage()
         #expect(state.page == .home)
         return (state, archive)
     }

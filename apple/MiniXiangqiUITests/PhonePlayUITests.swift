@@ -556,7 +556,7 @@ final class PhonePlayUITests: XCTestCase {
     func testTheMoveRecordIsReachedOnDemandAndPutAway() {
         let app = launch(replaying: Self.openingLine)
         XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 30),
-                      "a launch with a game to resume opens at the board")
+                      "the replay fixture opens at the board it made")
         XCTAssertFalse(app.staticTexts["炮六进二"].exists,
                        "the record is not resident in this shape")
 

@@ -66,8 +66,8 @@ struct PlayDestination: View {
                 pages
             } else {
                 // The frames before the launch resume has answered. Nothing is
-                // drawn rather than a home the launch is about to leave: a
-                // launch with a game to resume opens at the board.
+                // drawn rather than a home without the card the resume is about
+                // to put on it.
                 Color.clear
             }
         }

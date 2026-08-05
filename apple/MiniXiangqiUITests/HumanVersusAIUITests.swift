@@ -478,8 +478,16 @@ final class HumanVersusAIUITests: XCTestCase {
                       "the process has to be gone before the next launch asks for it")
 
         app = launch(store: store, levelDefault: "fast")
+        // The launch opens at the home and the card is the way back into the
+        // game, which is the whole of what a resumed game is entered by: no
+        // pre-start page stands anywhere on this path, and nothing was chosen
+        // a second time.
+        XCTAssertTrue(app.buttons["home-resume"].waitForExistence(timeout: 20),
+                      "the game that was going is on the home the launch opened")
+        XCTAssertFalse(app.buttons["setup-start"].exists)
+        app.buttons["home-resume"].click()
         XCTAssertTrue(point(app, "d1").waitForExistence(timeout: 20),
-                      "the active game resumes without a pre-start page")
+                      "and 回到对局 opens the game itself")
         let strips = app.windows.firstMatch.descendants(matching: .any)
         XCTAssertEqual(strips["file-numerals-black"].label, "7 6 5 4 3 2 1",
                        "and resumes with the human's own side at the bottom")
