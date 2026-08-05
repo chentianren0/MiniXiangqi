@@ -1,0 +1,7 @@
+{
+  "class": "rules tier: terminal pair",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH",
+  "detail_contains": "cannot record",
+  "why": "An end the rules decided from the plies outranks one the players declared, which is the protocol's own precedence rule. A checkmate agreed away as a draw would be a result the record threw away, so the archive refuses it exactly as it refuses one saved as ended early."
+}

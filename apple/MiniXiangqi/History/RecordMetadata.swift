@@ -41,9 +41,11 @@ extension RecordSummary {
     }
 
     var modeText: String {
-        mode == .humanVersusAI
-            ? String(localized: "mode.humanVersusAI")
-            : String(localized: "mode.freePlay")
+        switch mode {
+        case .humanVersusAI: String(localized: "mode.humanVersusAI")
+        case .freePlay: String(localized: "mode.freePlay")
+        case .nearby: String(localized: "mode.nearby")
+        }
     }
 
     /// The committed outcome, in the register the accepted metadata example

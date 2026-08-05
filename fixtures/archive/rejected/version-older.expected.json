@@ -1,0 +1,7 @@
+{
+  "class": "unsupported version",
+  "probe": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "validate": "MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION",
+  "detail_contains": "older than this build reads",
+  "why": "The other side of version dispatch, and a distinct answer from the one a later version gets: this file is not corrupt and it is not from the future, it is written in a shape this build has stopped reading. A file is the user's, so the refusal is the whole of what happens to it — nothing removes or rewrites an archive."
+}

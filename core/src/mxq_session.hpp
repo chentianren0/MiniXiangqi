@@ -15,13 +15,17 @@
  * apply_move's and undo's postcondition, and a commit that fails means the
  * mutation did not happen.
  *
- * The four archiving paths — mxq_game_claim_draw, mxq_game_resign,
- * mxq_game_confirm_result and mxq_store_archive_and_clear — end that game.
- * They differ only in how they classify the ending, and the classification is
- * always derived from the committed state and never supplied by the caller;
- * what they then do is one transaction in the store, through one function, so
+ * The five archiving paths — mxq_game_claim_draw, mxq_game_resign,
+ * mxq_game_confirm_result, mxq_game_commit_nearby_end and
+ * mxq_store_archive_and_clear — end that game. They differ only in how they
+ * classify the ending. Four derive the classification from the committed state
+ * alone; the fifth is nearby play's, where the ending is one the two players
+ * declared and no position decided, so the caller states which of the three
+ * explicit ends the reconciled session reached and the core still derives the
+ * outcome from it — no caller ever asserts a result.
+ * What they then do is one transaction in the store, through one function, so
  * that "the outcome, the immutable History record, and the cleared
- * active-game reference, atomically" cannot be four subtly different things.
+ * active-game reference, atomically" cannot be five subtly different things.
  * Afterwards the session is archived: its queries keep answering, its
  * mutations refuse, and the document it encodes to is the finished one the
  * History record holds.
@@ -100,7 +104,7 @@ struct MxqGame {
      * the contract requires for exactly this reason. */
     std::atomic<uint64_t> position_revision{0};
 
-    /* The committed ending, written by the four archiving paths and recovered
+    /* The committed ending, written by the five archiving paths and recovered
      * by opening a History record. Meaningful exactly when completed is true,
      * which is also when the document this session encodes to carries the
      * terminal trio. */
@@ -121,7 +125,7 @@ struct MxqGame {
      * error the caller made — MXQ_ERR_STATE_SESSION_READ_ONLY, which mxq.h
      * lists among the programming errors.
      *
-     * archived is what an attached session becomes when one of the four
+     * archived is what an attached session becomes when one of the five
      * archiving paths succeeds: the game it owned is now an immutable History
      * record. That is ordinary control flow — MXQ_ERR_STATE_SESSION_ARCHIVED —
      * because a frontend can hold a handle across the moment the game ends.
@@ -235,7 +239,7 @@ archive::Record record_of(const MxqGame &game);
  *
  * Both are declared in mxq.h under the store's prefix because that is the
  * surface they belong to, and both are sessions work: one is the fourth
- * archiving path and performs exactly the ending the three terminal commits
+ * archiving path and performs exactly the ending the four terminal commits
  * do, the other issues a detached read-only session. They live here with the
  * code that already knows how to end a game and how to build a session from a
  * stored row, rather than being reassembled from exported pieces on the other

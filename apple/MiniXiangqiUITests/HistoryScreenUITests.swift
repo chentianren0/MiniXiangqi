@@ -96,13 +96,13 @@ final class HistoryScreenUITests: XCTestCase {
     /// sandboxes and neither can reach a path in the repository — the same
     /// reason the launch argument carries the bytes rather than a path.
     private static let goldenGame = """
-    {"archive_format":"minixiangqi-game","archive_version":2,"content":{"ai_level":"standard","ai_movetime_ms":3000,"end_reason":"checkmate","ended_at":"2026-01-01T00:00:04.000Z","first_mover_choice":"human-first","human_side":"red","mode":"human-vs-ai","moves":["b1b3","a6a5","b3d3"],"outcome":"red-wins","rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a803-7000-8000-000000000003","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:04.000Z"}}
+    {"archive_format":"minixiangqi-game","archive_version":3,"content":{"ai_level":"standard","ai_movetime_ms":3000,"end_reason":"checkmate","ended_at":"2026-01-01T00:00:04.000Z","first_mover_choice":"human-first","human_side":"red","mode":"human-vs-ai","moves":["b1b3","a6a5","b3d3"],"outcome":"red-wins","rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a803-7000-8000-000000000003","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:04.000Z"}}
     """
 
     /// The corpus's created-by-a-newer-version rejection, which is the one
     /// message the data contract requires to be distinct.
     private static let newerVersionGame = """
-    {"archive_format":"minixiangqi-game","archive_version":3,"content":{"a_member_from_the_future":"x","mode":"free-play","moves":["b1b3","b7b5"],"rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a800-7000-8000-000000000000","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:01:00.000Z"}}
+    {"archive_format":"minixiangqi-game","archive_version":4,"content":{"a_member_from_the_future":"x","mode":"free-play","moves":["b1b3","b7b5"],"rules_id":"minixiangqi","rules_version":1,"start_fen":"rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a800-7000-8000-000000000000","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:01:00.000Z"}}
     """
 
     private func launch(history: String? = nil,

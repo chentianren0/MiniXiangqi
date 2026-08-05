@@ -32,7 +32,7 @@ import UniformTypeIdentifiers
 @MainActor
 struct InterchangeTests {
 
-    private static let xiangqiEndedEarly = #"{"archive_format":"minixiangqi-game","archive_version":2,"content":{"end_reason":"ended-early","ended_at":"2026-01-01T00:00:03.000Z","mode":"free-play","moves":["h3e3","h8e8"],"outcome":"none","rules_id":"xiangqi","rules_version":1,"start_fen":"rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a808-7000-8000-000000000008","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:03.000Z"}}"#
+    private static let xiangqiEndedEarly = #"{"archive_format":"minixiangqi-game","archive_version":3,"content":{"end_reason":"ended-early","ended_at":"2026-01-01T00:00:03.000Z","mode":"free-play","moves":["h3e3","h8e8"],"outcome":"none","rules_id":"xiangqi","rules_version":1,"start_fen":"rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a808-7000-8000-000000000008","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:03.000Z"}}"#
 
     /// Plays one line into the store and files it, exactly as the app does.
     @discardableResult
@@ -70,7 +70,7 @@ struct InterchangeTests {
         // to another application.
         #expect(text.hasPrefix("{\"archive_format\":\"minixiangqi-game\""),
                 "the in-band type check is the first thing a reader meets")
-        #expect(text.contains("\"archive_version\":2"))
+        #expect(text.contains("\"archive_version\":3"))
         #expect(text.contains("\"outcome\":\"red-wins\""),
                 "an exported file is a completed game")
         #expect(!text.contains("\n"), "one line, which is what canonical means here")
@@ -187,8 +187,8 @@ struct InterchangeTests {
         let record = try file(GameTests.mateLine, into: core)
         let exported = try #require(String(data: try core.history.export(record),
                                            encoding: .utf8))
-        let newer = exported.replacingOccurrences(of: "\"archive_version\":2",
-                                                  with: "\"archive_version\":3")
+        let newer = exported.replacingOccurrences(of: "\"archive_version\":3",
+                                                  with: "\"archive_version\":4")
         let bytes = try #require(newer.data(using: .utf8))
         #expect(status(of: { try core.history.importGame(bytes) })
                 == MxqStatus(MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION))

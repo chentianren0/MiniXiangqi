@@ -2,7 +2,7 @@
   "title": "Free Play, saved before another mode: ended early, no result",
   "why": "An ordinary ongoing game archived by save-before-mode records the ended-early reason with no competitive result, and its final position must be non-terminal.",
   "info": {
-    "archive_version": 2,
+    "archive_version": 3,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",

@@ -188,7 +188,7 @@ void case_fresh_open_creates_schema() {
         return;
     }
     /* The recorded schema version and the persistent half of the regime. */
-    check_eq(query_text(db, "PRAGMA user_version;"), "2", "user_version");
+    check_eq(query_text(db, "PRAGMA user_version;"), "3", "user_version");
     check_eq(query_text(db, "PRAGMA journal_mode;"), "wal",
              "journal_mode persisted in the file");
     /* The compiled defaults from the hardened option set reach even a fresh
@@ -239,7 +239,7 @@ void case_fresh_open_creates_schema() {
              "1", "no active game on a fresh store");
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
                             "key='created_schema_version';"),
-             "2", "the meta bookkeeping row");
+             "3", "the meta bookkeeping row");
     /* A library that has recorded no mutation is at revision 0, which is what
      * a caller comparing revisions starts from. */
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
@@ -322,6 +322,85 @@ void case_schema_enforces_its_invariants() {
                      "'locally-played', 1000, 2000, 3000);",
                  "outcome/end_reason well-formedness");
 
+    /* The two ends two players declare to each other belong to the one mode
+     * that has two players: a Free Play game has nobody to agree with. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-00000000000e', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'free-play', 4, 'draw', 'agreed-draw', "
+                     "'locally-played', 1000, 2000, 3000);",
+                 "an agreed draw belongs to nearby");
+
+    /* Local perspective, both ways round. A locally played nearby record has a
+     * local side and nothing else does — an imported one had no local player,
+     * and neither local mode has two. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "provenance, started_at_ms, local_side) VALUES "
+                             "('00000000-0000-7000-8000-00000000000f', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'free-play', 0, 'locally-played', "
+                     "1000, 'red');",
+                 "a local side outside nearby play");
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "provenance, started_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-000000000010', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'nearby', 0, 'locally-played', 1000);",
+                 "a locally played nearby game without a local side");
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms, local_side) VALUES "
+                             "('00000000-0000-7000-8000-000000000011', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'nearby', 4, 'draw', 'agreed-draw', "
+                     "'imported', 1000, 2000, 3000, 'red');",
+                 "an imported nearby record with a local side");
+
+    /* And the shape that is right: a nearby record ended by an agreement, with
+     * the local side its own device played. */
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms, local_side) VALUES "
+                            "('00000000-0000-7000-8000-000000000012', x'7b7d', '") +
+                    kHex64 +
+                    "', 'minixiangqi', 'nearby', 4, 'draw', "
+                    "'mutual-resignation', 'locally-played', 1000, 2000, 3000, "
+                    "'black');");
+
+    /* A resignation needs an opponent to resign to. Free Play is one person
+     * moving both sides and has none; nearby play has one, and the outcome
+     * names the winner without a human_side to check it against, which is the
+     * whole difference from the human-versus-AI rule beside it. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-000000000013', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'free-play', 4, 'red-wins', "
+                     "'resignation', 'locally-played', 1000, 2000, 3000);",
+                 "a resignation with nobody to resign to");
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms, local_side) VALUES "
+                            "('00000000-0000-7000-8000-000000000014', x'7b7d', '") +
+                    kHex64 +
+                    "', 'minixiangqi', 'nearby', 4, 'red-wins', 'resignation', "
+                    "'locally-played', 1000, 2000, 3000, 'red');");
+
     /* A History record: insert, then verify everything but pin state is
      * immutable. */
     exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
@@ -397,7 +476,7 @@ void case_reopen_is_idempotent() {
     if (db == nullptr) {
         return;
     }
-    check_eq(query_text(db, "PRAGMA user_version;"), "2",
+    check_eq(query_text(db, "PRAGMA user_version;"), "3",
              "user_version unchanged after reopens");
     check_eq(query_text(db, "SELECT count(*) FROM library;"), "1",
              "still exactly one library row");
@@ -426,7 +505,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 3;");
+    exec_ok(db, "PRAGMA user_version = 4;");
     sqlite3_close(db);
 
     err = make_error();
@@ -444,7 +523,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 2;");
+    exec_ok(db, "PRAGMA user_version = 3;");
     sqlite3_close(db);
 
     err = make_error();
@@ -453,6 +532,72 @@ void case_newer_schema_is_refused() {
     if (rc == MXQ_OK) {
         mxq_core_shutdown(core, nullptr);
     }
+}
+
+/*
+ * The other side of the version comparison. One version is defined, nothing
+ * migrates into it, and a store recording a schema this build has no path to is
+ * refused — which is the whole of what happens to it. The file is left exactly
+ * as it is: the core does not destroy data it cannot read, and a user who wants
+ * the app to start again removes the store themselves.
+ *
+ * The version written below is deliberately not the one any release used: what
+ * is under test is the comparison, and a test naming a particular older shape
+ * would be the only thing in the repository that did.
+ */
+void case_older_schema_is_refused() {
+    g_case = "a schema below this build's is refused, and the file is left";
+    const fs::path dir = scratch_dir("older");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    MxqStatus rc = init_core(dir.string(), MXQ_CORE_FLAG_NONE, &core, &err);
+    check(rc == MXQ_OK, "mxq_core_init failed");
+    if (rc != MXQ_OK) {
+        return;
+    }
+    mxq_core_shutdown(core, nullptr);
+
+    /* A record in the file, so that "left as it is" is observable rather than
+     * asserted, and a version this build has no path to. */
+    sqlite3 *db = open_direct(db_path(dir));
+    if (db == nullptr) {
+        return;
+    }
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms) VALUES "
+                            "('00000000-0000-7000-8000-000000000021', x'7b7d', '") +
+                    kHex64 +
+                    "', 'minixiangqi', 'free-play', 4, 'none', 'ended-early', "
+                    "'locally-played', 1000, 2000, 3000);");
+    exec_ok(db, "PRAGMA user_version = 1;");
+    sqlite3_close(db);
+
+    err = make_error();
+    rc = init_core(dir.string(), MXQ_CORE_FLAG_NONE, &core, &err);
+    check(rc == MXQ_ERR_STORE_MIGRATION_FAILED,
+          std::string("expected MXQ_ERR_STORE_MIGRATION_FAILED, got ") +
+              mxq_status_name(rc));
+    check(mxq_status_domain(rc) == MXQ_DOMAIN_STORE,
+          "the refusal is store-domain");
+    check(rc != MXQ_ERR_STORE_SCHEMA_TOO_NEW,
+          "and is not the newer-build answer, which is a different fact");
+    check(core == nullptr || rc != MXQ_OK, "no core was created");
+
+    /* Nothing about the file changed: the version it records, the record it
+     * holds, and the file itself are all still there. */
+    check(fs::exists(db_path(dir)), "the store file is still there");
+    db = open_direct(db_path(dir));
+    if (db == nullptr) {
+        return;
+    }
+    check_eq(query_text(db, "PRAGMA user_version;"), "1",
+             "the refusal did not rewrite the recorded version");
+    check_eq(query_text(db, "SELECT count(*) FROM game;"), "1",
+             "and the record the store held is still in it");
+    sqlite3_close(db);
 }
 
 void case_unopenable_store_fails_init() {
@@ -596,6 +741,7 @@ int main() {
     case_schema_enforces_its_invariants();
     case_reopen_is_idempotent();
     case_newer_schema_is_refused();
+    case_older_schema_is_refused();
     case_unopenable_store_fails_init();
     case_deterministic_identity_repeats();
     case_production_identity_is_real();

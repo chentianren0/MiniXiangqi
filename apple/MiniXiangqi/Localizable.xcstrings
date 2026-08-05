@@ -1688,23 +1688,6 @@
         }
       }
     },
-    "nearby.agreedDraw": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Draw by Agreement"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "协议和棋"
-          }
-        }
-      }
-    },
     "nearby.connecting": {
       "extractionState": "manual",
       "localizations": {
@@ -2240,6 +2223,23 @@
         }
       }
     },
+    "reason.agreedDraw": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draw by Agreement"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "协议和棋"
+          }
+        }
+      }
+    },
     "reason.checkmate": {
       "extractionState": "manual",
       "localizations": {
@@ -2321,6 +2321,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "双方长将"
+          }
+        }
+      }
+    },
+    "reason.mutualResignation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Both Resigned"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双方认输"
           }
         }
       }

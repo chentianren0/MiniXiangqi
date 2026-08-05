@@ -123,7 +123,8 @@ MXQ_ASSERT_AT(MxqGameConfig, ai_level, 12);
 MXQ_ASSERT_AT(MxqGameConfig, first_mover_choice, 16);
 MXQ_ASSERT_AT(MxqGameConfig, ai_movetime_ms, 20);
 MXQ_ASSERT_AT(MxqGameConfig, game, 24);
-MXQ_ASSERT_SIZE(MxqGameConfig, 28);
+MXQ_ASSERT_AT(MxqGameConfig, local_side, 28);
+MXQ_ASSERT_SIZE(MxqGameConfig, 32);
 
 MXQ_ASSERT_BLITTABLE(MxqRecordSummary);
 MXQ_ASSERT_AT(MxqRecordSummary, move_count, 4);
@@ -143,7 +144,7 @@ MXQ_ASSERT_AT(MxqRecordSummary, is_active, 69);
 MXQ_ASSERT_AT(MxqRecordSummary, reserved0, 70);
 MXQ_ASSERT_AT(MxqRecordSummary, game_id, 72);
 MXQ_ASSERT_AT(MxqRecordSummary, game, 72 + MXQ_GAME_ID_CAP);
-MXQ_ASSERT_AT(MxqRecordSummary, reserved1, 76 + MXQ_GAME_ID_CAP);
+MXQ_ASSERT_AT(MxqRecordSummary, local_side, 76 + MXQ_GAME_ID_CAP);
 MXQ_ASSERT_SIZE(MxqRecordSummary, 80 + MXQ_GAME_ID_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqArchiveInfo);

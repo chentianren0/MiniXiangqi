@@ -29,9 +29,10 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Play modes
 
-- Xiangqi and Mini Xiangqi each offer the same two modes.
+- Xiangqi and Mini Xiangqi each offer the same three modes.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
+- **Nearby Play**, where two people play one game on two devices over the local radio. It is offered only where the hardware can, and internet play stays excluded.
 - Human-versus-AI setup offers **我先手** (I Move First), **AI 先手** (AI Moves First), and **随机** (Random). Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
 - On a new installation, the Settings default is **我先手**. The user may change the persistent default to **AI 先手** or **随机**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.

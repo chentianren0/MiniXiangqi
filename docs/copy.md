@@ -29,7 +29,7 @@ Contract sections are cited by document and section name rather than by line num
 | `game.miniXiangqi` | 迷你象棋 | Mini Xiangqi | Play-home section header; pre-start game name; metadata token | same — this is the game name inside the application, while `app.displayName` remains the product name |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
-| `mode.nearby` | 附近对弈 | Nearby Play | mode entry | [interaction-design.md](interaction-design.md) § Nearby play — the third row inside each game's section, absent where the hardware has no radio; `Play/PlayHome.swift` |
+| `mode.nearby` | 附近对弈 | Nearby Play | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Nearby play — the third row inside each game's section, absent where the hardware has no radio; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift`, `History/RecordMetadata.swift` |
 
 ### Controls
 
@@ -109,6 +109,8 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `reason.fiftyMoveRule` | 五十回合规则 | Fifty-Move Rule | reason line; metadata token | [xiangqi-rules.md](xiangqi-rules.md) § End conditions; `Play/TurnStatus.swift` |
 | `reason.resignation` | 认输 | Resignation | reason line; metadata token | same |
 | `reason.endedEarly` | 提前结束 | Ended Early | reason line; metadata token; the History row's **result** slot | same; [interaction-design.md](interaction-design.md) § History library — `outcome = none` holds exactly when the reason is ended-early, so the row states the one fact once rather than adding a word for the absence of a winner |
+| `reason.agreedDraw` | 协议和棋 | Draw by Agreement | reason line; metadata token | same; the line under 和棋 where the two players agreed it, and the reason a nearby record carries |
+| `reason.mutualResignation` | 双方认输 | Both Resigned | reason line; metadata token | same — two resignations that crossed are a draw, and saying so is not the same as saying the players agreed one |
 
 **Stalemate is kept deliberately.** It is the standard English Xiangqi term, the notice title has already named the winner, and Help owes the statement that having no legal move loses in Xiangqi. The English word's chess sense is corrected by the surface it appears on rather than by renaming the reason.
 
@@ -255,7 +257,6 @@ The propose sheet, what the board says about the other player and about the link
 | `nearby.pairing.unavailable` | 这台设备无法配对 | This device can't pair | row | same — what stands where the system's pairing views cannot be offered |
 | `nearby.theyOfferDraw` | 对方提和 | They offer a draw | status line at the turn status | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — what the other player has standing, beside the **接受** that answers it. The same division 判和 and 可判和 already keep: the control is the act, the line is the state |
 | `nearby.theyAskUndo` | 对方请求悔棋 | They want to take back a move | status line at the turn status | same — its other kind |
-| `nearby.agreedDraw` | 协议和棋 | Draw by Agreement | reason line | same — the line under 和棋 where the two players agreed it. It is not in § Result reasons because it is not an `end_reason`: the core decides positions, and nothing about a position decided this |
 | `nearby.ended.title` | 对局已结束 | The Game Has Ended | notice title; alert title | same, and `Nearby/NearbyProposeSheet.swift` — over each of the three sentences below, and over `nearby.refusal.unknownSession` where that refuses a resume rather than a proposal |
 | `nearby.ended.disagreement` | 两台设备对这局对弈的记录不一致。 | The two devices no longer agree about this game. | notice message | same — a connection closed on a protocol violation, said as what it means to the reader rather than as what it is on the wire |
 | `nearby.ended.newGame` | 对方开始了新的对局。 | They started a new game. | notice message | same — the other player's fresh proposal retiring this game |

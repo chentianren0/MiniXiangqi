@@ -1,0 +1,22 @@
+{
+  "title": "Nearby, two moves: a store-attached game with a local perspective and no unilateral undo",
+  "why": "A nearby game is an active game like any other — one commit per accepted move, resumed unchanged after a close — with two differences the round trip proves. Its local side survives the reopen although the archive never carries it, which is only possible because the store holds it in its own column; and Undo is refused, because a retraction in a nearby game is the two players' agreement and what it retracts is what they agreed to keep. Its bytes are the archive corpus's nearby-active golden.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "nearby",
+    "local_side": "black"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "archive": "nearby-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": false,
+    "undo_plies": 0,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": []
+}

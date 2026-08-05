@@ -217,6 +217,12 @@ uint32_t undo_plies_for(const MxqGame &game) {
     if (n == 0) {
         return 0;
     }
+    /* A nearby game has no unilateral undo (docs/game-data.md): a retraction
+     * there is the two players' agreement, and what it retracts is what they
+     * agreed to keep, which is not this call's one-or-two plies. */
+    if (game.config.mode == MXQ_PLAY_MODE_NEARBY) {
+        return 0;
+    }
     if (game.config.mode != MXQ_PLAY_MODE_HUMAN_VS_AI) {
         return 1;
     }
@@ -333,6 +339,10 @@ store::ActiveGame row_of(const archive::Record &record,
     row.ai_level = archive::ai_level_text(record.config.ai_level);
     row.first_mover_choice =
         archive::first_mover_text(record.config.first_mover_choice);
+    /* The one column the document does not carry: local perspective is store
+     * metadata, so it is written here from the frozen configuration and never
+     * from the bytes. */
+    row.local_side = archive::color_text(record.config.local_side);
     row.ai_movetime_ms = static_cast<int64_t>(record.config.ai_movetime_ms);
     row.move_count = static_cast<int64_t>(record.moves.size());
     row.started_at_ms = record.started_at_ms;
@@ -390,9 +400,9 @@ bool outcome_of(MxqGameState state, MxqOutcome &out) {
 }
 
 /*
- * The one atomic ending, shared by all four archiving paths.
+ * The one atomic ending, shared by all five archiving paths.
  *
- * The classification arrives already derived from the committed state; what
+ * The classification arrives already settled by the path that called in; what
  * happens here is the rest of the sentence mxq.h writes three times and
  * core-interface.md once — commit the outcome, insert the immutable History
  * record, clear the active-game reference, atomically — plus the adoption that
@@ -505,10 +515,16 @@ std::unique_ptr<MxqGame> session_of(MxqCore *core,
  * imported this row, and the answer is about the user's library rather than
  * about a file they chose. The import size bounds are deliberately not
  * applied — a long local game must always open.
+ *
+ * local_side arrives beside the bytes rather than out of them, because it is
+ * the one part of a session's configuration the document does not carry: the
+ * store's own column is its only source, and the schema's constraint is what
+ * keeps it paired with the mode.
  */
 MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
                            const std::string &archive_bytes,
                            const std::string &content_sha256,
+                           const std::string &local_side,
                            bool expect_completed, bool read_only,
                            std::unique_ptr<MxqGame> &out, MxqError *err) {
     out.reset();
@@ -545,6 +561,15 @@ MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
 
     std::unique_ptr<MxqGame> game =
         session_of(core, stored, record_id, read_only);
+    if (local_side == "red") {
+        game->config.local_side = MXQ_COLOR_RED;
+    } else if (local_side == "black") {
+        game->config.local_side = MXQ_COLOR_BLACK;
+    } else if (!local_side.empty()) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the stored game's local side is not a side");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
 
     /* The integrity compare. Re-encoding the decoded document reproduces the
      * canonical bytes this writer produced — that is the property the golden
@@ -786,8 +811,8 @@ MxqStatus history_open(MxqCore *core, uint64_t record_id, MxqGame **out_replay,
 
     std::unique_ptr<MxqGame> game;
     rc = session_from_row(core, record_id, archive_bytes, summary.content_sha256,
-                          /*expect_completed=*/true, /*read_only=*/true, game,
-                          err);
+                          summary.local_side, /*expect_completed=*/true,
+                          /*read_only=*/true, game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -844,7 +869,9 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
     }
 
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
-    bool shape_ok = human_vs_ai || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
+    const bool nearby = config->mode == MXQ_PLAY_MODE_NEARBY;
+    bool shape_ok =
+        human_vs_ai || nearby || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
     if (human_vs_ai) {
         shape_ok = shape_ok &&
                    (config->human_side == MXQ_COLOR_RED ||
@@ -857,18 +884,25 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
                     config->first_mover_choice == MXQ_FIRST_MOVER_RANDOM) &&
                    config->ai_movetime_ms > 0;
     } else {
-        /* Free Play omits all four rather than writing the NONE constants into
-         * the archive, so it must not carry values to omit. */
+        /* Free Play and nearby play omit all four rather than writing the NONE
+         * constants into the archive, so they must not carry values to omit. */
         shape_ok = shape_ok && config->human_side == MXQ_COLOR_NONE &&
                    config->ai_level == MXQ_AI_LEVEL_NONE &&
                    config->first_mover_choice == MXQ_FIRST_MOVER_NONE &&
                    config->ai_movetime_ms == 0;
     }
+    /* The mirror rule, and the only member that is store metadata rather than
+     * archive content: a nearby game is played from one of the two sides of
+     * this device, and a local game is played from neither. */
+    shape_ok = shape_ok &&
+               (nearby ? (config->local_side == MXQ_COLOR_RED ||
+                          config->local_side == MXQ_COLOR_BLACK)
+                       : config->local_side == MXQ_COLOR_NONE);
     if (!shape_ok) {
         assert(false && "the game configuration is not one this ruleset defines");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "the configuration's mode and its four human-versus-AI "
-                        "members do not agree");
+                        "the configuration's mode and its human-versus-AI and "
+                        "local-side members do not agree");
         return MXQ_ERR_ARG_RANGE;
     }
 
@@ -919,8 +953,10 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
     uint64_t record_id = 0;
     std::string archive;
     std::string content_sha256;
+    std::string local_side;
     const MxqStatus load = mxq::store::load_active(
-        *core->store, exists, record_id, archive, content_sha256, err);
+        *core->store, exists, record_id, archive, content_sha256, local_side,
+        err);
     if (load != MXQ_OK) {
         return load;
     }
@@ -950,8 +986,8 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
      */
     std::unique_ptr<MxqGame> game;
     const MxqStatus built = mxq::session::session_from_row(
-        core, record_id, archive, content_sha256, /*expect_completed=*/false,
-        /*read_only=*/false, game, err);
+        core, record_id, archive, content_sha256, local_side,
+        /*expect_completed=*/false, /*read_only=*/false, game, err);
     if (built != MXQ_OK) {
         return built;
     }
@@ -1411,14 +1447,19 @@ MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game, uint32_t *out_plies_removed,
 /* ------------------------------------------------------------------------- */
 
 /*
- * The three of them share a shape: the handle checks, the single-owner claim,
- * the mutability check, and the replay their classification is derived from.
+ * The four of them share a shape: the handle checks, the single-owner claim,
+ * the mutability check, and the replay their classification is judged against.
  * Each then decides one thing — whether the ending it names is available here,
- * and what outcome and reason it commits — and hands that to end_game. None
- * takes a classification from the caller, because none may: docs/game-data.md
- * derives the saved classification from the committed game state, and a
- * caller-supplied result would be a second authority for what a game's outcome
- * is.
+ * and what outcome and reason it commits — and hands that to end_game.
+ *
+ * Three take no classification from the caller at all, because none may:
+ * docs/game-data.md derives the saved classification from the committed game
+ * state, and a caller-supplied result would be a second authority for what a
+ * game's outcome is. The fourth is nearby play's, where that authority is not
+ * the board: no position decides a resignation or an agreement, and the
+ * reconciled session is the only thing that knows which one the two players
+ * reached. So it takes the ending — never the outcome, which it still derives —
+ * and the replay is what refuses it over a position the rules already decided.
  *
  * The preamble is written out in each rather than factored into a helper,
  * because its order is load-bearing: the registry check comes before anything
@@ -1576,6 +1617,95 @@ MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
     uint64_t record_id = 0;
     rc = mxq::session::end_game(*game, outcome, replayed.adj.reason, record_id,
                                 err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (out_record_id != nullptr) {
+        *out_record_id = record_id;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game, MxqEndReason reason,
+                                              MxqColor resigning_side,
+                                              uint64_t *out_record_id,
+                                              MxqError *err) {
+    if (out_record_id != nullptr) {
+        *out_record_id = 0;
+    }
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /*
+     * The reason and its side are a closed vocabulary the caller owns, so a
+     * pairing outside it is a programming error rather than a user outcome:
+     * a resignation names the side that resigned and the two draws name none.
+     */
+    const bool single_resignation = reason == MXQ_END_REASON_RESIGNATION;
+    const bool side_ok = single_resignation
+                             ? (resigning_side == MXQ_COLOR_RED ||
+                                resigning_side == MXQ_COLOR_BLACK)
+                             : resigning_side == MXQ_COLOR_NONE;
+    if ((!single_resignation && reason != MXQ_END_REASON_MUTUAL_RESIGNATION &&
+         reason != MXQ_END_REASON_AGREED_DRAW) ||
+        !side_ok) {
+        assert(false && "the nearby ending is not one the protocol carries");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "the end reason and the resigning side do not agree");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    /* These are the ends two players declare to each other, so a game with one
+     * player has none of them. */
+    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+        mxq::fill_error(err, MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                        "an agreed ending is a nearby action");
+        return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
+    }
+
+    mxq::session::Replayed replayed;
+    rc = mxq::session::replay_prefix(*game, game->moves.size(), false, replayed,
+                                     err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /*
+     * An end the rules decided from the plies outranks everything the two
+     * players declared — the protocol's own precedence rule — and the archive
+     * refuses such a record for the same reason: a checkmate recorded as an
+     * agreed draw would be a lost result. Refusing here is what keeps the store
+     * from being asked to hold a row its own constraints would refuse. A
+     * claimable neutral repetition is not a result, so either end is lawful
+     * over it.
+     */
+    MxqOutcome decided = MXQ_OUTCOME_NONE;
+    if (mxq::session::outcome_of(replayed.adj.state, decided)) {
+        mxq::fill_error(err, MXQ_ERR_STATE_GAME_OVER,
+                        "the game already has a result of its own");
+        return MXQ_ERR_STATE_GAME_OVER;
+    }
+
+    /* The caller states which end the two players reached; the outcome is still
+     * derived from it here, so no caller ever asserts a result. */
+    const MxqOutcome outcome =
+        single_resignation ? (resigning_side == MXQ_COLOR_RED
+                                  ? MXQ_OUTCOME_BLACK_WINS
+                                  : MXQ_OUTCOME_RED_WINS)
+                           : MXQ_OUTCOME_DRAW;
+
+    uint64_t record_id = 0;
+    rc = mxq::session::end_game(*game, outcome, reason, record_id, err);
     if (rc != MXQ_OK) {
         return rc;
     }

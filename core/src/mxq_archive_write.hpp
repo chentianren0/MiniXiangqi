@@ -9,7 +9,7 @@
  * canonical spelling and the content hash is taken over exactly these bytes.
  *
  * Nothing here knows what a session is. It takes a Record — the complete
- * version 2 document as values — and returns bytes, so that the same writer
+ * version 3 document as values — and returns bytes, so that the same writer
  * serves an attached session's every commit, mxq_archive_encode, and the
  * export path when it lands, and none of them can spell a document its own
  * way.
@@ -28,7 +28,7 @@ namespace mxq {
 namespace archive {
 
 /*
- * One version 2 document, as values.
+ * One version 3 document, as values.
  *
  * config.game is what the document's rules_id spells and what its start_fen is
  * taken from: one field decides both, so a document cannot record one game's

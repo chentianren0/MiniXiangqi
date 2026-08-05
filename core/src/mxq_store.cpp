@@ -1,6 +1,6 @@
 /* Opening, creating and closing the library store.
  *
- * The schema created here is the one docs/game-data.md accepts as version 2,
+ * The schema created here is the one docs/game-data.md accepts as version 3,
  * transcribed constraint for constraint; the connection regime — write-ahead
  * logging, full synchronous durability, foreign keys on — is the same
  * contract's, applied and then read back rather than assumed. Everything that
@@ -25,10 +25,11 @@ namespace store {
 namespace {
 
 /*
- * Schema version 2, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 2"). Three STRICT tables; the single library row with the
+ * Schema version 3, exactly as accepted in docs/game-data.md ("Library store
+ * schema, version 3"). Three STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
- * mode-to-configuration relationship and time ordering as check constraints;
+ * mode-to-configuration relationship, the local-perspective rule and time
+ * ordering as check constraints;
  * History content immutability and the archive-and-clear ordering as
  * triggers; the accepted History ordering served by one partial index that
  * excludes the active game structurally.
@@ -39,7 +40,7 @@ namespace {
  * holds records of both games, and which game a row is of is a column with a
  * CHECK rather than something to decode a blob for.
  */
-const char *const kSchemaV2 = R"SQL(
+const char *const kSchemaV3 = R"SQL(
 CREATE TABLE meta (
   key   TEXT NOT NULL PRIMARY KEY,
   value TEXT NOT NULL
@@ -57,7 +58,7 @@ CREATE TABLE game (
   -- so a mixed History list can be labelled and ordered without decoding a
   -- blob per row.
   rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi')),
-  mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play')),
+  mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play', 'nearby')),
   human_side         TEXT    CHECK (human_side IN ('red', 'black')),
   ai_level           TEXT    CHECK (ai_level IN ('fast', 'standard', 'deep')),
   ai_movetime_ms     INTEGER CHECK (ai_movetime_ms > 0),
@@ -70,8 +71,13 @@ CREATE TABLE game (
                                                    'mutual-perpetual-check',
                                                    'mutual-perpetual-chase',
                                                    'resignation', 'ended-early',
-                                                   'fifty-move-rule')),
+                                                   'fifty-move-rule',
+                                                   'agreed-draw',
+                                                   'mutual-resignation')),
   provenance         TEXT    NOT NULL CHECK (provenance IN ('locally-played', 'imported')),
+  -- Local perspective: the side this device's player took. Library metadata,
+  -- like provenance and pin state, and the archive holds nothing like it.
+  local_side         TEXT    CHECK (local_side IN ('red', 'black')),
   pinned             INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
   started_at_ms      INTEGER NOT NULL CHECK (started_at_ms >= 0),
   ended_at_ms        INTEGER,
@@ -92,22 +98,39 @@ CREATE TABLE game (
   CHECK (outcome IS NULL OR ((outcome = 'draw') =
          (end_reason IN ('threefold-repetition',
                          'mutual-perpetual-check', 'mutual-perpetual-chase',
-                         'fifty-move-rule')))),
+                         'fifty-move-rule',
+                         'agreed-draw', 'mutual-resignation')))),
   -- The move-count rule is Xiangqi's; Mini Xiangqi has none, so a record of it
   -- cannot carry that reason.
   CHECK (end_reason IS NULL OR end_reason <> 'fifty-move-rule' OR
          rules_id = 'xiangqi'),
+  -- A resignation needs an opponent to resign to, and the outcome names the
+  -- winner, so the side that resigned is its opposite; the two rules above
+  -- already leave only a win there. Human-versus-AI adds that the loser is the
+  -- human, which nearby play has no member to say and does not need.
   CHECK (end_reason IS NULL OR end_reason <> 'resignation' OR
-         (mode = 'human-vs-ai' AND
-          ((human_side = 'red' AND outcome = 'black-wins') OR
-           (human_side = 'black' AND outcome = 'red-wins')))),
+         mode IN ('human-vs-ai', 'nearby')),
+  CHECK (end_reason IS NULL OR end_reason <> 'resignation' OR
+         mode <> 'human-vs-ai' OR
+         ((human_side = 'red' AND outcome = 'black-wins') OR
+          (human_side = 'black' AND outcome = 'red-wins'))),
+  -- The two ends two players declare to each other belong to the one mode that
+  -- has two players.
+  CHECK (end_reason IS NULL OR
+         end_reason NOT IN ('agreed-draw', 'mutual-resignation') OR
+         mode = 'nearby'),
   -- The mode-to-configuration relationship: the four configuration fields
   -- exist exactly for human-versus-AI games, matching the archive, which
-  -- simply omits them in Free Play.
+  -- simply omits them in the other two modes.
   CHECK ((mode = 'human-vs-ai') = (human_side IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (ai_level IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (ai_movetime_ms IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (first_mover_choice IS NOT NULL)),
+  -- The local-perspective rule: a nearby game played on this device has a local
+  -- side, and nothing else has one — an imported nearby record had no local
+  -- player, and neither local mode has two.
+  CHECK ((local_side IS NOT NULL) =
+         (mode = 'nearby' AND provenance = 'locally-played')),
   -- A record can only enter this library as imported once it is complete.
   CHECK (provenance <> 'imported' OR outcome IS NOT NULL)
 ) STRICT;
@@ -150,6 +173,7 @@ WHEN OLD.outcome IS NOT NULL
    OR NEW.outcome            IS NOT OLD.outcome
    OR NEW.end_reason         IS NOT OLD.end_reason
    OR NEW.provenance         IS NOT OLD.provenance
+   OR NEW.local_side         IS NOT OLD.local_side
    OR NEW.started_at_ms      IS NOT OLD.started_at_ms
    OR NEW.ended_at_ms        IS NOT OLD.ended_at_ms
    OR NEW.added_at_ms        IS NOT OLD.added_at_ms)
@@ -184,7 +208,7 @@ END;
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
 -- Non-authoritative bookkeeping; nothing reads this table to decide anything.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '2');
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '3');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh
@@ -290,7 +314,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
 }
 
 /* The structural verification run on every successful open: the three tables
- * of schema version 2 exist and are STRICT, and the single library row is
+ * of schema version 3 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
 MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
@@ -309,7 +333,7 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (value != "3") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                     "the store does not hold the three STRICT tables of schema "
-                    "version 2 (found " + value + ")");
+                    "version 3 (found " + value + ")");
     }
 
     if (!query_first_column(db, "SELECT count(*) FROM library;", value, rc,
@@ -330,16 +354,16 @@ MxqStatus create_schema(sqlite3 *db, MxqError *err) {
     if (!exec(db, "BEGIN IMMEDIATE;", rc, detail)) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
-    if (!exec(db, kSchemaV2, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 2;", rc, detail)) {
+    if (!exec(db, kSchemaV3, rc, detail) ||
+        !exec(db, "PRAGMA user_version = 3;", rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 2: " + cause);
+        return fail_sqlite(err, rc, "cannot create schema version 3: " + cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 2: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version 3: " + detail);
     }
     return MXQ_OK;
 }
@@ -504,11 +528,11 @@ MxqStatus read_revision(sqlite3 *db, uint64_t &out, MxqError *err) {
 const char *const kSummaryColumns =
     "record_id, game_id, content_sha256, rules_id, mode, human_side, ai_level,"
     " ai_movetime_ms, move_count, outcome, end_reason, provenance, pinned,"
-    " started_at_ms, ended_at_ms, added_at_ms";
+    " started_at_ms, ended_at_ms, added_at_ms, local_side";
 
 /* Where the archive column lands when a statement selects kSummaryColumns and
  * then the blob. */
-constexpr int kArchiveColumn = 16;
+constexpr int kArchiveColumn = 17;
 
 std::string text_at(sqlite3_stmt *stmt, int column) {
     if (sqlite3_column_type(stmt, column) == SQLITE_NULL) {
@@ -536,6 +560,7 @@ void read_summary(sqlite3_stmt *stmt, Summary &out) {
     out.started_at_ms = sqlite3_column_int64(stmt, 13);
     out.ended_at_ms = sqlite3_column_int64(stmt, 14);
     out.added_at_ms = sqlite3_column_int64(stmt, 15);
+    out.local_side = text_at(stmt, 16);
 }
 
 /* The archive column of a row already stepped to, as bytes. A column this
@@ -620,9 +645,9 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
                     "INSERT INTO game (game_id, archive, content_sha256,"
                     " rules_id, mode, human_side, ai_level, ai_movetime_ms,"
                     " first_mover_choice, move_count, provenance,"
-                    " started_at_ms)"
+                    " started_at_ms, local_side)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'locally-played',"
-                    " ?);");
+                    " ?, ?);");
         if (!insert.ok()) {
             return fail_sqlite(err, insert.rc(),
                                "cannot prepare the insert: " + insert.error(db));
@@ -638,6 +663,7 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
         insert.bind_text(9, row.first_mover_choice);
         insert.bind_int64(10, row.move_count);
         insert.bind_int64(11, row.started_at_ms);
+        insert.bind_text(12, row.local_side);
         const int step = insert.step();
         if (step != SQLITE_DONE) {
             return fail_sqlite(err, step,
@@ -682,11 +708,12 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
 
 MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
                       std::string &out_archive, std::string &out_content_sha256,
-                      MxqError *err) {
+                      std::string &out_local_side, MxqError *err) {
     out_exists = false;
     out_record_id = 0;
     out_archive.clear();
     out_content_sha256.clear();
+    out_local_side.clear();
 
     std::lock_guard<std::mutex> lock(store.mutex());
     sqlite3 *db = store.db();
@@ -702,7 +729,7 @@ MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
         return MXQ_OK;
     }
 
-    Stmt select(db, "SELECT archive, content_sha256 FROM game"
+    Stmt select(db, "SELECT archive, content_sha256, local_side FROM game"
                     " WHERE record_id = ?;");
     if (!select.ok()) {
         return fail_sqlite(err, select.rc(),
@@ -728,6 +755,9 @@ MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
                     "the active game's archive column is unreadable");
     }
     out_content_sha256 = text_at(select.get(), 1);
+    /* Local perspective is the store's, not the archive's, so a resumed session
+     * gets it from this column beside the blob rather than from the bytes. */
+    out_local_side = text_at(select.get(), 2);
     out_record_id = record_id;
     out_exists = true;
     return MXQ_OK;
