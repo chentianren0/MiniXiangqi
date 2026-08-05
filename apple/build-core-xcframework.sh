@@ -173,9 +173,13 @@ fi
 # script should have to spell it. The macOS slice, deterministically: the
 # headers are one file per slice and identical across all three, so which slice
 # publishes the path is arbitrary, and an arbitrary choice made the same way
-# every run is the one that keeps the path stable.
+# every run is the one that keeps the path stable. A real copy, not a symlink:
+# the Generated directory is seeded into agent worktrees by copying machinery
+# that need not preserve links, and every artifact here must survive that copy.
 slice=$(cd "$output" && ls -d macos-* | head -1)
-ln -sfn "MiniXiangqiCore.xcframework/$slice/Headers" "$(dirname "$output")/CoreHeaders"
+headers_published="$(dirname "$output")/CoreHeaders"
+rm -rf "$headers_published"
+cp -R "$output/$slice/Headers" "$headers_published"
 
 # A fingerprint of the sources this framework was built from, so the app can
 # tell whether it is current. Content, not timestamps: a git checkout of
