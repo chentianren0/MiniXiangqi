@@ -329,6 +329,14 @@ final class NearbyTransport {
     init(driver: NearbyDriver, log: NearbyLog) {
         self.driver = driver
         self.log = log
+        // **The pairing registry is not radio work**, so it is not waited for
+        // and it is not started and stopped with the publisher and the
+        // subscriber. It is a system record this device already holds, it is
+        // what the propose sheet's list of devices *is*, and it has to be right
+        // at the instant that sheet opens rather than seconds later. Where
+        // there is no radio there are no pairings either, and a Simulator is
+        // the case that proves it.
+        if Self.isSupported { watchPairedDevices() }
     }
 
     /// Whether this device has the radio at all. Where it does not, there is
@@ -340,12 +348,22 @@ final class NearbyTransport {
     // MARK: - Paired devices
 
     /// The system's pairing list, which is the system's and outlives the app.
+    ///
+    /// Idempotent, and it lets go of its own handle when the snapshots stop, so
+    /// that a watch which failed once is taken up again the next time somebody
+    /// asks for the room rather than leaving the list empty for the rest of the
+    /// launch.
     func watchPairedDevices() {
         guard pairedDevicesTask == nil else { return }
         pairedDevicesTask = Task { [self] in
+            defer { pairedDevicesTask = nil }
             do {
                 for try await snapshot in WAPairedDevice.allDevices {
                     pairedDevices = Array(snapshot.values)
+                    // The room, as the propose sheet will list it. No device is
+                    // named: a device's name is routinely its owner's own.
+                    log.note("Paired devices: \(pairedDevices.count) "
+                             + "— \(peers.filter { $0.connection != nil }.count) connected.")
                 }
             } catch {
                 log.note("Watching the paired devices failed: \(Self.describe(error)).")
@@ -357,6 +375,10 @@ final class NearbyTransport {
 
     func start() {
         guard !isRunning else { return }
+        // A surface is up and is about to ask who is in the room, so the watch
+        // is taken again where it has ended. It is idempotent, and the ordinary
+        // case is that it has been running since this object was made.
+        watchPairedDevices()
         guard NearbyService.publishable != nil, NearbyService.subscribable != nil else {
             log.note("The service \(NearbyService.name) is missing from WiFiAwareServices.")
             return

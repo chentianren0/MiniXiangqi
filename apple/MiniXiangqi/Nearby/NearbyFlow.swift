@@ -29,10 +29,17 @@
 import Foundation
 import Observation
 
-/// One device this peer can propose to right now: a ready connection and the
-/// paired device behind it.
+/// One device in the room: the system's pairing record, and the connection a
+/// proposal would travel where one is up.
 nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
-    var connection: ConnectionID
+    /// The connection to that device, where the transport has one ready.
+    ///
+    /// **A paired device is in the room whether or not a connection stands.**
+    /// Pairing is the system's own record, made once per pair of devices and
+    /// outliving the app; a connection is a thing the transport dials seconds
+    /// after the radio starts and lets go of between moves by the radio's own
+    /// design. So this is optional, and the row is drawn either way.
+    var connection: ConnectionID?
     var peer: PeerDeviceID
     /// The device's own name, for the row alone. Nothing keys on it, and it
     /// never travels: it is the peer's owner's name as often as not.
@@ -43,13 +50,45 @@ nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
     var id: PeerDeviceID { peer }
 }
 
+extension NearbyPeer {
+    /// The room, from the two sources that know about it.
+    ///
+    /// **The pairing registry is what the list is of.** A list made of
+    /// connections is empty at exactly the moment somebody opens the sheet to
+    /// make one — the radio has only just been woken, the first dial has not
+    /// landed, and the two devices the system's own pairing pages show to each
+    /// other are nowhere on screen. The registry answers that question the
+    /// instant it is asked, and it is the same answer after a relaunch.
+    ///
+    /// The connected side is still read, for the connection a proposal travels
+    /// and so that a device the transport is talking to has a row even where
+    /// the registry has not caught up with it.
+    ///
+    /// Ordered by the paired device's own identifier — the system's, and
+    /// durable — so the row a person is about to press does not move under
+    /// them.
+    static func room(paired: [NearbyPeer], connected: [NearbyPeer]) -> [NearbyPeer] {
+        var room: [PeerDeviceID: NearbyPeer] = [:]
+        for device in paired { room[device.peer] = device }
+        for device in connected {
+            // Each source contributes its own half: the registry names the
+            // device, the connection is what a proposal goes out on.
+            let named = room[device.peer]?.name ?? device.name
+            room[device.peer] = NearbyPeer(connection: device.connection,
+                                           peer: device.peer, name: named)
+        }
+        return room.values.sorted { $0.peer.rawValue < $1.peer.rawValue }
+    }
+}
+
 /// The radio, as the surfaces need it.
 @MainActor
 protocol NearbyRadio: AnyObject {
     /// Whether this hardware has Wi-Fi Aware at all.
     var isSupported: Bool { get }
     var isRunning: Bool { get }
-    /// Every device with a ready connection, one entry per device.
+    /// Every device in the room, one entry per device: the system's pairing
+    /// records, carrying the connection to each where one is up.
     var peers: [NearbyPeer] { get }
     func start()
     func stop()
@@ -329,7 +368,10 @@ final class NearbyFlow {
         return driver.sessions.first { $0.id == boardSessionID }
     }
 
-    /// The devices the invitation may go to, and the one it would go to.
+    /// The devices the invitation may go to, and the one it would go to. The
+    /// radio's own answer: every device this one is paired with, as the system
+    /// holds them, which is what makes the list right the instant the sheet
+    /// opens rather than once a connection has come up.
     var peers: [NearbyPeer] { radio.peers }
 
     var chosenDevice: NearbyPeer? {
@@ -398,8 +440,18 @@ final class NearbyFlow {
     /// supplied: what this device holds unanswered with that peer, the instant
     /// after the proposal was allowed, is the proposal it just made.
     func invite(_ device: NearbyPeer, to game: GameKind) {
+        // A paired device the transport has not dialled yet is a row a person
+        // may well press, since the room lists the pair rather than the
+        // connection. There is nowhere for the proposal to travel, and the
+        // engine's own word for that is the one the reader gets — the same
+        // sentence a connection lost between the press and the send produces,
+        // because to the reader it is the same fact.
+        guard let connection = device.connection else {
+            refusal = .refused(.unknownConnection)
+            return
+        }
         do {
-            try driver.propose(to: device.peer, on: device.connection,
+            try driver.propose(to: device.peer, on: connection,
                                rulesID: game.rulesID, proposerMoves: proposerMoves)
             awaitedSession = invited?.id
         } catch {

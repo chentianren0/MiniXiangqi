@@ -9,6 +9,7 @@
 #if os(iOS)
 
 import Foundation
+import WiFiAware
 
 extension NearbyTransport: NearbyRadio {
     /// Whether this hardware has Wi-Fi Aware. The type's own answer, as an
@@ -17,12 +18,27 @@ extension NearbyTransport: NearbyRadio {
 
     /// The devices in the room, one entry per *device*.
     ///
+    /// **The system's pairing records are the room**, joined with whatever the
+    /// connection layer has up. Two devices the system has paired are two
+    /// devices that can play, whether or not this transport has dialled either
+    /// of them yet — and dialling is what the browser loop does by itself for
+    /// every paired device, seconds after a surface wakes the radio. A list
+    /// made of connections alone is empty at exactly the moment the propose
+    /// sheet opens, which is the moment it is read.
+    var peers: [NearbyPeer] {
+        NearbyPeer.room(paired: pairedDevices.map {
+            NearbyPeer(connection: nil, peer: nearbyPeerID(of: $0), name: $0.name)
+        }, connected: connected)
+    }
+
+    /// The devices a connection is actually up to.
+    ///
     /// Two crossed connections to one device are the binding's ordinary
     /// bring-up and both stay up, but they are one device to the person looking
-    /// at the list — and a proposal travels one of them, so the list hands over
-    /// exactly one. Ordered by the connection's own name so the row a person is
-    /// about to press does not move under them.
-    var peers: [NearbyPeer] {
+    /// at the list — and a proposal travels one of them, so this hands over
+    /// exactly one, chosen by the connection's own name so it does not change
+    /// under a redraw.
+    private var connected: [NearbyPeer] {
         var seen: Set<PeerDeviceID> = []
         return connections
             .filter(\.isReady)
