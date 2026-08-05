@@ -1,9 +1,9 @@
 // The Settings destination on a phone.
 //
-// The screen is the same four groups it is on a Mac, and this file does not
-// re-prove the copy the Mac's suite already proves. What it proves is what only
-// a phone can say: that the accepted controls arrive as this platform's own
-// controls — a picker row that is a button carrying its selection, a switch that
+// The screen is the same groups it is on a Mac, 关于 at the foot of them
+// included, and this file does not re-prove the copy the Mac's suite already
+// proves. What it proves is what only a phone can say: that the accepted
+// controls arrive as this platform's own controls — a picker row that is a button carrying its selection, a switch that
 // is a switch — that they answer a finger, that a preference written by one
 // survives leaving the screen, and that the whole of it follows the language the
 // launch names rather than the one the Simulator was left in.
@@ -46,6 +46,11 @@ final class PhoneSettingsUITests: XCTestCase {
         let confirmDelete, confirmDeleteFooter: String
         let defaultsSection, defaultFirstMover, defaultAiLevel: String
         let iMoveFirst, standardLevel, defaultsFooter: String
+        /// The About row at the foot of the screen, and the page it opens: the
+        /// three facts about this build, the licence and its statement, and the
+        /// source the licence is about.
+        let about, name, version, build: String
+        let license, licenseStatement, source: String
 
         static let chinese = Language(
             code: "zh-Hans", short: "zh",
@@ -59,7 +64,11 @@ final class PhoneSettingsUITests: XCTestCase {
             defaultsSection: "人机对弈默认设置",
             defaultFirstMover: "默认先后手", defaultAiLevel: "默认 AI 等级",
             iMoveFirst: "我先手", standardLevel: "标准",
-            defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。")
+            defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
+            about: "关于", name: "名称", version: "版本", build: "构建版本",
+            license: "许可证",
+            licenseStatement: "Mini Xiangqi 是自由软件，依据 GNU General Public License v3 发布。",
+            source: "源代码")
 
         static let english = Language(
             code: "en", short: "en",
@@ -73,7 +82,11 @@ final class PhoneSettingsUITests: XCTestCase {
             defaultsSection: "Human versus AI Defaults",
             defaultFirstMover: "Default First Mover", defaultAiLevel: "Default AI Level",
             iMoveFirst: "I Move First", standardLevel: "Standard",
-            defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.")
+            defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.",
+            about: "About", name: "Name", version: "Version", build: "Build",
+            license: "License",
+            licenseStatement: "Mini Xiangqi is free software, released under the GNU General Public License v3.",
+            source: "Source Code")
     }
 
     /// The preferences database a launch reads and writes, so no test here ever
@@ -175,6 +188,34 @@ final class PhoneSettingsUITests: XCTestCase {
         return false
     }
 
+    /// Brings a row within reach and hands it back. A `Form` taller than the
+    /// phone leaves its last group below the fold, and a tap on something that
+    /// is not hittable is a tap on nothing.
+    private func reveal(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let element = control(app, identifier)
+        XCTAssertTrue(element.waitForExistence(timeout: 20),
+                      "\(identifier) should be on the screen")
+        var swipes = 0
+        while !element.isHittable && swipes < 5 {
+            app.swipeUp()
+            swipes += 1
+        }
+        return element
+    }
+
+    /// Everything a row says, in one string: its own label, its value, and the
+    /// texts inside it. A row of a label and a value is one element on one
+    /// platform and a container of two texts on another, and a test that picked
+    /// one of those would be reading nil on the other.
+    private func detail(of identifier: String, in app: XCUIApplication) -> String {
+        let row = control(app, identifier)
+        guard row.exists else { return "" }
+        var parts = [row.label, String(describing: row.value ?? "")]
+        let texts = row.staticTexts
+        for index in 0..<texts.count { parts.append(texts.element(boundBy: index).label) }
+        return parts.joined(separator: " ")
+    }
+
     private func attach(_ app: XCUIApplication, named name: String) {
         Thread.sleep(forTimeInterval: 0.6)
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -249,6 +290,89 @@ final class PhoneSettingsUITests: XCTestCase {
         XCTAssertEqual(destination(app, 2).label, language.settings)
 
         attach(app, named: "\(language.short)-phone-settings")
+    }
+
+    // MARK: - 关于
+
+    /// The page in the normative language, and in English beside it, because
+    /// the licence statement is the longest sentence either language has to fit
+    /// on a phone.
+    func testTheAboutPageStatesTheLicenceAndTheVersion() {
+        photographAbout(in: .chinese)
+    }
+
+    func testTheAboutPageFollowsTheLanguageTheLaunchNames() {
+        photographAbout(in: .english)
+    }
+
+    /// What only the running application can say about this page: that the row
+    /// at the foot of Settings opens it, that every fact on it *arrived* — a
+    /// version read from a bundle that had none looks exactly like an empty row
+    /// — and that the licence behind it is the licence rather than a blank
+    /// page. What each fact *is* belongs to `AboutTests`, which can read the
+    /// bundle a UI-test bundle cannot.
+    private func photographAbout(in language: Language) {
+        let app = launch(in: language)
+        openSettings(app, language)
+
+        let row = reveal("settings-about", in: app)
+        XCTAssertTrue(row.exists, "关于 should be at the foot of Settings")
+        XCTAssertTrue(app.staticTexts[language.about].exists,
+                      "and should read \(language.about)")
+        row.tap()
+
+        // The three facts about this build.
+        XCTAssertTrue(control(app, "about-name").waitForExistence(timeout: 20),
+                      "the About page should open")
+        for (identifier, label) in [("about-name", language.name),
+                                    ("about-version", language.version),
+                                    ("about-build", language.build)] {
+            XCTAssertTrue(app.staticTexts[label].exists, "\(identifier) should read \(label)")
+            XCTAssertFalse(detail(of: identifier, in: app).replacingOccurrences(of: label, with: "")
+                .trimmingCharacters(in: .whitespaces).isEmpty,
+                           "\(identifier) should carry a value beside its label")
+        }
+        XCTAssertTrue(detail(of: "about-name", in: app).contains("Mini Xiangqi"),
+                      "名称 should carry the product name — it reads "
+                      + detail(of: "about-name", in: app))
+        for identifier in ["about-version", "about-build"] {
+            XCTAssertTrue(detail(of: identifier, in: app).contains(where: \.isNumber),
+                          "\(identifier) should carry a number read from the bundle — it reads "
+                          + detail(of: identifier, in: app))
+        }
+
+        // The licence, the source it is a licence about, and the sentence that
+        // says what the two of them mean.
+        // Read off the rows themselves rather than looking for a text beside
+        // them: a link's title is the link's own label and is not a text of its
+        // own, unlike a row whose value sits next to it.
+        XCTAssertTrue(detail(of: "about-license", in: app).contains(language.license),
+                      "the licence row should read \(language.license) — it reads "
+                      + detail(of: "about-license", in: app))
+        XCTAssertTrue(detail(of: "about-source", in: app).contains(language.source),
+                      "the source row should read \(language.source) — it reads "
+                      + detail(of: "about-source", in: app))
+        XCTAssertTrue(app.staticTexts[language.licenseStatement].exists,
+                      "the footer should state the licence")
+        attach(app, named: "\(language.short)-phone-about")
+
+        // And the document behind the row is the licence itself. A licence that
+        // fell out of the bundle would leave this page blank, which is the one
+        // failure the page cannot report on its own.
+        control(app, "about-license").tap()
+        let heading = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "GNU GENERAL PUBLIC LICENSE")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 20),
+                      "the licence page should show the GNU General Public License")
+        attach(app, named: "\(language.short)-phone-about-license")
+
+        // Back out the way the platform leaves a pushed page, twice, which is
+        // the whole of how this page is entered and left.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(control(app, "about-name").waitForExistence(timeout: 10))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(control(app, "settings-confirm-delete").waitForExistence(timeout: 10),
+                      "and Settings is what it returns to")
     }
 
     // MARK: - The row the hardware decides

@@ -7,17 +7,21 @@
 // would be a second source of truth for it.
 //
 // Issue #64's Stage 5 design fixes the shape, and Stage 4's opponent added to
-// it: a grouped Form of four groups. The board's two choices sit together under
-// 棋盘 because both are about what the board shows and because they are
-// independent of each other — a learner may want 图标 discs beside the 中文 list
-// they are learning to read. 人机对弈默认设置 is next, headed and footed, because
-// its two values need saying what they are for: they initialize the next game's
-// setup and never reach the game already on the board. The two feedback switches
-// are their own group with no header, of equal standing and neither nested under
-// the other. 删除前确认 is a group of its own so that its footer is unmistakably
-// about it: turning it off makes a deletion immediate, and a deletion cannot be
-// undone. Those two are the only footers on the screen — a footer under every
-// group is a screen nobody reads.
+// it: a grouped Form of preference groups, with 关于 under them. The board's two
+// choices sit together under 棋盘 because both are about what the board shows
+// and because they are independent of each other — a learner may want 图标 discs
+// beside the 中文 list they are learning to read. 人机对弈默认设置 is next, headed
+// and footed, because its two values need saying what they are for: they
+// initialize the next game's setup and never reach the game already on the
+// board. The two feedback switches are their own group with no header, of equal
+// standing and neither nested under the other. 删除前确认 is a group of its own so
+// that its footer is unmistakably about it: turning it off makes a deletion
+// immediate, and a deletion cannot be undone. Those two are the only footers on
+// the screen — a footer under every group is a screen nobody reads.
+// 关于 is last and is not a preference at all: it is the way to what the
+// application is and what it is licensed under, which is a page rather than a
+// control, so it takes a group of its own at the foot where nothing above it
+// has to make room.
 //
 // **Settings is silent.** Sound is an event of the board, per
 // docs/interaction-design.md § Sound and haptics, and a screen that clicked back
@@ -56,6 +60,7 @@ struct SettingsScreen: View {
                 humanVersusAIDefaults
                 feedback
                 deletion
+                about
             }
             // The macOS-native presentation of a preference list, and the one
             // that gives a section its header and its footer.
@@ -76,8 +81,8 @@ struct SettingsScreen: View {
         .onChange(of: aiLevel) { Preferences.defaultAiLevel.set(aiLevel) }
     }
 
-    // The four groups, each its own property: one Form body carrying all of
-    // them stopped type-checking in reasonable time, and a section is a
+    // The groups, each its own property: one Form body carrying all of them
+    // stopped type-checking in reasonable time, and a section is a
     // self-contained thing anyway.
 
     /// The tags are the stored names themselves. A picker row is a choice being
@@ -154,6 +159,17 @@ struct SettingsScreen: View {
         } footer: {
             Text("settings.confirmDelete.footer")
                 .accessibilityIdentifier("settings-confirm-delete-footer")
+        }
+    }
+
+    /// The way to `AboutScreen`, and the screen's only row that writes nothing.
+    /// It is pushed onto Settings' own stack rather than presented, because it
+    /// is a page walked into from a destination's root — the platform's back
+    /// control is what leaves it, and nothing about it is modal.
+    private var about: some View {
+        Section {
+            NavigationLink("about.title") { AboutScreen() }
+                .accessibilityIdentifier("settings-about")
         }
     }
 }

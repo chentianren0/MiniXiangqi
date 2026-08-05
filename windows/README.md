@@ -547,7 +547,7 @@ is exactly the class of question this section is about.
 
 ## Settings, and the preferences it writes
 
-The Settings destination draws **three of the Mac's four groups**, and every absence is
+The Settings destination draws **three of the Mac's four preference groups**, and every absence is
 issue #80's owner-decided trim rather than a design change — `docs/product.md` § Product
 navigation carries the Windows Settings scope with the reasoning for each. 棋盘 is absent
 with both of its rows: the move record here is the core's own coordinate text in both
