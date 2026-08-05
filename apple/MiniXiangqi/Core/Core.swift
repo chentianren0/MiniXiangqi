@@ -883,6 +883,225 @@ private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
     }
 }
 
+// MARK: - The wire session a nearby game is played over
+
+/// The terminal a peer has sent for its session, in the core's own vocabulary.
+/// The protocol layer has a word of its own for the same two things; this is
+/// the one the C interface carries, mapped here as every other closed core
+/// vocabulary in this file is.
+nonisolated enum WireTerminal: Sendable, Equatable {
+    case resign, acceptDraw
+}
+
+/// What the store keeps of the BoardGame session an unfinished nearby game is
+/// being played over — `docs/game-data.md`'s `nearby_session` row.
+///
+/// It is not the game and it is not the game's configuration: it is the
+/// protocol's own bookkeeping, and every value of it is device-local, which is
+/// why the portability law keeps all of it out of the archive. The mover is not
+/// here — that is `GameConfiguration.localSide`, and one fact lives in one
+/// place.
+nonisolated struct NearbyWireSession: Equatable, Sendable {
+    /// The identifier the proposer minted, compared byte-wise on the wire.
+    var sessionID: String
+    /// The paired device on the other end, as the transport names it.
+    var peerID: String
+    /// Which peer proposed — the only asymmetry a session has, and the one that
+    /// decides which connection a resume exchange completes on.
+    var proposedLocally: Bool
+    /// Accepted retractions, and the surviving count of the last one.
+    var undos: Int
+    var keep: Int
+    /// The terminal this device has sent, where it has sent one.
+    var sentEnd: WireTerminal?
+    /// Whether the session's last ply is the claim turn action. The archive does
+    /// not record one — a claimed draw is its terminal trio — so an unfinished
+    /// game has nowhere else to carry it, and a session that resumed a ply short
+    /// of its opponent would be sent that ply back on a turn that is not the
+    /// sender's.
+    var claimed: Bool
+
+    init(sessionID: String, peerID: String, proposedLocally: Bool,
+         undos: Int = 0, keep: Int = 0, sentEnd: WireTerminal? = nil,
+         claimed: Bool = false) {
+        self.sessionID = sessionID
+        self.peerID = peerID
+        self.proposedLocally = proposedLocally
+        self.undos = undos
+        self.keep = keep
+        self.sentEnd = sentEnd
+        self.claimed = claimed
+    }
+
+    init?(_ raw: MxqNearbySession) {
+        let sentEnd: WireTerminal?
+        switch raw.sent_end {
+        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_RESIGN): sentEnd = .resign
+        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_ACCEPT_DRAW): sentEnd = .acceptDraw
+        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_NONE): sentEnd = nil
+        // Every switch over a core vocabulary needs a default arm, and there is
+        // no reading of an unknown terminal that is safe to guess at: a session
+        // whose settledness cannot be read is not one to resume.
+        default: return nil
+        }
+        self.init(sessionID: string(of: raw.session_id,
+                                    capacity: MXQ_NEARBY_SESSION_ID_CAP),
+                  peerID: string(of: raw.peer_id, capacity: MXQ_NEARBY_PEER_ID_CAP),
+                  proposedLocally: raw.proposer
+                      == MxqNearbyProposer(MXQ_NEARBY_PROPOSER_LOCAL),
+                  undos: Int(raw.undos), keep: Int(raw.keep), sentEnd: sentEnd,
+                  claimed: raw.claimed != 0)
+    }
+
+    /// The C struct, with the two identifiers copied into their capacities.
+    /// `nil` where one does not fit: the core refuses such a value, and building
+    /// a truncated one to be refused would be worse than not building it.
+    var raw: MxqNearbySession? {
+        var state = MxqNearbySession()
+        state.struct_size = UInt32(MemoryLayout<MxqNearbySession>.size)
+        state.proposer = MxqNearbyProposer(
+            proposedLocally ? MXQ_NEARBY_PROPOSER_LOCAL : MXQ_NEARBY_PROPOSER_PEER)
+        state.undos = UInt32(max(0, undos))
+        state.keep = UInt32(max(0, keep))
+        state.claimed = claimed ? 1 : 0
+        switch sentEnd {
+        case .resign: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_RESIGN)
+        case .acceptDraw: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_ACCEPT_DRAW)
+        case nil: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_NONE)
+        }
+        guard write(sessionID, into: &state.session_id,
+                    capacity: Int(MXQ_NEARBY_SESSION_ID_CAP)),
+              write(peerID, into: &state.peer_id,
+                    capacity: Int(MXQ_NEARBY_PEER_ID_CAP))
+        else { return nil }
+        return state
+    }
+
+    /// One identifier into its fixed capacity, NUL-terminated. Refuses rather
+    /// than truncates, because an identifier one byte short is another session.
+    private func write<Buffer>(_ text: String, into buffer: inout Buffer,
+                               capacity: Int) -> Bool {
+        let bytes = Array(text.utf8)
+        guard !bytes.isEmpty, bytes.count < capacity else { return false }
+        withUnsafeMutablePointer(to: &buffer) {
+            $0.withMemoryRebound(to: CChar.self, capacity: capacity) { out in
+                for (index, byte) in bytes.enumerated() {
+                    out[index] = CChar(bitPattern: byte)
+                }
+                out[bytes.count] = 0
+            }
+        }
+        return true
+    }
+}
+
+/// The end two nearby players declared to each other, as the fourth terminal
+/// commit takes it. A rules-decided end is not one of these: the board already
+/// knows that verdict, and `confirmResult()` is what commits it.
+nonisolated enum NearbyEnding: Equatable, Sendable {
+    /// One player resigned; the side named is the one that did.
+    case resignation(Side)
+    case mutualResignation
+    case agreedDraw
+}
+
+/// The library, as the nearby layer needs it: the rules seam every board
+/// speaks through, plus the four calls that exist only for a game two devices
+/// play.
+protocol NearbyLibrary: Rules {
+    /// Let go of the attached session without ending its game. The library
+    /// keeps its active game, and the next resume reads it back.
+    func endSession()
+    /// What the store says about the active game, with no session attached.
+    func activeGameSummary() throws -> ActiveGameSummary?
+    /// Create the nearby game and the wire session it is played over, in one
+    /// transaction.
+    func createNearby(_ configuration: GameConfiguration,
+                      wire: NearbyWireSession) throws
+    /// The wire session the attached game carries, where it carries one.
+    func nearbyWireSession() throws -> NearbyWireSession?
+    /// Rewrite it. For the one change the move line does not share: a terminal
+    /// this device sent, which ends nothing until the exchange settles it.
+    func setNearbyWireSession(_ wire: NearbyWireSession) throws
+    /// The negotiated retraction: the surviving line and the counts that
+    /// produced it, in one transaction.
+    func retractNearby(to keep: Int, wire: NearbyWireSession) throws
+    /// Commit the end the two players declared. The core derives the outcome.
+    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UInt64
+}
+
+extension Core: NearbyLibrary {
+    func createNearby(_ configuration: GameConfiguration,
+                      wire: NearbyWireSession) throws {
+        precondition(!hasSession, "created a nearby game over a game")
+        guard var state = wire.raw else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
+                            detail: "the wire session's identifiers do not fit")
+        }
+        var config = configuration.raw
+        var game: OpaquePointer?
+        var err = freshError()
+        try check(mxq_game_create_nearby(handle, &config, &state, &game, &err), err)
+        session = game
+    }
+
+    func nearbyWireSession() throws -> NearbyWireSession? {
+        let session = try attachedSession()
+        var state = MxqNearbySession()
+        state.struct_size = UInt32(MemoryLayout<MxqNearbySession>.size)
+        var exists: UInt8 = 0
+        var err = freshError()
+        try check(mxq_game_nearby_session(session, &state, &exists, &err), err)
+        guard exists != 0 else { return nil }
+        guard let wire = NearbyWireSession(state) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported an unknown wire terminal")
+        }
+        return wire
+    }
+
+    func setNearbyWireSession(_ wire: NearbyWireSession) throws {
+        let session = try attachedSession()
+        guard var state = wire.raw else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
+                            detail: "the wire session's identifiers do not fit")
+        }
+        var err = freshError()
+        try check(mxq_game_set_nearby_session(session, &state, &err), err)
+    }
+
+    func retractNearby(to keep: Int, wire: NearbyWireSession) throws {
+        let session = try attachedSession()
+        guard var state = wire.raw else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
+                            detail: "the wire session's identifiers do not fit")
+        }
+        var err = freshError()
+        try check(mxq_game_retract_nearby(session, UInt32(max(0, keep)), &state,
+                                          &err), err)
+    }
+
+    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UInt64 {
+        let session = try attachedSession()
+        let reason: MxqEndReason
+        var side = MxqColor(MXQ_COLOR_NONE)
+        switch ending {
+        case .resignation(let resigning):
+            reason = MxqEndReason(MXQ_END_REASON_RESIGNATION)
+            side = MxqColor(resigning == .red ? MXQ_COLOR_RED : MXQ_COLOR_BLACK)
+        case .mutualResignation:
+            reason = MxqEndReason(MXQ_END_REASON_MUTUAL_RESIGNATION)
+        case .agreedDraw:
+            reason = MxqEndReason(MXQ_END_REASON_AGREED_DRAW)
+        }
+        var recordID: UInt64 = 0
+        var err = freshError()
+        try check(mxq_game_commit_nearby_end(session, reason, side, &recordID,
+                                             &err), err)
+        return recordID
+    }
+}
+
 // MARK: - The active game, without a session
 
 /// The active game as the store describes it, with no session attached.

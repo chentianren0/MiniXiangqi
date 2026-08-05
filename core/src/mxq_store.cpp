@@ -26,7 +26,7 @@ namespace {
 
 /*
  * Schema version 3, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 3"). Three STRICT tables; the single library row with the
+ * schema, version 3"). Four STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship, the local-perspective rule and time
  * ordering as check constraints;
@@ -139,6 +139,54 @@ CREATE TABLE library (
   id               INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
   active_record_id INTEGER REFERENCES game (record_id)
 ) STRICT;
+
+-- The wire session an unfinished nearby game is being played over: what the
+-- BoardGame protocol needs to continue it after this application has been
+-- relaunched, and every value of it device-local by the portability law. It is
+-- a table of its own rather than columns on game because the two have different
+-- lifetimes and change on different beats — a terminal this device sent moves
+-- this and not the game — and because it would be null for the great majority
+-- of rows.
+--
+-- At most one row exists at a time, since there is at most one active game, and
+-- it is keyed on that game. Its death is stated twice on purpose: the cascade
+-- covers a History record being deleted, and the terminal commit deletes the
+-- row explicitly because archiving *updates* the game row in place and no
+-- cascade fires there.
+CREATE TABLE nearby_session (
+  record_id  INTEGER NOT NULL PRIMARY KEY
+               REFERENCES game (record_id) ON DELETE CASCADE,
+  session_id TEXT    NOT NULL CHECK (length(session_id) > 0),
+  peer_id    TEXT    NOT NULL CHECK (length(peer_id) > 0),
+  proposer   TEXT    NOT NULL CHECK (proposer IN ('local', 'peer')),
+  undos      INTEGER NOT NULL CHECK (undos >= 0),
+  keep       INTEGER NOT NULL CHECK (keep >= 0),
+  sent_end   TEXT    CHECK (sent_end IN ('resign', 'accept_draw')),
+  -- Whether the last ply of the session is the rules contract's claim turn
+  -- action, which is a ply the protocol counts and the archive does not record.
+  claimed    INTEGER NOT NULL DEFAULT 0 CHECK (claimed IN (0, 1))
+) STRICT;
+
+-- A wire session belongs to a nearby game being played on this device, and to
+-- nothing else. The mode and provenance pair is the same one that makes
+-- local_side present, so a row here is exactly a row with a local side.
+CREATE TRIGGER nearby_session_is_a_local_nearby_game
+BEFORE INSERT ON nearby_session
+WHEN (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+  OR (SELECT provenance FROM game WHERE record_id = NEW.record_id)
+       IS NOT 'locally-played'
+BEGIN
+  SELECT RAISE(ABORT, 'a wire session belongs to a nearby game played here');
+END;
+
+-- And it belongs to one that is still being played: a History record's game is
+-- over, and the session it was played over is not something to keep.
+CREATE TRIGGER nearby_session_is_an_unfinished_game
+BEFORE INSERT ON nearby_session
+WHEN (SELECT outcome FROM game WHERE record_id = NEW.record_id) IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a wire session belongs to an unfinished game');
+END;
 
 -- The accepted History ordering — pinned first, then newest History-added
 -- time within each group, tie-break record_id descending — served by one
@@ -313,7 +361,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
     return MXQ_OK;
 }
 
-/* The structural verification run on every successful open: the three tables
+/* The structural verification run on every successful open: the four tables
  * of schema version 3 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
@@ -325,14 +373,15 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (!query_first_column(db,
                             "SELECT count(*) FROM sqlite_schema "
                             "WHERE type = 'table' "
-                            "AND name IN ('meta', 'game', 'library') "
+                            "AND name IN ('meta', 'game', 'library',"
+                            " 'nearby_session') "
                             "AND sql LIKE '%STRICT%';",
                             value, rc, detail)) {
         return fail_sqlite(err, rc, "cannot inspect the schema: " + detail);
     }
-    if (value != "3") {
+    if (value != "4") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
-                    "the store does not hold the three STRICT tables of schema "
+                    "the store does not hold the four STRICT tables of schema "
                     "version 3 (found " + value + ")");
     }
 
@@ -607,10 +656,55 @@ MxqStatus active_reference(sqlite3 *db, bool &out_exists,
     return MXQ_OK;
 }
 
+/*
+ * The wire session written over its game's row, inside a transaction already
+ * open. An insert with an explicit conflict clause: OR REPLACE would delete the
+ * existing row with no trigger firing, which the prohibition at the top of the
+ * header is about.
+ */
+bool write_nearby_session(sqlite3 *db, uint64_t record_id,
+                          const NearbySession &nearby, int &rc,
+                          std::string &detail) {
+    Stmt upsert(db,
+                "INSERT INTO nearby_session (record_id, session_id, peer_id,"
+                " proposer, undos, keep, sent_end, claimed)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (record_id) DO UPDATE SET"
+                " session_id = excluded.session_id,"
+                " peer_id = excluded.peer_id,"
+                " proposer = excluded.proposer,"
+                " undos = excluded.undos,"
+                " keep = excluded.keep,"
+                " sent_end = excluded.sent_end,"
+                " claimed = excluded.claimed;");
+    if (!upsert.ok()) {
+        rc = upsert.rc();
+        detail = upsert.error(db);
+        return false;
+    }
+    upsert.bind_int64(1, static_cast<int64_t>(record_id));
+    upsert.bind_text(2, nearby.session_id);
+    upsert.bind_text(3, nearby.peer_id);
+    upsert.bind_text(4, nearby.proposer);
+    upsert.bind_int64(5, nearby.undos);
+    upsert.bind_int64(6, nearby.keep);
+    upsert.bind_text(7, nearby.sent_end.empty() ? nullptr
+                                                : nearby.sent_end.c_str());
+    upsert.bind_int64(8, nearby.claimed ? 1 : 0);
+    const int step = upsert.step();
+    if (step != SQLITE_DONE) {
+        rc = step;
+        detail = upsert.error(db);
+        return false;
+    }
+    return true;
+}
+
 } /* namespace */
 
 MxqStatus create_active(Store &store, const ActiveGame &row,
-                        uint64_t &out_record_id, MxqError *err) {
+                        const NearbySession *nearby, uint64_t &out_record_id,
+                        MxqError *err) {
     out_record_id = 0;
     std::lock_guard<std::mutex> lock(store.mutex());
     sqlite3 *db = store.db();
@@ -673,6 +767,16 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
     }
 
     const int64_t record_id = sqlite3_last_insert_rowid(db);
+
+    /* The wire session, in the same transaction as the game it belongs to: the
+     * two are one event, and an active nearby game the store cannot resume is
+     * worse than no game at all. */
+    if (nearby != nullptr &&
+        !write_nearby_session(db, static_cast<uint64_t>(record_id), *nearby, rc,
+                              detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot record the nearby wire session: " + detail);
+    }
 
     {
         /* The reference is set after the row exists and while its outcome is
@@ -763,10 +867,94 @@ MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
     return MXQ_OK;
 }
 
+MxqStatus load_nearby_session(Store &store, uint64_t record_id, bool &out_exists,
+                              NearbySession &out, MxqError *err) {
+    out_exists = false;
+    out = NearbySession();
+
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    Stmt select(db, "SELECT session_id, peer_id, proposer, undos, keep,"
+                    " sent_end, claimed FROM nearby_session"
+                    " WHERE record_id = ?;");
+    if (!select.ok()) {
+        return fail_sqlite(err, select.rc(),
+                           "cannot prepare the wire-session query: " +
+                               select.error(db));
+    }
+    select.bind_int64(1, static_cast<int64_t>(record_id));
+    const int step = select.step();
+    if (step == SQLITE_DONE) {
+        /* No wire session. A local game has none, and so does a nearby game the
+         * protocol has parted with. */
+        return MXQ_OK;
+    }
+    if (step != SQLITE_ROW) {
+        return fail_sqlite(err, step, "cannot read the wire session: " +
+                                          select.error(db));
+    }
+    out.session_id = text_at(select.get(), 0);
+    out.peer_id = text_at(select.get(), 1);
+    out.proposer = text_at(select.get(), 2);
+    out.undos = sqlite3_column_int64(select.get(), 3);
+    out.keep = sqlite3_column_int64(select.get(), 4);
+    out.sent_end = text_at(select.get(), 5);
+    out.claimed = sqlite3_column_int64(select.get(), 6) != 0;
+    out_exists = true;
+    return MXQ_OK;
+}
+
+MxqStatus set_nearby_session(Store &store, uint64_t record_id,
+                             const NearbySession &nearby, MxqError *err) {
+    std::lock_guard<std::mutex> lock(store.mutex());
+    sqlite3 *db = store.db();
+
+    int rc = SQLITE_OK;
+    std::string detail;
+    Transaction tx(db);
+    if (!tx.begin(rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot begin the wire-session transaction: " +
+                               detail);
+    }
+
+    /* The row must still be the library's active game, asked inside the
+     * transaction that would write it: a wire session belongs to a game being
+     * played, and a History record is not one. */
+    {
+        bool referenced = false;
+        uint64_t active_id = 0;
+        const MxqStatus st = active_reference(db, referenced, active_id, err);
+        if (st != MXQ_OK) {
+            return st;
+        }
+        if (!referenced || active_id != record_id) {
+            fill_error(err, MXQ_ERR_STORE_NOT_FOUND,
+                       "the game is no longer the library's active game");
+            return MXQ_ERR_STORE_NOT_FOUND;
+        }
+    }
+
+    if (!write_nearby_session(db, record_id, nearby, rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot record the nearby wire session: " + detail);
+    }
+
+    if (!bump_revision(db, rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot bump the library revision: " + detail);
+    }
+    if (!tx.commit(rc, detail)) {
+        return fail_sqlite(err, rc, "cannot commit the wire session: " + detail);
+    }
+    return MXQ_OK;
+}
+
 MxqStatus rewrite_active(Store &store, uint64_t record_id,
                          const std::string &archive,
                          const std::string &content_sha256, int64_t move_count,
-                         MxqError *err) {
+                         const NearbySession *nearby, MxqError *err) {
     std::lock_guard<std::mutex> lock(store.mutex());
     sqlite3 *db = store.db();
 
@@ -804,6 +992,16 @@ MxqStatus rewrite_active(Store &store, uint64_t record_id,
                        "the active game's row is no longer there to rewrite");
             return MXQ_ERR_STORE_NOT_FOUND;
         }
+    }
+
+    /* A nearby game's wire session moves with its move line and is written in
+     * the same transaction: a ply carries the retraction count it did not
+     * change, a retraction carries the one it did, and neither can be committed
+     * without the other. */
+    if (nearby != nullptr &&
+        !write_nearby_session(db, record_id, *nearby, rc, detail)) {
+        return fail_sqlite(err, rc,
+                           "cannot record the nearby wire session: " + detail);
     }
 
     if (!bump_revision(db, rc, detail)) {
@@ -897,6 +1095,28 @@ MxqStatus commit_completion(Store &store, uint64_t record_id,
             fill_error(err, MXQ_ERR_STORE_NOT_FOUND,
                        "the active game's row is no longer there to archive");
             return MXQ_ERR_STORE_NOT_FOUND;
+        }
+    }
+
+    {
+        /* And the wire session goes, explicitly. The update above rewrites the
+         * game row in place rather than deleting it, so the foreign key's
+         * cascade never fires at the moment that matters; a filed game must
+         * leave no session row behind, because that row names the peer's
+         * device. Unconditional and silent where there is none: every archiving
+         * path comes through here, and most games were never played over a
+         * wire. */
+        Stmt drop(db, "DELETE FROM nearby_session WHERE record_id = ?;");
+        if (!drop.ok()) {
+            return fail_sqlite(err, drop.rc(),
+                               "cannot prepare the wire-session deletion: " +
+                                   drop.error(db));
+        }
+        drop.bind_int64(1, static_cast<int64_t>(record_id));
+        const int step = drop.step();
+        if (step != SQLITE_DONE) {
+            return fail_sqlite(err, step, "cannot delete the wire session: " +
+                                              drop.error(db));
         }
     }
 

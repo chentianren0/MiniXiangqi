@@ -117,6 +117,19 @@ struct MxqGame {
     uint64_t record_id = 0;
 
     /*
+     * The wire session a nearby active game is being played over, where the
+     * store holds one. It is carried on the session so that every committed
+     * mutation writes it in its own transaction: a move line and a retraction
+     * count committed a transaction apart could disagree, and the resume
+     * exchange would then reconcile to a line neither player played.
+     *
+     * Absent for every local game, for an imported nearby record, for a replay,
+     * and for a nearby game the protocol has parted with.
+     */
+    bool             has_nearby = false;
+    MxqNearbySession nearby{};
+
+    /*
      * The two ways a session stops accepting mutations, which are different
      * facts and carry different statuses.
      *

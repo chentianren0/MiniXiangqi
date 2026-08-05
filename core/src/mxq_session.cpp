@@ -349,6 +349,151 @@ store::ActiveGame row_of(const archive::Record &record,
     return row;
 }
 
+/* ---------------------------------------------------------------------- */
+/* The wire session a nearby game is played over                           */
+/* ---------------------------------------------------------------------- */
+
+const char *nearby_terminal_text(MxqNearbyTerminal terminal) {
+    switch (terminal) {
+    case MXQ_NEARBY_TERMINAL_RESIGN:      return "resign";
+    case MXQ_NEARBY_TERMINAL_ACCEPT_DRAW: return "accept_draw";
+    default: break;
+    }
+    return "";
+}
+
+/* The C struct as the store's row. The two identifiers travel verbatim; the two
+ * closed vocabularies become the serialised spellings the schema's CHECK
+ * constraints are written in, exactly as every other store vocabulary does. */
+store::NearbySession nearby_row_of(const MxqNearbySession &state) {
+    store::NearbySession row;
+    row.session_id = state.session_id;
+    row.peer_id = state.peer_id;
+    row.proposer =
+        state.proposer == MXQ_NEARBY_PROPOSER_PEER ? "peer" : "local";
+    row.sent_end = nearby_terminal_text(state.sent_end);
+    row.undos = static_cast<int64_t>(state.undos);
+    row.keep = static_cast<int64_t>(state.keep);
+    row.claimed = state.claimed != 0;
+    return row;
+}
+
+/* What a mutation of this session writes beside its move line: the wire session
+ * where it has one, and nothing where it has none. */
+const store::NearbySession *nearby_of(const MxqGame &game,
+                                      store::NearbySession &scratch) {
+    if (!game.has_nearby) {
+        return nullptr;
+    }
+    scratch = nearby_row_of(game.nearby);
+    return &scratch;
+}
+
+/* One identifier copied into its fixed capacity. Refuses rather than truncates:
+ * a session identifier one byte short is a different session. */
+bool copy_identifier(const char *value, char *out, size_t cap) {
+    if (value == nullptr) {
+        return false;
+    }
+    const size_t length = std::strlen(value);
+    if (length == 0 || length >= cap) {
+        return false;
+    }
+    std::memcpy(out, value, length + 1);
+    return true;
+}
+
+/*
+ * A stored row as the session carries it. The vocabularies are the schema's
+ * own, so a value outside them is store corruption rather than a guess — the
+ * same answer fill_summary gives a column outside its closed set. The two
+ * identifiers are constrained non-empty by the schema and bounded by the
+ * capacity this interface defines; a row that does not fit one is corrupt for
+ * the same reason.
+ */
+MxqStatus adopt_nearby_row(MxqGame &game, const store::NearbySession &row,
+                           MxqError *err) {
+    MxqNearbySession state;
+    std::memset(&state, 0, sizeof(state));
+    state.struct_size = static_cast<uint32_t>(sizeof(state));
+    if (row.proposer == "local") {
+        state.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    } else if (row.proposer == "peer") {
+        state.proposer = MXQ_NEARBY_PROPOSER_PEER;
+    } else {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the wire session's proposer is not one of the two peers");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+    if (row.sent_end.empty()) {
+        state.sent_end = MXQ_NEARBY_TERMINAL_NONE;
+    } else if (row.sent_end == "resign") {
+        state.sent_end = MXQ_NEARBY_TERMINAL_RESIGN;
+    } else if (row.sent_end == "accept_draw") {
+        state.sent_end = MXQ_NEARBY_TERMINAL_ACCEPT_DRAW;
+    } else {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the wire session's terminal is not one the protocol sends");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+    if (row.undos < 0 || row.keep < 0 ||
+        !copy_identifier(row.session_id.c_str(), state.session_id,
+                         MXQ_NEARBY_SESSION_ID_CAP) ||
+        !copy_identifier(row.peer_id.c_str(), state.peer_id,
+                         MXQ_NEARBY_PEER_ID_CAP)) {
+        fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                   "the wire session's identifiers or counts are not ones this "
+                   "build can hold");
+        return MXQ_ERR_STORE_CORRUPT;
+    }
+    state.undos = static_cast<uint32_t>(row.undos);
+    state.keep = static_cast<uint32_t>(row.keep);
+    state.claimed = row.claimed ? 1u : 0u;
+
+    game.has_nearby = true;
+    game.nearby = state;
+    return MXQ_OK;
+}
+
+/* The shape of an arriving wire session: the two closed vocabularies, and two
+ * identifiers that are present and fit. It is a programming error to get any of
+ * it wrong — every value here is one the frontend itself owns. */
+MxqStatus read_nearby_state(const MxqNearbySession *state,
+                            MxqNearbySession &out, MxqError *err) {
+    MxqStatus rc = check_in(state, state != nullptr ? state->struct_size : 0u,
+                            static_cast<uint32_t>(sizeof(MxqNearbySession)),
+                            static_cast<uint32_t>(sizeof(MxqNearbySession)),
+                            err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    const bool vocabulary_ok =
+        (state->proposer == MXQ_NEARBY_PROPOSER_LOCAL ||
+         state->proposer == MXQ_NEARBY_PROPOSER_PEER) &&
+        (state->sent_end == MXQ_NEARBY_TERMINAL_NONE ||
+         state->sent_end == MXQ_NEARBY_TERMINAL_RESIGN ||
+         state->sent_end == MXQ_NEARBY_TERMINAL_ACCEPT_DRAW) &&
+        state->claimed <= 1;
+    std::memset(&out, 0, sizeof(out));
+    out.struct_size = static_cast<uint32_t>(sizeof(MxqNearbySession));
+    out.proposer = state->proposer;
+    out.undos = state->undos;
+    out.keep = state->keep;
+    out.sent_end = state->sent_end;
+    out.claimed = state->claimed;
+    if (!vocabulary_ok ||
+        !copy_identifier(state->session_id, out.session_id,
+                         MXQ_NEARBY_SESSION_ID_CAP) ||
+        !copy_identifier(state->peer_id, out.peer_id, MXQ_NEARBY_PEER_ID_CAP)) {
+        assert(false && "the wire session is not one the protocol carries");
+        fill_error(err, MXQ_ERR_ARG_RANGE,
+                   "the nearby wire session's identifiers or vocabulary are "
+                   "not ones this interface defines");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    return MXQ_OK;
+}
+
 /*
  * Commit one mutated move line and, only if that succeeded, adopt it.
  *
@@ -357,6 +502,10 @@ store::ActiveGame row_of(const archive::Record &record,
  * session — its moves, its revision, its written instant — exactly as it was,
  * so no accepted-but-unsaved change can exist even for the duration of a
  * return.
+ *
+ * A nearby game's wire session rides the same transaction, from whatever the
+ * session carries at the moment of the commit: a ply carries the retraction
+ * count it did not change, and a retraction carries the one it did.
  */
 MxqStatus commit_line(MxqGame &game, std::vector<std::string> line,
                       MxqError *err) {
@@ -369,9 +518,11 @@ MxqStatus commit_line(MxqGame &game, std::vector<std::string> line,
     const std::string content = archive::content_bytes(record);
     const std::string document = archive::document_bytes(record, content);
 
+    store::NearbySession scratch;
     const MxqStatus rc = store::rewrite_active(
         *game.core->store, game.record_id, document, sha256_hex(content),
-        static_cast<int64_t>(record.moves.size()), err);
+        static_cast<int64_t>(record.moves.size()), nearby_of(game, scratch),
+        err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -459,6 +610,11 @@ MxqStatus end_game(MxqGame &game, MxqOutcome outcome, MxqEndReason reason,
     game.ended_at_ms = at;
     game.written_at_ms = at;
     game.archived = true;
+    /* The transaction deleted the wire session with the game it belonged to, so
+     * the session stops carrying one too: a handle held across the moment a game
+     * ends must not answer with a wire session the store no longer holds. */
+    game.has_nearby = false;
+    std::memset(&game.nearby, 0, sizeof(game.nearby));
     /* The revision is the staleness authority, and a game that has ended is
      * the strongest reason there is to reject a search that is still running
      * against it. */
@@ -832,8 +988,17 @@ MxqStatus history_open(MxqCore *core, uint64_t record_id, MxqGame **out_replay,
 
 extern "C" {
 
-MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
-                                   MxqGame **out_game, MxqError *err) {
+/*
+ * Creation, shared by the two doors into it.
+ *
+ * nearby is the wire session a nearby game is created over, and null for a game
+ * created without one — every local game, and a nearby game a test or a fixture
+ * builds with no protocol behind it. Where it is present it is written in the
+ * same transaction as the game row.
+ */
+static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
+                             const MxqNearbySession *nearby,
+                             MxqGame **out_game, MxqError *err) {
     MxqStatus rc = mxq::require_core(core, err);
     if (rc != MXQ_OK) {
         return rc;
@@ -869,9 +1034,9 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
     }
 
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
-    const bool nearby = config->mode == MXQ_PLAY_MODE_NEARBY;
+    const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;
     bool shape_ok =
-        human_vs_ai || nearby || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
+        human_vs_ai || two_devices || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
     if (human_vs_ai) {
         shape_ok = shape_ok &&
                    (config->human_side == MXQ_COLOR_RED ||
@@ -895,9 +1060,9 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
      * archive content: a nearby game is played from one of the two sides of
      * this device, and a local game is played from neither. */
     shape_ok = shape_ok &&
-               (nearby ? (config->local_side == MXQ_COLOR_RED ||
-                          config->local_side == MXQ_COLOR_BLACK)
-                       : config->local_side == MXQ_COLOR_NONE);
+               (two_devices ? (config->local_side == MXQ_COLOR_RED ||
+                               config->local_side == MXQ_COLOR_BLACK)
+                            : config->local_side == MXQ_COLOR_NONE);
     if (!shape_ok) {
         assert(false && "the game configuration is not one this ruleset defines");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
@@ -915,15 +1080,20 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
     game->config = *config;
     game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
     game->core = core;
+    if (nearby != nullptr) {
+        game->has_nearby = true;
+        game->nearby = *nearby;
+    }
 
     const mxq::archive::Record record = mxq::session::record_of(*game);
     const std::string content = mxq::archive::content_bytes(record);
     const std::string document = mxq::archive::document_bytes(record, content);
 
     uint64_t record_id = 0;
+    mxq::store::NearbySession scratch;
     rc = mxq::store::create_active(
         *core->store, mxq::session::row_of(record, document, content),
-        record_id, err);
+        mxq::session::nearby_of(*game, scratch), record_id, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -933,6 +1103,49 @@ MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
     mxq::session::register_session(raw);
     *out_game = raw;
     return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_create(MxqCore *core, const MxqGameConfig *config,
+                                   MxqGame **out_game, MxqError *err) {
+    return create_game(core, config, nullptr, out_game, err);
+}
+
+MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
+                                          const MxqGameConfig *config,
+                                          const MxqNearbySession *session,
+                                          MxqGame **out_game, MxqError *err) {
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    MxqNearbySession state;
+    rc = mxq::session::read_nearby_state(session, state, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    /* The shape of a session at birth. A game with no plies has retracted
+     * nothing, claimed nothing and declared nothing, so any other value here is
+     * a caller describing a session it cannot have. */
+    if (state.undos != 0 || state.keep != 0 || state.claimed != 0 ||
+        state.sent_end != MXQ_NEARBY_TERMINAL_NONE) {
+        assert(false && "a nearby game is created over a session at its birth");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a nearby game is created over a wire session that has "
+                        "retracted, claimed and declared nothing");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    /* The mode is not a preference here: this call writes a nearby_session row,
+     * and the schema's own trigger refuses one over any other kind of game.
+     * Saying so before the transaction makes it a programming error rather than
+     * a store failure. */
+    if (config != nullptr && config->struct_size == sizeof(MxqGameConfig) &&
+        config->mode != MXQ_PLAY_MODE_NEARBY) {
+        assert(false && "a wire session belongs to a nearby game");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a wire session belongs to a nearby game");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    return create_game(core, config, &state, out_game, err);
 }
 
 MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
@@ -990,6 +1203,27 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
         /*expect_completed=*/false, /*read_only=*/false, game, err);
     if (built != MXQ_OK) {
         return built;
+    }
+
+    /* The wire session, where the row has one. It is what a relaunched
+     * application rebuilds its protocol session from, and it arrives beside the
+     * bytes rather than out of them for the reason local_side does: the archive
+     * carries nothing device-local. */
+    {
+        bool has_nearby = false;
+        mxq::store::NearbySession row;
+        const MxqStatus loaded = mxq::store::load_nearby_session(
+            *core->store, record_id, has_nearby, row, err);
+        if (loaded != MXQ_OK) {
+            return loaded;
+        }
+        if (has_nearby) {
+            const MxqStatus adopted =
+                mxq::session::adopt_nearby_row(*game, row, err);
+            if (adopted != MXQ_OK) {
+                return adopted;
+            }
+        }
     }
 
     MxqGame *raw = game.release();
@@ -1439,6 +1673,152 @@ MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game, uint32_t *out_plies_removed,
     if (out_plies_removed != nullptr) {
         *out_plies_removed = plies;
     }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_retract_nearby(MxqGame *game, uint32_t keep,
+                                           const MxqNearbySession *session,
+                                           MxqError *err) {
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    MxqNearbySession state;
+    rc = mxq::session::read_nearby_state(session, state, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /* The mirror of mxq_game_undo refusing on a nearby session: what two
+     * players agreed to keep is not one player taking a move back, and neither
+     * call is the other with an argument. */
+    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+        mxq::fill_error(err, MXQ_ERR_STATE_UNDO_UNAVAILABLE,
+                        "a negotiated retraction is a nearby action");
+        return MXQ_ERR_STATE_UNDO_UNAVAILABLE;
+    }
+    /* The protocol's own range: keep runs from the initial position to one less
+     * than the count, so retracting nothing is not a retraction. */
+    if (keep >= game->moves.size()) {
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a retraction keeps fewer plies than the game holds");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    std::vector<std::string> line = game->moves;
+    line.resize(keep);
+
+    /* The wire session is adopted before the commit so that the one transaction
+     * writes the shortened line and the retraction count that produced it
+     * together. A refused commit leaves neither: the session's own copy goes
+     * back with it. */
+    const bool had_nearby = game->has_nearby;
+    const MxqNearbySession previous = game->nearby;
+    game->has_nearby = true;
+    game->nearby = state;
+    const MxqStatus committed =
+        mxq::session::commit_line(*game, std::move(line), err);
+    if (committed != MXQ_OK) {
+        game->has_nearby = had_nearby;
+        game->nearby = previous;
+        return committed;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
+                                               const MxqNearbySession *session,
+                                               MxqError *err) {
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(game);
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    rc = mxq::session::require_mutable(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    MxqNearbySession state;
+    rc = mxq::session::read_nearby_state(session, state, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+        mxq::fill_error(err, MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                        "a wire session belongs to a nearby game");
+        return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
+    }
+    /* A session's identity is not something a later call revises. Where this
+     * game already carries one, the two identifiers must be the ones it was
+     * created with — a differing value is a caller writing one session's
+     * bookkeeping over another's. */
+    if (game->has_nearby &&
+        (std::strcmp(game->nearby.session_id, state.session_id) != 0 ||
+         std::strcmp(game->nearby.peer_id, state.peer_id) != 0)) {
+        assert(false && "a wire session's identity is frozen");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "the wire session's identifiers are not this game's");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    const bool had_nearby = game->has_nearby;
+    const MxqNearbySession previous = game->nearby;
+    game->has_nearby = true;
+    game->nearby = state;
+    const mxq::store::NearbySession row = mxq::session::nearby_row_of(state);
+    rc = mxq::store::set_nearby_session(*game->core->store, game->record_id, row,
+                                        err);
+    if (rc != MXQ_OK) {
+        game->has_nearby = had_nearby;
+        game->nearby = previous;
+        return rc;
+    }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_game_nearby_session(const MxqGame *game,
+                                           MxqNearbySession *out,
+                                           uint8_t *out_exists, MxqError *err) {
+    MxqStatus rc = mxq::session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    mxq::session::Owner owner(const_cast<MxqGame *>(game));
+    if (!owner.held()) {
+        return mxq::session::concurrent_use(err);
+    }
+    if (out_exists == nullptr) {
+        assert(false && "required out pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "required out pointer was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    *out_exists = 0;
+    rc = mxq::begin_out(out, out != nullptr ? out->struct_size : 0u,
+                        static_cast<uint32_t>(sizeof(MxqNearbySession)),
+                        static_cast<uint32_t>(sizeof(MxqNearbySession)), err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (!game->has_nearby) {
+        return MXQ_OK;
+    }
+    const uint32_t writable = out->struct_size;
+    MxqNearbySession state = game->nearby;
+    state.struct_size = writable;
+    std::memcpy(out, &state, writable);
+    *out_exists = 1;
     return MXQ_OK;
 }
 

@@ -44,6 +44,12 @@ struct NearbyLaunch: Equatable {
     var autoplays = false
     /// `-mxq-nearby-then resign` — and when the line has run out, this.
     var then: Intent?
+    /// `-mxq-nearby-resume` — take up the interrupted nearby game the library
+    /// holds, and continue the session it was played over. It stands in for the
+    /// player's own tap on the Play home's card, which is what starts recovery
+    /// in the app: a driven run has no hands, and the entry decision is that
+    /// nothing enters a nearby game by itself.
+    var resumesStoredGame = false
 
     struct Proposal: Equatable {
         var rulesID: String
@@ -56,6 +62,7 @@ struct NearbyLaunch: Equatable {
         consents = arguments.contains("-mxq-nearby-consent")
         agrees = arguments.contains("-mxq-nearby-agree")
         autoplays = arguments.contains("-mxq-nearby-autoplay")
+        resumesStoredGame = arguments.contains("-mxq-nearby-resume")
         script = Self.line(after: "-mxq-nearby-script", in: arguments)
         proposal = Self.proposal(in: Self.value(after: "-mxq-nearby-propose", in: arguments))
         then = Self.value(after: "-mxq-nearby-then", in: arguments).flatMap(Intent.init(rawValue:))

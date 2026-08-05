@@ -166,6 +166,7 @@ private struct Destinations: View {
     private enum Destination: Hashable { case play, history, settings }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     init(core: Core) {
         self.core = core
@@ -192,7 +193,12 @@ private struct Destinations: View {
         }
         #endif
         let log = NearbyLog()
-        let driver = NearbyDriver(rules: core.boardGameRules, log: log)
+        // The library is the store's memory of the game: created with the
+        // driver, because a ply can land while the board is down and the
+        // driver is what every engine input funnels through.
+        let record = NearbyRecord(library: core, log: log)
+        let driver = NearbyDriver(rules: core.boardGameRules, log: log,
+                                  record: record)
         let transport = NearbyTransport(driver: driver, log: log)
         return NearbyFlow(driver: driver, radio: transport,
                           positions: core.nearbyPositions,
@@ -252,6 +258,16 @@ private struct Destinations: View {
         // what moved: a proposal answered, or a refusal to present.
         .onChange(of: nearby.driver.sessions) { nearby.sessionsChanged() }
         .onChange(of: nearby.driver.declines.count) { nearby.sessionsChanged() }
+        // The two objects that both have a claim on the library's one active
+        // game, introduced to each other here because this is where both are
+        // built. Nearby play makes room through the accepted 保存并继续, and
+        // the paths that take the active game away tell whoever is playing it.
+        .task {
+            play.nearbyHolder = nearby
+            play.resumeNearby = { [weak nearby] game in nearby?.reenter(game) }
+            nearby.room = play
+            nearby.libraryChanged = { [weak play] in play?.activeGameChanged() }
+        }
         // A nearby board is drawn over every page of the Play destination, so
         // while one is up the local game's board is not on screen. The session,
         // the engine and any owed search go with the board that is showing:
@@ -282,6 +298,26 @@ private struct Destinations: View {
             } else {
                 play.leaveBoard()
             }
+        }
+        // The window's own lifecycle, which is a different question on the two
+        // platforms and is answered separately for that reason.
+        .onChange(of: scenePhase) { _, phase in
+            #if os(iOS)
+            // Coming back from a suspension. Nothing about the game is at
+            // stake — every ply was committed as it landed — but the radio's
+            // publisher and browser stopped with the app, and the system's
+            // pairing snapshots can end on their own, so both are taken up
+            // again. Returning to the page that was showing stays in place.
+            if phase == .active { nearby.returnedToForeground() }
+            #else
+            // The window closing, which on this platform is not the app
+            // quitting: the scene goes to the background and the app stays.
+            // The board's session, the engine's preparation and any owed
+            // search belong to the surface that has gone, so they go with it —
+            // the same putting-down leaving the board does, and nothing is
+            // lost by it.
+            if phase == .background { play.leaveBoard() }
+            #endif
         }
         // The two launch arguments that are about the *window* rather than
         // about a destination sit here, above the container: applied to a

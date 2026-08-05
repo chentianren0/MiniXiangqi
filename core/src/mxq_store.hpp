@@ -102,16 +102,42 @@ struct ActiveGame {
 };
 
 /*
+ * The wire session an unfinished nearby game is played over, as the store holds
+ * it: the serialised spellings of the two closed vocabularies, and the two
+ * identifiers verbatim. An empty sent_end spells SQL NULL, for the reason
+ * Summary's empty strings do — the vocabulary contains no empty value.
+ *
+ * It travels beside an ActiveGame or a rewritten line rather than on its own,
+ * because the two move together and a store that held them a transaction apart
+ * would reconcile a later resume to a line neither player played.
+ */
+struct NearbySession {
+    std::string session_id;
+    std::string peer_id;
+    std::string proposer; /* "local" or "peer" */
+    std::string sent_end; /* "resign", "accept_draw", or empty for NULL */
+    int64_t     undos = 0;
+    int64_t     keep = 0;
+    bool        claimed = false;
+};
+
+/*
  * Insert the new active game and point the library at it, in one transaction.
  * Returns MXQ_ERR_STATE_ACTIVE_GAME_EXISTS, changing nothing, when the library
  * already holds one: the single-active-game invariant is structural in the
  * schema and checked inside the transaction that would break it.
  *
+ * A nearby game arrives with the wire session it is being played over, and the
+ * one transaction writes both rows: an active nearby game whose session the
+ * store does not hold cannot be resumed, so the two are one event. Null
+ * everywhere else.
+ *
  * The insert names its columns explicitly and never uses OR REPLACE, per the
  * prohibition at the top of this header.
  */
 MxqStatus create_active(Store &store, const ActiveGame &row,
-                        uint64_t &out_record_id, MxqError *err);
+                        const NearbySession *nearby, uint64_t &out_record_id,
+                        MxqError *err);
 
 /*
  * Read the active game's row: its record id, its canonical bytes, and the
@@ -130,6 +156,27 @@ MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
                       std::string &out_local_side, MxqError *err);
 
 /*
+ * The wire session a row is being played over, where it has one. Absence is
+ * success with out_exists false: a local game has none, and so does a nearby
+ * game whose session the protocol has parted with.
+ */
+MxqStatus load_nearby_session(Store &store, uint64_t record_id, bool &out_exists,
+                              NearbySession &out, MxqError *err);
+
+/*
+ * Write the wire session over the row it belongs to, in one transaction, and
+ * commit before returning. The row must still be the library's active game —
+ * anything else is MXQ_ERR_STORE_NOT_FOUND — which is what keeps this from
+ * attaching a session to a History record whatever record id it is handed.
+ *
+ * Written as an insert with an explicit conflict clause rather than OR REPLACE,
+ * per the prohibition at the top of this header: OR REPLACE would delete the
+ * existing row without firing a trigger.
+ */
+MxqStatus set_nearby_session(Store &store, uint64_t record_id,
+                             const NearbySession &nearby, MxqError *err);
+
+/*
  * Rewrite the one active row — the new canonical bytes, their hash, and the
  * move count derived from them — in one transaction, and commit before
  * returning. This is what an accepted move or undo is: there is no per-move
@@ -140,7 +187,7 @@ MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
 MxqStatus rewrite_active(Store &store, uint64_t record_id,
                          const std::string &archive,
                          const std::string &content_sha256, int64_t move_count,
-                         MxqError *err);
+                         const NearbySession *nearby, MxqError *err);
 
 /*
  * What ending a game writes over its active row.
@@ -179,6 +226,12 @@ struct Completion {
  * MXQ_ERR_STORE_NOT_FOUND and nothing is written; the transaction rolls back
  * whole, so a failure anywhere leaves the game active, unchanged, and
  * retryable.
+ *
+ * The same transaction deletes the game's wire session, if it had one, and the
+ * deletion is explicit rather than a cascade: this statement *updates* the game
+ * row in place, so no foreign key ever fires here. A filed nearby game must
+ * leave no session row behind — the row holds a peer's device identity, which
+ * is device-local data that has no purpose past the game it belonged to.
  */
 MxqStatus commit_completion(Store &store, uint64_t record_id,
                             const Completion &done, MxqError *err);

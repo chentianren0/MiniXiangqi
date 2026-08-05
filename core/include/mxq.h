@@ -103,7 +103,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 2
-#define MXQ_API_VERSION_MINOR 1
+#define MXQ_API_VERSION_MINOR 2
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -145,6 +145,15 @@ extern "C" {
 /* An engine profile identifier, recorded with saved diagnostics so a move can
  * be attributed to the configuration that produced it. */
 #define MXQ_PROFILE_ID_CAP 64
+
+/* The two identifiers a nearby game's wire session is held by. Both are opaque
+ * to the core, which stores and returns them and compares neither: the session
+ * identifier is the proposer-minted string the two peers compare byte-wise, and
+ * the peer identifier is the transport's own name for the paired device. The
+ * caps are the smallest that hold a UUID and a transport-prefixed one with room
+ * to spare; a longer value is MXQ_ERR_ARG_RANGE rather than a truncation. */
+#define MXQ_NEARBY_SESSION_ID_CAP 128
+#define MXQ_NEARBY_PEER_ID_CAP 128
 
 /* ------------------------------------------------------------------------- */
 /* Status codes                                                              */
@@ -503,6 +512,32 @@ enum {
                                         * rejected by archive version 3 */
 };
 
+/*
+ * The terminal a nearby peer has sent for its session, which the BoardGame
+ * protocol's resume exchange states and which decides whether that peer holds
+ * the session settled. MXQ_NEARBY_TERMINAL_NONE is "this device has sent none",
+ * and it is what a session in ordinary play carries.
+ */
+typedef int32_t MxqNearbyTerminal;
+enum {
+    MXQ_NEARBY_TERMINAL_NONE        = 0,
+    MXQ_NEARBY_TERMINAL_RESIGN      = 1, /* stored "resign" */
+    MXQ_NEARBY_TERMINAL_ACCEPT_DRAW = 2  /* stored "accept_draw" */
+};
+
+/*
+ * Which peer proposed a nearby session — the only asymmetry a session ever has,
+ * and the reason it is worth a column: the resume exchange completes on the
+ * connection the *proposer* chose, so a peer that forgot which it was could not
+ * re-bind a session it had held for days. Every other asymmetry a session needs
+ * is the mover, and the mover is MxqGameConfig.local_side.
+ */
+typedef int32_t MxqNearbyProposer;
+enum {
+    MXQ_NEARBY_PROPOSER_LOCAL = 0, /* stored "local": this device proposed */
+    MXQ_NEARBY_PROPOSER_PEER  = 1  /* stored "peer" */
+};
+
 /* The result of a successful mxq_store_import. */
 typedef int32_t MxqImportOutcome;
 enum {
@@ -769,6 +804,51 @@ typedef struct MxqGameConfig {
     MxqGameKind         game;
     MxqColor            local_side;
 } MxqGameConfig;
+
+/*
+ * The wire session a nearby active game is being played over, as
+ * docs/game-data.md's nearby_session table holds it.
+ *
+ * It is not archive content and it is not a game's configuration: it is what the
+ * BoardGame protocol needs to continue an interrupted session after this
+ * application has been relaunched, and the portability law keeps every one of
+ * these values out of a file two devices could exchange. The core stores and
+ * returns it and interprets none of it except claimed, which is a ply count, and
+ * the closed vocabularies below.
+ *
+ *   session_id  the proposer-minted identifier the two peers compare byte-wise
+ *   peer_id     the transport's own name for the paired device on the other end
+ *   proposer    which peer proposed, which decides the completing connection of
+ *               a resume exchange
+ *   undos       accepted retractions, zero at birth
+ *   keep        the surviving ply count of the last accepted retraction, and the
+ *               session's own count where there has been none
+ *   sent_end    the terminal this device has sent, if it has sent one
+ *   claimed     1 when the session's last ply is the rules contract's claim turn
+ *               action, which the archive deliberately does not record: an
+ *               unfinished game has no terminal trio to derive it from, and a
+ *               peer that resumed a ply short of its opponent would be sent that
+ *               ply back on a turn that is not the sender's — a violation, and a
+ *               claimed draw lost
+ *
+ * A resumed session's mover is MxqGameConfig.local_side and is not repeated
+ * here: one fact, one place.
+ *
+ * The two identifiers are NUL-terminated on the way out. On the way in they are
+ * borrowed for the duration of the call, must be non-empty, and must fit their
+ * capacity.
+ */
+typedef struct MxqNearbySession {
+    uint32_t          struct_size;
+    MxqNearbyProposer proposer;
+    uint32_t          undos;
+    uint32_t          keep;
+    MxqNearbyTerminal sent_end;
+    uint8_t           claimed;
+    uint8_t           reserved0[3];
+    char              session_id[MXQ_NEARBY_SESSION_ID_CAP];
+    char              peer_id[MXQ_NEARBY_PEER_ID_CAP];
+} MxqNearbySession;
 
 /*
  * The queryable summary of one stored game: the History list's metadata, plus
@@ -1096,6 +1176,30 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
                                            MxqGame **out_game, MxqError *err);
 
 /*
+ * Create a nearby active game and the wire session it is being played over, in
+ * one transaction.
+ *
+ * It is mxq_game_create with the second row, and it exists because the two are
+ * one event: an active nearby game whose wire session the store does not hold
+ * cannot be resumed after a relaunch, and a wire session with no game is
+ * nothing at all. Every refusal mxq_game_create makes it makes, and the
+ * configuration must be MXQ_PLAY_MODE_NEARBY's — any other mode is a
+ * programming error and returns MXQ_ERR_ARG_RANGE.
+ *
+ * The session state must be the shape of a session at birth: undos and claimed
+ * zero, keep zero, sent_end MXQ_NEARBY_TERMINAL_NONE. Anything else is
+ * MXQ_ERR_ARG_RANGE — a game with no plies has retracted nothing and declared
+ * nothing.
+ *
+ * Thread and blocking: mxq_game_create's.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
+                                                  const MxqGameConfig *config,
+                                                  const MxqNearbySession *session,
+                                                  MxqGame **out_game,
+                                                  MxqError *err);
+
+/*
  * Resume the single active game as a store-attached session. Sets *out_exists
  * to 0 and *out_game to NULL, and returns MXQ_OK, when there is no active game:
  * absence is not an error. A library reference naming a row that is not there
@@ -1303,6 +1407,36 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
                                          MxqError *err);
 
 /*
+ * The nearby retraction: keep the first `keep` plies of the move line, drop
+ * every ply beyond them, and rewrite the wire session in the same transaction.
+ * Commits before returning, like every other mutation.
+ *
+ * It is not mxq_game_undo with an argument. Undo is one player taking a move
+ * back by the decision-cycle rule; this is what two players agreed to keep, and
+ * the count they agreed on is the protocol's, arrived at by a negotiation or by
+ * the resume exchange's reconciliation. So the caller states the surviving
+ * count, and the session state that arrives with it — the raised undos, the keep
+ * it survived to — is written beside the shortened line rather than after it: a
+ * store holding a line one transaction and a retraction count the next would
+ * reconcile the next resume to a line neither player played.
+ *
+ * Legal only on a MXQ_PLAY_MODE_NEARBY session, which is the mirror of
+ * mxq_game_undo refusing on one; otherwise MXQ_ERR_STATE_UNDO_UNAVAILABLE.
+ * `keep` must be below the session's own move count — retracting nothing is not
+ * a retraction — and is otherwise MXQ_ERR_ARG_RANGE. A store-domain failure
+ * leaves the game exactly at its pre-mutation committed state.
+ *
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
+ * Blocking: yes — the commit happens inside the call.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_retract_nearby(MxqGame *game, uint32_t keep,
+                                                   const MxqNearbySession *session,
+                                                   MxqError *err);
+
+/*
  * Claim the neutral threefold repetition as a draw. Legal only in the
  * claimable state; otherwise MXQ_ERR_STATE_CLAIM_UNAVAILABLE.
  *
@@ -1407,6 +1541,49 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game,
                                                       MxqColor resigning_side,
                                                       uint64_t *out_record_id,
                                                       MxqError *err);
+
+/*
+ * Rewrite the wire session of a nearby active game, and commit before
+ * returning.
+ *
+ * Most of what this state records moves with the move line and is written by the
+ * mutation that moved it: a ply carries the session it did not change, and
+ * mxq_game_retract_nearby carries the one it did. One change happens on a beat
+ * the game does not have — this device sending a terminal, which ends nothing
+ * until the resume exchange settles it — and this is the call for that.
+ *
+ * Legal only on a MXQ_PLAY_MODE_NEARBY session; otherwise
+ * MXQ_ERR_STATE_RESIGN_UNAVAILABLE, the same refusal the other nearby-only
+ * ending makes. The session identifier and the peer identifier are frozen: a
+ * value differing from the one the game was created with is MXQ_ERR_ARG_RANGE,
+ * because a session's identity is not something a later call revises.
+ *
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
+ * Blocking: yes — the commit happens inside the call.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
+                                                       const MxqNearbySession *session,
+                                                       MxqError *err);
+
+/*
+ * Read back the wire session of a nearby active game: what a relaunched
+ * application needs to rebuild the protocol session it was playing over.
+ *
+ * *out_exists is 0, and MXQ_OK is returned, where the game carries none — a
+ * local game, an imported nearby record, a replay, or a nearby game whose
+ * session the store no longer holds. Absence is an ordinary answer, not a
+ * failure.
+ *
+ * Thread: the session's owner; never inside a search callback.
+ * Blocking: no — a session carries this in memory once it is attached.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_nearby_session(const MxqGame *game,
+                                                   MxqNearbySession *out,
+                                                   uint8_t *out_exists,
+                                                   MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Rules facade, session-free — mxq_rules_                                   */

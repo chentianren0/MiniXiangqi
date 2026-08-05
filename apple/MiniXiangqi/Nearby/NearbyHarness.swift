@@ -35,12 +35,20 @@ struct NearbyHarnessScreen: View {
     @State private var moveText = ""
     @State private var keepText = ""
 
+    /// The library, so a driven run exercises the same store the app's own
+    /// nearby games live in. It is the harness's core, which is the app's — a
+    /// run that wrote nowhere would prove nothing about Stage 3 — and a driven
+    /// run gives itself a library of its own with `-mxq-store-name`.
+    private let library: Core
+
     init(core: Core) {
         let log = NearbyLog()
-        let driver = NearbyDriver(rules: core.boardGameRules, log: log)
+        let driver = NearbyDriver(rules: core.boardGameRules, log: log,
+                                  record: NearbyRecord(library: core, log: log))
         _log = State(initialValue: log)
         _driver = State(initialValue: driver)
         _transport = State(initialValue: NearbyTransport(driver: driver, log: log))
+        library = core
     }
 
     var body: some View {
@@ -63,6 +71,8 @@ struct NearbyHarnessScreen: View {
         }
         .task {
             transport.watchPairedDevices()
+            reportTheLibrary()
+            if launch.resumesStoredGame { _ = driver.resumeStoredGame() }
             if launch.autostarts { transport.start() }
             follow()
         }
@@ -74,6 +84,26 @@ struct NearbyHarnessScreen: View {
     }
 
     // MARK: - The plan a driven run arrives with
+
+    /// What the library holds, said into the run's log at every launch.
+    ///
+    /// It is the same answer the Play home's **当前对局** card is drawn from —
+    /// `mxq_store_active_summary`, with no session materialised — so a driven
+    /// run that cannot see a screen can still read the fact the card states.
+    private func reportTheLibrary() {
+        do {
+            guard let summary = try library.activeGameSummary() else {
+                log.note("The library holds no active game.")
+                return
+            }
+            log.note("The library holds a \(summary.mode) \(summary.game) game: "
+                     + "\(summary.moveCount) plies"
+                     + (summary.localSide.map { ", \($0) here" } ?? "") + ".")
+        } catch {
+            log.note("The library would not say what it holds: "
+                     + "\(CoreError(wrapping: error)).")
+        }
+    }
 
     /// Performs whatever the launch arguments ask for and the engine allows,
     /// one step at a time. Bounded, because a plan that never settles is a

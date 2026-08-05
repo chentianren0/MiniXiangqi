@@ -115,6 +115,12 @@ final class NearbyStagedDriver: NearbyDriving {
     func acceptUndo(in session: String) throws(BoardGameRefusal) { }
 
     func claimStands(in session: BoardGameSession) -> Bool { stage.claimStands }
+
+    /// A staged board has no library behind it — the moment it draws is the
+    /// whole of what it is — so there is nothing stored to come back to and
+    /// nothing to give up.
+    func resumeStoredGame() -> String? { nil }
+    func abandonStoredGame() { }
 }
 
 /// A radio that is not there, which is the truth on a Simulator.

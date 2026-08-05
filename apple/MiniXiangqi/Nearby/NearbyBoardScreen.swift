@@ -454,8 +454,10 @@ struct NearbyBoardScreen: View {
 ///
 /// Its actions are the ones a nearby game has. Every action the local notice
 /// carries is a filing act — 保存, 保存并开始新对局, 回放 — and a nearby game is
-/// filed by nothing until the stage that gives it archives; what is left is the
-/// way out, which is 完成. A fresh proposal is the rematch, so nothing here
+/// filed by nobody: it goes into History the moment the two devices have
+/// settled on how it ended, because a result one player confirms and the other
+/// does not would be two libraries disagreeing about one game. What is left is
+/// the way out, which is 完成. A fresh proposal is the rematch, so nothing here
 /// offers one.
 private struct NearbyNotice: View {
     /// The result, or the fact that the game ended. Resolved by the caller,

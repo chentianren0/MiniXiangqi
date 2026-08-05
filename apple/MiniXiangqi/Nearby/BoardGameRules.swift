@@ -105,7 +105,11 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     /// The rules contract's interpretation version in decimal, which is the
     /// string the wire compares byte-wise. It is one value because
     /// docs/xiangqi-rules.md owns one interpretation for both games.
-    private static let interpretationVersion = "1"
+    ///
+    /// Readable beyond this oracle because a session rebuilt from the library
+    /// states it too, and a resumed session that named a second value would be
+    /// a session neither peer proposed.
+    static let interpretationVersion = "1"
 
     func version(of rulesID: String) -> String? {
         GameKind(rulesID: rulesID) == nil ? nil : Self.interpretationVersion

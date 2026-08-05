@@ -443,6 +443,23 @@ bool run_sql(sqlite3 *db, const char *sql) {
     return sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
+/* One query's first column, as text. Reading the database directly is how a
+ * case asks what the store actually holds rather than what its own API says it
+ * holds. */
+std::string query_text(sqlite3 *db, const std::string &sql) {
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return "<prepare failed>";
+    }
+    std::string value = "<no row>";
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char *text = sqlite3_column_text(stmt, 0);
+        value = text != nullptr ? reinterpret_cast<const char *>(text) : "";
+    }
+    sqlite3_finalize(stmt);
+    return value;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Playing a scenario's move line                                          */
 /* ---------------------------------------------------------------------- */
@@ -1427,6 +1444,235 @@ void case_endings_refuse_where_they_do_not_apply() {
     c.report();
 }
 
+/*
+ * The wire session a nearby game is played over, from its birth to its death.
+ *
+ * It is one row, keyed on the active game, and everything about it is a
+ * question of *when* it is written and when it is gone: created with the game
+ * in one transaction, carried unchanged by an ordinary ply, moved with the move
+ * line by the negotiated retraction, rewritten on its own by the one change the
+ * game does not share, read back by a resume, and deleted — explicitly, because
+ * archiving updates the game row in place and no cascade fires there — when the
+ * game files.
+ */
+void case_the_wire_session_lives_with_its_game() {
+    Case c("a nearby game's wire session is created, carried, and filed away");
+    const fs::path store = scratch_dir("wire-session");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, 0, &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    config.mode = MXQ_PLAY_MODE_NEARBY;
+    config.local_side = MXQ_COLOR_RED;
+
+    MxqNearbySession birth;
+    std::memset(&birth, 0, sizeof(birth));
+    birth.struct_size = static_cast<uint32_t>(sizeof(birth));
+    birth.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    std::snprintf(birth.session_id, sizeof(birth.session_id),
+                  "6f1d9c22-2f5a-7c31-9a04-0c1f2e3d4b5a");
+    std::snprintf(birth.peer_id, sizeof(birth.peer_id),
+                  "wifi-aware-device-77E1B0C2");
+
+    /* A session at birth has retracted, claimed and declared nothing. */
+    MxqNearbySession used = birth;
+    used.undos = 1;
+    MxqGame *refused = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &used, &refused, &err),
+                   MXQ_ERR_ARG_RANGE,
+                   "a nearby game created over a session that has retracted");
+    used = birth;
+    MxqGameConfig local = make_config();
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &local, &used, &refused, &err),
+                   MXQ_ERR_ARG_RANGE, "a wire session over a Free Play game");
+    used = birth;
+    used.session_id[0] = '\0';
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &used, &refused, &err),
+                   MXQ_ERR_ARG_RANGE, "a wire session with no identifier");
+
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &game, &err),
+                   MXQ_OK, "the nearby game and its wire session are created");
+    c.check(game != nullptr, "the session handle exists");
+    if (game == nullptr) {
+        mxq_core_shutdown(core, nullptr);
+        c.report();
+        return;
+    }
+
+    sqlite3 *reader = open_second_connection(store);
+    c.check(reader != nullptr, "a second connection reads the store");
+    const auto row_count = [&](const char *what) {
+        return reader == nullptr ? std::string("?")
+                                 : query_text(reader, std::string("SELECT ") +
+                                                          what +
+                                                          " FROM nearby_session;");
+    };
+    c.check_eq(row_count("count(*)"), "1", "one wire session stands");
+    c.check_eq(row_count("session_id"), std::string(birth.session_id),
+               "keyed on the identifier the proposer minted");
+    c.check_eq(row_count("proposer"), "local", "and on which peer proposed");
+    c.check_eq(row_count("undos"), "0", "with nothing retracted");
+
+    /* A ply carries the wire session it did not change. */
+    err = make_error();
+    c.check_status(
+        mxq_game_apply_move(game, "b1b3", nullptr, nullptr, &err), MXQ_OK,
+        "a ply lands");
+    for (const char *move : {"b7b5", "b3b1"}) {
+        mxq_game_apply_move(game, move, nullptr, nullptr, nullptr);
+    }
+    c.check_eq(row_count("undos"), "0", "which retracted nothing");
+    c.check_eq(row_count("count(*)"), "1", "and left the one row standing");
+
+    /* The negotiated retraction: the surviving line and the counts that
+     * produced it, in one transaction. */
+    MxqNearbySession retracted = birth;
+    retracted.undos = 1;
+    retracted.keep = 1;
+    err = make_error();
+    c.check_status(mxq_game_retract_nearby(game, 3, &retracted, &err),
+                   MXQ_ERR_ARG_RANGE, "a retraction that keeps every ply");
+    err = make_error();
+    c.check_status(mxq_game_retract_nearby(game, 1, &retracted, &err), MXQ_OK,
+                   "the two players' retraction");
+    size_t count = 0;
+    mxq_game_move_history(game, nullptr, 0, &count, nullptr);
+    c.check_eq(static_cast<int64_t>(count), 1, "one ply survives");
+    c.check_eq(row_count("undos"), "1", "and the retraction was counted");
+    c.check_eq(row_count("keep"), "1", "beside the count it survived to");
+
+    /* The one change the game does not share: a terminal this device sent,
+     * which ends nothing until the resume exchange settles it. */
+    MxqNearbySession sent = retracted;
+    sent.sent_end = MXQ_NEARBY_TERMINAL_RESIGN;
+    MxqNearbySession stranger = sent;
+    std::snprintf(stranger.session_id, sizeof(stranger.session_id),
+                  "00000000-0000-7000-8000-000000000000");
+    err = make_error();
+    c.check_status(mxq_game_set_nearby_session(game, &stranger, &err),
+                   MXQ_ERR_ARG_RANGE,
+                   "another session's bookkeeping written over this one's");
+    err = make_error();
+    c.check_status(mxq_game_set_nearby_session(game, &sent, &err), MXQ_OK,
+                   "the terminal this device sent is recorded");
+    c.check_eq(row_count("sent_end"), "resign", "and the store holds it");
+    c.check_eq(row_count("count(*)"), "1", "still one row");
+
+    /* What a relaunched application reads back. */
+    mxq_game_release(game);
+    game = nullptr;
+    MxqGame *resumed = nullptr;
+    uint8_t exists = 0;
+    err = make_error();
+    c.check_status(mxq_game_resume_active(core, &resumed, &exists, &err),
+                   MXQ_OK, "the interrupted game resumes");
+    c.check_eq(exists, 1, "and the library held one");
+    MxqNearbySession read;
+    std::memset(&read, 0, sizeof(read));
+    read.struct_size = static_cast<uint32_t>(sizeof(read));
+    uint8_t has_wire = 0;
+    err = make_error();
+    c.check_status(mxq_game_nearby_session(resumed, &read, &has_wire, &err),
+                   MXQ_OK, "its wire session is read back");
+    c.check_eq(has_wire, 1, "and there is one");
+    c.check_eq(std::string(read.session_id), std::string(birth.session_id),
+               "the session identifier survives a relaunch");
+    c.check_eq(std::string(read.peer_id), std::string(birth.peer_id),
+               "and the peer's device identity with it");
+    c.check_eq(read.undos, 1, "the retraction count survives");
+    c.check_eq(read.keep, 1, "and the count it survived to");
+    c.check_eq(read.sent_end, MXQ_NEARBY_TERMINAL_RESIGN,
+               "and the terminal this device had sent");
+    c.check_eq(read.proposer, MXQ_NEARBY_PROPOSER_LOCAL,
+               "and which peer proposed");
+    MxqGameConfig resumed_config = make_config();
+    mxq_game_config(resumed, &resumed_config, nullptr);
+    c.check_eq(resumed_config.local_side, MXQ_COLOR_RED,
+               "the mover comes back from local_side, not from a second copy");
+
+    /* And it dies with the game. The commit updates the game row in place, so
+     * nothing cascades: the deletion is the transaction's own statement. */
+    uint64_t filed = 0;
+    err = make_error();
+    c.check_status(mxq_game_commit_nearby_end(resumed,
+                                              MXQ_END_REASON_RESIGNATION,
+                                              MXQ_COLOR_RED, &filed, &err),
+                   MXQ_OK, "the reconciled resignation files the game");
+    c.check_eq(row_count("count(*)"), "0",
+               "and the filed game leaves no wire session behind");
+    has_wire = 1;
+    err = make_error();
+    c.check_status(mxq_game_nearby_session(resumed, &read, &has_wire, &err),
+                   MXQ_OK, "an archived session still answers");
+    c.check_eq(has_wire, 0, "and carries no wire session either");
+    err = make_error();
+    c.check_status(mxq_game_set_nearby_session(resumed, &sent, &err),
+                   MXQ_ERR_STATE_SESSION_ARCHIVED,
+                   "writing a wire session over a filed game");
+    mxq_game_release(resumed);
+
+    /* A local game has none of this. */
+    MxqGame *free_play = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &local, &free_play, &err), MXQ_OK,
+                   "a Free Play game is created");
+    has_wire = 1;
+    err = make_error();
+    c.check_status(mxq_game_nearby_session(free_play, &read, &has_wire, &err),
+                   MXQ_OK, "and answers about a wire session");
+    c.check_eq(has_wire, 0, "with none");
+    err = make_error();
+    c.check_status(mxq_game_retract_nearby(free_play, 0, &birth, &err),
+                   MXQ_ERR_STATE_UNDO_UNAVAILABLE,
+                   "a negotiated retraction of a game with one player");
+    err = make_error();
+    c.check_status(mxq_game_set_nearby_session(free_play, &birth, &err),
+                   MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                   "and a wire session over one");
+    err = make_error();
+    c.check_status(mxq_store_archive_and_clear(core, free_play, &filed, &err),
+                   MXQ_OK, "the Free Play game is archived to make room");
+    mxq_game_release(free_play);
+
+    /* The cascade, which is the second line of defence rather than the one
+     * that fires at a filing: a game row that goes takes its wire session with
+     * it, whatever removed it. */
+    MxqGame *doomed = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &doomed, &err),
+                   MXQ_OK, "a third nearby game is created");
+    mxq_game_release(doomed);
+    if (reader != nullptr) {
+        c.check_eq(query_text(reader, "SELECT count(*) FROM nearby_session;"),
+                   "1", "with a wire session of its own");
+        const std::string active =
+            query_text(reader, "SELECT active_record_id FROM library;");
+        c.check(run_sql(reader, "UPDATE library SET active_record_id = NULL;"),
+                "the library reference is cleared");
+        c.check(run_sql(reader, ("DELETE FROM game WHERE record_id = " + active +
+                                 ";")
+                                    .c_str()),
+                "the game row is deleted directly");
+        c.check_eq(query_text(reader, "SELECT count(*) FROM nearby_session;"),
+                   "0", "and no wire session outlives its game");
+        sqlite3_close(reader);
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_history_ordering() {
     Case c("History is ordered pinned first, newest first, by record id");
     const fs::path store = scratch_dir("ordering");
@@ -2106,6 +2352,7 @@ int main(int argc, char **argv) {
     case_a_failed_ending_is_retryable(scenarios);
     case_archive_and_clear_without_a_game();
     case_endings_refuse_where_they_do_not_apply();
+    case_the_wire_session_lives_with_its_game();
     case_history_ordering();
     case_ordering_tie_is_broken_by_record_id();
     case_pagination_boundaries();
