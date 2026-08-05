@@ -70,6 +70,26 @@ nonisolated protocol BoardGameRules: Sendable {
     func verdict(for text: String, after plies: [String], of rulesID: String) -> PlyVerdict
 }
 
+/// The two games this peer plays, under the `rules_id` the protocol names them
+/// by. One table, in both directions: the oracle reads it to answer what an
+/// arriving `rules_id` means, and the surfaces read it to say which game a
+/// proposal is for. A `rules_id` outside it is a game this peer does not know.
+nonisolated extension GameKind {
+    var rulesID: String {
+        switch self {
+        case .miniXiangqi: "minixiangqi"
+        case .xiangqi: "xiangqi"
+        }
+    }
+
+    init?(rulesID: String) {
+        guard let match = Self.allCases.first(where: { $0.rulesID == rulesID }) else {
+            return nil
+        }
+        self = match
+    }
+}
+
 /// The core's answers, over the session-free rules facade.
 ///
 /// `@unchecked Sendable` for the reason `HistoryStore` is: what makes the
@@ -82,24 +102,17 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
         self.core = core
     }
 
-    /// The two games this peer plays, under the `rules_id` the protocol names
-    /// them by. A `rules_id` outside this table is a game it does not know.
-    private static let games: [String: GameKind] = [
-        "minixiangqi": .miniXiangqi,
-        "xiangqi": .xiangqi,
-    ]
-
     /// The rules contract's interpretation version in decimal, which is the
     /// string the wire compares byte-wise. It is one value because
     /// docs/xiangqi-rules.md owns one interpretation for both games.
     private static let interpretationVersion = "1"
 
     func version(of rulesID: String) -> String? {
-        Self.games[rulesID] == nil ? nil : Self.interpretationVersion
+        GameKind(rulesID: rulesID) == nil ? nil : Self.interpretationVersion
     }
 
     func standing(after plies: [String], of rulesID: String) -> RulesStanding {
-        guard let game = Self.games[rulesID] else {
+        guard let game = GameKind(rulesID: rulesID) else {
             preconditionFailure("a session's game is one this peer plays")
         }
         // A claim ends the game where it lands, and the plies before it are
@@ -124,7 +137,7 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
                 ? .lawful(.decided(.draw, .threefoldRepetition))
                 : .unlawful
         }
-        guard let game = Self.games[rulesID],
+        guard let game = GameKind(rulesID: rulesID),
               let after = replay(plies + [text], of: game)
         else { return .unlawful }
         return .lawful(after)

@@ -133,6 +133,14 @@ final class PhoneNearbyUITests: XCTestCase {
         // is done once per pair of devices.
         XCTAssertTrue(element(app, saying: "配对").exists)
         XCTAssertTrue(element(app, saying: "两台设备只需配对一次。").exists)
+        // And with no radio the section says so rather than building the
+        // system's pairing views, which is what keeps this launch alive: those
+        // views engage a peer-to-peer Wi-Fi service the Simulator does not
+        // have, and the app is terminated moments later. The designed row is
+        // the evidence that the guard held.
+        XCTAssertTrue(element(app, saying: "这台设备无法配对").exists,
+                      "a device without the radio says so where the pairing controls "
+                      + "would be")
         attach(app, named: "phone-nearby-03-the-propose-sheet")
 
         app.buttons["nearby-close"].tap()

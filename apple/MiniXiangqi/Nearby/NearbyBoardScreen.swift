@@ -64,6 +64,13 @@ struct NearbyBoardScreen: View {
             play?.sync(with: session)
         }
         .onChange(of: policy) { play?.policy = policy }
+        // A board turned round stays turned round: the model is rebuilt on
+        // every entry, so which way the player last had it is remembered where
+        // the game is rather than where the page is.
+        .onChange(of: play?.flipped) { _, flipped in
+            guard let flipped, let session = flow.boardSessionID else { return }
+            flow.setOrientation(flipped, of: session)
+        }
         .onDisappear { play?.close() }
     }
 
@@ -71,7 +78,7 @@ struct NearbyBoardScreen: View {
         play?.close()
         play = flow.boardSession.flatMap {
             NearbyPlay(session: $0, driver: flow.driver, positions: flow.positions,
-                       policy: policy)
+                       flipped: flow.orientation(of: $0.id), policy: policy)
         }
     }
 

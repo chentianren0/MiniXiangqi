@@ -252,7 +252,7 @@ The propose sheet, the one line the board ever says about the connection, and th
 | `nearby.discoverable` | 让这台设备可被发现 | Make This Device Discoverable | button | same — the system's own pairing view, named by what it does |
 | `nearby.findDevice` | 查找设备 | Find a Device | button | same — the system's own device picker |
 | `nearby.pairing.unavailable` | 这台设备无法配对 | This device can't pair | row | same — what stands where the system's pairing views cannot be offered |
-| `nearby.connecting` | 正在连接对方… | Connecting to the other device… | status line at the turn status | same — the one line the board ever says about the link, and only where the link is costing the player something |
+| `nearby.connecting` | 正在连接对方… | Connecting to the other device… | status line at the turn status | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — the one line the board ever says about the link, and only where the link is costing the player something |
 | `nearby.refusal.declined` | 对方拒绝了这局对弈。 | They declined the game. | alert message | same — the protocol's `declined` |
 | `nearby.refusal.busy` | 对方正在进行另一局对弈。 | They're already playing another game. | alert message | same — its `busy` |
 | `nearby.refusal.unknownGame` | 对方的 App 不下这个游戏。 | Their app doesn't play this game. | alert message | same — its `unknown_game` |

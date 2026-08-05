@@ -144,6 +144,26 @@ struct NearbyFlowTests {
         #expect(flow.boardSessionID == "S")
     }
 
+    @Test("A game standing with somebody does not take away a sheet raised for another")
+    func anUnrelatedSessionDoesNotOpenABoard() {
+        let driver = FakeDriver()
+        // A Mini Xiangqi game is already going with this peer.
+        driver.sessions = [session(proposer: .local, accepted: true)]
+        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [.other]))
+
+        flow.open(.xiangqi)
+        #expect(flow.proposing == .xiangqi, "the other game's row offers a new game")
+
+        // The driver publishes for its own reasons — a connection idling out is
+        // a publication, and Stage 1 measured those every twenty or thirty
+        // seconds. Nothing this device asked for has happened, so nothing moves.
+        flow.sessionsChanged()
+
+        #expect(flow.proposing == .xiangqi)
+        #expect(flow.boardSessionID == nil,
+                "only the answer to this device's own invitation opens a board")
+    }
+
     // MARK: - Consenting
 
     @Test("An arriving proposal is the invitation, and accepting it opens the board")
@@ -209,10 +229,11 @@ struct NearbyFlowTests {
     @Test("and stays up while a game is standing with somebody")
     func theRadioStaysUpForASession() {
         let driver = FakeDriver()
-        let radio = FakeRadio(isSupported: true)
+        let radio = FakeRadio(isSupported: true, peers: [.other])
         let flow = flow(driver: driver, radio: radio)
 
         flow.open(.miniXiangqi)
+        flow.invite(.other, to: .miniXiangqi)
         driver.sessions = [session(proposer: .local, accepted: true)]
         // The invitation was answered, so the sheet has done its errand and the
         // board is what is up.
@@ -285,6 +306,49 @@ struct NearbyFlowTests {
         #expect(!play.isWaitingOnConnection)
     }
 
+    @Test("and when the player reaches for a board the link has locked")
+    func reachingForALockedBoardIsSaid() throws {
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live))
+
+        // The link goes on this device's own turn. Nothing is said yet: a
+        // reconnection takes seconds, and the player has asked for nothing.
+        play.sync(with: with(live) { $0.connection = nil })
+        #expect(!play.isWaitingOnConnection)
+
+        // Reaching for the board and finding it locked is the moment the link
+        // starts costing them something, so the line does not wait out the
+        // stretch.
+        play.tap(Square(file: 1, rank: 0))
+        #expect(play.isWaitingOnConnection)
+
+        // And it goes when the link comes back, with the reaching forgotten.
+        play.sync(with: live)
+        #expect(!play.isWaitingOnConnection)
+    }
+
+    // MARK: - Which way round the board is
+
+    @Test("A board turned round stays turned round across leaving it")
+    func aFlipSurvivesLeavingTheBoard() throws {
+        let flow = flow(radio: FakeRadio(isSupported: true))
+        let live = session(proposer: .local, accepted: true)
+        #expect(flow.orientation(of: live.id) == nil,
+                "a board nobody has turned has none of its own")
+
+        let play = try #require(board(live))
+        #expect(!play.flipped,
+                "this device moves first, so its own side is already at the bottom")
+        play.flip()
+        flow.setOrientation(play.flipped, of: live.id)
+        #expect(play.flipped)
+
+        // The board's model is rebuilt on every entry, and what it is handed is
+        // what the player last had.
+        let returned = try #require(board(live, flipped: flow.orientation(of: live.id)))
+        #expect(returned.flipped)
+    }
+
     // MARK: - The suite's own parts
 
     private func flow(driver: any NearbyDriving = FakeDriver(),
@@ -301,8 +365,9 @@ struct NearbyFlowTests {
     /// transition this suite never asks to finish still leaves the board where
     /// it was put; the feedback is a sink, because what a nearby landing sounds
     /// like is the shared rule the motion suites already pin.
-    private func board(_ session: BoardGameSession) -> NearbyPlay? {
+    private func board(_ session: BoardGameSession, flipped: Bool? = nil) -> NearbyPlay? {
         NearbyPlay(session: session, driver: FakeDriver(), positions: FakePositions(),
+                   flipped: flipped,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(perform: { _ in }, play: { _ in }))
     }
@@ -352,6 +417,8 @@ private final class FakeDriver: NearbyDriving {
     var declines: [NearbyDecline] = []
     /// What every intent answers with, where the test wants a refusal.
     var refuses: BoardGameRefusal?
+    /// The identifier the engine would mint for the next proposal.
+    var mints = "S"
 
     private(set) var proposals: [Proposal] = []
     private(set) var answers: [Answer] = []
@@ -363,6 +430,13 @@ private final class FakeDriver: NearbyDriving {
         if let refuses { throw refuses }
         proposals.append(Proposal(peer: peer, connection: connection, rulesID: rulesID,
                                   proposerMoves: proposerMoves))
+        // The engine mints the identifier and holds the proposal it made, which
+        // is what the flow reads back to learn which session it is waiting on.
+        var proposed = BoardGameSession(id: mints, peer: peer, rulesID: rulesID,
+                                        rulesVersion: "1", proposerMoves: proposerMoves,
+                                        proposer: .local)
+        proposed.connection = connection
+        sessions.append(proposed)
     }
 
     func answer(_ session: String, accepting: Bool) throws(BoardGameRefusal) {

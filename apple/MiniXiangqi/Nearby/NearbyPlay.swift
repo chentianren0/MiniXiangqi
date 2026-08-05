@@ -103,9 +103,13 @@ final class NearbyPlay {
     /// end, once.
     private var soundedConclusion = false
 
+    /// - Parameter flipped: which way round to draw the board, where the player
+    ///   has already turned it. The orientation rule below is what answers when
+    ///   they have not.
     init?(session: BoardGameSession,
           driver: any NearbyDriving,
           positions: any NearbyPositions,
+          flipped: Bool? = nil,
           policy: MotionPolicy = MotionPolicy(reduceMotion: false),
           animator: MotionAnimator = .live,
           feedback: Feedback = .live) {
@@ -128,8 +132,9 @@ final class NearbyPlay {
         // The accepted orientation rule, applied to the side this device is
         // playing: your own pieces are at the bottom, and Red at the bottom is
         // the unflipped board. Where it starts and not where it must stay — the
-        // flip control turns it over.
-        self.flipped = session.localMover == .second
+        // flip control turns it over, and a board turned round stays turned
+        // round across leaving it, which is what the given value carries.
+        self.flipped = flipped ?? (session.localMover == .second)
         adopt(standing)
         self.lastMove = shown.last.flatMap { Move(text: $0, on: game.board) }
         soundedConclusion = session.end != nil
@@ -193,12 +198,12 @@ final class NearbyPlay {
     /// back.
     var isWaitingOnConnection: Bool {
         guard !isLinked else { return false }
-        // A terminal this device took while there was nowhere to send it. The
-        // engine holds it and it rides the next resume, which is the one thing
-        // the player has done that has demonstrably not reached the other
-        // device. A settlement still owed is *not* that: it is the protocol's
-        // own bookkeeping over a game whose moves all arrived.
-        if session.localTerminal != nil { return true }
+        // A terminal this device took that the other one has not answered for.
+        // The engine holds it and it rides the next resume, which is the one
+        // thing the player has done that has demonstrably not arrived. Once the
+        // exchange has settled it there is nothing owed, and a link that idles
+        // out afterwards is a finished board's own quiet.
+        if !session.settled, session.localTerminal != nil { return true }
         return session.state == .active && session.isLocalTurn && blocked
     }
 

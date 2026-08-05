@@ -29,26 +29,6 @@
 import Foundation
 import Observation
 
-extension GameKind {
-    /// The `rules_id` the BoardGame Protocol names this game by. The rules
-    /// oracle holds the same mapping on its own side of the engine, where it
-    /// answers what a `rules_id` means; this is the half the surfaces need,
-    /// which is what to put in a proposal.
-    var rulesID: String {
-        switch self {
-        case .miniXiangqi: "minixiangqi"
-        case .xiangqi: "xiangqi"
-        }
-    }
-
-    init?(rulesID: String) {
-        guard let match = Self.allCases.first(where: { $0.rulesID == rulesID }) else {
-            return nil
-        }
-        self = match
-    }
-}
-
 /// One device this peer can propose to right now: a ready connection and the
 /// paired device behind it.
 nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
@@ -173,6 +153,19 @@ final class NearbyFlow {
     /// only grows, so the count is the whole of what "already seen" means.
     private var declinesSeen = 0
 
+    /// The proposal this device sent and is waiting on, by identifier. It is
+    /// what the board opens for, and it is deliberately *this session* rather
+    /// than "a game is going": the driver publishes on its own — a connection
+    /// idling out is a publication — and a game standing with somebody must not
+    /// take away a sheet the player raised for another one.
+    private var awaitedSession: String?
+
+    /// Which boards the player has turned round. It is presentation, and it
+    /// belongs to the *game* rather than to the page: the board's own model is
+    /// rebuilt on every entry, and a board come back to is the board that was
+    /// left.
+    private var orientations: [String: Bool] = [:]
+
     init(driver: any NearbyDriving, radio: any NearbyRadio,
          positions: any NearbyPositions, isAvailable: Bool) {
         self.driver = driver
@@ -285,10 +278,15 @@ final class NearbyFlow {
     // MARK: - Proposing, and answering
 
     /// Offer this game to that device, on the side being composed.
+    ///
+    /// The identifier is the engine's to mint, so it is read back rather than
+    /// supplied: what this device holds unanswered with that peer, the instant
+    /// after the proposal was allowed, is the proposal it just made.
     func invite(_ device: NearbyPeer, to game: GameKind) {
         do {
             try driver.propose(to: device.peer, on: device.connection,
                                rulesID: game.rulesID, proposerMoves: proposerMoves)
+            awaitedSession = invited?.id
         } catch {
             refusal = .refused(error)
         }
@@ -309,12 +307,24 @@ final class NearbyFlow {
         try? driver.answer(session, accepting: false)
     }
 
-    /// The sessions moved. A proposal this device made and the peer accepted is
-    /// a game in progress, so the board opens on it — the same arrival the
-    /// accepting device already had.
+    /// The sessions moved. **The proposal this device sent** and the peer
+    /// accepted is a game in progress, so the board opens on it — the same
+    /// arrival the accepting device already had. Nothing else opens a board:
+    /// the driver publishes for its own reasons all the time, and only the
+    /// answer to this device's own invitation is an answer.
     func sessionsChanged() {
-        if proposing != nil, let live = liveSession {
-            openBoard(live.id)
+        if let awaited = awaitedSession {
+            switch driver.sessions.first(where: { $0.id == awaited }) {
+            case let session? where session.state == .active:
+                awaitedSession = nil
+                openBoard(session.id)
+            case nil:
+                // Declined, or void with the connection it was made on. The
+                // refusal below is what says so.
+                awaitedSession = nil
+            default:
+                break
+            }
         }
         // A refusal the other peer sent reaches the player here rather than in
         // the driver, which records them and judges none of them.
@@ -333,6 +343,16 @@ final class NearbyFlow {
     /// in the controls behind it.
     func dismissResult(of session: String) {
         dismissedResultOf = session
+    }
+
+    /// Which way round the player last had that board, or nil where they have
+    /// never turned it and the orientation rule still answers.
+    func orientation(of session: String) -> Bool? {
+        orientations[session]
+    }
+
+    func setOrientation(_ flipped: Bool, of session: String) {
+        orientations[session] = flipped
     }
 
     // MARK: - The radio
