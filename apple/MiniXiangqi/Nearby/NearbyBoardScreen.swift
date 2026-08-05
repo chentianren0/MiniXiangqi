@@ -68,9 +68,7 @@ struct NearbyBoardScreen: View {
             guard let session else { return }
             play?.sync(with: session)
         }
-        .onChange(of: flow.boardVoid) { _, void in
-            if let void { play?.wentAway(void) }
-        }
+        .onChange(of: flow.boardVoid) { _, _ in wentAway() }
         .onChange(of: policy) { play?.policy = policy }
         // A board turned round stays turned round: the model is rebuilt on
         // every entry, so which way the player last had it is remembered where
@@ -88,7 +86,20 @@ struct NearbyBoardScreen: View {
             NearbyPlay(session: $0, driver: flow.driver, positions: flow.positions,
                        flipped: flow.orientation(of: $0.id), policy: policy)
         }
-        if let void = flow.boardVoid { play?.wentAway(void) }
+        wentAway()
+    }
+
+    /// The game went away under the board, if it did.
+    ///
+    /// The flow's last-held session is applied first, because the update that
+    /// took the session away can be the same one that ended it: two publications
+    /// land between two redraws and this view sees only the second. Applying it
+    /// is what makes the result win wherever there was one — so the void
+    /// sentence speaks only for a game that genuinely ended without a result.
+    private func wentAway() {
+        guard let void = flow.boardVoid else { return }
+        if let held = flow.boardHeld { play?.sync(with: held) }
+        play?.wentAway(void)
     }
 
     private func layout(_ play: NearbyPlay) -> some View {

@@ -264,7 +264,7 @@ The propose sheet, what the board says about the other player and about the link
 | `nearby.refusal.busy` | 对方正在进行另一局对弈。 | They're already playing another game. | alert message | same — its `busy` |
 | `nearby.refusal.unknownGame` | 对方的 App 不下这个游戏。 | Their app doesn't play this game. | alert message | same — its `unknown_game` |
 | `nearby.refusal.rulesMismatch` | 两台设备对规则的解读不同。请都更新到最新版本后再试。 | The two devices read the rules differently. Update both to the latest version and try again. | alert message | same — its `rules_mismatch` |
-| `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message | same — its `unknown_session` |
+| `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message; notice message | same — its `unknown_session`, and the board's own sentence for a game the other device no longer holds. One fact, one set of words, whichever surface says it |
 | `nearby.refusal.alreadyPlaying` | 你和对方已经有一局对弈了。 | You already have a game with this device. | alert message | same — one game at a time per pair of devices, which this device's own engine is what says |
 | `nearby.refusal.settling` | 上一局还没有结束。请稍后再试。 | The last game hasn't finished yet. Please try again in a moment. | alert message | same — the pair's previous game is not settled between the two devices yet |
 | `nearby.refusal.notNow` | 现在无法开始对局。请重试。 | The game can't start right now. Please try again. | alert message | same — every other refusal, which is a connection that went away between the press and the send |

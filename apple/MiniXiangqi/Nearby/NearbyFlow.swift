@@ -215,9 +215,10 @@ final class NearbyFlow {
     /// and kept for the board to say.
     private(set) var boardVoid: NearbyVoid?
 
-    /// The device the board's session is with, remembered while the session is
-    /// there. It is what a session that has gone is still accounted for by.
-    private var boardPeer: PeerDeviceID?
+    /// The board's session as the driver last published it, held against its
+    /// going away: what device it was with, and — the part a void cannot carry —
+    /// how it ended, where it ended at all.
+    private(set) var boardHeld: BoardGameSession?
 
     /// How many of the driver's refusals have been presented. The driver's list
     /// only grows, so the count is the whole of what "already seen" means.
@@ -242,6 +243,45 @@ final class NearbyFlow {
         self.radio = radio
         self.positions = positions
         self.isAvailable = isAvailable
+        watchPublications()
+    }
+
+    /// Holds the board's session at every *publication*, rather than at every
+    /// redraw that happens to notice one.
+    ///
+    /// The driver publishes once per input it performs, and two inputs land
+    /// between two redraws often enough to design for: on a reconnection the
+    /// other peer's `resume` carrying its resignation and the `propose` that
+    /// retires the game that resignation ended arrive back to back on one
+    /// connection, and the transport hands both to the driver in one pass. A
+    /// view's `onChange` compares the value at one redraw with the value at the
+    /// next and never sees the one in between, so a board that learned what
+    /// became of its game from redraws alone would be told the game was retired
+    /// and never told it was won.
+    ///
+    /// This watches the publications themselves, and the change callback runs
+    /// *before* the value moves — which is exactly what makes it useful: what it
+    /// reads is the state the coming redraw is about to skip over.
+    private func watchPublications() {
+        withObservationTracking {
+            _ = driver.sessions
+        } onChange: { [weak self] in
+            // The driver is main-actor and publishes there, so the notification
+            // arrives there too.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.holdBoardSession()
+                self.watchPublications()
+            }
+        }
+    }
+
+    /// The board's session as it stands right now, kept.
+    private func holdBoardSession() {
+        guard let boardSessionID,
+              let held = driver.sessions.first(where: { $0.id == boardSessionID })
+        else { return }
+        boardHeld = held
     }
 
     /// Whether nearby is offered on this device. iPhone and iPad only — the
@@ -327,7 +367,8 @@ final class NearbyFlow {
         proposing = nil
         boardSessionID = session
         boardVoid = nil
-        boardPeer = driver.sessions.first { $0.id == session }?.peer
+        boardHeld = nil
+        holdBoardSession()
         wake()
     }
 
@@ -345,7 +386,7 @@ final class NearbyFlow {
     func leaveBoard() {
         boardSessionID = nil
         boardVoid = nil
-        boardPeer = nil
+        boardHeld = nil
         restIfIdle()
     }
 
@@ -418,11 +459,11 @@ final class NearbyFlow {
     /// engine has parted with is one the board is owed a sentence about.
     private func noteBoardVoid() {
         guard let boardSessionID else { return }
-        if let session = boardSession {
-            boardPeer = session.peer
+        guard boardSession == nil else {
+            holdBoardSession()
             return
         }
-        guard boardVoid == nil, let peer = boardPeer else { return }
+        guard boardVoid == nil, let peer = boardHeld?.peer else { return }
         boardVoid = reasonItWent(boardSessionID, with: peer)
     }
 

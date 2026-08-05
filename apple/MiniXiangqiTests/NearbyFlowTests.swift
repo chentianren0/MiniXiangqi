@@ -602,6 +602,39 @@ struct NearbyFlowTests {
         #expect(Set([NearbyVoid.lostByPeer, .disagreement, .retired].map(\.messageKey)).count == 3)
     }
 
+    @Test("A game that ended and was retired in one update is still the result")
+    func aResultAndItsRemovalInOneUpdateIsStillTheResult() throws {
+        let driver = FakeDriver()
+        let live = session(proposer: .local, accepted: true)
+        driver.sessions = [live]
+        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        flow.open(.miniXiangqi)
+        let play = try #require(board(live))
+
+        // Two publications between two redraws, which is what a reconnection
+        // does: the other peer's resume carried its resignation, and the propose
+        // that followed it on the same connection retired the game that
+        // resignation had ended. A view watching redraws sees only the second.
+        driver.sessions = [with(live) { $0.peerTerminal = .resign }]
+        driver.sessions = [session(id: "S2", proposer: .peer)]
+        flow.sessionsChanged()
+
+        #expect(flow.boardVoid == .retired)
+        // The publication the redraw skipped is the one the flow held, and it
+        // is the one carrying the end.
+        let held = try #require(flow.boardHeld)
+        #expect(held.end?.ending == .resignation(.peer))
+
+        // Applied before the board is told the game went away, which is what
+        // makes the result win: this game was won, and the board says so rather
+        // than saying the other player started a new one.
+        play.sync(with: held)
+        play.wentAway(try #require(flow.boardVoid))
+        #expect(play.end?.state == .redWins)
+        #expect(play.reasonText == EndReason.resignation.text)
+        #expect(play.isOver)
+    }
+
     @Test("A board told its game went away stops offering the game")
     func aVoidedBoardIsQuiet() throws {
         let live = with(session(proposer: .local, accepted: true)) { $0.plies = ["b1b2"] }
@@ -683,7 +716,13 @@ struct NearbyFlowTests {
 // MARK: - The seams
 
 /// A driver that records instead of speaking, and refuses when the test says so.
+///
+/// Observable like the real one, because *when* it publishes is part of what is
+/// under test: the flow holds the board's session at every publication rather
+/// than at every redraw, and a fake that published silently could not tell the
+/// two apart.
 @MainActor
+@Observable
 private final class FakeDriver: NearbyDriving {
     struct Proposal: Equatable {
         var peer: PeerDeviceID
