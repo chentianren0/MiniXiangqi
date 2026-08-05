@@ -1,6 +1,6 @@
 # Game Archive Fixtures
 
-This directory holds the approved, executable fixtures for the version 2 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
+This directory holds the approved, executable fixtures for the version 3 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
 
 Normative stance: every expected value comes from the accepted archive format, its serialized vocabularies, its cross-field rules, and its validation order — never from what the codec currently happens to do. A file here that the codec disagrees with is a codec defect until the contract says otherwise.
 
@@ -54,10 +54,16 @@ Every golden asserts three things:
 | `human-vs-ai-active` | human versus AI, active, Random resolved to Black | none |
 | `xiangqi-free-play-active` | Xiangqi, Free Play, active | none |
 | `xiangqi-free-play-ended-early` | Xiangqi, Free Play, complete | `none` / `ended-early` |
+| `nearby-active` | nearby, active | none |
+| `nearby-resignation` | nearby, complete | `red-wins` / `resignation` |
+| `nearby-agreed-draw` | nearby, complete | `draw` / `agreed-draw` |
+| `nearby-mutual-resignation` | nearby, complete | `draw` / `mutual-resignation` |
 
-Between them they cover both games, all four `outcome` values, the terminal pairs a version 2 file can carry, both modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play omits `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
+Between them they cover both games, all four `outcome` values, the terminal pairs a version 3 file can carry, all three modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play and nearby play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 2 document and not an incomplete one.
+The four nearby goldens also carry the portability law: none of them names a peer device, a pairing, or which side this device's player took. `nearby-resignation` is a resignation with no `human_side` to check its winner against — the outcome names the winner and the side that resigned is its opposite — and the two draws are the ends only two players can reach.
+
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 3 document and not an incomplete one.
 
 ### Sidecar
 
@@ -84,17 +90,11 @@ The active-game shape is the archive as the store holds it while the game is bei
 
 The identifiers are the deterministic sequence `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY` documents — one per file, so no two goldens claim the same identity — and the timestamps start at the deterministic clock's epoch, so the round-trip fixtures in [`../store/`](../store/README.md) compare these files byte for byte against what the core writes.
 
-### Provenance: every golden is now produced
+### Every golden is produced
 
-All nine files are **produced** rather than hand-written. `fixtures/store/` names each of them from a scenario — the four active shapes from a round-trip scenario, the five completed shapes from a terminal scenario in `fixtures/store/terminal/` — and the runners fail unless `mxq_archive_encode` reproduces the file byte for byte under `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`.
+No golden is hand-written. Each is named from a scenario in [`../store/`](../store/README.md) — the active shapes from a round-trip scenario, the completed shapes from a terminal scenario in `../store/terminal/` — and the runners fail unless `mxq_archive_encode` reproduces the file byte for byte under `MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`. A golden that no scenario produces is a golden nothing proves.
 
-The regenerations, in order:
-
-- `free-play-created` was added with the encoder, as the shape a creation writes.
-- `free-play-active` and `human-vs-ai-active` had their `origin.exported_at` restamped from `2026-01-01T00:01:00.000Z`, a hand-chosen "a minute later", to the instant of the committed change each document actually records — the second of their two moves, at `2026-01-01T00:00:02.000Z`.
-- The four completed goldens — `free-play-ended-early`, `free-play-draw-threefold`, `human-vs-ai-checkmate`, `human-vs-ai-resignation` — had their `ended_at` and `origin.exported_at` restamped when the archiving paths that can produce them landed. Both now carry the instant of the one committed event that ended each game, which under the deterministic clock is the creation plus one second per committed change: `00:00:03.000` after two moves and an archive-and-clear, `00:00:09.000` after eight moves and a claim, `00:00:04.000` after three moves and a confirmation, `00:00:03.000` after two moves and a resignation. Their sidecars' `ended_at_ms` moved with them; nothing else in any of the eight files changed, and no sidecar changed for `origin`, which is never part of what a file decodes to.
-
-`game-data.md` § canonical form states the rule those instants follow: a stored document's `exported_at` is the committed change that produced it, and for an ending that is also its `ended_at` and its History-added time, because they are one event.
+The identifiers and instants follow from that flag alone: the identity provider's counter-derived sequence, and a clock at a fixed epoch advancing one second per committed change. `game-data.md` § canonical form fixes what the instants mean — a stored document's `exported_at` is the committed change that produced it, and for an ending that is also its `ended_at` and its History-added time, because they are one event.
 
 ## The rejection corpus
 
@@ -125,6 +125,7 @@ One archive per rejection class of the accepted validation order, each stating t
 | content: missing member | `content-member-missing` | `MALFORMED` | `MALFORMED` |
 | content: wrong member type | `moves-not-an-array` | `MALFORMED` | `MALFORMED` |
 | content: mode-to-configuration shape | `free-play-carries-human-side` | `MALFORMED` | `MALFORMED` |
+| content: mode-to-configuration shape | `nearby-carries-human-side` | `MALFORMED` | `MALFORMED` |
 | content: mode-to-configuration shape | `human-vs-ai-missing-ai-level` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-mode` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-outcome` | `MALFORMED` | `MALFORMED` |
@@ -140,12 +141,14 @@ One archive per rejection class of the accepted validation order, each stating t
 | cross-field: outcome and reason | `cross-field-none-reason` | `MALFORMED` | `MALFORMED` |
 | cross-field: resignation | `cross-field-resignation-mode` | `MALFORMED` | `MALFORMED` |
 | cross-field: resignation | `cross-field-resignation-winner` | `MALFORMED` | `MALFORMED` |
+| cross-field: agreed ending | `cross-field-agreed-draw-mode` | `MALFORMED` | `MALFORMED` |
 | cross-field: time ordering | `time-ordering` | `MALFORMED` | `MALFORMED` |
 | rules tier: initial position | `start-fen-not-frozen` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: illegal move | `move-illegal` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: terminal pair | `terminal-mismatch-checkmate` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-threefold` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-ended-early` | `MXQ_OK` | `TERMINAL_MISMATCH` |
+| rules tier: terminal pair | `terminal-mismatch-agreed-draw` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-outcome` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 
 Statuses are written without their `MXQ_ERR_ARCHIVE_` prefix here; the sidecars spell the constant in full.
@@ -185,7 +188,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The four active shapes are its one deliberate divergence: they are valid version 2 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The active shapes are its one deliberate divergence: they are valid version 3 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

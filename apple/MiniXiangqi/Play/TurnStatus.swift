@@ -209,6 +209,8 @@ extension EndReason {
         case .fiftyMoveRule: String(localized: "reason.fiftyMoveRule")
         case .resignation: String(localized: "reason.resignation")
         case .endedEarly: String(localized: "reason.endedEarly")
+        case .agreedDraw: String(localized: "reason.agreedDraw")
+        case .mutualResignation: String(localized: "reason.mutualResignation")
         // No reason is no words, in every language.
         case .none: ""
         }

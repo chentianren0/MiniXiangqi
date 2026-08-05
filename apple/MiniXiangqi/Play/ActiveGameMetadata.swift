@@ -54,9 +54,11 @@ extension ActiveGameSummary {
     }
 
     var modeText: String {
-        mode == .humanVersusAI
-            ? String(localized: "mode.humanVersusAI")
-            : String(localized: "mode.freePlay")
+        switch mode {
+        case .humanVersusAI: String(localized: "mode.humanVersusAI")
+        case .freePlay: String(localized: "mode.freePlay")
+        case .nearby: String(localized: "mode.nearby")
+        }
     }
 
     /// Whose turn it is, from the ply count the store returned.

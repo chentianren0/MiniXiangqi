@@ -1,0 +1,19 @@
+{
+  "title": "Nearby, Black resigns",
+  "why": "Either side of a nearby game may resign, and the caller states which — the session it reconciled is the authority for that, not the board. The core still derives the outcome, so the win is Red's because Black is the side that resigned, and no member records a person or a device. Its bytes are the corpus's nearby-resignation golden.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "nearby",
+    "local_side": "red"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "end": {
+    "action": "commit_nearby_end",
+    "reason": "resignation",
+    "resigning_side": "black",
+    "archive": "nearby-resignation.mxq",
+    "outcome": "red-wins",
+    "end_reason": "resignation",
+    "state": "ongoing"
+  }
+}

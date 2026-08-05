@@ -220,6 +220,7 @@ const char *mode_text(MxqPlayMode mode) {
     switch (mode) {
     case MXQ_PLAY_MODE_HUMAN_VS_AI: return "human-vs-ai";
     case MXQ_PLAY_MODE_FREE_PLAY:   return "free-play";
+    case MXQ_PLAY_MODE_NEARBY:      return "nearby";
     default: break;
     }
     assert(false && "a mode outside the closed vocabulary reached the writer");
@@ -279,6 +280,8 @@ const char *end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_RESIGNATION:            return "resignation";
     case MXQ_END_REASON_ENDED_EARLY:            return "ended-early";
     case MXQ_END_REASON_FIFTY_MOVE_RULE:        return "fifty-move-rule";
+    case MXQ_END_REASON_AGREED_DRAW:            return "agreed-draw";
+    case MXQ_END_REASON_MUTUAL_RESIGNATION:     return "mutual-resignation";
     default: break;
     }
     return nullptr; /* MXQ_END_REASON_NONE: no end is recorded */
@@ -294,7 +297,7 @@ std::string content_bytes(const Record &record) {
 
     members.emplace_back("rules_id", json_string(rules_id_text(record.config.game)));
     members.emplace_back("rules_version", std::to_string(MXQ_RULES_VERSION));
-    /* Version 2 defines exactly one initial position per game, so the writer
+    /* Version 3 defines exactly one initial position per game, so the writer
      * states that game's frozen one rather than carrying a start position it
      * would have to validate. Both members read the same field, which is what
      * makes a document naming one game and opening from the other's board
@@ -305,9 +308,12 @@ std::string content_bytes(const Record &record) {
     members.emplace_back("mode", json_string(mode_text(record.config.mode)));
 
     /* The four configuration members exist exactly for human-versus-AI games;
-     * Free Play omits them rather than writing a null or an empty value, which
-     * is what MXQ_COLOR_NONE, MXQ_AI_LEVEL_NONE and MXQ_FIRST_MOVER_NONE stand
-     * for on the other side of the C interface. */
+     * Free Play and nearby play omit them rather than writing a null or an
+     * empty value, which is what MXQ_COLOR_NONE, MXQ_AI_LEVEL_NONE and
+     * MXQ_FIRST_MOVER_NONE stand for on the other side of the C interface.
+     * config.local_side is written by no branch at all: it is a fact about this
+     * device rather than about the game, and docs/game-data.md's portability
+     * law keeps it out of a document two devices could exchange. */
     if (record.config.mode == MXQ_PLAY_MODE_HUMAN_VS_AI) {
         members.emplace_back("human_side",
                              json_string(color_text(record.config.human_side)));

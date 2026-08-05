@@ -71,7 +71,8 @@ bool game_of(const std::string &text, MxqGameKind &out) {
 
 bool mode_of(const std::string &text, MxqPlayMode &out) {
     static const MxqPlayMode domain[] = {MXQ_PLAY_MODE_HUMAN_VS_AI,
-                                         MXQ_PLAY_MODE_FREE_PLAY};
+                                         MXQ_PLAY_MODE_FREE_PLAY,
+                                         MXQ_PLAY_MODE_NEARBY};
     return value_of(text, domain, archive::mode_text, out);
 }
 
@@ -114,7 +115,8 @@ bool end_reason_of(const std::string &text, MxqEndReason &out) {
         MXQ_END_REASON_THREEFOLD_REPETITION,   MXQ_END_REASON_PERPETUAL_CHECK,
         MXQ_END_REASON_PERPETUAL_CHASE,        MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK,
         MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE, MXQ_END_REASON_RESIGNATION,
-        MXQ_END_REASON_ENDED_EARLY,            MXQ_END_REASON_FIFTY_MOVE_RULE};
+        MXQ_END_REASON_ENDED_EARLY,            MXQ_END_REASON_FIFTY_MOVE_RULE,
+        MXQ_END_REASON_AGREED_DRAW,            MXQ_END_REASON_MUTUAL_RESIGNATION};
     if (text.empty()) {
         out = MXQ_END_REASON_NONE;
         return true;
@@ -149,8 +151,10 @@ bool provenance_of(const std::string &text, MxqProvenance &out) {
  *
  * Every field is a column; nothing is recomputed from the blob here, because
  * the columns are written from the same values the document is written from
- * and docs/game-data.md requires them to be exactly recomputable from it. A
- * value outside a closed vocabulary is corruption rather than a summary with a
+ * and docs/game-data.md requires them to be exactly recomputable from it —
+ * except the four that are local library metadata, which the blob does not
+ * decide and which are read from their own columns like the rest. A value
+ * outside a closed vocabulary is corruption rather than a summary with a
  * guessed field in it.
  */
 MxqStatus fill_summary(const Summary &row, bool is_active,
@@ -158,12 +162,14 @@ MxqStatus fill_summary(const Summary &row, bool is_active,
     MxqGameKind game = MXQ_GAME_KIND_MINI_XIANGQI;
     MxqPlayMode mode = MXQ_PLAY_MODE_FREE_PLAY;
     MxqColor human_side = MXQ_COLOR_NONE;
+    MxqColor local_side = MXQ_COLOR_NONE;
     MxqAiLevel ai_level = MXQ_AI_LEVEL_NONE;
     MxqOutcome outcome = MXQ_OUTCOME_NONE;
     MxqEndReason end_reason = MXQ_END_REASON_NONE;
     MxqProvenance provenance = MXQ_PROVENANCE_LOCALLY_PLAYED;
     if (!game_of(row.rules_id, game) || !mode_of(row.mode, mode) ||
         !color_of(row.human_side, human_side) ||
+        !color_of(row.local_side, local_side) ||
         !ai_level_of(row.ai_level, ai_level) ||
         !outcome_of(row.outcome, outcome) ||
         !end_reason_of(row.end_reason, end_reason) ||
@@ -194,6 +200,7 @@ MxqStatus fill_summary(const Summary &row, bool is_active,
     out->pinned = row.pinned ? 1u : 0u;
     out->is_active = is_active ? 1u : 0u;
     out->game = game;
+    out->local_side = local_side;
     copy_bounded(out->game_id, sizeof(out->game_id), row.game_id.c_str());
     return MXQ_OK;
 }

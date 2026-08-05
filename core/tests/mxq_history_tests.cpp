@@ -174,6 +174,7 @@ MxqGameConfig make_config() {
     c.ai_level = MXQ_AI_LEVEL_NONE;
     c.first_mover_choice = MXQ_FIRST_MOVER_NONE;
     c.ai_movetime_ms = 0;
+    c.local_side = MXQ_COLOR_NONE;
     return c;
 }
 #endif /* MXQ_TEST_RULES_FACADE */
@@ -390,6 +391,9 @@ std::string reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE: return "mutual-perpetual-chase";
     case MXQ_END_REASON_RESIGNATION: return "resignation";
     case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
+    case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
+    case MXQ_END_REASON_AGREED_DRAW: return "agreed-draw";
+    case MXQ_END_REASON_MUTUAL_RESIGNATION: return "mutual-resignation";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -449,6 +453,11 @@ struct Ending {
     std::string outcome;
     std::string end_reason;
     std::string state;
+    /* The two members mxq_game_commit_nearby_end takes beyond the handle: which
+     * of the protocol's explicit ends the two players reached, and — for the one
+     * that names a side — which side resigned. */
+    std::string reason;
+    std::string resigning_side;
 };
 
 struct Scenario {
@@ -510,8 +519,21 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             first->string() == "human-first"  ? MXQ_FIRST_MOVER_HUMAN_FIRST
             : first->string() == "ai-first"   ? MXQ_FIRST_MOVER_AI_FIRST
                                               : MXQ_FIRST_MOVER_RANDOM;
+    } else if (mode->string() == "nearby") {
+        out.config.mode = MXQ_PLAY_MODE_NEARBY;
+        /* Local perspective is store metadata rather than archive content, and
+         * a nearby game is played from one of the two sides of this device, so
+         * a nearby scenario states which. */
+        const mxqtest::JsonValue *local = config->member("local_side");
+        if (local == nullptr || !local->is_string() ||
+            (local->string() != "red" && local->string() != "black")) {
+            error = "a nearby scenario states \"config.local_side\"";
+            return false;
+        }
+        out.config.local_side =
+            local->string() == "red" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
     } else if (mode->string() != "free-play") {
-        error = "\"config.mode\" is not one of the two accepted modes";
+        error = "\"config.mode\" is not one of the three accepted modes";
         return false;
     }
 
@@ -554,25 +576,42 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
     out.end.outcome = member("outcome");
     out.end.end_reason = member("end_reason");
     out.end.state = member("state");
+    out.end.reason = member("reason");
+    out.end.resigning_side = member("resigning_side");
     if (out.end.action.empty()) {
         error = "the scenario's \"end\" states no action";
+        return false;
+    }
+    if (out.end.action == "commit_nearby_end" && out.end.reason.empty()) {
+        error = "a nearby ending states which end the two players reached";
         return false;
     }
     return true;
 }
 
 /* The one call a scenario's ending names. */
-MxqStatus perform_ending(const std::string &action, MxqCore *core,
-                         MxqGame *game, uint64_t *out_record_id,
-                         MxqError *err) {
-    if (action == "claim_draw") {
+MxqStatus perform_ending(const Ending &end, MxqCore *core, MxqGame *game,
+                         uint64_t *out_record_id, MxqError *err) {
+    if (end.action == "claim_draw") {
         return mxq_game_claim_draw(game, out_record_id, err);
     }
-    if (action == "resign") {
+    if (end.action == "resign") {
         return mxq_game_resign(game, out_record_id, err);
     }
-    if (action == "confirm_result") {
+    if (end.action == "confirm_result") {
         return mxq_game_confirm_result(game, out_record_id, err);
+    }
+    if (end.action == "commit_nearby_end") {
+        const MxqEndReason reason =
+            end.reason == "resignation"        ? MXQ_END_REASON_RESIGNATION
+            : end.reason == "mutual-resignation"
+                ? MXQ_END_REASON_MUTUAL_RESIGNATION
+                : MXQ_END_REASON_AGREED_DRAW;
+        const MxqColor side = end.resigning_side == "red"     ? MXQ_COLOR_RED
+                              : end.resigning_side == "black" ? MXQ_COLOR_BLACK
+                                                              : MXQ_COLOR_NONE;
+        return mxq_game_commit_nearby_end(game, reason, side, out_record_id,
+                                          err);
     }
     return mxq_store_archive_and_clear(core, game, out_record_id, err);
 }
@@ -595,6 +634,9 @@ void check_archived_refuses_everything(Case &c, MxqCore *core, MxqGame *game,
         {"mxq_game_resign", mxq_game_resign(game, &record_id, nullptr)},
         {"mxq_game_confirm_result",
          mxq_game_confirm_result(game, &record_id, nullptr)},
+        {"mxq_game_commit_nearby_end",
+         mxq_game_commit_nearby_end(game, MXQ_END_REASON_AGREED_DRAW,
+                                    MXQ_COLOR_NONE, &record_id, nullptr)},
         {"mxq_store_archive_and_clear",
          mxq_store_archive_and_clear(core, game, &record_id, nullptr)},
     };
@@ -782,7 +824,7 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
     /* ---- the ending ---- */
     uint64_t record_id = 0;
     err = make_error();
-    rc = perform_ending(scenario.end.action, core, game, &record_id, &err);
+    rc = perform_ending(scenario.end, core, game, &record_id, &err);
     c.check(rc == MXQ_OK, "the ending was refused: " +
                               std::string(mxq_status_name(rc)) + ": " +
                               err.detail);
@@ -1023,7 +1065,7 @@ void case_a_failed_ending_is_retryable(const std::vector<fs::path> &paths) {
         uint64_t refused_id = 99;
         err = make_error();
         const MxqStatus refused =
-            perform_ending(scenario.end.action, core, game, &refused_id, &err);
+            perform_ending(scenario.end, core, game, &refused_id, &err);
         c.check(mxq_status_domain(refused) == MXQ_DOMAIN_STORE,
                 what + ": an ending that cannot commit fails in the store "
                        "domain, got " +
@@ -1058,7 +1100,7 @@ void case_a_failed_ending_is_retryable(const std::vector<fs::path> &paths) {
         uint64_t record_id = 0;
         err = make_error();
         const MxqStatus retried =
-            perform_ending(scenario.end.action, core, game, &record_id, &err);
+            perform_ending(scenario.end, core, game, &record_id, &err);
         c.check(retried == MXQ_OK,
                 what + ": the same ending commits once the store is free, got " +
                     std::string(mxq_status_name(retried)) + ": " + err.detail);
@@ -1271,8 +1313,76 @@ void case_endings_refuse_where_they_do_not_apply() {
     c.check_status(mxq_game_claim_draw(mated, &record_id, &err),
                    MXQ_ERR_STATE_CLAIM_UNAVAILABLE,
                    "claiming a draw in a mated position");
+    /* An agreed ending is a nearby action, and a mode check precedes the
+     * position: this game has both a result of its own and nobody to agree
+     * with, and the answer names the one that decides it. */
+    err = make_error();
+    c.check_status(mxq_game_commit_nearby_end(mated, MXQ_END_REASON_AGREED_DRAW,
+                                              MXQ_COLOR_NONE, &record_id, &err),
+                   MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
+                   "an agreed ending in a game with one player");
 
+    /* File it, so the next game may be created: one active game spans every
+     * mode as well as both games. */
+    err = make_error();
+    c.check_status(mxq_game_confirm_result(mated, &filed, &err), MXQ_OK,
+                   "the mated game is confirmed and filed");
     mxq_game_release(mated);
+
+    /* Nearby, mated: the protocol's precedence rule says an end the rules
+     * decided outranks one the players declared, so every explicit ending is
+     * refused over a position that already has a result. */
+    MxqGameConfig nearby = make_config();
+    nearby.mode = MXQ_PLAY_MODE_NEARBY;
+    nearby.local_side = MXQ_COLOR_BLACK;
+    MxqGame *decided = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &nearby, &decided, &err), MXQ_OK,
+                   "the nearby game is created");
+    for (const char *move : {"b1b3", "a6a5", "b3d3"}) {
+        mxq_game_apply_move(decided, move, nullptr, nullptr, nullptr);
+    }
+    MxqGameStatus nearby_over = make_status();
+    mxq_game_status(decided, &nearby_over, nullptr);
+    c.check_eq(state_text(nearby_over.state), "red-wins",
+               "the nearby line is a checkmate too");
+    c.check_eq(nearby_over.undo_available, 0,
+               "a nearby game offers no unilateral undo");
+    c.check_eq(nearby_over.resign_available, 0,
+               "and mxq_game_resign's affordance stays human-versus-AI's");
+
+    const struct {
+        const char  *what;
+        MxqEndReason reason;
+        MxqColor     side;
+    } declared[] = {
+        {"a resignation", MXQ_END_REASON_RESIGNATION, MXQ_COLOR_BLACK},
+        {"a mutual resignation", MXQ_END_REASON_MUTUAL_RESIGNATION,
+         MXQ_COLOR_NONE},
+        {"an agreed draw", MXQ_END_REASON_AGREED_DRAW, MXQ_COLOR_NONE},
+    };
+    for (const auto &declaration : declared) {
+        err = make_error();
+        c.check_status(mxq_game_commit_nearby_end(decided, declaration.reason,
+                                                  declaration.side, &record_id,
+                                                  &err),
+                       MXQ_ERR_STATE_GAME_OVER,
+                       std::string(declaration.what) +
+                           " over a decided position");
+    }
+    c.check_eq(static_cast<int64_t>(record_id), 0,
+               "no refused ending produced a record id");
+
+    /* mxq_game_undo is not the nearby retraction, and refuses rather than
+     * removing a ply the two players did not agree to drop. */
+    uint32_t removed = 7;
+    err = make_error();
+    c.check_status(mxq_game_undo(decided, &removed, &err),
+                   MXQ_ERR_STATE_UNDO_UNAVAILABLE,
+                   "undoing a nearby game unilaterally");
+    c.check_eq(removed, 0, "and it removes nothing");
+
+    mxq_game_release(decided);
     mxq_core_shutdown(core, nullptr);
     c.report();
 }

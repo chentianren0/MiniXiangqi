@@ -263,6 +263,7 @@ MxqGameConfig hvai_config(uint32_t movetime_ms,
     config.ai_level = MXQ_AI_LEVEL_FAST;
     config.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
     config.ai_movetime_ms = movetime_ms;
+    config.local_side = MXQ_COLOR_NONE;
     config.game = game;
     return config;
 }
@@ -1026,6 +1027,7 @@ void case_free_play_owes_no_search() {
         config.ai_level = MXQ_AI_LEVEL_NONE;
         config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
         config.ai_movetime_ms = 0;
+        config.local_side = MXQ_COLOR_NONE;
         MxqGame *game = nullptr;
         c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
                        "free play create");

@@ -259,6 +259,7 @@ MxqGameConfig make_config() {
     c.ai_level = MXQ_AI_LEVEL_NONE;
     c.first_mover_choice = MXQ_FIRST_MOVER_NONE;
     c.ai_movetime_ms = 0;
+    c.local_side = MXQ_COLOR_NONE;
     return c;
 }
 
@@ -365,8 +366,21 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             first->string() == "human-first"  ? MXQ_FIRST_MOVER_HUMAN_FIRST
             : first->string() == "ai-first"   ? MXQ_FIRST_MOVER_AI_FIRST
                                               : MXQ_FIRST_MOVER_RANDOM;
+    } else if (mode->string() == "nearby") {
+        out.config.mode = MXQ_PLAY_MODE_NEARBY;
+        /* Local perspective is store metadata rather than archive content, and
+         * a nearby game is played from one of the two sides of this device, so
+         * a nearby scenario states which. */
+        const mxqtest::JsonValue *local = config->member("local_side");
+        if (local == nullptr || !local->is_string() ||
+            (local->string() != "red" && local->string() != "black")) {
+            error = "a nearby scenario states \"config.local_side\"";
+            return false;
+        }
+        out.config.local_side =
+            local->string() == "red" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
     } else if (mode->string() != "free-play") {
-        error = "\"config.mode\" is not one of the two accepted modes";
+        error = "\"config.mode\" is not one of the three accepted modes";
         return false;
     }
 
@@ -554,6 +568,12 @@ void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
                where + ": first_mover_choice");
     c.check_eq(config.ai_movetime_ms, scenario.config.ai_movetime_ms,
                where + ": ai_movetime_ms");
+    /* The one configuration member the archive does not carry. Comparing it
+     * after the resume is the assertion that matters: local perspective
+     * survives a close and a reopen through the store's own column, and the
+     * blob it is not in cannot be what carried it. */
+    c.check_eq(config.local_side, scenario.config.local_side,
+               where + ": local_side");
 }
 
 /*

@@ -109,7 +109,10 @@ struct SetupScreen: View {
 
             switch mode {
             case .humanVersusAI: humanVersusAISetup
-            case .freePlay: freePlaySetup
+            // Nearby play reaches its opponent through the propose sheet rather
+            // than through this page, so it has no pre-start state here and
+            // shows what Free Play does: the game's name and nothing to set.
+            case .freePlay, .nearby: freePlaySetup
             }
             if fillingHeight { Spacer(minLength: 0) }
         }

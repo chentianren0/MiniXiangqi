@@ -1,0 +1,7 @@
+{
+  "class": "content: mode-to-configuration shape",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "present in a game that is not human-versus-AI",
+  "why": "The four configuration members exist exactly for human-versus-AI games. A nearby game has two human players and no AI, so a human_side there is not an under-specified field but a member of another mode's shape."
+}

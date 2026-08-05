@@ -1,7 +1,7 @@
 /* The library store behind mxq_store_ and the attached-session commits.
  *
  * One embedded SQLite database, opened at mxq_core_init and closed at
- * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 2.
+ * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 3.
  * This header is internal: nothing SQLite-shaped is visible through mxq.h, per
  * docs/architecture.md, and core/CMakeLists.txt links the vendored library
  * PRIVATE for the same reason.
@@ -44,7 +44,7 @@ namespace store {
 
 /* The store's one database file, under the frontend-supplied store directory.
  * The name is part of the accepted contract: docs/game-data.md, "Library store
- * schema, version 2". Write-ahead logging keeps its journal beside it as
+ * schema, version 3". Write-ahead logging keeps its journal beside it as
  * library.sqlite3-wal and library.sqlite3-shm. */
 constexpr const char *kDatabaseFileName = "library.sqlite3";
 
@@ -93,6 +93,9 @@ struct ActiveGame {
     const char *human_side = nullptr;
     const char *ai_level = nullptr;
     const char *first_mover_choice = nullptr;
+    /* The side this device's player took: library metadata rather than a
+     * derived column, present exactly for a nearby game and null otherwise. */
+    const char *local_side = nullptr;
     int64_t     ai_movetime_ms = 0; /* 0 means the archive omits it */
     int64_t     move_count = 0;
     int64_t     started_at_ms = 0;
@@ -124,7 +127,7 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
  */
 MxqStatus load_active(Store &store, bool &out_exists, uint64_t &out_record_id,
                       std::string &out_archive, std::string &out_content_sha256,
-                      MxqError *err);
+                      std::string &out_local_side, MxqError *err);
 
 /*
  * Rewrite the one active row — the new canonical bytes, their hash, and the
@@ -142,11 +145,11 @@ MxqStatus rewrite_active(Store &store, uint64_t record_id,
 /*
  * What ending a game writes over its active row.
  *
- * The four archiving paths — the three terminal commits and archive-and-clear —
+ * The five archiving paths — the four terminal commits and archive-and-clear —
  * differ only in how they classify the ending; what they write is this, and
  * they write it through one function so that "one atomic transaction: the
  * outcome, the immutable History record, and the cleared active-game
- * reference" is one place rather than four.
+ * reference" is one place rather than five.
  *
  * The archive is the finished shape: the same document the active row held,
  * rewritten with the terminal trio the classification decided. The vocabulary
@@ -204,6 +207,7 @@ struct Summary {
     std::string outcome;
     std::string end_reason;
     std::string provenance;
+    std::string local_side;
     bool        pinned = false;
     int64_t     started_at_ms = 0;
     int64_t     ended_at_ms = 0;
@@ -346,12 +350,12 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *
  *   - the required pragmas are applied and then read back and verified:
  *     journal_mode=WAL, synchronous=FULL, foreign_keys=ON;
- *   - a fresh database receives the complete schema version 2 in one
+ *   - a fresh database receives the complete schema version 3 in one
  *     transaction, and its user_version pragma is set to 2;
  *   - an existing database is verified: the three tables must exist and be
  *     STRICT, and the single library row must be present;
  *   - a database recording any other schema version is refused, and never
- *     migrated: version 2 is the only schema this build defines. A newer one
+ *     migrated: version 3 is the only schema this build defines. A newer one
  *     is MXQ_ERR_STORE_SCHEMA_TOO_NEW, which the contract requires to be said
  *     distinctly; anything else is MXQ_ERR_STORE_MIGRATION_FAILED.
  *

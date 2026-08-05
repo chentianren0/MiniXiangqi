@@ -1,0 +1,18 @@
+{
+  "title": "Nearby, both players resigned",
+  "why": "Two resignations can cross, and the protocol's precedence rule makes the pair a draw rather than two losses. It is recorded as its own reason so that the record does not claim the players agreed to a draw they never discussed. Its bytes are the corpus's nearby-mutual-resignation golden.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "nearby",
+    "local_side": "black"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "end": {
+    "action": "commit_nearby_end",
+    "reason": "mutual-resignation",
+    "archive": "nearby-mutual-resignation.mxq",
+    "outcome": "draw",
+    "end_reason": "mutual-resignation",
+    "state": "ongoing"
+  }
+}

@@ -101,7 +101,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 2
-#define MXQ_API_VERSION_MINOR 0
+#define MXQ_API_VERSION_MINOR 1
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -376,7 +376,14 @@ enum {
 typedef int32_t MxqPlayMode;
 enum {
     MXQ_PLAY_MODE_HUMAN_VS_AI = 0, /* serialised "human-vs-ai" */
-    MXQ_PLAY_MODE_FREE_PLAY   = 1  /* serialised "free-play" */
+    MXQ_PLAY_MODE_FREE_PLAY   = 1, /* serialised "free-play" */
+    MXQ_PLAY_MODE_NEARBY      = 2  /* serialised "nearby": one game played by
+                                    * two devices. Like Free Play it carries
+                                    * none of the four human-versus-AI members;
+                                    * unlike either local mode it can end by an
+                                    * agreement between the two players, which
+                                    * is what the last two MxqEndReason values
+                                    * record */
 };
 
 /*
@@ -443,10 +450,15 @@ enum {
 };
 
 /*
- * The rule reasons are the fixture reason identifiers; the last two are
- * user-scoped. In both rulesets threefold repetition is always a user claim and
- * every other rule reason is automatic, so the reason determines the mechanism
- * and no claimed-versus-automatic flag exists.
+ * The rule reasons are the fixture reason identifiers; the rest are the ends a
+ * player or a pair of players decide. In both rulesets threefold repetition is
+ * always a claim and every other rule reason is automatic, so the reason
+ * determines the mechanism and no claimed-versus-automatic flag exists.
+ *
+ * A declared end never records who declared it as a person or a device — the
+ * archive is device-portable (docs/game-data.md) — and never needs to: a
+ * resignation's outcome names the winner, so the side that resigned is its
+ * opposite, and the two draws name no side at all.
  */
 typedef int32_t MxqEndReason;
 enum {
@@ -463,13 +475,20 @@ enum {
                                                 * reserved likewise */
     MXQ_END_REASON_RESIGNATION            = 8, /* "resignation"; human-vs-AI only */
     MXQ_END_REASON_ENDED_EARLY            = 9, /* "ended-early" */
-    MXQ_END_REASON_FIFTY_MOVE_RULE        = 10 /* "fifty-move-rule"; a draw, and
-                                                * Xiangqi's alone: Mini Xiangqi
-                                                * has no move-count rule, so
-                                                * this reason cannot arise
-                                                * there. Automatic, like every
-                                                * rule reason but the neutral
-                                                * repetition */
+    MXQ_END_REASON_FIFTY_MOVE_RULE        = 10, /* "fifty-move-rule"; a draw, and
+                                                 * Xiangqi's alone: Mini Xiangqi
+                                                 * has no move-count rule, so
+                                                 * this reason cannot arise
+                                                 * there. Automatic, like every
+                                                 * rule reason but the neutral
+                                                 * repetition */
+    MXQ_END_REASON_AGREED_DRAW            = 11, /* "agreed-draw"; a draw, and
+                                                 * MXQ_PLAY_MODE_NEARBY's alone:
+                                                 * the two players agreed to it */
+    MXQ_END_REASON_MUTUAL_RESIGNATION     = 12  /* "mutual-resignation"; a draw,
+                                                 * and nearby's alone: both
+                                                 * players resigned, which is a
+                                                 * draw rather than two losses */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */
@@ -479,7 +498,7 @@ enum {
     MXQ_PROVENANCE_IMPORTED       = 1, /* "imported" */
     MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved for a future
                                         * start-from-position feature and
-                                        * rejected by archive version 2 */
+                                        * rejected by archive version 3 */
 };
 
 /* The result of a successful mxq_store_import. */
@@ -727,8 +746,16 @@ typedef struct MxqGameStatus {
  *
  * game is frozen with the rest and is what every later question about this
  * session is asked under: its starting position, its move notation, its
- * legality and its adjudication. It is required in both modes — every game is
+ * legality and its adjudication. It is required in every mode — every game is
  * some game.
+ *
+ * local_side is the one member that is not archive content. It is the side this
+ * device's player took, meaningful exactly in MXQ_PLAY_MODE_NEARBY and
+ * MXQ_COLOR_NONE everywhere else, and the archive never writes it: which side
+ * is local is true of a device rather than of the game, and the portability law
+ * in docs/game-data.md keeps that out of a file two devices could exchange. The
+ * store holds it as library metadata beside pin state and provenance, and it is
+ * what MxqRecordSummary.local_side reads back.
  */
 typedef struct MxqGameConfig {
     uint32_t            struct_size;
@@ -738,12 +765,19 @@ typedef struct MxqGameConfig {
     MxqFirstMoverChoice first_mover_choice;
     uint32_t            ai_movetime_ms; /* the exact frozen movetime */
     MxqGameKind         game;
+    MxqColor            local_side;
 } MxqGameConfig;
 
 /*
  * The queryable summary of one stored game: the History list's metadata, plus
- * the identity and timestamps. Every field is exactly recomputable from the
- * stored archive blob.
+ * the identity and timestamps.
+ *
+ * Every field is exactly recomputable from the stored archive blob except the
+ * four the blob does not decide, which are local library metadata: provenance,
+ * pinned, added_at_ms, and local_side. local_side is MXQ_COLOR_RED or
+ * MXQ_COLOR_BLACK exactly for a locally played MXQ_PLAY_MODE_NEARBY record and
+ * MXQ_COLOR_NONE for every other row, an imported nearby record included — an
+ * imported game had no local player.
  */
 typedef struct MxqRecordSummary {
     uint32_t      struct_size;
@@ -768,7 +802,9 @@ typedef struct MxqRecordSummary {
                                              * lowercase */
     MxqGameKind   game;            /* which game this record is of; a History
                                     * list holds both */
-    uint32_t      reserved1;
+    MxqColor      local_side;      /* the side this device's player took, in a
+                                    * locally played nearby record; otherwise
+                                    * MXQ_COLOR_NONE */
 } MxqRecordSummary;
 
 /*
@@ -1038,12 +1074,14 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * successful creation commits a resolved side and the core never invents a
  * value the frontend owns. The four human-versus-AI members must be present
  * exactly in MXQ_PLAY_MODE_HUMAN_VS_AI and must read as the NONE constants and
- * zero in Free Play, matching the archive, which omits them; a configuration
- * that is neither shape is a programming error and returns MXQ_ERR_ARG_RANGE,
- * as is a game outside the closed vocabulary.
+ * zero in Free Play and nearby play, matching the archive, which omits them;
+ * local_side is the mirror rule, required in MXQ_PLAY_MODE_NEARBY and
+ * MXQ_COLOR_NONE in the two local modes. A configuration that is none of the
+ * three shapes is a programming error and returns MXQ_ERR_ARG_RANGE, as is a
+ * game outside the closed vocabulary.
  *
- * The single-active-game rule spans both games: the library holds one active
- * game, of whichever kind, so creating one while any is active returns
+ * The single-active-game rule spans both games and every mode: the library
+ * holds one active game, so creating one while any is active returns
  * MXQ_ERR_STATE_ACTIVE_GAME_EXISTS.
  *
  * Thread: any non-UI thread except inside a search callback — except the
@@ -1330,6 +1368,43 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_resign(MxqGame *game,
 MXQ_API MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
                                                    uint64_t *out_record_id,
                                                    MxqError *err);
+
+/*
+ * Commit the end two nearby players declared to each other. Same atomic
+ * transaction and same archived-session consequence as mxq_game_claim_draw.
+ *
+ * The three reasons this accepts are the explicit ends the BoardGame protocol
+ * carries, already reconciled by the caller's session:
+ *
+ *   MXQ_END_REASON_RESIGNATION        resigning_side resigned; the outcome is
+ *                                     the win for the other side
+ *   MXQ_END_REASON_MUTUAL_RESIGNATION both resigned; a draw
+ *   MXQ_END_REASON_AGREED_DRAW        a draw by agreement
+ *
+ * resigning_side is MXQ_COLOR_RED or MXQ_COLOR_BLACK for the first and
+ * MXQ_COLOR_NONE for the other two. Any other reason, and any other pairing of
+ * reason and side, is a programming error and returns MXQ_ERR_ARG_RANGE.
+ *
+ * The caller states which end the two players reached; the core still derives
+ * the outcome from it, so no caller ever asserts a result. Legal only on a
+ * MXQ_PLAY_MODE_NEARBY session — otherwise MXQ_ERR_STATE_RESIGN_UNAVAILABLE —
+ * and only while the game has no result of its own: an end the rules decided
+ * outranks one the players declared, so a terminal position is
+ * MXQ_ERR_STATE_GAME_OVER, and the archive refuses such a record for the same
+ * reason. A claimable neutral repetition is not a result, and either end is
+ * lawful over it.
+ *
+ * Thread: the session's owner; never inside a search callback. Off the UI
+ * thread, except for the store-attached active game, whose own calls
+ * docs/core-interface.md's threading contract documents as the one
+ * exception.
+ * Blocking: yes.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game,
+                                                      MxqEndReason reason,
+                                                      MxqColor resigning_side,
+                                                      uint64_t *out_record_id,
+                                                      MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Rules facade, session-free — mxq_rules_                                   */

@@ -58,11 +58,13 @@ Every scenario runs the same round trip, and the file states only what differs:
 }
 ```
 
-`config` is `MxqGameConfig` in the serialised vocabulary of `game-data.md`; Free Play omits the four human-versus-AI members exactly as the archive does. `game` is required in every scenario and is the archive's `rules_id` — `minixiangqi` or `xiangqi` — because a scenario that did not say would be played under whichever game the runner happened to pick, which is the one thing a two-game corpus must not do. `status` is `MxqGameStatus`, with `null` spelling `MXQ_END_REASON_NONE`. `archive` is optional and names a file in `../archive/valid/`. `undo` lists the plies each successive Undo must remove — `[2, 2]` is two human decision cycles — and an empty list means Undo was never available.
+`config` is `MxqGameConfig` in the serialised vocabulary of `game-data.md`; Free Play and nearby play omit the four human-versus-AI members exactly as the archive does, and a `nearby` scenario states `local_side` instead — the one configuration member the archive never carries, so the only thing that can restore it after a reopen is the store's own column. `game` is required in every scenario and is the archive's `rules_id` — `minixiangqi` or `xiangqi` — because a scenario that did not say would be played under whichever game the runner happened to pick, which is the one thing a two-game corpus must not do. `status` is `MxqGameStatus`, with `null` spelling `MXQ_END_REASON_NONE`. `archive` is optional and names a file in `../archive/valid/`. `undo` lists the plies each successive Undo must remove — `[2, 2]` is two human decision cycles — and an empty list means Undo was never available, which is every nearby scenario: a retraction there is the two players' agreement rather than one device's decision.
 
 The move lines are ones the rules corpus already proves legal under the scenario's own game, so a scenario cannot fail for a reason that belongs to another contract.
 
 Both games are covered on both sides: `xiangqi-free-play-two-moves.json` is the round trip on the 9-by-10 board and `terminal/xiangqi-free-play-ended-early.json` is an ending on it. A core that carried a single starting position, a single ruleset, or a single `rules_id` in the row it writes would pass every Mini Xiangqi scenario unchanged and fail only those two.
+
+All three modes are covered on both sides too. `nearby-two-moves.json` is the round trip of a game two devices play — its local side must survive a close and a reopen although no byte of the archive carries it, and its Undo must be refused — and `terminal/nearby-resignation.json`, `terminal/nearby-agreed-draw.json` and `terminal/nearby-mutual-resignation.json` are the three endings the protocol's explicit ends reduce to.
 
 ## The cases that are code rather than data
 
@@ -107,9 +109,11 @@ Each scenario states the game and the one call that ends it, and the runner driv
 }
 ```
 
-`action` is one of `claim_draw`, `resign`, `confirm_result`, `archive_and_clear`. `outcome` and `end_reason` are the committed classification in the serialised vocabulary, and `state` is the live state the position is in when the ending is performed — which for a resignation and an ended-early record is deliberately not terminal.
+`action` is one of `claim_draw`, `resign`, `confirm_result`, `archive_and_clear`, `commit_nearby_end`. `outcome` and `end_reason` are the committed classification in the serialised vocabulary, and `state` is the live state the position is in when the ending is performed — which for a resignation, an ended-early record and every declared nearby ending is deliberately not terminal.
 
-The same four scenarios drive the atomicity case: with the database locked by a second connection, each ending fails in the store domain, the game stays active and byte-for-byte unchanged with no History record and no revision bump, and the same call succeeds once the lock is released.
+`commit_nearby_end` takes two more members, which are the two arguments beyond the handle that `mxq_game_commit_nearby_end` takes: `reason`, one of `resignation`, `mutual-resignation`, `agreed-draw`, and — for the one that names a side — `resigning_side`. The caller states which end the two players reached, because the reconciled session is the authority for that and the board is not; the core still derives the outcome from it, so no scenario ever asserts a result.
+
+Every terminal scenario drives the atomicity case: with the database locked by a second connection, each ending fails in the store domain, the game stays active and byte-for-byte unchanged with no History record and no revision bump, and the same call succeeds once the lock is released.
 
 | case | what it pins |
 |---|---|

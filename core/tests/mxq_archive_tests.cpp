@@ -147,6 +147,7 @@ std::string mode_text(MxqPlayMode mode) {
     switch (mode) {
     case MXQ_PLAY_MODE_HUMAN_VS_AI: return "human-vs-ai";
     case MXQ_PLAY_MODE_FREE_PLAY: return "free-play";
+    case MXQ_PLAY_MODE_NEARBY: return "nearby";
     default: break;
     }
     return "unknown(" + std::to_string(mode) + ")";
@@ -197,6 +198,8 @@ std::string end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_RESIGNATION: return "resignation";
     case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
     case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
+    case MXQ_END_REASON_AGREED_DRAW: return "agreed-draw";
+    case MXQ_END_REASON_MUTUAL_RESIGNATION: return "mutual-resignation";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -611,7 +614,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
  */
 std::string document_with_plies(size_t count) {
     std::string doc =
-        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":2,"
+        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":3,"
         "\"content\":{\"mode\":\"free-play\",\"moves\":[";
     for (size_t i = 0; i < count; ++i) {
         if (i != 0) {
@@ -737,10 +740,10 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     rc = mxq_archive_supported_versions(&min_readable, &current, &err);
     c.check(rc == MXQ_OK, "mxq_archive_supported_versions failed");
     /* One version is defined, so the window is one version wide: the corpus
-     * above is entirely version 2, and a build that quietly kept reading an
+     * above is entirely version 3, and a build that quietly kept reading an
      * earlier shape would widen this pair rather than fail a fixture. */
-    c.check_eq(static_cast<int64_t>(min_readable), 2, "minimum readable");
-    c.check_eq(static_cast<int64_t>(current), 2, "current");
+    c.check_eq(static_cast<int64_t>(min_readable), 3, "minimum readable");
+    c.check_eq(static_cast<int64_t>(current), 3, "current");
 
     report(c);
 }

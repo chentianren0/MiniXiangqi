@@ -2,7 +2,7 @@
   "title": "Xiangqi, Free Play, active after two cannon moves",
   "why": "The active shape of the other game. Its rules_id, its start_fen and its move notation are all the 9x10 board's, which is what makes a codec carrying one board's constants fail here rather than everywhere.",
   "info": {
-    "archive_version": 2,
+    "archive_version": 3,
     "game": "xiangqi",
     "move_count": 2,
     "mode": "free-play",

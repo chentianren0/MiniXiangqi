@@ -99,10 +99,25 @@ nonisolated enum Outcome: Sendable {
 }
 
 nonisolated enum PlayMode: Sendable {
-    case humanVersusAI, freePlay
+    case humanVersusAI, freePlay, nearby
 
     init(_ mode: MxqPlayMode) {
-        self = mode == MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI) ? .humanVersusAI : .freePlay
+        switch mode {
+        case MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI): self = .humanVersusAI
+        case MxqPlayMode(MXQ_PLAY_MODE_NEARBY): self = .nearby
+        // Every switch over a core vocabulary needs a default arm. Free Play is
+        // the reading that claims least about a mode this build has not heard
+        // of: one board, no opponent, no AI configuration to look for.
+        default: self = .freePlay
+        }
+    }
+
+    var raw: MxqPlayMode {
+        switch self {
+        case .humanVersusAI: MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI)
+        case .freePlay: MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
+        case .nearby: MxqPlayMode(MXQ_PLAY_MODE_NEARBY)
+        }
     }
 }
 
@@ -134,6 +149,8 @@ nonisolated enum EndReason: Sendable {
     case perpetualCheck, perpetualChase
     case mutualPerpetualCheck, mutualPerpetualChase
     case fiftyMoveRule, resignation, endedEarly
+    /// The two ends two players declare to each other, and nearby play's alone.
+    case agreedDraw, mutualResignation
 
     init(_ reason: MxqEndReason) {
         switch reason {
@@ -147,6 +164,8 @@ nonisolated enum EndReason: Sendable {
         case MxqEndReason(MXQ_END_REASON_FIFTY_MOVE_RULE): self = .fiftyMoveRule
         case MxqEndReason(MXQ_END_REASON_RESIGNATION): self = .resignation
         case MxqEndReason(MXQ_END_REASON_ENDED_EARLY): self = .endedEarly
+        case MxqEndReason(MXQ_END_REASON_AGREED_DRAW): self = .agreedDraw
+        case MxqEndReason(MXQ_END_REASON_MUTUAL_RESIGNATION): self = .mutualResignation
         default: self = .none
         }
     }
@@ -235,8 +254,8 @@ nonisolated enum FirstMoverChoice: Sendable, Hashable, CaseIterable {
     }
 }
 
-/// A game's frozen configuration, as the core holds it. Free Play carries the
-/// absent constants, exactly as the archive omits the members.
+/// A game's frozen configuration, as the core holds it. Free Play and nearby
+/// play carry the absent constants, exactly as the archive omits the members.
 nonisolated struct GameConfiguration: Sendable, Hashable {
     var game: GameKind
     var mode: PlayMode
@@ -246,11 +265,23 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     var aiLevel: AiLevel?
     var firstMoverChoice: FirstMoverChoice?
     var movetimeMilliseconds: UInt32
+    /// The side this device's player took, in a nearby game and nowhere else.
+    /// The archive never carries it — content is device-portable — so it is
+    /// library metadata the store holds beside the blob.
+    var localSide: Side?
 
     static func freePlay(game: GameKind) -> GameConfiguration {
         GameConfiguration(game: game, mode: .freePlay, humanSide: nil,
                           aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0)
+                          movetimeMilliseconds: 0, localSide: nil)
+    }
+
+    /// A game played with the other device over the BoardGame protocol. It
+    /// freezes no AI configuration and one local perspective.
+    static func nearby(game: GameKind, localSide: Side) -> GameConfiguration {
+        GameConfiguration(game: game, mode: .nearby, humanSide: nil,
+                          aiLevel: nil, firstMoverChoice: nil,
+                          movetimeMilliseconds: 0, localSide: localSide)
     }
 
     /// A human-versus-AI game, with the first-mover choice already resolved to
@@ -260,17 +291,20 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
                               choice: FirstMoverChoice) -> GameConfiguration {
         GameConfiguration(game: game, mode: .humanVersusAI, humanSide: humanSide,
                           aiLevel: level, firstMoverChoice: choice,
-                          movetimeMilliseconds: level.movetimeMilliseconds)
+                          movetimeMilliseconds: level.movetimeMilliseconds,
+                          localSide: nil)
     }
 
     private init(game: GameKind, mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
-                 firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32) {
+                 firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32,
+                 localSide: Side?) {
         self.game = game
         self.mode = mode
         self.humanSide = humanSide
         self.aiLevel = aiLevel
         self.firstMoverChoice = firstMoverChoice
         self.movetimeMilliseconds = movetimeMilliseconds
+        self.localSide = localSide
     }
 
     init?(_ config: MxqGameConfig) {
@@ -280,25 +314,33 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
                   humanSide: Side(config.human_side),
                   aiLevel: AiLevel(config.ai_level),
                   firstMoverChoice: FirstMoverChoice(config.first_mover_choice),
-                  movetimeMilliseconds: config.ai_movetime_ms)
+                  movetimeMilliseconds: config.ai_movetime_ms,
+                  localSide: Side(config.local_side))
     }
 
     var raw: MxqGameConfig {
         var config = MxqGameConfig()
         config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-        config.mode = mode == .humanVersusAI
-            ? MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI) : MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
-        config.human_side = switch humanSide {
-        case .red: MxqColor(MXQ_COLOR_RED)
-        case .black: MxqColor(MXQ_COLOR_BLACK)
-        case nil: MxqColor(MXQ_COLOR_NONE)
-        }
+        config.mode = mode.raw
+        config.human_side = Self.rawColor(humanSide)
         config.ai_level = aiLevel?.raw ?? MxqAiLevel(MXQ_AI_LEVEL_NONE)
         config.first_mover_choice = firstMoverChoice?.raw
             ?? MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
         config.ai_movetime_ms = movetimeMilliseconds
         config.game = game.raw
+        config.local_side = Self.rawColor(localSide)
         return config
+    }
+
+    /// `MxqColor` has no zero for absence — `MXQ_COLOR_RED` is 0 — so a side the
+    /// caller leaves unset must be written as `MXQ_COLOR_NONE` explicitly rather
+    /// than left at whatever a zeroed struct holds.
+    private static func rawColor(_ side: Side?) -> MxqColor {
+        switch side {
+        case .red: MxqColor(MXQ_COLOR_RED)
+        case .black: MxqColor(MXQ_COLOR_BLACK)
+        case nil: MxqColor(MXQ_COLOR_NONE)
+        }
     }
 }
 
@@ -857,6 +899,10 @@ nonisolated struct ActiveGameSummary: Equatable, Sendable {
     /// The human's resolved side in human-versus-AI play; absent in Free Play,
     /// where the same person controls both.
     var humanSide: Side?
+    /// The side this device's player took, in a nearby game. Store metadata: the
+    /// archive is device-portable and carries no local perspective, so this is
+    /// the only place an interrupted nearby game's own side can come back from.
+    var localSide: Side?
     /// Plies, which is what 步 counts.
     var moveCount: Int
     /// The live state, derived by the core from the stored line exactly as a
@@ -884,6 +930,7 @@ extension Core {
         return ActiveGameSummary(game: game,
                                  mode: PlayMode(summary.mode),
                                  humanSide: Side(summary.human_side),
+                                 localSide: Side(summary.local_side),
                                  moveCount: Int(summary.move_count),
                                  state: GameState(status.state),
                                  reason: EndReason(status.reason))
@@ -904,6 +951,10 @@ nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
     /// The human's resolved side in human-versus-AI play; absent in Free Play,
     /// where the same person controls both.
     var humanSide: Side?
+    /// The side this device's player took, in a nearby game played here. Local
+    /// library metadata: it is in no archive, so an imported nearby record has
+    /// none.
+    var localSide: Side?
     var outcome: Outcome
     var reason: EndReason
     /// Plies, which is what 步 counts.
@@ -1112,6 +1163,7 @@ private nonisolated extension RecordSummary {
                   game: game,
                   mode: PlayMode(summary.mode),
                   humanSide: Side(summary.human_side),
+                  localSide: Side(summary.local_side),
                   outcome: Outcome(summary.outcome),
                   reason: EndReason(summary.end_reason),
                   moveCount: Int(summary.move_count),

@@ -90,7 +90,7 @@ json::Limits limits() {
  * The same reader with the two *size* bounds lifted — plies here, the file
  * size at the transport stage — and the three that describe the format's own
  * shape kept. Depth, members per object and string length are properties of a
- * version 2 document rather than of how long a game ran, no document this core
+ * version 3 document rather than of how long a game ran, no document this core
  * writes approaches them, and keeping them means a corrupted row cannot steer
  * the reader into unbounded work.
  */
@@ -195,7 +195,7 @@ bool only_known_members(const json::Value &object, const char *const *known,
         if (!found) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           std::string(where) + " has an unknown member \"" +
-                              name + "\" in archive version 2");
+                              name + "\" in archive version 3");
         }
     }
     return true;
@@ -335,6 +335,10 @@ bool read_mode(const std::string &text, MxqPlayMode &out) {
         out = MXQ_PLAY_MODE_FREE_PLAY;
         return true;
     }
+    if (text == "nearby") {
+        out = MXQ_PLAY_MODE_NEARBY;
+        return true;
+    }
     return false;
 }
 
@@ -443,6 +447,14 @@ bool read_end_reason(const std::string &text, MxqEndReason &out) {
         out = MXQ_END_REASON_FIFTY_MOVE_RULE;
         return true;
     }
+    if (text == "agreed-draw") {
+        out = MXQ_END_REASON_AGREED_DRAW;
+        return true;
+    }
+    if (text == "mutual-resignation") {
+        out = MXQ_END_REASON_MUTUAL_RESIGNATION;
+        return true;
+    }
     return false;
 }
 
@@ -450,7 +462,17 @@ bool is_draw_reason(MxqEndReason reason) {
     return reason == MXQ_END_REASON_THREEFOLD_REPETITION ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
-           reason == MXQ_END_REASON_FIFTY_MOVE_RULE;
+           reason == MXQ_END_REASON_FIFTY_MOVE_RULE ||
+           reason == MXQ_END_REASON_AGREED_DRAW ||
+           reason == MXQ_END_REASON_MUTUAL_RESIGNATION;
+}
+
+/* The two ends only two players can reach, and therefore only a nearby record
+ * can carry. A resignation is not among them: one player alone reaches that,
+ * and both local modes and nearby play have their own way to. */
+bool is_agreed_reason(MxqEndReason reason) {
+    return reason == MXQ_END_REASON_AGREED_DRAW ||
+           reason == MXQ_END_REASON_MUTUAL_RESIGNATION;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -670,15 +692,17 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     }
     if (!read_mode(mode->string(), out.mode)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                      "\"mode\" is not one of \"human-vs-ai\", \"free-play\"");
+                      "\"mode\" is not one of \"human-vs-ai\", \"free-play\", "
+                      "\"nearby\"");
     }
 
     /*
      * The mode-to-configuration relationship, which is also the mapping the C
      * interface's NONE constants stand for: the four configuration members
-     * exist exactly for human-versus-AI games, and Free Play omits them rather
-     * than writing a null or an empty value. A Free Play document carrying one
-     * of them is as malformed as a human-versus-AI document missing one.
+     * exist exactly for human-versus-AI games, and every other mode omits them
+     * rather than writing a null or an empty value. A Free Play or nearby
+     * document carrying one of them is as malformed as a human-versus-AI
+     * document missing one.
      */
     static const char *const kConfig[] = {"ai_level", "ai_movetime_ms",
                                           "first_mover_choice", "human_side"};
@@ -689,7 +713,8 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
             return reject(
                 err, MXQ_ERR_ARCHIVE_MALFORMED,
                 present ? std::string("\"") + name +
-                              "\" is present in a Free Play game, which omits it"
+                              "\" is present in a game that is not "
+                              "human-versus-AI, which omits it"
                         : std::string("\"content\" has no \"") + name +
                               "\" member in a human-versus-AI game");
         }
@@ -829,21 +854,38 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     if ((out.outcome == MXQ_OUTCOME_DRAW) != is_draw_reason(out.end_reason)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"outcome\" is \"draw\" exactly when \"end_reason\" is "
-                      "one of the three draw reasons");
+                      "one of the six draw reasons");
     }
+    /*
+     * A resignation is a side losing, and the outcome names the winner, so the
+     * side that resigned is its opposite and no member has to say it. Free Play
+     * has nobody to resign to; the two modes with an opponent each add their own
+     * rule — human-versus-AI's loser is the human, and a nearby game's is
+     * whichever side the sender was, which the outcome already carries.
+     */
     if (out.end_reason == MXQ_END_REASON_RESIGNATION) {
-        if (out.mode != MXQ_PLAY_MODE_HUMAN_VS_AI) {
+        if (out.mode != MXQ_PLAY_MODE_HUMAN_VS_AI &&
+            out.mode != MXQ_PLAY_MODE_NEARBY) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                          "\"resignation\" is a human-versus-AI end reason");
+                          "\"resignation\" needs an opponent to resign to");
         }
-        const MxqOutcome win_for_the_other_side =
-            out.human_side == MXQ_COLOR_RED ? MXQ_OUTCOME_BLACK_WINS
-                                            : MXQ_OUTCOME_RED_WINS;
-        if (out.outcome != win_for_the_other_side) {
-            return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                          "a resignation's outcome is the win for the side "
-                          "opposite \"human_side\"");
+        if (out.mode == MXQ_PLAY_MODE_HUMAN_VS_AI) {
+            const MxqOutcome win_for_the_other_side =
+                out.human_side == MXQ_COLOR_RED ? MXQ_OUTCOME_BLACK_WINS
+                                                : MXQ_OUTCOME_RED_WINS;
+            if (out.outcome != win_for_the_other_side) {
+                return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                              "a resignation's outcome is the win for the side "
+                              "opposite \"human_side\"");
+            }
         }
+    }
+    /* The two ends two players declare to each other belong to the one mode
+     * that has two players. */
+    if (is_agreed_reason(out.end_reason) && out.mode != MXQ_PLAY_MODE_NEARBY) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "\"agreed-draw\" and \"mutual-resignation\" are nearby "
+                      "end reasons");
     }
     if (out.ended_at_ms < out.started_at_ms) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
@@ -860,7 +902,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
  * import-facing entry point, which applies the accepted file-size and ply
  * bounds, and the store's own path back into a game it wrote, which must
  * not. Everything else about the ladder is identical, because a stored
- * document is a version 2 document like any other. */
+ * document is a version 3 document like any other. */
 bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
             Reject &err) {
     /* Stage 1: transport and size. */
@@ -918,6 +960,11 @@ void fill_stored(const Decoded &decoded, Stored &out) {
     out.config.ai_level = decoded.ai_level;
     out.config.first_mover_choice = decoded.first_mover_choice;
     out.config.ai_movetime_ms = decoded.ai_movetime_ms;
+    /* The archive carries no local side and never will, so decoding one always
+     * answers absence. A caller that has a local perspective — resume, which
+     * reads the store column beside the blob — sets it afterwards; a caller
+     * that has none, such as an import preview, is right to leave it. */
+    out.config.local_side = MXQ_COLOR_NONE;
     out.moves = decoded.moves;
     out.start_fen = decoded.start_fen;
     out.started_at_ms = decoded.started_at_ms;
@@ -955,10 +1002,13 @@ bool terminal(MxqGameState state) {
  *     not a terminal state — in this ruleset the neutral repetition is always a
  *     user claim, so a file recording it must be one the claim was available
  *     in;
- *   - resignation and ended-early require a non-terminal final position,
- *     because an unconfirmed natural result is always recorded as its actual
- *     result: a checkmate saved as "ended early" would be a lost result, and
- *     the archive must refuse it rather than accept the loss;
+ *   - the four declared reasons — resignation, ended-early, agreed-draw and
+ *     mutual-resignation — require a non-terminal final position, because an
+ *     unconfirmed natural result is always recorded as its actual result and an
+ *     end the rules decided outranks one a player or a pair of players
+ *     declared: a checkmate saved as "ended early" or agreed away as a draw
+ *     would be a lost result, and the archive must refuse it rather than accept
+ *     the loss;
  *   - every other reason is an automatic rule outcome, so the replay must
  *     report that same outcome, with the recorded outcome naming the same
  *     winner.
@@ -971,13 +1021,14 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
     const std::string replayed = state_text(adj.state);
 
     if (decoded.end_reason == MXQ_END_REASON_RESIGNATION ||
-        decoded.end_reason == MXQ_END_REASON_ENDED_EARLY) {
+        decoded.end_reason == MXQ_END_REASON_ENDED_EARLY ||
+        is_agreed_reason(decoded.end_reason)) {
         if (terminal(adj.state)) {
             /* MxqError.detail is short by contract, so it says which rule was
              * broken rather than why the rule exists; the why is above. */
             fill_error(err, MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH,
                        ("the final position is " + replayed +
-                        ", which a game the user ended cannot record")
+                        ", which a game the players ended cannot record")
                            .c_str());
             return MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH;
         }
@@ -1023,7 +1074,7 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  * Stage 5, the rules tier, in one place because two entry points run it.
  *
  * The initial position must be exactly the frozen starting FEN of the game
- * rules_id names — version 2 defines no other for either game, and the
+ * rules_id names — version 3 defines no other for either game, and the
  * setup-legality predicate a later version would need does not exist — then
  * every move must be legal in sequence, then the recorded terminal pair must
  * agree with the replayed adjudication.
@@ -1038,7 +1089,7 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
     if (decoded.start_fen != notation::start_fen(decoded.game)) {
         fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
                    "\"start_fen\" is not this game's frozen starting position, "
-                   "which is the only initial position version 2 defines");
+                   "which is the only initial position version 3 defines");
         return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
     }
 
@@ -1155,7 +1206,7 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
      *
      * It comes last, after the accepted validation order has run entire, and
      * not among its stages. It is not one of them: those five decide whether
-     * the bytes are a version 2 archive, and this decides whether that archive
+     * the bytes are a version 3 archive, and this decides whether that archive
      * is a game an import may file. Asking it earlier would mask a rejection
      * class the corpus names — an incomplete document with an illegal move
      * would be reported for the shape rather than for the move — and the answer

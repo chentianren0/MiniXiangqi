@@ -1,0 +1,18 @@
+{
+  "title": "Nearby, a draw by agreement",
+  "why": "The one ending neither ruleset can reach: a draw the two players agreed to over a position that is not a draw. It names no side, its outcome is a draw, and its final position must still be non-terminal. Its bytes are the corpus's nearby-agreed-draw golden.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "nearby",
+    "local_side": "red"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "end": {
+    "action": "commit_nearby_end",
+    "reason": "agreed-draw",
+    "archive": "nearby-agreed-draw.mxq",
+    "outcome": "draw",
+    "end_reason": "agreed-draw",
+    "state": "ongoing"
+  }
+}

@@ -895,6 +895,7 @@ void case_an_import_leaves_the_active_game_alone(const fs::path &file) {
     config.human_side = MXQ_COLOR_NONE;
     config.ai_level = MXQ_AI_LEVEL_NONE;
     config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
+    config.local_side = MXQ_COLOR_NONE;
 
     MxqGame *game = nullptr;
     err = make_error();

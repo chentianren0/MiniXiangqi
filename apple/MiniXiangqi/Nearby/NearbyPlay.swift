@@ -212,13 +212,13 @@ final class NearbyPlay {
         return claimStands ? .claimableDraw : .ongoing
     }
 
-    /// The line under the result: the shared vocabulary for every ending the
-    /// core has a word for, and the protocol's own for the one it has not. A
+    /// The line under the result: the shared vocabulary for every ending. A
     /// draw two players agreed is not a verdict on a position, and the core is
-    /// asked about positions.
+    /// asked about positions, so the live board names it from the ending rather
+    /// than from an adjudication that reports none.
     var reasonText: String? {
         guard let end else { return nil }
-        return end.byAgreement ? String(localized: "nearby.agreedDraw") : end.reason.text
+        return end.byAgreement ? String(localized: "reason.agreedDraw") : end.reason.text
     }
 
     /// Who owns the turn — this device's player, or the other one. It is the

@@ -542,7 +542,7 @@ struct NearbyFlowTests {
         #expect(play.end?.state == .draw)
         #expect(play.end?.byAgreement == true)
         #expect(play.end?.reason == EndReason.none, "no position decided this")
-        #expect(play.reasonText == String(localized: "nearby.agreedDraw"))
+        #expect(play.reasonText == String(localized: "reason.agreedDraw"))
     }
 
     // MARK: - A game that goes away
