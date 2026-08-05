@@ -265,7 +265,7 @@ public static class Strings
                 "你将控制红黑双方，红方先行。",
                 "You control both Red and Black. Red moves first."),
 
-            // The Settings destination. Three of the Mac's four groups ship here
+            // The Settings destination. Three of the Mac's four preference groups ship here
             // and every absence is issue #80's owner-decided Windows trim, so
             // 棋盘 and its two rows carry no key below and neither does 触感:
             // the notation has nothing to choose between while the record is the

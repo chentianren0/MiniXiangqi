@@ -20,6 +20,8 @@ The primary destinations are:
 - **History** for reviewing and managing history records.
 - **Settings** for user preferences.
 
+Settings contains an **About** page stating the application's licence and its version.
+
 The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
 **The two board screens hide the destination bar where that bar stands across the bottom of the screen.** The board and [History replay](#history-replay) hide it while they are up; the three homes — the Play home, the History list, Settings — keep it, and so does a mode's pre-start page. Leaving a board screen brings it back, so no destination is ever more than the page's own back control away and no capability is withdrawn.

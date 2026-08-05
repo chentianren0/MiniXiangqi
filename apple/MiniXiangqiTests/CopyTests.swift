@@ -37,6 +37,8 @@ struct CopyTests {
         // and a key with no screen behind it is not this suite's business.
         // These are the ones the application asks for today.
         let keys = [
+            "about.title", "about.name", "about.version", "about.build",
+            "about.license", "about.license.statement", "about.source",
             "alert.claimDraw.title", "alert.claimDraw.message",
             "alert.saveFailed.title", "alert.saveFailed.message",
             "alert.aiUnavailable.title", "alert.aiUnavailable.message",

@@ -53,6 +53,11 @@ final class SettingsScreenUITests: XCTestCase {
         /// for and what they deliberately are not.
         let defaultsSection, defaultFirstMover, defaultAiLevel: String
         let iMoveFirst, standardLevel, defaultsFooter: String
+        /// The About row at the foot of the screen, and the page it opens: the
+        /// three facts about this build, the licence and its statement, and the
+        /// source the licence is about.
+        let about, name, version, build: String
+        let license, licenseStatement, source: String
         /// What a deletion asks, when it asks.
         let deleteTitle, delete, cancel: String
         /// The oldest of the three filed games — the one the deletion tests
@@ -72,6 +77,10 @@ final class SettingsScreenUITests: XCTestCase {
             defaultFirstMover: "默认先后手", defaultAiLevel: "默认 AI 等级",
             iMoveFirst: "我先手", standardLevel: "标准",
             defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
+            about: "关于", name: "名称", version: "版本", build: "构建版本",
+            license: "许可证",
+            licenseStatement: "Mini Xiangqi 是自由软件，依据 GNU General Public License v3 发布。",
+            source: "源代码",
             deleteTitle: "删除这盘棋？", delete: "删除", cancel: "取消",
             oldestRow: "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步")
 
@@ -88,6 +97,10 @@ final class SettingsScreenUITests: XCTestCase {
             defaultFirstMover: "Default First Mover", defaultAiLevel: "Default AI Level",
             iMoveFirst: "I Move First", standardLevel: "Standard",
             defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.",
+            about: "About", name: "Name", version: "Version", build: "Build",
+            license: "License",
+            licenseStatement: "Mini Xiangqi is free software, released under the GNU General Public License v3.",
+            source: "Source Code",
             deleteTitle: "Delete this game?", delete: "Delete", cancel: "Cancel",
             oldestRow: "Mini Xiangqi · Free Play · Red Wins · Checkmate · 3 moves")
     }
@@ -303,8 +316,8 @@ final class SettingsScreenUITests: XCTestCase {
     /// sideways, at the accepted minimum window.
     ///
     /// **Present and unclipped, not all visible at once.** With the
-    /// human-versus-AI defaults the screen is four groups, and four groups do
-    /// not fit 492 points of window without scrolling. That is what a `Form`
+    /// human-versus-AI defaults and 关于 the screen is five groups, and five
+    /// groups do not fit 492 points of window without scrolling. That is what a `Form`
     /// is: the accepted floor is the *play* content's, and a preference list
     /// that scrolls at the smallest window is the platform's own answer rather
     /// than a layout failure. So what this asserts is what a frame series can
@@ -351,6 +364,111 @@ final class SettingsScreenUITests: XCTestCase {
         XCTAssertEqual(tops, tops.sorted(),
                        "the groups should read down the screen in the accepted order")
         attach(app, named: "41-the-settings-screen-at-the-minimum-window")
+    }
+
+    // MARK: - 关于
+
+    /// The About page on this platform, where the application also has the
+    /// system's own About box in its app menu: the page in Settings is the same
+    /// page every Apple platform gets, because what it says — the licence, the
+    /// build it identifies, and where the source is — is the same everywhere.
+    ///
+    /// In the normative language only. The words themselves are proved in both
+    /// languages by the mechanical catalog check, and by this suite's own frames
+    /// for the screen the row sits at the foot of; what a second launch here
+    /// would photograph is the same page in the other one.
+    func testTheAboutPageStatesTheLicenceAndTheVersion() {
+        let app = launch(window: "900x800")
+        let language = Language.chinese
+        openSettings(app, in: language)
+
+        // Read off the row rather than looking for a text beside it: at this
+        // window the list is taller than the window, and a row below the fold
+        // is in the tree while the text drawn inside it is not.
+        let row = reveal(app, "settings-about")
+        XCTAssertTrue(detail(app, "settings-about").contains(language.about)
+                      || app.staticTexts[language.about].exists,
+                      "关于 should be at the foot of Settings — the row reads "
+                      + detail(app, "settings-about"))
+        row.click()
+
+        // The three facts about this build. What each one *is* comes from the
+        // bundle and is asserted in the unit suite, which can read it; what is
+        // asserted here is that it arrived — an empty row and a right one look
+        // the same to everything except a reader.
+        XCTAssertTrue(control(app, "about-name").waitForExistence(timeout: 10),
+                      "the About page should open")
+        for (identifier, label) in [("about-name", language.name),
+                                    ("about-version", language.version),
+                                    ("about-build", language.build)] {
+            XCTAssertTrue(control(app, identifier).exists)
+            XCTAssertTrue(app.staticTexts[label].exists, "\(identifier) should read \(label)")
+        }
+        XCTAssertTrue(detail(app, "about-name").contains("Mini Xiangqi"),
+                      "名称 should carry the product name — it reads " + detail(app, "about-name"))
+        for identifier in ["about-version", "about-build"] {
+            XCTAssertTrue(detail(app, identifier).contains(where: \.isNumber),
+                          "\(identifier) should carry a number read from the bundle — it reads "
+                          + detail(app, identifier))
+        }
+
+        // The licence, the source it is a licence about, and the sentence that
+        // says what the two of them mean.
+        // Read off the rows themselves rather than looking for a text beside
+        // them: a link's title is the link's own label and is not a text of its
+        // own, unlike a row whose value sits next to it.
+        XCTAssertTrue(detail(app, "about-license").contains(language.license),
+                      "the licence row should read \(language.license) — it reads "
+                      + detail(app, "about-license"))
+        XCTAssertTrue(detail(app, "about-source").contains(language.source),
+                      "the source row should read \(language.source) — it reads "
+                      + detail(app, "about-source"))
+        XCTAssertTrue(app.staticTexts[language.licenseStatement].exists,
+                      "the footer should state the licence")
+        attach(app, named: "42-the-about-page")
+
+        // And the document behind the row is the licence itself. A licence that
+        // fell out of the bundle would leave this page blank, which is the one
+        // failure the page cannot report on its own.
+        control(app, "about-license").click()
+        // Label **or** value: a static text carries its string in one of the two
+        // depending on the platform drawing it, and this platform puts a text
+        // view's contents in the value.
+        let heading = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@",
+                        "GNU GENERAL PUBLIC LICENSE", "GNU GENERAL PUBLIC LICENSE")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 10),
+                      "the licence page should show the GNU General Public License")
+        attach(app, named: "43-the-licence")
+    }
+
+    /// Brings a row within reach and hands it back: a `Form` taller than the
+    /// window leaves its last group below the fold, and a click on something
+    /// that is not hittable lands somewhere else.
+    private func reveal(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        let element = control(app, identifier)
+        XCTAssertTrue(element.waitForExistence(timeout: 10),
+                      "\(identifier) should be on the screen")
+        let list = app.windows.firstMatch.scrollViews.firstMatch
+        var scrolls = 0
+        while !element.isHittable && list.exists && scrolls < 6 {
+            list.scroll(byDeltaX: 0, deltaY: -80)
+            scrolls += 1
+        }
+        return element
+    }
+
+    /// Everything a row says, in one string: its own label, its value, and the
+    /// texts inside it. A row of a label and a value is one element in one
+    /// presentation and a container of two texts in another, and a test that
+    /// picked one of those would be reading nil in the other.
+    private func detail(_ app: XCUIApplication, _ identifier: String) -> String {
+        let row = control(app, identifier)
+        guard row.exists else { return "" }
+        var parts = [row.label, String(describing: row.value ?? "")]
+        let texts = row.staticTexts
+        for index in 0..<texts.count { parts.append(texts.element(boundBy: index).label) }
+        return parts.joined(separator: " ")
     }
 
     // MARK: - What a switch does
