@@ -28,6 +28,25 @@ struct NearbyFlowTests {
         // radio is not started behind them.
         flow.open(.miniXiangqi)
         #expect(!radio.isRunning)
+        #expect(radio.watches == 0, "and where there is no radio there are no pairings to watch")
+    }
+
+    @Test("The registry watch is taken every time a surface wakes, radio running or not")
+    func everyWakeTakesTheRegistryWatch() {
+        let radio = FakeRadio(isSupported: true)
+        let flow = flow(radio: radio)
+
+        flow.open(.miniXiangqi)
+        #expect(radio.isRunning)
+        #expect(radio.watches == 1)
+
+        // The radio is already up, so nothing starts it again — and the watch is
+        // taken all the same. This is the only place a watch the system ended is
+        // ever retaken, and a radio held up by a standing session would
+        // otherwise leave the room empty for the rest of the launch.
+        flow.open(.xiangqi)
+        #expect(radio.isRunning)
+        #expect(radio.watches == 2, "the registry is not on the radio's bracket")
     }
 
     @Test("A device with the radio offers it, and the surface wakes it")
@@ -140,6 +159,61 @@ struct NearbyFlowTests {
         #expect(flow.peers == [NearbyPeer.other], "the row is there the moment the pairing is")
         #expect(flow.chosenDevice?.peer == NearbyPeer.other.peer,
                 "and a room holding one device has that device chosen already")
+    }
+
+    @Test("The default choice is a device the invitation can leave for")
+    func theDefaultChoicePrefersAConnectedDevice() {
+        // The room's own order puts the device nothing has dialled first.
+        let waiting = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-1"),
+                                 name: "Their iPad")
+        let ready = NearbyPeer(connection: ConnectionID("c-1"),
+                               peer: PeerDeviceID("wifi-aware-device-2"), name: "Their iPhone")
+        let flow = flow(radio: FakeRadio(isSupported: true, peers: [waiting, ready]))
+
+        #expect(flow.chosenDevice?.peer == ready.peer,
+                "the standing default is the device an invitation can leave for")
+        #expect(flow.canInvite)
+
+        // A pressed row is the choice whatever its state: presence is the
+        // list's business, and readiness the button's.
+        flow.chosenPeer = waiting.peer
+        #expect(flow.chosenDevice?.peer == waiting.peer)
+        #expect(!flow.canInvite, "and there is nothing for an invitation to travel")
+    }
+
+    @Test("Among devices alike in readiness the room's own order stands")
+    func theDefaultChoiceKeepsTheRoomsOrderAmongEquals() {
+        let first = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-1"),
+                               name: "A")
+        let second = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
+                                name: "B")
+        let flow = flow(radio: FakeRadio(isSupported: true, peers: [first, second]))
+
+        #expect(flow.chosenDevice?.peer == first.peer)
+        #expect(!flow.canInvite, "with nothing dialled anywhere, the invitation is not offered")
+    }
+
+    @Test("The invitation is offered only where there is a connection to carry it")
+    func theInvitationIsOfferedOnlyWithAConnection() {
+        let radio = FakeRadio(isSupported: true)
+        let flow = flow(radio: radio)
+
+        flow.open(.miniXiangqi)
+        #expect(!flow.canInvite, "an empty room has nobody to invite")
+
+        // A paired device the transport has not dialled is a row, and not yet
+        // an invitation: a control is offered exactly where the act behind it
+        // would be allowed.
+        let waiting = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
+                                 name: "Their iPad")
+        radio.peers = [waiting]
+        #expect(flow.chosenDevice?.peer == waiting.peer, "the row is there all the same")
+        #expect(!flow.canInvite)
+
+        // The browser's own dial lands, and the same row is one to press.
+        radio.peers = [NearbyPeer(connection: ConnectionID("c-1"), peer: waiting.peer,
+                                  name: waiting.name)]
+        #expect(flow.canInvite)
     }
 
     @Test("An invitation to a device with no connection yet is refused, not lost")
@@ -911,6 +985,10 @@ private final class FakeDriver: NearbyDriving {
 private final class FakeRadio: NearbyRadio {
     let isSupported: Bool
     private(set) var isRunning = false
+    /// How many times the registry watch was asked for. It is counted rather
+    /// than flagged because the whole of the promise is that it is asked for
+    /// again, off the radio's own bracket.
+    private(set) var watches = 0
     var peers: [NearbyPeer]
 
     init(isSupported: Bool, peers: [NearbyPeer] = []) {
@@ -918,6 +996,7 @@ private final class FakeRadio: NearbyRadio {
         self.peers = peers
     }
 
+    func watchPairedDevices() { watches += 1 }
     func start() { isRunning = true }
     func stop() { isRunning = false }
 }

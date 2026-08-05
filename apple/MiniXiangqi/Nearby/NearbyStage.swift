@@ -124,6 +124,7 @@ final class NearbyStagedRadio: NearbyRadio {
     let isRunning = false
     let peers: [NearbyPeer] = []
 
+    func watchPairedDevices() { }
     func start() { }
     func stop() { }
 }

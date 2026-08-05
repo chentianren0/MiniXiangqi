@@ -90,6 +90,14 @@ protocol NearbyRadio: AnyObject {
     /// Every device in the room, one entry per device: the system's pairing
     /// records, carrying the connection to each where one is up.
     var peers: [NearbyPeer] { get }
+    /// Take up the system's pairing record, which is what the room is made of.
+    ///
+    /// Idempotent, and deliberately *not* bracketed by `start()` and `stop()`:
+    /// pairing is a record the system holds whether or not a radio is running.
+    /// It is a call rather than something the radio does once, because the
+    /// system's snapshots can end on their own and a watch that ended has to be
+    /// taken again.
+    func watchPairedDevices()
     func start()
     func stop()
 }
@@ -374,9 +382,28 @@ final class NearbyFlow {
     /// opens rather than once a connection has come up.
     var peers: [NearbyPeer] { radio.peers }
 
+    /// The device an invitation would go to: the row that was pressed, or —
+    /// with nothing pressed — the readiest device in the room.
+    ///
+    /// A device the transport has dialled is preferred to one it has not, so
+    /// that the sheet's standing default is a device an invitation can leave
+    /// for; among devices alike in that, the room's own order stands, which is
+    /// the devices' own and does not move under a redraw. A pressed row is the
+    /// choice whatever its state: presence is the list's business.
     var chosenDevice: NearbyPeer? {
-        peers.first { $0.peer == chosenPeer } ?? peers.first
+        peers.first { $0.peer == chosenPeer }
+            ?? peers.first { $0.connection != nil }
+            ?? peers.first
     }
+
+    /// Whether the sheet's one action is available.
+    ///
+    /// **Readiness is the button's business.** A control is offered exactly
+    /// where the act behind it would be allowed, and an invitation to a device
+    /// nothing has dialled has nowhere to travel — so a paired device is a row
+    /// a person can look at and press, and the invitation waits for the dial
+    /// the browser loop makes by itself seconds later.
+    var canInvite: Bool { chosenDevice?.connection != nil }
 
     /// Whether anything is still owed between this device and another: a game
     /// being played, a proposal outstanding, or a finished game this device has
@@ -562,8 +589,16 @@ final class NearbyFlow {
     /// The radio runs while nearby is being used and while anything is owed to
     /// a peer, and not otherwise: a device with no nearby surface up and no
     /// session standing has nobody to be discovered by.
+    ///
+    /// **The pairing registry is not on that bracket.** A surface being up is
+    /// the whole reason to be watching it, so the watch is taken every time one
+    /// wakes, radio already running or not — the system's snapshots can end on
+    /// their own, and a watch that ended once would otherwise leave the room
+    /// empty for the rest of the launch.
     private func wake() {
-        guard isAvailable, radio.isSupported, !radio.isRunning else { return }
+        guard isAvailable, radio.isSupported else { return }
+        radio.watchPairedDevices()
+        guard !radio.isRunning else { return }
         radio.start()
     }
 
