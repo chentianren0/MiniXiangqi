@@ -241,9 +241,9 @@ final class SettingsScreenUITests: XCTestCase {
 
     // MARK: - The screen
 
-    /// The seven controls the design fixes, in the four groups it fixes them
-    /// in, each showing the accepted default. Nothing is clicked: this is the
-    /// screen a first launch opens on.
+    /// The seven controls the design fixes, in the four preference groups it
+    /// fixes them in, each showing the accepted default. Nothing is clicked:
+    /// this is the screen a first launch opens on.
     func testTheSettingsTabOffersTheSevenAcceptedControls() {
         let app = launch()
         let language = Language.chinese
@@ -317,28 +317,33 @@ final class SettingsScreenUITests: XCTestCase {
     ///
     /// **Present and unclipped, not all visible at once.** With the
     /// human-versus-AI defaults and 关于 the screen is five groups, and five
-    /// groups do not fit 492 points of window without scrolling. That is what a `Form`
-    /// is: the accepted floor is the *play* content's, and a preference list
-    /// that scrolls at the smallest window is the platform's own answer rather
-    /// than a layout failure. So what this asserts is what a frame series can
-    /// assert about a list that extends past the window — every control is
-    /// there, none of them is cut off by the window's *width*, and they read
-    /// down the screen in the accepted order. How far past the window the list
-    /// goes is what the logged frames and the screenshot are for.
+    /// groups do not fit 520 points of window without scrolling. That is what
+    /// a `Form` is: the accepted floor is the *play* content's, and a
+    /// preference list that scrolls at the smallest window is the platform's
+    /// own answer rather than a layout failure. So what this asserts is what a
+    /// frame series can assert about a list that extends past the window —
+    /// every control is there, none of them is cut off by the window's
+    /// *width*, and they read down the screen in the accepted order. How far
+    /// past the window the list goes is what the logged frames and the
+    /// screenshot are for.
     func testTheScreenFitsTheMinimumWindow() {
-        let app = launch(window: "760x492")
+        let app = launch(window: "760x520")
         let language = Language.chinese
         openSettings(app, in: language)
 
+        // 760 by 520 is what docs/interaction-design.md accepts as this
+        // platform's smallest window, and the window stops there however much
+        // smaller a launch asks for.
         let window = app.windows.firstMatch.frame
-        XCTAssertEqual(window.size, CGSize(width: 760, height: 492),
+        XCTAssertEqual(window.size, CGSize(width: 760, height: 520),
                        "the accepted minimum window")
         for identifier in ["settings-symbols", "settings-notation",
                            "settings-first-mover", "settings-ai-level",
                            "settings-defaults-footer",
                            "settings-sound", "settings-haptics",
                            "settings-confirm-delete",
-                           "settings-confirm-delete-footer"] {
+                           "settings-confirm-delete-footer",
+                           "settings-about"] {
             let element = control(app, identifier)
             XCTAssertTrue(element.exists, "\(identifier) should be there at the minimum")
             // Horizontally, nothing may be clipped: a control cut off by the
@@ -352,14 +357,16 @@ final class SettingsScreenUITests: XCTestCase {
 
         // And they are in the accepted order, top to bottom: the board group,
         // the human-versus-AI defaults, the two feedback switches, the deletion
-        // confirmation. Order is what a frame series can assert about a list
-        // that extends past the window; how far past it goes is what the
-        // screenshot and the logged frames are for.
+        // confirmation, and 关于 at the foot of all of them. Order is what a
+        // frame series can assert about a list that extends past the window;
+        // how far past it goes is what the screenshot and the logged frames
+        // are for.
         let order = ["settings-symbols", "settings-notation",
                      "settings-first-mover", "settings-ai-level",
                      "settings-defaults-footer",
                      "settings-sound", "settings-haptics",
-                     "settings-confirm-delete", "settings-confirm-delete-footer"]
+                     "settings-confirm-delete", "settings-confirm-delete-footer",
+                     "settings-about"]
         let tops = order.map { control(app, $0).frame.minY }
         XCTAssertEqual(tops, tops.sorted(),
                        "the groups should read down the screen in the accepted order")
@@ -445,11 +452,19 @@ final class SettingsScreenUITests: XCTestCase {
     /// Brings a row within reach and hands it back: a `Form` taller than the
     /// window leaves its last group below the fold, and a click on something
     /// that is not hittable lands somewhere else.
+    ///
+    /// **The list scrolled is the one the row is in.** A `NavigationSplitView`
+    /// puts a scroll view on each side of itself, and the window's first is as
+    /// likely to be the sidebar's as the detail column's — scrolling that one
+    /// moves the destination list while the row stays exactly where it was, six
+    /// times over, and the click afterwards lands on whatever is there instead.
     private func reveal(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
         let element = control(app, identifier)
         XCTAssertTrue(element.waitForExistence(timeout: 10),
                       "\(identifier) should be on the screen")
-        let list = app.windows.firstMatch.scrollViews.firstMatch
+        let list = app.windows.firstMatch.scrollViews
+            .containing(NSPredicate(format: "identifier == %@", identifier))
+            .firstMatch
         var scrolls = 0
         while !element.isHittable && list.exists && scrolls < 6 {
             list.scroll(byDeltaX: 0, deltaY: -80)

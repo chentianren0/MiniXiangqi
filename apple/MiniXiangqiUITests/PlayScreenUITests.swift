@@ -838,7 +838,7 @@ final class PlayScreenUITests: XCTestCase {
     /// which is where the gate is read from.
     func testTheBoardWithIconSymbols() {
         for appearance in ["light", "dark"] {
-            for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
+            for (size, window) in [("floor", "760x520"), ("large", "1200x820")] {
                 let app = launch(in: .chinese, appearance: appearance,
                                  window: window, symbols: "icons")
                 // The labels are read from the position and name the piece, not
@@ -864,7 +864,7 @@ final class PlayScreenUITests: XCTestCase {
     /// visited Settings.
     func testTheBoardWithCharacterSymbolsIsUnchanged() {
         for appearance in ["light", "dark"] {
-            for (size, window) in [("floor", "760x492"), ("large", "1200x820")] {
+            for (size, window) in [("floor", "760x520"), ("large", "1200x820")] {
                 let app = launch(in: .chinese, appearance: appearance, window: window)
                 XCTAssertEqual(point(app, "a1").label, "a1 红 俥")
                 XCTAssertEqual(point(app, "b1").label, "b1 红 炮")
@@ -877,7 +877,7 @@ final class PlayScreenUITests: XCTestCase {
     /// the icon too, and the markers around it are untouched by the choice —
     /// they are outside the disc, where the board metrics keep them.
     func testAnIconDiscLiftsAndKeepsItsMarkers() {
-        let app = launch(in: .chinese, window: "760x492", symbols: "icons")
+        let app = launch(in: .chinese, window: "760x520", symbols: "icons")
         point(app, "b1").click()
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮 已选择")
         XCTAssertEqual(point(app, "b4").label, "b4 空 可走")
@@ -1284,7 +1284,7 @@ final class PlayScreenUITests: XCTestCase {
         let first = record("firstlaunch", window: nil)
         XCTAssertGreaterThanOrEqual(first.window.width, 760,
                                     "a first launch cannot open below the minimum")
-        XCTAssertGreaterThanOrEqual(first.window.height, 492)
+        XCTAssertGreaterThanOrEqual(first.window.height, 520)
 
         // The smallest window the product allows. The size asked for is far
         // below it on both axes, so what comes back is the minimum itself.
