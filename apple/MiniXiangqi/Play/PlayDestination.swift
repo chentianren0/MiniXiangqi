@@ -43,6 +43,13 @@ struct PlayDestination: View {
     /// recorded result is the only thing that asks.
     var replay: (UInt64) -> Void
 
+    /// The nearby feature, where this device has one. Its board is a page over
+    /// this destination like the other two, and it is drawn from here for the
+    /// same reason they are — but the session behind it belongs to the peer and
+    /// outlives every page, so nothing about leaving this destination touches
+    /// it.
+    var nearby: NearbyFlow?
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var policy: MotionPolicy { MotionPolicy(reduceMotion: reduceMotion) }
@@ -95,17 +102,17 @@ struct PlayDestination: View {
                 // a large title is most of a phone's spare height, and the
                 // stacked shape spends that height on the board.
                 #if !os(macOS)
-                .navigationBarTitleDisplayMode(play.page == .home ? .large : .inline)
+                .navigationBarTitleDisplayMode(showsBackControl ? .inline : .large)
                 #endif
                 .toolbar {
-                    if play.page != .home {
+                    if showsBackControl {
                         ToolbarItem(placement: .navigation) {
                             // Named for where it goes, which is how the
                             // platform's own back control names itself: it
                             // carries the previous page's title. Here that is
                             // always the Play home.
                             Button {
-                                play.leaveTopPage()
+                                leaveTopPage()
                             } label: {
                                 Image(systemName: "chevron.backward")
                             }
@@ -119,14 +126,48 @@ struct PlayDestination: View {
 
     @ViewBuilder
     private var page: some View {
+        #if os(iOS)
+        if let nearby, nearby.boardSessionID != nil {
+            // A nearby game is over every page of this destination, because it
+            // is the game this device is playing: the local pages are still
+            // there underneath it, exactly where the player left them.
+            NearbyBoardScreen(flow: nearby)
+        } else {
+            playPage
+        }
+        #else
+        playPage
+        #endif
+    }
+
+    @ViewBuilder
+    private var playPage: some View {
         switch play.page {
         case .home:
-            PlayHome(play: play)
+            PlayHome(play: play, nearby: nearby)
         case .setup(let selection):
             SetupScreen(play: play, selection: selection)
         case .board:
             PlayScreen(play: play, replay: replay)
         }
+    }
+
+    /// Whether the page on screen is one over the home, whichever kind it is.
+    private var showsBackControl: Bool {
+        #if os(iOS)
+        if nearby?.boardSessionID != nil { return true }
+        #endif
+        return play.page != .home
+    }
+
+    private func leaveTopPage() {
+        #if os(iOS)
+        if let nearby, nearby.boardSessionID != nil {
+            nearby.leaveBoard()
+            return
+        }
+        #endif
+        play.leaveTopPage()
     }
 }
 

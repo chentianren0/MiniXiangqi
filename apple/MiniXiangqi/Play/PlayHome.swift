@@ -24,6 +24,11 @@ import SwiftUI
 struct PlayHome: View {
     let play: PlayState
 
+    /// The nearby feature, where this device has one. It is nil on a Mac, which
+    /// never offers nearby play, and its own availability decides whether the
+    /// rows below are drawn on a device that does.
+    var nearby: NearbyFlow?
+
     var body: some View {
         Form {
             if let game = play.activeGame { currentGame(game) }
@@ -94,6 +99,7 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-xiangqi-human-versus-ai")
             entry(PlaySelection(game: .xiangqi, mode: .freePlay),
                   "mode.freePlay", "mode-xiangqi-free-play")
+            nearbyEntry(.xiangqi, "mode-xiangqi-nearby")
         } header: {
             Text(GameKind.xiangqi.localizedName)
         }
@@ -103,6 +109,7 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-mini-xiangqi-human-versus-ai")
             entry(PlaySelection(game: .miniXiangqi, mode: .freePlay),
                   "mode.freePlay", "mode-mini-xiangqi-free-play")
+            nearbyEntry(.miniXiangqi, "mode-mini-xiangqi-nearby")
         } header: {
             Text(GameKind.miniXiangqi.localizedName)
         }
@@ -114,9 +121,33 @@ struct PlayHome: View {
     /// game is created by 开始对局 on the page it opens, and by nothing else.
     private func entry(_ selection: PlaySelection, _ title: LocalizedStringKey,
                        _ identifier: String) -> some View {
-        Button {
-            play.choose(selection)
-        } label: {
+        row(title, identifier) { play.choose(selection) }
+    }
+
+    /// The third row in each game's section: playing that game with somebody in
+    /// the room.
+    ///
+    /// **It is absent rather than disabled where the device has no radio**, and
+    /// absent altogether on a Mac, which has neither the entitlement nor the
+    /// system's pairing UI. A row that could never be pressed would be a promise
+    /// the hardware cannot keep, and no explanation would help a reader who
+    /// cannot change the answer.
+    ///
+    /// Where a nearby game is already going in this row's own game, the row
+    /// leads back into it, exactly as the current-game card above leads back
+    /// into a local one. The rest of that decision is the flow's.
+    @ViewBuilder
+    private func nearbyEntry(_ game: GameKind, _ identifier: String) -> some View {
+        #if os(iOS)
+        if let nearby, nearby.isAvailable {
+            row("mode.nearby", identifier) { nearby.open(game) }
+        }
+        #endif
+    }
+
+    private func row(_ title: LocalizedStringKey, _ identifier: String,
+                     _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
             HStack(spacing: 8) {
                 Text(title)
                 Spacer(minLength: 0)

@@ -506,7 +506,11 @@ final class Core {
 
     /// One game's frozen starting FEN. A constant of its ruleset, so it is read
     /// from the core rather than written a second time here.
-    static func startFEN(for game: GameKind) -> String {
+    ///
+    /// `nonisolated` because it is: `mxq_rules_start_fen` takes no core instance
+    /// and is callable from any thread, including inside a search callback, so
+    /// the nearby layer's own nonisolated values may ask it.
+    nonisolated static func startFEN(for game: GameKind) -> String {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
         var length = 0
         let status = mxq_rules_start_fen(game.raw, &buffer, buffer.count, &length, nil)
@@ -527,8 +531,13 @@ final class Core {
         return session
     }
 
-    private static func evaluation(position: MxqPosition,
-                                   status: MxqGameStatus) throws -> Evaluation {
+    /// One position and status pair, converted. Internal rather than private
+    /// because the nearby board asks the same question of the *session-free*
+    /// rules facade — same two structs, same conversion — and a second copy of
+    /// the field mapping would be a second place for it to drift. Nonisolated
+    /// with it: it is a conversion between two value types and touches nothing.
+    nonisolated static func evaluation(position: MxqPosition,
+                                       status: MxqGameStatus) throws -> Evaluation {
         guard let side = Side(position.side_to_move) else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
                             detail: "the core reported no side to move")
