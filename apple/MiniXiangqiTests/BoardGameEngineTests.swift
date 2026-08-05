@@ -156,6 +156,45 @@ struct BoardGameEngineTests {
         #expect(engine.session("A-theirs")?.state == .proposed)
     }
 
+    @Test("Crossed proposals carrying one identifier leave neither standing, and answer nothing")
+    func crossedProposalsWithTheSameIdentifier() throws {
+        let engine = try connected(minting: ["S-same"])
+        _ = try engine.propose(to: .peer, on: .first, rulesID: "minixiangqi", proposerMoves: .first)
+
+        let effects = peerProposes(engine, "S-same")
+        #expect(effects.isEmpty, "neither sorts lower, so neither survives and neither is answered")
+        #expect(engine.session("S-same") == nil)
+        #expect(engine.sessions.isEmpty)
+    }
+
+    @Test("Identifiers are compared by their bytes, not by Unicode equivalence")
+    func identifiersAreComparedByTheirBytes() throws {
+        // One character, composed and decomposed: equal as Swift strings,
+        // different as bytes, and the decomposed one sorts lower.
+        let composed = "S-\u{00E9}"
+        let decomposed = "S-e\u{0301}"
+        #expect(composed == decomposed, "Swift's own comparison is what this defends against")
+
+        let engine = try connected(minting: [composed])
+        _ = try engine.propose(to: .peer, on: .first, rulesID: "minixiangqi", proposerMoves: .first)
+        let effects = peerProposes(engine, decomposed)
+
+        #expect(effects.isEmpty)
+        #expect(engine.session(composed) == nil, "the higher identifier is void without an answer")
+        #expect(engine.session(decomposed)?.state == .proposed,
+                "and the two are two sessions, not one entry")
+    }
+
+    @Test("A refused proposal is reported with its reason and forgotten")
+    func ourProposalIsRefused() throws {
+        let engine = try connected(minting: ["S-mine"])
+        _ = try engine.propose(to: .peer, on: .first, rulesID: "minixiangqi", proposerMoves: .first)
+
+        let effects = engine.receive(.decline(.init(session: "S-mine", reason: .busy)), on: .first)
+        #expect(effects == [.declined(session: "S-mine", peer: .peer, reason: .busy)])
+        #expect(engine.session("S-mine") == nil)
+    }
+
     @Test("An arriving proposal retires the lingering ended session, settled or not")
     func aProposalRetiresTheLingeringSession() throws {
         let engine = try connected()
@@ -594,6 +633,35 @@ struct BoardGameEngineTests {
                                             ending: .rulesDecided(.checkmate)))
     }
 
+    @Test("A rules-decided end outranks a draw agreed before it")
+    func rulesDecidedOutranksAnAgreedDraw() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        try play(["b1b3", "b7b6"], into: engine, id)
+        _ = try engine.offerDraw(in: id)
+        _ = engine.receive(.acceptDraw(.init(session: id)), on: .first)
+        #expect(engine.session(id)?.end?.ending == .agreedDraw)
+
+        _ = engine.receive(.move(.init(session: id, index: 2, move: "b3d3")), on: .first)
+        #expect(engine.session(id)?.end == BoardGameEnd(result: .moverWins(.first),
+                                                        ending: .rulesDecided(.checkmate)))
+    }
+
+    @Test("A draw agreed after the mate does not lower it")
+    func anAgreedDrawArrivingAfterTheMate() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        try play(["b1b3", "b7b6"], into: engine, id)
+        _ = try engine.offerDraw(in: id)
+
+        _ = engine.receive(.move(.init(session: id, index: 2, move: "b3d3")), on: .first)
+        #expect(engine.session(id)?.end?.ending == .rulesDecided(.checkmate))
+
+        _ = engine.receive(.acceptDraw(.init(session: id)), on: .first)
+        #expect(engine.session(id)?.end == BoardGameEnd(result: .moverWins(.first),
+                                                        ending: .rulesDecided(.checkmate)))
+    }
+
     @Test("An ended session discards everything but a move, a terminal, and a resume")
     func theEndedSessionDiscardsTheRest() throws {
         let engine = try connected()
@@ -804,6 +872,142 @@ struct BoardGameEngineTests {
         #expect(session.end == BoardGameEnd(result: .moverWins(.second),
                                             ending: .resignation(.peer)))
         #expect(session.settled)
+    }
+
+    @Test("An ended session this peer proposed answers a resume, settled or not")
+    func aSettledProposerAnswersAResume() throws {
+        let engine = try connected(minting: ["S-mine"])
+        let id = try activeSessionFromHere(engine, "S-mine", moves: .first)
+        _ = engine.receive(.resign(.init(session: id)), on: .first)
+        #expect(engine.session(id)?.settled == true, "the other peer sent the terminal")
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        let effects = engine.receive(.resume(.init(session: id, undos: 0, count: 0,
+                                                    keep: 0, end: .resign)), on: .second)
+        #expect(sent(effects) == [.resume(.init(session: id, undos: 0, count: 0,
+                                                 keep: 0, end: nil))],
+                "the proposer answers on the connection the resume arrived on")
+        let session = try #require(engine.session(id))
+        #expect(session.connection == .second)
+        #expect(session.exchange == nil, "and the exchange runs to completion")
+    }
+
+    @Test("An active session this peer proposed answers a resume without an intent of its own")
+    func aProposerAnswersAResumeForAnActiveSession() throws {
+        let engine = try connected(minting: ["S-mine"])
+        let id = try activeSessionFromHere(engine, "S-mine", moves: .first)
+        try play(["b1b2"], into: engine, id)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        let effects = engine.receive(.resume(.init(session: id, undos: 0, count: 1,
+                                                    keep: 1, end: nil)), on: .second)
+        #expect(sent(effects) == [.resume(.init(session: id, undos: 0, count: 1,
+                                                 keep: 1, end: nil))])
+        #expect(engine.session(id)?.connection == .second)
+        #expect(engine.session(id)?.isInPlay == true)
+    }
+
+    @Test("A terminal taken mid-exchange travels on the re-bind, and settles no sooner than any sent one")
+    func aTerminalTakenMidExchangeTravelsOnTheReBind() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        try play(["b1b2", "b7b6"], into: engine, id)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        // They hold a ply this peer has not seen, so the exchange stays in
+        // flight — and this peer's own resume has already travelled.
+        _ = engine.receive(.resume(.init(session: id, undos: 0, count: 3,
+                                          keep: 3, end: nil)), on: .second)
+        #expect(engine.session(id)?.exchange?.owed == 1)
+
+        #expect(try engine.resign(in: id).isEmpty, "there is nowhere to send it yet")
+        #expect(engine.session(id)?.settled == false)
+
+        let effects = engine.receive(.move(.init(session: id, index: 2, move: "b2b1")),
+                                     on: .second)
+        #expect(sent(effects) == [.resign(.init(session: id))],
+                "the held terminal goes as the re-bind completes the exchange")
+        let session = try #require(engine.session(id))
+        #expect(session.connection == .second)
+        #expect(session.exchange == nil)
+        #expect(!session.settled, "a sent terminal settles when a later exchange completes for it")
+        #expect(session.end == BoardGameEnd(result: .moverWins(.first),
+                                            ending: .resignation(.local)))
+    }
+
+    @Test("A standing offer does not survive the exchange that re-binds the session")
+    func theExchangeVoidsAStandingItem() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        _ = engine.receive(.move(.init(session: id, index: 0, move: "b1b2")), on: .first)
+        _ = engine.receive(.offerDraw(.init(session: id, at: 1)), on: .first)
+        #expect(engine.session(id)?.item != nil)
+
+        // Their side saw the connection die; this one did not, so only their
+        // copy of the offer went with it.
+        _ = connect(engine, .second)
+        _ = engine.receive(.resume(.init(session: id, undos: 0, count: 1,
+                                          keep: 1, end: nil)), on: .second)
+
+        let session = try #require(engine.session(id))
+        #expect(session.item == nil)
+        #expect(session.connection == .second)
+        #expect(throws: BoardGameRefusal.noStandingItem) { try engine.acceptDraw(in: id) }
+    }
+
+    @Test("A second resume on the connection this peer's own already travelled is refused")
+    func aRepeatedResumeIsRefused() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        _ = try engine.resume(id, on: .second)
+        #expect(throws: BoardGameRefusal.resumeOutstanding) { try engine.resume(id, on: .second) }
+    }
+
+    @Test("An unknown_session answer to this peer's own resume voids the session")
+    func unknownSessionAnswersAResumeMidExchange() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        // This peer did not propose, so no completing connection is known —
+        // and the one that would name it is never coming.
+        _ = try engine.resume(id, on: .second)
+        #expect(engine.session(id)?.exchange?.completing == nil)
+
+        let effects = engine.receive(.decline(.init(session: id, reason: .unknownSession)),
+                                     on: .second)
+        #expect(effects == [.declined(session: id, peer: .peer, reason: .unknownSession)])
+        #expect(engine.session(id) == nil, "the session is void on both sides")
+    }
+
+    @Test("An unprompted unknown_session decline answers nothing and has no lawful meaning")
+    func anUnpromptedUnknownSessionDecline() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+
+        let effects = engine.receive(.decline(.init(session: id, reason: .unknownSession)),
+                                     on: .first)
+        #expect(violations(effects) == [.noLawfulMeaning])
+        #expect(engine.session(id) == nil)
+    }
+
+    @Test("An ended session discards a decline it did not ask for")
+    func anEndedSessionDiscardsAnUnpromptedDecline() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine, peerMoves: .first)
+        _ = engine.receive(.resign(.init(session: id)), on: .first)
+
+        let effects = engine.receive(.decline(.init(session: id, reason: .unknownSession)),
+                                     on: .first)
+        #expect(effects.isEmpty)
+        #expect(engine.session(id) != nil, "discarded, never a violation")
     }
 
     @Test("A resume for a session this peer does not hold is answered with unknown_session")

@@ -49,6 +49,15 @@ nonisolated enum DeclineReason: String, Codable, Sendable, CaseIterable {
 nonisolated enum Terminal: String, Codable, Sendable, CaseIterable {
     case resign
     case acceptDraw = "accept_draw"
+
+    /// The message this terminal travels as, for a terminal that has been held
+    /// rather than sent.
+    func message(for session: String) -> BoardGameMessage {
+        switch self {
+        case .resign: .resign(.init(session: session))
+        case .acceptDraw: .acceptDraw(.init(session: session))
+        }
+    }
 }
 
 /// One protocol message.

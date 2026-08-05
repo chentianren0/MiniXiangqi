@@ -8,6 +8,34 @@
 
 import Foundation
 
+/// A protocol string held the way the contract compares one: by its bytes.
+///
+/// `session` and `rules_version` are opaque strings compared byte-wise, and
+/// Swift's own `String` equality is Unicode canonical equivalence, under which
+/// two different byte strings are equal and one dictionary key stands for both.
+/// A peer that compared bytes and a peer that compared graphemes would disagree
+/// about which crossed proposal survives, so this compares bytes.
+nonisolated struct WireBytes: Hashable, Comparable, Sendable, CustomStringConvertible {
+    /// The string as it arrived, which is what a message echoes verbatim.
+    let text: String
+    private let bytes: [UInt8]
+
+    init(_ text: String) {
+        self.text = text
+        self.bytes = Array(text.utf8)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.bytes == rhs.bytes }
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.bytes.lexicographicallyPrecedes(rhs.bytes)
+    }
+
+    func hash(into hasher: inout Hasher) { hasher.combine(bytes) }
+
+    var description: String { text }
+}
+
 /// One transport connection, named by the transport. Two connections to one
 /// peer can stand at once, so a session says which it is bound to.
 nonisolated struct ConnectionID: Hashable, Sendable {
@@ -109,14 +137,18 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
     struct Exchange: Sendable, Equatable {
         /// The connections this peer's own `resume` has travelled on.
         var sentOn: Set<ConnectionID> = []
-        /// The other peer's `resume`, per connection it arrived on. Only the
-        /// one on the completing connection ever counts.
-        var received: [ConnectionID: BoardGameMessage.Resume] = [:]
+        /// The other peer's `resume` on the completing connection, which is the
+        /// only one that ever counts.
+        var received: BoardGameMessage.Resume?
         /// The connection the *proposer's* resume travelled on, once that is
         /// known. The exchange completes and the session re-binds there.
         var completing: ConnectionID?
         /// Plies reconciliation still owes this peer.
         var owed = 0
+        /// The `end` this peer's own resume carried on the completing
+        /// connection. A terminal taken after that resume travelled has ridden
+        /// nothing, and this is what tells the two apart.
+        var statedEnd: Terminal?
     }
 
     // MARK: - Everything derived
@@ -164,11 +196,24 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
     /// Bound, exchanged, and free to play.
     var isInPlay: Bool { state == .active && connection != nil && exchange == nil }
 
+    /// This session, keyed as the contract compares its identifier.
+    var key: WireBytes { WireBytes(id) }
+
     /// The connection this session's ordinary traffic travels on: its own, or
     /// the completing connection while an exchange is in flight.
     func carries(_ connection: ConnectionID) -> Bool {
         if let exchange { return exchange.completing == connection }
         return self.connection == connection
+    }
+
+    /// Whether this peer has something outstanding on that connection for a
+    /// `decline` to be answering — a proposal it made, or a resume it sent.
+    /// Unprompted, a decline answers nothing.
+    func awaitsAnswer(on connection: ConnectionID) -> Bool {
+        if state == .proposed {
+            return proposer == .local && self.connection == connection
+        }
+        return exchange?.sentOn.contains(connection) ?? false
     }
 
     /// Learn of a terminal the other peer sent. Terminals merge by the

@@ -87,6 +87,9 @@ nonisolated enum BoardGameRefusal: Error, Equatable {
     case nothingToResume
     /// The proposer sends `resume` on exactly one connection.
     case resumeConnectionChosen
+    /// This peer's resume already travelled that connection, and the exchange
+    /// it belongs to has not completed.
+    case resumeOutstanding
 }
 
 nonisolated final class BoardGameEngine {
@@ -94,7 +97,9 @@ nonisolated final class BoardGameEngine {
     private let mintSessionID: @Sendable () -> String
 
     private var connections: [ConnectionID: Connection] = [:]
-    private var sessionsByID: [String: BoardGameSession] = [:]
+    /// Keyed by the identifier's bytes, so two identifiers this contract calls
+    /// different cannot become one entry.
+    private var sessionsByID: [WireBytes: BoardGameSession] = [:]
 
     /// - Parameter sessionIDs: mints the identifier a proposal carries. The
     ///   contract wants a UUID; injecting it is what lets a test pin the
@@ -115,10 +120,10 @@ nonisolated final class BoardGameEngine {
 
     /// Every session, in a stable order.
     var sessions: [BoardGameSession] {
-        sessionsByID.values.sorted { $0.id < $1.id }
+        sessionsByID.values.sorted { $0.key < $1.key }
     }
 
-    func session(_ id: String) -> BoardGameSession? { sessionsByID[id] }
+    func session(_ id: String) -> BoardGameSession? { sessionsByID[WireBytes(id)] }
 
     /// The proposed-or-active session with one peer. At most one stands.
     func session(with peer: PeerDeviceID) -> BoardGameSession? {
@@ -145,10 +150,10 @@ nonisolated final class BoardGameEngine {
     /// interrupted rather than lost.
     func connectionDied(_ connection: ConnectionID) {
         connections[connection] = nil
-        for (id, held) in sessionsByID {
+        for held in sessionsByID.values {
             var session = held
             if session.state == .proposed, session.connection == connection {
-                sessionsByID[id] = nil
+                forget(session)
                 continue
             }
             if session.connection == connection {
@@ -160,13 +165,11 @@ nonisolated final class BoardGameEngine {
                     session.exchange = nil
                 } else {
                     exchange.sentOn.remove(connection)
-                    exchange.received[connection] = nil
-                    let empty = exchange.completing == nil
-                        && exchange.sentOn.isEmpty && exchange.received.isEmpty
+                    let empty = exchange.completing == nil && exchange.sentOn.isEmpty
                     session.exchange = empty ? nil : exchange
                 }
             }
-            sessionsByID[id] = session
+            store(session)
         }
     }
 
@@ -209,7 +212,7 @@ nonisolated final class BoardGameEngine {
         guard let id = message.session else {
             preconditionFailure("every message but hello names a session")
         }
-        guard var session = sessionsByID[id], session.peer == peer else {
+        guard var session = sessionsByID[WireBytes(id)], session.peer == peer else {
             switch message {
             case .resume:
                 // Genuinely unknown: this peer holds nothing for it, retired
@@ -229,6 +232,14 @@ nonisolated final class BoardGameEngine {
             return receive(resume, into: &session, on: connection)
         }
 
+        // A decline is judged before the connection is, because the answer to
+        // this peer's own outstanding resume is the one message that arrives
+        // for a session whose exchange has not yet named a completing
+        // connection — and the reconciliation allowance must not swallow it.
+        if case .decline(let decline) = message {
+            return receive(decline, into: &session, on: connection)
+        }
+
         if session.state == .ended {
             return receiveForEnded(message, into: &session, on: connection)
         }
@@ -244,7 +255,7 @@ nonisolated final class BoardGameEngine {
         }
 
         switch message {
-        case .hello, .propose, .resume:
+        case .hello, .propose, .resume, .decline:
             preconditionFailure("handled above")
 
         case .accept:
@@ -256,19 +267,6 @@ nonisolated final class BoardGameEngine {
             session.accepted = true
             store(session)
             return []
-
-        case .decline(let decline):
-            if session.state == .proposed, session.proposer == .local {
-                sessionsByID[id] = nil
-                return [.declined(session: id, peer: peer, reason: decline.reason)]
-            }
-            guard decline.reason == .unknownSession else {
-                return close(connection,
-                             .violation(.meaningless("a decline for a proposal this peer did not make")),
-                             voiding: id)
-            }
-            sessionsByID[id] = nil
-            return [.declined(session: id, peer: peer, reason: .unknownSession)]
 
         case .move(let move):
             return receive(move, into: &session, on: connection)
@@ -326,41 +324,47 @@ nonisolated final class BoardGameEngine {
     /// A proposal arriving.
     private func receive(_ proposal: BoardGameMessage.Propose, from peer: PeerDeviceID,
                          on connection: ConnectionID) -> [BoardGameEffect] {
-        guard sessionsByID[proposal.session] == nil else {
+        // An arriving propose retires the receiver's ended copy whatever its
+        // settledness.
+        if let lingering = lingeringSession(with: peer) { forget(lingering) }
+
+        // The crossing case is judged before anything can call the arriving
+        // identifier a duplicate: this peer's own outstanding proposal is the
+        // one session whose identifier an arriving proposal may lawfully carry.
+        if let live = session(with: peer), live.state == .proposed, live.proposer == .local {
+            let arriving = WireBytes(proposal.session)
+            guard arriving != live.key else {
+                // Neither sorts lower, so neither survives, and each peer
+                // applies the same test to the same pair.
+                forget(live)
+                return []
+            }
+            // The proposal whose identifier sorts lower byte-wise survives; the
+            // other is void without an answer.
+            guard arriving < live.key else { return [] }
+            forget(live)
+        }
+
+        guard sessionsByID[WireBytes(proposal.session)] == nil else {
             return close(connection,
                          .violation(.meaningless("a propose naming a session already held")))
         }
-        // An arriving propose retires the receiver's ended copy whatever its
-        // settledness.
-        if let lingering = lingeringSession(with: peer) { sessionsByID[lingering.id] = nil }
 
         if let live = session(with: peer) {
-            if live.state == .active {
-                return [.send(.decline(.init(session: proposal.session, reason: .busy)),
-                              on: connection)]
-            }
-            guard live.proposer == .local else {
+            guard live.state == .active else {
                 return close(connection,
                              .violation(.meaningless("a second proposal while one is unanswered")),
                              voiding: live.id)
             }
-            // The crossing case: the proposal whose identifier sorts lower
-            // byte-wise survives and the other is void without an answer. Equal
-            // identifiers leave neither lower, so both go — each peer applies
-            // the same test to the same pair and they cannot disagree.
-            if proposal.session < live.id {
-                sessionsByID[live.id] = nil
-            } else {
-                if proposal.session == live.id { sessionsByID[live.id] = nil }
-                return []
-            }
+            return [.send(.decline(.init(session: proposal.session, reason: .busy)),
+                          on: connection)]
         }
 
         guard let version = rules.version(of: proposal.rulesID) else {
             return [.send(.decline(.init(session: proposal.session, reason: .unknownGame)),
                           on: connection)]
         }
-        guard version == proposal.rulesVersion else {
+        guard WireBytes(version) == WireBytes(proposal.rulesVersion) else {
             return [.send(.decline(.init(session: proposal.session, reason: .rulesMismatch)),
                           on: connection)]
         }
@@ -383,7 +387,7 @@ nonisolated final class BoardGameEngine {
             return close(connection, .violation(.meaningless("a move outside an active session")),
                          voiding: session.id)
         }
-        if let exchange = session.exchange, exchange.received[connection] == nil {
+        if let exchange = session.exchange, exchange.received == nil {
             return close(connection,
                          .violation(.meaningless("a move before the other peer's resume")),
                          voiding: session.id)
@@ -402,9 +406,9 @@ nonisolated final class BoardGameEngine {
             return close(connection, .violation(.illegalMove("the move is not lawful here")),
                          voiding: session.id)
         }
-        land(move.move, deciding: standing.decision, in: &session, on: connection)
+        let effects = land(move.move, deciding: standing.decision, in: &session, on: connection)
         store(session)
-        return []
+        return effects
     }
 
     /// An offer or a request arriving.
@@ -433,18 +437,35 @@ nonisolated final class BoardGameEngine {
         return []
     }
 
+    /// A `decline` refuses a proposal or a resume, so it answers something this
+    /// peer has outstanding on the connection it arrives on. Unprompted, it
+    /// answers nothing.
+    private func receive(_ decline: BoardGameMessage.Decline,
+                         into session: inout BoardGameSession,
+                         on connection: ConnectionID) -> [BoardGameEffect] {
+        if session.awaitsAnswer(on: connection) {
+            // A proposal is refused for any of its reasons; a resume only by
+            // the answer that says the session is not there, which voids it on
+            // both sides.
+            if session.state == .proposed || decline.reason == .unknownSession {
+                forget(session)
+                return [.declined(session: session.id, peer: session.peer,
+                                  reason: decline.reason)]
+            }
+        }
+        // An ended session discards what it has no use for, never a violation.
+        guard session.state != .ended else { return [] }
+        return close(connection,
+                     .violation(.meaningless("a decline answering nothing this peer has outstanding")),
+                     voiding: session.id)
+    }
+
     /// The ended session's allowances: it answers `resume`, applies a valid
     /// in-sequence `move`, merges arriving terminals, and discards the rest.
     private func receiveForEnded(_ message: BoardGameMessage,
                                  into session: inout BoardGameSession,
                                  on connection: ConnectionID) -> [BoardGameEffect] {
-        // An unknown_session answer voids the session, which is the one arrival
-        // that leaves nothing to hold.
-        if case .decline(let decline) = message, decline.reason == .unknownSession {
-            sessionsByID[session.id] = nil
-            return [.declined(session: session.id, peer: session.peer, reason: .unknownSession)]
-        }
-
+        var effects: [BoardGameEffect] = []
         switch message {
         case .move(let move):
             guard session.carries(connection), move.index == session.count,
@@ -452,7 +473,7 @@ nonisolated final class BoardGameEngine {
                   case .lawful(let standing) = rules.verdict(for: move.move, after: session.plies,
                                                              of: session.rulesID)
             else { return [] }
-            land(move.move, deciding: standing.decision, in: &session, on: connection)
+            effects = land(move.move, deciding: standing.decision, in: &session, on: connection)
 
         case .resign:
             session.merge(peerTerminal: .resign)
@@ -465,7 +486,7 @@ nonisolated final class BoardGameEngine {
             return []
         }
         store(session)
-        return []
+        return effects
     }
 
     // MARK: - Resume
@@ -483,22 +504,29 @@ nonisolated final class BoardGameEngine {
             // on; every other resume either peer sent is void once it does.
             if exchange.completing != connection {
                 exchange.completing = connection
-                exchange.received = [:]
                 exchange.sentOn = exchange.sentOn.intersection([connection])
+                // What this peer's resume stated stands only if that resume
+                // travelled the connection the exchange now completes on.
+                if exchange.sentOn.isEmpty { exchange.statedEnd = nil }
             }
-        } else if let completing = exchange.completing, completing != connection {
+        } else if let completing = exchange.completing {
             // This peer proposed and has chosen its connection already, so
             // every resume on another one is void.
-            return []
+            guard completing == connection else { return [] }
+        } else {
+            // This peer proposed and has not chosen. An ended session still
+            // answers a resume, and an active one owes the same answer, so the
+            // arrival's own connection is the choice — no exchange can complete
+            // until the proposer's resume has travelled one.
+            exchange.completing = connection
         }
-        exchange.received[connection] = resume
+        exchange.received = resume
+        // Nothing an interrupted session was negotiating survives the exchange
+        // that re-binds it.
+        session.item = nil
         session.exchange = exchange
 
-        // Until this peer has chosen, an arriving resume only waits.
-        var effects: [BoardGameEffect] = []
-        if exchange.completing == connection {
-            effects = reconcile(&session, with: resume, on: connection)
-        }
+        let effects = reconcile(&session, with: resume, on: connection)
         store(session)
         return effects
     }
@@ -516,6 +544,7 @@ nonisolated final class BoardGameEngine {
         if !exchange.sentOn.contains(connection) {
             effects.append(.send(.resume(session.resumeMessage), on: connection))
             exchange.sentOn.insert(connection)
+            exchange.statedEnd = session.localTerminal
         }
 
         let ourKeep = session.reportedKeep
@@ -545,20 +574,31 @@ nonisolated final class BoardGameEngine {
         }
         exchange.owed = max(0, theirEffectiveCount - ourEffectiveCount)
         session.exchange = exchange
-        completeExchangeIfDone(&session)
-        return effects
+        return effects + completeExchangeIfDone(&session)
     }
 
     /// The exchange is complete — and the session settled — once this peer
     /// holds the other's resume on the completing connection and has received
     /// every ply reconciliation owed it.
-    private func completeExchangeIfDone(_ session: inout BoardGameSession) {
+    ///
+    /// A terminal taken after this peer's own resume had already travelled is
+    /// carried by nothing, so the re-bind sends it as the ordinary message it
+    /// is. That terminal then settles the way every sent terminal does: not
+    /// here, but when a later resume exchange completes for it.
+    private func completeExchangeIfDone(_ session: inout BoardGameSession) -> [BoardGameEffect] {
         guard let exchange = session.exchange, let completing = exchange.completing,
-              exchange.received[completing] != nil, exchange.owed == 0
-        else { return }
+              exchange.received != nil, exchange.owed == 0
+        else { return [] }
+
         session.connection = completing
         session.exchange = nil
-        session.settled = true
+        session.item = nil
+
+        guard let held = session.localTerminal, exchange.statedEnd != held else {
+            session.settled = true
+            return []
+        }
+        return [.send(held.message(for: session.id), on: completing)]
     }
 
     // MARK: - What this peer's own player asks for
@@ -578,11 +618,11 @@ nonisolated final class BoardGameEngine {
             // A peer proposes only when its own copy of the pair's lingering
             // session is settled; a new proposal then retires it.
             guard lingering.settled else { throw .lingeringSessionUnsettled }
-            sessionsByID[lingering.id] = nil
+            forget(lingering)
         }
 
         let id = mintSessionID()
-        precondition(sessionsByID[id] == nil, "a minted session identifier is fresh")
+        precondition(sessionsByID[WireBytes(id)] == nil, "a minted session identifier is fresh")
         var session = BoardGameSession(id: id, peer: peer, rulesID: rulesID,
                                        rulesVersion: version, proposerMoves: proposerMoves,
                                        proposer: .local)
@@ -595,13 +635,13 @@ nonisolated final class BoardGameEngine {
 
     /// The player's answer to an arriving proposal.
     func answer(_ id: String, accepting: Bool) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .proposed, session.proposer == .peer else { throw .notProposed }
         guard let connection = session.connection, connections[connection] != nil else {
             throw .notInPlay
         }
         guard accepting else {
-            sessionsByID[id] = nil
+            forget(session)
             return [.send(.decline(.init(session: id, reason: .declined)), on: connection)]
         }
         session.accepted = true
@@ -611,7 +651,7 @@ nonisolated final class BoardGameEngine {
 
     /// One ply.
     func play(_ text: String, in id: String) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .active else { throw .notActive }
         guard session.isInPlay, let connection = session.connection else { throw .notInPlay }
         guard session.isLocalTurn else { throw .notYourTurn }
@@ -620,7 +660,9 @@ nonisolated final class BoardGameEngine {
         else { throw .unlawfulMove }
 
         let index = session.count
-        land(text, deciding: standing.decision, in: &session, on: connection)
+        // Being in play is having no exchange in flight, so this landing owes
+        // no completion and produces no send of its own.
+        _ = land(text, deciding: standing.decision, in: &session, on: connection)
         // A peer whose own ply decided the end holds the session unsettled.
         if session.rulesEnd != nil { session.settled = false }
         store(session)
@@ -642,7 +684,7 @@ nonisolated final class BoardGameEngine {
 
     private func open(_ kind: NegotiationItem.Kind,
                       in id: String) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .active else { throw .notActive }
         guard session.isInPlay, let connection = session.connection else { throw .notInPlay }
         guard !session.isLocalTurn else { throw .offTurnOnly }
@@ -663,7 +705,7 @@ nonisolated final class BoardGameEngine {
     }
 
     func acceptDraw(in id: String) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .active else { throw .notActive }
         guard session.isInPlay, let connection = session.connection else { throw .notInPlay }
         guard let item = session.item, item.opener == .peer, item.kind == .drawOffer else {
@@ -678,7 +720,7 @@ nonisolated final class BoardGameEngine {
     }
 
     func acceptUndo(in id: String) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .active else { throw .notActive }
         guard session.isInPlay, let connection = session.connection else { throw .notInPlay }
         guard let item = session.item, item.opener == .peer,
@@ -692,7 +734,7 @@ nonisolated final class BoardGameEngine {
     /// Resign, which is valid at any point of an active session. With nowhere
     /// to send it, the terminal waits and rides the next resume's `end`.
     func resign(in id: String) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard session.state == .active else { throw .notActive }
         let outlet = session.isInPlay ? session.connection : nil
         session.localTerminal = .resign
@@ -707,7 +749,7 @@ nonisolated final class BoardGameEngine {
     /// resume names the connection the exchange completes on, and it sends on
     /// exactly one connection of its choosing.
     func resume(_ id: String, on connection: ConnectionID) throws(BoardGameRefusal) -> [BoardGameEffect] {
-        guard var session = sessionsByID[id] else { throw .unknownSession }
+        guard var session = sessionsByID[WireBytes(id)] else { throw .unknownSession }
         guard let record = connections[connection], record.peer == session.peer else {
             throw .unknownConnection
         }
@@ -723,24 +765,27 @@ nonisolated final class BoardGameEngine {
         }
 
         var exchange = session.exchange ?? .init()
-        if session.proposer == .local {
-            if let completing = exchange.completing, completing != connection {
-                throw .resumeConnectionChosen
-            }
-            exchange.completing = connection
-            exchange.received = exchange.received.filter { $0.key == connection }
-            exchange.sentOn = exchange.sentOn.intersection([connection])
+        if session.proposer == .local, let completing = exchange.completing,
+           completing != connection {
+            throw .resumeConnectionChosen
         }
+        // Once this peer's resume has travelled a connection, saying it again
+        // states nothing new and would re-send plies the other peer already
+        // holds.
+        guard !exchange.sentOn.contains(connection) else { throw .resumeOutstanding }
 
-        var effects: [BoardGameEffect] = [.send(.resume(session.resumeMessage), on: connection)]
+        if session.proposer == .local { exchange.completing = connection }
         exchange.sentOn.insert(connection)
+        exchange.statedEnd = session.localTerminal
         session.exchange = exchange
+        // Nothing an interrupted session was negotiating survives the exchange
+        // that re-binds it.
+        session.item = nil
 
-        if exchange.completing == connection, let theirs = exchange.received[connection] {
-            effects += reconcile(&session, with: theirs, on: connection)
-        }
+        // Nothing to reconcile with yet: the other peer's resume is answered as
+        // it arrives, so a session holding one has already sent this.
         store(session)
-        return effects
+        return [.send(.resume(session.resumeMessage), on: connection)]
     }
 
     // MARK: - Shared state changes
@@ -748,14 +793,15 @@ nonisolated final class BoardGameEngine {
     /// One ply lands: it joins the line and voids the standing item on both
     /// sides.
     private func land(_ text: String, deciding decision: RulesDecision?,
-                      in session: inout BoardGameSession, on connection: ConnectionID) {
+                      in session: inout BoardGameSession,
+                      on connection: ConnectionID) -> [BoardGameEffect] {
         session.plies.append(text)
         session.item = nil
         session.rulesEnd = decision
-        guard var exchange = session.exchange, exchange.completing == connection else { return }
+        guard var exchange = session.exchange, exchange.completing == connection else { return [] }
         exchange.owed = max(0, exchange.owed - 1)
         session.exchange = exchange
-        completeExchangeIfDone(&session)
+        return completeExchangeIfDone(&session)
     }
 
     /// An accepted retraction: every ply beyond the first `keep` goes, and the
@@ -769,7 +815,12 @@ nonisolated final class BoardGameEngine {
     }
 
     private func store(_ session: BoardGameSession) {
-        sessionsByID[session.id] = session
+        sessionsByID[session.key] = session
+    }
+
+    /// A device forgets a void session, and a retired one.
+    private func forget(_ session: BoardGameSession) {
+        sessionsByID[session.key] = nil
     }
 
     private func sessionCarried(by connection: ConnectionID) -> BoardGameSession? {
@@ -779,7 +830,7 @@ nonisolated final class BoardGameEngine {
     /// The detecting peer closes the connection, and the session is void.
     private func close(_ connection: ConnectionID, _ verdict: CloseVerdict,
                        voiding session: String? = nil) -> [BoardGameEffect] {
-        if let session { sessionsByID[session] = nil }
+        if let session { sessionsByID[WireBytes(session)] = nil }
         connectionDied(connection)
         return [.close(connection, verdict)]
     }
