@@ -323,6 +323,7 @@ A small, calm cluster of controls sits together during play, so that it stays re
 
 - **Human versus AI** — **悔棋**, **判和**, **认输**, and **翻转棋盘**. The flip is the same presentation-only control Free Play and replay carry, under the same key and the same word. **It takes no tint**, and the cluster's one tinted moment is the concluding action.
 - **Free Play** — **悔棋**, **判和**, **翻转棋盘**. It cannot resign, having no opponent to resign to.
+- **Nearby** — **认输** and **翻转棋盘**, per [Nearby play](#nearby-play).
 - **Replay** — the transport controls and **翻转棋盘**. Replay offers no move input, so no play control applies.
 
 **The replay cluster is a grid.** Its five transport controls are one row of equal cells with one gap between them, and **翻转棋盘** beneath spans the width the row spans, so the cluster's leading and trailing edges are the header's and the move list's. One gap, five equal cells, one width.
@@ -349,7 +350,7 @@ Confirming records a human loss and moves the game to immutable History. Cancell
 A persistent status element near the board is one coherent description of the current play state:
 
 - Its primary line always identifies the side to move, using the localized equivalent of **轮到红方** or **轮到黑方**.
-- In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line. The controller label belongs to a turn and stops when the turn does: a finished game is nobody's to move, and the secondary line then carries the result's reason instead.
+- In human-versus-AI play, a secondary label identifies that side's controller as **你** or **AI**; in [nearby play](#nearby-play) the same label names the other player as **对方**. AI thinking is shown as activity attached to the AI's turn; it does not replace or compete with the side-to-move line. The controller label belongs to a turn and stops when the turn does: a finished game is nobody's to move, and the secondary line then carries the result's reason instead.
 - **The AI activity slot is a small system activity indicator beside the AI controller label.** It appears only once a search has run long enough to be worth showing — an indicator that arrives and leaves inside a third of a second reads as a flicker rather than as thinking — it never replaces the side-to-move line, it carries no material at all, and it is gone when the reply lands.
 - The same slot carries the stalled state when the engine could not be prepared mid-game and the player answered **稍后**: **AI 暂时无法启动** with **重试** beside it. See [Insufficient memory for AI play](#insufficient-memory-for-ai-play).
 - Free Play omits a human/AI controller label because the same person controls both sides.
@@ -444,6 +445,20 @@ The requested destination remains temporary only while this confirmation or retr
 - After **继续对局**, the same still-valid claim is exposed through a non-blocking **可判和** affordance instead of repeatedly presenting the same blocking notice. In Free Play the standing offer is the enabled **判和** control together with the turn status's **可判和** line, and nothing blocks the board.
 - **The notice never presents itself unbidden, in either mode.** It is the confirmation of the player's own act — **判和** — and a confirmation that presents itself inverts the accepted announcement/confirmation grammar under [Platform visual language](#platform-visual-language): announcements self-present and are dismissible; confirmations follow an act and block until answered. So human-versus-AI play uses exactly what Free Play accepts — the enabled **判和** control and the turn status's **可判和** line — even though there the repetition can arrive on a move the player did not choose. One vocabulary across both modes, and the claim stays the player's to invoke.
 - Claiming while the AI is thinking is legal exactly when the core reports the claim available. Where it is, the search is cancelled before the terminal commit: a search outstanding over a game that has just ended answers to nothing.
+
+### Nearby play
+
+Two people at one table, two devices, one game, over the [BoardGame Protocol](boardgame-protocol.md). The protocol decides what may be said between the devices; this section decides what is on screen.
+
+- **The entry is a third row inside each game's section on the [Play home](#the-play-home)**, **附近对弈**, under that game's **人机对弈** and **自由对弈**. It exists on iPhone and iPad and never on macOS, and where the hardware has no Wi-Fi Aware it is **absent rather than disabled**: a row that can never be pressed is a promise the hardware cannot keep, and no explanation helps a reader who cannot change the answer. The row opens the nearby game already going in that game, exactly as the **当前对局** card opens a local one; with none it raises that game's propose sheet.
+- **Pairing is the system's**, through its own device-pairing interface, once per pair of devices, and it sits on the propose sheet because it is the same errand. Either device may offer itself or look for the other.
+- **A proposal is the row's game, one side, and one device.** The game is not chosen again — the row named it — and what the sheet carries is the side the proposer takes, **我先手** or **对方先手**, the devices in the room, and **发出邀请**. While an invitation is unanswered the sheet says so and offers no second one.
+- **The other player consents.** An arriving proposal presents a system alert naming the device, the game, and the side **this** device would take, with **接受** and **拒绝**; accepting opens the board. It presents over whichever destination is showing, because a session belongs to the peer rather than to a page, and it is a confirmation of a consequential act, which is a system alert by [Platform visual language](#platform-visual-language).
+- **A refusal is presented by its reason.** Every reason the protocol carries, and every refusal this device's own engine makes, has a sentence of its own in [copy.md](copy.md). No wire code and no diagnostic reaches the reader.
+- **The nearby board is the play screen's board**: the same two [layout shapes](#layout-shapes), the same [turn status](#turn-status), the same [markers](#game-state-markers), the same motion and the same sounds. The board accepts a tap only while the session is bound to a connection and the ply is this device's; off-turn it is quiet and unmarked, and a tap it cannot accept takes the acknowledgment beat like any other. Its play controls are **认输** and **翻转棋盘**, and the way out with **翻转棋盘** once the game is over.
+- **The board says nothing about the connection in ordinary play.** Connections drop between moves by the radio's own design and are restored beneath the game; neither is reported, and nothing about either is modal. One line, in the turn status's own quiet register, appears where the link is costing the player something — what they did has not reached the other device, or their own turn has been blocked past a real stretch — and it withdraws when the link returns.
+- **Leaving the board ends nothing.** The session stands until the game does, and its own row on the Play home is the way back in.
+- **A finished nearby game presents the accepted result notice**, with **完成** as its one action. A rematch is a fresh proposal, so nothing offers one.
 
 ### History replay
 

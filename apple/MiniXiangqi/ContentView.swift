@@ -153,12 +153,52 @@ private struct Destinations: View {
     /// be invisible to the copy being looked at.
     @State private var library: HistoryLibrary
 
+    #if os(iOS)
+    /// The nearby feature, created once with the window like the game and the
+    /// library, and for a stronger reason than either: a nearby session belongs
+    /// to the *peer*, so the engine holding it has to outlive every page and
+    /// every destination. Leaving the board is an interruption the protocol
+    /// already models, and coming back finds the game where the two devices left
+    /// it.
+    @State private var nearby: NearbyFlow
+    #endif
+
     private enum Destination: Hashable { case play, history, settings }
 
     init(core: Core) {
         self.core = core
         _play = State(initialValue: PlayState(core: core))
         _library = State(initialValue: HistoryLibrary(store: core.history))
+        #if os(iOS)
+        _nearby = State(initialValue: Self.nearbyFlow(over: core))
+        #endif
+    }
+
+    #if os(iOS)
+    /// The nearby stack: the log every layer writes to, the protocol engine's
+    /// driver over it, the Wi-Fi Aware transport under that, and the flow the
+    /// surfaces read. Assembled here because this is where the window is, and
+    /// nothing below it is allowed to own a session.
+    private static func nearbyFlow(over core: Core) -> NearbyFlow {
+        let log = NearbyLog()
+        let driver = NearbyDriver(rules: core.boardGameRules, log: log)
+        let transport = NearbyTransport(driver: driver, log: log)
+        return NearbyFlow(driver: driver, radio: transport,
+                          positions: core.nearbyPositions,
+                          isAvailable: NearbyFlow.isAvailableHere(transport))
+    }
+    #endif
+
+    /// The nearby feature, where the platform has one. A Mac never offers
+    /// nearby play — the entitlement is signed for iPhone and iPad and the
+    /// system's pairing UI does not exist there — so every surface that takes
+    /// this takes nothing at all.
+    private var nearbyFlow: NearbyFlow? {
+        #if os(iOS)
+        nearby
+        #else
+        nil
+        #endif
     }
 
     var body: some View {
@@ -167,7 +207,7 @@ private struct Destinations: View {
                 PlayDestination(play: play, replay: { record in
                     pendingReplay = record
                     destination = .history
-                })
+                }, nearby: nearbyFlow)
             }
 
             Tab("nav.history", systemImage: "clock", value: Destination.history) {
@@ -183,6 +223,25 @@ private struct Destinations: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        #if os(iOS)
+        // The three nearby presentations that are not a page: the sheet a
+        // game's own nearby row raises, the consent prompt an arriving
+        // invitation puts up, and the refusal that answers one this device
+        // sent. All three sit above the container rather than inside a
+        // destination, because an invitation arrives when it arrives and a
+        // refusal answers something the player may have sent from a sheet they
+        // have already put away.
+        .sheet(isPresented: proposing) {
+            if let game = nearby.proposing {
+                NearbyProposeSheet(flow: nearby, game: game)
+            }
+        }
+        .nearbyAnswers(nearby) { destination = .play }
+        // The engine publishes on every input, and this is where the flow reads
+        // what moved: a proposal answered, or a refusal to present.
+        .onChange(of: nearby.driver.sessions) { nearby.sessionsChanged() }
+        .onChange(of: nearby.driver.declines.count) { nearby.sessionsChanged() }
+        #endif
         // The two launch arguments that are about the *window* rather than
         // about a destination sit here, above the container: applied to a
         // destination they would be re-applied every time the player came back
@@ -206,6 +265,13 @@ private struct Destinations: View {
         }
         #endif
     }
+
+    #if os(iOS)
+    private var proposing: Binding<Bool> {
+        Binding(get: { nearby.proposing != nil },
+                set: { if !$0 { nearby.dismissSheet() } })
+    }
+    #endif
 
     #if DEBUG
     /// The appearance `-mxq-appearance dark` or `-mxq-appearance light` names.

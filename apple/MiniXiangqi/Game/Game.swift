@@ -298,16 +298,35 @@ final class Game {
     }
 
     func effect(ofTapAt square: Square) -> TapEffect {
-        // A finished game accepts no input, and it is refused here rather than
-        // by each caller: a board that has nothing left to play has nothing
-        // left to offer at any point on it.
-        guard !isFinished else { return .unavailable }
-        // Nor does a board waiting on the opponent. The core says whose turn it
-        // is by expecting a search, so the rule is read rather than re-derived
-        // from the mode and the side to move — and it holds for the whole time
-        // the AI owes a move, whether the search is running, still to be
-        // started, or stalled behind a preparation that has not succeeded yet.
-        guard !searchExpected else { return .unavailable }
+        // A finished game accepts no input, and nor does a board waiting on the
+        // opponent. The core says whose turn it is by expecting a search, so the
+        // rule is read rather than re-derived from the mode and the side to
+        // move — and it holds for the whole time the AI owes a move, whether the
+        // search is running, still to be started, or stalled behind a
+        // preparation that has not succeeded yet.
+        Self.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
+                    sideToMove: evaluation.sideToMove, selected: selected,
+                    acceptsInput: !isFinished && !searchExpected)
+    }
+
+    /// The same question asked of a position rather than of this game: what a
+    /// tap on a point means, given what stands there, what the core says is
+    /// legal, and whether this board is accepting input at all.
+    ///
+    /// It is written once because there are two boards now. A nearby game's
+    /// position comes from the session-free rules facade rather than from an
+    /// attached session, and whose turn it is comes from the protocol rather
+    /// than from a search being expected — but *what a tap means* is the same
+    /// question about the same board, and a second copy of it would be a second
+    /// place for the two to disagree. Nothing here decides a rule: the legal
+    /// moves are the core's answer, and this only reads them.
+    static func effect(ofTapAt square: Square, in placement: Placement,
+                       legalMoves: [Move], sideToMove: Side, selected: Square?,
+                       acceptsInput: Bool) -> TapEffect {
+        // Refused here rather than by each caller: a board with nothing left to
+        // play, or one whose turn it is not, has nothing to offer at any point
+        // on it.
+        guard acceptsInput else { return .unavailable }
 
         if square == selected { return .cancelSelection }
         if let selected, let move = legalMoves.first(where: {
@@ -315,7 +334,7 @@ final class Game {
         }) {
             return .play(move)
         }
-        if placement[square]?.side == evaluation.sideToMove { return .select(square) }
+        if placement[square]?.side == sideToMove { return .select(square) }
         return selected == nil ? .unavailable : .illegal
     }
 

@@ -31,13 +31,18 @@ struct TurnStatus: View {
     /// already been answered with 稍后 by the time this shows.
     var retry: (() -> Void)?
 
+    /// Who controls the side to move, where the answer is not "the person
+    /// holding this device". Free Play has none — the same person controls both
+    /// sides — and the other two name what is on the other side of the turn: the
+    /// machine, or the person at the other device.
     enum Controller {
-        case you, ai
+        case you, ai, peer
 
         var text: String {
             switch self {
             case .you: String(localized: "status.controller.you")
             case .ai: String(localized: "status.controller.ai")
+            case .peer: String(localized: "status.controller.peer")
             }
         }
     }

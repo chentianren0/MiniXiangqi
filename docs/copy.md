@@ -29,6 +29,7 @@ Contract sections are cited by document and section name rather than by line num
 | `game.miniXiangqi` | 迷你象棋 | Mini Xiangqi | Play-home section header; pre-start game name; metadata token | same — this is the game name inside the application, while `app.displayName` remains the product name |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
+| `mode.nearby` | 附近对弈 | Nearby Play | mode entry | [interaction-design.md](interaction-design.md) § Nearby play — the third row inside each game's section, absent where the hardware has no radio; `Play/PlayHome.swift` |
 
 ### Controls
 
@@ -59,6 +60,8 @@ Contract sections are cited by document and section name rather than by line num
 | `control.import` | 导入… | Import… | toolbar item | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 | `control.view` | 查看 | View | alert button | same — the duplicate answer's way to the record it found |
 | `control.ok` | 好 | OK | alert button | same — the acknowledgement of an alert that is informational plus at most one navigation |
+| `control.accept` | 接受 | Accept | alert button | [interaction-design.md](interaction-design.md) § Nearby play — the consent prompt's answer that starts the game; `Nearby/NearbyProposeSheet.swift` |
+| `control.decline` | 拒绝 | Decline | alert button | same — its other answer. 拒绝 rather than 取消: an invitation is refused, not cancelled |
 
 ### Turn status
 
@@ -71,6 +74,7 @@ Contract sections are cited by document and section name rather than by line num
 | `status.drawAvailable` | 可判和 | Draw Available | status line; metadata token | [interaction-design.md](interaction-design.md) § Turn status, § Claimable threefold repetition; `Play/TurnStatus.swift`, `Play/ActiveGameMetadata.swift` |
 | `status.controller.you` | 你 | You | secondary label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` |
 | `status.controller.ai` | AI | AI | secondary label | same — identical in both languages |
+| `status.controller.peer` | 对方 | Them | secondary label | [interaction-design.md](interaction-design.md) § Turn status, § Nearby play — the other player at the other device; `Play/TurnStatus.swift` |
 | `status.aiThinking` | AI 正在思考 | AI is thinking | accessibility label | [interaction-design.md](interaction-design.md) § Turn status; `Play/TurnStatus.swift` — the activity indicator's label, never drawn on screen |
 | `status.aiUnavailable` | AI 暂时无法启动 | The AI can't start right now | status line | same — the AI activity slot's stalled state, after the mid-game notice was answered with 稍后 |
 | `status.redWins` | 红方胜 | Red Wins | status line | `Play/TurnStatus.swift` |
@@ -125,6 +129,9 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.aiUnavailable.resumeMessage` | 当前可用内存不足。对局已保存，可以稍后继续。请尝试关闭一些其他 App，然后重试。 | There is not enough memory available. The game is saved and you can continue later. Please close some other apps, then try again. | alert message | same — the mid-game form, under the same title; `Play/PlayScreen.swift` |
 | `alert.gameNotStarted.title` | 无法开始对局 | Couldn't Start the Game | alert title | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
 | `alert.gameNotStarted.message` | 保存这盘新对局时出错。请重试。 | Saving the new game failed. Please try again. | alert message | same |
+| `alert.nearbyInvite.title` | 对方邀请你对弈 | Someone Wants to Play | alert title | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyProposeSheet.swift` |
+| `alert.nearbyInvite.message` | 接受后立即开始对局。 | The game starts as soon as you accept. | alert message | same — the sentence under the invitation's own metadata line |
+| `alert.nearbyDeclined.title` | 对局没有开始 | The Game Didn't Start | alert title | same — the title over every refusal in the § Nearby play table below |
 | `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
 | `alert.deleteFailed.title` | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
@@ -228,6 +235,34 @@ There are two footers on the Settings screen, and only two. `settings.confirmDel
 **The Windows frontend draws three of the four preference groups**, per the Settings scope in [product.md](product.md), so eight of the keys above carry no Windows string: `settings.section.board`, `settings.symbols.*`, `settings.notation.*` and `settings.haptics.label` — one group header, two rows of a label and two options each, and one switch — and no `about.*` key does either, that page being an Apple surface. Nothing about the *rows* changes — they are one contract for both frontends and the Apple app draws every one of them — and no key is retired, because each is a preference the Windows frontend has no surface for rather than one it disagrees with. **Both footers survive the trim**, which is why the paragraph above still reads the same on that platform: the two groups they belong to are among the three that ship, and an absent row explains itself by not being there rather than by needing a third footer to say so. The six option words the two default rows offer are `setup.iMoveFirst`, `setup.aiMovesFirst`, `setup.random` and the three `setup.level.*`, keyed once under **Pre-start setup** and read by both screens; `windows/MiniXiangqi.Play/Text/Strings.cs` is where the Windows half lives.
 
 Nothing here offers an interface language, and no key exists for one: the operating system owns the language, per the Settings scope in [product.md](product.md).
+
+### Nearby play
+
+The propose sheet, the one line the board ever says about the connection, and the sentence under **对局没有开始**. The game names, the sides, the results and the reasons are the same rows the rest of this table already carries: a nearby game is a game.
+
+| Key | 中文 | English | Surface | Source |
+|---|---|---|---|---|
+| `nearby.theyMoveFirst` | 对方先手 | They Move First | option | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyProposeSheet.swift` — the other half of the side choice, beside `setup.iMoveFirst`. It names the other player because which colour they take belongs to the game |
+| `nearby.devices` | 附近的设备 | Nearby Devices | group header | same |
+| `nearby.searching` | 正在查找附近的设备… | Looking for nearby devices… | row | same — what the group says with nobody in it yet |
+| `nearby.invite` | 发出邀请 | Send Invitation | button | same — the sheet's one tinted action |
+| `nearby.waitingForAnswer` | 正在等待对方回应… | Waiting for a reply… | row | same — an invitation that has gone out and not been answered |
+| `nearby.pairing` | 配对 | Pairing | group header | same |
+| `nearby.pairing.footer` | 两台设备只需配对一次。 | Two devices only need to be paired once. | group footer | same |
+| `nearby.discoverable` | 让这台设备可被发现 | Make This Device Discoverable | button | same — the system's own pairing view, named by what it does |
+| `nearby.findDevice` | 查找设备 | Find a Device | button | same — the system's own device picker |
+| `nearby.pairing.unavailable` | 这台设备无法配对 | This device can't pair | row | same — what stands where the system's pairing views cannot be offered |
+| `nearby.connecting` | 正在连接对方… | Connecting to the other device… | status line at the turn status | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — the one line the board ever says about the link, and only where the link is costing the player something |
+| `nearby.refusal.declined` | 对方拒绝了这局对弈。 | They declined the game. | alert message | same — the protocol's `declined` |
+| `nearby.refusal.busy` | 对方正在进行另一局对弈。 | They're already playing another game. | alert message | same — its `busy` |
+| `nearby.refusal.unknownGame` | 对方的 App 不下这个游戏。 | Their app doesn't play this game. | alert message | same — its `unknown_game` |
+| `nearby.refusal.rulesMismatch` | 两台设备对规则的解读不同。请都更新到最新版本后再试。 | The two devices read the rules differently. Update both to the latest version and try again. | alert message | same — its `rules_mismatch` |
+| `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message | same — its `unknown_session` |
+| `nearby.refusal.alreadyPlaying` | 你和对方已经有一局对弈了。 | You already have a game with this device. | alert message | same — one game at a time per pair of devices, which this device's own engine is what says |
+| `nearby.refusal.settling` | 上一局还没有结束。请稍后再试。 | The last game hasn't finished yet. Please try again in a moment. | alert message | same — the pair's previous game is not settled between the two devices yet |
+| `nearby.refusal.notNow` | 现在无法开始对局。请重试。 | The game can't start right now. Please try again. | alert message | same — every other refusal, which is a connection that went away between the press and the send |
+
+The five refusal reasons above the last three are the protocol's own closed vocabulary, and each has a sentence rather than a shared one: they are things a person can act on — wait, update, or ask the other device — and a reader cannot act on a code. The last three are this device's engine refusing to send at all, in the three situations that differ for the reader.
 
 ### Game metadata
 
