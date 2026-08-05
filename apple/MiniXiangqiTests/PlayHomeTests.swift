@@ -396,6 +396,8 @@ struct PlayHomeTests {
 
         #expect(state.page == .home)
         #expect(engine.cancelledTickets.count == 1, "leaving cancels the search")
+        #expect(engine.cancelAlls == 1,
+                "quiesces the engine, the teardown behind it refusing rather than waiting")
         #expect(engine.teardowns == 1, "releases the engine")
         #expect(!core.hasSession, "and ends the session")
         #expect(state.game == nil, "the game went with the board it was on")
@@ -403,6 +405,40 @@ struct PlayHomeTests {
                 "while the game itself stays committed and active")
         #expect(state.activeSummary?.moveCount == 0,
                 "and the home's card describes it from the store, having no session to ask")
+    }
+
+    @Test("A nearby board over the local pages takes the local game down with it")
+    func aNearbyBoardTakesTheLocalGameDown() throws {
+        let core = try TestCores.fresh()
+        let engine = TestEngine()
+        let state = PlayState(core: core, engine: engine)
+        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
+                                       level: .fast, choice: .aiFirst))
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+        state.resume(policy: MotionPolicy(reduceMotion: true))
+        #expect(core.hasSession)
+        #expect(engine.startedSearches == 1, "the machine is thinking on the local board")
+
+        // A nearby game's board is drawn over every page of this destination,
+        // so the local board is no longer the board on screen.
+        state.nearbyBoardPresented(true, policy: MotionPolicy(reduceMotion: true))
+
+        #expect(!core.hasSession, "the local session goes with the board it was on")
+        #expect(engine.cancelledTickets.count == 1)
+        #expect(engine.cancelAlls == 1)
+        #expect(engine.teardowns == 1, "and the machine stops thinking about it")
+        #expect(state.game == nil)
+        #expect(state.page == .board, "the local page is still standing underneath")
+        #expect(try core.activeGameExists(), "the local game is committed and untouched")
+
+        // And when the nearby board comes down, the page underneath is a board
+        // again.
+        state.nearbyBoardPresented(false, policy: MotionPolicy(reduceMotion: true))
+
+        #expect(core.hasSession, "which opens its game again")
+        #expect(state.game != nil)
+        #expect(engine.startedSearches == 2,
+                "and asks again for the reply that game still owes")
     }
 
     @Test("回到对局 is no way off the home while a mode switch is in flight")

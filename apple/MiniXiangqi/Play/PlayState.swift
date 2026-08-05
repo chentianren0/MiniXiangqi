@@ -365,6 +365,10 @@ final class PlayState {
             game = nil
             motion = nil
             opponent = nil
+            // A resume that succeeded and a game that then would not open
+            // leaves a session attached to a board there is none of. The
+            // failure screen is what shows, and no session stands behind it.
+            core.endSession()
             startFailure = CoreError(wrapping: error)
         }
     }
@@ -390,6 +394,22 @@ final class PlayState {
         } else {
             putDownGame()
             refreshActiveSummary()
+        }
+    }
+
+    /// A nearby game's board went up over the local pages, or came down off
+    /// them.
+    ///
+    /// A nearby board is drawn over *every* page of the Play destination, so
+    /// while one is up the local game's board is not the board on screen — and
+    /// the session, the engine and any owed search belong to the board that is.
+    /// Coming down leaves the player on the page that was standing underneath,
+    /// which is where the local game opens again.
+    func nearbyBoardPresented(_ isPresented: Bool, policy: MotionPolicy) {
+        if isPresented {
+            leaveBoard()
+        } else {
+            enterBoard(policy: policy)
         }
     }
 
@@ -562,6 +582,16 @@ final class PlayState {
         game = nil
         core.endSession()
         if wasHumanVersusAI {
+            // **The quiesce between the cancel and the teardown**, which is
+            // what the suspension path does and what this needs for the same
+            // reason: `mxq_search_cancel` is cooperative and returns before the
+            // search has stopped, and `mxq_engine_teardown` refuses with
+            // SEARCH_IN_PROGRESS rather than waiting. Without this the engine
+            // survives the board that prepared it — up to 4 GiB of Hash — with
+            // no opponent left to release it. Both calls are queued on the
+            // engine's own serial queue, so the order holds without blocking
+            // this actor.
+            engine.cancelAllSearches()
             engine.teardownEngine(then: nil)
         }
     }

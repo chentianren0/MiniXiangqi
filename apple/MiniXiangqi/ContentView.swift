@@ -243,6 +243,15 @@ private struct Destinations: View {
         // what moved: a proposal answered, or a refusal to present.
         .onChange(of: nearby.driver.sessions) { nearby.sessionsChanged() }
         .onChange(of: nearby.driver.declines.count) { nearby.sessionsChanged() }
+        // A nearby board is drawn over every page of the Play destination, so
+        // while one is up the local game's board is not on screen. The session,
+        // the engine and any owed search go with the board that is showing:
+        // down when the nearby board goes up, and open again on the local page
+        // still standing underneath when it comes down.
+        .onChange(of: nearby.boardSessionID) { _, session in
+            play.nearbyBoardPresented(session != nil,
+                                      policy: MotionPolicy(reduceMotion: reduceMotion))
+        }
         #endif
         // **Which destination is showing is what the game's session hangs on.**
         // Issue #133's decision of 2026-08-05 gives the session, the engine and
