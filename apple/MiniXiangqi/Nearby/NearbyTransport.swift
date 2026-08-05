@@ -171,15 +171,34 @@ final class NearbyConnection: NearbyLink, Identifiable {
                 }
             }
             log.note("Connection \(NearbyDriver.short(id)): the stream ended.")
-        } catch let error as DecodingError {
-            // The coder refused the bytes. This layer never sees them, so the
-            // coder's refusal is the whole of what "unreadable" can mean here,
-            // and the contract calls unreadable malformed.
-            log.note("Connection \(NearbyDriver.short(id)): unreadable — \(error).")
-            if isOpen { driver.receivedUnreadable(on: id) }
         } catch {
-            log.note("Connection \(NearbyDriver.short(id)): receiving ended — "
-                     + "\(NearbyTransport.describe(error)).")
+            // The split the contract forces, and the reason it is drawn on the
+            // *death* side rather than on the refusal side.
+            //
+            // This layer never sees bytes, so the coder's refusal is the whole
+            // of what "unreadable" can mean here — and unreadable is malformed,
+            // which is a violation: the connection closes and the session is
+            // **void**. A connection that merely died leaves its session
+            // interrupted and resumable, which is a different outcome
+            // altogether. Getting the two the wrong way round is not a
+            // cosmetic difference.
+            //
+            // `NetworkConnection.messages` is an `AsyncThrowingStream` of
+            // `any Error`, and nothing promises that a coder's `DecodingError`
+            // arrives here bare rather than wrapped by the framework. Matching
+            // `DecodingError` alone would therefore let a wrapped refusal be
+            // read as a death and quietly downgrade a violation. So only the
+            // connection's own end is read as a death — an `NWError` from the
+            // network stack, or the cancellation `close()` raises — and
+            // everything else is the coder refusing what arrived. The breadth
+            // is the contract's requirement, not sloppiness.
+            if NearbyTransport.isConnectionEnd(error) {
+                log.note("Connection \(NearbyDriver.short(id)): receiving ended — "
+                         + "\(NearbyTransport.describe(error)).")
+            } else {
+                log.note("Connection \(NearbyDriver.short(id)): unreadable — \(error).")
+                if isOpen { driver.receivedUnreadable(on: id) }
+            }
         }
         isReady = false
         if isOpen {
@@ -207,8 +226,9 @@ final class NearbyConnection: NearbyLink, Identifiable {
         self.peer = peer
         peerName = path.endpoint.device.name
         signalStrength = path.performance.signalStrength
-        log.note("Connection \(NearbyDriver.short(id)) reaches "
-                 + "\(path.endpoint.device.name ?? "an unnamed device") (\(peer.rawValue)).")
+        log.note("Connection \(NearbyDriver.short(id)) reaches ",
+                 naming: path.endpoint.device.name ?? "an unnamed device",
+                 " (\(peer.rawValue)).")
 
         driver.connectionReady(self, with: peer)
         isOpen = true
@@ -347,7 +367,7 @@ final class NearbyTransport {
                  + "maxDevices=\(WACapabilities.maximumConnectableDevices) "
                  + "maxPublish=\(WACapabilities.maximumPublishableServices) "
                  + "maxSubscribe=\(WACapabilities.maximumSubscribableServices)")
-        log.note("This device is “\(UIDevice.current.name)”.")
+        log.note("This device is “", naming: UIDevice.current.name, "”.")
         listenerTask = Task { [self] in await runListener() }
         browserTask = Task { [self] in await runBrowser() }
     }
@@ -443,14 +463,16 @@ final class NearbyTransport {
                 guard !isConnected(to: nearbyPeerID(of: device)) else {
                     if !isHolding {
                         isHolding = true
-                        log.note("Already connected to \(device.name ?? "that device") — "
-                                 + "waiting rather than dialling again.")
+                        log.note("Already connected to ",
+                                 naming: device.name ?? "that device",
+                                 " — waiting rather than dialling again.")
                     }
                     try? await Task.sleep(for: .seconds(4))
                     continue
                 }
                 isHolding = false
-                log.note("Discovered \(device.name ?? "an unnamed device") — dialling.")
+                log.note("Discovered ", naming: device.name ?? "an unnamed device",
+                         " — dialling.")
 
                 let channel = NearbyChannel(to: endpoint, using: nearbyParameters())
                 // One outgoing connection at a time: the next browse waits for
@@ -490,6 +512,18 @@ final class NearbyTransport {
     // MARK: - Descriptions
 
     static func describe(_ state: Any) -> String { String(describing: state) }
+
+    /// Whether an error the receive loop ended on is the connection itself
+    /// going away, rather than the coder refusing what arrived.
+    ///
+    /// The network stack's own failures are `NWError`, and a cancellation is
+    /// this side's `close()` — the state watcher raises one for every failed or
+    /// cancelled connection, so a genuine death often reaches the loop that way
+    /// rather than as the error itself. Both are deaths. Anything else is the
+    /// refusal.
+    static func isConnectionEnd(_ error: any Error) -> Bool {
+        error is NWError || error is CancellationError
+    }
 
     /// A failure, with the Wi-Fi Aware error beneath the generic POSIX code
     /// where there is one — the generic code alone says nothing.
