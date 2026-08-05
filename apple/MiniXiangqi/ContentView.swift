@@ -77,7 +77,20 @@ struct ContentView: View {
     private var screen: some View {
         switch Core.shared {
         case .success(let core):
+            #if DEBUG && os(iOS)
+            // `-mxq-open-nearby` opens the nearby developer harness *instead of*
+            // the app. It is a debug instrument for driving the BoardGame
+            // Protocol on two real devices, and this launch argument is its only
+            // entry: the nearby feature's own surfaces are designed separately
+            // and are not here yet.
+            if NearbyLaunch.current.opensHarness {
+                NearbyHarnessScreen(core: core)
+            } else {
+                Destinations(core: core)
+            }
+            #else
             Destinations(core: core)
+            #endif
         case .failure(let error):
             // A core that will not start is a packaging failure, and saying so
             // plainly beats an empty board that silently does nothing. The
