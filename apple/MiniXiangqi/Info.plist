@@ -44,7 +44,7 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.ppppvz.minixiangqi.game</string>
+			<string>com.chentianren.minixiangqi.game</string>
 			<key>UTTypeDescription</key>
 			<string>Mini Xiangqi Game</string>
 			<key>UTTypeConformsTo</key>

@@ -2,7 +2,7 @@
 // representation the share sheet can hand to another application.
 //
 // docs/game-data.md fixes all three of the type's parts — the `.mxq` extension,
-// the `com.ppppvz.minixiangqi.game` identifier, and that it conforms to
+// the `com.chentianren.minixiangqi.game` identifier, and that it conforms to
 // `public.json`, because the archive is one canonical-JSON document and a file
 // that says so stays inspectable. The declaration itself lives in the app's
 // Info.plist, which is what registers it with the system; this is the Swift
@@ -28,7 +28,7 @@ nonisolated extension UTType {
     /// The archive's own type. `exportedAs` because this application defines
     /// it; the identifier and its conformance are the accepted ones and the
     /// Info.plist declaration must agree with them exactly.
-    static let miniXiangqiGame = UTType(exportedAs: "com.ppppvz.minixiangqi.game",
+    static let miniXiangqiGame = UTType(exportedAs: "com.chentianren.minixiangqi.game",
                                         conformingTo: .json)
 }
 
