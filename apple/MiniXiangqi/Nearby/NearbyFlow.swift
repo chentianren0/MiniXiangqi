@@ -67,6 +67,18 @@ protocol NearbyDriving: AnyObject {
     func answer(_ session: String, accepting: Bool) throws(BoardGameRefusal)
     func play(_ text: String, in session: String) throws(BoardGameRefusal)
     func resign(in session: String) throws(BoardGameRefusal)
+
+    /// The claimed draw, which travels as an ordinary ply.
+    func claim(in session: String) throws(BoardGameRefusal)
+    func offerDraw(in session: String) throws(BoardGameRefusal)
+    func acceptDraw(in session: String) throws(BoardGameRefusal)
+    func requestUndo(keeping keep: Int, in session: String) throws(BoardGameRefusal)
+    func acceptUndo(in session: String) throws(BoardGameRefusal)
+
+    /// Whether the claimed draw stands for this device's player. The engine's
+    /// own oracle answers it — the same question the engine asks when the claim
+    /// is played — so the affordance and the legality are one answer.
+    func claimStands(in session: BoardGameSession) -> Bool
 }
 
 extension NearbyDriver: NearbyDriving { }
@@ -106,6 +118,54 @@ nonisolated enum NearbyRefusal: Equatable, Sendable {
         // There is nothing to explain and something to try again.
         case .refused: "nearby.refusal.notNow"
         }
+    }
+
+    /// The title over that sentence.
+    ///
+    /// Every refusal but one answers a game that never began. `unknown_session`
+    /// is the protocol's answer to a **resume**, so what it refuses is a game
+    /// that was already under way — and a game in progress that ends is not a
+    /// game that did not start.
+    var titleKey: String {
+        switch self {
+        case .declined(.unknownSession): "nearby.ended.title"
+        default: "alert.nearbyDeclined.title"
+        }
+    }
+}
+
+/// Why a game the board was showing went away without a result.
+///
+/// These are the three ways the engine parts with a session it was playing, and
+/// there is no fourth: everything else it does to a session leaves the session
+/// there. Which of them happened is read off what the driver holds afterwards
+/// rather than decided here.
+nonisolated enum NearbyVoid: Equatable, Sendable {
+    /// The other device answered this device's resume by saying it holds no
+    /// such game — it was relaunched, or lost the session some other way.
+    case lostByPeer
+    /// A connection closed on a violation, and the session it carried is void.
+    case disagreement
+    /// The other player's fresh proposal retired it.
+    case retired
+
+    /// The one sentence the board says about it. `unknown_session` already has
+    /// its own words, and they are the same words for the same fact.
+    ///
+    /// The key rather than the string, for the reason a refusal's is: this
+    /// mapping is the whole of the promise that a void reaches the reader as
+    /// words, and it is pinned without a language being chosen for it.
+    var messageKey: String {
+        switch self {
+        case .lostByPeer: "nearby.refusal.unknownSession"
+        case .disagreement: "nearby.ended.disagreement"
+        case .retired: "nearby.ended.newGame"
+        }
+    }
+
+    /// That sentence, in the reader's language.
+    var message: String {
+        String(localized: String.LocalizationValue(stringLiteral: messageKey))
     }
 }
 
@@ -148,6 +208,16 @@ final class NearbyFlow {
     /// not present itself again for the same result, and walking off the board
     /// and back is not seeing a new one.
     private(set) var dismissedResultOf: String?
+
+    /// Why the board's session went away, where it went away with the game
+    /// still on. A session the engine parted with is not in the driver's list
+    /// to be read any more, so the answer is worked out at the moment it goes
+    /// and kept for the board to say.
+    private(set) var boardVoid: NearbyVoid?
+
+    /// The device the board's session is with, remembered while the session is
+    /// there. It is what a session that has gone is still accounted for by.
+    private var boardPeer: PeerDeviceID?
 
     /// How many of the driver's refusals have been presented. The driver's list
     /// only grows, so the count is the whole of what "already seen" means.
@@ -256,6 +326,8 @@ final class NearbyFlow {
     func openBoard(_ session: String) {
         proposing = nil
         boardSessionID = session
+        boardVoid = nil
+        boardPeer = driver.sessions.first { $0.id == session }?.peer
         wake()
     }
 
@@ -272,6 +344,8 @@ final class NearbyFlow {
     /// and the Play home's own row is the way back into it.
     func leaveBoard() {
         boardSessionID = nil
+        boardVoid = nil
+        boardPeer = nil
         restIfIdle()
     }
 
@@ -313,6 +387,7 @@ final class NearbyFlow {
     /// the driver publishes for its own reasons all the time, and only the
     /// answer to this device's own invitation is an answer.
     func sessionsChanged() {
+        noteBoardVoid()
         if let awaited = awaitedSession {
             switch driver.sessions.first(where: { $0.id == awaited }) {
             case let session? where session.state == .active:
@@ -327,11 +402,45 @@ final class NearbyFlow {
             }
         }
         // A refusal the other peer sent reaches the player here rather than in
-        // the driver, which records them and judges none of them.
+        // the driver, which records them and judges none of them — except the
+        // one the board is already saying: a refused resume that voided the
+        // game on screen is one event, and one event gets one sentence.
         if driver.declines.count > declinesSeen {
             declinesSeen = driver.declines.count
-            refusal = driver.declines.last.map { .declined($0.reason) }
+            if let decline = driver.declines.last,
+               decline.session != boardSessionID || boardVoid == nil {
+                refusal = .declined(decline.reason)
+            }
         }
+    }
+
+    /// The board's session is either still held or it is not, and a session the
+    /// engine has parted with is one the board is owed a sentence about.
+    private func noteBoardVoid() {
+        guard let boardSessionID else { return }
+        if let session = boardSession {
+            boardPeer = session.peer
+            return
+        }
+        guard boardVoid == nil, let peer = boardPeer else { return }
+        boardVoid = reasonItWent(boardSessionID, with: peer)
+    }
+
+    /// Which of the three it was, read off what the driver holds now.
+    ///
+    /// A decline naming an active session is the other device saying it has no
+    /// such game — nothing else the protocol declines can reach one — and a
+    /// proposal standing with the same device is that device having started
+    /// afresh. What is left is a connection closed on a violation, which is the
+    /// only other thing that takes a session away from the peer it belongs to.
+    private func reasonItWent(_ session: String, with peer: PeerDeviceID) -> NearbyVoid {
+        if driver.declines.contains(where: { $0.session == session }) { return .lostByPeer }
+        if driver.sessions.contains(where: {
+            $0.peer == peer && $0.state == .proposed && $0.proposer == .peer
+        }) {
+            return .retired
+        }
+        return .disagreement
     }
 
     func dismissRefusal() {

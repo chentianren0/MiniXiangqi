@@ -349,6 +349,287 @@ struct NearbyFlowTests {
         #expect(returned.flipped)
     }
 
+    // MARK: - The negotiations
+
+    @Test("提和 and 悔棋 are on offer exactly where the engine's own law allows them")
+    func offeringMirrorsTheEngine() throws {
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live))
+
+        // This device's own turn at ply zero: a negotiation is the off-turn
+        // peer's to open, so neither is available.
+        #expect(!play.canOfferDraw)
+        #expect(!play.canRequestUndo)
+
+        // Off turn, with a ply of this device's own behind it.
+        play.sync(with: with(live) { $0.plies = ["b1b2"] })
+        #expect(play.canOfferDraw)
+        #expect(play.canRequestUndo)
+
+        // Off turn with nothing played — this device takes the second mover, so
+        // the game opens on the other player's turn. The engine's `keep` has no
+        // value in range, so there is nothing to ask back.
+        let waiting = try #require(board(session(proposer: .peer, accepted: true)))
+        #expect(waiting.controller == .peer)
+        #expect(waiting.canOfferDraw)
+        #expect(!waiting.canRequestUndo, "a game with no plies has none to take back")
+
+        // An item standing is the engine's one-at-a-time rule, whoever opened
+        // it, and an interrupted session can send nothing at all.
+        play.sync(with: with(live) {
+            $0.plies = ["b1b2"]
+            $0.item = NegotiationItem(opener: .local, kind: .drawOffer, at: 1)
+        })
+        #expect(!play.canOfferDraw)
+        #expect(!play.canRequestUndo)
+
+        play.sync(with: with(live) { $0.plies = ["b1b2"]; $0.connection = nil })
+        #expect(!play.canOfferDraw)
+        #expect(!play.canRequestUndo)
+    }
+
+    @Test("and each sends what it says: an offer, and this device's own last ply back")
+    func openingSendsTheEnginesOwnAsk() throws {
+        let driver = FakeDriver()
+        let live = with(session(proposer: .local, accepted: true)) {
+            $0.plies = ["b1b2", "b7b6", "b2b1"]
+        }
+        let play = try #require(board(live, driver: driver))
+
+        play.offerDraw()
+        play.requestUndo()
+        // `keep` is the engine's count less one, read at the moment of the ask.
+        #expect(driver.intents == [.offerDraw, .requestUndo(keep: 2)])
+
+        // Neither is sent where the engine would refuse it: the surface does not
+        // ask a question it has already been told the answer to.
+        play.sync(with: with(live) { $0.connection = nil })
+        play.offerDraw()
+        play.requestUndo()
+        #expect(driver.intents == [.offerDraw, .requestUndo(keep: 2)])
+    }
+
+    @Test("What the other player is asking is the engine's item, and nothing else")
+    func theArrivingItemIsPresented() throws {
+        let live = with(session(proposer: .local, accepted: true)) { $0.plies = ["b1b2"] }
+        let play = try #require(board(live))
+        #expect(play.standingItem == nil)
+
+        // This device's own offer is not something to answer.
+        play.sync(with: with(live) {
+            $0.item = NegotiationItem(opener: .local, kind: .drawOffer, at: 1)
+        })
+        #expect(play.standingItem == nil)
+
+        // The other player's is.
+        let offered = with(live) {
+            $0.plies = ["b1b2", "b7b6"]
+            $0.item = NegotiationItem(opener: .peer, kind: .drawOffer, at: 2)
+        }
+        play.sync(with: offered)
+        #expect(play.standingItem == .drawOffer)
+
+        play.sync(with: with(offered) {
+            $0.item = NegotiationItem(opener: .peer, kind: .undoRequest(keep: 1), at: 2)
+        })
+        #expect(play.standingItem == .undoRequest(keep: 1))
+
+        // A ply landing voids it in the engine, so it un-presents at the same
+        // instant and with as little ceremony: nothing here held it.
+        play.sync(with: with(offered) { $0.plies = ["b1b2", "b7b6", "b2b1"]; $0.item = nil })
+        #expect(play.standingItem == nil)
+
+        // And an interrupted session has nothing to answer with.
+        play.sync(with: with(offered) { $0.connection = nil })
+        #expect(play.standingItem == nil)
+    }
+
+    @Test("接受 answers whichever of the two stands, and nothing where none does")
+    func acceptingAnswersTheStandingItem() throws {
+        let driver = FakeDriver()
+        let live = with(session(proposer: .local, accepted: true)) {
+            $0.plies = ["b1b2", "b7b6"]
+        }
+        let play = try #require(board(live, driver: driver))
+
+        play.accept()
+        #expect(driver.intents.isEmpty, "there is nothing standing to accept")
+
+        play.sync(with: with(live) {
+            $0.item = NegotiationItem(opener: .peer, kind: .drawOffer, at: 2)
+        })
+        play.accept()
+        #expect(driver.intents == [.acceptDraw])
+
+        play.sync(with: with(live) {
+            $0.item = NegotiationItem(opener: .peer, kind: .undoRequest(keep: 1), at: 2)
+        })
+        play.accept()
+        #expect(driver.intents == [.acceptDraw, .acceptUndo])
+    }
+
+    @Test("An applied retraction is the shorter line, shown going back")
+    func anAcceptedRetractionIsDrawn() throws {
+        let live = with(session(proposer: .local, accepted: true)) { $0.plies = ["b1b2"] }
+        let play = try #require(board(live, positions: AdvancedPositions()))
+        #expect(play.shown == ["b1b2"])
+
+        // The engine applies the retraction and publishes; the board follows it
+        // back through the board's own Undo rather than cutting to it.
+        play.sync(with: with(live) { $0.plies = []; $0.undos = 1; $0.retractedTo = 0 })
+        #expect(play.shown == [])
+        #expect(play.transit?.kind == .undo)
+
+        let ply = try #require(Move(text: "b1b2", on: GameKind.miniXiangqi.board))
+        #expect(play.transit?.move == Move(from: ply.to, to: ply.from),
+                "the mover travels home, which is the ply read backwards")
+
+        // A longer truncation is not a move being taken back, so it cuts.
+        let long = with(live) { $0.plies = ["b1b2", "b7b6", "b2b1"] }
+        let other = try #require(board(long, positions: AdvancedPositions()))
+        other.sync(with: with(long) { $0.plies = [] })
+        #expect(other.shown == [])
+        #expect(other.transit == nil, "nobody wants to watch three moves go past")
+    }
+
+    // MARK: - The claim
+
+    @Test("The claim stands exactly where the engine says it stands")
+    func theClaimIsTheEnginesAnswer() throws {
+        let driver = FakeDriver()
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live, driver: driver))
+
+        #expect(!play.claimStands)
+        #expect(driver.claimsAsked == ["S"], "the affordance is asked of the session")
+        #expect(play.statusState == .ongoing)
+        play.claimDraw()
+        #expect(driver.intents.isEmpty, "nothing is claimed that the engine would refuse")
+
+        driver.claimStandsAnswer = true
+        #expect(play.claimStands)
+        play.claimDraw()
+        #expect(driver.intents == [.claim])
+    }
+
+    @Test("and the 可判和 line stands with it rather than with the position alone")
+    func theClaimLineFollowsTheEngine() throws {
+        let driver = FakeDriver()
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live, driver: driver, positions: ClaimablePositions()))
+
+        // The position is claimable and the engine is not offering the claim —
+        // the other device's turn, an interrupted session, anything. The line
+        // follows the engine.
+        #expect(play.statusState == .ongoing)
+
+        driver.claimStandsAnswer = true
+        #expect(play.statusState == .claimableDraw)
+
+        // A finished game says its result instead, whatever the position is.
+        play.sync(with: with(live) { $0.peerTerminal = .resign })
+        #expect(play.statusState == .redWins)
+    }
+
+    // MARK: - The agreed draw
+
+    @Test("A draw the two players agreed says so, in the word the core has not got")
+    func anAgreedDrawIsNamed() throws {
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live))
+
+        play.sync(with: with(live) { $0.localTerminal = .acceptDraw })
+        #expect(play.end?.state == .draw)
+        #expect(play.end?.byAgreement == true)
+        #expect(play.end?.reason == EndReason.none, "no position decided this")
+        #expect(play.reasonText == String(localized: "nearby.agreedDraw"))
+    }
+
+    // MARK: - A game that goes away
+
+    @Test("A session the peer no longer holds is why the board says the game ended")
+    func aSessionLostByThePeerIsSaid() {
+        let driver = FakeDriver()
+        driver.sessions = [session(proposer: .local, accepted: true)]
+        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        flow.open(.miniXiangqi)
+        #expect(flow.boardVoid == nil)
+
+        // The peer answered this device's resume by saying it has no such game.
+        driver.sessions = []
+        driver.declines = [NearbyDecline(session: "S", peer: NearbyPeer.other.peer,
+                                         reason: .unknownSession, at: Date())]
+        flow.sessionsChanged()
+
+        #expect(flow.boardVoid == .lostByPeer)
+        #expect(flow.boardVoid?.messageKey == "nearby.refusal.unknownSession")
+        #expect(flow.refusal == nil, "one event gets one sentence, and the board has it")
+        #expect(flow.boardSessionID == "S", "the board stays where it is")
+    }
+
+    @Test("A fresh proposal from the same device is the other reason it can go")
+    func aRetiredSessionIsSaid() {
+        let driver = FakeDriver()
+        driver.sessions = [session(proposer: .local, accepted: true)]
+        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        flow.open(.miniXiangqi)
+
+        // The other player proposed again, which retires what stood with them.
+        // What is left with that device is their fresh, unanswered proposal.
+        driver.sessions = [session(id: "S2", proposer: .peer)]
+        flow.sessionsChanged()
+
+        #expect(flow.boardVoid == .retired)
+        #expect(flow.boardVoid?.messageKey == "nearby.ended.newGame")
+    }
+
+    @Test("and everything else is the two devices ceasing to agree")
+    func aVoidedSessionIsSaid() {
+        let driver = FakeDriver()
+        driver.sessions = [session(proposer: .local, accepted: true)]
+        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        flow.open(.miniXiangqi)
+
+        // A connection closed on a violation takes the session with it, and
+        // nothing else is left behind for it.
+        driver.sessions = []
+        flow.sessionsChanged()
+
+        #expect(flow.boardVoid == .disagreement)
+        #expect(flow.boardVoid?.messageKey == "nearby.ended.disagreement")
+        // Distinct sentences, because a reason a reader cannot tell from another
+        // reason is a code with extra steps.
+        #expect(Set([NearbyVoid.lostByPeer, .disagreement, .retired].map(\.messageKey)).count == 3)
+    }
+
+    @Test("A board told its game went away stops offering the game")
+    func aVoidedBoardIsQuiet() throws {
+        let live = with(session(proposer: .local, accepted: true)) { $0.plies = ["b1b2"] }
+        let play = try #require(board(live))
+        #expect(play.canOfferDraw)
+        #expect(!play.isOver)
+
+        play.wentAway(.disagreement)
+        #expect(play.isOver)
+        #expect(play.voided == .disagreement)
+        #expect(!play.canOfferDraw)
+        #expect(!play.canRequestUndo)
+        #expect(!play.canResign)
+        #expect(!play.acceptsInput)
+        #expect(!play.claimStands)
+        #expect(!play.isWaitingOnConnection,
+                "the notice has said what became of it; the link is beside the point")
+    }
+
+    @Test("A refusal answering a resume is not titled as a game that did not start")
+    func aResumeRefusalIsTitledForAGameThatWasUnderWay() {
+        #expect(NearbyRefusal.declined(.unknownSession).titleKey == "nearby.ended.title")
+        for reason in DeclineReason.allCases where reason != .unknownSession {
+            #expect(NearbyRefusal.declined(reason).titleKey == "alert.nearbyDeclined.title")
+        }
+        #expect(NearbyRefusal.refused(.peerIsBusy).titleKey == "alert.nearbyDeclined.title")
+    }
+
     // MARK: - The suite's own parts
 
     private func flow(driver: any NearbyDriving = FakeDriver(),
@@ -365,15 +646,18 @@ struct NearbyFlowTests {
     /// transition this suite never asks to finish still leaves the board where
     /// it was put; the feedback is a sink, because what a nearby landing sounds
     /// like is the shared rule the motion suites already pin.
-    private func board(_ session: BoardGameSession, flipped: Bool? = nil) -> NearbyPlay? {
-        NearbyPlay(session: session, driver: FakeDriver(), positions: FakePositions(),
+    private func board(_ session: BoardGameSession, flipped: Bool? = nil,
+                       driver: FakeDriver = FakeDriver(),
+                       positions: any NearbyPositions = FakePositions()) -> NearbyPlay? {
+        NearbyPlay(session: session, driver: driver, positions: positions,
                    flipped: flipped,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(perform: { _ in }, play: { _ in }))
     }
 
-    private func session(proposer: Party, accepted: Bool = false) -> BoardGameSession {
-        var session = BoardGameSession(id: "S", peer: NearbyPeer.other.peer,
+    private func session(id: String = "S", proposer: Party,
+                         accepted: Bool = false) -> BoardGameSession {
+        var session = BoardGameSession(id: id, peer: NearbyPeer.other.peer,
                                        rulesID: "minixiangqi", rulesVersion: "1",
                                        proposerMoves: .first, proposer: proposer)
         session.connection = ConnectionID("c")
@@ -413,17 +697,32 @@ private final class FakeDriver: NearbyDriving {
         var accepting: Bool
     }
 
+    /// One negotiation intent, as the driver received it.
+    enum Intent: Equatable {
+        case claim
+        case offerDraw
+        case acceptDraw
+        case requestUndo(keep: Int)
+        case acceptUndo
+    }
+
     var sessions: [BoardGameSession] = []
     var declines: [NearbyDecline] = []
     /// What every intent answers with, where the test wants a refusal.
     var refuses: BoardGameRefusal?
     /// The identifier the engine would mint for the next proposal.
     var mints = "S"
+    /// What the engine's own oracle would say about the claim.
+    var claimStandsAnswer = false
 
     private(set) var proposals: [Proposal] = []
     private(set) var answers: [Answer] = []
     private(set) var played: [String] = []
     private(set) var resigned: [String] = []
+    private(set) var intents: [Intent] = []
+    /// The sessions `claimStands` was asked about, which is what proves the
+    /// affordance is the engine's answer rather than the position's.
+    private(set) var claimsAsked: [String] = []
 
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
                  proposerMoves: Mover) throws(BoardGameRefusal) {
@@ -452,6 +751,36 @@ private final class FakeDriver: NearbyDriving {
     func resign(in session: String) throws(BoardGameRefusal) {
         if let refuses { throw refuses }
         resigned.append(session)
+    }
+
+    func claim(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.claim)
+    }
+
+    func offerDraw(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.offerDraw)
+    }
+
+    func acceptDraw(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.acceptDraw)
+    }
+
+    func requestUndo(keeping keep: Int, in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.requestUndo(keep: keep))
+    }
+
+    func acceptUndo(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.acceptUndo)
+    }
+
+    func claimStands(in session: BoardGameSession) -> Bool {
+        claimsAsked.append(session.id)
+        return claimStandsAnswer
     }
 }
 
@@ -490,6 +819,30 @@ private nonisolated struct FakePositions: NearbyPositions {
                                    resignAvailable: false,
                                    searchExpected: false),
             legalMoves: [])
+    }
+}
+
+/// The same, with the position claimable. Whether a position *is* claimable is
+/// the core's answer; what this shows is a board where it is, so that what the
+/// status line does with the engine's separate answer can be asked.
+private nonisolated struct ClaimablePositions: NearbyPositions {
+    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+        standing.evaluation.state = .claimableDraw
+        standing.evaluation.claimAvailable = true
+        return standing
+    }
+}
+
+/// The same, with Red's cannon standing a point up the board — the position
+/// `b1b2` produces. A reversal draws the piece that made the ply travelling
+/// home, and it reads that piece off the ply's destination, which in the start
+/// position is an empty point.
+private nonisolated struct AdvancedPositions: NearbyPositions {
+    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+        standing.evaluation.fen = "rcnkncr/p1ppp1p/7/7/7/PCPPP1P/R1NKNCR w - - 0 1"
+        return standing
     }
 }
 

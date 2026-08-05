@@ -1018,6 +1018,23 @@
         }
       }
     },
+    "control.offerDraw": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offer Draw"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提和"
+          }
+        }
+      }
+    },
     "control.ok": {
       "extractionState": "manual",
       "localizations": {
@@ -1671,6 +1688,23 @@
         }
       }
     },
+    "nearby.agreedDraw": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draw by Agreement"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "协议和棋"
+          }
+        }
+      }
+    },
     "nearby.connecting": {
       "extractionState": "manual",
       "localizations": {
@@ -1718,6 +1752,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "让这台设备可被发现"
+          }
+        }
+      }
+    },
+    "nearby.ended.disagreement": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The two devices no longer agree about this game."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两台设备对这局对弈的记录不一致。"
+          }
+        }
+      }
+    },
+    "nearby.ended.newGame": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "They started a new game."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对方开始了新的对局。"
+          }
+        }
+      }
+    },
+    "nearby.ended.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Game Has Ended"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对局已结束"
           }
         }
       }
@@ -1960,6 +2045,23 @@
         }
       }
     },
+    "nearby.theyAskUndo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "They want to take back a move"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对方请求悔棋"
+          }
+        }
+      }
+    },
     "nearby.theyMoveFirst": {
       "comment": "The other half of the proposer's side choice. It names the other player rather than a colour, because which colour that is belongs to the game.",
       "extractionState": "manual",
@@ -1974,6 +2076,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "对方先手"
+          }
+        }
+      }
+    },
+    "nearby.theyOfferDraw": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "They offer a draw"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对方提和"
           }
         }
       }

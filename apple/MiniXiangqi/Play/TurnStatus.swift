@@ -11,6 +11,14 @@ import SwiftUI
 struct TurnStatus: View {
     var state: GameState
     var reason: EndReason
+
+    /// The reason line, where the caller has words the shared vocabulary does
+    /// not. A nearby game can end by the two players agreeing a draw, which is
+    /// not a verdict on a position and therefore not something the core — whose
+    /// vocabulary `EndReason` is — has a word for. Everything else reads its
+    /// reason, as it always did.
+    var reasonText: String?
+
     var sideToMove: Side
     var inCheck: Bool
 
@@ -165,11 +173,12 @@ struct TurnStatus: View {
     /// concatenation, and applied repeatedly rather than once per line length,
     /// exactly as the metadata lines elsewhere are composed.
     private var secondary: String? {
+        let words = reasonText ?? reason.text
         let claimOrReason: String? = switch state {
         case .ongoing: nil
         case .claimableDraw: String(format: String(localized: "metadata.join"),
-                                    String(localized: "status.drawAvailable"), reason.text)
-        default: reason.text.isEmpty ? nil : reason.text
+                                    String(localized: "status.drawAvailable"), words)
+        default: words.isEmpty ? nil : words
         }
         // The controller label belongs to a turn, so it stops when the turn
         // does: a finished game is nobody's to move.
