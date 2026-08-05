@@ -1,0 +1,307 @@
+// The driver's plumbing: what it hands the engine, and what it does with the
+// answers.
+//
+// The contract itself is pinned by the engine's own suite against the real
+// core, so nothing here re-tests the protocol. What is left is exactly the
+// glue: sends leaving in the order the engine made them and on the connection
+// it named, an unreadable arrival becoming the violation that closes a
+// connection, a connection's death reaching the engine, and the resume a
+// returning peer is owed being initiated without the driver deciding which
+// sessions owe one.
+//
+// The rules are a stub rather than the core, because none of this is a question
+// about a game — and because a driver test has to wait for a send task, which a
+// test holding the singleton core must never do while another suite is running.
+
+import Foundation
+import Testing
+@testable import MiniXiangqi
+
+@Suite("The nearby driver")
+@MainActor
+struct NearbyDriverTests {
+
+    // MARK: - Order
+
+    @Test("Sends leave in the order the engine made them, on the connection it named")
+    func sendsKeepTheirOrder() async throws {
+        let link = FakeLink(.first)
+        let other = FakeLink(.second)
+        let driver = driver(minting: "S-mine")
+
+        driver.connectionReady(link, with: .peer)
+        driver.connectionReady(other, with: .otherPeer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.play("b1b2", in: "S-mine")
+
+        await settle { link.sent.count == 3 }
+        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+                              .propose(.init(session: "S-mine", rulesID: Stub.game,
+                                             rulesVersion: Stub.version, proposerMoves: .first)),
+                              .move(.init(session: "S-mine", index: 0, move: "b1b2"))])
+        // The crossed connection to the other device carries its own hello and
+        // nothing of this session.
+        #expect(other.sent == [.hello(.init(protocolVersion: 1))])
+    }
+
+    @Test("A connection that is gone is not sent to")
+    func nothingIsSentToADeadConnection() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        await settle { link.sent.count == 1 }
+
+        driver.connectionDied(.first)
+        // A proposal has nowhere to go, and the engine refuses it for a
+        // connection it no longer holds.
+        #expect(throws: BoardGameRefusal.unknownConnection) {
+            try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        }
+        await settle()
+        #expect(link.sent == [.hello(.init(protocolVersion: 1))])
+    }
+
+    // MARK: - Unreadable
+
+    @Test("An unreadable arrival is malformed, and the engine's close is performed")
+    func unreadableClosesTheConnection() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        #expect(driver.sessions.count == 1)
+
+        driver.receivedUnreadable(on: .first)
+
+        #expect(link.isClosed)
+        // The session the connection carried is void with it.
+        #expect(driver.sessions.isEmpty)
+        #expect(driver.peers[.first] == nil)
+    }
+
+    @Test("A message decoded from bytes no version knows is unreadable")
+    func theCodecIsWhatCallsAMessageUnreadable() throws {
+        // The transport sees whole messages, never bytes, so what "unreadable"
+        // means at that seam is exactly what the codec refuses. This pins the
+        // refusal that the transport turns into the driver's input.
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(BoardGameMessage.self,
+                                     from: Data(#"{"greet":{"protocol":1}}"#.utf8))
+        }
+    }
+
+    // MARK: - Death
+
+    @Test("A connection's death reaches the engine, and the session it carried is interrupted")
+    func deathReachesTheEngine() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+
+        driver.connectionDied(.first)
+
+        let session = try #require(driver.sessions.first)
+        #expect(session.state == .active)
+        // Interrupted rather than lost: bound to nothing until a resume
+        // exchange re-binds it.
+        #expect(session.connection == nil)
+        #expect(driver.peers[.first] == nil)
+    }
+
+    @Test("An unanswered proposal dies with its connection, and owes no resume afterwards")
+    func aProposalDiesWithItsConnection() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+
+        driver.connectionDied(.first)
+        #expect(driver.sessions.isEmpty)
+
+        let fresh = FakeLink(.second)
+        driver.connectionReady(fresh, with: .peer)
+        await settle { fresh.sent.count == 1 }
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1))])
+    }
+
+    // MARK: - Resume
+
+    @Test("A fresh connection to a known peer initiates the interrupted session's resume")
+    func aReturningPeerIsResumed() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.play("b1b2", in: "S-mine")
+        driver.connectionDied(.first)
+
+        let fresh = FakeLink(.second)
+        driver.connectionReady(fresh, with: .peer)
+
+        await settle { fresh.sent.count == 2 }
+        // hello first, then the resume the contract says follows it.
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+                               .resume(.init(session: "S-mine", undos: 0, count: 1,
+                                             keep: 1, end: nil))])
+    }
+
+    @Test("A session whose connection dies is resumed on the crossed one already standing")
+    func theCrossedConnectionCarriesTheResume() async throws {
+        let bound = FakeLink(.first)
+        let crossed = FakeLink(.second)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(bound, with: .peer)
+        driver.connectionReady(crossed, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        driver.received(.hello(.init()), on: .second)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.play("b1b2", in: "S-mine")
+
+        // The connection the session was bound to goes; the other still stands,
+        // and the interrupted session is owed its resume there rather than
+        // waiting for a reconnection that has already happened.
+        driver.connectionDied(.first)
+
+        await settle { crossed.sent.count == 2 }
+        #expect(crossed.sent == [.hello(.init(protocolVersion: 1)),
+                                 .resume(.init(session: "S-mine", undos: 0, count: 1,
+                                               keep: 1, end: nil))])
+    }
+
+    @Test("An ended session this peer has not settled is resumed too, stating its end")
+    func anUnsettledEndIsResumed() async throws {
+        let link = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.resign(in: "S-mine")
+        driver.connectionDied(.first)
+
+        let fresh = FakeLink(.second)
+        driver.connectionReady(fresh, with: .peer)
+
+        await settle { fresh.sent.count == 2 }
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+                               .resume(.init(session: "S-mine", undos: 0, count: 0,
+                                             keep: 0, end: .resign))])
+    }
+
+    @Test("A session with another device is left alone by this one's return")
+    func onlyThatDevicesSessionsAreResumed() async throws {
+        let theirs = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(theirs, with: .otherPeer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .otherPeer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        driver.connectionDied(.first)
+
+        let fresh = FakeLink(.second)
+        driver.connectionReady(fresh, with: .peer)
+
+        await settle { fresh.sent.count == 1 }
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1))])
+    }
+
+    // MARK: - The launch arguments
+
+    #if DEBUG
+    @Test("The harness reads its launch arguments, and opens for nothing else")
+    func theLaunchArgumentsAreRead() {
+        #expect(NearbyLaunch(arguments: []) == NearbyLaunch(arguments: ["MiniXiangqi"]))
+        #expect(!NearbyLaunch(arguments: ["MiniXiangqi"]).opensHarness)
+
+        let launch = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-open-nearby",
+                                              "-mxq-nearby-autostart",
+                                              "-mxq-nearby-script", "b1b2, b7b6,"])
+        #expect(launch.opensHarness)
+        #expect(launch.autostarts)
+        #expect(launch.script == ["b1b2", "b7b6"])
+        #expect(launch.move(at: 0) == "b1b2")
+        #expect(launch.move(at: 1) == "b7b6")
+        #expect(launch.move(at: 2) == nil)
+    }
+
+    @Test("A script flag with nothing after it is no script")
+    func anEmptyScriptIsNoScript() {
+        #expect(NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-script"]).script.isEmpty)
+        #expect(NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-script", ",, "]).script
+                .isEmpty)
+    }
+    #endif
+
+    // MARK: - The suite's own parts
+
+    private func driver(minting session: String) -> NearbyDriver {
+        NearbyDriver(rules: Stub(), log: NearbyLog(), sessionIDs: { session })
+    }
+
+    /// Lets the driver's per-connection send tasks run. They are main-actor
+    /// tasks with nothing to wait on, so this is a handful of turns rather than
+    /// a wait; the bound is there so a broken driver fails a test rather than
+    /// hanging a run.
+    private func settle(until reached: @MainActor () -> Bool = { false }) async {
+        for _ in 0..<200 {
+            if reached() { return }
+            await Task.yield()
+        }
+    }
+}
+
+/// A connection that records instead of transmitting.
+@MainActor
+private final class FakeLink: NearbyLink {
+    let id: ConnectionID
+    private(set) var sent: [BoardGameMessage] = []
+    private(set) var isClosed = false
+
+    init(_ id: ConnectionID) { self.id = id }
+
+    func send(_ message: BoardGameMessage) async throws { sent.append(message) }
+
+    func close() { isClosed = true }
+}
+
+/// Rules enough to plumb against: one game, and every move text lawful. What a
+/// game's rules actually say is asked of the core in the oracle's own suite,
+/// and what the engine does with the answer is pinned in the engine's.
+private nonisolated struct Stub: BoardGameRules {
+    static let game = "minixiangqi"
+    static let version = "1"
+
+    func version(of rulesID: String) -> String? {
+        rulesID == Self.game ? Self.version : nil
+    }
+
+    func standing(after plies: [String], of rulesID: String) -> RulesStanding { .ongoing }
+
+    func verdict(for text: String, after plies: [String], of rulesID: String) -> PlyVerdict {
+        .lawful(.ongoing)
+    }
+}
+
+// MARK: - The transport's names, pinned for the suite
+
+extension ConnectionID {
+    fileprivate static let first = ConnectionID("connection-1")
+    fileprivate static let second = ConnectionID("connection-2")
+}
+
+extension PeerDeviceID {
+    fileprivate static let peer = PeerDeviceID("peer-device")
+    fileprivate static let otherPeer = PeerDeviceID("other-peer-device")
+}
