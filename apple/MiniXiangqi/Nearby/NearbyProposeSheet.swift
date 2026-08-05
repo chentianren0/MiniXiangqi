@@ -219,7 +219,11 @@ private struct NearbyAnswers: ViewModifier {
             } message: {
                 Text(invitationMessage)
             }
-            .alert("alert.nearbyDeclined.title", isPresented: refused) {
+            // The title says which of the two this is: a game that did not
+            // start, or one that was under way and is not any more. The refusal
+            // itself knows, because only one of the protocol's reasons ever
+            // answers a resume.
+            .alert(Text(LocalizedStringKey(refusalTitleKey)), isPresented: refused) {
                 Button("control.ok") { flow.dismissRefusal() }
             } message: {
                 if let refusal = flow.refusal {
@@ -267,6 +271,12 @@ private struct NearbyAnswers: ViewModifier {
     private var refused: Binding<Bool> {
         Binding(get: { flow.refusal != nil },
                 set: { if !$0 { flow.dismissRefusal() } })
+    }
+
+    /// A title is needed whether or not a refusal stands, and the one for a
+    /// game that never began is the one this alert is usually about.
+    private var refusalTitleKey: String {
+        flow.refusal?.titleKey ?? "alert.nearbyDeclined.title"
     }
 }
 

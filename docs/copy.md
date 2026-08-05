@@ -35,8 +35,9 @@ Contract sections are cited by document and section name rather than by line num
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
-| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the play-control cluster's, and only there |
-| `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` |
+| `control.undo` | 悔棋 | Undo | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift`, `Nearby/NearbyBoardScreen.swift` — the play-control cluster's, in both boards. Nearby it asks the other player rather than the core, which is the same act with somebody to agree to it |
+| `control.claimDraw` | 判和 | Claim Draw | button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift`, `Nearby/NearbyBoardScreen.swift` — one claim, one word, in both boards |
+| `control.offerDraw` | 提和 | Offer Draw | button | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — offering the other player a draw. 提和 rather than 判和: a draw asked for is not a draw the rules already allow |
 | `control.flipBoard` | 翻转棋盘 | Flip Board | button; accessibility label | [interaction-design.md](interaction-design.md) § Play controls, § Board orientation; `Play/PlayScreen.swift` |
 | `control.resign` | 认输 | Resign | button; alert button | [interaction-design.md](interaction-design.md) § Play controls; `Play/PlayScreen.swift` — the cluster's, and the confirmation's destructive action |
 | `control.startGame` | 开始对局 | Start Game | button | [interaction-design.md](interaction-design.md) § Starting and configuring a game; `Play/SetupScreen.swift` |
@@ -60,7 +61,7 @@ Contract sections are cited by document and section name rather than by line num
 | `control.import` | 导入… | Import… | toolbar item | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
 | `control.view` | 查看 | View | alert button | same — the duplicate answer's way to the record it found |
 | `control.ok` | 好 | OK | alert button | same — the acknowledgement of an alert that is informational plus at most one navigation |
-| `control.accept` | 接受 | Accept | alert button | [interaction-design.md](interaction-design.md) § Nearby play — the consent prompt's answer that starts the game; `Nearby/NearbyProposeSheet.swift` |
+| `control.accept` | 接受 | Accept | alert button; button | [interaction-design.md](interaction-design.md) § Nearby play — the consent prompt's answer that starts the game, and the board control that answers a draw offer or an undo request; `Nearby/NearbyProposeSheet.swift`, `Nearby/NearbyBoardScreen.swift`. One word for agreeing to what the other player asked for, wherever they asked it |
 | `control.decline` | 拒绝 | Decline | alert button | same — its other answer. 拒绝 rather than 取消: an invitation is refused, not cancelled |
 
 ### Turn status
@@ -131,7 +132,7 @@ One vocabulary, used by the result notice's second line, the turn status, the Hi
 | `alert.gameNotStarted.message` | 保存这盘新对局时出错。请重试。 | Saving the new game failed. Please try again. | alert message | same |
 | `alert.nearbyInvite.title` | 对方邀请你对弈 | Someone Wants to Play | alert title | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyProposeSheet.swift` |
 | `alert.nearbyInvite.message` | 接受后立即开始对局。 | The game starts as soon as you accept. | alert message | same — the sentence under the invitation's own metadata line |
-| `alert.nearbyDeclined.title` | 对局没有开始 | The Game Didn't Start | alert title | same — the title over every refusal in the § Nearby play table below |
+| `alert.nearbyDeclined.title` | 对局没有开始 | The Game Didn't Start | alert title | same — the title over every refusal of a game that never began. A refusal answering a *resume* is a game that was under way, and takes `nearby.ended.title` instead |
 | `alert.deleteGame.title` | 删除这盘棋？ | Delete this game? | alert title | [interaction-design.md](interaction-design.md) § History library |
 | `alert.deleteGame.message` | 删除后无法恢复。 | This game can't be recovered. | alert message | same |
 | `alert.deleteFailed.title` | 无法删除这盘棋 | Couldn't Delete This Game | alert title | [interaction-design.md](interaction-design.md) § History library; `History/HistoryScreen.swift` |
@@ -238,7 +239,7 @@ Nothing here offers an interface language, and no key exists for one: the operat
 
 ### Nearby play
 
-The propose sheet, the one line the board ever says about the connection, and the sentence under **对局没有开始**. The game names, the sides, the results and the reasons are the same rows the rest of this table already carries: a nearby game is a game.
+The propose sheet, what the board says about the other player and about the link, and the sentences a refusal or an ending is presented by. The game names, the sides, the results and the reasons are the same rows the rest of this table already carries: a nearby game is a game, and its controls are the board's own words — **认输**, **翻转棋盘**, **悔棋**, **判和**, **接受**, **完成** — with **提和** the one act no local board has.
 
 | Key | 中文 | English | Surface | Source |
 |---|---|---|---|---|
@@ -252,17 +253,25 @@ The propose sheet, the one line the board ever says about the connection, and th
 | `nearby.discoverable` | 让这台设备可被发现 | Make This Device Discoverable | button | same — the system's own pairing view, named by what it does |
 | `nearby.findDevice` | 查找设备 | Find a Device | button | same — the system's own device picker |
 | `nearby.pairing.unavailable` | 这台设备无法配对 | This device can't pair | row | same — what stands where the system's pairing views cannot be offered |
+| `nearby.theyOfferDraw` | 对方提和 | They offer a draw | status line at the turn status | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — what the other player has standing, beside the **接受** that answers it. The same division 判和 and 可判和 already keep: the control is the act, the line is the state |
+| `nearby.theyAskUndo` | 对方请求悔棋 | They want to take back a move | status line at the turn status | same — its other kind |
+| `nearby.agreedDraw` | 协议和棋 | Draw by Agreement | reason line | same — the line under 和棋 where the two players agreed it. It is not in § Result reasons because it is not an `end_reason`: the core decides positions, and nothing about a position decided this |
+| `nearby.ended.title` | 对局已结束 | The Game Has Ended | notice title; alert title | same, and `Nearby/NearbyProposeSheet.swift` — over each of the three sentences below, and over `nearby.refusal.unknownSession` where that refuses a resume rather than a proposal |
+| `nearby.ended.disagreement` | 两台设备对这局对弈的记录不一致。 | The two devices no longer agree about this game. | notice message | same — a connection closed on a protocol violation, said as what it means to the reader rather than as what it is on the wire |
+| `nearby.ended.newGame` | 对方开始了新的对局。 | They started a new game. | notice message | same — the other player's fresh proposal retiring this game |
 | `nearby.connecting` | 正在连接对方… | Connecting to the other device… | status line at the turn status | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyBoardScreen.swift` — the one line the board ever says about the link, and only where the link is costing the player something |
 | `nearby.refusal.declined` | 对方拒绝了这局对弈。 | They declined the game. | alert message | same — the protocol's `declined` |
 | `nearby.refusal.busy` | 对方正在进行另一局对弈。 | They're already playing another game. | alert message | same — its `busy` |
 | `nearby.refusal.unknownGame` | 对方的 App 不下这个游戏。 | Their app doesn't play this game. | alert message | same — its `unknown_game` |
 | `nearby.refusal.rulesMismatch` | 两台设备对规则的解读不同。请都更新到最新版本后再试。 | The two devices read the rules differently. Update both to the latest version and try again. | alert message | same — its `rules_mismatch` |
-| `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message | same — its `unknown_session` |
+| `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message; notice message | same — its `unknown_session`, and the board's own sentence for a game the other device no longer holds. One fact, one set of words, whichever surface says it |
 | `nearby.refusal.alreadyPlaying` | 你和对方已经有一局对弈了。 | You already have a game with this device. | alert message | same — one game at a time per pair of devices, which this device's own engine is what says |
 | `nearby.refusal.settling` | 上一局还没有结束。请稍后再试。 | The last game hasn't finished yet. Please try again in a moment. | alert message | same — the pair's previous game is not settled between the two devices yet |
 | `nearby.refusal.notNow` | 现在无法开始对局。请重试。 | The game can't start right now. Please try again. | alert message | same — every other refusal, which is a connection that went away between the press and the send |
 
 The five refusal reasons above the last three are the protocol's own closed vocabulary, and each has a sentence rather than a shared one: they are things a person can act on — wait, update, or ask the other device — and a reader cannot act on a code. The last three are this device's engine refusing to send at all, in the three situations that differ for the reader.
+
+**A game that went away is told in three sentences and no more**, and `nearby.refusal.unknownSession` is one of them: the other device no longer having the game is the same fact whether it is refusing a resume or ending one, so it is the same words. None of the three says anything about what the app did — reconnecting, closing, forgetting — because none of that is the reader's to know or to act on.
 
 ### Game metadata
 

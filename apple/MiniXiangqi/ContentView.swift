@@ -182,6 +182,15 @@ private struct Destinations: View {
     /// surfaces read. Assembled here because this is where the window is, and
     /// nothing below it is allowed to own a session.
     private static func nearbyFlow(over core: Core) -> NearbyFlow {
+        #if DEBUG
+        // `-mxq-nearby-board <stage>` stands the board up on a session nobody
+        // is on the other end of. A Simulator has no Wi-Fi Aware, so it is the
+        // only way a test sees this screen at all — and what it sees is the
+        // real flow, board and positions, over a driver that speaks to nobody.
+        if let stage = NearbyStage.named {
+            return .staged(stage, positions: core.nearbyPositions)
+        }
+        #endif
         let log = NearbyLog()
         let driver = NearbyDriver(rules: core.boardGameRules, log: log)
         let transport = NearbyTransport(driver: driver, log: log)
