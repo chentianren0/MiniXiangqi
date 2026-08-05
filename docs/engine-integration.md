@@ -7,7 +7,7 @@ This document defines how the shared core packages, calls, constrains, and valid
 ## Scope and ownership
 
 - The shared core owns the search facade, packaged engine artifacts, option profiles, lifecycle integration, cancellation, and validation, as placed by [architecture.md](architecture.md). Frontends own the user-facing failure presentation.
-- The `ppppvz/Fairy-Stockfish` fork owns any Fairy-Stockfish source changes, fork-specific tests, build implementation, and upstream maintenance.
+- The `chentianren0/Fairy-Stockfish` fork owns any Fairy-Stockfish source changes, fork-specific tests, build implementation, and upstream maintenance.
 - The official Fairy-Stockfish repository is reference-only unless the user separately authorizes a contribution.
 - Engine source revisions, patches, build inputs, variant configuration, networks, and hashes must be pinned reproducibly.
 
@@ -184,7 +184,7 @@ Each is pinned by exact byte length and SHA-256 in a machine-readable manifest, 
 **`minixiangqiaxf` — 4,333,479 bytes, SHA-256 `ad52b8658c9ebf968bd6fd2d319541bc2f73dca3d790e2b9ac22eaa31c2e8c0a`, `minixiangqiaxf-ad52b8658c9e.nnue`.**
 
 - **It is this project's own.** Origin and redistribution licence are settled by ownership: the weights were trained by this project, so they are ours to publish, and they are covered by this project's own licence rather than by somebody else's terms.
-- **The provenance is a public pipeline rather than a claim.** `ppppvz/minixiangqi-nnue` at the revision `pinned-inputs.json` records generates its own training data with the shipping fork revision and the pinned variant configuration — the game this app actually plays, adjudication included — and generation 0 was trained from the engine's own classical evaluation, with no other network as a teacher, a seed, or an input at any stage. The manifest entry's `provenance` carries the repository, the revision, and the acceptance summary; the pipeline's own `docs/results.md` carries the evidence.
+- **The provenance is a public pipeline rather than a claim.** `chentianren0/minixiangqi-nnue` at the revision `pinned-inputs.json` records generates its own training data with the shipping fork revision and the pinned variant configuration — the game this app actually plays, adjudication included — and generation 0 was trained from the engine's own classical evaluation, with no other network as a teacher, a seed, or an input at any stage. The manifest entry's `provenance` carries the repository, the revision, and the acceptance summary; the pipeline's own `docs/results.md` carries the evidence.
 - **It was accepted against measured gates.** It beats the classical evaluation at each of the app's three thinking times — +417 / +335 / +338 Elo at 1000 / 3000 / 5000 ms, SPRT accepted at all three — and plays more sensibly by the same referee over the same games, 2.00 blunders per 100 moves against classical's 2.58. It measures about 300 Elo below the community-trained network it replaced, and far above having no network at all. What the levels promise is a single strongest configuration differing only in thinking time, which the trade does not touch.
 
 **`xiangqi` — 11,261,932 bytes, SHA-256 `c07e94a5c7cbeae443ed79a8fa412875d833a7f8e04333815e39729c59d52e11`, `xiangqi-c07e94a5c7cb.nnue`.**

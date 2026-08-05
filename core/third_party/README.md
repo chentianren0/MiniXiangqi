@@ -9,7 +9,7 @@ both `PRIVATE` for exactly that reason, per
 
 | Input | Directory | Target the directory defines | State |
 |---|---|---|---|
-| The pinned `ppppvz/Fairy-Stockfish` fork | `core/third_party/fairy-stockfish/` | `mxq::fairy-stockfish` | Vendored — see its [README](fairy-stockfish/README.md) |
+| The pinned `chentianren0/Fairy-Stockfish` fork | `core/third_party/fairy-stockfish/` | `mxq::fairy-stockfish` | Vendored — see its [README](fairy-stockfish/README.md) |
 | The SQLite amalgamation | `core/third_party/sqlite/` | `mxq::sqlite` | Vendored — see its [README](sqlite/README.md) |
 
 Each directory carries its own `CMakeLists.txt` defining that alias. The loop at
