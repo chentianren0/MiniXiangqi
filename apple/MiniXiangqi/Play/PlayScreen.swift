@@ -93,9 +93,11 @@ struct PlayScreen: View {
             if let game = play.game, let motion = play.motion {
                 layout(game, motion)
             } else {
-                // Nothing reaches the board without a game — the page and the
-                // game are set together — so this is the honest nothing rather
-                // than a state to design.
+                // The frame before the board has its game. 回到对局 opens the
+                // session inside the same turn that sets the page, so that
+                // path never draws this; a destination rebuilt with the board
+                // as its page opens the session from `.task`, which is a frame
+                // later, and this is that frame.
                 ProgressView()
             }
         }

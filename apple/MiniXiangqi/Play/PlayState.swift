@@ -5,15 +5,20 @@
 // It lives **above** the navigation container, and that placement is the whole
 // point of the type. The container keeps one destination's content alive at a
 // time: leaving Play tears the play screen down, and returning to it builds a
-// fresh one. A game held inside that screen would therefore be resumed again on
-// every visit — a full decode-and-replay of the stored line each time — and,
-// worse, the view state that says the player has already put the result notice
-// away would be rebuilt with it, so a notice they closed would come back. The
-// contract is explicit that it does not present itself again for the same
-// result, and a game is the app's state rather than a tab's.
+// fresh one. The view state that says the player has already put the result
+// notice away would be rebuilt with that screen, so a notice they closed would
+// come back; the contract is explicit that it does not present itself again for
+// the same result, and that is the app's state rather than a tab's.
 //
-// So resuming happens exactly once per launch, here, and the play screen
-// re-renders against a living object it did not create.
+// **The session, though, is the board's.** Issue #133's decision of 2026-08-05:
+// the Play home reads the store's sessionless active-game summary, and the
+// session, the engine's preparation and any owed search are opened when the
+// board surface is entered and put down when it is left. So a game's motion and
+// its sounds exist only while its board does, and a reply landing on a screen
+// the player is not looking at is not something this app can do. Nothing is
+// lost in the putting down: every move was committed as it was made, and a
+// board entered again reads the same game back and thinks again about what it
+// still owes.
 //
 // docs/interaction-design.md, "Starting and configuring a game": a game is no
 // longer created by its first move. The Play destination's root is the home
@@ -111,17 +116,16 @@ final class PlayState {
     private(set) var motion: PlayMotion?
     private(set) var opponent: Opponent?
 
-    /// The game the store still holds — the one the home's card is about, and
-    /// the one the save-and-continue confirmation would archive.
+    /// What the store says about the active game — the home's card, the
+    /// confirmation's metadata line, and the whole of what either knows.
     ///
-    /// A game that has been filed is not one of them. Its record is immutable
-    /// History and the active-game reference was cleared by the terminal commit
-    /// that made it; what is left on the board is the result standing where it
-    /// was reached, which is presentation rather than an active game.
-    var activeGame: Game? {
-        guard let game, game.filedRecordID == nil else { return nil }
-        return game
-    }
+    /// **Read without a session**, from `mxq_store_active_summary`, which the C
+    /// interface built for this surface. A filed game is not in it and cannot
+    /// be: the terminal commit that made the record cleared the active-game
+    /// reference, so the store simply stops reporting one. What is left on the
+    /// board after a filing is the result standing where it was reached, which
+    /// is presentation rather than an active game.
+    private(set) var activeSummary: ActiveGameSummary?
 
     /// The pre-start controls' draft. Meaningful only while `page` is
     /// `.setup`, and replaced afresh on every entry.
@@ -187,10 +191,10 @@ final class PlayState {
     /// is exactly what resumed.
     var resultDismissed = false
 
-    /// Whether the once-per-launch start has run — and so whether the game is
-    /// yet an answer. Read by the destination, which draws nothing until it is
-    /// true: the home the launch opens carries the resumed game's card, and a
-    /// home drawn before the resume has answered would appear without it and
+    /// Whether the once-per-launch start has run — and so whether the store's
+    /// answer is in. Read by the destination, which draws nothing until it is
+    /// true: the home the launch opens carries the active game's card, and a
+    /// home drawn before the store has answered would appear without it and
     /// then grow one.
     private(set) var started = false
 
@@ -206,8 +210,7 @@ final class PlayState {
         self.engine = engine ?? core
     }
 
-    /// Opens the stored active game, once. Every later visit to the play
-    /// destination finds the game already here.
+    /// Reads the launch's answer, once.
     func startIfNeeded(policy: MotionPolicy) {
         guard !started else { return }
         started = true
@@ -215,7 +218,7 @@ final class PlayState {
         fileLaunchHistory()
         #endif
         watchForSuspension()
-        resumeAtLaunch(policy: policy)
+        openAtLaunch(policy: policy)
     }
 
     // MARK: - The home
@@ -224,16 +227,15 @@ final class PlayState {
     ///
     /// With no active game it opens that mode's pre-start page. With one it
     /// opens nothing at all: the accepted confirmation presents instead, and
-    /// the destination waits inside it. A game already filed is neither — it is
-    /// a History record the board was still showing, so it is let go of here
-    /// and the pre-start page opens as it would have with no game at all.
+    /// the destination waits inside it. What the store reports is the whole of
+    /// the question — a filed game is not one, and the home holds no game of
+    /// its own to consult.
     func choose(_ selection: PlaySelection) {
         guard page == .home, modeSwitch == nil else { return }
-        if activeGame != nil {
+        if activeSummary != nil {
             modeSwitch = .confirming(selection)
             return
         }
-        if game != nil { release() }
         openSetup(selection)
     }
 
@@ -268,25 +270,25 @@ final class PlayState {
     ///
     /// A refusal commits nothing: the old game is still active, still exactly
     /// as it stood, and the accepted retry presents over it.
+    ///
+    /// The whole flow stands on the home, where there is no session, no engine
+    /// and no search — the archive opens the handle its own transaction needs
+    /// and releases it. So there is nothing here to cancel and nothing to pick
+    /// back up: what the machine was thinking about was put down when the board
+    /// was left.
     func saveAndContinue() {
-        guard let selection = modeSwitch?.selection, activeGame != nil else { return }
+        guard let selection = modeSwitch?.selection, activeSummary != nil else { return }
         guard modeSwitch != .saving(selection) else { return }
         modeSwitch = .saving(selection)
-        // What the machine is thinking about is about to stop being the game,
-        // and a search outstanding over an archived game answers to nothing.
-        opponent?.cancelSearch()
         rules.archiveActiveAndClear { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
+            refreshActiveSummary()
             switch result {
             case .success:
-                release()
                 modeSwitch = nil
                 openSetup(selection)
             case .failure:
                 modeSwitch = .failed(selection)
-                // The game is unchanged and still owes whatever it owed, so the
-                // machine picks its search back up.
-                opponent?.begin()
             }
         }
     }
@@ -301,9 +303,13 @@ final class PlayState {
     /// asked for and onto a pre-start page they never asked to see. The guard
     /// is what makes `modeSwitch != nil` imply `page == .home` everywhere,
     /// which is the invariant the two alerts' placement relies on.
-    func resume() {
-        guard page == .home, modeSwitch == nil, activeGame != nil else { return }
+    ///
+    /// This is where the game becomes live: the board it opens is what opens
+    /// the session, prepares the engine and asks for the reply the game owes.
+    func resume(policy: MotionPolicy) {
+        guard page == .home, modeSwitch == nil, activeSummary != nil else { return }
         page = .board
+        enterBoard(policy: policy)
     }
 
     private func openSetup(_ selection: PlaySelection) {
@@ -315,17 +321,75 @@ final class PlayState {
     /// The player navigated back to the home from whichever page was over it.
     ///
     /// From a pre-start page that is leaving it, with everything leaving it
-    /// means. From the board it is only a navigation: the game stays active and
-    /// the card on the home is the way back to it — unless it has been filed,
-    /// in which case the record is in History and the board was showing nothing
-    /// the home has any use for.
+    /// means. From the board it is leaving the board: the game stays committed
+    /// and the card on the home is the way back into it, while the session, the
+    /// engine and any search it owed are put down with the surface they
+    /// belonged to.
     func leaveTopPage() {
         switch page {
         case .home: break
         case .setup: leavePage()
         case .board:
-            if game?.filedRecordID != nil { release() }
+            leaveBoard()
             page = .home
+        }
+    }
+
+    // MARK: - The board surface, and what belongs to it
+
+    /// The board is showing: the session, the engine's preparation and any owed
+    /// search are opened here, because they are the board's and nothing else's.
+    ///
+    /// Called by 回到对局, and again by the destination whenever the board comes
+    /// back with the container — the play destination is torn down and rebuilt
+    /// on every visit, and the game the player was looking at is read again
+    /// from the store it was committed to.
+    ///
+    /// It is idempotent: a board that already holds its game asks the store for
+    /// nothing.
+    func enterBoard(policy: MotionPolicy) {
+        guard page == .board, game == nil, startFailure == nil else { return }
+        do {
+            if !rules.hasSession {
+                guard try rules.resumeActive() else {
+                    // The store holds no active game to open. Nothing to show,
+                    // and the home is where that is said.
+                    activeSummary = nil
+                    page = .home
+                    return
+                }
+            }
+            adopt(try Game(rules: rules), policy: policy)
+            opponent?.begin()
+        } catch {
+            game = nil
+            motion = nil
+            opponent = nil
+            startFailure = CoreError(wrapping: error)
+        }
+    }
+
+    /// The board has gone — back to the home, or away with the whole
+    /// destination when the player switches to another one.
+    ///
+    /// docs/engine-integration.md, "Search lifecycle": leaving the relevant
+    /// state cancels the work outstanding in it. So the search is cancelled,
+    /// the engine released and the session ended. **Nothing is lost by that**:
+    /// every move was committed as it was made, so a board entered again reads
+    /// the same game back and thinks again about whatever it still owes.
+    ///
+    /// A game that has been filed is the one thing that does not come back. Its
+    /// record is immutable History and the store reports no active game, so the
+    /// board it was standing on is let go of with the surface, exactly as
+    /// walking back from it to the home always let it go.
+    func leaveBoard() {
+        guard game != nil else { return }
+        if game?.filedRecordID != nil {
+            release()
+            page = .home
+        } else {
+            putDownGame()
+            refreshActiveSummary()
         }
     }
 
@@ -440,12 +504,7 @@ final class PlayState {
     /// the accepted retry presents, and the game stays active as it stood.
     func save() -> Bool {
         guard let game else { return true }
-        do {
-            try game.file()
-            return true
-        } catch {
-            return false
-        }
+        return file(game)
     }
 
     /// What 开始新对局 does on a finished board: the same filing first — a
@@ -477,25 +536,56 @@ final class PlayState {
     private func file(_ game: Game) -> Bool {
         do {
             try game.file()
+            // The terminal commit took the store's active-game reference with
+            // it, so what the home would offer has changed even though the
+            // board is still standing on the result.
+            refreshActiveSummary()
             return true
         } catch {
             return false
         }
     }
 
-    /// Lets go of the finished game and of the engine that was playing it. The
-    /// order is the contract's: cancel, then release, because teardown refuses
-    /// rather than stalls while a search is outstanding.
-    private func release() {
+    /// Puts the board's game down: the search cancelled, the engine released,
+    /// the session ended. The order is the contract's — cancel, then release,
+    /// because teardown refuses rather than stalls while a search is
+    /// outstanding.
+    ///
+    /// It says nothing about whether the game is over. Everything it holds is
+    /// the board surface's, and everything the game *is* was committed as it
+    /// was played.
+    private func putDownGame() {
         let wasHumanVersusAI = game?.isHumanVersusAI ?? false
         opponent?.cancelSearch()
         opponent = nil
         motion = nil
         game = nil
-        resultDismissed = false
         core.endSession()
         if wasHumanVersusAI {
             engine.teardownEngine(then: nil)
+        }
+    }
+
+    /// Lets go of a game that is not coming back — filed, or archived by
+    /// 保存并继续 — and re-reads what the store has left to offer.
+    private func release() {
+        putDownGame()
+        resultDismissed = false
+        refreshActiveSummary()
+    }
+
+    /// Re-reads the store's answer for the home. Called wherever the active
+    /// game can have changed under it: the launch, a board put down, an archive
+    /// committed or refused.
+    private func refreshActiveSummary() {
+        do {
+            activeSummary = try core.activeGameSummary()
+        } catch {
+            // A store that cannot say what its active game is has failed in the
+            // way the failure screen exists for, and an empty home would hide
+            // it.
+            activeSummary = nil
+            startFailure = CoreError(wrapping: error)
         }
     }
 
@@ -507,57 +597,65 @@ final class PlayState {
 
     // MARK: - Launch
 
-    /// Resumes the game the library holds, and stays at the home.
+    /// What a launch opens: the home, and the store's description of the game
+    /// waiting on it.
     ///
-    /// Launch is still a resume: the stored game is opened once, here, which is
-    /// what puts the home's card over it, and a resumed human-versus-AI game
-    /// owing a move prepares and searches for it exactly as a fresh one would.
-    /// What the launch does *not* do is navigate — docs/interaction-design.md,
-    /// "Navigation": the app opens at the home in every mode, and 回到对局 on
-    /// the card is how the game is continued.
-    private func resumeAtLaunch(policy: MotionPolicy) {
+    /// docs/interaction-design.md, "Navigation": the app opens at the home in
+    /// every mode, and 回到对局 on the card is how the game is continued. **No
+    /// session is opened here, and none is left over from before.** The
+    /// session, the engine's preparation and any owed search belong to the
+    /// board, so a launch that opens no board opens none of them; what the home
+    /// shows is `mxq_store_active_summary`, which the C interface built for
+    /// exactly this.
+    private func openAtLaunch(policy: MotionPolicy) {
         startFailure = nil
         resultDismissed = false
-        // Whatever session a previous game held is over; release before resume
-        // is the single-session rule's precondition, not a saving act — the core
+        // Nothing may hold a session while the home is the page, and the launch
+        // is the first of those moments. Release is not a saving act — the core
         // committed everything as it happened.
         core.endSession()
+        #if DEBUG
+        if openLaunchFixture(policy: policy) { return }
+        #endif
+        refreshActiveSummary()
+    }
+
+    #if DEBUG
+    /// The one launch that opens a board, and it is a test affordance rather
+    /// than product behaviour: `-mxq-replay` exists so a run can start at a
+    /// stated position instead of clicking its way to one, and the position is
+    /// the whole of what it is for. No release build compiles this, and nothing
+    /// a player can do reaches it.
+    ///
+    /// A launch line names its game as well as its moves. The Free Play game it
+    /// belongs to is created here, exactly as 开始对局 would create it; no debug
+    /// fixture gets a hidden default game. Answers whether this launch was the
+    /// fixture's — a line the core refuses is still the fixture's launch, and
+    /// says so on the failure screen.
+    private func openLaunchFixture(policy: MotionPolicy) -> Bool {
         do {
-            #if DEBUG
-            // A launch line names its game as well as its moves. The Free Play
-            // game it belongs to is created here, exactly as 开始对局 would
-            // create it; no debug fixture gets a hidden default game.
-            let launchReplay = try Self.launchReplay()
-            if let launchReplay, try !core.activeGameExists() {
-                try rules.create(.freePlay(game: launchReplay.game))
+            guard let line = try Self.launchReplay() else { return false }
+            if try !core.activeGameExists() {
+                try rules.create(.freePlay(game: line.game))
             }
-            #endif
             if !rules.hasSession {
-                guard try rules.resumeActive() else { return }
+                guard try rules.resumeActive() else { return false }
             }
-            let resumed = try Game(rules: rules)
-            #if DEBUG
-            if let launchReplay {
-                try resumed.replay(launchReplay.moves)
-            }
-            #endif
-            adopt(resumed, policy: policy)
-            #if DEBUG
-            // The one launch that opens a board, and it is a test affordance
-            // rather than product behaviour: `-mxq-replay` exists so a run can
-            // start at a stated position instead of clicking its way to one,
-            // and the position is the whole of what it is for. No release build
-            // compiles this, and nothing a player can do reaches it.
-            if launchReplay != nil { page = .board }
-            #endif
+            let fixture = try Game(rules: rules)
+            try fixture.replay(line.moves)
+            adopt(fixture, policy: policy)
+            page = .board
             opponent?.begin()
+            return true
         } catch {
             game = nil
             motion = nil
             opponent = nil
             startFailure = CoreError(wrapping: error)
+            return true
         }
     }
+    #endif
 
     /// Takes a game onto the screen: its motion, its opponent where it has one,
     /// and the wires between them.

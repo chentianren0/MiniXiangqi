@@ -165,6 +165,8 @@ private struct Destinations: View {
 
     private enum Destination: Hashable { case play, history, settings }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     init(core: Core) {
         self.core = core
         _play = State(initialValue: PlayState(core: core))
@@ -242,6 +244,27 @@ private struct Destinations: View {
         .onChange(of: nearby.driver.sessions) { nearby.sessionsChanged() }
         .onChange(of: nearby.driver.declines.count) { nearby.sessionsChanged() }
         #endif
+        // **Which destination is showing is what the game's session hangs on.**
+        // Issue #133's decision of 2026-08-05 gives the session, the engine and
+        // any owed search to the board surface, so walking to another
+        // destination puts them down and coming back opens them again — every
+        // move is committed as it is made, so a board returned to reads the
+        // same game back and thinks again about what it still owes.
+        //
+        // It is driven from this selection rather than from the play
+        // destination's own `onDisappear`, and the difference is not
+        // cosmetic: SwiftUI disposes tab content at moments that are not the
+        // player leaving — the container builds and drops it while the window
+        // is coming up — and a game torn down there is torn down under a board
+        // that is still on screen. This value changes only when the player
+        // moves.
+        .onChange(of: destination) { _, showing in
+            if showing == .play {
+                play.enterBoard(policy: MotionPolicy(reduceMotion: reduceMotion))
+            } else {
+                play.leaveBoard()
+            }
+        }
         // The two launch arguments that are about the *window* rather than
         // about a destination sit here, above the container: applied to a
         // destination they would be re-applied every time the player came back

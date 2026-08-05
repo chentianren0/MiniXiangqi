@@ -739,18 +739,35 @@ extension Core {
     func archiveActiveAndClear(
         completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
     ) {
-        guard let active = session else {
-            // On a later turn, like every other answer this call makes. The
-            // rule is the seam's own and its stand-in documents it: an answer
-            // arriving inside the press that asked for it would reach an alert
-            // still dismissing itself. A refusal that answered synchronously
-            // while the transaction answered from a queue would be two
-            // different calls wearing one signature.
-            Task { @MainActor in
-                completion(.failure(CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
-                                              detail: "no session is attached")))
+        let active: OpaquePointer
+        let opened: Bool
+        if let session {
+            active = session
+            opened = false
+        } else {
+            // **The one session the Play home ever has, and it is not a game
+            // being played.** The home describes the active game from the
+            // store's summary and holds nothing; the C interface's
+            // archive-and-clear takes an `MxqGame *`, so the transaction opens
+            // the handle it needs and owns it for exactly this call. Nothing is
+            // prepared, nothing searches, and it is released either way.
+            do {
+                guard try resumeActive(), let attached = session else {
+                    throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
+                                    detail: "the library holds no active game to archive")
+                }
+                active = attached
+                opened = true
+            } catch {
+                // On a later turn, like every other answer this call makes. The
+                // rule is the seam's own and its stand-in documents it: an
+                // answer arriving inside the press that asked for it would
+                // reach an alert still dismissing itself. A refusal that
+                // answered synchronously while the transaction answered from a
+                // queue would be two different calls wearing one signature.
+                Task { @MainActor in completion(.failure(CoreError(wrapping: error))) }
+                return
             }
-            return
         }
         let archiver = ActiveGameArchiver(core: handle, active: active)
         // For as long as this window is open the core has no session, so
@@ -766,7 +783,12 @@ extension Core {
                     // The archived session is still the caller's to release.
                     mxq_game_release(archiver.active)
                 case .failure:
-                    session = archiver.active
+                    // The previously committed active game is intact, so a
+                    // handle this call opened goes back with it — the accepted
+                    // retry opens its own — and one it was handed returns to
+                    // whoever handed it over.
+                    if opened { mxq_game_release(archiver.active) }
+                    else { session = archiver.active }
                 }
                 completion(result)
             }
@@ -816,6 +838,55 @@ private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
     /// queue's is, and called from `Core.shutdown` for the same reason.
     static func quiesce() {
         queue.sync { }
+    }
+}
+
+// MARK: - The active game, without a session
+
+/// The active game as the store describes it, with no session attached.
+///
+/// docs/core-interface.md, "Library store": `mxq_store_active_summary` "serves
+/// the Play destination and the save-and-continue confirmation without
+/// materializing a session. It reports the summary columns and, derived by
+/// replaying the stored line, the same live state a session would report." That
+/// is the whole of what the Play home knows about the game it offers to go back
+/// into — the session itself belongs to the board.
+nonisolated struct ActiveGameSummary: Equatable, Sendable {
+    var game: GameKind
+    var mode: PlayMode
+    /// The human's resolved side in human-versus-AI play; absent in Free Play,
+    /// where the same person controls both.
+    var humanSide: Side?
+    /// Plies, which is what 步 counts.
+    var moveCount: Int
+    /// The live state, derived by the core from the stored line exactly as a
+    /// session's is.
+    var state: GameState
+    var reason: EndReason
+}
+
+extension Core {
+    /// The store's active game, or `nil` when it holds none. No session is
+    /// materialised and none is left behind.
+    func activeGameSummary() throws -> ActiveGameSummary? {
+        var summary = MxqRecordSummary()
+        summary.struct_size = UInt32(MemoryLayout<MxqRecordSummary>.size)
+        var status = MxqGameStatus()
+        status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
+        var exists: UInt8 = 0
+        var err = freshError()
+        try check(mxq_store_active_summary(handle, &summary, &status, &exists, &err), err)
+        guard exists != 0 else { return nil }
+        guard let game = GameKind(summary.game) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported an unknown game kind")
+        }
+        return ActiveGameSummary(game: game,
+                                 mode: PlayMode(summary.mode),
+                                 humanSide: Side(summary.human_side),
+                                 moveCount: Int(summary.move_count),
+                                 state: GameState(status.state),
+                                 reason: EndReason(status.reason))
     }
 }
 

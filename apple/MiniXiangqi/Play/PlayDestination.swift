@@ -75,12 +75,26 @@ struct PlayDestination: View {
         .playContentFloor()
         .task {
             play.startIfNeeded(policy: policy)
+            // The board surface owns the session, the engine and any owed
+            // search, and this destination is rebuilt on every visit — so a
+            // return to a board that was left standing opens its game again.
+            // A board that already holds one asks the store for nothing, which
+            // is what makes this safe to run on every appearance.
+            play.enterBoard(policy: policy)
         }
         // Leaving the destination altogether discards a pre-start draft and
         // invalidates an attempt in flight. The container tears this down on
         // every switch away, which is exactly the event the contract means by
         // leaving the page; going *deeper* is not, and does not come through
         // here.
+        //
+        // **Putting the game itself down does not belong here.** This fires
+        // when SwiftUI disposes the view, and SwiftUI disposes it at moments
+        // that are not the player leaving: the container builds and drops tab
+        // content while the window is coming up, and a game torn down there is
+        // torn down under a board that is still on screen. What the session's
+        // life hangs on is state the app owns — the selected destination, above
+        // this view, and the page below it — never a view's lifecycle.
         .onDisappear {
             play.leavePage()
         }
@@ -172,7 +186,9 @@ struct PlayDestination: View {
 }
 
 private extension View {
-    /// The play content's accepted floor, 616 by 388.
+    /// The play content's accepted floor, 616 by 416 —
+    /// docs/interaction-design.md, "Layout shapes", where the height is
+    /// Xiangqi's and the width Mini Xiangqi's.
     ///
     /// It belongs to the destination rather than to the board alone: a window
     /// that could be shrunk on one page and then walked to another is a window

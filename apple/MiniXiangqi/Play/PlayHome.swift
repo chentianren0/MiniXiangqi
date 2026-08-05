@@ -29,9 +29,13 @@ struct PlayHome: View {
     /// rows below are drawn on a device that does.
     var nearby: NearbyFlow?
 
+    /// 回到对局 is what opens the session and starts the engine thinking, so the
+    /// page needs the policy that game's motion will run under.
+    @Environment(\.motionPolicy) private var policy
+
     var body: some View {
         Form {
-            if let game = play.activeGame { currentGame(game) }
+            if let summary = play.activeSummary { currentGame(summary) }
             waysToPlay
         }
         // The native presentation of a grouped list of choices on this platform,
@@ -69,12 +73,13 @@ struct PlayHome: View {
 
     /// The active game: what it is, and the way back into it.
     ///
-    /// Every fact on the line is read off the game the core is holding rather
-    /// than worked out here, and the header is the same 当前对局 the confirmation
-    /// puts over the same line.
-    private func currentGame(_ game: Game) -> some View {
+    /// Every fact on the line is read from the store's own summary rather than
+    /// worked out here — the page holds no session, and the game becomes live
+    /// only when 回到对局 opens its board. The header is the same 当前对局 the
+    /// confirmation puts over the same line.
+    private func currentGame(_ summary: ActiveGameSummary) -> some View {
         Section {
-            Text(game.metadataLine)
+            Text(summary.metadataLine)
                 .font(.callout)
                 // Every token on it is content the contract asks for, so it
                 // wraps rather than truncating.
@@ -84,7 +89,7 @@ struct PlayHome: View {
 
             // The one obvious next action on this page while a game is going,
             // and therefore the one thing on it the tint rule allows.
-            Button("nav.resumeGame") { play.resume() }
+            Button("nav.resumeGame") { play.resume(policy: policy) }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("home-resume")
         } header: {
@@ -167,7 +172,7 @@ struct PlayHome: View {
     /// active game's own line, and the accepted sentence.
     private var confirmationMessage: String {
         [String(localized: "alert.newGame.metadataHeader"),
-         play.activeGame?.metadataLine ?? "",
+         play.activeSummary?.metadataLine ?? "",
          "",
          String(localized: "alert.newGame.message")].joined(separator: "\n")
     }

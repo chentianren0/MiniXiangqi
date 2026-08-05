@@ -518,6 +518,15 @@ final class HumanVersusAIUITests: XCTestCase {
                                    containing: "7 6 5 4 3 2 1"),
                       "a second flip returns the human's own side to the bottom")
 
+        // **The strips answer before the board has finished turning**, and a
+        // board in the middle of a flip discards taps by design: input cannot
+        // mean what the player took it to mean while the points are moving. The
+        // numerals change as the turn begins, so the assertion above is
+        // satisfied inside the accepted 350 ms — and the tap below used to land
+        // in what was left of it and be dropped. This is that window, waited
+        // out rather than raced.
+        Thread.sleep(forTimeInterval: 0.6)
+
         // It is the same game to play on: the player moves and the machine
         // answers, which means the engine was prepared again when a search was
         // next owed — the whole point of resuming a game that owes one.

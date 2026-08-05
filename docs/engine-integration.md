@@ -57,7 +57,7 @@ The classifier-path completion is different in kind and carries no fixture: a ta
 ## Search lifecycle
 
 - Search runs away from the frontend's main or UI thread.
-- Undo, game completion, active-game replacement, and a newer search request cancel affected work.
+- Undo, game completion, active-game replacement, leaving the board the game is on, and a newer search request cancel affected work. The board surface is what a search belongs to: entering it prepares the engine and asks for a reply the game owes, and leaving it cancels and releases, so no reply is ever produced for a board that is not on screen. Nothing is lost — every move is committed as it is made, and a board entered again asks afresh.
 - Cancellation does not make a late callback trustworthy; every result is checked against the current game and position revision.
 - Engine failure must not corrupt or partially advance the committed game.
 - The app must be able to shut down the engine without relying on process termination.

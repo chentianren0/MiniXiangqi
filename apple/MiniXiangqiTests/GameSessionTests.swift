@@ -263,8 +263,8 @@ struct GameSessionTests {
         #expect(try !core.activeGameExists(), "and creates none")
     }
 
-    @Test("With a game stored, the launch resumes it and stays home all the same")
-    func aStoredGameIsResumedWithoutBeingEntered() throws {
+    @Test("A launch describes the stored game without opening a session over it")
+    func aStoredGameIsDescribedWithoutBeingOpened() throws {
         let directory = TestCores.scratchDirectory()
         var core = try TestCores.open(at: directory)
         let played = try openGame(on: core)
@@ -274,15 +274,20 @@ struct GameSessionTests {
         let state = PlayState(core: core)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
 
-        // docs/interaction-design.md, "Navigation": the launch opens at the
-        // home in every mode. The game is resumed all the same — that is what
-        // the home's card is about — and 回到对局 is what enters it.
+        // docs/interaction-design.md, "Navigation", and issue #133's decision of
+        // 2026-08-05: the launch opens at the home in every mode, and the
+        // session belongs to the board. So the store is *described* rather than
+        // opened, and 回到对局 is what opens it.
         #expect(state.page == .home, "a fresh launch is not an entry into the game")
-        #expect(state.game?.moves == ["b1b3", "b7b6"], "over the line it was left at")
-        #expect(state.activeGame != nil, "which the home's card is what describes")
+        #expect(!core.hasSession, "and opens no session over the stored game")
+        #expect(state.game == nil, "there is no living game to hold")
+        #expect(state.activeSummary?.moveCount == 2,
+                "what the home has is the store's summary of the line it was left at")
 
-        state.resume()
+        state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board, "and the card is the way in")
+        #expect(core.hasSession, "which is where the session is opened")
+        #expect(state.game?.moves == ["b1b3", "b7b6"], "over the line it was left at")
     }
 
     @Test("An unconfirmed mate resumes finished, still undoable, and Undo resumes play")

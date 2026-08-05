@@ -16,6 +16,13 @@
 // the configuration frozen at creation; the state, the reason, the claim and the
 // ply count come from the core's own status for the committed game. Nothing here
 // decides what state a game is in.
+//
+// **It is read without a session.** `Core.activeGameSummary` is
+// `mxq_store_active_summary`, which the C interface built for this surface and
+// the save-and-continue confirmation — the live game belongs to the board, and
+// the home has no business holding one to describe it. The one segment the
+// summary does not carry is whose turn it is, and that is arithmetic on the ply
+// count it does carry; see `sideToMove` below.
 
 import Foundation
 
@@ -31,12 +38,12 @@ extension GameKind {
     }
 }
 
-extension Game {
+extension ActiveGameSummary {
     /// The metadata line: game, mode, human side, what is true of the game now,
     /// and the move count.
     var metadataLine: String {
-        var parts = [kind.localizedName, modeText]
-        if let humanSide {
+        var parts = [game.localizedName, modeText]
+        if mode == .humanVersusAI, let humanSide {
             parts.append(humanSide == .red
                          ? String(localized: "metadata.youRed")
                          : String(localized: "metadata.youBlack"))
@@ -47,10 +54,25 @@ extension Game {
     }
 
     var modeText: String {
-        isHumanVersusAI
+        mode == .humanVersusAI
             ? String(localized: "mode.humanVersusAI")
             : String(localized: "mode.freePlay")
     }
+
+    /// Whose turn it is, from the ply count the store returned.
+    ///
+    /// **Presentation arithmetic, not a rules decision.** It rests on two
+    /// frozen contract facts and on nothing else: Red moves first — the FEN
+    /// side field of docs/xiangqi-rules.md, and the same for both games — and
+    /// plies strictly alternate, neither ruleset having a pass, which is why
+    /// docs/boardgame-protocol.md decides whose turn each ply is from index
+    /// parity too. So an even count is Red to move and an odd one is Black's.
+    /// Nothing here judges legality, adjudication or an affordance; the state
+    /// beside it is the core's own answer.
+    ///
+    /// A game that ever gained a pass would break this, which is why the two
+    /// facts are named rather than assumed.
+    var sideToMove: Side { moveCount.isMultiple(of: 2) ? .red : .black }
 
     /// What is true of the game right now, in the three classes the accepted
     /// examples give.
@@ -63,7 +85,7 @@ extension Game {
     /// register the metadata composition uses everywhere: 红方获胜, not the
     /// status line's 红方胜.
     private var stateParts: [String] {
-        switch presentedState {
+        switch state {
         case .ongoing:
             [String(localized: "metadata.inProgress"), sideToMoveText]
         case .claimableDraw:
@@ -81,17 +103,17 @@ extension Game {
     /// The reason, where the core reports one. No reason is no words, so it
     /// contributes no segment rather than an empty one.
     private var reasonParts: [String] {
-        presentedReason == .none ? [] : [presentedReason.text]
+        reason == .none ? [] : [reason.text]
     }
 
     private var sideToMoveText: String {
-        evaluation.sideToMove == .red
+        sideToMove == .red
             ? String(localized: "status.redToMove")
             : String(localized: "status.blackToMove")
     }
 
     /// Plies, which is what 步 counts, and the core's own count of them.
     var moveCountText: String {
-        String(format: String(localized: "metadata.moveCount"), evaluation.plyCount)
+        String(format: String(localized: "metadata.moveCount"), moveCount)
     }
 }

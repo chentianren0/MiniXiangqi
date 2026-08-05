@@ -373,16 +373,18 @@ final class PlayScreenUITests: XCTestCase {
         app.windows.firstMatch.buttons["history-row-\(index)"]
     }
 
-    /// The game is the app's state rather than the play destination's.
+    /// The game survives walking away from its board and back.
     ///
     /// The container keeps one destination's content alive at a time, so
     /// walking to History and back tears the play screen down and builds a new
-    /// one. Three things have to survive that, and none of them did before the
-    /// game was hoisted above the container: the game itself — resuming is a
-    /// full decode-and-replay, and doing it per visit is both wrong and
-    /// wasteful — the board it left on screen, and the fact that the player has
-    /// already put the result notice away, which the contract says is final for
-    /// that result.
+    /// one. **The session goes with it** — issue #133's decision of 2026-08-05
+    /// puts the session, the engine and any owed search on the board surface,
+    /// so leaving the board puts them down and returning opens them again. What
+    /// has to survive that is everything the player can see: the position, the
+    /// record, the result standing on the status line, and the fact that they
+    /// have already put the result notice away, which the contract says is
+    /// final for that result. The first three are committed and come back from
+    /// the store; the last is the app's state rather than the screen's.
     ///
     /// The launch line is what makes the third failure visible rather than
     /// merely wrong: a second start would replay 炮六平四 onto a position that
@@ -414,8 +416,9 @@ final class PlayScreenUITests: XCTestCase {
                        "the notice does not present itself again for a result already seen")
         attach(app, named: "35-play-after-a-round-trip-through-history")
 
-        // It is the same living game, not a fresh read of the same store: the
-        // mating move is still there to take back.
+        // And it is a game to go on playing rather than a picture of one: the
+        // mating move is still there to take back, from the session the board
+        // opened again on its way in.
         XCTAssertTrue(app.buttons["cluster-undo"].isEnabled)
         app.buttons["cluster-undo"].click()
         XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 5))
@@ -1307,12 +1310,14 @@ final class PlayScreenUITests: XCTestCase {
         //
         // The navigation container is what moved them: its sidebar takes 144
         // points of width and its toolbar 52 of height, and the play content
-        // still gets exactly the 616 by 388 it always asked for inside that.
-        // 760 = 616 + 144 and 440 = 388 + 52, measured rather than derived.
+        // still gets exactly the 616 by 416 it always asked for inside that.
+        // 760 = 616 + 144 and 468 = 416 + 52, measured rather than derived —
+        // and 760 by 520 is what docs/interaction-design.md § Layout shapes
+        // states as the accepted macOS minimum.
         XCTAssertEqual(floor.window.width, 760,
                        "the minimum window is the decided 760 points wide")
-        XCTAssertEqual(floor.window.height - titleBar, 440, accuracy: 0.5,
-                       "the minimum layout is the decided 440 points under the measured chrome")
+        XCTAssertEqual(floor.window.height - titleBar, 468, accuracy: 0.5,
+                       "the minimum layout is the decided 468 points under the measured chrome")
         XCTAssertEqual(floor.window.width - 616, 144, accuracy: 0.5,
                        "and the play content still gets its own accepted 616")
         record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
