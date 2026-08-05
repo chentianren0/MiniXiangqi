@@ -72,7 +72,7 @@ The active-game shape is the archive as the store holds it while the game is bei
   "title": "…",
   "why": "…",
   "info": {
-    "archive_version": 2,
+    "archive_version": 3,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
@@ -119,6 +119,7 @@ One archive per rejection class of the accepted validation order, each stating t
 | envelope: missing member | `envelope-member-missing` | `MALFORMED` | `MALFORMED` |
 | envelope: malformed version | `version-not-positive` | `MALFORMED` | `MALFORMED` |
 | **unsupported archive version** | `version-newer` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
+| **unsupported archive version** | `version-older` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
 | **unsupported rules version** | `rules-version-unsupported` | `UNSUPPORTED_VERSION` | `UNSUPPORTED_VERSION` |
 | unknown member in a known version | `envelope-member-unknown` | `MALFORMED` | `MALFORMED` |
 | unknown member in a known version | `content-member-unknown` | `MALFORMED` | `MALFORMED` |
@@ -173,6 +174,8 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 ### Two versions are dispatched on, not one
 
 `archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of two values: a file naming a third ruleset is not a later version of ours, so it is `MALFORMED`.
+
+`archive_version` is also dispatched on in both directions, and `version-newer` and `version-older` are the pair: a file from ahead of this build and a file from behind it are different sentences to a reader, and both are refusals. Neither is anything else — no archive file is ever removed or rewritten, whichever side of the window it falls on.
 
 ### The game axis is read before the rest of `content`
 

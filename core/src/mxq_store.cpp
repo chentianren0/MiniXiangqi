@@ -15,6 +15,7 @@
 
 #include "sqlite3.h"
 
+#include <cassert>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -1366,35 +1367,44 @@ Store::~Store() {
     }
 }
 
-MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
-               MxqError *err) {
-    out.reset();
+namespace {
 
-    /* The frontend supplies the location; the leading directories may not
-     * exist on a first launch, and creating them is part of "create". */
-    const std::filesystem::path dir(directory);
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-        return fail(err, MXQ_ERR_STORE_IO, ec.value(),
-                    "cannot create the store directory: " + ec.message());
+/*
+ * Remove the store: the database file and the two files write-ahead logging
+ * keeps beside it.
+ *
+ * A file that is not there is not a failure — the journal siblings exist only
+ * between checkpoints — so absence is passed over and only a real filesystem
+ * error is reported. It is reported as one: the caller asked to open a library
+ * and the disk refused, which is a different sentence from anything about
+ * schemas.
+ */
+MxqStatus discard_store(const std::string &path, MxqError *err) {
+    for (const char *suffix : {"", "-wal", "-shm"}) {
+        std::error_code ec;
+        std::filesystem::remove(std::filesystem::path(path + suffix), ec);
+        if (ec) {
+            return fail(err, MXQ_ERR_STORE_IO, ec.value(),
+                        "cannot replace the store: " + ec.message());
+        }
     }
+    return MXQ_OK;
+}
 
-    const std::string path = (dir / kDatabaseFileName).string();
-    sqlite3 *raw = nullptr;
-    int rc = sqlite3_open_v2(path.c_str(), &raw,
-                             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                             nullptr);
-    if (rc != SQLITE_OK) {
-        const std::string detail =
-            raw != nullptr ? sqlite3_errmsg(raw) : sqlite3_errstr(rc);
-        sqlite3_close(raw);
-        return fail_sqlite(err, rc, "cannot open the store: " + detail);
-    }
+/*
+ * Everything an open does once the connection exists: the defensive regime, the
+ * pragmas, the schema version, and the structural verification.
+ *
+ * out_abandoned is the one answer that is neither success nor failure. The file
+ * positively records a schema below this build's — a shape this lineage has
+ * left behind, holding no game this build can read — and the caller replaces
+ * it, closing this connection first.
+ */
+MxqStatus prepare_connection(Store &store, bool &out_abandoned, MxqError *err) {
+    out_abandoned = false;
 
-    auto store = std::unique_ptr<Store>(new Store());
-    store->db_ = raw;
-    sqlite3 *db = raw;
+    int rc = SQLITE_OK;
+    sqlite3 *db = store.db();
 
     /* Extended result codes reach MxqError.subsystem_code as diagnostics.
      * SQLITE_DBCONFIG_DEFENSIVE completes the compile-time hardening at the
@@ -1465,16 +1475,24 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
         }
     } else if (version != static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
         /*
-         * One version is defined, and a store recording any other is refused by
-         * the same comparison. The two sides of it read differently to a user
-         * and so carry different statuses: a store from a newer build is a
-         * build that is behind, which the contract requires to be said
-         * distinctly, and anything else is a store this build has no path to.
+         * One version is defined, and the two sides of that comparison are
+         * different facts about a file rather than two spellings of one.
          *
-         * There is no migration and no dispatch slot waiting for one.
-         * MXQ_STORE_SCHEMA_VERSION is the only schema this build defines,
-         * writes, verifies or reads; every other value reaches this generic
-         * unsupported-schema branch.
+         * Above it is a later build's real data, and refusing it is the whole
+         * of what this build may do with it — said distinctly, because a build
+         * that is behind is what the user has to act on.
+         *
+         * Below it is a schema this lineage has abandoned. There is no
+         * migration and no dispatch slot waiting for one, so the file holds no
+         * game this build can read; it is replaced by a fresh library rather
+         * than kept as a permanent refusal that would leave the app unusable
+         * for as long as the file exists. The replacement is the caller's, one
+         * frame out, where the connection is already closed.
+         *
+         * What is *not* replaced is anything this build cannot positively
+         * identify: an unreadable version and content with no recorded version
+         * are both refused above as corruption, and stay where they are. This
+         * branch destroys only what it has read a version number out of.
          */
         if (version > static_cast<int64_t>(MXQ_STORE_SCHEMA_VERSION)) {
             return fail(err, MXQ_ERR_STORE_SCHEMA_TOO_NEW,
@@ -1484,19 +1502,84 @@ MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
                             "; this build reads " +
                             std::to_string(MXQ_STORE_SCHEMA_VERSION) + ")");
         }
-        return fail(err, MXQ_ERR_STORE_MIGRATION_FAILED,
-                    static_cast<int>(version),
-                    "the store records schema version " +
-                        std::to_string(version) + "; this build reads " +
-                        std::to_string(MXQ_STORE_SCHEMA_VERSION));
+        out_abandoned = true;
+        return MXQ_OK;
     }
 
-    st = verify_schema(db, err);
-    if (st != MXQ_OK) {
+    return verify_schema(db, err);
+}
+
+} /* namespace */
+
+MxqStatus open(const std::string &directory, std::unique_ptr<Store> &out,
+               MxqError *err) {
+    out.reset();
+
+    /* The frontend supplies the location; the leading directories may not
+     * exist on a first launch, and creating them is part of "create". */
+    const std::filesystem::path dir(directory);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        return fail(err, MXQ_ERR_STORE_IO, ec.value(),
+                    "cannot create the store directory: " + ec.message());
+    }
+
+    const std::string path = (dir / kDatabaseFileName).string();
+
+    /* One attempt: connect, then prepare. The Store owns the connection for the
+     * attempt's lifetime, so an attempt that does not hand it over closes it. */
+    const auto attempt = [&](bool &abandoned) -> MxqStatus {
+        out.reset();
+        sqlite3 *raw = nullptr;
+        const int rc = sqlite3_open_v2(path.c_str(), &raw,
+                                       SQLITE_OPEN_READWRITE |
+                                           SQLITE_OPEN_CREATE,
+                                       nullptr);
+        if (rc != SQLITE_OK) {
+            const std::string detail =
+                raw != nullptr ? sqlite3_errmsg(raw) : sqlite3_errstr(rc);
+            sqlite3_close(raw);
+            return fail_sqlite(err, rc, "cannot open the store: " + detail);
+        }
+        auto store = std::unique_ptr<Store>(new Store());
+        store->db_ = raw;
+        const MxqStatus st = prepare_connection(*store, abandoned, err);
+        if (st != MXQ_OK || abandoned) {
+            return st;
+        }
+        out = std::move(store);
+        return MXQ_OK;
+    };
+
+    bool abandoned = false;
+    MxqStatus st = attempt(abandoned);
+    if (st != MXQ_OK || !abandoned) {
         return st;
     }
 
-    out = std::move(store);
+    /* An abandoned schema: discard the file — its connection is already closed —
+     * and create the library again through the ordinary creation path, so that
+     * what a replacement produces and what a first launch produces are the same
+     * store written by the same code. */
+    st = discard_store(path, err);
+    if (st != MXQ_OK) {
+        return st;
+    }
+    st = attempt(abandoned);
+    if (st != MXQ_OK) {
+        return st;
+    }
+    if (abandoned) {
+        /* The file this build just created records the version this build
+         * writes. Reaching here would mean creation and the version check
+         * disagree, which is a core bug rather than anything about the file. */
+        assert(false && "a store this build just created is not current");
+        out.reset();
+        return fail(err, MXQ_ERR_INTERNAL_INVARIANT, 0,
+                    "a freshly created store does not record this build's "
+                    "schema version");
+    }
     return MXQ_OK;
 }
 

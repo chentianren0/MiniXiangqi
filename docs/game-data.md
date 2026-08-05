@@ -179,7 +179,14 @@ The seven persistent preferences accepted in [product.md](product.md) — the de
 
 **Version 3 is the only version.** It is the only archive format and the only store schema this build defines, writes, verifies or reads, on either axis. There is no migration, no dispatch slot waiting for one, and nothing anywhere that names another shape: a store or a document recording any other version is refused by the same version check that any other nonconforming input meets, and nothing about the refusal knows what that other version was.
 
-The two axes stay independent and both are dispatched on explicitly. A store whose recorded schema version is newer than this build's is refused with the distinct newer-build answer; any other recorded version is refused as one this build has no path to. An archive whose `archive_version` is newer is refused with the created-by-a-newer-version message, never as corruption; any other version is refused as unsupported. Stored archives are never rewritten.
+The two axes stay independent and both are dispatched on explicitly. What a version this build does not define costs differs between them, because a store is this installation's own library and an archive is a file.
+
+- A store recording a schema **newer** than this build's is refused with the distinct newer-build answer and left exactly as it is: it is a later build's real data.
+- A store recording a schema **below** this build's is discarded — the database file and the write-ahead-logging files beside it are removed — and a fresh, empty library is created in its place through the ordinary creation path, so the open succeeds. Nothing is migrated, and the games that file held are gone.
+- A store this build cannot **positively identify** — an unreadable recorded version, or content with no recorded version at all — is refused and left where it is. What cannot be identified is not replaced.
+- A removal that fails is reported as the filesystem error it is.
+
+An archive whose `archive_version` is newer is refused with the created-by-a-newer-version message, never as corruption; any other version is refused as unsupported. **No archive file is ever removed or rewritten.** A file is the user's; refusing to read one is the whole of what a build may do with it.
 
 The user-visible compatibility promise: a game file exported by a build can be imported by that build and by every later build that still defines its version; a file a build cannot read says so and imports nothing; a file is never partially imported. A later archive version must either define a lossless projection of version-3 content for duplicate comparison or accept that same-game exports across versions compare as identity conflicts.
 

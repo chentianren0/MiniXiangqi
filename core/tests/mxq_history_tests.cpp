@@ -1382,7 +1382,47 @@ void case_endings_refuse_where_they_do_not_apply() {
                    "undoing a nearby game unilaterally");
     c.check_eq(removed, 0, "and it removes nothing");
 
+    /* File it, so the boundary case below may create its own game. */
+    err = make_error();
+    c.check_status(mxq_game_confirm_result(decided, &filed, &err), MXQ_OK,
+                   "the decided nearby game is confirmed and filed");
     mxq_game_release(decided);
+
+    /*
+     * The other side of that boundary: a claimable neutral repetition is not a
+     * result — the game continues there unless the claim is made — so an end
+     * the two players declared is lawful over it and commits the draw they
+     * declared rather than the one nobody claimed.
+     */
+    MxqGame *claimable_nearby = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &nearby, &claimable_nearby, &err),
+                   MXQ_OK, "the second nearby game is created");
+    for (const char *move : {"b1b3", "b7b5", "b3b1", "b5b7", "b1b3", "b7b5",
+                             "b3b1", "b5b7"}) {
+        mxq_game_apply_move(claimable_nearby, move, nullptr, nullptr, nullptr);
+    }
+    MxqGameStatus repeated = make_status();
+    mxq_game_status(claimable_nearby, &repeated, nullptr);
+    c.check_eq(state_text(repeated.state), "claimable-draw",
+               "the nearby line reaches a claimable repetition");
+
+    uint64_t agreed = 0;
+    err = make_error();
+    c.check_status(mxq_game_commit_nearby_end(claimable_nearby,
+                                              MXQ_END_REASON_AGREED_DRAW,
+                                              MXQ_COLOR_NONE, &agreed, &err),
+                   MXQ_OK, "an agreed draw over a claimable repetition");
+    MxqRecordSummary agreed_record = make_summary();
+    err = make_error();
+    mxq_store_history_get(core, agreed, &agreed_record, &err);
+    c.check_eq(outcome_text(agreed_record.outcome), "draw",
+               "which records a draw");
+    c.check_eq(reason_text(agreed_record.end_reason), "agreed-draw",
+               "and records that the players agreed it, not that one claimed "
+               "the repetition");
+    mxq_game_release(claimable_nearby);
+
     mxq_core_shutdown(core, nullptr);
     c.report();
 }

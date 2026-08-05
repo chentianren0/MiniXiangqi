@@ -52,7 +52,9 @@
  *
  * Reserved fields exist only to keep every struct free of implicit padding, so
  * that the layout is identical under every supported compiler. They must be
- * written as zero and must be ignored when read.
+ * written as zero and must be ignored when read — which is also what lets a
+ * later minor version give one a name and a meaning: nothing moves, and no
+ * caller could have been reading a value there.
  */
 
 #ifndef MXQ_H
