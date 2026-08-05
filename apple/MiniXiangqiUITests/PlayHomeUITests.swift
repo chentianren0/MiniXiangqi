@@ -183,19 +183,31 @@ final class PlayHomeUITests: XCTestCase {
 
     /// The card, the way back into the game, and the metadata that describes it
     /// — read off the game rather than composed from anything the home knows.
+    ///
+    /// The launch is as much the subject as the card is, so the game is made in
+    /// one sitting and the app is opened again in another: docs/interaction-design.md,
+    /// "Navigation" — a fresh launch opens at the home whatever is going, and
+    /// the game it resumed is continued from the card rather than entered on the
+    /// way in.
     func testTheHomeDescribesTheActiveGameAndResumesIt() {
-        let app = launch(replaying: Self.openingLine)
-        XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 20),
-                      "a launch with a game to resume opens at the board")
+        let store = scratchStoreName()
+        let first = launch(replaying: Self.openingLine, store: store)
+        XCTAssertTrue(point(first, "d4").waitForExistence(timeout: 20),
+                      "the two plies the game is to be found at")
+        first.terminate()
+        XCTAssertTrue(first.wait(for: .notRunning, timeout: 20),
+                      "the process has to be gone before the next launch asks for it")
 
-        goBack(app)
+        let app = launch(store: store)
 
-        XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 20),
+                      "the launch lands on the home, over the game it resumed")
         XCTAssertEqual(reading(app, "home-current-game"),
                        "迷你象棋 · 自由对弈 · 进行中 · 轮到红方 · 2 步",
                        "the accepted metadata composition, on the game as it stands")
         XCTAssertEqual(app.buttons["home-resume"].label, "回到对局")
-        XCTAssertFalse(point(app, "d4").exists, "and still no board on the home")
+        XCTAssertFalse(point(app, "d4").exists,
+                       "and no board anywhere on it: the launch entered nothing")
         attach(app, named: "62-the-play-home-with-a-game-going")
 
         app.buttons["home-resume"].click()

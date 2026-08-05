@@ -156,11 +156,11 @@ final class PlayScreenUITests: XCTestCase {
         // the failure text before the screen settles would pass against the
         // spinner that precedes both outcomes.
         //
-        // A game is created by 开始对局 now rather than by its first move, so a
-        // launch with nothing to resume and no replay line arrives at the start
-        // state instead of at a board. These tests are about Free Play, so the
-        // helper walks the real path into one; a launch that resumed a game or
-        // replayed a line is already on a board and this does nothing.
+        // A launch arrives at the Play home, and what is on that home decides
+        // how the board is reached: the card over a resumed game, or the real
+        // path into a new Free Play one. These tests are about a board, so the
+        // helper walks whichever is there; a launch with a replay line is
+        // already on a board and this does nothing.
         let boardUp = waitForBoard(app)
         XCTAssertFalse(app.staticTexts[language.gameDidNotStart].exists,
                        "a replay line the core refuses arrives here")
@@ -168,12 +168,19 @@ final class PlayScreenUITests: XCTestCase {
         return app
     }
 
-    /// Ends on a board, whichever of the two states the launch arrived at.
+    /// Ends on a board, whichever of the three states the launch arrived at.
     @discardableResult
     private func waitForBoard(_ app: XCUIApplication) -> Bool {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
             if point(app, "d1").exists { return true }
+            // 回到对局 is asked for before a mode entry is, because a home with
+            // a game on it carries both — and a mode entry pressed over an
+            // active game confirms rather than navigating.
+            if app.buttons["home-resume"].exists {
+                app.buttons["home-resume"].click()
+                return point(app, "d1").waitForExistence(timeout: 15)
+            }
             if app.buttons["mode-mini-xiangqi-free-play"].exists {
                 app.buttons["mode-mini-xiangqi-free-play"].click()
                 XCTAssertTrue(app.buttons["setup-start"].waitForExistence(timeout: 5))
@@ -429,12 +436,16 @@ final class PlayScreenUITests: XCTestCase {
 
     /// The stage's own test: quit the app mid-game, open it again. Two moves
     /// are made the way a person makes them, the process is terminated with
-    /// no farewell, and the relaunch must show the identical position, the
-    /// identical notation, and the turn where it stood. Orientation is the
+    /// no farewell, and the game must come back with the identical position,
+    /// the identical notation, and the turn where it stood. Orientation is the
     /// one thing deliberately not carried: the flip is session-scoped by the
     /// accepted design, a relaunch is a new sitting, and the board it opens
     /// is the default one — which the flipped board before quitting is here
     /// to prove.
+    ///
+    /// What the relaunch opens *on* is the home, and the helper walks the card
+    /// there back into the game. That the launch lands on the home at all is
+    /// the Play home suite's own subject rather than this one's.
     func testTheActiveGameSurvivesQuitting() {
         let store = scratchStoreName()
         let app = launch(store: store)

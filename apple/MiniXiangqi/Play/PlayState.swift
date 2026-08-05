@@ -86,6 +86,11 @@ final class PlayState {
     /// and the other two are pushed over it, so this is also the navigation
     /// path: everything that changes it is a navigation.
     ///
+    /// **The initial value is the launch rule.** docs/interaction-design.md,
+    /// "Navigation": a fresh launch opens at the home in every mode, and the
+    /// game already going is continued from the card there. Opening the app
+    /// moves this for nothing.
+    ///
     /// `Equatable` and nothing more. It was `Hashable` while a
     /// `NavigationStack` path carried it; the destination draws the page
     /// directly now, and all that is left to ask of it is which page this is.
@@ -182,11 +187,11 @@ final class PlayState {
     /// is exactly what resumed.
     var resultDismissed = false
 
-    /// Whether the once-per-launch start has run — and so whether `page` is yet
-    /// an answer. Read by the destination, which does not build its navigation
-    /// until it is true: a launch with a game to resume must *open* at the board
-    /// rather than push its way there, and a stack built before the resume has
-    /// answered would have to.
+    /// Whether the once-per-launch start has run — and so whether the game is
+    /// yet an answer. Read by the destination, which draws nothing until it is
+    /// true: the home the launch opens carries the resumed game's card, and a
+    /// home drawn before the resume has answered would appear without it and
+    /// then grow one.
     private(set) var started = false
 
     /// The platform's suspension signals, watched for as long as this lives.
@@ -502,12 +507,14 @@ final class PlayState {
 
     // MARK: - Launch
 
-    /// Opens the game the library holds, or the home when it holds none: launch
-    /// is a resume, and a resumed human-versus-AI game owing a move prepares and
-    /// searches for it exactly as a fresh one would. A launch that has a game to
-    /// open goes straight to the board rather than by way of the home, which is
-    /// the accepted resume-at-launch behaviour and is what the home being a
-    /// navigable root has to leave untouched.
+    /// Resumes the game the library holds, and stays at the home.
+    ///
+    /// Launch is still a resume: the stored game is opened once, here, which is
+    /// what puts the home's card over it, and a resumed human-versus-AI game
+    /// owing a move prepares and searches for it exactly as a fresh one would.
+    /// What the launch does *not* do is navigate — docs/interaction-design.md,
+    /// "Navigation": the app opens at the home in every mode, and 回到对局 on
+    /// the card is how the game is continued.
     private func resumeAtLaunch(policy: MotionPolicy) {
         startFailure = nil
         resultDismissed = false
@@ -526,10 +533,7 @@ final class PlayState {
             }
             #endif
             if !rules.hasSession {
-                guard try rules.resumeActive() else {
-                    page = .home
-                    return
-                }
+                guard try rules.resumeActive() else { return }
             }
             let resumed = try Game(rules: rules)
             #if DEBUG
@@ -538,7 +542,14 @@ final class PlayState {
             }
             #endif
             adopt(resumed, policy: policy)
-            page = .board
+            #if DEBUG
+            // The one launch that opens a board, and it is a test affordance
+            // rather than product behaviour: `-mxq-replay` exists so a run can
+            // start at a stated position instead of clicking its way to one,
+            // and the position is the whole of what it is for. No release build
+            // compiles this, and nothing a player can do reaches it.
+            if launchReplay != nil { page = .board }
+            #endif
             opponent?.begin()
         } catch {
             game = nil

@@ -263,6 +263,28 @@ struct GameSessionTests {
         #expect(try !core.activeGameExists(), "and creates none")
     }
 
+    @Test("With a game stored, the launch resumes it and stays home all the same")
+    func aStoredGameIsResumedWithoutBeingEntered() throws {
+        let directory = TestCores.scratchDirectory()
+        var core = try TestCores.open(at: directory)
+        let played = try openGame(on: core)
+        try played.replay(["b1b3", "b7b6"])
+
+        core = try TestCores.open(at: directory)
+        let state = PlayState(core: core)
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+
+        // docs/interaction-design.md, "Navigation": the launch opens at the
+        // home in every mode. The game is resumed all the same — that is what
+        // the home's card is about — and 回到对局 is what enters it.
+        #expect(state.page == .home, "a fresh launch is not an entry into the game")
+        #expect(state.game?.moves == ["b1b3", "b7b6"], "over the line it was left at")
+        #expect(state.activeGame != nil, "which the home's card is what describes")
+
+        state.resume()
+        #expect(state.page == .board, "and the card is the way in")
+    }
+
     @Test("An unconfirmed mate resumes finished, still undoable, and Undo resumes play")
     func anUnconfirmedResultResumesFinished() throws {
         let directory = TestCores.scratchDirectory()
