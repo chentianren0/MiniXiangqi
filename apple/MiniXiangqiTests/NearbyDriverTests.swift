@@ -180,6 +180,71 @@ struct NearbyDriverTests {
                                                keep: 1, end: nil))])
     }
 
+    @Test("A healthy session is resumed on a new connection too — the accepted width, pinned")
+    func aHealthySessionIsResumedOnANewConnection() async throws {
+        // **This pins accepted behavior, not a defect.** Nothing has died here:
+        // an active session, in play on a live connection, meets a second
+        // connection to the same device — and the driver offers resume for it,
+        // because the driver offers resume for every session it holds with a
+        // peer and lets the engine refuse the ones that need none. The owner
+        // ruled the width stands (2026-08-04, in #133's decided list):
+        // connections idle out between moves, so reconnection-and-resume is the
+        // protocol's everyday motion, and a crossed connection re-binding a
+        // healthy session is that same motion. Narrowing it later is a real
+        // change of behavior; this test is here so that change has to be a
+        // visible, deliberate edit rather than a silent one.
+        let bound = FakeLink(.first)
+        let driver = driver(minting: "S-mine")
+        driver.connectionReady(bound, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.play("b1b2", in: "S-mine")
+        driver.received(.move(.init(session: "S-mine", index: 1, move: "b7b6")), on: .first)
+        let healthy = try #require(driver.sessions.first)
+        #expect(healthy.isInPlay)
+
+        let fresh = FakeLink(.second)
+        driver.connectionReady(fresh, with: .peer)
+
+        await settle { fresh.sent.count == 2 }
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+                               .resume(.init(session: "S-mine", undos: 0, count: 2,
+                                             keep: 2, end: nil))])
+        // Until the exchange completes the session is gated — the contract's
+        // "Neither peer sends a `move` for the session until it holds the
+        // other's `resume`" — and it is this peer's turn, so the refusal is the
+        // gate and nothing else.
+        let gated = try #require(driver.sessions.first)
+        #expect(gated.state == .active)
+        #expect(gated.isLocalTurn)
+        #expect(!gated.isInPlay)
+        #expect(throws: BoardGameRefusal.notInPlay) { try driver.play("b1b3", in: "S-mine") }
+
+        // The peer answers on the new connection, and the ordinary exchange
+        // re-binds the session there, with its plies untouched.
+        driver.received(.hello(.init()), on: .second)
+        driver.received(.resume(.init(session: "S-mine", undos: 0, count: 2, keep: 2, end: nil)),
+                        on: .second)
+        let rebound = try #require(driver.sessions.first)
+        #expect(rebound.connection == .second)
+        #expect(rebound.isInPlay)
+        #expect(rebound.plies == ["b1b2", "b7b6"])
+
+        // Play goes on, on the connection the exchange chose. The proposer sent
+        // its resume on exactly one connection, so the old one carried none.
+        try driver.play("b1b3", in: "S-mine")
+        await settle { fresh.sent.count == 3 }
+        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+                               .resume(.init(session: "S-mine", undos: 0, count: 2,
+                                             keep: 2, end: nil)),
+                               .move(.init(session: "S-mine", index: 2, move: "b1b3"))])
+        #expect(bound.sent == [.hello(.init(protocolVersion: 1)),
+                               .propose(.init(session: "S-mine", rulesID: Stub.game,
+                                              rulesVersion: Stub.version, proposerMoves: .first)),
+                               .move(.init(session: "S-mine", index: 0, move: "b1b2"))])
+    }
+
     @Test("An ended session this peer has not settled is resumed too, stating its end")
     func anUnsettledEndIsResumed() async throws {
         let link = FakeLink(.first)

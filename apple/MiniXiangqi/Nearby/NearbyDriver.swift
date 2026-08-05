@@ -28,6 +28,14 @@ protocol NearbyLink: AnyObject {
     var id: ConnectionID { get }
     /// Send one message. The driver never calls this twice at once for one
     /// connection: per-direction order is the protocol's own model.
+    ///
+    /// **It may throw only when the link is already dying.** A send failure is
+    /// the one thing the driver reads as the connection's death, so a link that
+    /// threw and then lived on would be a connection the transport still holds
+    /// ready while the driver has forgotten it — nothing would dial it again,
+    /// and the pair would sit idle until the radio timed it out. The driver
+    /// closes such a link rather than trusting this, but a link that needs that
+    /// close is already broken.
     func send(_ message: BoardGameMessage) async throws
     /// Close the connection. A close verdict of the engine's and the harness's
     /// Stop are the only callers.
@@ -58,8 +66,26 @@ final class NearbyLog {
 
     private static let kept = 300
 
+    /// A line of protocol traffic, which is public: it is what a driven run
+    /// reads out of the system log, and none of it names a person or a device.
     func note(_ text: String) {
         NearbyLogger.log.info("\(text, privacy: .public)")
+        mirror(text)
+    }
+
+    /// A line naming a device, whose name stays out of the public log stream.
+    /// A device's name is routinely its owner's own name, and the system log is
+    /// read far beyond this app. The rest of the line — the connection, the
+    /// peer identifier, whatever a driven run compares — is public as ever, and
+    /// the name itself is whole on this device's own screen and in the DEBUG
+    /// console, neither of which leaves the device.
+    func note(_ text: String, naming device: String, _ rest: String = "") {
+        NearbyLogger.log.info(
+            "\(text, privacy: .public)\(device, privacy: .private)\(rest, privacy: .public)")
+        mirror(text + device + rest)
+    }
+
+    private func mirror(_ text: String) {
         #if DEBUG
         // `devicectl --console` bridges stdout only, not OSLog: a driven device
         // run reads this feature through this print.
@@ -328,6 +354,12 @@ final class NearbyDriver {
                     log.note("→ \(Self.short(connection)) \(Self.describe(message))")
                 } catch {
                     log.note("Send failed on \(Self.short(connection)): \(error).")
+                    // `NearbyLink.send` promises to throw only when the link is
+                    // already dying, and this closes it anyway: a link that
+                    // broke that promise would otherwise be left standing on a
+                    // transport that thinks it healthy, with no driver holding
+                    // it and nothing to dial it again.
+                    link.close()
                     connectionDied(connection)
                     return
                 }
@@ -351,7 +383,24 @@ final class NearbyDriver {
     }
 
     private func publish() {
+        let before = sessions
         sessions = engine.sessions
+        noteEnds(after: before)
+    }
+
+    /// The line a finished game leaves behind, said once, when the session's
+    /// end first appears. An end is derived from the plies and the terminals
+    /// rather than sent or stored, so no effect announces one and nothing else
+    /// in a run's log says how a game finished — only the screen did. It states
+    /// settledness beside the end because the two are a pair: an end this peer
+    /// holds unsettled still owes a resume exchange.
+    private func noteEnds(after before: [BoardGameSession]) {
+        let ended = Set(before.filter { $0.end != nil }.map(\.key))
+        for session in sessions {
+            guard let end = session.end, !ended.contains(session.key) else { continue }
+            log.note("\(Self.short(session.id)) ended: \(Self.describe(end)), "
+                     + "\(session.settled ? "settled" : "unsettled").")
+        }
     }
 
     // MARK: - Reading the traffic
@@ -388,6 +437,12 @@ final class NearbyDriver {
             "resume \(short(resume.session)) undos=\(resume.undos) count=\(resume.count) "
                 + "keep=\(resume.keep) end=\(resume.end?.rawValue ?? "—")"
         }
+    }
+
+    /// An end as the screen states it, so a log line and the session's details
+    /// read the same.
+    static func describe(_ end: BoardGameEnd) -> String {
+        "\(end.result)/\(end.ending)"
     }
 
     static func describe(_ verdict: CloseVerdict) -> String {
