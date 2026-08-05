@@ -255,6 +255,27 @@ struct BoardGameEngineTests {
         #expect(engine.session("S-mine") == nil, "the session is void")
     }
 
+    @Test("A proposal off no connection is unknown_connection whatever else would refuse it")
+    func unknownConnectionOutranksTheOtherRefusals() throws {
+        let engine = try connected()
+        _ = try activeSessionFromPeer(engine)
+
+        // On the connection this peer holds, the standing game is the answer.
+        #expect(throws: BoardGameRefusal.peerIsBusy) {
+            try engine.propose(to: .peer, on: .first, rulesID: "minixiangqi",
+                               proposerMoves: .first)
+        }
+        // Off a connection it does not hold, the missing connection is — and it
+        // is tested first, before the peer's own state is looked at at all. The
+        // nearby flow leans on that order: a paired device nothing has dialled
+        // yet is refused without troubling the engine, in the engine's own word
+        // for it.
+        #expect(throws: BoardGameRefusal.unknownConnection) {
+            try engine.propose(to: .peer, on: .second, rulesID: "minixiangqi",
+                               proposerMoves: .first)
+        }
+    }
+
     @Test("An unanswered proposal dies with its connection, and is unknown afterwards")
     func aProposalDiesWithItsConnection() throws {
         let engine = try connected()

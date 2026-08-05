@@ -126,7 +126,7 @@ struct NearbyProposeSheet: View {
             flow.invite(device, to: game)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(flow.chosenDevice == nil)
+        .disabled(!flow.canInvite)
         .accessibilityIdentifier("nearby-invite")
     }
 
