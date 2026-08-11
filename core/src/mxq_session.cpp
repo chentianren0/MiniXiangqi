@@ -791,6 +791,23 @@ MxqStatus require_mutable(const MxqGame *game, MxqError *err) {
     return require_mutable_impl(game, err);
 }
 
+MxqStatus require_no_result(const MxqGame *game, MxqError *err) {
+    /* The result is the replayed line's own verdict, asked of the same facade
+     * every other legality answer comes from; nothing about it is stored. */
+    Replayed committed;
+    const MxqStatus rc =
+        replay_prefix(*game, game->moves.size(), false, committed, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (terminal(committed.adj.state)) {
+        fill_error(err, MXQ_ERR_STATE_GAME_OVER,
+                   "the game already has a result");
+        return MXQ_ERR_STATE_GAME_OVER;
+    }
+    return MXQ_OK;
+}
+
 MxqStatus concurrent_use(MxqError *err) {
     fill_error(err, MXQ_ERR_ARG_CONCURRENT_USE,
                "another thread is inside this session");
@@ -1565,16 +1582,9 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     /* A game with a result of its own accepts no further move. A claimable
      * repetition is not such a result: play continues unless the claim is
      * made. */
-    mxq::session::Replayed before;
-    rc = mxq::session::replay_prefix(*game, game->moves.size(), false, before,
-                                     err);
+    rc = mxq::session::require_no_result(game, err);
     if (rc != MXQ_OK) {
         return rc;
-    }
-    if (mxq::session::terminal(before.adj.state)) {
-        mxq::fill_error(err, MXQ_ERR_STATE_GAME_OVER,
-                        "the game already has a result");
-        return MXQ_ERR_STATE_GAME_OVER;
     }
 
     std::vector<std::string> line = game->moves;

@@ -206,6 +206,20 @@ MxqStatus require(const MxqGame *game, MxqError *err);
  * facts and not one. */
 MxqStatus require_mutable(const MxqGame *game, MxqError *err);
 
+/*
+ * The check every path that puts a move on this position makes: the committed
+ * line has no result of its own, and MXQ_ERR_STATE_GAME_OVER where it has. A
+ * claimable neutral repetition is not such a result — play continues there
+ * unless the claim is made — so it passes.
+ *
+ * mxq_game_apply_move asks it before accepting a move and the hint search asks
+ * it before proposing one, because a game that would take no move has none to
+ * suggest either. Exposed for the second of those: the search facade is another
+ * translation unit, and one rule answering in two places is what keeps the two
+ * answers the same.
+ */
+MxqStatus require_no_result(const MxqGame *game, MxqError *err);
+
 /* The refusal an unheld Owner turns into. */
 MxqStatus concurrent_use(MxqError *err);
 

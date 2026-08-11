@@ -232,7 +232,7 @@ set(MXQ_CORE_TARGETS mxq_core)
 # default-visibility attribute elsewhere.
 #
 # The alternative — CMake's WINDOWS_EXPORT_ALL_SYMBOLS — was rejected, and not
-# on taste. The header declares the export macro on all 55 functions and on
+# on taste. The header declares the export macro on all 61 functions and on
 # nothing else, so the macro produces a DLL whose exported surface is exactly
 # the contract in docs/core-interface.md. Exporting all symbols would instead
 # publish every non-static symbol the link pulled in, which here means the whole
@@ -319,7 +319,7 @@ endforeach()
 # A shared library exports what its objects say is exportable, and the vendored
 # components are compiled as their own targets: hiding mxq_core_shared's own
 # symbols says nothing about theirs. On Windows nothing is exported without
-# __declspec(dllexport), so the DLL is already exactly mxq.h's 55 functions and
+# __declspec(dllexport), so the DLL is already exactly mxq.h's 61 functions and
 # this changes nothing there. Where the default is the opposite — Mach-O, and
 # ELF by the same rule — the library also publishes every sqlite3_ entry point
 # and much of the engine, components docs/architecture.md requires to stay

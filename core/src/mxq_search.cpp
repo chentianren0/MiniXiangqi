@@ -15,9 +15,15 @@
  * mxq_search_start never retains the session: it snapshots the initial FEN,
  * the complete move list, the game_id, the session's instance_id, the
  * position_revision and the frozen movetime under the session's single-owner
- * guard, and returns a ticket. The engine thread later drives the engine over
- * the snapshot and applies the rejection ladder at delivery, in the
- * contract's order:
+ * guard, and returns a ticket. mxq_search_start_hint makes the same snapshot
+ * for a different question — the move to show the player, rather than the move
+ * the AI is about to play — and what reaches the engine thread is one kind of
+ * job either way, so a hint's ticket, cancellation, staleness, ladder,
+ * retention and callback are the reply's. The two differ only in what they
+ * validate before enqueuing: see Purpose below.
+ *
+ * The engine thread later drives the engine over the snapshot and applies the
+ * rejection ladder at delivery, in the contract's order:
  *
  *   1. cancelled — asked first, and also honoured at pickup, so a cancelled
  *      job never burns its movetime. A cancellation that follows no mutation
@@ -491,6 +497,148 @@ MxqStatus marshal(std::shared_ptr<Task> task, MxqError *err) {
     return task->status;
 }
 
+/* Which entry a search came in through. The job is the same job either way —
+ * one Task, one ladder, one delivery — and this decides only what is demanded
+ * of the session before it is enqueued. */
+enum class Purpose { Reply, Hint };
+
+/*
+ * The half both search entries share: the session's handle checks, the
+ * single-owner guard, the state each purpose demands under it, the snapshot,
+ * and the enqueue.
+ *
+ * The snapshot is made under the guard and is values only, so it can never
+ * interleave with a mutation, and the session is not retained. movetime_ms
+ * arrives already validated — against the session's frozen value for a reply,
+ * against the accepted levels for a hint — because what makes a thinking time
+ * legal is the one thing the two entries do not agree about.
+ */
+MxqStatus start(MxqCore *core, const MxqGame *game, Purpose purpose,
+                uint32_t movetime_ms, MxqSearchCallback callback,
+                void *user_data, uint64_t *out_ticket, MxqError *err) {
+    MxqStatus rc = session::require(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (game->core != core) {
+        assert(false && "the session was not issued by this core");
+        fill_error(err, MXQ_ERR_ARG_INVALID_HANDLE,
+                   "the session was not issued by this core");
+        return MXQ_ERR_ARG_INVALID_HANDLE;
+    }
+
+    /* Taking an MxqGame * counts as being inside the session: the snapshot is
+     * made under the single-owner guard, so it can never interleave with a
+     * mutation. */
+    session::Owner owner(const_cast<MxqGame *>(game));
+    if (!owner.held()) {
+        return session::concurrent_use(err);
+    }
+
+    if (purpose == Purpose::Reply) {
+        /* The request's movetime must equal the session's frozen movetime. A
+         * session with no frozen movetime — Free Play — owes no search and has
+         * nothing for the request to equal, so a zero never passes. */
+        if (game->config.ai_movetime_ms == 0 ||
+            movetime_ms != game->config.ai_movetime_ms) {
+            fill_error(err, MXQ_ERR_ARG_RANGE,
+                       "request movetime_ms must equal the session's frozen "
+                       "ai_movetime_ms");
+            return MXQ_ERR_ARG_RANGE;
+        }
+    } else {
+        /*
+         * A hint proposes a move this session could take, so the states that
+         * would take no move are the states that have none to suggest: this is
+         * mxq_game_apply_move's own gate, asked before the search rather than
+         * after it. A claimable neutral repetition passes both.
+         */
+        rc = session::require_mutable(game, err);
+        if (rc != MXQ_OK) {
+            return rc;
+        }
+        rc = session::require_no_result(game, err);
+        if (rc != MXQ_OK) {
+            return rc;
+        }
+    }
+
+    auto task = std::make_shared<Task>();
+    task->kind = Task::Kind::Search;
+    task->game = game->config.game;
+    task->start_fen = notation::start_fen(game->config.game);
+    task->moves = game->moves;
+    task->game_id = game->game_id;
+    task->position_revision =
+        game->position_revision.load(std::memory_order_acquire);
+    task->movetime_ms = movetime_ms;
+    task->origin_instance = game->instance_id;
+    task->core = core;
+    task->callback = callback;
+    task->user_data = user_data;
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_exiting || !g_thread_live) {
+            fill_error(err, MXQ_ERR_STATE_SHUTTING_DOWN,
+                       "the core is shutting down");
+            return MXQ_ERR_STATE_SHUTTING_DOWN;
+        }
+        /* Checked under the enqueue's lock, and re-checked when the job runs:
+         * a teardown already queued ahead of this search leaves the state
+         * READY here and turns the run-time check into the answer. */
+        if (g_engine_state.load(std::memory_order_acquire) !=
+            MXQ_ENGINE_STATE_READY) {
+            fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "the engine is not prepared");
+            return MXQ_ERR_STATE_ENGINE_NOT_READY;
+        }
+        /*
+         * The engine runs one variant at a time, and it is this session's game
+         * that must be the one: the tables a search reads are the prepared
+         * variant's, so a session of the other game would fail to replay under
+         * them and be delivered as a fault. Refusing here says the true thing
+         * instead — the engine is not ready for THIS game — and the caller
+         * prepares for it.
+         *
+         * It is asked after the state, not before, because an unprepared
+         * engine's active variant is the rules posture's rather than a
+         * preparation: asking first would answer a session of the other game
+         * with "prepared for the other game" on a core that has prepared
+         * nothing at all, and send the caller to correct the wrong thing.
+         */
+        if (engine::active_variant() != engine::variant_of(game->config.game)) {
+            fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "the engine is prepared for the other game; "
+                       "prepare it for this session's game first");
+            return MXQ_ERR_STATE_ENGINE_NOT_READY;
+        }
+        /*
+         * A hint is asked for one position and is worth nothing against
+         * another, so it is refused rather than queued behind whatever the
+         * engine thread is already doing — the AI's reply or an earlier hint
+         * alike. The reply keeps its own behaviour: a game owes it, and a
+         * caller that asks for it twice is asking about the same position.
+         * Checked under the enqueue's own lock, because separately it would be
+         * a check-then-act.
+         */
+        if (purpose == Purpose::Hint && search_outstanding_locked()) {
+            fill_error(err, MXQ_ERR_STATE_SEARCH_IN_PROGRESS,
+                       "a search is outstanding; cancel it or wait for it "
+                       "before asking for a hint");
+            return MXQ_ERR_STATE_SEARCH_IN_PROGRESS;
+        }
+        task->ticket = g_next_ticket++;
+        /* The previous result was retained until the next search; this is the
+         * next search. */
+        g_retained_valid = false;
+        g_queue.push_back(task);
+        g_engine_cv.notify_one();
+    }
+    *out_ticket = task->ticket;
+    return MXQ_OK;
+}
+
 } /* namespace */
 
 /* ---------------------------------------------------------------------- */
@@ -673,96 +821,48 @@ MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
     if (rc != MXQ_OK) {
         return rc;
     }
-    rc = mxq::session::require(game, err);
+    return mxq::search::start(core, game, mxq::search::Purpose::Reply,
+                              request->movetime_ms, callback, user_data,
+                              out_ticket, err);
+}
+
+MxqStatus MXQ_CALL mxq_search_start_hint(MxqCore *core, const MxqGame *game,
+                                         uint32_t movetime_ms,
+                                         MxqSearchCallback callback,
+                                         void *user_data, uint64_t *out_ticket,
+                                         MxqError *err) {
+    const MxqStatus rc = mxq::require_core(core, err);
     if (rc != MXQ_OK) {
         return rc;
     }
-    if (game->core != core) {
-        assert(false && "the session was not issued by this core");
-        mxq::fill_error(err, MXQ_ERR_ARG_INVALID_HANDLE,
-                        "the session was not issued by this core");
-        return MXQ_ERR_ARG_INVALID_HANDLE;
+    if (out_ticket == nullptr) {
+        assert(false && "required out pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "out_ticket was null");
+        return MXQ_ERR_ARG_NULL;
     }
+    *out_ticket = 0;
 
-    /* Taking an MxqGame * counts as being inside the session: the snapshot is
-     * made under the single-owner guard, so it can never interleave with a
-     * mutation. */
-    mxq::session::Owner owner(const_cast<MxqGame *>(game));
-    if (!owner.held()) {
-        return mxq::session::concurrent_use(err);
-    }
-
-    /* The request's movetime must equal the session's frozen movetime. A
-     * session with no frozen movetime — Free Play — owes no search and has
-     * nothing for the request to equal, so a zero never passes. */
-    if (game->config.ai_movetime_ms == 0 ||
-        request->movetime_ms != game->config.ai_movetime_ms) {
+    /*
+     * The thinking time is an input here rather than a cross-check, and the
+     * product defines exactly three. A fourth value is a caller choosing
+     * outside a closed vocabulary it owns itself, which the error taxonomy
+     * makes a programming error — unlike mxq_search_start's cross-check, which
+     * reports two independently-built components disagreeing and asserts on
+     * neither. It is asked before the session is touched at all: what is wrong
+     * with the call is the argument, whatever state the session is in.
+     */
+    if (movetime_ms != MXQ_MOVETIME_FAST_MS &&
+        movetime_ms != MXQ_MOVETIME_STANDARD_MS &&
+        movetime_ms != MXQ_MOVETIME_DEEP_MS) {
+        assert(false && "the hint movetime is not one of the accepted levels");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "request movetime_ms must equal the session's frozen "
-                        "ai_movetime_ms");
+                        "movetime_ms must be one of the three accepted "
+                        "thinking times");
         return MXQ_ERR_ARG_RANGE;
     }
-
-    auto task = std::make_shared<mxq::search::Task>();
-    task->kind = mxq::search::Task::Kind::Search;
-    task->game = game->config.game;
-    task->start_fen = mxq::notation::start_fen(game->config.game);
-    task->moves = game->moves;
-    task->game_id = game->game_id;
-    task->position_revision =
-        game->position_revision.load(std::memory_order_acquire);
-    task->movetime_ms = request->movetime_ms;
-    task->origin_instance = game->instance_id;
-    task->core = core;
-    task->callback = callback;
-    task->user_data = user_data;
-
-    {
-        std::lock_guard<std::mutex> lock(mxq::search::g_mutex);
-        if (mxq::search::g_exiting || !mxq::search::g_thread_live) {
-            mxq::fill_error(err, MXQ_ERR_STATE_SHUTTING_DOWN,
-                            "the core is shutting down");
-            return MXQ_ERR_STATE_SHUTTING_DOWN;
-        }
-        /* Checked under the enqueue's lock, and re-checked when the job runs:
-         * a teardown already queued ahead of this search leaves the state
-         * READY here and turns the run-time check into the answer. */
-        if (mxq::search::g_engine_state.load(std::memory_order_acquire) !=
-            MXQ_ENGINE_STATE_READY) {
-            mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
-                            "the engine is not prepared");
-            return MXQ_ERR_STATE_ENGINE_NOT_READY;
-        }
-        /*
-         * The engine runs one variant at a time, and it is this session's game
-         * that must be the one: the tables a search reads are the prepared
-         * variant's, so a session of the other game would fail to replay under
-         * them and be delivered as a fault. Refusing here says the true thing
-         * instead — the engine is not ready for THIS game — and the caller
-         * prepares for it.
-         *
-         * It is asked after the state, not before, because an unprepared
-         * engine's active variant is the rules posture's rather than a
-         * preparation: asking first would answer a session of the other game
-         * with "prepared for the other game" on a core that has prepared
-         * nothing at all, and send the caller to correct the wrong thing.
-         */
-        if (mxq::engine::active_variant() !=
-            mxq::engine::variant_of(game->config.game)) {
-            mxq::fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
-                            "the engine is prepared for the other game; "
-                            "prepare it for this session's game first");
-            return MXQ_ERR_STATE_ENGINE_NOT_READY;
-        }
-        task->ticket = mxq::search::g_next_ticket++;
-        /* The previous result was retained until the next search; this is the
-         * next search. */
-        mxq::search::g_retained_valid = false;
-        mxq::search::g_queue.push_back(task);
-        mxq::search::g_engine_cv.notify_one();
-    }
-    *out_ticket = task->ticket;
-    return MXQ_OK;
+    return mxq::search::start(core, game, mxq::search::Purpose::Hint,
+                              movetime_ms, callback, user_data, out_ticket,
+                              err);
 }
 
 MxqStatus MXQ_CALL mxq_search_cancel(MxqCore *core, uint64_t ticket,

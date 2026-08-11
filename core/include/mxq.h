@@ -8,7 +8,7 @@
  * not blittable.
  *
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
- * 55 functions, three opaque handles.
+ * 61 functions, three opaque handles.
  *
  * The core plays two games — Mini Xiangqi and Xiangqi — and MxqGameKind is the
  * axis that names which. Every rules question is asked of one game: the board,
@@ -103,7 +103,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 2
-#define MXQ_API_VERSION_MINOR 2
+#define MXQ_API_VERSION_MINOR 3
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -172,9 +172,9 @@ extern "C" {
  * core never issued, a struct_size this build cannot interpret, an incompatible
  * MXQ_API_VERSION, a value outside a closed vocabulary the frontend itself owns
  * (a square its own board does not have, a game configuration of neither
- * accepted shape, a pinned that is not 0 or 1), a second mxq_core_init, a core
- * handle that is not the live instance, and a mutation on a detached read-only
- * session.
+ * accepted shape, a thinking time that is none of the three accepted, a pinned
+ * that is not 0 or 1), a second mxq_core_init, a core handle that is not the
+ * live instance, and a mutation on a detached read-only session.
  *
  * Four argument-domain statuses are deliberately not programming errors and
  * never assert, because each is an answer the core promises rather than a
@@ -585,7 +585,10 @@ enum {
 #define MXQ_ENGINE_MIN_RESERVE_BYTES     (134217728u)  /* 128 MiB */
 #define MXQ_ENGINE_PHYSICAL_PERCENT      50u
 
-/* The accepted thinking times, frozen with a created game. */
+/* The accepted thinking times, frozen with a created human-versus-AI game. The
+ * product defines no other, which is what makes them a closed vocabulary rather
+ * than three examples: mxq_search_start_hint takes its thinking time as a value
+ * and accepts exactly these three. */
 #define MXQ_MOVETIME_FAST_MS     1000u
 #define MXQ_MOVETIME_STANDARD_MS 3000u
 #define MXQ_MOVETIME_DEEP_MS     5000u
@@ -1022,7 +1025,8 @@ typedef struct MxqSearchResult {
  * dispatcher.
  *
  * result points into core storage and is valid only for the duration of the
- * call. user_data is the pointer passed to mxq_search_start, untouched.
+ * call. user_data is the pointer passed to the entry that started this
+ * search — mxq_search_start or mxq_search_start_hint — untouched.
  */
 typedef void(MXQ_CALL *MxqSearchCallback)(const MxqSearchResult *result,
                                           void *user_data);
@@ -1767,9 +1771,65 @@ MXQ_API MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
                                             MxqError *err);
 
 /*
- * Cancel one search cooperatively. Its callback still fires, with
- * MXQ_SEARCH_CANCELLED. Cancelling an unknown or already-finished ticket is
- * MXQ_OK.
+ * Start a hint search and return its ticket: the engine's move for the side to
+ * move in this session's current position, to be shown to the player rather
+ * than played. It commits nothing, ever — like every search result, the value
+ * it delivers is inert, and applying it is a separate explicit
+ * mxq_game_apply_move the player asks for.
+ *
+ * It is mxq_search_start in every respect but three, each of which is what a
+ * hint is rather than a variation on the AI's reply. Everything else is that
+ * function's: the same snapshot, the same ticket space and cancellation, the
+ * same (game_id, position_revision) staleness identity, the same rejection
+ * ladder including the legality check against the rules facade, the same
+ * retention under the ticket until the next search, and the same callback on
+ * the engine thread.
+ *
+ * First, movetime_ms is the thinking time itself rather than a cross-check. It
+ * must be one of MXQ_MOVETIME_FAST_MS, MXQ_MOVETIME_STANDARD_MS and
+ * MXQ_MOVETIME_DEEP_MS, and any other value is MXQ_ERR_ARG_RANGE. That one
+ * DOES assert, unlike mxq_search_start's: what it catches is a caller passing a
+ * value outside a closed vocabulary it owns itself, not two independently-built
+ * components disagreeing. Nothing here is compared with the session's frozen
+ * ai_movetime_ms — which is the whole reason this entry exists, a Free Play
+ * session freezing none and being owed a hint all the same.
+ *
+ * Second, it refuses while any search is outstanding, its own kind included,
+ * with MXQ_ERR_STATE_SEARCH_IN_PROGRESS. The engine thread runs one search at a
+ * time, and a hint queued behind another one would be answered against a
+ * position the player has left; the caller cancels what is running or asks
+ * again later.
+ *
+ * Third, it demands a session that could still take the move it proposes, which
+ * is mxq_game_apply_move's own state gate: a detached replay is
+ * MXQ_ERR_STATE_SESSION_READ_ONLY, a game one of the archiving paths has ended
+ * is MXQ_ERR_STATE_SESSION_ARCHIVED, and a position with a result of its own is
+ * MXQ_ERR_STATE_GAME_OVER. A claimable neutral repetition is not such a result
+ * and has its hint like any other ongoing position.
+ *
+ * As with mxq_search_start, the engine must be prepared for this session's game
+ * or the call is MXQ_ERR_STATE_ENGINE_NOT_READY; callback may be NULL, leaving
+ * mxq_search_poll and mxq_search_wait as the consumers; and taking an MxqGame *
+ * counts as being inside that session for the single-owner rule.
+ *
+ * Callback delivered on: the core's engine thread. See MxqSearchCallback for
+ * what is legal inside it.
+ *
+ * Thread: the session's owner; any thread except inside a search callback.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_search_start_hint(MxqCore *core,
+                                                 const MxqGame *game,
+                                                 uint32_t movetime_ms,
+                                                 MxqSearchCallback callback,
+                                                 void *user_data,
+                                                 uint64_t *out_ticket,
+                                                 MxqError *err);
+
+/*
+ * Cancel one search cooperatively, whichever entry started it. Its callback
+ * still fires, with MXQ_SEARCH_CANCELLED. Cancelling an unknown or
+ * already-finished ticket is MXQ_OK.
  *
  * Cancellation is a correctness requirement rather than only a promptness
  * optimisation: a cancellation that follows no mutation leaves the position
