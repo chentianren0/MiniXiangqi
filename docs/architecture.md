@@ -29,7 +29,7 @@ Each frontend renders state, collects user intentions, and calls core operations
 
 - presentation, navigation, animation, sound, and haptics;
 - localization resources and accessibility integration;
-- platform services: storage location, file pickers, share and export surfaces, memory probes, and lifecycle events;
+- platform services: storage location, file pickers, share and export surfaces, memory probes, lifecycle events, and the transport nearby play is carried over;
 - transient UI state such as selection, pre-start drafts, and confirmation flows;
 - the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game are passed as arguments to game creation, where they are frozen into the game.
 
