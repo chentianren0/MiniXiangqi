@@ -8,8 +8,8 @@
 // 保存并继续 files the game as it stands before the selected mode's pre-start
 // page opens.
 //
-// The words asserted here are the normative Simplified Chinese of docs/copy.md,
-// written out rather than read from the application's own catalog: a test that
+// The words asserted here are the accepted Simplified Chinese, written out
+// rather than read from the application's own catalog: a test that
 // reads the file the application reads asserts only that the file is itself.
 
 // **macOS only.** The bundle this file lives in builds for an iOS Simulator too

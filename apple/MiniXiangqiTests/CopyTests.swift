@@ -1,9 +1,9 @@
 // What the String Catalog answers, in each language it answers in.
 //
-// docs/copy.md is the register: normative Simplified Chinese with an approved
-// English beside it, the pair stored under one symbolic key. Most of what it
-// holds is a plain string, and the running screen is what proves those arrived
-// — PlayScreenUITests photographs both languages. What a screenshot cannot
+// The catalog is the string of record: normative Simplified Chinese with an
+// approved English beside it, the pair stored under one symbolic key. Most of
+// what it holds is a plain string, and the running screen is what proves those
+// arrived — PlayScreenUITests photographs both languages. What a screenshot cannot
 // judge is a pattern: a format whose argument is a piece character in one
 // language and nothing at all in the other, and a count whose noun inflects in
 // one language and does not in the other. Those are checked here, against the
@@ -33,8 +33,8 @@ struct CopyTests {
 
     @Test("Both languages are complete for every key the application reads")
     func everyKeyAnswersInBothLanguages() throws {
-        // Not the whole register: it holds the surfaces still to be built too,
-        // and a key with no screen behind it is not this suite's business.
+        // Not the whole catalog: it holds the surfaces still to be built
+        // too, and a key with no screen behind it is not this suite's business.
         // These are the ones the application asks for today.
         let keys = [
             "about.title", "about.name", "about.version", "about.build",
@@ -126,14 +126,14 @@ struct CopyTests {
             for key in keys {
                 // A key with no entry answers with itself, which is the one
                 // thing a value here can never legitimately be: every key in
-                // the register is symbolic, and no accepted string is one.
+                // the catalog is symbolic, and no accepted string is one.
                 let answer = try value(key, in: language)
                 #expect(answer != key, "\(key) has no \(language) value")
             }
         }
     }
 
-    @Test("The local-network sentence is the register's, in both languages")
+    @Test("The local-network sentence is the catalog's, in both languages")
     func theBundleStringIsThere() throws {
         // The one accepted string that is not a String Catalog row: the system
         // reads it out of the bundle to explain its own permission alert with,
@@ -161,7 +161,7 @@ struct CopyTests {
 
     @Test("A piece is named by its character in Chinese and by its name in English")
     func pieceNamesSwitchWithTheLanguage() throws {
-        // The pairs the register accepts. The Chinese half is the character
+        // The pairs the catalog carries. The Chinese half is the character
         // the disc carries, which never enters the catalog: it reaches the
         // label as the format's argument, which the English name ignores.
         let expected: [(PieceKind, Side, String, String)] = [
@@ -197,11 +197,11 @@ struct CopyTests {
     @Test("A move count inflects in English and does not in Chinese")
     func theMoveCountIsAPluralPattern() throws {
         // The one key installed ahead of the screen that will read it. The
-        // save-and-continue metadata is still to be built; docs/copy.md asks
-        // that this be authored as plural variants rather than as a literal
-        // with a number pushed into it, and that has to be true before the
-        // screen arrives rather than after. A plural pattern resolves against
-        // a locale, so the locale is named rather than inherited.
+        // save-and-continue metadata is still to be built; the accepted form
+        // is plural variants rather than a literal with a number pushed into
+        // it, and that has to be true before the screen arrives rather than
+        // after. A plural pattern resolves against a locale, so the locale is
+        // named rather than inherited.
         let english = try value("metadata.moveCount", in: "en")
         #expect(String(format: english, locale: Locale(identifier: "en"), 1) == "1 move")
         #expect(String(format: english, locale: Locale(identifier: "en"), 2) == "2 moves")

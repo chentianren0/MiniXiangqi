@@ -32,8 +32,8 @@ import XCTest
 @MainActor
 final class PhoneSettingsUITests: XCTestCase {
 
-    /// A language to run the interface in, and the strings docs/copy.md accepts
-    /// for it. Every string on the Settings screen is here, which is the whole
+    /// A language to run the interface in, and the accepted strings for it.
+    /// Every string on the Settings screen is here, which is the whole
     /// screen — 触感 included, for the device that offers it.
     private struct Language {
         let code: String

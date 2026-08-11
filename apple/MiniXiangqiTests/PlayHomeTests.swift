@@ -10,8 +10,8 @@
 //
 // The metadata assertions are about **composition** — which facts appear, in
 // what order, joined by the accepted format — rather than about the words. The
-// words are docs/copy.md's, and they are asserted against the catalog in
-// CopyTests and photographed in both languages by the UI suite. Composing the
+// words are the catalog's, and they are asserted against it in CopyTests and
+// photographed in both languages by the UI suite. Composing the
 // expectation from the same catalog is what keeps this suite honest about which
 // of the two it is testing.
 

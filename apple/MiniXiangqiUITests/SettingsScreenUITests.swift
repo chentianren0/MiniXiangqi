@@ -36,8 +36,8 @@ final class SettingsScreenUITests: XCTestCase {
         "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b3,b7b6,b3d3",
     ].joined(separator: ";")
 
-    /// A language to run the interface in, and the strings docs/copy.md accepts
-    /// for it. Every string in Settings is here, which is the whole screen.
+    /// A language to run the interface in, and the accepted strings for it.
+    /// Every string in Settings is here, which is the whole screen.
     private struct Language {
         let code: String
         let short: String

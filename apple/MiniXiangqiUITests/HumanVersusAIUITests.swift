@@ -335,7 +335,7 @@ final class HumanVersusAIUITests: XCTestCase {
     /// from its width, so it says the same thing at either size.
     ///
     /// The words are written out rather than read from the application's own
-    /// catalog, and the register itself is verified where it is the subject —
+    /// catalog, which is itself verified where it is the subject —
     /// `PlayScreenUITests`, which walks both languages over every surface the
     /// copy lives on. These four are here because a control whose label went
     /// missing would pass an existence check.
