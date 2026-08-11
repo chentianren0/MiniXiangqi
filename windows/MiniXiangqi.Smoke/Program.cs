@@ -19,8 +19,8 @@
 // all of it: every move committed by clicking a point and then another point,
 // the AI answering through the same marshalled callback the window uses, every
 // page reached the way a person reaches it, a filed game exported to a real file
-// and imported back from it, and the strings shown along the way checked against
-// docs/copy.md.
+// and imported back from it, and the table the strings shown along the way come
+// from.
 //
 // Two things in this frontend a headless process cannot reach, and both are
 // named where they happen rather than implied: the two file pickers, which need
@@ -63,8 +63,6 @@ internal static unsafe class Program
         string store = Argument(args, "--store")
             ?? Path.Combine(Path.GetTempPath(), "mxq-smoke-" + Guid.NewGuid().ToString("N"));
         bool keepStore = Argument(args, "--store") is not null;
-        string? copyTable = Argument(args, "--copy-table");
-
         Console.OutputEncoding = Encoding.UTF8;
         Console.WriteLine("Mini Xiangqi — Windows core interface smoke harness");
         Console.WriteLine("===================================================");
@@ -82,7 +80,7 @@ internal static unsafe class Program
             Run(store, assets, budget);
             WhatTheWindowDoes(store, assets);
             TheTwoGames(assets, budget);
-            CopyTable(copyTable);
+            TheStringTable();
             ThePlayScreen(store, assets);
             TheFlows(store, assets);
             QueuedCompletionsAfterDispose(assets);
@@ -934,18 +932,39 @@ internal static unsafe class Program
     }
 
     // ---------------------------------------------------------------------
-    // 17. The string table against docs/copy.md.
+    // 17. The string table itself.
     //
-    // docs/copy.md's localization process asks for "one check that this table
-    // and the String Catalog agree in both languages — the same key set, the
-    // same values, and no user-facing key in the catalog that is absent here",
-    // and says it joins CI when CI exists. CI exists. This is that check for
-    // the Windows frontend's own table, and the Windows workflow passes it the
-    // path to the contract.
+    // MiniXiangqi.Play/Text/Strings.cs is this frontend's string of record, per
+    // docs/interaction-design.md § Localization: every string the interface
+    // shows lives there, under a symbolic key, in both supported languages.
+    // Nothing outside it is entitled to answer what a screen says, so what
+    // there is to check is the table's own coherence: that every row speaks both
+    // languages, and that the rows the two games share are there and say the
+    // accepted words.
     // ---------------------------------------------------------------------
-    private static void CopyTable(string? path)
+    private static void TheStringTable()
     {
-        Section("17. The string table against docs/copy.md");
+        Section("17. The string table itself");
+
+        List<string> silent = [];
+        foreach ((string key, LocalizedString row) in Strings.Table)
+        {
+            // A row missing a language is the one thing a lookup cannot report:
+            // Get answers with whichever half the running language selects, and
+            // an empty half would show as an empty label rather than as a fault.
+            if (row.Chinese.Length == 0 || row.English.Length == 0)
+            {
+                silent.Add(key);
+            }
+        }
+
+        Console.WriteLine($"    rows                {Strings.Table.Count}");
+        foreach (string key in silent)
+        {
+            Console.WriteLine($"    missing a language  {key}");
+        }
+
+        Check("every row says something in both languages", silent.Count == 0);
 
         string[] dualGameRows =
         [
@@ -957,7 +976,7 @@ internal static unsafe class Program
         ];
         Check("the five dual-game copy rows are present",
             dualGameRows.All(Strings.Table.ContainsKey));
-        Check("the two game names and Xiangqi-only piece names have both languages",
+        Check("the two game names and the Xiangqi-only piece names are the accepted words",
             Strings.Table["game.xiangqi"] == new LocalizedString("象棋", "Xiangqi")
             && Strings.Table["game.miniXiangqi"] == new LocalizedString("迷你象棋", "Mini Xiangqi")
             && Strings.Table["piece.advisor"].English == "Advisor"
@@ -982,102 +1001,6 @@ internal static unsafe class Program
             fiftyMove.ReasonText() == Strings.Get("reason.fiftyMoveRule")
             && Strings.Table["reason.fiftyMoveRule"]
                 == new LocalizedString("五十回合规则", "Fifty-Move Rule"));
-
-        if (path is null)
-        {
-            Console.WriteLine("    (no --copy-table given; the contract was not read)");
-            return;
-        }
-
-        Dictionary<string, (string Chinese, string English)> contract = ReadCopyTable(path);
-        Console.WriteLine($"    contract rows       {contract.Count}");
-        Console.WriteLine($"    frontend keys       {Strings.Table.Count}");
-
-        List<string> missing = [];
-        List<string> disagreeing = [];
-        foreach ((string key, LocalizedString row) in Strings.Table)
-        {
-            if (!contract.TryGetValue(key, out (string Chinese, string English) approved))
-            {
-                missing.Add(key);
-                continue;
-            }
-
-            // The piece names are the one row shape whose Chinese cell is a
-            // description rather than a value — docs/copy.md writes
-            // "帅 (red) / 将 (black)", because the string itself is the
-            // placeholder that lets the character through, and the fourteen piece
-            // characters are game content that never enters a string table.
-            // Its English half is a value like any other.
-            bool chineseIsDescription = key.StartsWith("piece.", StringComparison.Ordinal);
-
-            if (row.English != Placeholders(approved.English)
-                || (!chineseIsDescription && row.Chinese != Placeholders(approved.Chinese)))
-            {
-                disagreeing.Add(key);
-            }
-        }
-
-        foreach (string key in missing)
-        {
-            Console.WriteLine($"    absent from copy.md {key}");
-        }
-
-        foreach (string key in disagreeing)
-        {
-            Console.WriteLine($"    disagrees           {key}");
-            Console.WriteLine($"      contract          {contract[key].Chinese} / {contract[key].English}");
-            Console.WriteLine($"      frontend          {Strings.Table[key].Chinese} / {Strings.Table[key].English}");
-        }
-
-        Check("every string the screen shows is a row of docs/copy.md", missing.Count == 0);
-        Check("every row agrees with the contract in both languages", disagreeing.Count == 0);
-    }
-
-    /// <summary>
-    /// docs/copy.md's format specifiers are the platform's — <c>%1$@</c>,
-    /// <c>%lld</c> — because the Apple frontend is where they are live. .NET
-    /// composes with <c>{0}</c>. The check translates rather than either side
-    /// pretending the other's spelling.
-    /// </summary>
-    private static string Placeholders(string value) => value
-        .Replace("%1$@", "{0}", StringComparison.Ordinal)
-        .Replace("%2$@", "{1}", StringComparison.Ordinal)
-        .Replace("%1$lld", "{0}", StringComparison.Ordinal)
-        .Replace("%2$lld", "{1}", StringComparison.Ordinal)
-        .Replace("%lld", "{0}", StringComparison.Ordinal)
-        .Replace("%@", "{0}", StringComparison.Ordinal);
-
-    private static Dictionary<string, (string Chinese, string English)> ReadCopyTable(string path)
-    {
-        Dictionary<string, (string, string)> rows = new(StringComparer.Ordinal);
-        foreach (string line in File.ReadLines(path))
-        {
-            string trimmed = line.Trim();
-            if (!trimmed.StartsWith('|'))
-            {
-                continue;
-            }
-
-            string[] cells = trimmed.Trim('|').Split('|');
-            if (cells.Length < 5)
-            {
-                continue;
-            }
-
-            string key = Cell(cells[0]).Replace("*(proposed)*", string.Empty, StringComparison.Ordinal).Trim();
-            key = key.Trim('`');
-            if (key.Length == 0 || key == "Key" || key.StartsWith('-'))
-            {
-                continue;
-            }
-
-            rows[key] = (Cell(cells[1]), Cell(cells[2]));
-        }
-
-        return rows;
-
-        static string Cell(string value) => value.Trim().Trim('`').Trim();
     }
 
     // ---------------------------------------------------------------------
@@ -3162,9 +3085,9 @@ internal static unsafe class Program
         // here rather than skipped: that answer is about the library rather than
         // about the file, and a guarantee about a library the same message has
         // just called damaged would be a guarantee worth nothing.
-        // docs/interaction-design.md's sentence claimed all of them and is
-        // corrected in this pull request to match docs/copy.md's table, which
-        // wins by that document's own rule. The normative Chinese is what carries
+        // docs/interaction-design.md names the exceptions where it describes the
+        // import answers, and the strings themselves are this table's, by that
+        // document's own localization rule. The normative Chinese is what carries
         // the phrase, so that is the half this reads.
         Check("every import refusal about a file says 历史没有改变",
             new[]
@@ -3618,9 +3541,8 @@ internal static unsafe class Program
                 announced == 1);
 
             // The trim, stated over the string table rather than described. Every
-            // row this screen draws is a row of docs/copy.md — section 17 checks
-            // that for the whole table — and the rows it deliberately does not
-            // draw carry no key at all.
+            // row this screen draws is a row of the table, and the rows it
+            // deliberately does not draw carry no key at all.
             Check("the screen's own rows are in the string table",
                 Strings.Table.ContainsKey("nav.settings")
                 && Strings.Table.ContainsKey("settings.defaults.group")
@@ -4063,9 +3985,9 @@ internal static unsafe class Program
         // The line itself, published by the state rather than fetched beside it.
         // **A key with no row answers with itself**, which is the one thing this
         // value can never legitimately be — the test the Apple catalog suite
-        // makes about its own register — so this catches an absent row and a row
-        // filled in one language only. Section 17 is where the pair is checked
-        // against docs/copy.md.
+        // makes about its own catalog — so this catches an absent row and a row
+        // filled in one language only. Section 17 makes the same claim over the
+        // whole table.
         string? inChinese = null;
         string? inEnglish = null;
         foreach (bool chinese in (bool[])[true, false])

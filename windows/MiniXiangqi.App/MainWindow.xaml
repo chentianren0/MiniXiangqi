@@ -727,8 +727,8 @@
                             reserved width with them. A bare switch is what
                             Windows 11's own Settings shows, and the words it
                             would otherwise carry are the framework's rather than
-                            docs/copy.md's — copy on a control that this
-                            repository's string of record does not own. Narrator
+                            the string table's — copy on a control that this
+                            frontend's string of record does not own. Narrator
                             is unaffected: a toggle reports its state through the
                             toggle pattern, in the screen reader's own words,
                             whatever content it draws.

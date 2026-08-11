@@ -1283,10 +1283,10 @@ public sealed partial class MainWindow : Window
     ///
     /// The two pickers' options are the pre-start page's own words — 我先手,
     /// AI 先手, 随机 and the three levels — because they are the same choices,
-    /// keyed once in docs/copy.md under `setup.`, and a second set of rows for
-    /// the same three options would be two things to keep in step. The two row
-    /// labels are the Settings rows' own: 默认先后手 says what this one is that
-    /// 先后手 does not.
+    /// keyed once in the string table under `setup.`, and a second set of rows
+    /// for the same three options would be two things to keep in step. The two
+    /// row labels are the Settings rows' own: 默认先后手 says what this one is
+    /// that 先后手 does not.
     ///
     /// Each control's accessibility name is its row label, because the label is a
     /// separate element on the row and a screen reader arriving at the switch

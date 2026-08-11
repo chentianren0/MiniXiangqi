@@ -108,8 +108,8 @@ enum PieceKind: Character, CaseIterable {
     /// glyph — an accessibility label, a line of Help — and never as a board
     /// label in any language.
     ///
-    /// docs/copy.md, "Where the two languages deliberately do not match one to
-    /// one": the accessibility representation switches with the language.
+    /// docs/interaction-design.md § Piece representation: the accessibility
+    /// representation switches with the language.
     /// Chinese names a piece by the character it carries, because that is what
     /// the board shows and what the reader is learning; English names it by its
     /// piece name and never by the character. So `b1 红 炮 已选择` is

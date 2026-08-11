@@ -95,7 +95,6 @@ on:
       - 'windows/**'
       - 'core/**'
       - 'pinned-inputs.json'
-      - 'docs/copy.md'
       - 'apple/MiniXiangqi/Sounds/**'
       - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
@@ -105,7 +104,6 @@ on:
       - 'windows/**'
       - 'core/**'
       - 'pinned-inputs.json'
-      - 'docs/copy.md'
       - 'apple/MiniXiangqi/Sounds/**'
       - 'LICENSE'
       - '.github/workflows/windows-frontend.yml'
@@ -275,15 +273,15 @@ jobs:
         run: dotnet build windows/MiniXiangqi.slnx -c Release --nologo
 
       # The frontend's own evidence: the whole boundary, the wrapper, the string
-      # table against docs/copy.md, and a game against the AI played through the
-      # play screen's session. On the ARM64 runner this is also the first time
-      # anything above the C interface has run on that architecture at all, so
-      # the harness's own "process" line is part of what the run reports.
+      # table, and a game against the AI played through the play screen's
+      # session. On the ARM64 runner this is also the first time anything above
+      # the C interface has run on that architecture at all, so the harness's
+      # own "process" line is part of what the run reports.
       - name: Run the smoke harness
         shell: pwsh
         run: |
           $exe = 'windows/MiniXiangqi.Smoke/bin/Release/net10.0-windows/MiniXiangqi.Smoke.exe'
-          & $exe --copy-table docs/copy.md
+          & $exe
           if ($LASTEXITCODE -ne 0) { throw "The smoke harness failed with $LASTEXITCODE." }
 
       - name: Render the board
@@ -337,9 +335,6 @@ jobs:
             Write-Host ("  assets\{0}  {1:N0} bytes" -f $_.Name, $_.Length)
           }
 
-          # No --copy-table: docs/copy.md is not in the zip and has no business
-          # being. The string table is checked against the contract by the build
-          # tree's run above; what this run is for is the layout.
           & (Join-Path $unpacked 'MiniXiangqi.Smoke.exe')
           if ($LASTEXITCODE -ne 0) { throw "The harness failed inside the unpacked zip with $LASTEXITCODE." }
 
