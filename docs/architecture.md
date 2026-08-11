@@ -9,7 +9,7 @@ This document defines the system's stable boundaries: the shared core, the nativ
 - One product runs on iOS, iPadOS, macOS, and Windows with identical game behavior and persisted meaning.
 - Everything correctness-critical is implemented exactly once, in a shared core, and validated by one test suite.
 - Each platform's frontend is native — SwiftUI on Apple platforms, WinUI 3 on Windows — and owns only presentation and platform services.
-- All gameplay works offline. Nothing may depend on networking or cloud services.
+- All gameplay works without the Internet. Nothing may depend on a server, an account, or a cloud service.
 - The application has one main window per platform.
 
 ## Shared core
@@ -29,7 +29,7 @@ Each frontend renders state, collects user intentions, and calls core operations
 
 - presentation, navigation, animation, sound, and haptics;
 - localization resources and accessibility integration;
-- platform services: storage location, file pickers, share and export surfaces, memory probes, and lifecycle events;
+- platform services: storage location, file pickers, share and export surfaces, memory probes, lifecycle events, and the transport nearby play is carried over;
 - transient UI state such as selection, pre-start drafts, and confirmation flows;
 - the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game are passed as arguments to game creation, where they are frozen into the game.
 

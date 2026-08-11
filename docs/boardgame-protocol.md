@@ -1,6 +1,6 @@
 # The BoardGame Protocol
 
-This document defines a wire contract by which two devices play one board game, with one transport binding. It defines no game's rules. Everything an implementing application builds around it — screens, discovery surfaces, permission handling, and whatever devices keep of finished games — is outside it.
+This document defines a wire contract by which two devices play one board game. It defines no game's rules. Everything an implementing application builds around it — the transports that carry it, screens, discovery surfaces, permission handling, and whatever devices keep of finished games — is outside it.
 
 > **Status: binding.**
 
@@ -12,7 +12,9 @@ A game is named by a `rules_id`: a string of lowercase letters, digits, and hyph
 
 ## The model
 
-Two peers hold one reliable, ordered, authenticated, encrypted byte stream. Within each direction the stream preserves order, but a message from each side can always cross a message from the other. Neither peer is distinguished; the only asymmetry a session ever has is who proposed it.
+Two peers hold one reliable, ordered byte stream, whose authenticity and privacy belong to whatever carries it. Within each direction the stream preserves order, but a message from each side can always cross a message from the other. Neither peer is distinguished; the only asymmetry a session ever has is who proposed it.
+
+What the protocol asks of a transport is only this: whole messages, rather than bytes a peer must frame for itself; a stable peer identity named behind every connection, which sessions and resume rely on, and which the transport names rather than anything here proves; exactly one such identity per peer — the same across a relaunch, the same behind every connection to that peer whatever carries it, and unchanged for as long as a session with that peer stands; and room for more than one connection to stand between one pair of peers at once.
 
 Every message is one JSON object with exactly one member: the message's name, whose value is an object holding its fields —
 
@@ -27,7 +29,7 @@ Every message is one JSON object with exactly one member: the message's name, wh
 Between one pair of peers at most one session is proposed or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** beside the pair's dealings. Every message's validity is decided by its receiver at arrival from the state it holds:
 
 - **proposed** — a `propose` is unanswered. A proposal is scoped to the connection it travelled on: `accept` and `decline` are effective only there, and an unanswered proposal dies with its connection.
-- **active** — the proposal was accepted; play is on.
+- **active** — the proposal was accepted; play is on, and the session is bound to the connection its `propose` travelled on.
 - **ended** — the game has a result. An ended session still answers `resume`; it applies an arriving valid in-sequence `move` and merges arriving terminals by the precedence rule; every other message arriving for it is discarded, never a violation. A new proposal retires it.
 - **void** — the session was destroyed without a result. A device forgets a void session.
 
@@ -75,7 +77,7 @@ One precedence rule decides every collision, applied whenever a peer learns of m
 
 ## Interruption and resume
 
-The transport names the peer device behind every connection, so a peer recognises its opponent on a fresh connection. It initiates `resume`, after `hello`, for a session that is **active**, or **ended** and unsettled — an unsettled peer may also open the exchange on the session's live connection. The exchange completes — and the session re-binds — on the connection the *proposer's* `resume` travelled on, which the proposer sends on exactly one connection of its choosing; every other `resume` either peer sent is void once it does, and a peer whose `resume` travelled any other connection re-sends it on the completing one. Neither peer sends a `move` for the session until it holds the other's `resume` on that connection.
+A peer recognises its opponent on a fresh connection. It initiates `resume`, after `hello`, for a session that is **active**, or **ended** and unsettled — an unsettled peer may also open the exchange on the session's live connection. The exchange completes — and the session re-binds — on the connection the *proposer's* `resume` travelled on, which the proposer sends on exactly one connection of its choosing; every other `resume` either peer sent is void once it does, and a peer whose `resume` travelled any other connection re-sends it on the completing one. Neither peer sends a `move` for the session until it holds the other's `resume` on that connection.
 
 `resume` states the session as the sender holds it: `undos` and `count`; `keep` — the surviving count of the last accepted retraction, meaningful when `undos` is above zero, otherwise echoed as the sender's `count`; and `end` — the terminal the sender has sent for this session, `resign` or `accept_draw`, absent when it has sent none. If one peer's `undos` is higher, the other truncates its plies to that peer's `keep`. Then the peer holding more plies resends the missing ones as ordinary `move` messages. Each peer merges the other's `end` by the precedence rule as if the terminal itself had arrived. A peer's exchange is complete — and the session settled — when it holds the other's `resume` on the completing connection and has received every ply reconciliation owes it from that `resume`.
 
@@ -85,18 +87,11 @@ A peer that genuinely does not know the session — it holds nothing for it, it 
 
 A malformed message, an illegal move, or any message with no lawful meaning in the receiver's connection and session state — beyond the stale-item, ended-state, and reconciliation allowances above — is a protocol violation: the detecting peer closes the connection and the session is void.
 
+A connection carrying no session is the other case entirely: either peer may close one at any time, and such a closure means nothing.
+
 ## Versions
 
 `hello` announces the one protocol version the sender speaks; this document is version **1**. A peer that cannot or will not speak the announced version closes the connection. Nothing ever obliges a newer version to accommodate an older one.
-
-## A transport binding: Wi-Fi Aware
-
-The protocol above needs only the stream its model states. One binding is defined, for iPhone and iPad:
-
-- The service is `_boardgame._tcp`, declared `Publishable` and `Subscribable` in `WiFiAwareServices`, with the `com.apple.developer.wifi-aware` entitlement carrying `Publish` and `Subscribe`.
-- Devices pair once through the system's DeviceDiscoveryUI; pairing is the system's and outlives the application. The paired-device identity the transport reports for each connection is the peer identity that sessions and resume rely on.
-- Both devices run the publisher and the subscriber together. Connections are TCP in `.bulk` performance mode on both sides, framed by the Network framework's JSON message coder, so the protocol layer sees whole messages.
-- Two crossed connections may both come up when both devices connect at once. A session binds to the connection its `propose` — or, resumed, its proposer's `resume` — travelled on, and either peer may close a connection carrying no session at any time; such a closure means nothing.
 
 ## Deliberately absent
 
