@@ -172,9 +172,9 @@ extern "C" {
  * core never issued, a struct_size this build cannot interpret, an incompatible
  * MXQ_API_VERSION, a value outside a closed vocabulary the frontend itself owns
  * (a square its own board does not have, a game configuration of neither
- * accepted shape, a thinking time that is none of the three accepted, a pinned
- * that is not 0 or 1), a second mxq_core_init, a core handle that is not the
- * live instance, and a mutation on a detached read-only session.
+ * accepted shape, a pinned that is not 0 or 1), a second mxq_core_init, a core
+ * handle that is not the live instance, and any call requiring a mutable
+ * session made on a detached read-only one — a mutation, or a hint.
  *
  * Four argument-domain statuses are deliberately not programming errors and
  * never assert, because each is an answer the core promises rather than a
@@ -184,8 +184,8 @@ extern "C" {
  * MXQ_ERR_ARG_CONCURRENT_USE, which reports a detected race rather than
  * aborting on a timing accident; and MXQ_ERR_ARG_REENTRANT, which the body of a
  * callback must be able to receive. MXQ_ERR_ARG_RANGE splits on the same test
- * rather than by code — see mxq_game_position_at and mxq_search_start, which
- * return it without asserting.
+ * rather than by code — see mxq_game_position_at, mxq_search_start and
+ * mxq_search_start_hint, which return it without asserting.
  *
  * Every other status is ordinary control flow and leaves the last committed
  * state intact.
@@ -585,10 +585,11 @@ enum {
 #define MXQ_ENGINE_MIN_RESERVE_BYTES     (134217728u)  /* 128 MiB */
 #define MXQ_ENGINE_PHYSICAL_PERCENT      50u
 
-/* The accepted thinking times, frozen with a created human-versus-AI game. The
- * product defines no other, which is what makes them a closed vocabulary rather
- * than three examples: mxq_search_start_hint takes its thinking time as a value
- * and accepts exactly these three. */
+/* The thinking times of the levels the product offers, one of them frozen with
+ * a created human-versus-AI game. A game keeps what it froze however these are
+ * retuned later, so a game's own frozen value is not always one of them:
+ * mxq_search_start_hint, which takes a thinking time as a value, accepts one of
+ * these or the attached session's frozen value where that is positive. */
 #define MXQ_MOVETIME_FAST_MS     1000u
 #define MXQ_MOVETIME_STANDARD_MS 3000u
 #define MXQ_MOVETIME_DEEP_MS     5000u
@@ -1787,25 +1788,36 @@ MXQ_API MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
  *
  * First, movetime_ms is the thinking time itself rather than a cross-check. It
  * must be one of MXQ_MOVETIME_FAST_MS, MXQ_MOVETIME_STANDARD_MS and
- * MXQ_MOVETIME_DEEP_MS, and any other value is MXQ_ERR_ARG_RANGE. That one
- * DOES assert, unlike mxq_search_start's: what it catches is a caller passing a
- * value outside a closed vocabulary it owns itself, not two independently-built
- * components disagreeing. Nothing here is compared with the session's frozen
- * ai_movetime_ms — which is the whole reason this entry exists, a Free Play
- * session freezing none and being owed a hint all the same.
+ * MXQ_MOVETIME_DEEP_MS, or equal to this session's frozen ai_movetime_ms where
+ * that is positive; any other value is MXQ_ERR_ARG_RANGE. That refusal reports
+ * and does not assert, exactly like mxq_search_start's: a game keeps the
+ * thinking time it froze at creation however the levels are retuned afterwards,
+ * so a value outside the levels can be a resumed game's own — two
+ * independently-built components disagreeing about which pairing is current,
+ * not a caller that could not have got here honestly. What is NOT done here is
+ * requiring agreement with the frozen value the way mxq_search_start does, and
+ * that is the whole reason this entry exists: a Free Play session freezes none,
+ * has nothing for a request to equal, and is owed a hint all the same — at one
+ * of the levels, since zero is never an accepted thinking time.
  *
  * Second, it refuses while any search is outstanding, its own kind included,
  * with MXQ_ERR_STATE_SEARCH_IN_PROGRESS. The engine thread runs one search at a
  * time, and a hint queued behind another one would be answered against a
  * position the player has left; the caller cancels what is running or asks
- * again later.
+ * again later. Cancellation is asynchronous: mxq_search_cancel asks the engine
+ * thread to stop, and this refusal can outlive that call until the thread has
+ * retired the cancelled search, so a caller cancels and then asks again rather
+ * than expecting the next call to be admitted.
  *
  * Third, it demands a session that could still take the move it proposes, which
  * is mxq_game_apply_move's own state gate: a detached replay is
  * MXQ_ERR_STATE_SESSION_READ_ONLY, a game one of the archiving paths has ended
  * is MXQ_ERR_STATE_SESSION_ARCHIVED, and a position with a result of its own is
- * MXQ_ERR_STATE_GAME_OVER. A claimable neutral repetition is not such a result
- * and has its hint like any other ongoing position.
+ * MXQ_ERR_STATE_GAME_OVER. The first of those asserts in a debug build, as
+ * every call requiring a mutable session does: no surface offers a hint on a
+ * detached replay, so a caller that reaches it has broken its own discipline.
+ * The other two are ordinary control flow. A claimable neutral repetition is
+ * not a result of its own and has its hint like any other ongoing position.
  *
  * As with mxq_search_start, the engine must be prepared for this session's game
  * or the call is MXQ_ERR_STATE_ENGINE_NOT_READY; callback may be NULL, leaving

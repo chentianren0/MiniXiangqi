@@ -94,7 +94,8 @@ void forget(MxqGame *game) {
  */
 MxqStatus require_mutable_impl(const MxqGame *game, MxqError *err) {
     if (game->read_only) {
-        assert(false && "a mutation on a detached read-only session");
+        assert(false && "a call needing a mutable session on a detached "
+                        "read-only one");
         fill_error(err, MXQ_ERR_STATE_SESSION_READ_ONLY,
                    "this session is a detached read-only replay");
         return MXQ_ERR_STATE_SESSION_READ_ONLY;

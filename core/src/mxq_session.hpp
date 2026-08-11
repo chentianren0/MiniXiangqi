@@ -134,9 +134,11 @@ struct MxqGame {
      * facts and carry different statuses.
      *
      * read_only is what a detached session is born: a replay or an import
-     * preview was never attached to a row, and mutating one is a category
-     * error the caller made — MXQ_ERR_STATE_SESSION_READ_ONLY, which mxq.h
-     * lists among the programming errors.
+     * preview was never attached to a row, and asking one for anything that
+     * needs a mutable session — a mutation, or the hint search, which proposes
+     * a move only a mutable session could take — is a category error the caller
+     * made. MXQ_ERR_STATE_SESSION_READ_ONLY, which mxq.h lists among the
+     * programming errors.
      *
      * archived is what an attached session becomes when one of the five
      * archiving paths succeeds: the game it owned is now an immutable History
@@ -201,9 +203,9 @@ private:
  */
 MxqStatus require(const MxqGame *game, MxqError *err);
 
-/* The check every mutation makes after that one: this session still accepts
- * mutations at all. See read_only and archived above for why they are two
- * facts and not one. */
+/* The check every mutation makes after that one, and the hint search with them:
+ * this session still accepts mutations at all. See read_only and archived above
+ * for why they are two facts and not one. */
 MxqStatus require_mutable(const MxqGame *game, MxqError *err);
 
 /*
