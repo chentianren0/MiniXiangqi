@@ -12,7 +12,7 @@ A game is named by a `rules_id`: a string of lowercase letters, digits, and hyph
 
 ## The model
 
-Two peers hold one reliable, ordered, authenticated, encrypted byte stream. Within each direction the stream preserves order, but a message from each side can always cross a message from the other. Neither peer is distinguished; the only asymmetry a session ever has is who proposed it.
+Two peers hold one reliable, ordered byte stream, whose authenticity and privacy are the carrying link's own. Within each direction the stream preserves order, but a message from each side can always cross a message from the other. Neither peer is distinguished; the only asymmetry a session ever has is who proposed it.
 
 Every message is one JSON object with exactly one member: the message's name, whose value is an object holding its fields —
 
@@ -89,14 +89,15 @@ A malformed message, an illegal move, or any message with no lawful meaning in t
 
 `hello` announces the one protocol version the sender speaks; this document is version **1**. A peer that cannot or will not speak the announced version closes the connection. Nothing ever obliges a newer version to accommodate an older one.
 
-## A transport binding: Wi-Fi Aware
+## A transport binding: iPhone and iPad
 
-The protocol above needs only the stream its model states. One binding is defined, for iPhone and iPad:
+The protocol above needs only the stream its model states. One binding is defined, for iPhone and iPad, and it carries a connection over either of two links; nothing above the transport tells the two apart.
 
-- The service is `_boardgame._tcp`, declared `Publishable` and `Subscribable` in `WiFiAwareServices`, with the `com.apple.developer.wifi-aware` entitlement carrying `Publish` and `Subscribe`.
-- Devices pair once through the system's DeviceDiscoveryUI; pairing is the system's and outlives the application. The paired-device identity the transport reports for each connection is the peer identity that sessions and resume rely on.
-- Both devices run the publisher and the subscriber together. Connections are TCP in `.bulk` performance mode on both sides, framed by the Network framework's JSON message coder, so the protocol layer sees whole messages.
-- Two crossed connections may both come up when both devices connect at once. A session binds to the connection its `propose` — or, resumed, its proposer's `resume` — travelled on, and either peer may close a connection carrying no session at any time; such a closure means nothing.
+- **Wi-Fi Aware.** The service is `_boardgame._tcp`, declared `Publishable` and `Subscribable` in `WiFiAwareServices`, with the `com.apple.developer.wifi-aware` entitlement carrying `Publish` and `Subscribe`. Devices pair once through the system's DeviceDiscoveryUI; pairing is the system's and outlives the application, and the platform authenticates and encrypts what it carries. Both devices run the publisher and the subscriber together, in `.realtime` performance mode on both sides.
+- **The local network.** `_boardgame._tcp` is the Bonjour service type, advertised and browsed by both devices together. Every device on the network running the application is reachable, and no pairing stands before a proposal.
+- The transport names a stable peer identity behind every connection, whatever link carries it, and that identity is what sessions and resume rely on. A paired device's system identity is one source of it; an application-minted identifier, stated by the peer and proved by nothing, is the other. A game is gated by the consent a proposal asks for and by nothing else.
+- Connections are TCP framed by the Network framework's JSON message coder, so the protocol layer sees whole messages.
+- Two crossed connections may both come up when both devices connect at once, on one link or on two. A session binds to the connection its `propose` — or, resumed, its proposer's `resume` — travelled on, and either peer may close a connection carrying no session at any time; such a closure means nothing.
 
 ## Deliberately absent
 

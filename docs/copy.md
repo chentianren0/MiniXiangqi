@@ -29,7 +29,7 @@ Contract sections are cited by document and section name rather than by line num
 | `game.miniXiangqi` | 迷你象棋 | Mini Xiangqi | Play-home section header; pre-start game name; metadata token | same — this is the game name inside the application, while `app.displayName` remains the product name |
 | `mode.humanVersusAI` | 人机对弈 | Human versus AI | mode entry; metadata token | [interaction-design.md](interaction-design.md) § The Play home, § Saving the active game before choosing a new mode; [product.md](product.md) § Play modes; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift` |
 | `mode.freePlay` | 自由对弈 | Free Play | mode entry; metadata token | same |
-| `mode.nearby` | 附近对弈 | Nearby Play | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Nearby play — the third row inside each game's section, absent where the hardware has no radio; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift`, `History/RecordMetadata.swift` |
+| `mode.nearby` | 附近对弈 | Nearby Play | mode entry; metadata token | [interaction-design.md](interaction-design.md) § Nearby play — the third row inside each game's section, on iPhone and iPad; `Play/PlayHome.swift`, `Play/ActiveGameMetadata.swift`, `History/RecordMetadata.swift` |
 
 ### Controls
 

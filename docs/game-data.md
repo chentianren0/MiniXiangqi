@@ -20,7 +20,7 @@ The shared core owns persistence through an embedded SQLite library store, behin
 
 **Archive content is device-portable and objective.** It records the game: which game, from which position, by which plies, to which result. It records nothing that is true only of the device holding it.
 
-Device-local facts therefore never enter archive content: the paired-device identity of a peer, which side of a nearby game this device's player took, pairing or device names, connection history, and the wire session's own bookkeeping. Local perspective is store metadata, beside pin state and provenance, and never travels in an exported file.
+Device-local facts therefore never enter archive content: the identity the transport names a peer by, which side of a nearby game this device's player took, pairing or device names, connection history, and the wire session's own bookkeeping. Local perspective is store metadata, beside pin state and provenance, and never travels in an exported file.
 
 A nearby game is played by two devices, and each keeps its own record of it. Identity is minted locally at creation and the instants are each device's own clock, so the two records are two records.
 
@@ -167,7 +167,7 @@ Imported games are local data. Importing must not contact a server.
 
 ### The wire session of an unfinished nearby game
 
-`nearby_session` holds what the protocol in [boardgame-protocol.md](boardgame-protocol.md) needs to continue an interrupted session after the application has been relaunched. It is the store's only device-local table, and every value in it is device-local by the portability law, which is why none of it is in the archive: the identifier the proposer minted, the paired device on the other end, which peer proposed, the accepted-retraction count and the ply count the last retraction survived to, the terminal this device has sent if it has sent one, and whether the last ply is the `claim` turn action — the one ply the archive deliberately does not record, and therefore the one an unfinished game has nowhere else to carry.
+`nearby_session` holds what the protocol in [boardgame-protocol.md](boardgame-protocol.md) needs to continue an interrupted session after the application has been relaunched. It is the store's only device-local table, and every value in it is device-local by the portability law, which is why none of it is in the archive: the identifier the proposer minted, the peer identity on the other end, which peer proposed, the accepted-retraction count and the ply count the last retraction survived to, the terminal this device has sent if it has sent one, and whether the last ply is the `claim` turn action — the one ply the archive deliberately does not record, and therefore the one an unfinished game has nowhere else to carry.
 
 - It is a table of its own, not columns on `game`. The two have different lifetimes and change on different beats: a terminal this device sent moves the session and not the game, and a nearby game is a small minority of the rows a library holds.
 - At most one row exists, keyed on the active game's `record_id` by primary key and foreign key. The mover is not among its columns: that is the `game` row's `local_side`, and one fact lives in one place.

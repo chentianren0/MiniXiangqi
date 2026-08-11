@@ -9,7 +9,7 @@ This document defines the system's stable boundaries: the shared core, the nativ
 - One product runs on iOS, iPadOS, macOS, and Windows with identical game behavior and persisted meaning.
 - Everything correctness-critical is implemented exactly once, in a shared core, and validated by one test suite.
 - Each platform's frontend is native — SwiftUI on Apple platforms, WinUI 3 on Windows — and owns only presentation and platform services.
-- All gameplay works offline. Nothing may depend on networking or cloud services.
+- All gameplay works without the Internet. Nothing may depend on a server, an account, or a cloud service.
 - The application has one main window per platform.
 
 ## Shared core

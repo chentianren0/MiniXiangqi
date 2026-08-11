@@ -13,7 +13,7 @@ This document owns the product definition, the target platforms, and the feature
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
 - **Every build contains both AI network files, the Windows zip included**, so there is no file a recipient has to add. What the bundled networks play like is measured in [engine-integration.md](engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
-- Fully offline constrains the app, not the platform beneath it: the app itself never touches the network. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
+- Fully offline constrains the app, not the platform beneath it: the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
 ## Target platforms
 
@@ -32,7 +32,7 @@ This document owns the product definition, the target platforms, and the feature
 - Xiangqi and Mini Xiangqi each offer the same three modes.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
-- **Nearby Play**, where two people play one game on two devices over the local radio. It is offered only where the hardware can, and internet play stays excluded.
+- **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
 - Human-versus-AI setup offers **我先手** (I Move First), **AI 先手** (AI Moves First), and **随机** (Random). Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
 - On a new installation, the Settings default is **我先手**. The user may change the persistent default to **AI 先手** or **随机**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
@@ -92,7 +92,7 @@ Detailed navigation behavior and presentation belong in [interaction-design.md](
 
 ## Exclusions
 
-- Network-dependent features.
+- Internet-dependent features, and servers, relays, and accounts of every kind.
 - Chess clocks.
 - Multiple main windows.
 - Structured lessons, practice drills, and AI hints.
