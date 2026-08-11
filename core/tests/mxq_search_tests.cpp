@@ -1700,15 +1700,15 @@ void case_shutdown_mid_search() {
 /*
  * The hint entry is mxq_search_start with three differences, and these cases
  * are those three plus the promise that nothing else moved: the thinking time
- * is an input from a closed vocabulary rather than a cross-check, one search is
- * outstanding at a time, and the states that would take no move have no move to
- * suggest. Everything the reply path already proves about tickets, staleness,
- * cancellation and delivery is asserted here only where a hint could plausibly
- * have taken its own path to it.
+ * is an input rather than a cross-check — one of the levels, or this game's own
+ * frozen value — one search is outstanding at a time, and the states that would
+ * take no move have no move to suggest. Everything the reply path already
+ * proves about tickets, staleness, cancellation and delivery is asserted here
+ * only where a hint could plausibly have taken its own path to it.
  *
- * Completing hints think for MXQ_MOVETIME_FAST_MS, which is the shortest
- * thinking time the entry accepts at all; the cases that never let a search
- * finish use the longer ones.
+ * Completing hints think for MXQ_MOVETIME_FAST_MS, the shortest of the levels,
+ * or for the short frozen value a case created its own game with; the cases
+ * that never let a search finish use the longer levels.
  */
 
 void case_hint_in_human_versus_ai() {
@@ -1868,6 +1868,17 @@ void case_hint_in_free_play() {
                        "the reply entry refuses a session with no frozen "
                        "movetime");
 
+        /* And the hint entry takes a session's frozen value only where it is
+         * positive: this one's is zero, which is no thinking time at all, so
+         * here the levels are the whole accepted set. */
+        uint64_t at_zero = 1;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, 0, nullptr, nullptr,
+                                             &at_zero, &err),
+                       MXQ_ERR_ARG_RANGE,
+                       "a hint at zero, which is this session's frozen value");
+        c.check_eq(static_cast<int64_t>(at_zero), 0, "and no ticket for it");
+
         uint64_t ticket = 0;
         err = make_error();
         c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
@@ -1893,9 +1904,9 @@ void case_hint_in_free_play() {
     c.report();
 }
 
-void case_hint_movetime_is_one_of_the_accepted_levels() {
-    Case c("the hint's movetime must be one of the three accepted thinking "
-           "times, and all three pass");
+void case_hint_movetime_is_a_level_or_this_game_s_own() {
+    Case c("the hint's thinking time is one of the levels or the value this "
+           "game froze, and any other value is refused without a ticket");
     const fs::path store = scratch_dir("hint-movetime");
     MxqError err = make_error();
     MxqCore *core = nullptr;
@@ -1905,48 +1916,68 @@ void case_hint_movetime_is_one_of_the_accepted_levels() {
         c.report();
         return;
     }
-    /* No preparation, deliberately: the movetime is judged before the engine
-     * is, so an accepted level reaches the engine's own refusal and a rejected
-     * one never does. That is what lets all three levels be asserted without
-     * three searches. */
-    const MxqGameConfig config = hvai_config(120);
+    /* Prepared, deliberately: an accepted thinking time has to be seen to be
+     * ACCEPTED — a ticket for a real search — rather than merely to reach the
+     * next refusal, which every value would do on an engine that is not ready.
+     */
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    /* A positive frozen value that is none of the levels: the shape a game
+     * created under a level pairing that has since been retuned has, and the
+     * one the second accepted form exists for. */
+    const uint32_t frozen = 120;
+    const MxqGameConfig config = hvai_config(frozen);
     MxqGame *game = nullptr;
     c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
                    "game create");
     if (game != nullptr) {
+        /* Each accepted value starts a search of its own, and each is drained
+         * before the next: a hint refuses while one is outstanding, and a
+         * cancelled search never burns its thinking time. */
         for (const uint32_t accepted : {MXQ_MOVETIME_FAST_MS,
                                         MXQ_MOVETIME_STANDARD_MS,
-                                        MXQ_MOVETIME_DEEP_MS}) {
+                                        MXQ_MOVETIME_DEEP_MS, frozen}) {
             uint64_t ticket = 0;
             err = make_error();
             c.check_status(mxq_search_start_hint(core, game, accepted, nullptr,
                                                  nullptr, &ticket, &err),
-                           MXQ_ERR_STATE_ENGINE_NOT_READY,
+                           MXQ_OK,
                            std::to_string(accepted) +
-                               " ms passes the vocabulary and is refused for "
-                               "the unprepared engine instead");
+                               " ms is accepted and searched for");
+            c.check(ticket != 0, std::to_string(accepted) +
+                                     " ms was issued a ticket");
+            c.check_status(mxq_search_cancel(core, ticket, &err), MXQ_OK,
+                           "cancel");
+            MxqSearchResult result = make_result();
+            uint8_t ready = 0;
+            c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                           &err),
+                           MXQ_OK, "wait out the cancellation");
+            c.check_eq(ready, 1, "the cancelled hint drained");
         }
 
-#if defined(NDEBUG)
-        /* A value outside a closed vocabulary the caller owns is a programming
-         * error, so this expectation is observable only where the assertion is
-         * compiled out. Zero is the Free Play session's frozen value, and 120
-         * is this game's own: neither is a thinking time the product defines,
-         * and the entry takes neither. */
-        for (const uint32_t rejected :
-             {0u, 1u, 120u, 999u, 4000u, 5001u, UINT32_MAX}) {
+        /* Everything else is refused, on the same prepared engine with nothing
+         * outstanding, so the thinking time is the only thing wrong with the
+         * call. 121 is a near miss on this game's frozen value and 4000 one on
+         * the levels; zero is what Free Play freezes, and a session's frozen
+         * value counts only where it is positive. The refusal reports and does
+         * not assert, so both configurations evaluate this. */
+        for (const uint32_t refused :
+             {0u, 1u, 119u, 121u, 999u, 4000u, 5001u, UINT32_MAX}) {
             uint64_t ticket = 1;
             err = make_error();
-            c.check_status(mxq_search_start_hint(core, game, rejected, nullptr,
+            c.check_status(mxq_search_start_hint(core, game, refused, nullptr,
                                                  nullptr, &ticket, &err),
                            MXQ_ERR_ARG_RANGE,
-                           std::to_string(rejected) +
-                               " ms is not one of the accepted thinking "
-                               "times");
+                           std::to_string(refused) +
+                               " ms is neither a level nor this game's frozen "
+                               "value");
             c.check_eq(static_cast<int64_t>(ticket), 0,
                        "and no ticket was issued for it");
         }
-#endif
         mxq_game_release(game);
     }
     mxq_core_shutdown(core, nullptr);
@@ -2077,8 +2108,9 @@ void case_hint_refused_while_a_search_is_outstanding() {
 }
 
 void case_hint_refused_on_a_finished_game() {
-    Case c("a game with a result of its own has no move to suggest, and an "
-           "archived one has none either");
+    Case c("a game with a result of its own has no move to suggest, an "
+           "archived one has none either, and a detached replay is refused for "
+           "being one");
     const fs::path store = scratch_dir("hint-game-over");
     MxqError err = make_error();
     MxqCore *core = nullptr;
@@ -2132,6 +2164,112 @@ void case_hint_refused_on_a_finished_game() {
                                              nullptr, nullptr, &ticket, &err),
                        MXQ_ERR_STATE_SESSION_ARCHIVED,
                        "a hint on an archived session");
+
+#if defined(NDEBUG)
+        /* And the record opened for replay is refused for being a replay,
+         * ahead of the result it also has: a hint needs a session that could
+         * take the move it proposes, and a call needing a mutable session made
+         * on a detached read-only one is one of the programming errors the
+         * contract has assert in a debug build. The status is therefore
+         * observable only where that assertion is compiled out — and nothing
+         * offers a hint on a replay, which is what makes it one. */
+        MxqGame *replay = nullptr;
+        err = make_error();
+        c.check_status(mxq_store_history_open(core, record_id, &replay, &err),
+                       MXQ_OK, "the record opens as a replay");
+        if (replay != nullptr) {
+            uint64_t on_replay = 1;
+            err = make_error();
+            c.check_status(mxq_search_start_hint(core, replay,
+                                                 MXQ_MOVETIME_FAST_MS, nullptr,
+                                                 nullptr, &on_replay, &err),
+                           MXQ_ERR_STATE_SESSION_READ_ONLY,
+                           "a hint on a detached replay");
+            c.check_eq(static_cast<int64_t>(on_replay), 0,
+                       "and no ticket for it");
+            mxq_game_release(replay);
+        }
+#endif
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_on_a_claimable_repetition() {
+    Case c("a claimable neutral repetition is not a result of its own, and the "
+           "hint is answered there like in any other ongoing position");
+    const fs::path store = scratch_dir("hint-claimable");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    const MxqGameConfig config = hvai_config(120);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        /* The shuffle the store suites reach claimability with: both chariots
+         * out and back twice, so the starting position is on the board for the
+         * third time. */
+        for (const char *move : {"b1b3", "b7b5", "b3b1", "b5b7", "b1b3", "b7b5",
+                                 "b3b1", "b5b7"}) {
+            c.check_status(mxq_game_apply_move(game, move, nullptr, nullptr,
+                                               &err),
+                           MXQ_OK, "the shuffle applies");
+        }
+        MxqGameStatus claimable;
+        std::memset(&claimable, 0, sizeof(claimable));
+        claimable.struct_size = static_cast<uint32_t>(sizeof(claimable));
+        c.check_status(mxq_game_status(game, &claimable, &err), MXQ_OK,
+                       "the status of the repeated position");
+        c.check_eq(static_cast<int64_t>(claimable.state),
+                   MXQ_GAME_CLAIMABLE_DRAW,
+                   "the line really does reach a claimable repetition");
+        c.check_eq(claimable.claim_available, 1, "with the claim available");
+
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_OK,
+                       "the hint is accepted: this game is ongoing, and the "
+                       "claim is the player's to make or not");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the hint arrived");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   "the outcome is a move, not a refusal for a game that is "
+                   "over");
+        c.check(legal_here(game, result.move.text),
+                std::string("the proposed move is in the side to move's legal "
+                            "set, got: ") +
+                    result.move.text);
+
+        /* And the repetition is where it was: a hint decides nothing about the
+         * claim, which is the player's. */
+        MxqGameStatus after;
+        std::memset(&after, 0, sizeof(after));
+        after.struct_size = static_cast<uint32_t>(sizeof(after));
+        c.check_status(mxq_game_status(game, &after, &err), MXQ_OK,
+                       "the status after the hint");
+        c.check_eq(static_cast<int64_t>(after.state), MXQ_GAME_CLAIMABLE_DRAW,
+                   "the game is still the claimable repetition");
+        c.check_eq(after.claim_available, 1, "and the claim is still there");
+        c.check_eq(static_cast<int64_t>(stored_move_count(core)), 8,
+                   "the store holds the shuffle and nothing the hint produced");
         mxq_game_release(game);
     }
     mxq_core_shutdown(core, nullptr);
@@ -2827,9 +2965,10 @@ int main() {
 
     case_hint_in_human_versus_ai();
     case_hint_in_free_play();
-    case_hint_movetime_is_one_of_the_accepted_levels();
+    case_hint_movetime_is_a_level_or_this_game_s_own();
     case_hint_refused_while_a_search_is_outstanding();
     case_hint_refused_on_a_finished_game();
+    case_hint_on_a_claimable_repetition();
     case_hint_stale_after_a_move();
 
     /* The variant axis last: these are the only cases that leave the engine's

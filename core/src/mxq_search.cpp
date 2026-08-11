@@ -508,10 +508,10 @@ enum class Purpose { Reply, Hint };
  * and the enqueue.
  *
  * The snapshot is made under the guard and is values only, so it can never
- * interleave with a mutation, and the session is not retained. movetime_ms
- * arrives already validated — against the session's frozen value for a reply,
- * against the accepted levels for a hint — because what makes a thinking time
- * legal is the one thing the two entries do not agree about.
+ * interleave with a mutation, and the session is not retained. What makes a
+ * thinking time legal is the one thing the two entries do not agree about, so
+ * each judges movetime_ms itself, here, where the session it is judged against
+ * is held.
  */
 MxqStatus start(MxqCore *core, const MxqGame *game, Purpose purpose,
                 uint32_t movetime_ms, MxqSearchCallback callback,
@@ -547,6 +547,33 @@ MxqStatus start(MxqCore *core, const MxqGame *game, Purpose purpose,
             return MXQ_ERR_ARG_RANGE;
         }
     } else {
+        /*
+         * The thinking time is an input here rather than a cross-check, and
+         * two kinds of value are legal: one of the levels the product offers,
+         * and whatever this game itself froze. The second is not a convenience.
+         * A game keeps the thinking time it was created with however the levels
+         * are retuned afterwards, so a resumed game's own frozen value is the
+         * honest thing to think for in it, and a hint asked at it is two
+         * independently-built components agreeing about that game rather than a
+         * caller stepping outside a vocabulary it owns. Zero is not such a
+         * value: a Free Play session froze none, and there is nothing to think
+         * for zero milliseconds about.
+         *
+         * Report-only, like the reply's cross-check and for the same reason:
+         * what a mismatch here reports is a level pairing that has moved since
+         * the game was created, not a caller that could not have got here
+         * honestly.
+         */
+        if (movetime_ms != MXQ_MOVETIME_FAST_MS &&
+            movetime_ms != MXQ_MOVETIME_STANDARD_MS &&
+            movetime_ms != MXQ_MOVETIME_DEEP_MS &&
+            !(game->config.ai_movetime_ms != 0 &&
+              movetime_ms == game->config.ai_movetime_ms)) {
+            fill_error(err, MXQ_ERR_ARG_RANGE,
+                       "movetime_ms must be one of the accepted thinking times "
+                       "or this session's own frozen ai_movetime_ms");
+            return MXQ_ERR_ARG_RANGE;
+        }
         /*
          * A hint proposes a move this session could take, so the states that
          * would take no move are the states that have none to suggest: this is
@@ -841,25 +868,9 @@ MxqStatus MXQ_CALL mxq_search_start_hint(MxqCore *core, const MxqGame *game,
         return MXQ_ERR_ARG_NULL;
     }
     *out_ticket = 0;
-
-    /*
-     * The thinking time is an input here rather than a cross-check, and the
-     * product defines exactly three. A fourth value is a caller choosing
-     * outside a closed vocabulary it owns itself, which the error taxonomy
-     * makes a programming error — unlike mxq_search_start's cross-check, which
-     * reports two independently-built components disagreeing and asserts on
-     * neither. It is asked before the session is touched at all: what is wrong
-     * with the call is the argument, whatever state the session is in.
-     */
-    if (movetime_ms != MXQ_MOVETIME_FAST_MS &&
-        movetime_ms != MXQ_MOVETIME_STANDARD_MS &&
-        movetime_ms != MXQ_MOVETIME_DEEP_MS) {
-        assert(false && "the hint movetime is not one of the accepted levels");
-        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "movetime_ms must be one of the three accepted "
-                        "thinking times");
-        return MXQ_ERR_ARG_RANGE;
-    }
+    /* The thinking time is judged against the session, inside start(): what is
+     * accepted is a level or this game's own frozen value, and the second of
+     * those is not a fact this entry holds before the session is held. */
     return mxq::search::start(core, game, mxq::search::Purpose::Hint,
                               movetime_ms, callback, user_data, out_ticket,
                               err);
