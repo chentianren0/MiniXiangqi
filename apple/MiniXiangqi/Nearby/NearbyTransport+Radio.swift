@@ -31,13 +31,22 @@ extension NearbyTransport: NearbyRadio {
     /// name it the same way: the identity a device sends for itself is what a
     /// connection is named by, what an advertisement carries, and what a
     /// pairing record maps to once any connection has resolved it.
+    /// **The registry is where a device's name comes from**, out of both the
+    /// places the system may hold one. It matters here and not only on a
+    /// connection: the registry's row is the merge's first source, so a name
+    /// resolved here is the name the row keeps whichever connection stands.
+    /// Reading only the record's own `name` would leave the discoverable side
+    /// of a pairing nameless in the registry, and its row would then take its
+    /// words from whichever candidate was chosen — reading one way over the
+    /// radio and another over the network, which is a row that changes under
+    /// the reader for a reason no row may have.
     var peers: [NearbyPeer] {
         NearbyPeer.room(
             paired: pairedDevices.map {
                 let pairing = nearbyPairingID(of: $0)
                 return NearbyPeer(connection: nil,
                                   peer: NearbyIdentity.linked(to: pairing) ?? pairing,
-                                  name: $0.name)
+                                  name: $0.displayName)
             },
             discovered: advertised,
             // Two crossed connections to one device are the ordinary bring-up

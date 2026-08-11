@@ -210,6 +210,17 @@ final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
     }
 
     /// Who the other device says it is, for as long as the window allows.
+    ///
+    /// **It is asked once, and answered once for the connection's whole life.**
+    /// The stream is closed on the first arrival, so a second linkage frame is
+    /// discarded by the receive loop's own `yield` rather than acted on: a peer
+    /// cannot re-identify itself half way through a connection. That is
+    /// load-bearing rather than tidy — the contract's identity is the same
+    /// "behind every connection to that peer … and unchanged for as long as a
+    /// session with that peer stands", and a peer that could rename itself
+    /// under a standing session would be answered by the engine with an
+    /// unknown-session void or a violation close, which is a game destroyed.
+    /// Whatever a peer sends after it has said who it is, it has said who it is.
     func linkageArrived(within window: Duration) async -> String? {
         let watchdog = Task { [self] in
             try? await Task.sleep(for: window)
@@ -217,7 +228,10 @@ final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
         }
         defer { watchdog.cancel() }
 
-        for await identifier in linkage { return identifier }
+        for await identifier in linkage {
+            linkageFeed.finish()
+            return identifier
+        }
         return nil
     }
 

@@ -161,6 +161,33 @@ struct NearbyRoomTests {
         }
     }
 
+    @Test("A row's words do not change with the connection that stands")
+    func aRowReadsTheSameOverEitherPath() {
+        // The consequence of getting the sources' order or their contents
+        // wrong, stated as the rule it breaks. The registry is where a name
+        // comes from and it is the merge's first source; a connection carries a
+        // name only where its own path has one to give — a radio connection has
+        // the pairing record behind it, a network connection has nothing it
+        // would be safe to show — so a row that took its words from whichever
+        // connection was chosen would read one way over one path and another
+        // over the other, for a reason the reader can neither see nor act on.
+        let peer = NearbyIdentity.peer("9F3C1D2E")
+        let registry = NearbyPeer(connection: nil, peer: peer, name: "Their iPhone")
+        let overRadio = NearbyPeer(connection: ConnectionID("c-1"), peer: peer,
+                                   name: "Their iPhone")
+        let overNetwork = NearbyPeer(connection: ConnectionID("c-2"), peer: peer, name: nil)
+
+        let radio = NearbyPeer.room(paired: [registry], discovered: [], connected: [overRadio])
+        let network = NearbyPeer.room(paired: [registry], discovered: [],
+                                      connected: [overNetwork])
+
+        #expect(radio.first?.label == .named("Their iPhone"))
+        #expect(network.first?.label == radio.first?.label)
+        // And the connection each row carries is still its own path's.
+        #expect(radio.first?.connection == ConnectionID("c-1"))
+        #expect(network.first?.connection == ConnectionID("c-2"))
+    }
+
     @Test("Where two devices have no name, four characters of the identity tell them apart")
     func unnamedDevicesAreStillDistinguishable() {
         let here = NearbyPeer(connection: nil, peer: NearbyIdentity.peer("1111-AAAA"),

@@ -118,6 +118,8 @@ struct NearbyIdentityTests {
                     "the identity that arrived, never the pairing record")
             #expect(exchange.said == [NearbyIdentity.own(in: defaults)],
                     "and this device said its own, once")
+            #expect(exchange.asked == 1,
+                    "asked once: a peer cannot re-identify itself mid-connection")
             #expect(NearbyIdentity.linked(to: pairing, in: defaults)
                     == NearbyIdentity.peer("9F3C"),
                     "learned over the pairing it arrived on, for the next time")
@@ -212,6 +214,10 @@ private final class FakeExchange: NearbyLinkageExchange {
 
     private(set) var said: [String] = []
     private(set) var waited: Duration?
+    /// How many times the peer's identity was asked for. Once per connection is
+    /// the rule: a peer says who it is, and what it says after that is not a
+    /// second answer.
+    private(set) var asked = 0
 
     init(answering answer: String?) { self.answer = answer }
 
@@ -222,6 +228,7 @@ private final class FakeExchange: NearbyLinkageExchange {
 
     func linkageArrived(within window: Duration) async -> String? {
         waited = window
+        asked += 1
         return answer
     }
 }
