@@ -3,8 +3,9 @@
 // composed, and the answer a proposal is owed.
 //
 // docs/interaction-design.md, "Nearby play": the entry is a third row inside
-// each game's section on the Play home, shown only where the hardware has the
-// radio; the row raises that game's propose sheet, where a device is chosen and
+// each game's section on the Play home, standing wherever either way of
+// reaching another device could carry a game — which on iPhone and iPad is
+// always; the row raises that game's propose sheet, where a device is chosen and
 // a side with it, or opens the game already going with somebody; the peer
 // answers a consent prompt; and a refusal is presented by its reason rather than
 // by its code.
@@ -20,11 +21,11 @@
 // interruption the protocol already models rather than the end of anything, and
 // coming back finds the session where the two devices left it.
 //
-// The seams are the driver and the radio. Both are protocols so that this
-// object's own behaviour can be tested without a radio in the room — and the
-// availability the entry rows are gated on is injected for the same reason,
-// since a Simulator has no Wi-Fi Aware and a test has to be able to show both
-// states.
+// The seams are the driver and the transport. Both are protocols so that this
+// object's own behaviour can be tested with neither a radio in the room nor a
+// network under it — and the availability the entry rows are gated on is
+// injected for the same reason, since the answer belongs to the platform and a
+// test has to be able to show a screen with the rows and a screen without them.
 
 import Foundation
 import Observation
@@ -51,23 +52,31 @@ nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
     var id: PeerDeviceID { peer }
 }
 
-/// The radio, as the surfaces need it.
+/// What this device reaches other devices with, as the surfaces need it.
 @MainActor
-protocol NearbyRadio: AnyObject {
-    /// Whether this hardware has Wi-Fi Aware at all.
-    var isSupported: Bool { get }
+protocol NearbyReach: AnyObject {
+    /// Whether this hardware has the paired-device radio.
+    ///
+    /// **The pairing entry is the only thing that reads it**, because pairing is
+    /// the system's own ceremony over that radio and a device without one has
+    /// nothing to pair with. Nothing else gates on it: the feature itself, the
+    /// room, and every game stand whether or not the answer is yes, since the
+    /// other way of reaching a device asks the hardware for nothing.
+    var hasRadio: Bool { get }
     var isRunning: Bool { get }
     /// Every device in the room, one entry per device — the system's pairing
     /// records and whatever is advertising itself on the network, carrying the
     /// connection to each where one is up.
     var peers: [NearbyPeer] { get }
-    /// Take up the system's pairing record, which is what the room is made of.
+    /// Take up the system's pairing record, which is one of what the room is
+    /// made of.
     ///
     /// Idempotent, and deliberately *not* bracketed by `start()` and `stop()`:
-    /// pairing is a record the system holds whether or not a radio is running.
-    /// It is a call rather than something the radio does once, because the
+    /// pairing is a record the system holds whether or not anything is running.
+    /// It is a call rather than something the transport does once, because the
     /// system's snapshots can end on their own and a watch that ended has to be
-    /// taken again.
+    /// taken again. Hardware with no radio has no records to watch, and this
+    /// answers that for itself so that every caller is the same call.
     func watchPairedDevices()
     func start()
     func stop()
@@ -208,14 +217,14 @@ nonisolated enum NearbyVoid: Equatable, Sendable {
 @Observable
 final class NearbyFlow {
     let driver: any NearbyDriving
-    let radio: any NearbyRadio
+    let reach: any NearbyReach
     /// The positions a nearby board draws, which the board's own model asks.
     /// Held here because this object is the nearby feature's one dependency set
     /// and the board is opened from it.
     let positions: any NearbyPositions
 
     /// Whether the Play home offers nearby at all. Injected rather than read
-    /// here: the answer belongs to the hardware, and a test has to be able to
+    /// here: the answer belongs to the platform, and a test has to be able to
     /// show a screen with the rows and a screen without them.
     let isAvailable: Bool
 
@@ -283,10 +292,10 @@ final class NearbyFlow {
     /// left.
     private var orientations: [String: Bool] = [:]
 
-    init(driver: any NearbyDriving, radio: any NearbyRadio,
+    init(driver: any NearbyDriving, reach: any NearbyReach,
          positions: any NearbyPositions, isAvailable: Bool) {
         self.driver = driver
-        self.radio = radio
+        self.reach = reach
         self.positions = positions
         self.isAvailable = isAvailable
         watchPublications()
@@ -330,23 +339,22 @@ final class NearbyFlow {
         boardHeld = held
     }
 
-    /// Whether nearby is offered on this device. iPhone and iPad only — the
-    /// entitlement is signed for those two and the system pairing UI does not
-    /// exist on the Mac — and, there, only where the hardware has the radio.
-    static func isAvailableHere(_ radio: any NearbyRadio) -> Bool {
+    /// Whether nearby is offered on this device.
+    ///
+    /// **iPhone and iPad, always.** The row stands wherever either way of
+    /// reaching another device could carry a game, and one of the two asks the
+    /// hardware for nothing at all: a device with no radio still plays over the
+    /// local network, and a network the player has declined or has not joined is
+    /// a shorter reach rather than a feature that is not there. So the question
+    /// this answers is the platform's alone, and no hardware answer is read.
+    ///
+    /// Never on the Mac, which has neither the entitlement nor the system's
+    /// pairing UI, and where the whole feature is compiled out.
+    static var isAvailableHere: Bool {
         #if os(iOS)
-        #if DEBUG
-        // A Simulator has no Wi-Fi Aware, so the state a UI test cannot reach is
-        // the one where the rows are *there*. Both states are named explicitly,
-        // because a test that asserts the rows are hidden proves nothing unless
-        // some other launch shows them.
-        if let forced = DebugLaunch.argument(after: "-mxq-nearby-capable") {
-            return forced == "1"
-        }
-        #endif
-        return radio.isSupported
+        true
         #else
-        return false
+        false
         #endif
     }
 
@@ -376,10 +384,11 @@ final class NearbyFlow {
     }
 
     /// The devices the invitation may go to, and the one it would go to. The
-    /// radio's own answer: every device this one is paired with, as the system
-    /// holds them, which is what makes the list right the instant the sheet
-    /// opens rather than once a connection has come up.
-    var peers: [NearbyPeer] { radio.peers }
+    /// transport's own answer: every device this one is paired with, as the
+    /// system holds them, and everything advertising itself on the network —
+    /// which is what makes the list right the instant the sheet opens rather
+    /// than once a connection has come up.
+    var peers: [NearbyPeer] { reach.peers }
 
     /// The device an invitation would go to: the row that was pressed, or —
     /// with nothing pressed — the readiest device in the room.
@@ -406,7 +415,7 @@ final class NearbyFlow {
 
     /// Whether anything is still owed between this device and another: a game
     /// being played, a proposal outstanding, or a finished game this device has
-    /// not settled. It is what keeps the radio up after the pages have been
+    /// not settled. It is what keeps the transport up after the pages have been
     /// left.
     var holdsSomething: Bool {
         driver.sessions.contains { $0.state != .ended || !$0.settled }
@@ -440,9 +449,9 @@ final class NearbyFlow {
     }
 
     /// Back into the nearby game the library is holding: the session is rebuilt
-    /// from what the store kept of it, and the board opens on it. The radio
-    /// wakes with the board, the transport dials, and the resume the contract
-    /// owes an interrupted session goes out by itself.
+    /// from what the store kept of it, and the board opens on it. The transport
+    /// wakes with the board and dials, and the resume the contract owes an
+    /// interrupted session goes out by itself.
     ///
     /// Where the library has nothing to give back — a game the protocol already
     /// parted with, or a store that would not answer — nothing opens, and the
@@ -636,28 +645,33 @@ final class NearbyFlow {
         orientations[session] = flipped
     }
 
-    // MARK: - The radio
+    // MARK: - The transport
 
-    /// The radio runs while nearby is being used and while anything is owed to
-    /// a peer, and not otherwise: a device with no nearby surface up and no
+    /// The transport runs while nearby is being used and while anything is owed
+    /// to a peer, and not otherwise: a device with no nearby surface up and no
     /// session standing has nobody to be discovered by.
+    ///
+    /// **Both ways of reaching a device are on this one bracket**, so they are
+    /// up together and down together, and no surface can tell that there are
+    /// two. Nothing here asks what the hardware has: a device with no radio has
+    /// the other path, and the transport starts what it has.
     ///
     /// **The pairing registry is not on that bracket.** A surface being up is
     /// the whole reason to be watching it, so the watch is taken every time one
-    /// wakes, radio already running or not — the system's snapshots can end on
-    /// their own, and a watch that ended once would otherwise leave the room
+    /// wakes, transport already running or not — the system's snapshots can end
+    /// on their own, and a watch that ended once would otherwise leave the room
     /// empty for the rest of the launch.
     private func wake() {
-        guard isAvailable, radio.isSupported else { return }
-        radio.watchPairedDevices()
-        guard !radio.isRunning else { return }
-        radio.start()
+        guard isAvailable else { return }
+        reach.watchPairedDevices()
+        guard !reach.isRunning else { return }
+        reach.start()
     }
 
     private func restIfIdle() {
         guard proposing == nil, boardSessionID == nil, !holdsSomething,
-              radio.isRunning else { return }
-        radio.stop()
+              reach.isRunning else { return }
+        reach.stop()
     }
 
     // MARK: - The application's own lifecycle
@@ -666,12 +680,17 @@ final class NearbyFlow {
     ///
     /// **Nothing about the game is at stake here**: every ply was committed as
     /// it landed, and the wire session went with it, so what a suspension costs
-    /// is the radio and nothing else. What is taken up again is exactly that —
-    /// the pairing watch, whose snapshots the system can end on its own, and
-    /// the publisher and browser, which a suspension stops. The connection
-    /// itself is not chased: it idles out between moves by the radio's own
-    /// design, and the browser dials again by itself, which is the ordinary
-    /// motion this feature was built on rather than a recovery.
+    /// is the transport and nothing else. What is taken up again is exactly
+    /// that — the pairing watch, whose snapshots the system can end on its own,
+    /// and everything that listens or dials, which a suspension stops. The
+    /// connection itself is not chased: it idles out between moves, and the
+    /// browsers dial again by themselves, which is the ordinary motion this
+    /// feature was built on rather than a recovery.
+    ///
+    /// It is also where the local network's own permission is met, for the
+    /// reason the bracket exists: a browse begun here begins in front of
+    /// somebody who has just come back to this, never in the background where
+    /// an undetermined permission is refused in silence.
     func returnedToForeground() {
         guard proposing != nil || boardSessionID != nil || holdsSomething else {
             return

@@ -1,4 +1,4 @@
-// The nearby flow, without a radio in the room.
+// The nearby flow, with nothing to reach anybody by.
 //
 // What is pinned here is the part of the feature that is neither the protocol
 // nor a picture: whether the entry is offered at all, what an invitation carries,
@@ -18,57 +18,79 @@ struct NearbyFlowTests {
 
     // MARK: - Whether nearby is offered at all
 
-    @Test("A device without the radio offers nothing and starts nothing")
-    func theEntryIsGatedOnTheHardware() {
-        let radio = FakeRadio(isSupported: false)
-        let flow = flow(radio: radio, isAvailable: false)
+    @Test("Where the platform offers nothing, nothing is drawn and nothing starts")
+    func theEntryIsGatedOnThePlatform() {
+        let reach = FakeReach(hasRadio: false)
+        let flow = flow(reach: reach, isAvailable: false)
 
         #expect(!flow.isAvailable)
-        // Even asked, there is nothing to wake: the rows are not drawn, and the
-        // radio is not started behind them.
+        // Even asked, there is nothing to wake: the rows are not drawn, and
+        // nothing is started behind them.
         flow.open(.miniXiangqi)
-        #expect(!radio.isRunning)
-        #expect(radio.watches == 0, "and where there is no radio there are no pairings to watch")
+        #expect(!reach.isRunning)
+        #expect(reach.watches == 0, "and nothing is watched for a feature that is not offered")
     }
 
-    @Test("The registry watch is taken every time a surface wakes, radio running or not")
-    func everyWakeTakesTheRegistryWatch() {
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(radio: radio)
-
-        flow.open(.miniXiangqi)
-        #expect(radio.isRunning)
-        #expect(radio.watches == 1)
-
-        // The radio is already up, so nothing starts it again — and the watch is
-        // taken all the same. This is the only place a watch the system ended is
-        // ever retaken, and a radio held up by a standing session would
-        // otherwise leave the room empty for the rest of the launch.
-        flow.open(.xiangqi)
-        #expect(radio.isRunning)
-        #expect(radio.watches == 2, "the registry is not on the radio's bracket")
-    }
-
-    @Test("A device with the radio offers it, and the surface wakes it")
-    func theEntryIsOfferedWhereTheRadioIs() {
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(radio: radio, isAvailable: true)
+    @Test("A device with no radio offers nearby all the same, and the surface wakes it")
+    func theEntryDoesNotReadTheRadio() {
+        // **The one thing this stage changed, pinned.** The feature is two ways
+        // of reaching another device and one of them asks the hardware for
+        // nothing, so a device without the radio has the row, the sheet, the
+        // room and every game — and the transport comes up behind them exactly
+        // as it does anywhere else. What such a device cannot do is pair, which
+        // is the propose sheet's own section and nothing else.
+        let reach = FakeReach(hasRadio: false)
+        let flow = flow(reach: reach)
 
         #expect(flow.isAvailable)
         flow.open(.miniXiangqi)
         #expect(flow.proposing == .miniXiangqi)
-        #expect(radio.isRunning, "the sheet is a nearby surface, so the radio comes up")
+        #expect(reach.isRunning, "the other path needs no radio, so there is something to start")
+        #expect(reach.watches == 1,
+                "and the registry watch is the same call whatever the hardware answers")
     }
 
-    @Test("Availability is the hardware's answer, and the Mac's is no")
-    func availabilityReadsTheRadioWhereThereIsOne() {
+    @Test("The registry watch is taken every time a surface wakes, transport running or not")
+    func everyWakeTakesTheRegistryWatch() {
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(reach: reach)
+
+        flow.open(.miniXiangqi)
+        #expect(reach.isRunning)
+        #expect(reach.watches == 1)
+
+        // The transport is already up, so nothing starts it again — and the
+        // watch is taken all the same. This is the only place a watch the system
+        // ended is ever retaken, and a transport held up by a standing session
+        // would otherwise leave the room empty for the rest of the launch.
+        flow.open(.xiangqi)
+        #expect(reach.isRunning)
+        #expect(reach.watches == 2, "the registry is not on the transport's bracket")
+    }
+
+    @Test("A device with the radio offers it too, and the surface wakes it")
+    func theEntryIsOfferedWhereTheRadioIs() {
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(reach: reach, isAvailable: true)
+
+        #expect(flow.isAvailable)
+        flow.open(.miniXiangqi)
+        #expect(flow.proposing == .miniXiangqi)
+        #expect(reach.isRunning, "the sheet is a nearby surface, so the transport comes up")
+    }
+
+    @Test("Availability is the platform's answer, and the Mac's is no")
+    func availabilityIsThePlatformsAnswer() {
         #if os(iOS)
-        #expect(NearbyFlow.isAvailableHere(FakeRadio(isSupported: true)))
-        #expect(!NearbyFlow.isAvailableHere(FakeRadio(isSupported: false)))
+        // iPhone and iPad, always: the row stands wherever either way of
+        // reaching a device could carry a game, and on these two that is every
+        // device — including this one, which is running on a Simulator with no
+        // radio at all.
+        #expect(NearbyFlow.isAvailableHere)
         #else
-        // A Mac has neither the entitlement nor the system's pairing UI, so the
-        // answer is no whatever a radio would have said.
-        #expect(!NearbyFlow.isAvailableHere(FakeRadio(isSupported: true)))
+        // A Mac has neither the entitlement nor the system's pairing UI, and the
+        // feature is compiled out of it entirely.
+        #expect(!NearbyFlow.isAvailableHere)
         #endif
     }
 
@@ -77,8 +99,8 @@ struct NearbyFlowTests {
     @Test("An invitation carries the row's game, the chosen side, and the chosen device")
     func aProposalCarriesWhatWasComposed() throws {
         let driver = FakeDriver()
-        let radio = FakeRadio(isSupported: true, peers: [.other])
-        let flow = flow(driver: driver, radio: radio)
+        let reach = FakeReach(hasRadio: true, peers: [.other])
+        let flow = flow(driver: driver, reach: reach)
 
         flow.open(.xiangqi)
         flow.proposerMoves = .second
@@ -102,8 +124,8 @@ struct NearbyFlowTests {
 
     @Test("A device paired while the sheet is open appears on it")
     func aDevicePairedWhileTheSheetIsOpenAppears() {
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(radio: radio)
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(reach: reach)
 
         flow.open(.miniXiangqi)
         #expect(flow.proposing == .miniXiangqi)
@@ -112,7 +134,7 @@ struct NearbyFlowTests {
 
         // The system's pairing hands back to the sheet, and the registry watch
         // publishes the pair without anything being pressed again.
-        radio.peers = [.other]
+        reach.peers = [.other]
 
         #expect(flow.peers == [NearbyPeer.other], "the row is there the moment the pairing is")
         #expect(flow.chosenDevice?.peer == NearbyPeer.other.peer,
@@ -126,7 +148,7 @@ struct NearbyFlowTests {
                                  name: "Their iPad")
         let ready = NearbyPeer(connection: ConnectionID("c-1"),
                                peer: PeerDeviceID("wifi-aware-device-2"), name: "Their iPhone")
-        let flow = flow(radio: FakeRadio(isSupported: true, peers: [waiting, ready]))
+        let flow = flow(reach: FakeReach(hasRadio: true, peers: [waiting, ready]))
 
         #expect(flow.chosenDevice?.peer == ready.peer,
                 "the standing default is the device an invitation can leave for")
@@ -145,7 +167,7 @@ struct NearbyFlowTests {
                                name: "A")
         let second = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
                                 name: "B")
-        let flow = flow(radio: FakeRadio(isSupported: true, peers: [first, second]))
+        let flow = flow(reach: FakeReach(hasRadio: true, peers: [first, second]))
 
         #expect(flow.chosenDevice?.peer == first.peer)
         #expect(!flow.canInvite, "with nothing dialled anywhere, the invitation is not offered")
@@ -153,8 +175,8 @@ struct NearbyFlowTests {
 
     @Test("The invitation is offered only where there is a connection to carry it")
     func theInvitationIsOfferedOnlyWithAConnection() {
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(radio: radio)
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(reach: reach)
 
         flow.open(.miniXiangqi)
         #expect(!flow.canInvite, "an empty room has nobody to invite")
@@ -164,12 +186,12 @@ struct NearbyFlowTests {
         // would be allowed.
         let waiting = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
                                  name: "Their iPad")
-        radio.peers = [waiting]
+        reach.peers = [waiting]
         #expect(flow.chosenDevice?.peer == waiting.peer, "the row is there all the same")
         #expect(!flow.canInvite)
 
         // The browser's own dial lands, and the same row is one to press.
-        radio.peers = [NearbyPeer(connection: ConnectionID("c-1"), peer: waiting.peer,
+        reach.peers = [NearbyPeer(connection: ConnectionID("c-1"), peer: waiting.peer,
                                   name: waiting.name)]
         #expect(flow.canInvite)
     }
@@ -179,7 +201,7 @@ struct NearbyFlowTests {
         let driver = FakeDriver()
         let waiting = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
                                  name: "Their iPad")
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [waiting]))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true, peers: [waiting]))
 
         flow.open(.miniXiangqi)
         flow.invite(waiting, to: .miniXiangqi)
@@ -194,7 +216,7 @@ struct NearbyFlowTests {
     func anEngineRefusalIsPresentedByReason() {
         let driver = FakeDriver()
         driver.refuses = .peerIsBusy
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [.other]))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true, peers: [.other]))
 
         flow.open(.miniXiangqi)
         flow.invite(.other, to: .miniXiangqi)
@@ -230,7 +252,7 @@ struct NearbyFlowTests {
     @Test("A refusal the peer sent is presented once")
     func aPeerRefusalIsPresentedOnce() {
         let driver = FakeDriver()
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [.other]))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true, peers: [.other]))
         flow.open(.miniXiangqi)
 
         driver.declines = [NearbyDecline(session: "S", peer: NearbyPeer.other.peer,
@@ -249,7 +271,7 @@ struct NearbyFlowTests {
     @Test("A proposal the peer accepted opens the board by itself")
     func anAcceptedProposalOpensTheBoard() {
         let driver = FakeDriver()
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [.other]))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true, peers: [.other]))
         flow.open(.miniXiangqi)
         flow.invite(.other, to: .miniXiangqi)
 
@@ -265,7 +287,7 @@ struct NearbyFlowTests {
         let driver = FakeDriver()
         // A Mini Xiangqi game is already going with this peer.
         driver.sessions = [session(proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true, peers: [.other]))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true, peers: [.other]))
 
         flow.open(.xiangqi)
         #expect(flow.proposing == .xiangqi, "the other game's row offers a new game")
@@ -286,7 +308,7 @@ struct NearbyFlowTests {
     func acceptingAnInvitationOpensTheBoard() throws {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .peer)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
 
         #expect(try #require(flow.invitation).id == "S")
         flow.accept("S")
@@ -299,7 +321,7 @@ struct NearbyFlowTests {
     func decliningOpensNothing() {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .peer)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
 
         flow.decline("S")
 
@@ -314,7 +336,7 @@ struct NearbyFlowTests {
     func theRowLeadsBackIntoTheGame() {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
 
         flow.open(.miniXiangqi)
         #expect(flow.boardSessionID == "S")
@@ -328,25 +350,25 @@ struct NearbyFlowTests {
         #expect(flow.boardSessionID == nil)
     }
 
-    // MARK: - The radio
+    // MARK: - The transport
 
-    @Test("The radio rests when no surface is up and nothing is owed")
-    func theRadioRestsWhenThereIsNothingToDo() {
+    @Test("The transport rests when no surface is up and nothing is owed")
+    func theTransportRestsWhenThereIsNothingToDo() {
         let driver = FakeDriver()
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(driver: driver, radio: radio)
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(driver: driver, reach: reach)
 
         flow.open(.miniXiangqi)
-        #expect(radio.isRunning)
+        #expect(reach.isRunning)
         flow.dismissSheet()
-        #expect(!radio.isRunning)
+        #expect(!reach.isRunning)
     }
 
     @Test("and stays up while a game is standing with somebody")
-    func theRadioStaysUpForASession() {
+    func theTransportStaysUpForASession() {
         let driver = FakeDriver()
-        let radio = FakeRadio(isSupported: true, peers: [.other])
-        let flow = flow(driver: driver, radio: radio)
+        let reach = FakeReach(hasRadio: true, peers: [.other])
+        let flow = flow(driver: driver, reach: reach)
 
         flow.open(.miniXiangqi)
         flow.invite(.other, to: .miniXiangqi)
@@ -356,12 +378,12 @@ struct NearbyFlowTests {
         flow.sessionsChanged()
         #expect(flow.proposing == nil)
         flow.leaveBoard()
-        #expect(radio.isRunning, "the session belongs to the peer, not to the page")
+        #expect(reach.isRunning, "the session belongs to the peer, not to the page")
 
-        // A finished game that is settled owes nothing, and the radio may rest.
+        // A finished game that is settled owes nothing, and the transport may rest.
         driver.sessions = [ended()]
         flow.leaveBoard()
-        #expect(!radio.isRunning)
+        #expect(!reach.isRunning)
     }
 
     // MARK: - The turn lock
@@ -395,7 +417,7 @@ struct NearbyFlowTests {
         let play = try #require(board(live))
         #expect(!play.isWaitingOnConnection)
 
-        // The connection idles out between moves by the radio's own design, and
+        // The connection idles out between moves by the transport's own design, and
         // the driver brings it back underneath. On the *other* device's turn
         // that costs this player nothing, so it is not reported.
         play.sync(with: with(live) { $0.plies = ["b1b2"]; $0.connection = nil })
@@ -447,7 +469,7 @@ struct NearbyFlowTests {
 
     @Test("A board turned round stays turned round across leaving it")
     func aFlipSurvivesLeavingTheBoard() throws {
-        let flow = flow(radio: FakeRadio(isSupported: true))
+        let flow = flow(reach: FakeReach(hasRadio: true))
         let live = session(proposer: .local, accepted: true)
         #expect(flow.orientation(of: live.id) == nil,
                 "a board nobody has turned has none of its own")
@@ -667,7 +689,7 @@ struct NearbyFlowTests {
     func aSessionLostByThePeerIsSaid() {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
         flow.open(.miniXiangqi)
         #expect(flow.boardVoid == nil)
 
@@ -687,7 +709,7 @@ struct NearbyFlowTests {
     func aRetiredSessionIsSaid() {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
         flow.open(.miniXiangqi)
 
         // The other player proposed again, which retires what stood with them.
@@ -703,7 +725,7 @@ struct NearbyFlowTests {
     func aVoidedSessionIsSaid() {
         let driver = FakeDriver()
         driver.sessions = [session(proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
         flow.open(.miniXiangqi)
 
         // A connection closed on a violation takes the session with it, and
@@ -723,7 +745,7 @@ struct NearbyFlowTests {
         let driver = FakeDriver()
         let live = session(proposer: .local, accepted: true)
         driver.sessions = [live]
-        let flow = flow(driver: driver, radio: FakeRadio(isSupported: true))
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
         flow.open(.miniXiangqi)
         let play = try #require(board(live))
 
@@ -783,8 +805,8 @@ struct NearbyFlowTests {
 
     @Test("A proposal is not made until there is room in the library for the game")
     func aProposalWaitsForTheRoomItsGameWillNeed() {
-        let radio = FakeRadio(isSupported: true)
-        let flow = flow(radio: radio)
+        let reach = FakeReach(hasRadio: true)
+        let flow = flow(reach: reach)
         let room = FakeRoom()
         flow.room = room
 
@@ -798,10 +820,10 @@ struct NearbyFlowTests {
 
     @Test("An invitation is answered only once its game has somewhere to live")
     func acceptingWaitsForTheRoomToo() {
-        let radio = FakeRadio(isSupported: true)
+        let reach = FakeReach(hasRadio: true)
         let driver = FakeDriver()
         driver.sessions = [session(id: "S", proposer: .peer)]
-        let flow = flow(driver: driver, radio: radio)
+        let flow = flow(driver: driver, reach: reach)
         let room = FakeRoom()
         flow.room = room
 
@@ -816,12 +838,12 @@ struct NearbyFlowTests {
 
     @Test("A nearby row leads back into the interrupted game the library holds")
     func theRowLeadsBackIntoTheStoredGame() {
-        let radio = FakeRadio(isSupported: true)
+        let reach = FakeReach(hasRadio: true)
         let driver = FakeDriver()
         driver.stored = with(session(id: "S", proposer: .local, accepted: true)) {
             $0.plies = ["b1b3"]
         }
-        let flow = flow(driver: driver, radio: radio)
+        let flow = flow(driver: driver, reach: reach)
         let room = FakeRoom()
         room.standingNearbyGame = .miniXiangqi
         flow.room = room
@@ -830,14 +852,14 @@ struct NearbyFlowTests {
         #expect(room.asked.isEmpty, "the room is already this game's")
         #expect(driver.resumedStored == 1)
         #expect(flow.boardSessionID == "S")
-        #expect(radio.isRunning, "and the radio is up for the resume that follows")
+        #expect(reach.isRunning, "and the transport is up for the resume that follows")
     }
 
     @Test("A game the library cannot give back opens nothing")
     func nothingToComeBackTo() {
-        let radio = FakeRadio(isSupported: true)
+        let reach = FakeReach(hasRadio: true)
         let driver = FakeDriver()
-        let flow = flow(driver: driver, radio: radio)
+        let flow = flow(driver: driver, reach: reach)
 
         flow.reenter(.miniXiangqi)
         #expect(driver.resumedStored == 1)
@@ -846,10 +868,10 @@ struct NearbyFlowTests {
 
     @Test("Giving up the active game lets the session go and takes the board down")
     func givingUpTheActiveGame() {
-        let radio = FakeRadio(isSupported: true)
+        let reach = FakeReach(hasRadio: true)
         let driver = FakeDriver()
         driver.sessions = [session(id: "S", proposer: .local, accepted: true)]
-        let flow = flow(driver: driver, radio: radio)
+        let flow = flow(driver: driver, reach: reach)
         flow.openBoard("S")
 
         flow.giveUpActiveGame()
@@ -857,27 +879,27 @@ struct NearbyFlowTests {
         #expect(flow.boardSessionID == nil)
     }
 
-    @Test("Coming back from a suspension takes the radio up again, and only then")
+    @Test("Coming back from a suspension takes the transport up again, and only then")
     func comingBackFromASuspension() {
-        let radio = FakeRadio(isSupported: true)
+        let reach = FakeReach(hasRadio: true)
         let driver = FakeDriver()
-        let flow = flow(driver: driver, radio: radio)
+        let flow = flow(driver: driver, reach: reach)
 
         flow.returnedToForeground()
-        #expect(!radio.isRunning, "nothing is owed and no surface is up")
+        #expect(!reach.isRunning, "nothing is owed and no surface is up")
 
         driver.sessions = [session(id: "S", proposer: .local, accepted: true)]
         flow.returnedToForeground()
-        #expect(radio.isRunning)
-        #expect(radio.watches > 0, "and the pairing watch is taken again")
+        #expect(reach.isRunning)
+        #expect(reach.watches > 0, "and the pairing watch is taken again")
     }
 
     // MARK: - The suite's own parts
 
     private func flow(driver: any NearbyDriving = FakeDriver(),
-                      radio: any NearbyRadio,
+                      reach: any NearbyReach,
                       isAvailable: Bool = true) -> NearbyFlow {
-        NearbyFlow(driver: driver, radio: radio, positions: FakePositions(),
+        NearbyFlow(driver: driver, reach: reach, positions: FakePositions(),
                    isAvailable: isAvailable)
     }
 
@@ -1074,17 +1096,17 @@ private final class FakeRoom: NearbyRoom {
 }
 
 @MainActor
-private final class FakeRadio: NearbyRadio {
-    let isSupported: Bool
+private final class FakeReach: NearbyReach {
+    let hasRadio: Bool
     private(set) var isRunning = false
     /// How many times the registry watch was asked for. It is counted rather
     /// than flagged because the whole of the promise is that it is asked for
-    /// again, off the radio's own bracket.
+    /// again, off the transport's own bracket.
     private(set) var watches = 0
     var peers: [NearbyPeer]
 
-    init(isSupported: Bool, peers: [NearbyPeer] = []) {
-        self.isSupported = isSupported
+    init(hasRadio: Bool, peers: [NearbyPeer] = []) {
+        self.hasRadio = hasRadio
         self.peers = peers
     }
 

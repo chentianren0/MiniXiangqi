@@ -179,9 +179,10 @@ private struct Destinations: View {
 
     #if os(iOS)
     /// The nearby stack: the log every layer writes to, the protocol engine's
-    /// driver over it, the Wi-Fi Aware transport under that, and the flow the
-    /// surfaces read. Assembled here because this is where the window is, and
-    /// nothing below it is allowed to own a session.
+    /// driver over it, the transport under that — both of its ways of reaching
+    /// another device — and the flow the surfaces read. Assembled here because
+    /// this is where the window is, and nothing below it is allowed to own a
+    /// session.
     private static func nearbyFlow(over core: Core) -> NearbyFlow {
         #if DEBUG
         // `-mxq-nearby-board <stage>` stands the board up on a session nobody
@@ -201,9 +202,9 @@ private struct Destinations: View {
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: record)
         let transport = NearbyTransport(driver: driver, log: log)
-        return NearbyFlow(driver: driver, radio: transport,
+        return NearbyFlow(driver: driver, reach: transport,
                           positions: core.nearbyPositions,
-                          isAvailable: NearbyFlow.isAvailableHere(transport))
+                          isAvailable: NearbyFlow.isAvailableHere)
     }
     #endif
 

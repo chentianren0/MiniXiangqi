@@ -55,21 +55,8 @@ struct NearbyHarnessScreen: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if NearbyTransport.isSupported {
-                    harness
-                } else {
-                    ContentUnavailableView {
-                        Label { Text(verbatim: "Wi-Fi Aware unavailable") } icon: {
-                            Image(systemName: "wifi.slash")
-                        }
-                    } description: {
-                        Text(verbatim: "This device does not support Wi-Fi Aware, so nearby "
-                             + "play cannot run here.")
-                    }
-                }
-            }
-            .navigationTitle(Text(verbatim: "Nearby (harness)"))
+            harness
+                .navigationTitle(Text(verbatim: "Nearby (harness)"))
         }
         .task {
             transport.watchPairedDevices()
@@ -200,10 +187,16 @@ struct NearbyHarnessScreen: View {
     /// shows, someone picks. Both buttons exist on both devices so either can
     /// take either role. Pinned to the one declared service, because pairing
     /// grants access to the device rather than to a service.
+    ///
+    /// Built only where the radio is, as the app's own sheet builds them: the
+    /// system's pairing views hand off to a peer-to-peer Wi-Fi service, and
+    /// where there is none they terminate the app that asked. Everything else
+    /// on this screen runs there — the other path needs no radio.
     @ViewBuilder
     private var pairing: some View {
         Section {
-            if let publishable = WAPublishableService.boardGame,
+            if NearbyTransport.isSupported,
+               let publishable = WAPublishableService.boardGame,
                let subscribable = WASubscribableService.boardGame {
                 DevicePairingView(.wifiAware(.connecting(to: publishable,
                                                          from: .userSpecifiedDevices))) {
@@ -228,6 +221,10 @@ struct NearbyHarnessScreen: View {
                         Image(systemName: "xmark.circle")
                     }
                 }
+            } else if !NearbyTransport.isSupported {
+                Text(verbatim: "No radio on this device — nothing to pair with. "
+                     + "The local network is the whole reach here.")
+                    .foregroundStyle(.secondary)
             } else {
                 Text(verbatim: "\(NearbyService.name) is missing from WiFiAwareServices.")
                     .foregroundStyle(.red)
@@ -295,10 +292,15 @@ struct NearbyHarnessScreen: View {
                 Text(verbatim: "Network browser")
             }
             LabeledContent {
+                // A row's words, not an identifier: what the app's own list
+                // would say for each of these, which is a name where one is
+                // known and the one neutral label with four characters of the
+                // identity where none is. A raw identifier here would be the
+                // one thing no reader of any list is ever shown, in the one
+                // screen a driven run reads the room off.
                 Text(verbatim: transport.advertised.isEmpty
                      ? "—"
-                     : transport.advertised.map { $0.name ?? $0.peer.rawValue }
-                        .joined(separator: ", "))
+                     : transport.advertised.map(\.label.text).joined(separator: ", "))
                     .font(.caption.monospaced())
             } label: {
                 Text(verbatim: "On the network")

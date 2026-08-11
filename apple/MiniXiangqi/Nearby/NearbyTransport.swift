@@ -129,10 +129,16 @@ final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
         case incoming, outgoing
     }
 
+    /// What this connection is called. **Minted with the transport's own
+    /// preference in front of it**, so that the connection this layer would
+    /// rather use sorts first wherever connections are chosen between — here,
+    /// and in the driver, neither of which reads what carries one. See
+    /// `ConnectionID.init(_:over:)`.
     let id: ConnectionID
     let direction: Direction
-    /// What carries it. **The transport's own business**: it decides which
-    /// connection the room hands over for a device, and it reaches no seam.
+    /// What carries it. **The transport's own business**: it is spent naming
+    /// the connection and asking the path what it can say for itself, and it
+    /// reaches no seam.
     let kind: NearbyLinkKind
 
     private(set) var isReady = false
@@ -187,7 +193,7 @@ final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
         self.channel = channel
         self.direction = direction
         self.kind = kind
-        self.id = ConnectionID(channel.id)
+        self.id = ConnectionID(channel.id, over: kind)
         (readiness, readinessFeed) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
         (linkage, linkageFeed) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
     }
@@ -583,6 +589,23 @@ final class NearbyTransport {
     }
 
     private func startRadio() {
+        #if DEBUG
+        // A driven run proving what happens when one path goes away holds the
+        // other down from the start. Debug builds only, and no release build
+        // compiles it.
+        guard NearbyLaunch.current.runsRadio else {
+            log.note("The radio is held down by this run's arguments.")
+            return
+        }
+        #endif
+        // Hardware with no radio starts nothing here and everything on the
+        // other path: the feature is not the radio's, and a publisher looping
+        // against a radio that does not exist would burn a retry every two
+        // seconds for a device that is playing perfectly well.
+        guard Self.isSupported else {
+            log.note("No radio on this device — the local network is the whole reach.")
+            return
+        }
         guard NearbyService.publishable != nil, NearbyService.subscribable != nil else {
             log.note("The service \(NearbyService.name) is missing from WiFiAwareServices.")
             return
@@ -732,16 +755,16 @@ final class NearbyTransport {
         return NearbyIdentity.linked(to: pairing) ?? pairing
     }
 
-    /// Every connection that stands, as the room considers them — which is
-    /// where the one preference between the two paths lives, and the only place
-    /// it lives. A device reachable both ways is dealt with over the network,
-    /// because that is the path that reaches through a wall and the one whose
-    /// loss is a room away rather than a house away.
+    /// Every connection that stands, as the room considers them. A device
+    /// reachable both ways is dealt with over the network, because that is the
+    /// path that reaches through a wall and the one whose loss is a room away
+    /// rather than a house away — and that preference is already spent by the
+    /// time a candidate exists, in the name the connection was minted with.
     var candidates: [NearbyCandidate] {
         connections.filter(\.isReady).compactMap { connection in
             guard let peer = connection.peer else { return nil }
             return NearbyCandidate(connection: connection.id, peer: peer,
-                                   kind: connection.kind, name: connection.peerName)
+                                   name: connection.peerName)
         }
     }
 

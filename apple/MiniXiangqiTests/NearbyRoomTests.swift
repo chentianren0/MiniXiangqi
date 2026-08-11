@@ -7,9 +7,9 @@
 // device, because the merge and the order do not need one.
 //
 // The last of them is the one worth stating out loud: **a row cannot tell you
-// what carried it**. The candidates the transport keeps know; what comes out of
-// the choosing is a device and a connection, and two candidates that differ
-// only in their path produce the same row.
+// what carried it**. The transport knows, and spends what it knows naming its
+// connections; what comes out of the choosing is a device and a connection, and
+// two candidates that differ only in their path produce the same row.
 
 import Foundation
 import Testing
@@ -207,19 +207,46 @@ struct NearbyRoomTests {
 
     // MARK: - Which connection
 
+    @Test("The transport's preference is in the name it mints, ahead of the name itself")
+    func theOrderIsMintedIntoTheIdentifier() {
+        // **The whole mechanism, in one line.** The transport is the only layer
+        // that knows there are two paths, and the only thing it does with that
+        // knowledge is name its connections: the preferred path's name sorts
+        // first, whatever the framework called the connection underneath. Every
+        // chooser downstream — the room here, the driver's settling pick — is a
+        // blind sort of opaque strings, and there is no second place where the
+        // two paths could fall out of step.
+        #expect(ConnectionID("z", over: .network).rawValue
+                < ConnectionID("a", over: .radio).rawValue,
+                "the path decides before the framework's own name is even looked at")
+        // Within one path the framework's name decides, so two crossed
+        // connections order the same way every time they are asked.
+        #expect(ConnectionID("a", over: .network).rawValue
+                < ConnectionID("z", over: .network).rawValue)
+        // And nothing a reader ever sees carries it: the order goes in front,
+        // the framework's own name is untouched behind it, and what a log or a
+        // screen shows of a connection is that name's tail.
+        #expect(ConnectionID("connection-a1b2c3d4", over: .radio).rawValue
+                .hasSuffix("connection-a1b2c3d4"))
+        #expect(ConnectionID("connection-a1b2c3d4", over: .radio).rawValue.suffix(8)
+                == ConnectionID("connection-a1b2c3d4", over: .network).rawValue.suffix(8))
+    }
+
     @Test("Where a device is reachable both ways, the network is the one handed over")
     func theNetworkIsPreferred() {
         let peer = NearbyIdentity.peer("9F3C")
-        let overRadio = NearbyCandidate(connection: ConnectionID("a"), peer: peer,
-                                        kind: .radio, name: "Their iPad")
-        let overNetwork = NearbyCandidate(connection: ConnectionID("z"), peer: peer,
-                                          kind: .network, name: "iPad 9F3C")
+        // The radio's connection has the name that would sort first if the
+        // framework's own names were all there was to sort.
+        let overRadio = NearbyCandidate(connection: ConnectionID("a", over: .radio),
+                                        peer: peer, name: "Their iPad")
+        let overNetwork = NearbyCandidate(connection: ConnectionID("z", over: .network),
+                                          peer: peer, name: "iPad 9F3C")
 
         // Whichever order they were found in.
         for candidates in [[overRadio, overNetwork], [overNetwork, overRadio]] {
             #expect(NearbyCandidate.ordered(candidates) == [overNetwork, overRadio])
             #expect(NearbyCandidate.room(candidates)
-                    == [NearbyPeer(connection: ConnectionID("z"), peer: peer,
+                    == [NearbyPeer(connection: ConnectionID("z", over: .network), peer: peer,
                                    name: "iPad 9F3C")],
                     "one row, and the connection on it is the network's")
         }
@@ -228,14 +255,14 @@ struct NearbyRoomTests {
     @Test("Two connections of one kind are ordered by the connection's own name")
     func crossedConnectionsAreOrderedDeterministically() {
         let peer = NearbyIdentity.peer("9F3C")
-        let incoming = NearbyCandidate(connection: ConnectionID("c-1"), peer: peer,
-                                       kind: .network, name: nil)
-        let outgoing = NearbyCandidate(connection: ConnectionID("c-2"), peer: peer,
-                                       kind: .network, name: nil)
+        let incoming = NearbyCandidate(connection: ConnectionID("c-1", over: .network),
+                                       peer: peer, name: nil)
+        let outgoing = NearbyCandidate(connection: ConnectionID("c-2", over: .network),
+                                       peer: peer, name: nil)
 
         #expect(NearbyCandidate.ordered([outgoing, incoming]) == [incoming, outgoing])
         #expect(NearbyCandidate.room([outgoing, incoming]).first?.connection
-                == ConnectionID("c-1"),
+                == ConnectionID("c-1", over: .network),
                 "so the row does not change under a redraw")
     }
 
@@ -244,9 +271,9 @@ struct NearbyRoomTests {
         let here = NearbyIdentity.peer("AAA")
         let there = NearbyIdentity.peer("BBB")
         let candidates = [
-            NearbyCandidate(connection: ConnectionID("c-1"), peer: here, kind: .radio,
+            NearbyCandidate(connection: ConnectionID("c-1", over: .radio), peer: here,
                             name: "Their iPad"),
-            NearbyCandidate(connection: ConnectionID("c-2"), peer: there, kind: .network,
+            NearbyCandidate(connection: ConnectionID("c-2", over: .network), peer: there,
                             name: "iPhone BBB"),
         ]
 
@@ -256,21 +283,29 @@ struct NearbyRoomTests {
         // durable identity.
         let rows = NearbyCandidate.room(candidates)
         #expect(rows.count == 2)
-        #expect(rows.first { $0.peer == here }?.connection == ConnectionID("c-1"))
-        #expect(rows.first { $0.peer == there }?.connection == ConnectionID("c-2"))
+        #expect(rows.first { $0.peer == here }?.connection
+                == ConnectionID("c-1", over: .radio))
+        #expect(rows.first { $0.peer == there }?.connection
+                == ConnectionID("c-2", over: .network))
     }
 
     @Test("A row cannot say what carried it")
     func theRowSaysNothingAboutThePath() {
-        // The same device, the same connection, reached the two ways: what the
-        // room hands over is the same row, because a row has nowhere to put the
-        // difference and nothing above the transport is given it.
+        // The same device, reached the two ways. The two connections are named
+        // differently — that is where the transport's own preference lives —
+        // and what the room hands over is the same row all the same, because a
+        // row has nowhere to put the difference and nothing above the transport
+        // is given it.
         let peer = NearbyIdentity.peer("9F3C")
-        let overRadio = NearbyCandidate(connection: ConnectionID("c-1"), peer: peer,
-                                        kind: .radio, name: "Their iPad")
-        let overNetwork = NearbyCandidate(connection: ConnectionID("c-1"), peer: peer,
-                                          kind: .network, name: "Their iPad")
+        let overRadio = NearbyCandidate(connection: ConnectionID("c-1", over: .radio),
+                                        peer: peer, name: "Their iPad")
+        let overNetwork = NearbyCandidate(connection: ConnectionID("c-1", over: .network),
+                                          peer: peer, name: "Their iPad")
 
-        #expect(NearbyCandidate.room([overRadio]) == NearbyCandidate.room([overNetwork]))
+        let radioRow = NearbyCandidate.room([overRadio])
+        let networkRow = NearbyCandidate.room([overNetwork])
+        #expect(radioRow.map(\.peer) == networkRow.map(\.peer))
+        #expect(radioRow.map(\.label) == networkRow.map(\.label))
+        #expect(radioRow.map(\.name) == networkRow.map(\.name))
     }
 }

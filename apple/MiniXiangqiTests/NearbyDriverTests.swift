@@ -181,6 +181,46 @@ struct NearbyDriverTests {
                                                keep: 1, end: nil))])
     }
 
+    @Test("Where two crossed connections stand, the resume takes the one named first")
+    func theResumeTakesTheTransportsOwnOrder() async throws {
+        // **The ordering seam, from the side that has to be blind to it.** Three
+        // connections to one device, and all this layer knows of any of them is
+        // its name. The transport mints those names with its own preference in
+        // front — so choosing the first name is choosing the path it would
+        // rather use, and nothing here reads a link, asks what carries one, or
+        // could be told.
+        //
+        // It is a real choice and not a tidy one: this device is the proposer,
+        // so the connection its resume travels is the connection the exchange
+        // *completes* on, and the other crossed one is refused for the rest of
+        // the exchange. Which one it is decides what carries the rest of the
+        // game.
+        let overNetwork = FakeLink(ConnectionID("z", over: .network))
+        let crossedRadio = FakeLink(ConnectionID("a", over: .radio))
+        let bound = FakeLink(ConnectionID("m", over: .radio))
+        let driver = driver(minting: "S-mine")
+        for link in [overNetwork, crossedRadio, bound] {
+            driver.connectionReady(link, with: .peer)
+            driver.received(.hello(.init()), on: link.id)
+        }
+        // The game is proposed on neither of the two that will be left, so
+        // nothing has resumed on either when the choice comes to be made.
+        try driver.propose(to: .peer, on: bound.id, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: bound.id)
+        try driver.play("b1b2", in: "S-mine")
+
+        driver.connectionDied(bound.id)
+
+        await settle { overNetwork.sent.count == 2 }
+        #expect(overNetwork.sent == [.hello(.init(protocolVersion: 1)),
+                                     .resume(.init(session: "S-mine", undos: 0, count: 1,
+                                                   keep: 1, end: nil))],
+                "the first name the transport minted is where the exchange goes")
+        await settle()
+        #expect(crossedRadio.sent == [.hello(.init(protocolVersion: 1))],
+                "and the other crossed connection carries nothing of the exchange")
+    }
+
     @Test("A healthy session is resumed on a new connection too — the accepted width, pinned")
     func aHealthySessionIsResumedOnANewConnection() async throws {
         // **This pins accepted behavior, not a defect.** Nothing has died here:

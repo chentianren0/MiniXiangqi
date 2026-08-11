@@ -178,8 +178,8 @@ final class NearbyDriver {
         publish()
         // Whatever connections already stand are owed the resume the contract
         // says an interrupted session initiates.
-        for (connection, peer) in peers where peer == stored.peer {
-            initiateResumes(with: peer, on: connection)
+        for connection in connections(to: stored.peer) {
+            initiateResumes(with: stored.peer, on: connection)
         }
         return stored.id
     }
@@ -245,7 +245,7 @@ final class NearbyDriver {
         // connection first comes ready is what keeps an interrupted session
         // from waiting for a reconnection that has already happened.
         guard let peer else { return }
-        for (other, its) in Array(peers) where its == peer {
+        for other in connections(to: peer) {
             initiateResumes(with: peer, on: other)
         }
     }
@@ -332,13 +332,29 @@ final class NearbyDriver {
     private func connection(to peer: PeerDeviceID,
                             preferring bound: ConnectionID?) -> ConnectionID? {
         if let bound, links[bound] != nil, peers[bound] == peer { return bound }
-        // Sorted rather than whichever the dictionary offers first, so two
-        // crossed connections to one device settle on the same one every run.
-        // Swift's own string ordering serves here: connection identifiers are
-        // transport-local and never compared across devices, so the wire case
-        // `WireBytes` exists for is not this one.
-        return links.keys.filter { peers[$0] == peer }
-            .min { $0.rawValue < $1.rawValue }
+        return connections(to: peer).first
+    }
+
+    /// Every connection this driver holds to that device, in the transport's
+    /// own order.
+    ///
+    /// **The order matters twice over.** A resume exchange completes on the
+    /// connection the *proposer's* resume travelled, and the proposer sends on
+    /// exactly one connection of its choosing — so where more than one stands,
+    /// this decides what carries the rest of the game. And a redraw must not
+    /// move a row and a resend must not change connections, so the answer has to
+    /// be the same answer every time it is asked; a dictionary's own order is no
+    /// order at all.
+    ///
+    /// **What the order means is not this layer's business.** A connection's
+    /// name is minted by the transport with its own preference in front of it,
+    /// so sorting the names is how a choice between two ways of reaching a
+    /// device arrives here without anything here being told there are two.
+    /// Swift's own string ordering serves: connection identifiers are
+    /// transport-local and never compared across devices, so the wire case
+    /// `WireBytes` exists for is not this one.
+    private func connections(to peer: PeerDeviceID) -> [ConnectionID] {
+        links.keys.filter { peers[$0] == peer }.sorted { $0.rawValue < $1.rawValue }
     }
 
     // MARK: - What this device's own player asks for
