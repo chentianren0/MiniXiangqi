@@ -252,6 +252,64 @@ final class HumanVersusAIUITests: XCTestCase {
         attach(app, named: "hvai-4-after-the-cycle-undo")
     }
 
+    /// 提示, on the player's own turn: the suggestion arrives on the board in
+    /// the board's own language, and tapping it plays the move.
+    ///
+    /// Which move the engine suggests is its own business, exactly as its reply
+    /// is, so nothing here names one. What is asserted is the invariant: a
+    /// point the player did not touch carries the **建议** state, the piece it
+    /// belongs to is held, and clicking that point commits a move through the
+    /// ordinary input path.
+    ///
+    /// 深思 rather than 快速, for the reason `testTheMachineReplies` takes it:
+    /// what is asserted after the suggestion is played is that the turn is the
+    /// machine's and the control is gone with it, and both have to be asserted
+    /// **while** the machine is thinking. At 快速 the reply arrives in about a
+    /// second and a third, which is shorter than the accessibility queries that
+    /// lead up to the assertions; at 深思 the state stands for five seconds,
+    /// which no query latency can outrun. The hint itself thinks the same five
+    /// seconds, because a hint takes the time its own game froze.
+    func testAHintSuggestsAMoveAndTappingItPlaysIt() {
+        let app = launch(levelDefault: "deep")
+        XCTAssertTrue(startGame(app), "开始对局 should create the game and open the board")
+        XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 5))
+
+        // Addressed over every descendant rather than over the buttons alone:
+        // the control takes the platform's inline-action weight, which on macOS
+        // is the link style, and that is not typed as a button.
+        let hint = app.windows.firstMatch.descendants(matching: .any)["hint-request"]
+        XCTAssertTrue(hint.waitForExistence(timeout: 5),
+                      "the hint control stands beside the controller label on the "
+                      + "player's own turn")
+        XCTAssertEqual(hint.label, "提示")
+        hint.click()
+
+        // The suggested point is found by the state it carries rather than by
+        // name: the engine chooses the move, and the board says which point it
+        // chose.
+        let suggested = app.windows.firstMatch.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "建议")).firstMatch
+        XCTAssertTrue(suggested.waitForExistence(timeout: 60),
+                      "a suggestion should arrive within the game's own thinking time")
+        XCTAssertTrue(app.windows.firstMatch.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "已选择")).firstMatch.exists,
+                      "and the suggested piece should be held, as the player's own tap "
+                      + "would hold it")
+        attach(app, named: "hvai-15-the-suggestion")
+
+        suggested.click()
+
+        // Tapping it commits through the ordinary input path: the move is in
+        // the record and the turn has passed to the machine.
+        XCTAssertTrue(app.staticTexts["1."].waitForExistence(timeout: 10),
+                      "the suggested move should be played by tapping it")
+        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 10),
+                      "and the turn passes to the machine")
+        XCTAssertFalse(app.windows.firstMatch.descendants(matching: .any)["hint-request"].exists,
+                       "the control is absent on the machine's turn rather than disabled")
+        attach(app, named: "hvai-16-after-playing-the-suggestion")
+    }
+
     /// 认输 with its confirmation, and the record it makes.
     func testResigningRecordsTheLoss() {
         let app = launch()

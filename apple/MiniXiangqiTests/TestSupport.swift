@@ -27,6 +27,7 @@
 // does nothing at all once a later test has taken the slot.
 
 import Foundation
+import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
@@ -176,6 +177,39 @@ func openGame(on rules: Rules) throws -> Game {
         try rules.create(.freePlay(game: .miniXiangqi))
     }
     return try Game(rules: rules)
+}
+
+// MARK: - What a search's answer looks like
+
+/// One search result, as the core's callback would deliver it. Shared by the
+/// two suites that watch a search answer — the AI's reply and the hint — for the
+/// reason the animator is shared: the two are answered by one machinery, and a
+/// second copy of this would be free to drift from it.
+@MainActor
+func searchResult(_ outcome: SearchOutcome, move: String, game: Game,
+                  ticket: UInt64 = 1, revision: UInt64? = nil,
+                  identity: String? = nil) -> SearchResult {
+    var raw = MxqSearchResult()
+    raw.struct_size = UInt32(MemoryLayout<MxqSearchResult>.size)
+    raw.outcome = switch outcome {
+    case .move: MxqSearchOutcome(MXQ_SEARCH_MOVE)
+    case .cancelled: MxqSearchOutcome(MXQ_SEARCH_CANCELLED)
+    case .stale: MxqSearchOutcome(MXQ_SEARCH_STALE)
+    case .malformed: MxqSearchOutcome(MXQ_SEARCH_MALFORMED)
+    case .illegal: MxqSearchOutcome(MXQ_SEARCH_ILLEGAL)
+    case .failed: MxqSearchOutcome(MXQ_SEARCH_FAILED)
+    }
+    raw.ticket = ticket
+    raw.position_revision = revision ?? game.evaluation.positionRevision
+    withUnsafeMutableBytes(of: &raw.move.text) { buffer in
+        for (index, byte) in move.utf8.enumerated() { buffer[index] = byte }
+    }
+    withUnsafeMutableBytes(of: &raw.game_id) { buffer in
+        for (index, byte) in (identity ?? game.identity).utf8.enumerated() {
+            buffer[index] = byte
+        }
+    }
+    return SearchResult(raw)
 }
 
 // MARK: - The motion seams

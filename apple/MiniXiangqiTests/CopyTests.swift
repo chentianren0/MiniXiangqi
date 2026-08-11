@@ -44,6 +44,7 @@ struct CopyTests {
             "alert.aiUnavailable.title", "alert.aiUnavailable.message",
             "alert.aiUnavailable.resumeMessage",
             "alert.gameNotStarted.title", "alert.gameNotStarted.message",
+            "alert.hintUnavailable.title",
             "alert.newGame.title", "alert.newGame.metadataHeader",
             "alert.newGame.message",
             "alert.nearbyInvite.title", "alert.nearbyInvite.message",
@@ -59,9 +60,10 @@ struct CopyTests {
             "alert.importDamagedRecord.title", "alert.importDamagedRecord.message",
             "board.a11y.red", "board.a11y.black", "board.a11y.empty",
             "board.a11y.selected", "board.a11y.legalMove", "board.a11y.capture",
-            "board.a11y.inCheck",
+            "board.a11y.inCheck", "board.a11y.suggested",
+            "board.a11y.hint.announcement",
             "control.undo", "control.claimDraw", "control.offerDraw",
-            "control.flipBoard",
+            "control.flipBoard", "control.hint",
             "control.newGame", "control.save", "control.saveAndNewGame",
             "control.keepPlaying", "control.endAsDraw",
             "control.cancel", "control.tryAgain", "control.later",
@@ -120,7 +122,7 @@ struct CopyTests {
             "status.redWins", "status.blackWins", "status.draw",
             "status.saveFailed",
             "status.controller.you", "status.controller.ai", "status.controller.peer",
-            "status.aiThinking", "status.aiUnavailable",
+            "status.aiThinking", "status.aiUnavailable", "status.hintThinking",
         ]
         for language in ["en", "zh-Hans"] {
             for key in keys {
@@ -235,5 +237,16 @@ struct CopyTests {
             let join = try value("metadata.join", in: language)
             #expect(String(format: join, "a", "b") == "a · b")
         }
+
+        // The hint's announcement, composed from the point vocabulary: the
+        // side, the piece, and the two point names. Four arguments rather than
+        // a joined string, because every separator in it belongs to a language
+        // — English puts a colon and spaces between them, Chinese an
+        // ideographic colon and no space at all between the side and the piece.
+        let hintInChinese = try value("board.a11y.hint.announcement", in: "zh-Hans")
+        let hintInEnglish = try value("board.a11y.hint.announcement", in: "en")
+        #expect(String(format: hintInChinese, "红", "炮", "b1", "b5") == "提示：红炮 b1 到 b5")
+        #expect(String(format: hintInEnglish, "Red", "Cannon", "b1", "b5")
+                == "Suggestion: Red Cannon b1 to b5")
     }
 }

@@ -27,6 +27,10 @@ final class TestEngine: AIEngine {
     var holdsPreparation = false
     /// What `startSearch` throws, if anything.
     var startRefusal: CoreError?
+    /// What `startHintSearch` throws, if anything. Kept apart from the one
+    /// above because the core keeps the two entries apart: only the hint is
+    /// refused for a search already outstanding.
+    var hintStartRefusal: CoreError?
 
     private(set) var probes = 0
     private(set) var preparations = 0
@@ -34,14 +38,27 @@ final class TestEngine: AIEngine {
     private(set) var cancelledTickets: [UInt64] = []
     private(set) var cancelAlls = 0
     private(set) var startedSearches = 0
+    private(set) var startedHintSearches = 0
     private(set) var lastMovetime: UInt32?
+    private(set) var lastHintMovetime: UInt32?
     private(set) var lastBudget: EngineBudget?
     private(set) var lastPreparedGame: GameKind?
     private(set) var preparedGame: GameKind?
 
+    /// Everything asked of the engine, in the order it was asked. Counters
+    /// answer *how many*; this answers *in what order*, which is the whole
+    /// question where a hint has to be cancelled before the reply is requested.
+    enum Event: Equatable {
+        case prepare(GameKind), search(UInt32), hint(UInt32)
+        case cancel(UInt64), cancelAll, teardown
+    }
+
+    private(set) var events: [Event] = []
+
     private var held: (game: GameKind, budget: EngineBudget,
                        completion: @MainActor (Result<EnginePlan, CoreError>) -> Void)?
     private var completion: (@MainActor (SearchResult) -> Void)?
+    private var hintCompletion: (@MainActor (SearchResult) -> Void)?
     private var ticket: UInt64 = 0
 
     func memoryBudget() -> EngineBudget {
@@ -56,6 +73,7 @@ final class TestEngine: AIEngine {
         preparations += 1
         lastPreparedGame = game
         lastBudget = budget
+        events.append(.prepare(game))
         guard !holdsPreparation else {
             held = (game, budget, completion)
             return
@@ -88,6 +106,7 @@ final class TestEngine: AIEngine {
     func teardownEngine(then next: (@MainActor () -> Void)?) {
         teardowns += 1
         preparedGame = nil
+        events.append(.teardown)
         next?()
     }
 
@@ -95,18 +114,52 @@ final class TestEngine: AIEngine {
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
         if let startRefusal {
             self.startRefusal = nil
-            preparedGame = nil
+            unprepareIfReadinessRefusal(startRefusal)
             throw startRefusal
         }
         startedSearches += 1
         lastMovetime = movetimeMilliseconds
         self.completion = completion
         ticket += 1
+        events.append(.search(movetimeMilliseconds))
         return ticket
     }
 
-    func cancelSearch(_ ticket: UInt64) { cancelledTickets.append(ticket) }
-    func cancelAllSearches() { cancelAlls += 1 }
+    func startHintSearch(movetimeMilliseconds: UInt32,
+                         completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
+        if let hintStartRefusal {
+            self.hintStartRefusal = nil
+            unprepareIfReadinessRefusal(hintStartRefusal)
+            throw hintStartRefusal
+        }
+        startedHintSearches += 1
+        lastHintMovetime = movetimeMilliseconds
+        hintCompletion = completion
+        ticket += 1
+        events.append(.hint(movetimeMilliseconds))
+        return ticket
+    }
+
+    /// A readiness refusal is the engine having gone away under the caller, so
+    /// the stand-in stops claiming to be ready for it. Every other refusal —
+    /// an outstanding search, most of all — leaves a prepared engine prepared,
+    /// which is what makes the retry paths testable.
+    private func unprepareIfReadinessRefusal(_ refusal: CoreError) {
+        if refusal.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED)
+            || refusal.status == MxqStatus(MXQ_ERR_STATE_ENGINE_NOT_READY) {
+            preparedGame = nil
+        }
+    }
+
+    func cancelSearch(_ ticket: UInt64) {
+        cancelledTickets.append(ticket)
+        events.append(.cancel(ticket))
+    }
+
+    func cancelAllSearches() {
+        cancelAlls += 1
+        events.append(.cancelAll)
+    }
 
     /// Answers the outstanding search, exactly as the core's callback would
     /// once it has hopped to the main actor.
@@ -116,7 +169,15 @@ final class TestEngine: AIEngine {
         completion?(result)
     }
 
+    /// The same, for the outstanding hint search.
+    func answerHint(_ result: SearchResult) {
+        let completion = hintCompletion
+        hintCompletion = nil
+        completion?(result)
+    }
+
     var hasOutstandingSearch: Bool { completion != nil }
+    var hasOutstandingHintSearch: Bool { hintCompletion != nil }
 }
 
 /// A clock the test moves by hand, so the reply floor and the indicator's
@@ -146,35 +207,6 @@ final class TestTimer {
     }
 
     var pendingCount: Int { pending.count }
-}
-
-// MARK: - What a search's answer looks like
-
-@MainActor
-private func result(_ outcome: SearchOutcome, move: String, game: Game,
-                    ticket: UInt64 = 1, revision: UInt64? = nil,
-                    identity: String? = nil) -> SearchResult {
-    var raw = MxqSearchResult()
-    raw.struct_size = UInt32(MemoryLayout<MxqSearchResult>.size)
-    raw.outcome = switch outcome {
-    case .move: MxqSearchOutcome(MXQ_SEARCH_MOVE)
-    case .cancelled: MxqSearchOutcome(MXQ_SEARCH_CANCELLED)
-    case .stale: MxqSearchOutcome(MXQ_SEARCH_STALE)
-    case .malformed: MxqSearchOutcome(MXQ_SEARCH_MALFORMED)
-    case .illegal: MxqSearchOutcome(MXQ_SEARCH_ILLEGAL)
-    case .failed: MxqSearchOutcome(MXQ_SEARCH_FAILED)
-    }
-    raw.ticket = ticket
-    raw.position_revision = revision ?? game.evaluation.positionRevision
-    withUnsafeMutableBytes(of: &raw.move.text) { buffer in
-        for (index, byte) in move.utf8.enumerated() { buffer[index] = byte }
-    }
-    withUnsafeMutableBytes(of: &raw.game_id) { buffer in
-        for (index, byte) in (identity ?? game.identity).utf8.enumerated() {
-            buffer[index] = byte
-        }
-    }
-    return SearchResult(raw)
 }
 
 // MARK: - The opponent
@@ -279,11 +311,11 @@ struct OpponentTests {
         // the accepted mid-game presentation leaves behind: the AI still owes
         // the move, whatever is stopping it.
         opponent.cancelSearch()
-        engine.answer(result(.failed, move: "", game: game))
+        engine.answer(searchResult(.failed, move: "", game: game))
         #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable)
 
         // And is handed back the moment the reply lands.
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         _ = animator
     }
 
@@ -301,7 +333,7 @@ struct OpponentTests {
         // collisions either.
 
         // A revision the position has left behind.
-        engine.answer(result(.move, move: "a6a5", game: game, ticket: 1,
+        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 1,
                              revision: game.evaluation.positionRevision + 1))
         clock.advance(by: 5)
         animator.completeAll()
@@ -313,7 +345,7 @@ struct OpponentTests {
         // one the revision cannot see.
         opponent.gameChanged()
         #expect(engine.startedSearches == 2, "the premise: a search is running again")
-        engine.answer(result(.move, move: "a6a5", game: game, ticket: 2,
+        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 2,
                              identity: "00000000-0000-7000-8000-000000000000"))
         clock.advance(by: 5)
         animator.completeAll()
@@ -324,7 +356,7 @@ struct OpponentTests {
         // comparison rather than anything about the move.
         opponent.gameChanged()
         #expect(engine.startedSearches == 3)
-        engine.answer(result(.move, move: "a6a5", game: game, ticket: 3))
+        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 3))
         clock.advance(by: 5)
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"])
@@ -338,7 +370,7 @@ struct OpponentTests {
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()   // the player's move lands
 
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         clock.advance(by: Motion.replyFloor + 0.01)
         animator.completeAll()   // the reply travels and lands
 
@@ -357,7 +389,7 @@ struct OpponentTests {
         // which is the case the floor is really for: a forced mate comes back in
         // milliseconds, and there is no arrival yet to measure a floor from. It
         // is measured from the arrival when the arrival happens.
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         #expect(game.moves == ["b1b4"], "nothing departs during the player's own move")
 
         animator.completeAll()   // the arrival the floor is measured from
@@ -381,7 +413,7 @@ struct OpponentTests {
         animator.completeAll()   // the arrival first, this time
 
         clock.advance(by: 0.1)   // a search shorter than the floor
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         #expect(game.moves == ["b1b4"], "a near-instant reply does not twitch")
 
         clock.advance(by: Motion.replyFloor - 0.15)
@@ -401,7 +433,7 @@ struct OpponentTests {
         animator.completeAll()
 
         clock.advance(by: 3)     // the search thinks for three seconds
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"], "the floor had long since passed")
     }
@@ -419,7 +451,7 @@ struct OpponentTests {
         clock.advance(by: 0.1)
         #expect(opponent.activity == .thinking, "and past the threshold it does")
 
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         #expect(opponent.activity == .idle, "the indicator is gone when the reply lands")
         clock.advance(by: 5)
         animator.completeAll()
@@ -449,7 +481,7 @@ struct OpponentTests {
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         clock.advance(by: 5)
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"], "the premise: a complete cycle")
@@ -487,7 +519,7 @@ struct OpponentTests {
         opponent.begin()
         #expect(engine.startedSearches == 1, "the AI moves first, so it owes the opening")
 
-        engine.answer(result(.move, move: "b1b4", game: game))
+        engine.answer(searchResult(.move, move: "b1b4", game: game))
         clock.advance(by: 5)
         animator.completeAll()
 
@@ -519,7 +551,7 @@ struct OpponentTests {
         #expect(engine.startedSearches == 1)
 
         rules.refuses = true
-        engine.answer(result(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5", game: game))
         clock.advance(by: 5)
         animator.completeAll()
 

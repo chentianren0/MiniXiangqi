@@ -81,6 +81,26 @@ struct BoardSnapshotTests {
         #expect(size == geometry.blockSize)
     }
 
+    @Test("A suggestion renders as the selection plus one strengthened destination")
+    func suggestion() throws {
+        // The same position and the same held piece, with a hint shown on it:
+        // what a suggestion adds to the board is the strengthening on one
+        // destination it already had, and nothing else — so this frame is the
+        // one above with `c2` grown.
+        let view = BoardView(
+            geometry: geometry,
+            placement: Placement(fen: "rcnkncr/p1ppp1p/7/2C4/7/P1PPP1P/R1NKNCR w - - 0 1", game: .miniXiangqi),
+            selected: Square("c4", on: GameKind.miniXiangqi.board),
+            destinations: [Square("c5", on: GameKind.miniXiangqi.board)!, Square("c6", on: GameKind.miniXiangqi.board)!, Square("b4", on: GameKind.miniXiangqi.board)!, Square("c2", on: GameKind.miniXiangqi.board)!],
+            captures: [Square("c6", on: GameKind.miniXiangqi.board)!],
+            suggested: Square("c2", on: GameKind.miniXiangqi.board),
+            lastMove: Move(text: "c1c4", on: GameKind.miniXiangqi.board),
+            checkedGeneral: Square("d7", on: GameKind.miniXiangqi.board),
+            hintEmphasis: 1)
+        let size = try render(view, named: "suggestion")
+        #expect(size == geometry.blockSize)
+    }
+
     @Test("The board renders flipped, with the numeral strips following it")
     func flipped() throws {
         let view = BoardView(geometry: geometry,
@@ -111,6 +131,7 @@ struct MotionFrameTests {
     }
 
     private func frame(_ game: Game, transit: Transit? = nil,
+                       suggested: Square? = nil,
                        phases: BoardPhases, reduceMotion: Bool = false) -> some View {
         BoardCanvas(geometry: geometry,
                     placement: game.placement,
@@ -118,6 +139,7 @@ struct MotionFrameTests {
                     policy: MotionPolicy(reduceMotion: reduceMotion),
                     destinations: game.destinations,
                     captures: game.captures,
+                    suggested: suggested,
                     lastMove: game.lastMove,
                     checkedGeneral: game.checkedGeneral,
                     transit: transit,
@@ -176,6 +198,20 @@ struct MotionFrameTests {
         let size = try render(frame(game, phases: BoardPhases(marker: 1,
                                                               lifts: SquarePhases(raised: game.selected))),
                               named: "markers-strengthened")
+        #expect(size == geometry.coreSize)
+    }
+
+    @Test("A suggestion at full emphasis: one destination strengthened, the rest at rest")
+    func suggestionAtFullEmphasis() throws {
+        // The same held piece as the frame above, with the capture it can make
+        // suggested rather than every destination answered — which is the whole
+        // visual difference between the two phases, and the reason they are two.
+        let game = try game(playing: ["d2d3", "d6d5", "d3d4"])
+        game.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
+        let size = try render(frame(game, suggested: Square("d4", on: GameKind.miniXiangqi.board),
+                                    phases: BoardPhases(hint: 1,
+                                                        lifts: SquarePhases(raised: game.selected))),
+                              named: "suggestion-at-full-emphasis")
         #expect(size == geometry.coreSize)
     }
 }
