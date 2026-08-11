@@ -247,7 +247,7 @@ struct NearbyHarnessScreen: View {
                         Text(verbatim: "wifi-aware-device-\(device.id)")
                             .font(.caption.monospaced())
                     } label: {
-                        Text(verbatim: device.name ?? "Unnamed device")
+                        Text(verbatim: device.displayName ?? "Unnamed device")
                     }
                 }
             }
@@ -283,6 +283,25 @@ struct NearbyHarnessScreen: View {
                 Text(verbatim: transport.browserState).font(.caption.monospaced())
             } label: {
                 Text(verbatim: "Browser")
+            }
+            LabeledContent {
+                Text(verbatim: transport.networkListenerState).font(.caption.monospaced())
+            } label: {
+                Text(verbatim: "Network listener")
+            }
+            LabeledContent {
+                Text(verbatim: transport.networkBrowserState).font(.caption.monospaced())
+            } label: {
+                Text(verbatim: "Network browser")
+            }
+            LabeledContent {
+                Text(verbatim: transport.advertised.isEmpty
+                     ? "—"
+                     : transport.advertised.map { $0.name ?? $0.peer.rawValue }
+                        .joined(separator: ", "))
+                    .font(.caption.monospaced())
+            } label: {
+                Text(verbatim: "On the network")
             }
         } header: {
             Text(verbatim: "Transport (symmetric — start on both devices)")

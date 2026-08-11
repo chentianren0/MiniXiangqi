@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "The sentence inside the system's own local-network permission alert. copy.md's app.localNetworkUsage. It says what the access is for and names no transport.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Used to find and connect to the other player's device for Nearby Play."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于查找并连接附近对弈的对方设备。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

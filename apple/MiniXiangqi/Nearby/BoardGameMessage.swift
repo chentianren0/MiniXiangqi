@@ -311,7 +311,10 @@ private extension KeyedEncodingContainer where Key == WireKey {
 
 /// A coding key that accepts any member name, so `allKeys` reports what the
 /// sender actually wrote rather than only the names this build can spell.
-private nonisolated struct WireKey: CodingKey {
+///
+/// Shared with `NearbyFrame`, which reads the same single-member object this
+/// does before deciding whose member it is. One strictness, written once.
+nonisolated struct WireKey: CodingKey {
     let stringValue: String
     var intValue: Int? { nil }
 
@@ -321,8 +324,9 @@ private nonisolated struct WireKey: CodingKey {
 }
 
 /// One message's field object, read strictly: exactly the named members, each
-/// of its stated type, and no integer below zero.
-private nonisolated struct WireObject {
+/// of its stated type, and no integer below zero. `NearbyFrame` reads its own
+/// one-field object through it, for the same reason.
+nonisolated struct WireObject {
     private let fields: KeyedDecodingContainer<WireKey>
     private let path: [any CodingKey]
 

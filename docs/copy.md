@@ -248,6 +248,7 @@ The propose sheet, what the board says about the other player and about the link
 | `nearby.theyMoveFirst` | 对方先手 | They Move First | option | [interaction-design.md](interaction-design.md) § Nearby play; `Nearby/NearbyProposeSheet.swift` — the other half of the side choice, beside `setup.iMoveFirst`. It names the other player because which colour they take belongs to the game |
 | `nearby.devices` | 附近的设备 | Nearby Devices | group header | same |
 | `nearby.searching` | 正在查找附近的设备… | Looking for nearby devices… | row | same — what the group says with nobody in it yet |
+| `nearby.unnamedDevice` | 附近的设备 | Nearby Device | row; alert | same, and `Nearby/NearbyProposeSheet.swift` — what a device is called where the system holds no name for it. The pairing ceremony is asymmetric, so the side that made itself discoverable routinely has no name for the other; a device that was never paired has none by design, since names do not travel. One label for all of them, and never an identifier: an identity is a diagnostic, and this application's own would name a way of reaching a device besides. Where more than one such device is in the room the label carries four characters of that device's identity, which is a disambiguator rather than a name |
 | `nearby.invite` | 发出邀请 | Send Invitation | button | same — the sheet's one tinted action |
 | `nearby.waitingForAnswer` | 正在等待对方回应… | Waiting for a reply… | row | same — an invitation that has gone out and not been answered |
 | `nearby.pairing` | 配对 | Pairing | group header | same |
@@ -268,7 +269,7 @@ The propose sheet, what the board says about the other player and about the link
 | `nearby.refusal.unknownSession` | 对方设备上已经没有这局对弈了。 | The other device no longer has this game. | alert message; notice message | same — its `unknown_session`, and the board's own sentence for a game the other device no longer holds. One fact, one set of words, whichever surface says it |
 | `nearby.refusal.alreadyPlaying` | 你和对方已经有一局对弈了。 | You already have a game with this device. | alert message | same — one game at a time per pair of devices, which this device's own engine is what says |
 | `nearby.refusal.settling` | 上一局还没有结束。请稍后再试。 | The last game hasn't finished yet. Please try again in a moment. | alert message | same — the pair's previous game is not settled between the two devices yet |
-| `nearby.refusal.notNow` | 现在无法开始对局。请重试。 | The game can't start right now. Please try again. | alert message | same — every other refusal, which is a connection that is not there: commonly one to a paired device nothing has dialled yet, and otherwise one that went away between the press and the send |
+| `nearby.refusal.notNow` | 现在无法开始对局。请重试。 | The game can't start right now. Please try again. | alert message | same — every other refusal, which is a connection that went away between the press and the send. A device nothing has reached is not this sentence: the invitation is available where the chosen device holds a live connection and waits where it does not, so that case never gets as far as a refusal |
 
 The five refusal reasons above the last three are the protocol's own closed vocabulary, and each has a sentence rather than a shared one: they are things a person can act on — wait, update, or ask the other device — and a reader cannot act on a code. The last three are this device's engine refusing to send at all, in the three situations that differ for the reader.
 
@@ -358,7 +359,7 @@ The Chinese cell of a piece row is a description of the two characters rather th
 |---|---|---|---|---|
 | `moveList.rowNumber` | `%lld.` | `%lld.` | move-list row number | `Play/MoveList.swift` — numerals and a full stop; no word is translated |
 | `app.displayName` | Mini Xiangqi | Mini Xiangqi | application name | [product.md](product.md) § Product identity and distribution; `apple/MiniXiangqi.xcodeproj` — one name in both languages |
-| `app.localNetworkUsage` *(proposed)* | 用于查找并连接附近对弈的对方设备。 | Used to find and connect to the other player's device for Nearby Play. | the sentence inside the system's local-network permission alert | [interaction-design.md](interaction-design.md) § Nearby play — a bundle string rather than a String Catalog row, so it is written where `app.displayName` is written. The alert around it is the system's own words; this sentence says what the access is for and names no transport |
+| `app.localNetworkUsage` | 用于查找并连接附近对弈的对方设备。 | Used to find and connect to the other player's device for Nearby Play. | the sentence inside the system's local-network permission alert | [interaction-design.md](interaction-design.md) § Nearby play — a bundle string rather than a String Catalog row: `NSLocalNetworkUsageDescription` in `apple/MiniXiangqi/Info.plist`, localized beside it in `InfoPlist.xcstrings`. The alert around it is the system's own words; this sentence says what the access is for and names no transport |
 
 ## Where the two languages deliberately do not match one to one
 

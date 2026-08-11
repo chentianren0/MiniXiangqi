@@ -101,9 +101,12 @@ struct NearbyProposeSheet: View {
             flow.chosenPeer = device.peer
         } label: {
             HStack(spacing: 8) {
-                // The device's own name, which is data rather than copy and is
-                // never translated.
-                Text(verbatim: device.name ?? device.peer.rawValue)
+                // The device's own name where the system has one, which is data
+                // rather than copy and is never translated — and the one
+                // neutral label where it has none, which is copy and is. What a
+                // row never carries is an identity: that is a diagnostic, and
+                // this transport's own would spell out a carrier besides.
+                Text(verbatim: device.label.text)
                 Spacer(minLength: 0)
                 if flow.chosenDevice?.peer == device.peer {
                     Image(systemName: "checkmark")
@@ -240,9 +243,14 @@ private struct NearbyAnswers: ViewModifier {
     private var invitationMessage: String {
         guard let invitation = flow.invitation else { return "" }
         var parts: [String] = []
-        if let name = flow.peers.first(where: { $0.peer == invitation.peer })?.name {
-            parts.append(name)
-        }
+        // **The alert always names the device.** A proposal arrives from
+        // somebody, and a prompt that said only which game and which side would
+        // be asking about a game with nobody in it. Where the system holds no
+        // name for the device — which is the ordinary state of the side that
+        // made itself discoverable when the two were paired — that is the
+        // neutral label, the same one its row carries.
+        let peer = flow.peers.first { $0.peer == invitation.peer }
+        parts.append(NearbyLabel(name: peer?.name, peer: invitation.peer).text)
         if let game = GameKind(rulesID: invitation.rulesID) {
             parts.append(game.localizedName)
         }

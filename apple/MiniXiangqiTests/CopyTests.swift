@@ -81,6 +81,7 @@ struct CopyTests {
             "mode.humanVersusAI", "mode.freePlay", "mode.nearby",
             "nav.play", "nav.history", "nav.settings", "nav.resumeGame",
             "nearby.theyMoveFirst", "nearby.devices", "nearby.searching",
+            "nearby.unnamedDevice",
             "nearby.invite", "nearby.waitingForAnswer",
             "nearby.pairing", "nearby.pairing.footer", "nearby.pairing.unavailable",
             "nearby.discoverable", "nearby.findDevice", "nearby.connecting",
@@ -130,6 +131,24 @@ struct CopyTests {
                 #expect(answer != key, "\(key) has no \(language) value")
             }
         }
+    }
+
+    @Test("The local-network sentence is the register's, in both languages")
+    func theBundleStringIsThere() throws {
+        // The one accepted string that is not a String Catalog row: the system
+        // reads it out of the bundle to explain its own permission alert with,
+        // so it is localized in `InfoPlist.xcstrings` and compiled into each
+        // language's `InfoPlist.strings` rather than into `Localizable`. A
+        // catalog that failed to compile would leave the alert speaking the
+        // development language to every reader, which nothing else here would
+        // notice.
+        let table = "InfoPlist"
+        let key = "NSLocalNetworkUsageDescription"
+
+        #expect(try bundle("zh-Hans").localizedString(forKey: key, value: nil, table: table)
+                == "用于查找并连接附近对弈的对方设备。")
+        #expect(try bundle("en").localizedString(forKey: key, value: nil, table: table)
+                == "Used to find and connect to the other player's device for Nearby Play.")
     }
 
     @Test("The two game names are complete and distinct in both languages")

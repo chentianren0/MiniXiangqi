@@ -2080,6 +2080,24 @@
         }
       }
     },
+    "nearby.unnamedDevice": {
+      "comment": "What a device is called on the propose sheet and in the arriving-invitation alert where the system holds no name for it. Never an identifier.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nearby Device"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "附近的设备"
+          }
+        }
+      }
+    },
     "nearby.waitingForAnswer": {
       "extractionState": "manual",
       "localizations": {
