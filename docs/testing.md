@@ -36,6 +36,7 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Keep rules, domain, persistence, engine, and UI tests independently runnable where practical.
 - Prefer deterministic, behavior-focused fixtures over snapshots of incidental implementation details.
 - Test length is never a reason to omit necessary evidence. Add and run a long test when it is the smallest honest way to protect load-bearing behavior. The run budget limits duplicate execution, not test scope: one completed passing run of each affected suite under the current code and conditions is sufficient, and an unchanged green suite is not run again. After code, tests, or relevant conditions change, run the affected suites once. Diagnose a failed or interrupted run before retrying it.
+- A test finds a control by identifier, never by label: a label is copy and changes with the language, and an identifier does not.
 - Report exact commands, environment, results, and anything not run.
 - Keep raw logs, measurements, and historical run results outside this document.
 
@@ -168,7 +169,7 @@ Build and run operations live in [`apple/README.md`](../apple/README.md).
 - Verify every Settings preference persists in the platform's own preference system and survives relaunch, that none is written to the shared store, and that changing one never alters an active game or any History record.
 - Verify a game created from the pre-start draft freezes the first-mover choice and AI level supplied at creation, and that changing either Settings default afterwards leaves the created and archived game untouched.
 - Verify the app follows the operating system's language selection, including through an Apple per-app language change, and that it offers no interface-language control of its own.
-- Run the localization evidence: the Double-Length and Bounded String pseudolanguage passes, the smoke flows in both Simplified Chinese and English, and the mechanical check that every key the interface reads answers in both languages.
+- Run the localization evidence: the Double-Length and Bounded String pseudolanguage passes, the smoke flows in both Simplified Chinese and English, and `CopyTests`'s mechanical check that every key the interface reads answers in both languages.
 - Verify the sound, haptics, and piece-symbols settings persist, take effect immediately, and that the haptics setting is unavailable rather than inert on hardware without haptics.
 - Verify the grid and palace diagonals are stroked identically, that the outer boundary is a single line, and that both reach 3:1 against each style's board surface. Verify Mini Xiangqi has no river and Xiangqi interrupts only the inner file lines between ranks 5 and 6.
 - Verify both numeral strips are present with seven entries per edge in Mini Xiangqi and nine in Xiangqi, that each faces the player whose numerals it shows, that they follow orientation, share a baseline and weight, and reach 4.5:1 against the board surface and 7:1 under Increase Contrast.

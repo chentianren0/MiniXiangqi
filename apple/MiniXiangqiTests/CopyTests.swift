@@ -27,7 +27,7 @@ private func value(_ key: String, in language: String) throws -> String {
     try bundle(language).localizedString(forKey: key, value: nil, table: nil)
 }
 
-@Suite("The copy register, as the catalog answers it")
+@Suite("The copy the catalog carries, in each language it answers in")
 @MainActor
 struct CopyTests {
 
