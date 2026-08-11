@@ -60,7 +60,14 @@ private func nearbyParameters() -> NWParametersBuilder<
             TCP()
         }
     }
-    .wifiAware { $0.performanceMode = .bulk }
+    // Realtime, for its committed availability rather than its throughput: the
+    // radio's windows span the infrastructure channels instead of the social
+    // channel alone, which is what shortens a dial and steadies a marginal
+    // link — the two places this feature actually waits. The battery this
+    // spends is spent only while the radio runs, and the radio runs only while
+    // nearby play is in use or a game is owed settling. It moves no bands and
+    // adds no range: the 5 GHz choice is the platform's own.
+    .wifiAware { $0.performanceMode = .realtime }
 }
 
 /// One Wi-Fi Aware connection, and the whole of what the driver may do with it.
