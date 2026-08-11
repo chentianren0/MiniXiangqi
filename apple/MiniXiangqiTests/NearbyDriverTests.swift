@@ -498,6 +498,21 @@ struct NearbyDriverTests {
         #expect(launch.move(at: 0) == "b1b2")
         #expect(launch.move(at: 1) == "b7b6")
         #expect(launch.move(at: 2) == nil)
+
+        // **Both paths run unless a run says otherwise**, and each flag holds
+        // down the one it names. This is a switch on the transport itself in
+        // every debug build, including the one the UI suites launch, so a sign
+        // the wrong way round would silently take a path away from a run that
+        // asked for both — and a run whose path is missing looks exactly like a
+        // network with nobody on it.
+        #expect(launch.runsRadio && launch.runsNetwork, "unasked, a run brings up both")
+        let network = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "network"])
+        #expect(!network.runsRadio && network.runsNetwork)
+        let radio = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "radio"])
+        #expect(radio.runsRadio && !radio.runsNetwork)
+        let nonsense = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "both ways"])
+        #expect(nonsense.runsRadio && nonsense.runsNetwork,
+                "and a word this does not know takes nothing away")
     }
 
     @Test("A script flag with nothing after it is no script")

@@ -98,6 +98,12 @@ nonisolated enum NearbyDeviceName {
 /// one use it is put to is naming a connection: a connection's identifier
 /// carries this in front of it, which is how the preference reaches everything
 /// that sorts identifiers without any of them being told what it means.
+///
+/// **The ranks are single digits, which is what makes sorting them as text the
+/// same as sorting them as numbers.** A third path would either take the next
+/// digit or the rank would be written with a fixed width; ten paths written
+/// unpadded would order `10` before `2` and the whole mechanism would be wrong
+/// in a way nothing would announce.
 nonisolated enum NearbyLinkKind: Int, Sendable {
     /// The local network. Preferred where both stand: it is the path that
     /// reaches through the walls of a home, which is the whole reason there
@@ -119,11 +125,33 @@ nonisolated extension ConnectionID {
     ///
     /// It is lawful because the identifier is opaque above the transport: it is
     /// transport-minted, transport-local, never compared across devices, and
-    /// never on the wire. It is invisible because what a log or a screen shows
-    /// of a connection is its *tail*, which is the framework's own name for it
-    /// and carries none of this.
+    /// never on the wire. It is invisible because nothing that shows a
+    /// connection to a reader shows this: what they are shown is `name`, below.
+    ///
+    /// **It is a convention rather than a structure, and that is the trade.**
+    /// Before this, no layer above the transport could learn what carried a
+    /// connection because there was nothing to read; now there is something in
+    /// the string, and what keeps it unread is that nothing reads it. What the
+    /// mechanism buys for that is one preference in one place instead of two
+    /// that must be kept in step — and a chooser that cannot fall out of step
+    /// with the transport, because it is not choosing.
     init(_ name: String, over kind: NearbyLinkKind) {
         self.init("\(kind.rawValue)-\(name)")
+    }
+
+    /// The connection's own name, without the transport's order in front of it:
+    /// what a log line, a screen, or anything else a person reads is given.
+    ///
+    /// A rank is a digit and a hyphen at the head, which is the shape the mint
+    /// above writes and a shape no framework name of the two in use begins
+    /// with. An identifier that never went through the mint — a test's, the
+    /// staged board's — has no rank and is its own name.
+    var name: String {
+        var rest = rawValue[...]
+        guard let first = rest.first, first.isNumber else { return rawValue }
+        rest = rest.dropFirst()
+        guard rest.first == "-" else { return rawValue }
+        return String(rest.dropFirst())
     }
 }
 

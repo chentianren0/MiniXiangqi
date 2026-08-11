@@ -572,7 +572,12 @@ final class NearbyDriver {
     /// The tail of an identifier, which is what a log line has room for and
     /// what a person compares across two devices.
     static func short(_ text: String) -> String { String(text.suffix(8)) }
-    static func short(_ connection: ConnectionID) -> String { short(connection.rawValue) }
+    /// A connection, as a line about it says it: the connection's own name, and
+    /// never whatever the transport may have written in front of it for its own
+    /// purposes. Asking the identifier for the part that is a name is not asking
+    /// what carries it — there is no answer to that here, and nothing here would
+    /// know what to do with one.
+    static func short(_ connection: ConnectionID) -> String { short(connection.name) }
 
     static func describe(_ message: BoardGameMessage) -> String {
         switch message {

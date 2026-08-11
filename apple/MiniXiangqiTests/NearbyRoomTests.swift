@@ -223,13 +223,19 @@ struct NearbyRoomTests {
         // connections order the same way every time they are asked.
         #expect(ConnectionID("a", over: .network).rawValue
                 < ConnectionID("z", over: .network).rawValue)
-        // And nothing a reader ever sees carries it: the order goes in front,
-        // the framework's own name is untouched behind it, and what a log or a
-        // screen shows of a connection is that name's tail.
-        #expect(ConnectionID("connection-a1b2c3d4", over: .radio).rawValue
-                .hasSuffix("connection-a1b2c3d4"))
-        #expect(ConnectionID("connection-a1b2c3d4", over: .radio).rawValue.suffix(8)
-                == ConnectionID("connection-a1b2c3d4", over: .network).rawValue.suffix(8))
+        // And nothing a reader ever sees carries it. **The names the framework
+        // actually hands out are one or two characters** — `1`, `2`, `3` in
+        // order per process, as a driven run's own log lines show — so a reader
+        // is protected by `name` stripping the rank and by nothing else. These
+        // are those names, not a long fixture that would hide the question.
+        #expect(ConnectionID("1", over: .network).name == "1")
+        #expect(ConnectionID("1", over: .radio).name == "1")
+        #expect(ConnectionID("12", over: .radio).name == "12")
+        #expect(ConnectionID("1", over: .radio).name == ConnectionID("1", over: .network).name,
+                "the two paths' connections read alike, which is the whole promise")
+        // An identifier that never went through the mint is its own name.
+        #expect(ConnectionID("staged-connection").name == "staged-connection")
+        #expect(ConnectionID("c-1").name == "c-1")
     }
 
     @Test("Where a device is reachable both ways, the network is the one handed over")

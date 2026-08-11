@@ -195,7 +195,7 @@ struct NearbyHarnessScreen: View {
     @ViewBuilder
     private var pairing: some View {
         Section {
-            if NearbyTransport.isSupported,
+            if NearbyTransport.hasRadio,
                let publishable = WAPublishableService.boardGame,
                let subscribable = WASubscribableService.boardGame {
                 DevicePairingView(.wifiAware(.connecting(to: publishable,
@@ -221,7 +221,7 @@ struct NearbyHarnessScreen: View {
                         Image(systemName: "xmark.circle")
                     }
                 }
-            } else if !NearbyTransport.isSupported {
+            } else if !NearbyTransport.hasRadio {
                 Text(verbatim: "No radio on this device — nothing to pair with. "
                      + "The local network is the whole reach here.")
                     .foregroundStyle(.secondary)

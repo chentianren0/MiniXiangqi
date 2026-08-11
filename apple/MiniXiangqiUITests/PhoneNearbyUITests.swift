@@ -1,11 +1,18 @@
 // Nearby play, as far as a Simulator can honestly go.
 //
-// A Simulator has no Wi-Fi Aware and no local network to browse, so there is no
-// room, no pairing and no game to play here — and this suite does not pretend
-// otherwise. What it can answer is everything on this side of them: that the
-// entry rows are drawn, and what the sheet those rows raise is made of. The
-// played board and the two-device flow belong to real devices, and the driven
-// device run is where they are seen.
+// A Simulator has no Wi-Fi Aware, and every launch here holds the other path
+// down, so there is no room, no pairing and no game to play — and this suite
+// does not pretend otherwise. What it can answer is everything on this side of
+// them: that the entry rows are drawn, and what the sheet those rows raise is
+// made of. The played board and the two-device flow belong to real devices, and
+// the driven device run is where they are seen.
+//
+// **The local network is held down on purpose, with `-mxq-nearby-paths radio`.**
+// A Simulator's Bonjour is the *host's*, so a suite that left it running would
+// browse the developer's own network and advertise this app on it — and the
+// empty room these tests assert would hold whatever else happened to be
+// advertising, including another Simulator two tests away. An empty room has to
+// be a fact of the launch rather than a hope about the room.
 //
 // **A Simulator is a device with no radio, and that is exactly the interesting
 // case now.** The feature is two ways of reaching another device and one of them
@@ -32,6 +39,10 @@ final class PhoneNearbyUITests: XCTestCase {
         app.launchArguments += ["-mxq-defaults-suite", "mxq-uitests-phone"]
         app.launchArguments += ["-mxq-appearance", "light"]
         app.launchArguments += LaunchPreferences.arguments()
+        // Nobody in the room, as a fact rather than a hope: the radio does not
+        // exist here, and this is what keeps the other path from reaching the
+        // network this machine is on.
+        app.launchArguments += ["-mxq-nearby-paths", "radio"]
         // The board itself, which no amount of pressing reaches here: the
         // session is handed to the app, and everything above it — the flow, the
         // board's model, the position — is the real thing.

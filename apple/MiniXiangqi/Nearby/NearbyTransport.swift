@@ -132,8 +132,9 @@ final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
     /// What this connection is called. **Minted with the transport's own
     /// preference in front of it**, so that the connection this layer would
     /// rather use sorts first wherever connections are chosen between — here,
-    /// and in the driver, neither of which reads what carries one. See
-    /// `ConnectionID.init(_:over:)`.
+    /// and in the driver, neither of which reads what carries one. What a reader
+    /// is ever shown is the connection's own name without it. See
+    /// `ConnectionID.init(_:over:)` and `ConnectionID.name`.
     let id: ConnectionID
     let direction: Direction
     /// What carries it. **The transport's own business**: it is spent naming
@@ -516,9 +517,10 @@ final class NearbyTransport {
         watchPairedDevices()
     }
 
-    /// Whether this device has the radio at all. Where it does not, there is
-    /// nothing to start.
-    static var isSupported: Bool {
+    /// Whether this device has the paired-device radio at all. Where it does
+    /// not, there is nothing to start on that path and everything to start on
+    /// the other: the feature is not the radio's.
+    static var hasRadio: Bool {
         WACapabilities.supportedFeatures.contains(.wifiAware)
     }
 
@@ -528,12 +530,12 @@ final class NearbyTransport {
     ///
     /// Idempotent, and it lets go of its own handle when the snapshots stop, so
     /// that a watch which failed once is taken up again the next time a surface
-    /// wakes — `NearbyFlow` calls this there, off the radio's own bracket —
+    /// wakes — `NearbyFlow` calls this there, off the transport's own bracket —
     /// rather than leaving the list empty for the rest of the launch. Hardware
     /// with no radio is answered here rather than at each caller, so that every
     /// caller is the same call.
     func watchPairedDevices() {
-        guard Self.isSupported, pairedDevicesTask == nil else { return }
+        guard Self.hasRadio, pairedDevicesTask == nil else { return }
         // Weakly, and cancelled when this object ends: the snapshots do not stop
         // on their own, so a task holding the transport would hold it — and its
         // subscription to the system's registry — for the whole launch, however
@@ -602,7 +604,7 @@ final class NearbyTransport {
         // other path: the feature is not the radio's, and a publisher looping
         // against a radio that does not exist would burn a retry every two
         // seconds for a device that is playing perfectly well.
-        guard Self.isSupported else {
+        guard Self.hasRadio else {
             log.note("No radio on this device — the local network is the whole reach.")
             return
         }

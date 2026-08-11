@@ -15,7 +15,7 @@ extension NearbyTransport: NearbyReach {
     /// Whether this hardware has the paired-device radio. The type's own answer,
     /// as an instance question, because the surfaces hold a transport rather
     /// than a type — and the pairing entry is the one surface that asks.
-    var hasRadio: Bool { Self.isSupported }
+    var hasRadio: Bool { Self.hasRadio }
 
     /// The devices in the room, one entry per *device*.
     ///
