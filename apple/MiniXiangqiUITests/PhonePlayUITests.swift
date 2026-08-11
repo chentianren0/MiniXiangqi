@@ -31,8 +31,8 @@
 // preference domains are as much the operator's as a Mac's are, and a suite that
 // named none would assert whatever the last run left behind.
 //
-// The words asserted here are the normative Simplified Chinese of docs/copy.md,
-// written out rather than read from the application's own catalog: a test that
+// The words asserted here are the accepted Simplified Chinese, written out
+// rather than read from the application's own catalog: a test that
 // reads the file the application reads asserts only that the file is itself.
 
 #if os(iOS)

@@ -32,15 +32,14 @@ final class PlayScreenUITests: XCTestCase {
     private static let shuffleLine =
         "minixiangqi:b1b2,b7b6,b2b1,b6b7,b1b2,b7b6,b2b1,b6b7"
 
-    /// A language to run the interface in, and the strings docs/copy.md
-    /// accepts for it.
+    /// A language to run the interface in, and the accepted strings for it.
     ///
     /// The words are written out here rather than read from the application's
     /// own catalog. A test that reads the file the application reads asserts
     /// only that the file is itself; what needs proving is that the accepted
     /// words reach the screen, so the accepted words are what stands in the
-    /// test. A copy change is a change to docs/copy.md, to the catalog, and to
-    /// the line below that quotes it — which is the point.
+    /// test. A copy change is a change to the catalog and to the line below
+    /// that quotes it — which is the point.
     private struct Language {
         /// What `-AppleLanguages` is given, and what a frame is named after.
         let code: String
@@ -556,7 +555,7 @@ final class PlayScreenUITests: XCTestCase {
         XCTAssertTrue(capsule.waitForExistence(timeout: 5),
                       "the refused save answers at the turn status")
         XCTAssertTrue(app.staticTexts["无法保存这一步，请重试。"].exists,
-                      "with the register's words")
+                      "with the accepted words")
         attach(app, named: "23-the-save-failure-capsule")
 
         XCTAssertEqual(point(app, "b1").label, "b1 红 炮 已选择",
@@ -1047,9 +1046,9 @@ final class PlayScreenUITests: XCTestCase {
 
     // MARK: - The two languages
 
-    // docs/copy.md is the register: normative Simplified Chinese with an
-    // approved English beside it, the pair stored under one symbolic key. The
-    // String Catalog is what puts them on screen, and the only thing that can
+    // The catalog is the string of record: normative Simplified Chinese with
+    // an approved English beside it, the pair stored under one symbolic key.
+    // The String Catalog is what puts them on screen, and the only thing that can
     // say the catalog is live is the running screen in each language. So the
     // two tests below walk one language each over the surfaces the copy lives
     // on — ordinary play, the result notice, the claim's alert, and the
@@ -1074,7 +1073,7 @@ final class PlayScreenUITests: XCTestCase {
         // the control cluster, all carrying words at once.
         let play = launch(replaying: Self.evidenceLine, in: language)
         XCTAssertEqual(play.buttons["cluster-undo"].label, language.undo,
-                       "the control's label is the register's, in this language")
+                       "the control's label is the accepted one, in this language")
         XCTAssertEqual(play.buttons["cluster-claim"].label, language.claimDraw)
         XCTAssertEqual(play.buttons["cluster-flip"].label, language.flipBoard)
         XCTAssertTrue(reading(play, "turn-status").contains(language.redToMove),
@@ -1179,7 +1178,7 @@ final class PlayScreenUITests: XCTestCase {
     }
 
     /// The failure screen the play screen shows when a game will not start.
-    /// It is the one surface whose Chinese the register had to supply — the
+    /// It is the one surface whose Chinese had to be supplied — the
     /// application shipped an English literal with nothing behind it — so it
     /// is worth seeing rather than assuming. A replay line the core refuses is
     /// what puts it on screen.

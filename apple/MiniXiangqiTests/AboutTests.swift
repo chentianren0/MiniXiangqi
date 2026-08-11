@@ -23,7 +23,7 @@ struct AboutTests {
 
     @Test("The name is the product name of record")
     func theDisplayNameIsTheProductName() {
-        // docs/copy.md's `app.displayName`: one name in both languages, carried
+        // The application's name is one name in both languages, carried
         // by the project as the bundle's display name. The page reads it from
         // there, so a project that lost the key would show an empty row.
         #expect(About.displayName == "Mini Xiangqi")

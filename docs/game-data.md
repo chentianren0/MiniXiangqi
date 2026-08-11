@@ -94,12 +94,12 @@ The ruleset the file names is dispatched on as explicitly as the archive version
 
 - The same operation accepts any active game of any mode, including an ordinary ongoing game, a claimable but unclaimed neutral repetition, or an unconfirmed natural terminal result.
 - The requested destination is transient in-memory state and is not part of the game archive or the store.
-- **保存并继续** places the active game in History and clears the library's active-game reference in one atomic transaction.
+- **Save and Continue** places the active game in History and clears the library's active-game reference in one atomic transaction.
 - The operation derives the saved classification from the committed game state:
   - an ordinary ongoing game is recorded with an ended-early reason and no competitive result;
   - a claimable neutral repetition that has not been claimed remains an ongoing game and is therefore recorded as ended early, not as a draw;
   - an unconfirmed natural terminal state retains its actual result and exact termination reason.
-- The selected mode's pre-start state begins only after that commit succeeds. Creating the later game is a separate operation triggered by **开始对局**.
+- The selected mode's pre-start state begins only after that commit succeeds. Creating the later game is a separate operation triggered by **Start Game**.
 - A failed archive operation leaves the previously committed active game intact, creates no new game, and does not continue to the selected mode. The requested destination may remain only as transient retry state and is discarded when the flow is cancelled.
 
 ### Pre-start state behavior
@@ -107,9 +107,9 @@ The ruleset the file names is dispatched on as explicitly as the archive version
 - No pre-start state is written to the store or a game archive. None creates a `StoredGame` or changes the active-game reference.
 - Leaving a pre-start state discards it. If it was entered after archiving an older game, that older game remains immutable History and is not restored.
 - Human-versus-AI Settings defaults and the per-game setup draft are separate state. Entering setup creates a fresh in-memory draft from the current Settings defaults; reopening after leaving creates another fresh draft from the then-current defaults.
-- A Random first-mover choice remains unresolved in the draft. Only successful **开始对局** creation commits the resolved human side, AI level identifier, and exact thinking-time value as durable active-game configuration.
+- A Random first-mover choice remains unresolved in the draft. Only successful **Start Game** creation commits the resolved human side, AI level identifier, and exact thinking-time value as durable active-game configuration.
 - AI availability or active-game persistence failure creates no active game and changes no persistent game-library state. The unresolved draft may remain only while the setup page remains open.
-- Free Play has no configurable draft fields. Its in-memory pre-start state retains only the pending mode until **开始对局** commits the new active game.
+- Free Play has no configurable draft fields. Its in-memory pre-start state retains only the pending mode until **Start Game** commits the new active game.
 - A failed creation leaves no active game, retains the corresponding in-memory pre-start state for retry, and changes no persistent game-library state.
 - Each creation attempt is single-flight and bound to the identity or revision of the pre-start session that initiated it. Duplicate Start actions are ignored or disabled, and leaving invalidates the session so a late result cannot commit a game.
 
@@ -123,8 +123,8 @@ A retraction changes the active game's retained main line and is saved immediate
 - Human-versus-AI Undo cancels an outstanding reply search and removes the triggering human move, or removes the completed AI reply together with the preceding human move. Repeated Undo proceeds by human decision cycles.
 - A nearby game has no unilateral undo: a retraction there is the two players' agreement, and what it retracts is what they agreed to keep.
 - If a human move itself produces an unconfirmed natural terminal state, Undo removes that human move.
-- An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result, or successfully using **保存并继续** to enter another mode, moves it to immutable History with its actual result and termination reason.
-- A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; claiming the draw commits an immutable draw record, while **保存并继续** without claiming records an ended-early game with no competitive result.
+- An unconfirmed natural terminal state remains the active game and can be undone. Confirming its result, or successfully using **Save and Continue** to enter another mode, moves it to immutable History with its actual result and termination reason.
+- A claimable neutral threefold repetition also remains an active game. Continuing does not create a History record; claiming the draw commits an immutable draw record, while **Save and Continue** without claiming records an ended-early game with no competitive result.
 - Confirmed resignation records the loss and moves the game to immutable History.
 - Saving an ordinary ongoing game before entering another mode records it in immutable History with an ended-early reason and no competitive result.
 - A new move after a retraction permanently replaces the discarded continuation.

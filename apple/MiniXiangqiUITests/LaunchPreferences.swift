@@ -21,9 +21,9 @@
 // default, unless the test names its own — and what the app reads is then the
 // launch's own answer rather than the machine's.
 //
-// The seven keys are docs/copy.md's and `Settings/Preferences.swift`'s: this list
-// is that table, and a preference added there without being added here is a
-// preference the tests would go back to inheriting.
+// The seven keys are `Settings/Preferences.swift`'s: this list is that table,
+// and a preference added there without being added here is a preference the
+// tests would go back to inheriting.
 //
 // **This file is the one thing both platforms' suites share, and it is
 // deliberately the only one.** The bundle now builds for an iOS Simulator as
