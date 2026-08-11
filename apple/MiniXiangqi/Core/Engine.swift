@@ -266,6 +266,17 @@ protocol AIEngine: AnyObject {
     func startSearch(movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
 
+    /// Starts a hint search over the attached session and returns its ticket.
+    ///
+    /// The same shape as `startSearch` in every respect the frontend can see —
+    /// one ticket, one completion on the main actor, the same cancellation —
+    /// and it differs in what the thinking time *is*: `mxq_search_start_hint`
+    /// takes it as a value rather than cross-checking it against the session's
+    /// frozen one, which is why a Free Play game, freezing none, can be asked
+    /// for a hint at all.
+    func startHintSearch(movetimeMilliseconds: UInt32,
+                         completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
+
     /// Cancels one search. Its completion still arrives, carrying `cancelled`.
     func cancelSearch(_ ticket: UInt64)
 
@@ -364,18 +375,40 @@ extension Core: AIEngine {
         var request = MxqSearchRequest()
         request.struct_size = UInt32(MemoryLayout<MxqSearchRequest>.size)
         request.movetime_ms = movetimeMilliseconds
+        return try startSearch(delivering: completion) { delivery, ticket, err in
+            mxq_search_start(handle, session, &request,
+                             mxqSearchTrampoline, delivery, &ticket, &err)
+        }
+    }
 
-        // The standard non-capturing trampoline: the closure is boxed, the box
-        // is passed as `user_data` at +1, and the callback consumes exactly one
-        // retain. The engine thread's whole job inside it is to copy the result
-        // and hand it on, which is what the callback contract requires — every
-        // core call but the status and blob helpers answers `REENTRANT` there,
-        // and blocking would deadlock the thread the search runs on.
+    func startHintSearch(movetimeMilliseconds: UInt32,
+                         completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
+        let session = try attachedSession()
+        return try startSearch(delivering: completion) { delivery, ticket, err in
+            mxq_search_start_hint(handle, session, movetimeMilliseconds,
+                                  mxqSearchTrampoline, delivery, &ticket, &err)
+        }
+    }
+
+    /// The boxing both search entries do, in one place: what differs between
+    /// them is the entry called, and everything around the call — the retain
+    /// the callback consumes, the release a refused start owes, the ticket — is
+    /// the same on either.
+    ///
+    /// The standard non-capturing trampoline: the closure is boxed, the box is
+    /// passed as `user_data` at +1, and the callback consumes exactly one
+    /// retain. The engine thread's whole job inside it is to copy the result
+    /// and hand it on, which is what the callback contract requires — every
+    /// core call but the status and blob helpers answers `REENTRANT` there, and
+    /// blocking would deadlock the thread the search runs on.
+    private func startSearch(
+        delivering completion: @escaping @MainActor (SearchResult) -> Void,
+        by start: (UnsafeMutableRawPointer, inout UInt64, inout MxqError) -> MxqStatus
+    ) throws -> UInt64 {
         let delivery = Unmanaged.passRetained(SearchDelivery(completion)).toOpaque()
         var ticket: UInt64 = 0
         var err = freshError()
-        let status = mxq_search_start(handle, session, &request,
-                                      mxqSearchTrampoline, delivery, &ticket, &err)
+        let status = start(delivery, &ticket, &err)
         guard status == MXQ_OK else {
             // No callback will fire for a search that never started, so the
             // box is this side's to release.

@@ -144,6 +144,12 @@ final class PlayState {
     private(set) var motion: PlayMotion?
     private(set) var opponent: Opponent?
 
+    /// The suggestion the player may ask the engine for. It belongs to the
+    /// board exactly as the opponent does — it is opened with the game and put
+    /// down with it — and it is the local board's alone: the nearby board is a
+    /// separate screen and builds none.
+    private(set) var hint: Hint?
+
     /// What the store says about the active game — the home's card, the
     /// confirmation's metadata line, and the whole of what either knows.
     ///
@@ -689,12 +695,20 @@ final class PlayState {
     ///   search are the board's; the Hash is the app's.
     private func putDownGame(releasingTheEngine: Bool = true) {
         let wasHumanVersusAI = game?.isHumanVersusAI ?? false
+        // An engine standing is an engine to release, whatever mode asked for
+        // one: a Free Play game that asked for a hint has prepared exactly the
+        // table a human-versus-AI game prepares, and leaving its board owes the
+        // same release. Asked of the engine rather than tracked here, so the
+        // answer is what stands rather than a note about what happened.
+        let enginePrepared = game.map { engine.engineIsReady(for: $0.kind) } ?? false
+        hint?.cancel()
+        hint = nil
         opponent?.cancelSearch()
         opponent = nil
         motion = nil
         game = nil
         core.endSession()
-        if wasHumanVersusAI, releasingTheEngine {
+        if wasHumanVersusAI || enginePrepared, releasingTheEngine {
             // **The quiesce between the cancel and the teardown**, which is
             // what the suspension path does and what this needs for the same
             // reason: `mxq_search_cancel` is cooperative and returns before the
@@ -816,9 +830,20 @@ final class PlayState {
         self.motion = motion
         let opponent = Opponent(engine: engine, game: game, motion: motion)
         self.opponent = opponent
+        let hint = Hint(engine: engine, game: game, motion: motion)
+        self.hint = hint
         // The search starts at the commit and the reply departs after the
         // landing, so the opponent listens at both.
-        motion.committed = { [weak opponent] in opponent?.gameChanged() }
+        //
+        // **The hint is put down first**, before the reply is asked for. The
+        // core's engine thread runs one search at a time and queues the rest,
+        // so a hint still running when the player moves would put the AI's
+        // reply behind a whole thinking time of work about a position the game
+        // has already left.
+        motion.committed = { [weak opponent, weak hint] in
+            hint?.cancel()
+            opponent?.gameChanged()
+        }
         motion.landed = { [weak opponent] in opponent?.landed() }
         // A resumed position may already stand in check; its rings pulse
         // as they first appear.
@@ -846,9 +871,19 @@ final class PlayState {
     private func watchForSuspension() {
         suspension = Suspension { [weak self] event in
             switch event {
-            case .suspend: self?.opponent?.suspend()
-            case .resume: self?.opponent?.resume()
-            case .memoryPressure: self?.opponent?.memoryPressure()
+            // The hint goes down first on both release paths, for the reason
+            // the contract gives the order: the release cancels every search
+            // and then tears the table down, and a hint whose own state
+            // outlived that would be a suggestion about a board the engine has
+            // been taken out from under.
+            case .suspend:
+                self?.hint?.cancel()
+                self?.opponent?.suspend()
+            case .resume:
+                self?.opponent?.resume()
+            case .memoryPressure:
+                self?.hint?.cancel()
+                self?.opponent?.memoryPressure()
             }
         }
     }

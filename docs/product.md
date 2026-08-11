@@ -7,7 +7,7 @@ This document owns the product definition, the target platforms, and the feature
 ## Product identity and distribution
 
 - The product name is **Mini Xiangqi**.
-- The product exists for Xiangqi education inside a small internal group. Education means learning through complete games of **Xiangqi** or **Mini Xiangqi**, against the AI or in Free Play. Structured lessons, practice drills, and AI hints are not part of the product.
+- The product exists for Xiangqi education inside a small internal group. Education means learning through complete games of **Xiangqi** or **Mini Xiangqi**, against the AI or in Free Play. Structured lessons and practice drills are not part of the product.
 - The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
@@ -37,6 +37,9 @@ This document owns the product definition, the target platforms, and the feature
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
 - The AI offers three difficulty levels that differ only in maximum thinking time: **Fast** at 1 second per move, **Standard** at 3 seconds per move, and **Deep** at 5 seconds per move. **Standard** is the new-install default.
+- **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in both games, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
+- **A hint is never offered in Nearby Play.** A suggestion engine on one side of a game between two people is not this product's nearby play.
+- **Nothing about a hint is recorded.** It is presentation, like flipping the board: the game, its History record, and every export are exactly what they would have been without it, and no assisted marker exists.
 - A chess clock is not part of the product.
 - Repeated undo is available. Redo is not.
 - Resign is available only in human-versus-AI games. After confirmation, resignation records a loss for the human player.
@@ -95,7 +98,7 @@ Detailed navigation behavior and presentation belong in [interaction-design.md](
 - Internet-dependent features, and servers, relays, and accounts of every kind.
 - Chess clocks.
 - Multiple main windows.
-- Structured lessons, practice drills, and AI hints.
+- Structured lessons and practice drills.
 - Starting a new game from a selected historical position.
 - Editing History game content.
 - Bulk History deletion, search, filters, and tags.
