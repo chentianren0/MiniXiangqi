@@ -526,7 +526,12 @@ private nonisolated struct Stub: BoardGameRules {
     }
 
     func verdict(for text: String, after plies: [String], of rulesID: String) -> PlyVerdict {
-        .lawful(standing(after: plies + [text], of: rulesID))
+        // A ply after the game is decided is unlawful, as the core's oracle
+        // answers it, so no test can lean on play the engine would never see.
+        guard case .ongoing = standing(after: plies, of: rulesID) else {
+            return .unlawful
+        }
+        return .lawful(standing(after: plies + [text], of: rulesID))
     }
 }
 
