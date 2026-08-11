@@ -91,11 +91,11 @@ A malformed message, an illegal move, or any message with no lawful meaning in t
 
 ## A transport binding: iPhone and iPad
 
-The protocol above needs only the stream its model states. One binding is defined, for iPhone and iPad, and it carries a connection over either of two links; nothing above the transport tells the two apart.
+The protocol above needs only the stream its model states. One binding is defined, for iPhone and iPad, and it carries a connection over either of two links. Which link carries one is the transport's own answer, and it is the only layer that has one: above the transport, nothing tells the two apart.
 
 - **Wi-Fi Aware.** The service is `_boardgame._tcp`, declared `Publishable` and `Subscribable` in `WiFiAwareServices`, with the `com.apple.developer.wifi-aware` entitlement carrying `Publish` and `Subscribe`. Devices pair once through the system's DeviceDiscoveryUI; pairing is the system's and outlives the application, and the platform authenticates and encrypts what it carries. Both devices run the publisher and the subscriber together, in `.realtime` performance mode on both sides.
 - **The local network.** `_boardgame._tcp` is the Bonjour service type, advertised and browsed by both devices together. Every device on the network running the application is reachable, and no pairing stands before a proposal.
-- The transport names a stable peer identity behind every connection, whatever link carries it, and that identity is what sessions and resume rely on. A paired device's system identity is one source of it; an application-minted identifier, stated by the peer and proved by nothing, is the other. A game is gated by the consent a proposal asks for and by nothing else.
+- The transport names a stable peer identity behind every connection, whatever link carries it, and that identity is what sessions and resume rely on. A paired device's system identity is one source of it; an application-minted identifier, stated by the peer and proved by nothing, is the other. **One peer has exactly one identity**: the same across a relaunch, the same on either link, and unchanged for as long as a session with that peer stands. A game is gated by the consent a proposal asks for and by nothing else.
 - Connections are TCP framed by the Network framework's JSON message coder, so the protocol layer sees whole messages.
 - Two crossed connections may both come up when both devices connect at once, on one link or on two. A session binds to the connection its `propose` — or, resumed, its proposer's `resume` — travelled on, and either peer may close a connection carrying no session at any time; such a closure means nothing.
 

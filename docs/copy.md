@@ -358,6 +358,7 @@ The Chinese cell of a piece row is a description of the two characters rather th
 |---|---|---|---|---|
 | `moveList.rowNumber` | `%lld.` | `%lld.` | move-list row number | `Play/MoveList.swift` — numerals and a full stop; no word is translated |
 | `app.displayName` | Mini Xiangqi | Mini Xiangqi | application name | [product.md](product.md) § Product identity and distribution; `apple/MiniXiangqi.xcodeproj` — one name in both languages |
+| `app.localNetworkUsage` *(proposed)* | 用于查找并连接附近对弈的对方设备。 | Used to find and connect to the other player's device for Nearby Play. | the sentence inside the system's local-network permission alert | [interaction-design.md](interaction-design.md) § Nearby play — a bundle string rather than a String Catalog row, so it is written where `app.displayName` is written. The alert around it is the system's own words; this sentence says what the access is for and names no transport |
 
 ## Where the two languages deliberately do not match one to one
 
