@@ -12,10 +12,17 @@
 // connection stands to a device, exactly one of them is what the list hands
 // over, and which one is decided here rather than anywhere above.
 //
-// **Nothing above this file learns what carried a connection.** A
-// `NearbyPeer` names a device and a connection and has nowhere to put a kind;
-// `NearbyLink` gives the driver a name, a send and a close. The kind exists in
-// the transport's own candidates and dies in the choosing.
+// **Nothing above this file learns what carried a connection.** A `NearbyPeer`
+// names a device and a connection and has nowhere to put a kind; `NearbyLink`
+// gives the driver a name, a send and a close.
+//
+// **The preference between the two paths is spent at the moment a connection is
+// named**, and nowhere else. The transport mints a connection's identifier with
+// its own order in front of it, so the candidate it would rather use sorts first
+// by construction — and everything that chooses among connections, here and in
+// the driver, does it by sorting those opaque identifiers blindly. That is what
+// lets one preference serve two choosers with no seam carrying a link kind and
+// no chooser above the transport reading one.
 //
 // Platform-free on purpose: the merge and the order are decidable without a
 // radio, a network, or a device, so they are testable without one.
@@ -84,43 +91,90 @@ nonisolated enum NearbyDeviceName {
     }
 }
 
-/// What carries a connection. **Inside the transport only** — it is what the
-/// candidate order is decided by, and it is not on any seam.
-nonisolated enum NearbyLinkKind: Int, Sendable, Comparable {
+/// What carries a connection. **Inside the transport only** — nothing outside
+/// it is ever handed one of these, and no seam has anywhere to put one.
+///
+/// Its `rawValue` is the transport's own order between the two paths, and the
+/// one use it is put to is naming a connection: a connection's identifier
+/// carries this in front of it, which is how the preference reaches everything
+/// that sorts identifiers without any of them being told what it means.
+///
+/// **The ranks are single digits, which is what makes sorting them as text the
+/// same as sorting them as numbers.** A third path would either take the next
+/// digit or the rank would be written with a fixed width; ten paths written
+/// unpadded would order `10` before `2` and the whole mechanism would be wrong
+/// in a way nothing would announce.
+nonisolated enum NearbyLinkKind: Int, Sendable {
     /// The local network. Preferred where both stand: it is the path that
     /// reaches through the walls of a home, which is the whole reason there
     /// are two.
     case network = 0
     /// The paired-device radio, which needs no network at all.
     case radio = 1
+}
 
-    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+nonisolated extension ConnectionID {
+    /// The name the transport gives one of its connections, with its own
+    /// preference in front of it.
+    ///
+    /// **This is where the choice between the two paths is made** — once, at the
+    /// moment a connection comes into existence, by the one layer that knows
+    /// there are two of them. Everything downstream chooses among connections by
+    /// sorting these strings, so the preferred one is already first and no
+    /// chooser has to be told why.
+    ///
+    /// It is lawful because the identifier is opaque above the transport: it is
+    /// transport-minted, transport-local, never compared across devices, and
+    /// never on the wire. It is invisible because nothing that shows a
+    /// connection to a reader shows this: what they are shown is `name`, below.
+    ///
+    /// **It is a convention rather than a structure, and that is the trade.**
+    /// Before this, no layer above the transport could learn what carried a
+    /// connection because there was nothing to read; now there is something in
+    /// the string, and what keeps it unread is that nothing reads it. What the
+    /// mechanism buys for that is one preference in one place instead of two
+    /// that must be kept in step — and a chooser that cannot fall out of step
+    /// with the transport, because it is not choosing.
+    init(_ name: String, over kind: NearbyLinkKind) {
+        self.init("\(kind.rawValue)-\(name)")
+    }
+
+    /// The connection's own name, without the transport's order in front of it:
+    /// what a log line, a screen, or anything else a person reads is given.
+    ///
+    /// A rank is a digit and a hyphen at the head, which is the shape the mint
+    /// above writes and a shape no framework name of the two in use begins
+    /// with. An identifier that never went through the mint — a test's, the
+    /// staged board's — has no rank and is its own name.
+    var name: String {
+        var rest = rawValue[...]
+        guard let first = rest.first, first.isNumber else { return rawValue }
+        rest = rest.dropFirst()
+        guard rest.first == "-" else { return rawValue }
+        return String(rest.dropFirst())
+    }
 }
 
 /// One connection that stands to one device, as the room considers it.
 nonisolated struct NearbyCandidate: Equatable, Sendable {
     var connection: ConnectionID
     var peer: PeerDeviceID
-    var kind: NearbyLinkKind
     /// What the connection can say the device is called, where it can say
     /// anything. Never travels, and nothing keys on it.
     var name: String?
 }
 
 nonisolated extension NearbyCandidate {
-    /// Every candidate, network first, and within one kind by the connection's
-    /// own name.
+    /// Every candidate, in the transport's own order — which is the order its
+    /// connections were named in, the preferred path first.
     ///
     /// **Deterministic, because a redraw must not move a row and a resend must
     /// not change connections.** Two crossed connections to one device are the
     /// ordinary bring-up on either path, and the answer to "which one" has to
-    /// be the same answer every time it is asked.
+    /// be the same answer every time it is asked. Nothing here reads a link:
+    /// this sorts opaque names, and the transport put its preference into them.
     static func ordered(_ candidates: [NearbyCandidate]) -> [NearbyCandidate] {
-        candidates.sorted {
-            $0.kind == $1.kind
-                ? $0.connection.rawValue < $1.connection.rawValue
-                : $0.kind < $1.kind
-        }
+        candidates.sorted { $0.connection.rawValue < $1.connection.rawValue }
     }
 
     /// The devices these candidates reach, one row each, each carrying the one

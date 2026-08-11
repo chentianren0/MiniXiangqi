@@ -50,6 +50,28 @@ struct NearbyLaunch: Equatable {
     /// in the app: a driven run has no hands, and the entry decision is that
     /// nothing enters a nearby game by itself.
     var resumesStoredGame = false
+    /// `-mxq-nearby-paths network` — hold one of the two ways of reaching
+    /// another device down for this run.
+    ///
+    /// **It is the only way a driven run can prove the migration**, which is
+    /// the one behaviour of this transport that needs a path to *go away* while
+    /// a game is on. Nothing on a device can take one away by hand: the two
+    /// share a radio, so switching Wi-Fi off takes both, and a backgrounded app
+    /// is suspended rather than reachable-by-one-path. So a run starts a game
+    /// with one path held down, and continues it with the other — which is what
+    /// a wall between two rooms does to these two devices, arrived at
+    /// deliberately instead of by walking.
+    var paths = Paths.both
+
+    /// Which of the two ways of reaching another device this run brings up.
+    enum Paths: String, Equatable {
+        case both, network, radio
+    }
+
+    /// Whether the paired-device radio comes up in this run.
+    var runsRadio: Bool { paths != .network }
+    /// Whether the local network comes up in this run.
+    var runsNetwork: Bool { paths != .radio }
 
     struct Proposal: Equatable {
         var rulesID: String
@@ -63,6 +85,8 @@ struct NearbyLaunch: Equatable {
         agrees = arguments.contains("-mxq-nearby-agree")
         autoplays = arguments.contains("-mxq-nearby-autoplay")
         resumesStoredGame = arguments.contains("-mxq-nearby-resume")
+        paths = Self.value(after: "-mxq-nearby-paths", in: arguments)
+            .flatMap(Paths.init(rawValue:)) ?? .both
         script = Self.line(after: "-mxq-nearby-script", in: arguments)
         proposal = Self.proposal(in: Self.value(after: "-mxq-nearby-propose", in: arguments))
         then = Self.value(after: "-mxq-nearby-then", in: arguments).flatMap(Intent.init(rawValue:))

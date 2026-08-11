@@ -132,11 +132,12 @@ struct PlayHome: View {
     /// The third row in each game's section: playing that game with somebody in
     /// the room.
     ///
-    /// **It is absent rather than disabled where the device has no radio**, and
-    /// absent altogether on a Mac, which has neither the entitlement nor the
-    /// system's pairing UI. A row that could never be pressed would be a promise
-    /// the hardware cannot keep, and no explanation would help a reader who
-    /// cannot change the answer.
+    /// **It stands wherever either way of reaching another device could carry a
+    /// game**, which on iPhone and iPad is always — one of the two needs no
+    /// hardware of its own. It is absent altogether on a Mac, which has neither
+    /// the entitlement nor the system's pairing UI: a row that could never be
+    /// pressed would be a promise the platform cannot keep, and no explanation
+    /// would help a reader who cannot change the answer.
     ///
     /// Where a nearby game is already going in this row's own game, the row
     /// leads back into it, exactly as the current-game card above leads back

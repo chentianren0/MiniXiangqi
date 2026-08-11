@@ -146,10 +146,18 @@ struct NearbyProposeSheet: View {
     /// either: measured on a Simulator, which says in its own log that it does
     /// not support peer-to-peer Wi-Fi and then terminates the app that asked.
     /// There is nothing to pair with there, so the honest row says so.
+    ///
+    /// **This is the only thing in the feature the hardware decides.** The rows
+    /// on the home, this sheet, the room and every game stand on a device with
+    /// no radio, because reaching another device does not need one; what a
+    /// device with no radio cannot do is the one errand this section is —
+    /// pairing, which is the system's own and happens over that radio. What
+    /// stands here instead says only that this device cannot pair, and names no
+    /// reason for it, as no word this application writes may.
     @ViewBuilder
     private var pairing: some View {
         Section {
-            if flow.radio.isSupported,
+            if flow.reach.hasRadio,
                let publishable = WAPublishableService.boardGame,
                let subscribable = WASubscribableService.boardGame {
                 DevicePairingView(.wifiAware(.connecting(to: publishable,

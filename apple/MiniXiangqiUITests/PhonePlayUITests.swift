@@ -264,7 +264,8 @@ final class PhonePlayUITests: XCTestCase {
     // MARK: - Xiangqi, at a phone's actual pitch
 
     /// Standard Xiangqi through the complete path that owns its identity: one of
-    /// the four rows on the Play home, a pre-start page that still says 象棋, and
+    /// the local ways to play on the Play home — which on a phone now stands
+    /// beside a nearby row per game — a pre-start page that still says 象棋, and
     /// only then a created game. The running board is the evidence the model
     /// alone cannot give: all 90 named points are present, every hit frame is the
     /// actual 39-point cell this 402-point phone draws rather than an overlapping
@@ -282,7 +283,7 @@ final class PhonePlayUITests: XCTestCase {
         ]
         for identifier in modeIdentifiers {
             XCTAssertTrue(app.buttons[identifier].exists,
-                          "the four-entry Play home should include \(identifier)")
+                          "the local ways to play should include \(identifier)")
         }
 
         app.buttons["mode-xiangqi-free-play"].tap()

@@ -57,6 +57,15 @@ extension NearbyTransport {
     /// subscriber together: a device is reachable and looking at the same time,
     /// because either side may be the one who invites.
     func startNetwork() {
+        #if DEBUG
+        // The other half of the driven migration run: one path held down from
+        // the start, so a game can be begun over one and continued over the
+        // other. Debug builds only.
+        guard NearbyLaunch.current.runsNetwork else {
+            log.note("The local network is held down by this run's arguments.")
+            return
+        }
+        #endif
         let identifier = NearbyIdentity.own()
         let label = NearbyIdentity.label(for: identifier, kind: UIDevice.current.model)
         // The label is safe to log where a device name is not: it is a kind and

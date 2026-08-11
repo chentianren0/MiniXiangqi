@@ -1,21 +1,21 @@
 // The transport, as the nearby surfaces need it.
 //
 // The connection layer carries the protocol and knows nothing about a screen;
-// what a screen needs is narrower and differently shaped — is this device
-// capable of nearby play at all, is it running, and who is in the room. This is
-// that view of it, written beside the transport rather than into it so the
-// connection layer stays what the protocol contract describes and nothing more.
+// what a screen needs is narrower and differently shaped — is there a radio to
+// pair over, is the transport running, and who is in the room. This is that view
+// of it, written beside the transport rather than into it so the connection
+// layer stays what the protocol contract describes and nothing more.
 
 #if os(iOS)
 
 import Foundation
 import WiFiAware
 
-extension NearbyTransport: NearbyRadio {
-    /// Whether this hardware has Wi-Fi Aware. The type's own answer, as an
-    /// instance question, because the surfaces hold a transport rather than a
-    /// type.
-    var isSupported: Bool { Self.isSupported }
+extension NearbyTransport: NearbyReach {
+    /// Whether this hardware has the paired-device radio. The type's own answer,
+    /// as an instance question, because the surfaces hold a transport rather
+    /// than a type — and the pairing entry is the one surface that asks.
+    var hasRadio: Bool { Self.hasRadio }
 
     /// The devices in the room, one entry per *device*.
     ///
@@ -31,15 +31,16 @@ extension NearbyTransport: NearbyRadio {
     /// name it the same way: the identity a device sends for itself is what a
     /// connection is named by, what an advertisement carries, and what a
     /// pairing record maps to once any connection has resolved it.
+    ///
     /// **The registry is where a device's name comes from**, out of both the
     /// places the system may hold one. It matters here and not only on a
     /// connection: the registry's row is the merge's first source, so a name
     /// resolved here is the name the row keeps whichever connection stands.
     /// Reading only the record's own `name` would leave the discoverable side
     /// of a pairing nameless in the registry, and its row would then take its
-    /// words from whichever candidate was chosen — reading one way over the
-    /// radio and another over the network, which is a row that changes under
-    /// the reader for a reason no row may have.
+    /// words from whichever candidate was chosen — reading one way over one
+    /// path and another over the other, which is a row that changes under the
+    /// reader for a reason no row may have.
     var peers: [NearbyPeer] {
         NearbyPeer.room(
             paired: pairedDevices.map {

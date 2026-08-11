@@ -1,20 +1,29 @@
 // Nearby play, as far as a Simulator can honestly go.
 //
-// A Simulator has no Wi-Fi Aware, so there is no room, no pairing and no game to
-// play here — and this suite does not pretend otherwise. What it can answer is
-// everything on this side of the radio: whether the entry rows are drawn, which
-// is a decision about the *hardware* and therefore has to be shown in both of
-// its states, and what the sheet those rows raise is made of. The played board
-// and the two-device flow belong to real devices, and the owner's own device
-// pass is where they are seen.
+// A Simulator has no Wi-Fi Aware, and every launch here holds the other path
+// down, so there is no room, no pairing and no game to play — and this suite
+// does not pretend otherwise. What it can answer is everything on this side of
+// them: that the entry rows are drawn, and what the sheet those rows raise is
+// made of. The played board and the two-device flow belong to real devices, and
+// the driven device run is where they are seen.
 //
-// Both states of the entry are named explicitly, through `-mxq-nearby-capable`.
-// A test that only asserted the rows were hidden would prove nothing: a row that
-// is never drawn is hidden on every device, radio or no radio.
+// **The local network is held down on purpose, with `-mxq-nearby-paths radio`.**
+// A Simulator's Bonjour is the *host's*, so a suite that left it running would
+// browse the developer's own network and advertise this app on it — and the
+// empty room these tests assert would hold whatever else happened to be
+// advertising, including another Simulator two tests away. An empty room has to
+// be a fact of the launch rather than a hope about the room.
+//
+// **A Simulator is a device with no radio, and that is exactly the interesting
+// case now.** The feature is two ways of reaching another device and one of them
+// asks the hardware for nothing, so the rows stand here as they stand on every
+// iPhone and iPad — with nothing forced and nothing faked. The one thing a
+// device without the radio cannot do is pair, and the sheet's own pairing
+// section is where that shows.
 //
 // The words asserted here are the accepted Simplified Chinese, written out
-// rather than read from the application's own catalog: a test that
-// reads the file the application reads asserts only that the file is itself.
+// rather than read from the application's own catalog: a test that reads the
+// file the application reads asserts only that the file is itself.
 
 #if os(iOS)
 
@@ -23,18 +32,18 @@ import XCTest
 @MainActor
 final class PhoneNearbyUITests: XCTestCase {
 
-    private func launch(nearbyCapable: Bool, board: String? = nil) -> XCUIApplication {
+    private func launch(board: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", "mxq-uitest-store-" + UUID().uuidString]
         app.launchArguments += ["-mxq-defaults-suite", "mxq-uitests-phone"]
         app.launchArguments += ["-mxq-appearance", "light"]
         app.launchArguments += LaunchPreferences.arguments()
-        // The one thing a Simulator cannot answer for itself. It decides whether
-        // the rows are drawn and nothing else: the radio is still absent, so
-        // nothing is started behind them.
-        app.launchArguments += ["-mxq-nearby-capable", nearbyCapable ? "1" : "0"]
-        // And the board itself, which no amount of pressing reaches here: the
+        // Nobody in the room, as a fact rather than a hope: the radio does not
+        // exist here, and this is what keeps the other path from reaching the
+        // network this machine is on.
+        app.launchArguments += ["-mxq-nearby-paths", "radio"]
+        // The board itself, which no amount of pressing reaches here: the
         // session is handed to the app, and everything above it — the flow, the
         // board's model, the position — is the real thing.
         if let board { app.launchArguments += ["-mxq-nearby-board", board] }
@@ -60,29 +69,33 @@ final class PhoneNearbyUITests: XCTestCase {
 
     // MARK: - The entry
 
-    /// The row is absent rather than disabled where the hardware has no radio,
-    /// and the four local ways to play are exactly as they were.
-    func testTheNearbyRowsAreAbsentWithoutTheRadio() {
-        let app = launch(nearbyCapable: false)
+    /// The rows stand on a device with no radio, and the four local ways to play
+    /// are exactly as they were.
+    ///
+    /// This device *is* the case: a Simulator has no Wi-Fi Aware at all, and the
+    /// rows are drawn anyway, because the other way of reaching a device needs
+    /// no hardware and the row stands wherever either could carry a game.
+    func testTheNearbyRowsStandOnADeviceWithNoRadio() {
+        let app = launch()
         XCTAssertTrue(app.buttons["mode-xiangqi-human-versus-ai"]
             .waitForExistence(timeout: 30))
 
-        XCTAssertFalse(app.buttons["mode-xiangqi-nearby"].exists,
-                       "a device without the radio offers no nearby row")
-        XCTAssertFalse(app.buttons["mode-mini-xiangqi-nearby"].exists)
+        XCTAssertTrue(app.buttons["mode-xiangqi-nearby"].exists,
+                      "a device without the radio offers nearby all the same")
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-nearby"].exists)
         for identifier in ["mode-xiangqi-human-versus-ai", "mode-xiangqi-free-play",
                            "mode-mini-xiangqi-human-versus-ai",
                            "mode-mini-xiangqi-free-play"] {
             XCTAssertTrue(app.buttons[identifier].exists,
                           "\(identifier) is untouched by the nearby entry")
         }
-        attach(app, named: "phone-nearby-01-the-home-without-the-radio")
+        attach(app, named: "phone-nearby-01-the-home-with-no-radio")
     }
 
-    /// With the radio, each game's section carries a third row, under that
-    /// game's own two and inside that game's own section.
+    /// Each game's section carries a third row, under that game's own two and
+    /// inside that game's own section.
     func testTheNearbyRowIsTheThirdRowInEachGamesSection() {
-        let app = launch(nearbyCapable: true)
+        let app = launch()
         let xiangqiNearby = app.buttons["mode-xiangqi-nearby"]
         XCTAssertTrue(xiangqiNearby.waitForExistence(timeout: 30))
 
@@ -110,7 +123,7 @@ final class PhoneNearbyUITests: XCTestCase {
     /// Simulator can show — and the invitation says so by being unavailable
     /// rather than by explaining itself.
     func testTheProposeSheetOffersTheSideChoiceAndTheInvitation() {
-        let app = launch(nearbyCapable: true)
+        let app = launch()
         XCTAssertTrue(app.buttons["mode-mini-xiangqi-nearby"].waitForExistence(timeout: 30))
 
         app.buttons["mode-mini-xiangqi-nearby"].tap()
@@ -163,7 +176,7 @@ final class PhoneNearbyUITests: XCTestCase {
     /// Off turn the cluster is the two negotiations, 认输 and 翻转棋盘 — and
     /// neither the claim nor an answer, because neither is this side's.
     func testTheOffTurnBoardCarriesTheNegotiations() {
-        let app = launch(nearbyCapable: true, board: "off-turn")
+        let app = launch(board: "off-turn")
         let offer = app.buttons["cluster-offer-draw"]
         XCTAssertTrue(offer.waitForExistence(timeout: 30))
         XCTAssertEqual(offer.label, "提和")
@@ -187,7 +200,7 @@ final class PhoneNearbyUITests: XCTestCase {
     /// On turn it is the claim instead — present and unavailable, because the
     /// position has nothing to claim.
     func testTheOnTurnBoardCarriesTheClaim() {
-        let app = launch(nearbyCapable: true, board: "on-turn")
+        let app = launch(board: "on-turn")
         let claim = app.buttons["cluster-claim"]
         XCTAssertTrue(claim.waitForExistence(timeout: 30))
         XCTAssertEqual(claim.label, "判和")
@@ -204,7 +217,7 @@ final class PhoneNearbyUITests: XCTestCase {
     /// A claim the engine says stands is the enabled control and the 可判和 line
     /// beside the turn status — the same pair the local game's claim is.
     func testAStandingClaimIsTheControlAndTheLine() {
-        let app = launch(nearbyCapable: true, board: "claimable")
+        let app = launch(board: "claimable")
         let claim = app.buttons["cluster-claim"]
         XCTAssertTrue(claim.waitForExistence(timeout: 30))
         XCTAssertTrue(claim.isEnabled)
@@ -216,7 +229,7 @@ final class PhoneNearbyUITests: XCTestCase {
     /// What the other player asked for is a line in the turn status's own quiet
     /// register, with 接受 beside it and nothing blocking the board.
     func testAnArrivingOfferIsALineAndAnAnswer() {
-        let app = launch(nearbyCapable: true, board: "offered")
+        let app = launch(board: "offered")
         let asking = app.staticTexts["nearby-asking"]
         XCTAssertTrue(asking.waitForExistence(timeout: 30))
         XCTAssertEqual(asking.label, "对方提和")
@@ -232,7 +245,7 @@ final class PhoneNearbyUITests: XCTestCase {
 
     /// And a take-back asked for is the same shape with its own words.
     func testAnArrivingTakeBackIsALineAndAnAnswer() {
-        let app = launch(nearbyCapable: true, board: "undo-asked")
+        let app = launch(board: "undo-asked")
         let asking = app.staticTexts["nearby-asking"]
         XCTAssertTrue(asking.waitForExistence(timeout: 30))
         XCTAssertEqual(asking.label, "对方请求悔棋")

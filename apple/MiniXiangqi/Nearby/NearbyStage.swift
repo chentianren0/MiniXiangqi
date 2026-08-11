@@ -124,10 +124,11 @@ final class NearbyStagedDriver: NearbyDriving {
     func abandonStoredGame() { }
 }
 
-/// A radio that is not there, which is the truth on a Simulator.
+/// A transport that reaches nobody, which is the truth on a Simulator: no
+/// radio, and no local network privacy to browse under either.
 @MainActor
-final class NearbyStagedRadio: NearbyRadio {
-    let isSupported = false
+final class NearbyStagedReach: NearbyReach {
+    let hasRadio = false
     let isRunning = false
     let peers: [NearbyPeer] = []
 
@@ -138,9 +139,9 @@ final class NearbyStagedRadio: NearbyRadio {
 
 extension NearbyFlow {
     /// The flow a staged launch gets: the real one, over a driver that holds
-    /// the named moment and a radio that is honestly absent.
+    /// the named moment and a transport that reaches nobody.
     static func staged(_ stage: NearbyStage, positions: any NearbyPositions) -> NearbyFlow {
-        let flow = NearbyFlow(driver: NearbyStagedDriver(stage), radio: NearbyStagedRadio(),
+        let flow = NearbyFlow(driver: NearbyStagedDriver(stage), reach: NearbyStagedReach(),
                               positions: positions, isAvailable: true)
         flow.openBoard(stage.session.id)
         return flow
