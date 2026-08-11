@@ -39,6 +39,23 @@ struct TurnStatus: View {
     /// already been answered with 稍后 by the time this shows.
     var retry: (() -> Void)?
 
+    /// Asking the engine for a suggestion, where one is on offer.
+    ///
+    /// **Nil is the control's absence rather than a disabled control**: a hint
+    /// is possible on the player's own turn in a live game and at no other
+    /// moment, and a word standing greyed out through the machine's turn would
+    /// be a promise about a turn that is not theirs. It sits beside the
+    /// controller label where there is one and beside the side-to-move line in
+    /// Free Play, which has none — the AI activity slot's own placement
+    /// grammar, on the other turn — and it takes the weight the platform gives
+    /// an action written into a line of prose, exactly as the stalled slot's
+    /// inline retry does.
+    var requestHint: (() -> Void)?
+
+    /// What the hint slot's own activity is: an indicator beside the control
+    /// once a hint search has run long enough to be worth showing.
+    var hintActivity: Hint.Activity = .idle
+
     /// Who controls the side to move, where the answer is not "the person
     /// holding this device". Free Play has none — the same person controls both
     /// sides — and the other two name what is on the other side of the turn: the
@@ -66,37 +83,25 @@ struct TurnStatus: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // The description itself, combined into one element so a screen
-            // reader hears one sentence about the state rather than three
-            // fragments.
-            VStack(alignment: .leading, spacing: 6) {
-                Text(primaryLine)
-                    .font(.title3.weight(.medium))
-                    .contentTransition(.identity)
+            // The description, and the hint beside the line it belongs to.
+            //
+            // The hint sits **outside** the combined element, for the reason
+            // the stalled slot's retry does: a control folded into one is a
+            // control a screen reader cannot reach. Which line it stands beside
+            // is the baseline the row aligns on — the controller label's, which
+            // is the description's last line, and the side-to-move line's in
+            // Free Play, where there is no controller label to stand beside.
+            HStack(alignment: controller == nil ? .firstTextBaseline : .lastTextBaseline,
+                   spacing: 6) {
+                description
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("turn-status")
 
-                if let secondary {
-                    HStack(spacing: 6) {
-                        Text(secondary)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                if let requestHint { hintSlot(requestHint) }
 
-                        // The indicator sits beside the controller label, which
-                        // is the head of this line. The system's own, at its
-                        // smallest, drawn directly like everything else the
-                        // status says — and carrying no material at all, which
-                        // is the one thing this indicator is not allowed.
-                        if activity == .thinking {
-                            ProgressView()
-                                .controlSize(.small)
-                                .accessibilityLabel(Text("status.aiThinking"))
-                                .accessibilityIdentifier("ai-thinking")
-                        }
-                    }
-                }
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("turn-status")
 
             // The stalled slot: the AI cannot start right now, the game is
             // saved, and the retry lives where things about the game live. It
@@ -122,6 +127,67 @@ struct TurnStatus: View {
                 .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
                 .accessibilityHidden(true)
         }
+    }
+
+    /// The description itself, combined into one element so a screen reader
+    /// hears one sentence about the state rather than three fragments.
+    private var description: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(primaryLine)
+                .font(.title3.weight(.medium))
+                .contentTransition(.identity)
+
+            if let secondary {
+                HStack(spacing: 6) {
+                    Text(secondary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    // The indicator sits beside the controller label, which is
+                    // the head of this line. The system's own, at its smallest,
+                    // drawn directly like everything else the status says — and
+                    // carrying no material at all, which is the one thing this
+                    // indicator is not allowed.
+                    if activity == .thinking {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(Text("status.aiThinking"))
+                            .accessibilityIdentifier("ai-thinking")
+                    }
+                }
+            }
+        }
+    }
+
+    /// **提示**, and the activity a hint search shows once it has run long
+    /// enough to be worth showing — the AI activity slot's own threshold, for
+    /// the AI activity slot's own reason.
+    @ViewBuilder
+    private func hintSlot(_ request: @escaping () -> Void) -> some View {
+        HStack(spacing: 6) {
+            inlineHint(request)
+                .accessibilityIdentifier("hint-request")
+
+            if hintActivity == .thinking {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(Text("status.hintThinking"))
+                    .accessibilityIdentifier("hint-thinking")
+            }
+        }
+    }
+
+    /// The hint control, in each platform's own inline-action weight — the
+    /// stalled slot's retry is the precedent, and this is the same kind of
+    /// thing: an action written into a line about the game rather than a member
+    /// of the play-control cluster, which stays at its accepted four.
+    @ViewBuilder
+    private func inlineHint(_ request: @escaping () -> Void) -> some View {
+        #if os(macOS)
+        Button("control.hint", action: request).buttonStyle(.link)
+        #else
+        Button("control.hint", action: request).buttonStyle(.borderless)
+        #endif
     }
 
     /// The stalled slot's 重试, in each platform's own inline-action weight.

@@ -225,6 +225,37 @@ struct PlayScreen: View {
         } message: {
             Text("alert.aiUnavailable.resumeMessage")
         }
+        // A hint the engine could not be prepared for. The situation's own
+        // name, because the reader asked for a hint rather than for an
+        // opponent — Free Play has none to fail to start — over the same
+        // message the pre-start notice carries and the same 取消 / 重试, every
+        // retry re-probing fresh. Only the memory failures take that message:
+        // a damaged installation is a different situation, and naming the wrong
+        // cause is worse than naming none.
+        .alert("alert.hintUnavailable.title",
+               isPresented: Binding(get: { play.hint?.preparationFailure != nil },
+                                    set: { if !$0 { play.hint?.dismissPreparationFailure() } })) {
+            Button("control.cancel", role: .cancel) { play.hint?.dismissPreparationFailure() }
+            Button("control.tryAgain") { play.hint?.retryPreparation() }
+        } message: {
+            Text(play.hint?.preparationFailureNamesMemory ?? true
+                 ? LocalizedStringKey("alert.aiUnavailable.message")
+                 : LocalizedStringKey("status.aiUnavailable"))
+        }
+        // The suggestion, announced as it appears — composed from the board's
+        // own point vocabulary, so a reader who cannot see the strengthened
+        // marker hears the same fact in the same words the points are described
+        // in. It is an announcement rather than a focus move: the board stays
+        // exactly where the reader had it, and the suggested point carries its
+        // own **建议** token for whoever navigates to it.
+        .onChange(of: motion.suggested) { _, destination in
+            guard let destination, let origin = game.selected,
+                  let piece = game.placement[origin] else { return }
+            AccessibilityNotification
+                .Announcement(BoardView.hintAnnouncement(piece: piece, from: origin,
+                                                         to: destination))
+                .post()
+        }
         // The move list's sheet belongs to the screen for the same reason the
         // alerts do, and for one more: `moveListShown` is the screen's state,
         // so a sheet declared inside the stacked branch alone is a sheet that
@@ -267,6 +298,8 @@ struct PlayScreen: View {
                        controller: controller(of: game),
                        activity: play.opponent?.activity ?? .idle,
                        retry: { play.opponent?.retryPreparation() },
+                       requestHint: hintRequest,
+                       hintActivity: play.hint?.activity ?? .idle,
                        beatEmphasis: motion.beatEmphasis)
                 .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
@@ -345,6 +378,7 @@ struct PlayScreen: View {
                       selected: game.selected,
                       destinations: game.destinations,
                       captures: game.captures,
+                      suggested: motion.suggested,
                       lastMove: game.lastMove,
                       checkedGeneral: game.checkedGeneral,
                       transit: motion.transit,
@@ -352,6 +386,7 @@ struct PlayScreen: View {
                       transitFade: motion.transitFade,
                       checkEmphasis: motion.checkEmphasis,
                       markerEmphasis: motion.markerEmphasis,
+                      hintEmphasis: motion.hintEmphasis,
                       policy: motion.policy,
                       onTap: { tap($0, in: game, motion) },
                       onTravelArrival: { motion.travelArrived() },
@@ -401,6 +436,10 @@ struct PlayScreen: View {
     /// a game that has just ended answers to nothing.
     private func claimDraw(_ game: Game, _ motion: PlayMotion) {
         play.opponent?.cancelSearch()
+        // A hint outstanding over a game that has just ended answers to nothing
+        // either, and the two results that arrive with no piece moving are the
+        // ones no commit cancels for them.
+        play.hint?.cancel()
         motion.claimDraw()
         if game.filingFailure != nil { failedFiling = .claim }
     }
@@ -410,6 +449,7 @@ struct PlayScreen: View {
     /// claim stops it.
     private func resign(_ game: Game, _ motion: PlayMotion) {
         play.opponent?.cancelSearch()
+        play.hint?.cancel()
         motion.resign()
         if game.filingFailure != nil { failedFiling = .resign }
     }
@@ -420,6 +460,11 @@ struct PlayScreen: View {
     /// the core's answer, consumed rather than counted here.
     private func undo(_ motion: PlayMotion) {
         play.opponent?.cancelSearch()
+        // Before the transition rather than at its commit: an Undo is asked for
+        // while a hint may be on the board about the position it is taking
+        // away, and the suggestion goes with it whether or not the core accepts
+        // the Undo.
+        play.hint?.cancel()
         motion.undo()
     }
 
@@ -455,6 +500,8 @@ struct PlayScreen: View {
                        controller: controller(of: game),
                        activity: play.opponent?.activity ?? .idle,
                        retry: { play.opponent?.retryPreparation() },
+                       requestHint: hintRequest,
+                       hintActivity: play.hint?.activity ?? .idle,
                        beatEmphasis: motion.beatEmphasis)
                 .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
@@ -508,6 +555,14 @@ struct PlayScreen: View {
     private func controller(of game: Game) -> TurnStatus.Controller? {
         guard let humanSide = game.humanSide else { return nil }
         return game.evaluation.sideToMove == humanSide ? .you : .ai
+    }
+
+    /// Asking for a hint, where the game says one is possible — and nothing at
+    /// all where it does not, because the control is absent rather than
+    /// disabled on the machine's turn and on a finished board.
+    private var hintRequest: (() -> Void)? {
+        guard let hint = play.hint, hint.isOffered else { return nil }
+        return { hint.request() }
     }
 
     /// The transient save-failure capsule, which the nearby board raises too:

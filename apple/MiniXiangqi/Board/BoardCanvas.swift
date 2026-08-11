@@ -66,6 +66,12 @@ struct BoardPhases: VectorArithmetic {
     var check: Double = 0
     /// The legal-destination markers' strengthening.
     var marker: Double = 0
+    /// The suggested destination's own strengthening — a hint being shown. It
+    /// is a phase of its own rather than the one above because the two answer
+    /// different things and can stand at once: an illegal tap strengthens every
+    /// destination the held piece has, and a hint strengthens the one the
+    /// engine chose.
+    var hint: Double = 0
     /// The selection lift, per square.
     var lifts = SquarePhases()
 
@@ -74,24 +80,26 @@ struct BoardPhases: VectorArithmetic {
     static func + (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel + rhs.travel, fade: lhs.fade + rhs.fade,
              flip: lhs.flip + rhs.flip, check: lhs.check + rhs.check,
-             marker: lhs.marker + rhs.marker, lifts: lhs.lifts + rhs.lifts)
+             marker: lhs.marker + rhs.marker, hint: lhs.hint + rhs.hint,
+             lifts: lhs.lifts + rhs.lifts)
     }
 
     static func - (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel - rhs.travel, fade: lhs.fade - rhs.fade,
              flip: lhs.flip - rhs.flip, check: lhs.check - rhs.check,
-             marker: lhs.marker - rhs.marker, lifts: lhs.lifts - rhs.lifts)
+             marker: lhs.marker - rhs.marker, hint: lhs.hint - rhs.hint,
+             lifts: lhs.lifts - rhs.lifts)
     }
 
     mutating func scale(by rhs: Double) {
         travel *= rhs; fade *= rhs; flip *= rhs
-        check *= rhs; marker *= rhs
+        check *= rhs; marker *= rhs; hint *= rhs
         lifts.scale(by: rhs)
     }
 
     var magnitudeSquared: Double {
         travel * travel + fade * fade + flip * flip + check * check
-            + marker * marker + lifts.magnitudeSquared
+            + marker * marker + hint * hint + lifts.magnitudeSquared
     }
 }
 
@@ -107,6 +115,10 @@ struct BoardCanvas: View, Animatable {
 
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
+    /// The destination a shown hint suggests. One of `destinations`, and drawn
+    /// as one — what it gets of its own is the strengthening `phases.hint`
+    /// carries.
+    var suggested: Square?
     var lastMove: Move?
     var checkedGeneral: Square?
     var transit: Transit?
@@ -235,9 +247,11 @@ struct BoardCanvas: View, Animatable {
 
     private func drawDestinations(in context: inout GraphicsContext, flip: Double) {
         // The illegal-tap answer strengthens the dot by a quarter at most —
-        // still far inside its cell.
-        let diameter = geometry.destinationDotDiameter(emphasis: phases.marker)
+        // still far inside its cell — and a suggested destination is
+        // strengthened by exactly the same amount, which is why the two share
+        // one geometry and one ceiling.
         for square in destinations where !captures.contains(square) {
+            let diameter = geometry.destinationDotDiameter(emphasis: emphasis(at: square))
             let centre = point(square, flip: flip)
             let box = CGRect(x: centre.x - diameter / 2, y: centre.y - diameter / 2,
                              width: diameter, height: diameter)
@@ -245,23 +259,29 @@ struct BoardCanvas: View, Animatable {
         }
     }
 
+    /// How strongly one point's marker is drawn. The suggested point takes the
+    /// stronger of the two emphases rather than their sum, so a hint standing
+    /// while an illegal tap is answered stays inside the one ceiling both
+    /// markers are bounded by.
+    private func emphasis(at square: Square) -> Double {
+        square == suggested ? max(phases.marker, phases.hint) : phases.marker
+    }
+
     private func drawRings(in context: inout GraphicsContext, flip: Double) {
         // A dashed ring around an enemy disc the player may take. Its answer
         // to an illegal tap grows the stroke inward — the outer edge stays at
         // the cell boundary, where the contract fixes it, and the inward
         // growth stops at the marker floor rather than reaching the disc.
-        if !captures.isEmpty {
-            let stroke = geometry.captureRingStroke(emphasis: phases.marker)
+        for square in captures {
+            let stroke = geometry.captureRingStroke(emphasis: emphasis(at: square))
             let radius = geometry.captureRingRadius(stroke: stroke)
             let circumference = 2 * CGFloat.pi * radius
             let dash = circumference * BoardGeometry.captureDashDegrees / 360
             let gap = circumference / CGFloat(BoardGeometry.captureDashCount) - dash
-            for square in captures {
-                context.stroke(circle(at: point(square, flip: flip), radius: radius),
-                               with: .color(style.activeInk),
-                               style: StrokeStyle(lineWidth: stroke,
-                                                  lineCap: .butt, dash: [dash, gap]))
-            }
+            context.stroke(circle(at: point(square, flip: flip), radius: radius),
+                           with: .color(style.activeInk),
+                           style: StrokeStyle(lineWidth: stroke,
+                                              lineCap: .butt, dash: [dash, gap]))
         }
         // A double ring around a checked general, hidden while it is held and
         // absent while a committing transition runs: the rings belong to the

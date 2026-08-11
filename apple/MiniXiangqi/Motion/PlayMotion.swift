@@ -75,6 +75,14 @@ final class PlayMotion {
     /// A pulse in full motion; a single persistent state change under Reduce
     /// Motion, cleared when the selection changes.
     private(set) var markerEmphasis: Double = 0
+
+    /// The suggested destination of a hint being shown, and how strongly its
+    /// marker is drawn. The board's own language and no new geometry: the
+    /// suggestion is the ordinary selection state on the piece plus the
+    /// ordinary strengthening on one of its destinations.
+    private(set) var suggested: Square?
+    private(set) var hintEmphasis: Double = 0
+
     /// The turn status background's emphasis — the acknowledgment beat.
     private(set) var beatEmphasis: Double = 0
 
@@ -151,7 +159,51 @@ final class PlayMotion {
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
             game.selected = nil
             markerEmphasis = 0
+            clearHint()
         } completion: { }
+    }
+
+    /// Shows the engine's suggestion, in the board's own language and with no
+    /// marker of its own: the suggested piece is taken up exactly as the
+    /// player's own tap takes one up — the ring, the lift, the legal
+    /// destinations, the capture rings — and the suggested destination's marker
+    /// is strengthened, arriving with the same one-time swell an illegal tap's
+    /// answer arrives with.
+    ///
+    /// Under Reduce Motion the strengthened state arrives without the swell,
+    /// which is the standing rule: the state survives, the travel goes. It
+    /// **stays** strengthened for as long as the suggestion is on the board
+    /// rather than relaxing back, because what the strengthening says is which
+    /// destination the engine chose, and a marker that decayed would leave the
+    /// suggestion with nothing saying it.
+    ///
+    /// Whether the piece may be taken up at all is asked of the game, which is
+    /// where the board's whole affordance lives: nothing here re-derives whose
+    /// turn it is or what may be held.
+    func showHint(_ move: Move) {
+        guard !isCommitting, !isFlipping else { return }
+        guard game.selected == move.from
+                || game.effect(ofTapAt: move.from) == .select(move.from) else { return }
+        animator.run(policy.movement(Motion.liftAnimation)) { [self] in
+            game.selected = move.from
+            markerEmphasis = 0
+        } completion: { }
+        suggested = move.to
+        guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
+            hintEmphasis = 1
+            return
+        }
+        animator.run(rise) { [self] in
+            hintEmphasis = 1
+        } completion: { }
+    }
+
+    /// Takes a suggestion off the board. Everything that ends one calls it: a
+    /// commit, an Undo, a selection that moved elsewhere, and the hint's own
+    /// cancellation when the board is left or the machine suspends.
+    func clearHint() {
+        suggested = nil
+        hintEmphasis = 0
     }
 
     /// Takes back one decision, which in human-versus-AI play is a whole
@@ -311,6 +363,9 @@ final class PlayMotion {
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
             game.tap(square)
             markerEmphasis = 0
+            // A selection that moved somewhere else is a suggestion the player
+            // has answered by taking up a different piece.
+            clearHint()
         } completion: { }
     }
 
@@ -352,6 +407,9 @@ final class PlayMotion {
     private func begin(_ kind: Transit.Kind) {
         transitionKind = kind
         markerEmphasis = 0
+        // Whatever was suggested was suggested about the position this
+        // transition is leaving.
+        clearHint()
     }
 
     // MARK: - Arrivals

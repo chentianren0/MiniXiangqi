@@ -22,6 +22,11 @@ struct BoardView: View {
     var selected: Square?
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
+    /// The destination a shown hint suggests, where one is shown. It is one of
+    /// the held piece's own destinations and is drawn as one; what it gains is
+    /// the strengthening below and, for a screen reader, a state token beside
+    /// the others.
+    var suggested: Square?
     var lastMove: Move?
     var checkedGeneral: Square?
 
@@ -35,6 +40,10 @@ struct BoardView: View {
     var transitFade: Double = 0
     var checkEmphasis: Double = 0
     var markerEmphasis: Double = 0
+    /// How strongly the suggested destination is drawn — the hint's own
+    /// emphasis, which arrives with a swell in full motion and at once under
+    /// Reduce Motion.
+    var hintEmphasis: Double = 0
     var policy = MotionPolicy(reduceMotion: false)
 
     var style: BoardStyle = .traditional
@@ -92,6 +101,7 @@ struct BoardView: View {
                     policy: policy,
                     destinations: destinations,
                     captures: captures,
+                    suggested: suggested,
                     lastMove: lastMove,
                     checkedGeneral: checkedGeneral,
                     transit: transit,
@@ -101,6 +111,7 @@ struct BoardView: View {
                                         flip: flipped ? 1 : 0,
                                         check: checkEmphasis,
                                         marker: markerEmphasis,
+                                        hint: hintEmphasis,
                                         lifts: SquarePhases(raised: selected)))
             .modifier(ArrivalReporter(progress: transit == nil ? 0 : 1,
                                       arrived: onTravelArrival))
@@ -176,8 +187,31 @@ struct BoardView: View {
         if square == selected { parts.append(String(localized: "board.a11y.selected")) }
         if captures.contains(square) { parts.append(String(localized: "board.a11y.capture")) }
         else if destinations.contains(square) { parts.append(String(localized: "board.a11y.legalMove")) }
+        // A suggested point is a legal destination first and a suggestion
+        // second, so its token joins the vocabulary rather than replacing any
+        // of it.
+        if square == suggested { parts.append(String(localized: "board.a11y.suggested")) }
         if square == checkedGeneral { parts.append(String(localized: "board.a11y.inCheck")) }
         return parts.joined(separator: " ")
+    }
+
+    /// What a screen reader is told when a suggestion appears, composed from
+    /// the same vocabulary a point's own description is composed from: the
+    /// side, the piece, and the two point names. `Suggestion: Red Cannon b1 to
+    /// b5`, and its Chinese counterpart.
+    ///
+    /// The parts are joined by a format string rather than by interpolation,
+    /// because what stands between them is copy — a colon and spaces in
+    /// English, an ideographic colon and no space between side and piece in
+    /// Chinese — and a separator hard-coded here would be one language's
+    /// punctuation wrapped around the other language's words.
+    static func hintAnnouncement(piece: Piece, from: Square, to: Square) -> String {
+        String(format: String(localized: "board.a11y.hint.announcement"),
+               piece.side == .red
+                   ? String(localized: "board.a11y.red")
+                   : String(localized: "board.a11y.black"),
+               piece.kind.name(for: piece.side),
+               from.name, to.name)
     }
 
     // MARK: - File numerals
