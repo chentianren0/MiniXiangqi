@@ -20,13 +20,20 @@
   Files handler would be a second entry path with its own launch-time state that
   no accepted contract asks for.
 
-  WiFiAwareServices declares the nearby-play service: `_boardgame._tcp`, the
-  name and the transport fixed by the Wi-Fi Aware binding in
-  docs/boardgame-protocol.md — Publishable and Subscribable because both peers
-  run the publisher and the subscriber together. Apple crashes the app on an
-  invalid service name (RFC 6763 §4.1.2 / RFC 6335 §5.1). The
-  com.apple.developer.wifi-aware entitlement in MiniXiangqi-iOS.entitlements is
-  this declaration's other half; only iPhone and iPad sign with it.
+  WiFiAwareServices declares the nearby-play service: `_boardgame._tcp`,
+  Publishable and Subscribable because both peers run the publisher and the
+  subscriber together. Apple crashes the app on an invalid service name (RFC
+  6763 §4.1.2 / RFC 6335 §5.1). The com.apple.developer.wifi-aware entitlement
+  in MiniXiangqi-iOS.entitlements is this declaration's other half; only iPhone
+  and iPad sign with it.
+
+  NSBonjourServices and NSLocalNetworkUsageDescription are the other path's two
+  halves: the same service name, because it names the same thing, and the
+  sentence the system's own permission alert explains itself by. The sentence is
+  copy.md's `app.localNetworkUsage` and is localized in InfoPlist.xcstrings; the
+  value here is the development language's. It says what the access is for and
+  names no transport, no band and no path, as the interaction contract requires
+  of every word this application writes.
 -->
 <plist version="1.0">
 <dict>
@@ -40,6 +47,12 @@
 			<dict/>
 		</dict>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_boardgame._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to find and connect to the other player's device for Nearby Play.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

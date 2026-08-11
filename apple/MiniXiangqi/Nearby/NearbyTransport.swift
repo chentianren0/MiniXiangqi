@@ -1,19 +1,35 @@
-// The BoardGame Protocol's Wi-Fi Aware binding, as the transport it names.
+// What carries the BoardGame Protocol between two devices.
 //
-// docs/boardgame-protocol.md, "A transport binding: Wi-Fi Aware", is what this
-// file implements and nothing more: the one declared `_boardgame._tcp` service,
-// both devices running the publisher and the subscriber together, TCP in `.bulk`
-// on both sides, the Network framework's JSON message coder so the protocol
-// layer sees whole messages, and two crossed connections both left standing.
+// The protocol contract names no transport and asks four things of whatever
+// carries it: whole messages rather than bytes a peer must frame for itself; a
+// stable peer identity behind every connection, exactly one per peer whatever
+// carries it; room for more than one connection between one pair of peers; and
+// an authenticity and privacy that belong to the carrier rather than to the
+// protocol. This layer answers all four, over two paths at once.
 //
-// The connection layer names the connection and the paired device behind it,
-// and hands both to the driver. It reads no message and decides nothing about
-// a session: what arrives goes to the driver as it is, and what the engine
-// answers with comes back as a send or a close.
+// **Both paths are here, and nothing above can tell them apart.** The
+// paired-device radio needs no network at all and is what a companion is
+// reachable over anywhere; the local network reaches through the walls of a
+// home, which the radio cannot. Both run whenever the transport runs, both
+// dial and both listen, both carry the same frames over TCP, and the room
+// merges them into one row per device. Which one a game is on is not a fact any
+// caller can read: `NearbyPeer` has nowhere to put it and `NearbyLink` gives
+// the driver a name, a send and a close.
 //
-// iPhone and iPad only. The entitlement is signed for those two alone, and the
-// system pairing UI does not exist on the Mac at all, so the whole feature is
-// compiled out there.
+// **The identity is exchanged, not assumed.** Between a connection becoming
+// usable and the driver being told of it, this device says who it is and hears
+// who the other is, and that answer is the peer identity the driver is handed —
+// see `NearbyIdentity`. A connection that never says dies unnamed. That is what
+// makes "exactly one identity per peer, whatever carries it" structural: there
+// is one moment where a peer is named, and one thing it can be named by.
+//
+// The connection layer reads no message and decides nothing about a session:
+// what arrives goes to the driver as it is, and what the engine answers with
+// comes back as a send or a close.
+//
+// iPhone and iPad only. The Wi-Fi Aware entitlement is signed for those two
+// alone, and the system pairing UI does not exist on the Mac at all, so the
+// whole feature is compiled out there.
 
 #if os(iOS)
 
@@ -23,9 +39,15 @@ import Observation
 import UIKit
 import WiFiAware
 
-/// The one service, declared `Publishable` and `Subscribable` in the
-/// Info.plist's `WiFiAwareServices`. `nil` — never a crash — if the declaration
-/// and this name ever disagree.
+/// The one service name, in both of the places a service is named: the
+/// Info.plist's `WiFiAwareServices`, where it is declared `Publishable` and
+/// `Subscribable`, and the Bonjour registration on the local network, where it
+/// is the service type. One name, because it names the same thing — two devices
+/// playing one board game — and DNS-SD service types and Wi-Fi Aware service
+/// names are drawn from the same registry.
+///
+/// The two Wi-Fi Aware lookups answer `nil` — never a crash — if the
+/// declaration and this name ever disagree.
 ///
 /// `nonisolated`: the network stack reads these off the main actor.
 nonisolated enum NearbyService {
@@ -35,31 +57,57 @@ nonisolated enum NearbyService {
     static var subscribable: WASubscribableService? { WASubscribableService.allServices[name] }
 }
 
-/// A connection carrying the protocol's messages: TCP, framed by the JSON
-/// coder, decoding straight into the message type. The `Codable` conformance in
-/// `BoardGameMessage` is the wire format — nothing composes those bytes twice.
+/// A connection carrying the transport's frames: TCP, framed by the JSON coder,
+/// decoding straight into the frame type. The `Codable` conformance in
+/// `NearbyFrame` is the wire format — and a game's own message inside one is
+/// exactly the bytes `BoardGameMessage` composes, because that is the type that
+/// composes them.
 typealias NearbyChannel =
-    NetworkConnection<Coder<BoardGameMessage, BoardGameMessage, NetworkJSONCoder>>
+    NetworkConnection<Coder<NearbyFrame, NearbyFrame, NetworkJSONCoder>>
 
-/// The identity sessions and resume rely on, minted in one place. It is the
-/// *paired device*, never the endpoint: `WAPairedDevice.id` names the system's
+/// What a paired device is called where nothing better is known: the system's
 /// pairing record, which is made once per pair of devices and outlives the
 /// application, so it is the same number on the next connection and after a
 /// relaunch. An endpoint object is not — a new one is minted per discovery.
-nonisolated func nearbyPeerID(of device: WAPairedDevice) -> PeerDeviceID {
+///
+/// **It is the room's fallback, never a connection's identity.** A device is
+/// listed under this while it is paired and nothing has yet learned what
+/// application identity stands behind the pairing; the moment a connection
+/// resolves that, the mapping is stored and the row is the canonical identity's.
+nonisolated func nearbyPairingID(of device: WAPairedDevice) -> PeerDeviceID {
     PeerDeviceID("wifi-aware-device-\(device.id)")
 }
 
-/// The protocol stack both sides build, listener and browser alike.
-private func nearbyParameters() -> NWParametersBuilder<
-    Coder<BoardGameMessage, BoardGameMessage, NetworkJSONCoder>
+extension WAPairedDevice {
+    /// What this device is called, out of the two names the system may hold
+    /// for it — and nothing at all where it holds neither, which is a state
+    /// the rows have their own answer for.
+    var displayName: String? {
+        NearbyDeviceName.resolved(name: name, pairingName: pairingInfo?.pairingName)
+    }
+}
+
+/// The protocol stack every connection is built on, whichever path carries it:
+/// the frame coder over TCP, and nothing else. There is no TLS here and no
+/// cryptography of ours anywhere — on the radio the platform authenticates the
+/// pairing, and on the network the home's own boundary is the boundary, with
+/// the proposal's consent prompt as the gate every game passes.
+func nearbyStack() -> NWParametersBuilder<
+    Coder<NearbyFrame, NearbyFrame, NetworkJSONCoder>
 > {
     .parameters {
-        Coder(receiving: BoardGameMessage.self, sending: BoardGameMessage.self,
+        Coder(receiving: NearbyFrame.self, sending: NearbyFrame.self,
               using: NetworkJSONCoder()) {
             TCP()
         }
     }
+}
+
+/// That stack as the radio wants it.
+private func radioParameters() -> NWParametersBuilder<
+    Coder<NearbyFrame, NearbyFrame, NetworkJSONCoder>
+> {
+    nearbyStack()
     // Realtime, for its committed availability rather than its throughput: the
     // radio's windows span the infrastructure channels instead of the social
     // channel alone, which is what shortens a dial and steadies a marginal
@@ -70,10 +118,11 @@ private func nearbyParameters() -> NWParametersBuilder<
     .wifiAware { $0.performanceMode = .realtime }
 }
 
-/// One Wi-Fi Aware connection, and the whole of what the driver may do with it.
+/// One connection, on either path, and the whole of what the driver may do
+/// with it.
 @MainActor
 @Observable
-final class NearbyConnection: NearbyLink, Identifiable {
+final class NearbyConnection: NearbyLink, NearbyLinkageExchange, Identifiable {
     /// Which side opened it. Both may stand at once between one pair of
     /// devices, and the contract allows exactly that.
     enum Direction: String, Sendable {
@@ -82,13 +131,24 @@ final class NearbyConnection: NearbyLink, Identifiable {
 
     let id: ConnectionID
     let direction: Direction
+    /// What carries it. **The transport's own business**: it decides which
+    /// connection the room hands over for a device, and it reaches no seam.
+    let kind: NearbyLinkKind
 
     private(set) var isReady = false
-    /// The paired device the transport resolved behind this connection.
+    /// The device the transport resolved behind this connection — the identity
+    /// it sent for itself, which is the only thing a connection is ever named
+    /// by. Nothing until the exchange has settled it, and the driver is not
+    /// told of the connection before then.
     private(set) var peer: PeerDeviceID?
-    /// That device's name, for the screen alone. Nothing keys on it.
+    /// What that device is called, for the screen alone. Nothing keys on it.
     private(set) var peerName: String?
     private(set) var signalStrength: Double?
+    /// The pairing record behind a radio connection, where the platform names
+    /// one. It is not the peer's identity: it is what the identity learned here
+    /// is remembered against, so that the room can show one row for a device it
+    /// is both paired with and browsing before anything has dialled it.
+    @ObservationIgnored private var pairing: PeerDeviceID?
 
     /// The connection itself, released when its life ends. The Network
     /// framework gives `NetworkConnection` no cancel of its own: a connection
@@ -105,6 +165,11 @@ final class NearbyConnection: NearbyLink, Identifiable {
     /// somebody stopped consuming.
     @ObservationIgnored private let readiness: AsyncStream<Bool>
     @ObservationIgnored private let readinessFeed: AsyncStream<Bool>.Continuation
+    /// The identifier the other device sent for itself. The receive loop is the
+    /// only reader of the wire, so what it sees travels here rather than being
+    /// waited for on a stream two things are consuming.
+    @ObservationIgnored private let linkage: AsyncStream<String>
+    @ObservationIgnored private let linkageFeed: AsyncStream<String>.Continuation
 
     /// How long a connection may sit short of `.ready` before it is dropped so
     /// the browser loop can try again. Measured on the two devices: a healthy
@@ -112,20 +177,62 @@ final class NearbyConnection: NearbyLink, Identifiable {
     /// after this is holding radio resources for nothing. Eight seconds rather
     /// than the spike's twenty, because a stuck attempt costs the whole window
     /// before the retry that does connect.
+    ///
+    /// It is also how long the identity exchange has: a connection that is
+    /// usable but has not said who it is is as useless as one that never became
+    /// usable, and it is dropped for the same reason and after the same wait.
     private static let readyWindow = Duration.seconds(8)
 
-    init(_ channel: NearbyChannel, direction: Direction) {
+    init(_ channel: NearbyChannel, direction: Direction, kind: NearbyLinkKind) {
         self.channel = channel
         self.direction = direction
+        self.kind = kind
         self.id = ConnectionID(channel.id)
         (readiness, readinessFeed) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+        (linkage, linkageFeed) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
     }
 
     // MARK: - NearbyLink
 
+    /// One protocol message, wrapped on its way out. The driver hands over a
+    /// message and nothing else, and what the wire carries is this layer's.
     func send(_ message: BoardGameMessage) async throws {
         guard let channel else { throw CancellationError() }
-        try await channel.send(message)
+        try await channel.send(.message(message))
+    }
+
+    // MARK: - NearbyLinkageExchange
+
+    /// Who this device is, said once, before the driver is told anything.
+    func sendLinkage(_ identifier: String) async throws {
+        guard let channel else { throw CancellationError() }
+        try await channel.send(.linkage(.init(id: identifier)))
+    }
+
+    /// Who the other device says it is, for as long as the window allows.
+    ///
+    /// **It is asked once, and answered once for the connection's whole life.**
+    /// The stream is closed on the first arrival, so a second linkage frame is
+    /// discarded by the receive loop's own `yield` rather than acted on: a peer
+    /// cannot re-identify itself half way through a connection. That is
+    /// load-bearing rather than tidy — the contract's identity is the same
+    /// "behind every connection to that peer … and unchanged for as long as a
+    /// session with that peer stands", and a peer that could rename itself
+    /// under a standing session would be answered by the engine with an
+    /// unknown-session void or a violation close, which is a game destroyed.
+    /// Whatever a peer sends after it has said who it is, it has said who it is.
+    func linkageArrived(within window: Duration) async -> String? {
+        let watchdog = Task { [self] in
+            try? await Task.sleep(for: window)
+            linkageFeed.finish()
+        }
+        defer { watchdog.cancel() }
+
+        for await identifier in linkage {
+            linkageFeed.finish()
+            return identifier
+        }
+        return nil
     }
 
     /// Ends the connection's life, which releases it, which cancels it.
@@ -166,15 +273,23 @@ final class NearbyConnection: NearbyLink, Identifiable {
         defer { opening.cancel() }
 
         do {
-            for try await (message, _) in channel.messages {
-                if isOpen {
-                    driver.received(message, on: id)
-                } else {
-                    // The other peer's hello can land in the instant between
-                    // this connection being usable and the driver being told of
-                    // it. It waits rather than arriving for a connection the
-                    // engine does not hold yet.
-                    waiting.append(message)
+            for try await (frame, _) in channel.messages {
+                switch frame {
+                case .linkage(let linkage):
+                    // The transport's own, and it stops here: the driver is
+                    // handed protocol messages and nothing else, so neither it
+                    // nor the engine can tell a frame exists.
+                    linkageFeed.yield(linkage.id)
+                case .message(let message):
+                    if isOpen {
+                        driver.received(message, on: id)
+                    } else {
+                        // The other peer's hello can land in the instant between
+                        // this connection being usable and the driver being told
+                        // of it. It waits rather than arriving for a connection
+                        // the engine does not hold yet.
+                        waiting.append(message)
+                    }
                 }
             }
             log.note("Connection \(NearbyDriver.short(id)): the stream ended.")
@@ -214,7 +329,14 @@ final class NearbyConnection: NearbyLink, Identifiable {
         }
     }
 
-    /// Readiness, the paired device behind it, and the handover to the driver.
+    /// Readiness, who is behind it, and the handover to the driver — in that
+    /// order, and the driver hears nothing until the last of them.
+    ///
+    /// **The identity is settled here or the connection does not open.** This
+    /// is the one place a peer is named, which is what makes one identity per
+    /// peer a fact of the code: there is no later moment at which a connection
+    /// could acquire a second one, and no connection the driver holds that was
+    /// named by anything else.
     private func open(_ channel: NearbyChannel, driver: NearbyDriver, log: NearbyLog) async {
         guard await becomesReady(channel, log: log) else {
             log.note("Connection \(NearbyDriver.short(id)) never became ready — dropping it "
@@ -223,18 +345,22 @@ final class NearbyConnection: NearbyLink, Identifiable {
             return
         }
         isReady = true
-        guard let path = await wifiAwarePath(of: channel) else {
-            log.note("Connection \(NearbyDriver.short(id)) reported no Wi-Fi Aware path, so "
-                     + "there is no device to name behind it — dropping it.")
+        guard await resolvePairing(of: channel, log: log) else { return }
+
+        guard let peer = await NearbyIdentity.resolve(over: self, pairing: pairing,
+                                                      within: Self.readyWindow)
+        else {
+            // Either this device could not say who it is, which means the link
+            // is already dying, or the other device never said — and a
+            // connection with nobody behind it is a connection with nothing to
+            // do. The loop dials again.
+            log.note("Connection \(NearbyDriver.short(id)) named nobody — dropping it.")
             close()
             return
         }
-        let peer = nearbyPeerID(of: path.endpoint.device)
         self.peer = peer
-        peerName = path.endpoint.device.name
-        signalStrength = path.performance.signalStrength
         log.note("Connection \(NearbyDriver.short(id)) reaches ",
-                 naming: path.endpoint.device.name ?? "an unnamed device",
+                 naming: peerName ?? "an unnamed device",
                  " (\(peer.rawValue)).")
 
         driver.connectionReady(self, with: peer)
@@ -242,6 +368,25 @@ final class NearbyConnection: NearbyLink, Identifiable {
         let held = waiting
         waiting = []
         for message in held { driver.received(message, on: id) }
+    }
+
+    /// The pairing record behind a radio connection, where there is one to
+    /// find: the name a row can carry, the signal, and the pairing the identity
+    /// exchange will be remembered against. A radio connection with no path
+    /// behind it has nothing to say for itself and is dropped, as it always
+    /// was; a network connection has no pairing at all, which is not a fault.
+    private func resolvePairing(of channel: NearbyChannel, log: NearbyLog) async -> Bool {
+        guard kind == .radio else { return true }
+        guard let path = await wifiAwarePath(of: channel) else {
+            log.note("Connection \(NearbyDriver.short(id)) reported no Wi-Fi Aware path, so "
+                     + "there is no device behind it — dropping it.")
+            close()
+            return false
+        }
+        pairing = nearbyPairingID(of: path.endpoint.device)
+        peerName = path.endpoint.device.displayName
+        signalStrength = path.performance.signalStrength
+        return true
     }
 
     /// Watches the connection for its whole life. A connection that fails after
@@ -313,25 +458,43 @@ final class NearbyConnection: NearbyLink, Identifiable {
     }
 }
 
-/// The publisher, the subscriber, and the connections they bring up.
+/// Both paths — the publisher and the subscriber on the radio, the listener and
+/// the browser on the network — and the connections all four bring up.
 @MainActor
 @Observable
 final class NearbyTransport {
-    private let driver: NearbyDriver
-    private let log: NearbyLog
+    let driver: NearbyDriver
+    let log: NearbyLog
 
     private(set) var isRunning = false
     private(set) var listenerState = "stopped"
     private(set) var browserState = "stopped"
+    /// The network half's own state, written by it — the two loops live in
+    /// `NearbyNetwork.swift`, which is a file boundary rather than an ownership
+    /// one.
+    var networkListenerState = "stopped"
+    var networkBrowserState = "stopped"
     private(set) var pairedDevices: [WAPairedDevice] = []
+    /// What is advertising itself on the network right now, under the identity
+    /// each advertises and the label it carries. It is a live fact and it
+    /// empties when the transport stops, which is what makes a device's row
+    /// there mean "its player is in nearby play" rather than "it has the app".
+    var advertised: [NearbyPeer] = []
     private(set) var connections: [NearbyConnection] = []
 
     @ObservationIgnored private var listenerTask: Task<Void, Never>?
     @ObservationIgnored private var browserTask: Task<Void, Never>?
+    @ObservationIgnored var networkListenerTask: Task<Void, Never>?
+    @ObservationIgnored var networkBrowserTask: Task<Void, Never>?
     @ObservationIgnored private var pairedDevicesTask: Task<Void, Never>?
     /// Whether the browser loop is holding off because a connection stands. It
     /// says so once rather than every time it looks.
     @ObservationIgnored private var isHolding = false
+    /// The advertisements this device is dialling right now, by the endpoint's
+    /// own name. Two dials to one endpoint would be two connections nothing
+    /// asked for; the crossing the other device may be making at the same
+    /// instant is a different thing, and the contract leaves both standing.
+    @ObservationIgnored var dialling: Set<String> = []
 
     init(driver: NearbyDriver, log: NearbyLog) {
         self.driver = driver
@@ -379,6 +542,18 @@ final class NearbyTransport {
                     // named: a device's name is routinely its owner's own.
                     log.note("Paired devices: \(pairedDevices.count) "
                              + "— \(peers.filter { $0.connection != nil }.count) connected.")
+                    #if DEBUG
+                    // Which of the two names a record actually carries is the
+                    // one thing about this that only a pair of real devices can
+                    // answer, and the ceremony is asymmetric enough that the
+                    // answer differs by side. Both names stay private in the
+                    // system log and are whole in this device's own console.
+                    for device in pairedDevices {
+                        log.note("Record \(device.id) name: ", naming: device.name ?? "—")
+                        log.note("Record \(device.id) pairing name: ",
+                                 naming: device.pairingInfo?.pairingName ?? "—")
+                    }
+                    #endif
                 }
             } catch {
                 self?.log.note("Watching the paired devices failed: \(Self.describe(error)).")
@@ -392,14 +567,27 @@ final class NearbyTransport {
 
     // MARK: - Start and stop
 
+    /// **One bracket for both paths.** Everything that listens or dials starts
+    /// here and stops in `stop()`, so the two are up together, down together,
+    /// and unobservably alike from anywhere above. It is the surfaces' own
+    /// bracket — a nearby page opening, and anything still owed to somebody —
+    /// and it is entered from a user action or a return to the foreground,
+    /// which is what puts the system's local-network prompt where it belongs:
+    /// in front of somebody who has just asked for this.
     func start() {
         guard !isRunning else { return }
+        isRunning = true
+        log.note("Starting \(NearbyService.name).")
+        startRadio()
+        startNetwork()
+    }
+
+    private func startRadio() {
         guard NearbyService.publishable != nil, NearbyService.subscribable != nil else {
             log.note("The service \(NearbyService.name) is missing from WiFiAwareServices.")
             return
         }
-        isRunning = true
-        log.note("Starting \(NearbyService.name): publishing and subscribing together.")
+        log.note("Publishing and subscribing together.")
         log.note("Capabilities: features=\(WACapabilities.supportedFeatures) "
                  + "maxDevices=\(WACapabilities.maximumConnectableDevices) "
                  + "maxPublish=\(WACapabilities.maximumPublishableServices) "
@@ -416,6 +604,7 @@ final class NearbyTransport {
         browserTask?.cancel()
         listenerTask = nil
         browserTask = nil
+        stopNetwork()
         driver.closeEverything()
         for connection in connections { connection.close() }
         listenerState = "stopped"
@@ -431,7 +620,7 @@ final class NearbyTransport {
             do {
                 try await NetworkListener(
                     for: .wifiAware(.connecting(to: service, from: .allPairedDevices)),
-                    using: nearbyParameters()
+                    using: radioParameters()
                 )
                 .onStateUpdate { [self] _, state in
                     Task { @MainActor in
@@ -444,7 +633,7 @@ final class NearbyTransport {
                 // tore the incoming connection down before adoption could run —
                 // an instant ENOTCONN — which the spike paid for once already.
                 .run { [self] channel in
-                    await adopt(channel, direction: .incoming)
+                    await adopt(channel, direction: .incoming, kind: .radio)
                 }
             } catch {
                 listenerState = "failed"
@@ -497,25 +686,25 @@ final class NearbyTransport {
                 // an unchanged endpoint set is never re-asked, and the moment
                 // this loop has to notice is the one where a connection it holds
                 // has just died.
-                guard !isConnected(to: nearbyPeerID(of: device)) else {
+                guard !isConnected(to: identity(of: device)) else {
                     if !isHolding {
                         isHolding = true
                         log.note("Already connected to ",
-                                 naming: device.name ?? "that device",
+                                 naming: device.displayName ?? "that device",
                                  " — waiting rather than dialling again.")
                     }
                     try? await Task.sleep(for: .seconds(4))
                     continue
                 }
                 isHolding = false
-                log.note("Discovered ", naming: device.name ?? "an unnamed device",
+                log.note("Discovered ", naming: device.displayName ?? "an unnamed device",
                          " — dialling.")
 
-                let channel = NearbyChannel(to: endpoint, using: nearbyParameters())
+                let channel = NearbyChannel(to: endpoint, using: radioParameters())
                 // One outgoing connection at a time: the next browse waits for
                 // this one to be over, whether it was ready or the first cold
                 // attempt the radio refused.
-                await adopt(channel, direction: .outgoing)?.value
+                await adopt(channel, direction: .outgoing, kind: .radio)?.value
             } catch {
                 browserState = "failed"
                 log.note("Browser ended: \(Self.describe(error)).")
@@ -532,14 +721,34 @@ final class NearbyTransport {
     // MARK: - Connections
 
     /// Whether a connection to that device is up here already.
-    private func isConnected(to peer: PeerDeviceID) -> Bool {
+    func isConnected(to peer: PeerDeviceID) -> Bool {
         connections.contains { $0.isReady && $0.peer == peer }
     }
 
+    /// What a paired device is known as: the identity behind the pairing where
+    /// this device has learned one, and the pairing record until it has.
+    private func identity(of device: WAPairedDevice) -> PeerDeviceID {
+        let pairing = nearbyPairingID(of: device)
+        return NearbyIdentity.linked(to: pairing) ?? pairing
+    }
+
+    /// Every connection that stands, as the room considers them — which is
+    /// where the one preference between the two paths lives, and the only place
+    /// it lives. A device reachable both ways is dealt with over the network,
+    /// because that is the path that reaches through a wall and the one whose
+    /// loss is a room away rather than a house away.
+    var candidates: [NearbyCandidate] {
+        connections.filter(\.isReady).compactMap { connection in
+            guard let peer = connection.peer else { return nil }
+            return NearbyCandidate(connection: connection.id, peer: peer,
+                                   kind: connection.kind, name: connection.peerName)
+        }
+    }
+
     @discardableResult
-    private func adopt(_ channel: NearbyChannel,
-                       direction: NearbyConnection.Direction) async -> Task<Void, Never>? {
-        let connection = NearbyConnection(channel, direction: direction)
+    func adopt(_ channel: NearbyChannel, direction: NearbyConnection.Direction,
+               kind: NearbyLinkKind) async -> Task<Void, Never>? {
+        let connection = NearbyConnection(channel, direction: direction, kind: kind)
         connections.append(connection)
         return connection.start(driver: driver, log: log) { [weak self] in
             self?.connections.removeAll { $0 === connection }

@@ -29,19 +29,20 @@
 import Foundation
 import Observation
 
-/// One device in the room: the system's pairing record, and the connection a
-/// proposal would travel where one is up.
+/// One device in the room, and the connection a proposal would travel where one
+/// is up. How the room is made of what knows about it is `NearbyPeer.room`.
 nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
     /// The connection to that device, where the transport has one ready.
     ///
-    /// **A paired device is in the room whether or not a connection stands.**
-    /// Pairing is the system's own record, made once per pair of devices and
-    /// outliving the app; a connection is a thing the transport dials seconds
-    /// after the radio starts and lets go of between moves by the radio's own
-    /// design. So this is optional, and the row is drawn either way.
+    /// **A device is in the room whether or not a connection stands.** A
+    /// pairing is the system's own record, made once per pair of devices and
+    /// outliving the app; an advertisement on the network is a device whose
+    /// player is in nearby play right now; a connection is a thing the
+    /// transport dials seconds after it starts and lets go of between moves. So
+    /// this is optional, and the row is drawn either way.
     var connection: ConnectionID?
     var peer: PeerDeviceID
-    /// The device's own name, for the row alone. Nothing keys on it, and it
+    /// What the device is called, for the row alone. Nothing keys on it, and it
     /// never travels: it is the peer's owner's name as often as not.
     var name: String?
 
@@ -50,45 +51,15 @@ nonisolated struct NearbyPeer: Identifiable, Equatable, Sendable {
     var id: PeerDeviceID { peer }
 }
 
-extension NearbyPeer {
-    /// The room, from the two sources that know about it.
-    ///
-    /// **The pairing registry is what the list is of.** A list made of
-    /// connections is empty at exactly the moment somebody opens the sheet to
-    /// make one — the radio has only just been woken, the first dial has not
-    /// landed, and the two devices the system's own pairing pages show to each
-    /// other are nowhere on screen. The registry answers that question the
-    /// instant it is asked, and it is the same answer after a relaunch.
-    ///
-    /// The connected side is still read, for the connection a proposal travels
-    /// and so that a device the transport is talking to has a row even where
-    /// the registry has not caught up with it.
-    ///
-    /// Ordered by the paired device's own identifier — the system's, and
-    /// durable — so the row a person is about to press does not move under
-    /// them.
-    static func room(paired: [NearbyPeer], connected: [NearbyPeer]) -> [NearbyPeer] {
-        var room: [PeerDeviceID: NearbyPeer] = [:]
-        for device in paired { room[device.peer] = device }
-        for device in connected {
-            // Each source contributes its own half: the registry names the
-            // device, the connection is what a proposal goes out on.
-            let named = room[device.peer]?.name ?? device.name
-            room[device.peer] = NearbyPeer(connection: device.connection,
-                                           peer: device.peer, name: named)
-        }
-        return room.values.sorted { $0.peer.rawValue < $1.peer.rawValue }
-    }
-}
-
 /// The radio, as the surfaces need it.
 @MainActor
 protocol NearbyRadio: AnyObject {
     /// Whether this hardware has Wi-Fi Aware at all.
     var isSupported: Bool { get }
     var isRunning: Bool { get }
-    /// Every device in the room, one entry per device: the system's pairing
-    /// records, carrying the connection to each where one is up.
+    /// Every device in the room, one entry per device — the system's pairing
+    /// records and whatever is advertising itself on the network, carrying the
+    /// connection to each where one is up.
     var peers: [NearbyPeer] { get }
     /// Take up the system's pairing record, which is what the room is made of.
     ///

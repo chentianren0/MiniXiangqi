@@ -95,52 +95,10 @@ struct NearbyFlowTests {
     }
 
     // MARK: - The room
-
-    @Test("The room is the pairing registry, and a device with no connection is in it")
-    func theRoomIsThePairingRegistry() {
-        // The state the sheet is opened in: the two devices are paired, and the
-        // radio has only just been woken, so nothing is dialled yet.
-        let paired = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
-                                name: "Their iPad")
-        let room = NearbyPeer.room(paired: [paired], connected: [])
-
-        #expect(room == [paired], "a paired device is in the room before anybody dials it")
-    }
-
-    @Test("A device both paired and connected is one row, carrying the connection")
-    func theRoomJoinsTheTwoSourcesPerDevice() {
-        let peer = PeerDeviceID("wifi-aware-device-1")
-        let registry = NearbyPeer(connection: nil, peer: peer, name: "Their iPhone")
-        let live = NearbyPeer(connection: ConnectionID("c-1"), peer: peer, name: "Their iPhone")
-
-        let room = NearbyPeer.room(paired: [registry], connected: [live])
-
-        #expect(room.count == 1, "one device is one row, whatever knows about it")
-        #expect(room.first?.connection == ConnectionID("c-1"),
-                "and the row carries the connection a proposal would travel")
-    }
-
-    @Test("The room holds a connected device the registry has not caught up with")
-    func theRoomKeepsAConnectedDeviceTheRegistryMisses() {
-        let live = NearbyPeer(connection: ConnectionID("c-1"),
-                              peer: PeerDeviceID("wifi-aware-device-9"), name: "Their iPad")
-
-        #expect(NearbyPeer.room(paired: [], connected: [live]) == [live])
-    }
-
-    @Test("The room's order is the devices' own, so a row does not move under a press")
-    func theRoomIsOrderedByTheDurableIdentifier() {
-        let second = NearbyPeer(connection: nil, peer: PeerDeviceID("wifi-aware-device-2"),
-                                name: "B")
-        let first = NearbyPeer(connection: ConnectionID("c-9"),
-                               peer: PeerDeviceID("wifi-aware-device-1"), name: "A")
-
-        #expect(NearbyPeer.room(paired: [second], connected: [first]).map(\.peer)
-                == [first.peer, second.peer])
-        // The same room however the two sources happen to be ordered.
-        #expect(NearbyPeer.room(paired: [second, first], connected: []).map(\.peer)
-                == [first.peer, second.peer])
-    }
+    //
+    // How the room is made of what knows about devices — the pairing registry,
+    // the advertisements, the connections — is `NearbyRoomTests`. What is here
+    // is what the flow does with it.
 
     @Test("A device paired while the sheet is open appears on it")
     func aDevicePairedWhileTheSheetIsOpenAppears() {
