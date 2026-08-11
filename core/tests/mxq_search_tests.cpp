@@ -268,6 +268,22 @@ MxqGameConfig hvai_config(uint32_t movetime_ms,
     return config;
 }
 
+/* The mode that freezes no level and no movetime at all, and so has nothing
+ * for a search request to equal — the session the hint entry exists for. */
+MxqGameConfig free_play_config(MxqGameKind game = MXQ_GAME_KIND_MINI_XIANGQI) {
+    MxqGameConfig config;
+    std::memset(&config, 0, sizeof(config));
+    config.struct_size = static_cast<uint32_t>(sizeof(config));
+    config.mode = MXQ_PLAY_MODE_FREE_PLAY;
+    config.human_side = MXQ_COLOR_NONE;
+    config.ai_level = MXQ_AI_LEVEL_NONE;
+    config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
+    config.ai_movetime_ms = 0;
+    config.local_side = MXQ_COLOR_NONE;
+    config.game = game;
+    return config;
+}
+
 MxqSearchRequest request_of(uint32_t movetime_ms) {
     MxqSearchRequest request;
     std::memset(&request, 0, sizeof(request));
@@ -305,6 +321,43 @@ bool first_legal_move(const MxqGame *game, std::string &out) {
     }
     out = moves[0].text;
     return true;
+}
+
+/* Whether the session accepts this move in the position it is in now, asked of
+ * its own legal set rather than by applying it: the legal set of the current
+ * position is the side to move's, and a proposal that commits nothing has to be
+ * checked in a way that commits nothing either. */
+bool legal_here(const MxqGame *game, const std::string &move) {
+    MxqMove moves[128];
+    for (auto &m : moves) {
+        m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
+    }
+    size_t count = 0;
+    if (mxq_game_legal_moves(game, moves, 128, &count, nullptr) != MXQ_OK) {
+        return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (move == moves[i].text) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The session's committed move count, read back out of the store rather than
+ * off the session: "the hint commits nothing" is a claim about what was
+ * written. */
+uint32_t stored_move_count(MxqCore *core) {
+    MxqRecordSummary summary;
+    std::memset(&summary, 0, sizeof(summary));
+    summary.struct_size = static_cast<uint32_t>(sizeof(summary));
+    uint8_t exists = 0;
+    if (mxq_store_active_summary(core, &summary, nullptr, &exists, nullptr) !=
+            MXQ_OK ||
+        exists != 1) {
+        return UINT32_MAX;
+    }
+    return summary.move_count;
 }
 
 /* What one callback observed, written on the engine thread and read by the
@@ -1019,15 +1072,7 @@ void case_free_play_owes_no_search() {
         MxqEnginePlan applied = make_plan();
         c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget, &applied, &err),
                        MXQ_OK, "prepare");
-        MxqGameConfig config;
-        std::memset(&config, 0, sizeof(config));
-        config.struct_size = static_cast<uint32_t>(sizeof(config));
-        config.mode = MXQ_PLAY_MODE_FREE_PLAY;
-        config.human_side = MXQ_COLOR_NONE;
-        config.ai_level = MXQ_AI_LEVEL_NONE;
-        config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
-        config.ai_movetime_ms = 0;
-        config.local_side = MXQ_COLOR_NONE;
+        const MxqGameConfig config = free_play_config();
         MxqGame *game = nullptr;
         c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
                        "free play create");
@@ -1645,6 +1690,511 @@ void case_shutdown_mid_search() {
         }
         mxq_core_shutdown(next, nullptr);
     }
+    c.report();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hints                                                                   */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * The hint entry is mxq_search_start with three differences, and these cases
+ * are those three plus the promise that nothing else moved: the thinking time
+ * is an input from a closed vocabulary rather than a cross-check, one search is
+ * outstanding at a time, and the states that would take no move have no move to
+ * suggest. Everything the reply path already proves about tickets, staleness,
+ * cancellation and delivery is asserted here only where a hint could plausibly
+ * have taken its own path to it.
+ *
+ * Completing hints think for MXQ_MOVETIME_FAST_MS, which is the shortest
+ * thinking time the entry accepts at all; the cases that never let a search
+ * finish use the longer ones.
+ */
+
+void case_hint_in_human_versus_ai() {
+    Case c("a hint proposes a legal move for the side to move, commits "
+           "nothing, and never asks what the game froze");
+    const fs::path store = scratch_dir("hint-hvai");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+
+    /* The frozen movetime is deliberately not one of the three accepted
+     * levels, so that a hint answered at one of them cannot have been compared
+     * with it. */
+    const uint32_t frozen = 120;
+    const MxqGameConfig config = hvai_config(frozen);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        /* The human's own turn: human_side is Red and Red moves first. */
+        char game_id[MXQ_GAME_ID_CAP];
+        size_t id_len = 0;
+        c.check_status(mxq_game_id(game, game_id, sizeof(game_id), &id_len,
+                                   &err),
+                       MXQ_OK, "game id");
+        MxqPosition before;
+        std::memset(&before, 0, sizeof(before));
+        before.struct_size = static_cast<uint32_t>(sizeof(before));
+        c.check_status(mxq_game_position(game, &before, &err), MXQ_OK,
+                       "position before the hint");
+        c.check_eq(static_cast<int64_t>(before.side_to_move), MXQ_COLOR_RED,
+                   "the side to move is the human's");
+
+        Delivered delivered;
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             record_callback, &delivered,
+                                             &ticket, &err),
+                       MXQ_OK, "hint start");
+        c.check(ticket != 0, "a ticket was issued");
+
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the hint arrived");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   "the outcome is a move");
+        c.check_eq(result.ticket, static_cast<int64_t>(ticket),
+                   "the result carries its ticket");
+        c.check_eq(std::string(result.game_id), game_id,
+                   "the result carries the game identity");
+        c.check_eq(static_cast<int64_t>(result.position_revision),
+                   static_cast<int64_t>(before.position_revision),
+                   "and the revision it searched from");
+        c.check(result.profile_id[0] != '\0',
+                "and the profile that produced it");
+        c.check(delivered.called.load(std::memory_order_acquire),
+                "the callback fired");
+        c.check(delivered.thread_id != std::this_thread::get_id(),
+                "on the core's engine thread, not the calling thread");
+        c.check_eq(std::string(delivered.result.move.text),
+                   std::string(result.move.text),
+                   "callback and wait are equivalent consumers here too");
+
+        /* A move of this board, and one the side to move may actually make. */
+        c.check(mxq::notation::well_formed_move(MXQ_GAME_KIND_MINI_XIANGQI,
+                                                std::string(result.move.text)),
+                std::string("the move is in this game's notation, got: ") +
+                    result.move.text);
+        c.check(legal_here(game, result.move.text),
+                std::string("the proposed move is in the side to move's legal "
+                            "set, got: ") +
+                    result.move.text);
+
+        /* And nothing happened: the hint is advisory, so the position, the
+         * revision and the stored line are exactly what they were. */
+        MxqPosition after;
+        std::memset(&after, 0, sizeof(after));
+        after.struct_size = static_cast<uint32_t>(sizeof(after));
+        c.check_status(mxq_game_position(game, &after, &err), MXQ_OK,
+                       "position after the hint");
+        c.check_eq(static_cast<int64_t>(after.position_revision),
+                   static_cast<int64_t>(before.position_revision),
+                   "the revision did not move");
+        c.check_eq(std::string(after.fen), std::string(before.fen),
+                   "the position did not move");
+        c.check_eq(static_cast<int64_t>(stored_move_count(core)), 0,
+                   "and the store holds no move: the hint committed nothing");
+
+        /* The reply entry still cross-checks the frozen movetime, so the value
+         * this hint was answered at would not have passed it. That is the
+         * whole reason this entry exists. */
+        MxqSearchRequest request = request_of(MXQ_MOVETIME_FAST_MS);
+        uint64_t refused = 0;
+        err = make_error();
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &refused, &err),
+                       MXQ_ERR_ARG_RANGE,
+                       "the reply entry refuses the movetime the hint was "
+                       "answered at");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_in_free_play() {
+    Case c("a Free Play session freezes no movetime, owes no search, and "
+           "answers a hint all the same");
+    const fs::path store = scratch_dir("hint-free-play");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    const MxqGameConfig config = free_play_config();
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "free play create");
+    if (game != nullptr) {
+        MxqGameConfig frozen;
+        std::memset(&frozen, 0, sizeof(frozen));
+        frozen.struct_size = static_cast<uint32_t>(sizeof(frozen));
+        c.check_status(mxq_game_config(game, &frozen, &err), MXQ_OK,
+                       "the frozen configuration");
+        c.check_eq(frozen.ai_movetime_ms, 0, "which freezes no movetime");
+
+        /* The reply entry has nothing to equal and refuses at every value,
+         * this one included. */
+        MxqSearchRequest request = request_of(MXQ_MOVETIME_FAST_MS);
+        uint64_t refused = 0;
+        err = make_error();
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &refused, &err),
+                       MXQ_ERR_ARG_RANGE,
+                       "the reply entry refuses a session with no frozen "
+                       "movetime");
+
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_OK, "hint start on the Free Play session");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the hint arrived");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   "the outcome is a move");
+        c.check(legal_here(game, result.move.text),
+                std::string("the proposed move is in the side to move's legal "
+                            "set, got: ") +
+                    result.move.text);
+        c.check_eq(static_cast<int64_t>(stored_move_count(core)), 0,
+                   "the hint committed nothing here either");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_movetime_is_one_of_the_accepted_levels() {
+    Case c("the hint's movetime must be one of the three accepted thinking "
+           "times, and all three pass");
+    const fs::path store = scratch_dir("hint-movetime");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    /* No preparation, deliberately: the movetime is judged before the engine
+     * is, so an accepted level reaches the engine's own refusal and a rejected
+     * one never does. That is what lets all three levels be asserted without
+     * three searches. */
+    const MxqGameConfig config = hvai_config(120);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        for (const uint32_t accepted : {MXQ_MOVETIME_FAST_MS,
+                                        MXQ_MOVETIME_STANDARD_MS,
+                                        MXQ_MOVETIME_DEEP_MS}) {
+            uint64_t ticket = 0;
+            err = make_error();
+            c.check_status(mxq_search_start_hint(core, game, accepted, nullptr,
+                                                 nullptr, &ticket, &err),
+                           MXQ_ERR_STATE_ENGINE_NOT_READY,
+                           std::to_string(accepted) +
+                               " ms passes the vocabulary and is refused for "
+                               "the unprepared engine instead");
+        }
+
+#if defined(NDEBUG)
+        /* A value outside a closed vocabulary the caller owns is a programming
+         * error, so this expectation is observable only where the assertion is
+         * compiled out. Zero is the Free Play session's frozen value, and 120
+         * is this game's own: neither is a thinking time the product defines,
+         * and the entry takes neither. */
+        for (const uint32_t rejected :
+             {0u, 1u, 120u, 999u, 4000u, 5001u, UINT32_MAX}) {
+            uint64_t ticket = 1;
+            err = make_error();
+            c.check_status(mxq_search_start_hint(core, game, rejected, nullptr,
+                                                 nullptr, &ticket, &err),
+                           MXQ_ERR_ARG_RANGE,
+                           std::to_string(rejected) +
+                               " ms is not one of the accepted thinking "
+                               "times");
+            c.check_eq(static_cast<int64_t>(ticket), 0,
+                       "and no ticket was issued for it");
+        }
+#endif
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_refused_while_a_search_is_outstanding() {
+    Case c("a hint refuses while any search is outstanding, is a search for "
+           "the serialisation rule itself, and cancels like one");
+    const fs::path store = scratch_dir("hint-in-progress");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    const uint32_t movetime = 4000; /* never allowed to finish */
+    const MxqGameConfig config = hvai_config(movetime);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        std::string human_move;
+        c.check(first_legal_move(game, human_move), "a legal human move");
+        c.check_status(mxq_game_apply_move(game, human_move.c_str(), nullptr,
+                                           nullptr, &err),
+                       MXQ_OK, "human move applies");
+
+        /* The AI's reply is outstanding: the hint would be answered against a
+         * position that has moved on, so it is refused rather than queued. */
+        MxqSearchRequest request = request_of(movetime);
+        uint64_t reply = 0;
+        c.check_status(mxq_search_start(core, game, &request, nullptr, nullptr,
+                                        &reply, &err),
+                       MXQ_OK, "the reply search starts");
+        uint64_t hint = 1;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_DEEP_MS,
+                                             nullptr, nullptr, &hint, &err),
+                       MXQ_ERR_STATE_SEARCH_IN_PROGRESS,
+                       "a hint while the reply is outstanding");
+        c.check_eq(static_cast<int64_t>(hint), 0, "and no ticket was issued");
+
+        c.check_status(mxq_search_cancel(core, reply, &err), MXQ_OK, "cancel");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, reply, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait out the cancellation");
+        c.check_eq(ready, 1, "the cancelled reply was delivered");
+
+        /* Now the hint is the outstanding search, and everything the facade
+         * says about one holds for it. */
+        Delivered delivered;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_DEEP_MS,
+                                             record_callback, &delivered,
+                                             &hint, &err),
+                       MXQ_OK, "the hint starts once the reply has drained");
+        uint64_t second = 1;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_DEEP_MS,
+                                             nullptr, nullptr, &second, &err),
+                       MXQ_ERR_STATE_SEARCH_IN_PROGRESS,
+                       "a second hint while the first is outstanding");
+        c.check_eq(static_cast<int64_t>(second), 0,
+                   "and no ticket was issued for it either");
+        err = make_error();
+        c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI,
+                                          &budget, &applied, &err),
+                       MXQ_ERR_STATE_SEARCH_IN_PROGRESS,
+                       "reconfiguration serialises behind a hint exactly as it "
+                       "does behind a reply");
+
+        MxqPosition before;
+        std::memset(&before, 0, sizeof(before));
+        before.struct_size = static_cast<uint32_t>(sizeof(before));
+        c.check_status(mxq_game_position(game, &before, &err), MXQ_OK,
+                       "position before the cancellation");
+        c.check_status(mxq_search_cancel(core, hint, &err), MXQ_OK,
+                       "cancel the hint");
+        result = make_result();
+        ready = 0;
+        c.check_status(mxq_search_wait(core, hint, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the cancelled hint was delivered");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_CANCELLED,
+                   "with the cancelled outcome");
+        c.check(delivered.called.load(std::memory_order_acquire),
+                "the cancelled callback still fired");
+        c.check_eq(static_cast<int64_t>(delivered.result.outcome),
+                   MXQ_SEARCH_CANCELLED, "the callback saw the cancellation");
+        MxqPosition after;
+        std::memset(&after, 0, sizeof(after));
+        after.struct_size = static_cast<uint32_t>(sizeof(after));
+        c.check_status(mxq_game_position(game, &after, &err), MXQ_OK,
+                       "position after the cancellation");
+        c.check_eq(static_cast<int64_t>(after.position_revision),
+                   static_cast<int64_t>(before.position_revision),
+                   "the cancelled hint left the game where it was");
+
+        /* Teardown behaves: it is refused nowhere now, and the hint that
+         * follows it is refused for the engine. */
+        c.check_status(mxq_engine_teardown(core, &err), MXQ_OK,
+                       "teardown once the hint has drained");
+        uint64_t after_teardown = 1;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &after_teardown,
+                                             &err),
+                       MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "a hint after teardown refuses: the engine is not "
+                       "prepared");
+        c.check_eq(static_cast<int64_t>(after_teardown), 0,
+                   "and issues no ticket");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_refused_on_a_finished_game() {
+    Case c("a game with a result of its own has no move to suggest, and an "
+           "archived one has none either");
+    const fs::path store = scratch_dir("hint-game-over");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    const MxqGameConfig config = hvai_config(120);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        /* The three-ply checkmate the session suite plays. */
+        for (const char *move : {"b1b3", "a6a5", "b3d3"}) {
+            c.check_status(mxq_game_apply_move(game, move, nullptr, nullptr,
+                                               &err),
+                           MXQ_OK, "the mating line applies");
+        }
+        MxqGameStatus over;
+        std::memset(&over, 0, sizeof(over));
+        over.struct_size = static_cast<uint32_t>(sizeof(over));
+        c.check_status(mxq_game_status(game, &over, &err), MXQ_OK,
+                       "the terminal status");
+        c.check_eq(static_cast<int64_t>(over.state), MXQ_GAME_RED_WINS,
+                   "the line really mates");
+
+        uint64_t ticket = 1;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_ERR_STATE_GAME_OVER,
+                       "a hint on a finished game");
+        c.check_eq(static_cast<int64_t>(ticket), 0, "and no ticket");
+
+        /* And after the result is committed, the session is an immutable
+         * History record: the same refusal every other post-ending call on the
+         * handle makes. */
+        uint64_t record_id = 0;
+        err = make_error();
+        c.check_status(mxq_game_confirm_result(game, &record_id, &err), MXQ_OK,
+                       "confirm the result");
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_ERR_STATE_SESSION_ARCHIVED,
+                       "a hint on an archived session");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+void case_hint_stale_after_a_move() {
+    Case c("a hint answered for a position the game has left is rejected as "
+           "stale, exactly as a reply is");
+    const fs::path store = scratch_dir("hint-stale");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(init_core(store.string(), staged_assets(), &core, &err),
+                   MXQ_OK, "core init");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_MINI_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare");
+    const MxqGameConfig config = hvai_config(120);
+    MxqGame *game = nullptr;
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "game create");
+    if (game != nullptr) {
+        Delivered delivered;
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             record_callback, &delivered,
+                                             &ticket, &err),
+                       MXQ_OK, "hint start");
+
+        /* The player takes the move rather than the hint — the accepted
+         * dismissal — so the position the hint was asked about is gone. */
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        std::string played;
+        c.check(first_legal_move(game, played), "a legal move to play");
+        c.check_status(mxq_game_apply_move(game, played.c_str(), nullptr,
+                                           nullptr, &err),
+                       MXQ_OK, "the move applies while the hint is thinking");
+
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the result was delivered");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_STALE,
+                   "the outcome is stale");
+        c.check_eq(static_cast<int64_t>(delivered.result.outcome),
+                   MXQ_SEARCH_STALE, "the callback saw the staleness");
+        c.check_eq(std::string(result.move.text), std::string(),
+                   "and no move rode along with it");
+        c.check_eq(static_cast<int64_t>(stored_move_count(core)), 1,
+                   "the store holds the played move and nothing the hint "
+                   "produced");
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
     c.report();
 }
 
@@ -2274,6 +2824,13 @@ int main() {
     case_reconfiguration_refused_mid_search();
     case_core_cancel_all_quiesces();
     case_shutdown_mid_search();
+
+    case_hint_in_human_versus_ai();
+    case_hint_in_free_play();
+    case_hint_movetime_is_one_of_the_accepted_levels();
+    case_hint_refused_while_a_search_is_outstanding();
+    case_hint_refused_on_a_finished_game();
+    case_hint_stale_after_a_move();
 
     /* The variant axis last: these are the only cases that leave the engine's
      * process-global variant tables anywhere but the app's variant, and each
