@@ -261,8 +261,17 @@ final class NearbyDriver {
                 log.note("Resuming \(Self.short(session.id)) on \(Self.short(connection)).")
                 perform(effects)
             } catch {
-                log.note("No resume for \(Self.short(session.id)) on "
-                         + "\(Self.short(connection)): \(error).")
+                // An exchange already open is the ordinary sight here, not a
+                // fault: the settlement pursuit runs from the publication that
+                // announced this connection, and a crossed connection can be
+                // carrying the session's resume already.
+                if error == .resumeOutstanding {
+                    log.note("\(Self.short(session.id)) already has its exchange "
+                             + "open on \(Self.short(connection)).")
+                } else {
+                    log.note("No resume for \(Self.short(session.id)) on "
+                             + "\(Self.short(connection)): \(error).")
+                }
             }
         }
     }
@@ -282,25 +291,26 @@ final class NearbyDriver {
     /// It converges on its own. Opening the exchange puts one in flight, which
     /// is what `awaitsSettlement` denies, so nothing here repeats while it
     /// stands; when it completes the session is settled and there is nothing
-    /// left to pursue. The one case that comes round twice is a terminal taken
-    /// mid-exchange, which the completion sends as the ordinary message it is
-    /// and which the second exchange states in its `end` — bounded, and the
-    /// second one settles it.
+    /// left to pursue. Two cases come round again, each bounded by that same
+    /// denial: a terminal taken mid-exchange, which the completion sends as the
+    /// ordinary message it is and which the next exchange states in its `end`
+    /// and settles — and an exchange whose connection dies under it, which the
+    /// next connection to the peer opens afresh.
     private func pursueSettlement() {
         guard !pursuingSettlement else { return }
         pursuingSettlement = true
         defer { pursuingSettlement = false }
-        for (session, connection) in settlingExchangesOwed() {
+        for (id, connection) in settlingExchangesOwed() {
             do {
-                let effects = try engine.resume(session, on: connection)
-                log.note("Settling \(Self.short(session)) on \(Self.short(connection)).")
+                let effects = try engine.resume(id, on: connection)
+                log.note("Settling \(Self.short(id)) on \(Self.short(connection)).")
                 perform(effects)
             } catch {
                 // A connection dying in the same instant is the ordinary race:
                 // the engine has let go of it, the session keeps its end, and
                 // the next connection to come ready is owed the resume as any
                 // interrupted session is.
-                log.note("No settling resume for \(Self.short(session)) on "
+                log.note("No settling resume for \(Self.short(id)) on "
                          + "\(Self.short(connection)): \(error).")
             }
         }
@@ -324,6 +334,9 @@ final class NearbyDriver {
         if let bound, links[bound] != nil, peers[bound] == peer { return bound }
         // Sorted rather than whichever the dictionary offers first, so two
         // crossed connections to one device settle on the same one every run.
+        // Swift's own string ordering serves here: connection identifiers are
+        // transport-local and never compared across devices, so the wire case
+        // `WireBytes` exists for is not this one.
         return links.keys.filter { peers[$0] == peer }
             .min { $0.rawValue < $1.rawValue }
     }
