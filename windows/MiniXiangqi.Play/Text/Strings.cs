@@ -1,11 +1,10 @@
 // Every string this frontend shows, in both supported languages.
 //
-// docs/copy.md is the string of record: it owns the pair and the symbolic key,
-// the Simplified Chinese is normative, and the English is a translation of it.
-// This table is the Windows frontend's copy of that contract, keyed identically,
-// and MiniXiangqi.Smoke checks it against docs/copy.md mechanically — which is
-// the agreement check that document's localization process asks CI for, now that
-// there is a CI to ask.
+// This table is the Windows frontend's string of record, per
+// docs/interaction-design.md § Localization: it owns the pair and the symbolic
+// key, the Simplified Chinese is normative, and the English is a translation of
+// it. A string only this frontend draws is registered only here, and nothing
+// outside this file is entitled to answer what a screen says.
 //
 // Why a table in C# rather than a .resw and a PRI. Three reasons, and the third
 // is the one that decided it:
@@ -73,16 +72,17 @@ public static class Strings
     });
 
     /// <summary>
-    /// The table. Composed strings hold .NET's placeholders rather than
-    /// docs/copy.md's `%1$@`; the mechanical check translates between the two
-    /// rather than either side pretending the other's spelling.
+    /// The table. Composed strings hold .NET's own placeholders — <c>{0}</c>
+    /// rather than the <c>%1$@</c> the Apple frontend's catalogs carry — because
+    /// each frontend's table is written in the format its own platform composes
+    /// with.
     /// </summary>
     public static readonly ImmutableDictionary<string, LocalizedString> Table =
         new Dictionary<string, LocalizedString>(StringComparer.Ordinal)
         {
             // Navigation and modes. 对局 names the destination, the Play home's
             // own title, and the back control that returns to it — one string
-            // for one page, as docs/copy.md keys it.
+            // for one page, so one key.
             ["nav.play"] = new("对局", "Play"),
             ["nav.history"] = new("历史", "History"),
             // The third destination's own name, on the shell's settings item and
@@ -277,7 +277,7 @@ public static class Strings
             //
             // The six option words below carry no rows of their own: 默认先后手
             // and 默认 AI 等级 offer exactly the choices the pre-start page
-            // offers, and docs/copy.md keys them once, under `setup.`, for both.
+            // offers, and they are keyed once, under `setup.`, for both.
             ["settings.defaults.group"] = new("人机对弈默认设置", "Human versus AI Defaults"),
             ["settings.defaults.firstMover"] = new("默认先后手", "Default First Mover"),
             ["settings.defaults.aiLevel"] = new("默认 AI 等级", "Default AI Level"),

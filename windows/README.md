@@ -316,14 +316,12 @@ wrapper the window uses — and then it plays.
 
 Sections 17 to 21 are the play screen's.
 
-**17** checks the string table against [`docs/copy.md`](../docs/copy.md): every key this
-frontend shows is a row of the contract, and both languages of it match. That is one
-direction of the agreement check the localization process asks for, and only one — the
-reverse, that no user-facing key in the contract is absent here, cannot apply while
-Windows implements part of the contract's rows and the Apple frontend implements the
-rest. It becomes checkable when the Windows frontend is complete, and it is not checked
-before then rather than checked against a count somebody has to keep adjusting — a count
-this paragraph used to carry and which the History destination immediately made stale.
+**17** checks the string table, which is this frontend's own string of record: every row
+says something in both languages — an empty half would show as an empty label rather than
+as a fault — and the rows the two games share carry the accepted words. What it checks is
+the table's own coherence, because there is nothing outside the table to check it
+against: a string only this frontend draws is registered only here, per
+[`docs/interaction-design.md`](../docs/interaction-design.md) § Localization.
 
 **18** plays a whole game against the AI through `PlaySession` — every move committed by
 clicking a point and then another point, exactly as the window's board does it, the AI
@@ -449,7 +447,7 @@ it needs another writer to win three races in a row against a single-threaded re
 - **The two file pickers** — see below.
 
 ```powershell
-windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe --copy-table docs\copy.md
+windows\MiniXiangqi.Smoke\bin\Release\net10.0-windows\MiniXiangqi.Smoke.exe
 ```
 
 It prints a checked line per claim, a count, and `MXQ_SMOKE_OK`, and it exits non-zero
@@ -575,7 +573,7 @@ entries. The Community Toolkit's `SettingsCard` is the packaged form of exactly 
 was declined as a dependency for four rows, since the vocabulary it would bring is the
 theme resources this window already draws from. The two switches carry no On/Off content:
 a bare switch is what Windows 11's own Settings shows, and the words the framework would
-otherwise put there are copy `docs/copy.md` does not own. Narrator is unaffected — a
+otherwise put there are copy the string table does not own. Narrator is unaffected — a
 toggle reports its state through the toggle pattern, in the screen reader's own words —
 and each control's accessibility name is its row label, which is the basic labelling
 issue #80 settles this platform at.
@@ -715,10 +713,10 @@ is still heard, with the volume mixer where somebody who wants it quieter goes.
 [`.github/workflows/windows-frontend.yml`](../.github/workflows/windows-frontend.yml)
 builds the core with `MXQ_BUILD_SHARED_LIBRARY=ON`, regenerates the bindings and fails
 on any difference from what is committed, compares the four sound samples against the
-Apple bundle's, builds every project, runs the smoke harness against `docs/copy.md`,
-renders the board, builds the distribution zip, and builds the Store package. It uploads
-four artifacts on every run — the board renders, the zip per architecture, the `.msix`
-per architecture, and the `.msixupload` that carries both packages to Partner Center —
+Apple bundle's, builds every project, runs the smoke harness, renders the board, builds
+the distribution zip, and builds the Store package. It uploads four artifacts on every
+run — the board renders, the zip per architecture, the `.msix` per architecture, and the
+`.msixupload` that carries both packages to Partner Center —
 and it takes no secrets: both networks the AI needs are in the checkout, and the package is
 unsigned because the Store signs what it accepts.
 
@@ -764,37 +762,34 @@ two different ways.
 
 ## Strings
 
-`MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, keyed exactly
-as [`docs/copy.md`](../docs/copy.md) keys it, with the normative Chinese and its approved
-English side by side. The History destination and its viewer added no key to that
-contract: every string they say was already a row of it, including the twelve it then
-marked *(proposed)* — the two section headers, the empty state's pair, the
-deletion-failure pair, the History-read failure title, the replay progress line, and the
-four transport labels this viewer has. **Those twelve are accepted now**: the owner's
-Windows tour passed on them and the copy delegation makes routine copy correctness the
-lead's to decide (owner, 2026-07-31, issue #80), so the markers are off.
-`replay.autoplay` and `replay.pause` keep theirs and keep their absence here, because the
-trim removed their control. **The
-Settings destination added none either, and shipped no proposed row**: its eight strings —
-`nav.settings`, the four `settings.defaults.*`, `settings.sound.label` and the two
-`settings.confirmDelete.*` — are all accepted, and the six option words its two pickers
-offer are the pre-start page's own `setup.` rows, keyed once for both screens. The four
-rows it does not ship are the ones its trim removed: `settings.section.board`,
-`settings.symbols.*`, `settings.notation.*` and `settings.haptics.label`. The language is
-the operating system's — the app offers no interface-language control of its own — which
-.NET resolves as `CurrentUICulture` from the system's language preference list.
+`MiniXiangqi.Play/Text/Strings.cs` holds every string this frontend shows, under a
+symbolic key, with the normative Chinese and its approved English side by side. **It is
+this frontend's string of record**, per
+[`docs/interaction-design.md`](../docs/interaction-design.md) § Localization: a string
+only Windows draws is registered only here, and the Apple frontend's String Catalogs are
+the record for what that frontend draws. Routine copy correctness is the lead's to decide
+(owner, 2026-07-31, issue #80). The language is the operating system's — the app offers
+no interface-language control of its own — which .NET resolves as `CurrentUICulture` from
+the system's language preference list.
 
-**One key is this frontend's own addition to the contract**: `board.tooSmall`, the line a
-board host shows when there is no room for a board. It is the second Windows-first row
-after `control.close`, and for the same shape of reason — this is the platform where a
-window is dragged against a navigation container that changes width with it. The row and
-its reasoning are in `docs/copy.md` § When there is no room for the board; the state that
-publishes it is [above](#the-windows-floor-and-the-board-that-will-not-fit).
+**What this frontend does not draw carries no key at all.** `replay.autoplay` and
+`replay.pause` have no rows, because the trim made replay here a step-through viewer; the
+Settings destination draws eight strings — `nav.settings`, the four
+`settings.defaults.*`, `settings.sound.label` and the two `settings.confirmDelete.*` —
+and the board section, the symbol and notation choices and the haptics label its trim
+removed are absent rather than present and unused. The six option words its two pickers
+offer are the pre-start page's own `setup.` rows, keyed once for both screens.
+
+**`board.tooSmall` is a Windows-first row**: the line a board host shows when there is no
+room for a board, the second such row after `control.close` and for the same shape of
+reason — this is the platform where a window is dragged against a navigation container
+that changes width with it. The state that publishes it is
+[above](#the-windows-floor-and-the-board-that-will-not-fit).
 
 It is a table in C# rather than a `.resw` and a PRI, and the packaging build did not
 change that. The render harness has to read the table with no XAML resource context, and
-the smoke harness checks it against the contract, so it cannot drift from `docs/copy.md`
-silently either.
+the smoke harness holds the table to its own coherence, so a row that lost a language
+cannot go unnoticed either.
 
 **This section used to say that a PRI is a resource system for a *packaged* app and that
 an unpackaged zip made resource lookup a deployment question rather than a copy

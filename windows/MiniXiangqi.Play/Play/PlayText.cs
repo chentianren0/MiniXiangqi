@@ -4,11 +4,11 @@
 // the result notice and the board's accessibility labels draw on the same
 // vocabulary, so the composition lives in one place rather than in whichever
 // view happened to need it first. Every string comes from the table in
-// Strings.cs, which is docs/copy.md's; every separator between two of them is a
-// format string from the same table, because what stands between two words is
-// copy — an ideographic space in Chinese and an ordinary one in English — and a
-// separator hard-coded here would be one language's punctuation wrapped around
-// the other language's words.
+// Strings.cs, which is this frontend's string of record; every separator between
+// two of them is a format string from the same table, because what stands
+// between two words is copy — an ideographic space in Chinese and an ordinary
+// one in English — and a separator hard-coded here would be one language's
+// punctuation wrapped around the other language's words.
 
 using MiniXiangqi.Core;
 using MiniXiangqi.Core.Interop;
@@ -175,10 +175,10 @@ public static class PlayText
     /// <summary>
     /// Plies, which is what 步 counts, and the core's own count of them.
     ///
-    /// docs/copy.md authors <c>metadata.moveCount</c> as a String Catalog plural
-    /// pattern, which is the Apple platform's own mechanism and not one this
-    /// frontend has. So the pattern's *one* variant carries its own key here,
-    /// <c>metadata.moveCount.one</c>, and this is the selection the catalog
+    /// The Apple frontend's catalog holds <c>metadata.moveCount</c> as a String
+    /// Catalog plural pattern, which is that platform's own mechanism and not one
+    /// this frontend has. So the pattern's *one* variant carries its own key
+    /// here, <c>metadata.moveCount.one</c>, and this is the selection a catalog
     /// would have made. A one-ply game is reachable in Free Play, which is why
     /// it is not a case that can be skipped.
     /// </summary>

@@ -30,7 +30,7 @@
   NSBonjourServices and NSLocalNetworkUsageDescription are the other path's two
   halves: the same service name, because it names the same thing, and the
   sentence the system's own permission alert explains itself by. The sentence is
-  copy.md's `app.localNetworkUsage` and is localized in InfoPlist.xcstrings; the
+  localized in InfoPlist.xcstrings, which is the string of record for it; the
   value here is the development language's. It says what the access is for and
   names no transport, no band and no path, as the interaction contract requires
   of every word this application writes.
