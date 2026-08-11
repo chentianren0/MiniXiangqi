@@ -11,6 +11,11 @@
 // something, the engine is asked and its refusal is the answer. The resume a
 // fresh connection owes is the clearest case — the driver offers every session
 // it holds with that device, and the engine refuses the ones that need none.
+// Where the contract says a peer *may* — the exchange an unsettled peer opens
+// on a live connection — the moment is this layer's to choose, because a moment
+// is timing rather than permission; what the driver reads to choose it is the
+// session's own derived answer, and whether the exchange is allowed at all is
+// still the engine's.
 //
 // It is transport-free on purpose. `NearbyLink` is the whole of what it needs
 // from a connection, so the Wi-Fi Aware layer above it is one implementation
@@ -136,6 +141,10 @@ final class NearbyDriver {
     /// a send that suspends must not let the next one overtake it.
     @ObservationIgnored private var outbox: [ConnectionID: [BoardGameMessage]] = [:]
     @ObservationIgnored private var pumping: Set<ConnectionID> = []
+    /// Whether a settling exchange is being opened right now. Performing one
+    /// publishes again, and this is what makes the one level of re-entrance
+    /// that follows evident rather than merely bounded.
+    @ObservationIgnored private var pursuingSettlement = false
 
     init(rules: any BoardGameRules, log: NearbyLog,
          record: (any NearbyRecording)? = nil,
@@ -256,6 +265,67 @@ final class NearbyDriver {
                          + "\(Self.short(connection)): \(error).")
             }
         }
+    }
+
+    /// The contract's "an unsettled peer may also open the exchange on the
+    /// session's live connection", taken the moment there is an end to settle
+    /// and a connection to settle it on.
+    ///
+    /// Settlement rides a resume exchange and nothing else, so the peer that
+    /// ended the game — it sent the terminal, or its own ply decided the end —
+    /// stays unsettled until one completes for it. Waiting for the next
+    /// connection to open that exchange strands exactly that peer: the other
+    /// side settles as the ending arrives, files its copy, leaves the board,
+    /// and its radio rests, so the connection this side was waiting to be given
+    /// again is the one that was standing all along.
+    ///
+    /// It converges on its own. Opening the exchange puts one in flight, which
+    /// is what `awaitsSettlement` denies, so nothing here repeats while it
+    /// stands; when it completes the session is settled and there is nothing
+    /// left to pursue. The one case that comes round twice is a terminal taken
+    /// mid-exchange, which the completion sends as the ordinary message it is
+    /// and which the second exchange states in its `end` — bounded, and the
+    /// second one settles it.
+    private func pursueSettlement() {
+        guard !pursuingSettlement else { return }
+        pursuingSettlement = true
+        defer { pursuingSettlement = false }
+        for (session, connection) in settlingExchangesOwed() {
+            do {
+                let effects = try engine.resume(session, on: connection)
+                log.note("Settling \(Self.short(session)) on \(Self.short(connection)).")
+                perform(effects)
+            } catch {
+                // A connection dying in the same instant is the ordinary race:
+                // the engine has let go of it, the session keeps its end, and
+                // the next connection to come ready is owed the resume as any
+                // interrupted session is.
+                log.note("No settling resume for \(Self.short(session)) on "
+                         + "\(Self.short(connection)): \(error).")
+            }
+        }
+    }
+
+    /// Each session waiting to be settled, with the connection to open its
+    /// exchange on: the one it is bound to where this driver still holds that
+    /// link, and otherwise whichever it holds to that peer.
+    private func settlingExchangesOwed() -> [(String, ConnectionID)] {
+        engine.sessions.compactMap { session -> (String, ConnectionID)? in
+            guard session.awaitsSettlement,
+                  let connection = connection(to: session.peer,
+                                              preferring: session.connection)
+            else { return nil }
+            return (session.id, connection)
+        }
+    }
+
+    private func connection(to peer: PeerDeviceID,
+                            preferring bound: ConnectionID?) -> ConnectionID? {
+        if let bound, links[bound] != nil, peers[bound] == peer { return bound }
+        // Sorted rather than whichever the dictionary offers first, so two
+        // crossed connections to one device settle on the same one every run.
+        return links.keys.filter { peers[$0] == peer }
+            .min { $0.rawValue < $1.rawValue }
     }
 
     // MARK: - What this device's own player asks for
@@ -446,6 +516,11 @@ final class NearbyDriver {
         // of a list of the changes somebody remembered to report.
         record?.follow(sessions)
         if let record { ownMoveRefusals = record.ownMoveRefusals }
+        // Every engine input funnels through here, so this is where an end
+        // appears the instant it is reached — the one this device's own player
+        // just took, and the one an arriving message completed. Last, so that
+        // what it performs publishes over this rather than under it.
+        pursueSettlement()
     }
 
     /// The line a finished game leaves behind, said once, when the session's

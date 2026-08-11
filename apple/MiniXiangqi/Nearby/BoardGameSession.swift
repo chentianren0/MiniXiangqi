@@ -233,6 +233,14 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
     /// Bound, exchanged, and free to play.
     var isInPlay: Bool { state == .active && connection != nil && exchange == nil }
 
+    /// Finished here, unsettled, and with no exchange in flight to settle it:
+    /// the session the contract's "an unsettled peer may also open the exchange
+    /// on the session's live connection" is about. Settlement rides a resume
+    /// exchange and nothing else, so a session in this shape is waiting for one
+    /// to be opened — by a connection coming ready, or, where a connection
+    /// already stands, at once.
+    var awaitsSettlement: Bool { state == .ended && !settled && exchange == nil }
+
     /// This session, keyed as the contract compares its identifier.
     var key: WireBytes { WireBytes(id) }
 
