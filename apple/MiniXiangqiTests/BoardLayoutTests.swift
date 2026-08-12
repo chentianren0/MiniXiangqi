@@ -127,42 +127,110 @@ struct BoardLayoutTests {
 
         #expect(BoardLayout.shape(in: phone, game: .xiangqi) == .stacked)
         #expect(abs(miniBoard.coreSize.width - xiangqiBoard.coreSize.width) <= 3)
-        #expect(xiangqiBoard.pitch == 39)
+        #expect(xiangqiBoard.pitch == 44,
+                "the full-width fitting gives nine files the whole 402 points")
         #expect(xiangqiBoard.coreSize.height > miniBoard.coreSize.height)
         #expect(xiangqiBoard.blockSize.height <= phone.height
                 - BoardLayout.stackedChromeHeight)
     }
 
-    /// What hiding the destination bar bought this phone, stated as the relation
-    /// it is rather than as the pitch it comes to.
+    /// A stacked board screen spends no horizontal allowance, and a pre-start
+    /// preview keeps its own.
     ///
-    /// Replay's chrome is more than twice play's, so on the shorter area
-    /// replay's board was the smaller of the two: its height was what bound it.
-    /// The bar's own height is exactly what stops that being true — on the
-    /// taller area **both** boards run out of *width* first, so replay draws the
-    /// same board play does. That is the whole of what the change gives this
-    /// screen, and it is also why the move list gains nothing: what the board
-    /// cannot use, nothing else on the page is asking for.
-    @Test("Hiding the bar makes replay's board the size play's is, not merely nearer")
-    func replayReachesPlaysBoardOnceTheBarIsHidden() {
-        let replayChrome: CGFloat = 69 + 200
-        func boards(in height: CGFloat) -> (play: CGFloat, replay: CGFloat) {
-            let phone = CGSize(width: 402, height: height)
-            return (BoardLayout.stackedGeometry(in: phone, game: mini,
-                                                chrome: BoardLayout.stackedChromeHeight).pitch,
-                    BoardLayout.stackedGeometry(
-                        in: phone, game: mini,
-                        chrome: BoardLayout.stackedChrome(in: phone, game: mini,
-                                                         asking: replayChrome)).pitch)
+    /// docs/interaction-design.md, "Layout shapes": the block takes the screen's
+    /// width, and what the whole-point pitch leaves over is a few points at
+    /// most. The two pitches are the contract's own numbers for this phone, and
+    /// they are here rather than with the pictures because they are what the
+    /// rule *is* — the arithmetic decides them, and the screen only draws them.
+    @Test("A stacked board screen takes the screen's width; a preview keeps its air")
+    func aStackedBoardScreenTakesTheWholeWidth() {
+        let phone = CGSize(width: 402, height: 720)
+        let miniBoard = BoardLayout.stackedGeometry(in: phone, game: mini)
+        #expect(miniBoard.pitch == 57)
+        #expect(phone.width - miniBoard.blockSize.width < miniBoard.pitch,
+                "what is left over is less than one cell, never a margin")
+
+        let xiangqi = BoardLayout.stackedGeometry(in: phone, game: .xiangqi)
+        #expect(xiangqi.pitch == 44)
+        #expect(phone.width - xiangqi.blockSize.width < xiangqi.pitch)
+
+        // The preview sits among setup controls on a page rather than alone on
+        // a screen, so it keeps the air the board screen spends: at the same
+        // chrome it is the smaller board of the two.
+        let preview = BoardLayout.stackedPreviewGeometry(
+            in: phone, game: mini, chrome: BoardLayout.stackedChromeHeight)
+        #expect(preview.pitch < miniBoard.pitch)
+        #expect(preview.blockSize.width
+                <= phone.width - 2 * BoardLayout.boardPadding)
+    }
+
+    /// The surface behind the block runs to the screen edges where the width is
+    /// what sized the board, and nowhere else.
+    @Test("The board surface covers the pitch remainder, and never a real margin")
+    func theSurfaceRunsToTheEdgesOnlyWhereTheWidthBinds() {
+        let phone = CGSize(width: 402, height: 720)
+        for game in GameKind.allCases {
+            let board = BoardLayout.stackedGeometry(in: phone, game: game)
+            let bleed = BoardLayout.surfaceBleed(in: phone.width, board: board)
+            #expect(bleed > 0, "\(game) is bound by this phone's width")
+            #expect(2 * bleed + board.blockSize.width == phone.width,
+                    "and the surface meets both edges exactly")
         }
 
-        let withTheBar = boards(in: 672)
-        #expect(withTheBar.replay < withTheBar.play,
+        // An iPad in portrait stops at the maximum footprint 120 points short of
+        // the screen. That is the surrounding layout's air rather than the
+        // board's, so nothing is painted into it.
+        let padPortrait = CGSize(width: 834, height: 1130)
+        let capped = BoardLayout.stackedGeometry(in: padPortrait, game: mini)
+        #expect(capped.pitch == miniMaximumPitch)
+        #expect(BoardLayout.surfaceBleed(in: padPortrait.width, board: capped) == 0)
+
+        // And a board the height sized — replay's own chrome on this phone is
+        // what does it — keeps its margin for the same reason.
+        let heightBound = BoardLayout.stackedGeometry(in: phone, game: mini, chrome: 269)
+        #expect(heightBound.pitch < 57)
+        #expect(BoardLayout.surfaceBleed(in: phone.width, board: heightBound) == 0)
+    }
+
+    /// What hiding the destination bar buys replay, and what the full-width
+    /// fitting does not take from its move list.
+    ///
+    /// Replay's chrome is more than twice play's, so replay's board is the
+    /// smaller of the two on this phone: its height is what binds it, where
+    /// play's board runs out of *width* first. The bar's own height is real
+    /// pitch to replay all the same. What it is not is the list's: the panel is
+    /// granted the whole of what it asks for at both heights, so the rows the
+    /// list keeps are the rows it kept — the board's gain comes out of the air
+    /// around it rather than out of the chrome.
+    @Test("Hiding the bar buys replay's board pitch, and costs its move list nothing")
+    func replayGainsFromTheHiddenBarWithoutCostingTheList() {
+        let replayHeader: CGFloat = 69
+        let replayPanel: CGFloat = 200
+        let asked = replayHeader + replayPanel
+        func replay(in height: CGFloat) -> (pitch: CGFloat, panel: CGFloat) {
+            let phone = CGSize(width: 402, height: height)
+            let chrome = BoardLayout.stackedChrome(in: phone, game: mini, asking: asked)
+            return (BoardLayout.stackedGeometry(in: phone, game: mini, chrome: chrome).pitch,
+                    chrome - replayHeader)
+        }
+        func play(in height: CGFloat) -> CGFloat {
+            BoardLayout.stackedGeometry(in: CGSize(width: 402, height: height), game: mini,
+                                        chrome: BoardLayout.stackedChromeHeight).pitch
+        }
+
+        let withTheBar = replay(in: 672)
+        #expect(withTheBar.pitch < play(in: 672),
                 "with the bar under it, replay pays for its heavier chrome")
 
-        let without = boards(in: 720)
-        #expect(without.replay == without.play,
-                "without it, both boards are bound by the phone's width instead")
+        let without = replay(in: 720)
+        #expect(without.pitch > withTheBar.pitch,
+                "and the bar's own height is pitch to replay's board")
+        #expect(without.pitch < play(in: 720),
+                "though the full-width fitting lifts play's board past it, replay's being bound by its chrome's height rather than by the width")
+
+        #expect(withTheBar.panel == replayPanel)
+        #expect(without.panel == replayPanel,
+                "the list is granted its whole ask at both heights")
     }
 
     @Test("An iPad in portrait stacks: the panel would cost the board more than it returns")

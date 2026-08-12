@@ -323,13 +323,23 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertEqual(control(app, "file-numerals-red").label,
                        "九 八 七 六 五 四 三 二 一")
 
+        // docs/interaction-design.md § Layout shapes: a stacked board screen is
+        // fitted to the full width, so nine files divide the whole 402 points
+        // rather than what is left after an allowance on each side. That is what
+        // the rule buys this phone, and it is measured on the running board
+        // rather than computed: 44 points a cell, against 39 before it.
         let pitch = point(app, "a1").frame.width
-        XCTAssertEqual(pitch, 39, accuracy: 0.5,
-                       "width fitting on a 402-point phone should yield pitch 39")
+        XCTAssertEqual(pitch, 44, accuracy: 0.5,
+                       "full-width fitting on a 402-point phone should yield pitch 44")
         XCTAssertGreaterThanOrEqual(pitch, 34,
                                     "Xiangqi should remain above its interactive floor")
-        XCTAssertLessThan(pitch, 44,
-                          "its hit regions should not be enlarged into Mini's floor")
+        // And the board meets the glass: what nine whole-point cells cannot
+        // spend is a few points, and the surface behind the block covers them.
+        let strip = control(app, "file-numerals-red")
+        XCTAssertEqual(strip.frame.width, 9 * pitch, accuracy: 1,
+                       "the numeral strip spans the board's own core width")
+        XCTAssertLessThan(app.frame.width - strip.frame.width, pitch,
+                          "and what is left beside it is less than one cell")
         for element in pointElements {
             XCTAssertEqual(element.frame.width, pitch, accuracy: 0.5,
                            "\(element.identifier) should be exactly one pitch wide")
@@ -435,17 +445,29 @@ final class PhonePlayUITests: XCTestCase {
         XCTAssertTrue(app.buttons["play-move-list"].exists,
                       "a phone takes the stacked shape, where the record is on demand")
 
-        // The accepted human-versus-AI cluster, all four of it. The fourth is
-        // the owner's recommendation of 2026-07-31, and this is the width that
-        // decided where it goes: at 402 points the stacked row holds four, so
-        // the control sits in the cluster here exactly as it does in the panel
-        // rather than being sent to the toolbar beside 棋谱.
+        // The turn status is in the bar's centre, in the title's place, and the
+        // page carries no name — docs/interaction-design.md § Turn status. A
+        // player looking at a board does not need the page named, and the
+        // status is what the height would have gone on.
+        let status = control(app, "turn-status")
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertEqual(status.frame.midY, app.buttons["play-back"].frame.midY, accuracy: 12,
+                       "the status stands in the bar's centre, beside the control that "
+                       + "walks back out, rather than in a block above the board")
+        XCTAssertFalse(app.navigationBars.staticTexts["对局"].exists,
+                       "and the board page spends its bar centre on the status, not a title")
+
+        // The accepted human-versus-AI cluster, all five of it: 提示 leads,
+        // 翻转棋盘 closes it, and every control carries its word at this width —
+        // over two rows, since one row of five words is wider than the phone.
+        XCTAssertEqual(app.buttons["hint-request"].label, "提示")
         XCTAssertEqual(app.buttons["cluster-undo"].label, "悔棋")
         XCTAssertEqual(app.buttons["cluster-claim"].label, "判和")
         XCTAssertEqual(app.buttons["cluster-resign"].label, "认输")
         XCTAssertEqual(app.buttons["cluster-flip"].label, "翻转棋盘",
                        "human-versus-AI carries the board-flip control too")
-        for identifier in ["cluster-undo", "cluster-claim", "cluster-resign", "cluster-flip"] {
+        for identifier in ["hint-request", "cluster-undo", "cluster-claim",
+                           "cluster-resign", "cluster-flip"] {
             let button = app.buttons[identifier]
             XCTAssertTrue(app.frame.contains(button.frame),
                           "\(identifier) should sit inside a 402-point phone, not past it")

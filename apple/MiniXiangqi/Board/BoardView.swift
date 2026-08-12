@@ -54,6 +54,18 @@ struct BoardView: View {
     @State private var driftStart: Date?
 
     var style: BoardStyle = .traditional
+
+    /// How far the style's board surface runs past the block on each side.
+    ///
+    /// docs/interaction-design.md, "Layout shapes": a stacked board screen is
+    /// fitted to the full width, and the surface runs to the screen edges
+    /// beneath the numeral strips so the board meets the glass rather than
+    /// leaving the whole-point pitch's remainder showing page. How many points
+    /// that is belongs to the layout — `BoardLayout.surfaceBleed(in:board:)` —
+    /// and every other board is drawn with none, which is the board's own width
+    /// and nothing beside it.
+    var surfaceBleed: CGFloat = 0
+
     var onTap: (Square) -> Void = { _ in }
 
     /// The 棋子符号 preference, read here because this is the one place every
@@ -96,6 +108,12 @@ struct BoardView: View {
         // exactly the room the strips take and by nothing else.
         .frame(width: geometry.blockSize.width,
                height: showsNumerals ? geometry.blockSize.height : geometry.coreSize.height)
+        // The surface behind the whole block, which is what runs past it where
+        // the layout asks. The core and the strips carry their own fill too, so
+        // this changes nothing at all where the bleed is none.
+        .background {
+            style.boardSurface.padding(.horizontal, -surfaceBleed)
+        }
     }
 
     // MARK: - The board core

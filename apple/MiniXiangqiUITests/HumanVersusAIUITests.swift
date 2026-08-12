@@ -193,9 +193,11 @@ final class HumanVersusAIUITests: XCTestCase {
                       "开始对局 should create the game and open the board")
         attach(app, named: "hvai-1-the-opening-position")
 
-        // The accepted cluster: 悔棋, 判和, 认输 and 翻转棋盘 — the fourth is the
-        // owner's recommendation of 2026-07-31, and it carries the same label
-        // here as it does in Free Play whichever of its two shapes it is in.
+        // The accepted cluster: 提示, 悔棋, 判和, 认输 and 翻转棋盘 — 提示 leads
+        // because it is the one control about the next move, and 翻转棋盘
+        // carries the same label here as it does in Free Play whichever of its
+        // two arrangements it is in.
+        XCTAssertEqual(app.buttons["hint-request"].label, "提示")
         XCTAssertTrue(app.buttons["cluster-undo"].exists)
         XCTAssertTrue(app.buttons["cluster-claim"].exists)
         XCTAssertEqual(app.buttons["cluster-resign"].label, "认输")
@@ -263,25 +265,29 @@ final class HumanVersusAIUITests: XCTestCase {
     ///
     /// 深思 rather than 快速, for the reason `testTheMachineReplies` takes it:
     /// what is asserted after the suggestion is played is that the turn is the
-    /// machine's and the control is gone with it, and both have to be asserted
-    /// **while** the machine is thinking. At 快速 the reply arrives in about a
-    /// second and a third, which is shorter than the accessibility queries that
-    /// lead up to the assertions; at 深思 the state stands for five seconds,
-    /// which no query latency can outrun. The hint itself thinks the same five
-    /// seconds, because a hint takes the time its own game froze.
+    /// machine's and the control has greyed with it, and both have to be
+    /// asserted **while** the machine is thinking. At 快速 the reply arrives in
+    /// about a second and a third, which is shorter than the accessibility
+    /// queries that lead up to the assertions; at 深思 the state stands for five
+    /// seconds, which no query latency can outrun. The hint itself thinks the
+    /// same five seconds, because a hint takes the time its own game froze.
     func testAHintSuggestsAMoveAndTappingItPlaysIt() {
         let app = launch(levelDefault: "deep")
         XCTAssertTrue(startGame(app), "开始对局 should create the game and open the board")
         XCTAssertTrue(waitForStatus(app, containing: "轮到红方", timeout: 5))
 
-        // Addressed over every descendant rather than over the buttons alone:
-        // the control takes the platform's inline-action weight, which on macOS
-        // is the link style, and that is not typed as a button.
+        // 提示 is the cluster's leading member — docs/interaction-design.md
+        // § Hints — under the same glass as its neighbours, and it is pressable
+        // on the player's own turn.
         let hint = app.windows.firstMatch.descendants(matching: .any)["hint-request"]
         XCTAssertTrue(hint.waitForExistence(timeout: 5),
-                      "the hint control stands beside the controller label on the "
-                      + "player's own turn")
+                      "the hint control leads the play-control cluster")
         XCTAssertEqual(hint.label, "提示")
+        XCTAssertTrue(hint.isEnabled, "and it is the player's own turn")
+        let status = app.windows.firstMatch.descendants(matching: .any)["turn-status"]
+        XCTAssertGreaterThan(hint.frame.minY, status.frame.maxY,
+                             "it is a play control now, down with the cluster rather "
+                             + "than written into the turn status")
         hint.click()
 
         // The suggested point is found by the state it carries rather than by
@@ -305,8 +311,13 @@ final class HumanVersusAIUITests: XCTestCase {
                       "the suggested move should be played by tapping it")
         XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 10),
                       "and the turn passes to the machine")
-        XCTAssertFalse(app.windows.firstMatch.descendants(matching: .any)["hint-request"].exists,
-                       "the control is absent on the machine's turn rather than disabled")
+        // The scene is the same scene, so the control is still there and greyed:
+        // a promise the cluster keeps, where a control that left and came back
+        // would make the row a different row each time a hand reached for it.
+        XCTAssertTrue(hint.exists,
+                      "the control stays where it is through the machine's turn")
+        XCTAssertFalse(hint.isEnabled,
+                       "disabled rather than removed, per the cluster's own grammar")
         attach(app, named: "hvai-16-after-playing-the-suggestion")
     }
 
