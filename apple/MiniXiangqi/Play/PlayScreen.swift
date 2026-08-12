@@ -262,10 +262,20 @@ struct PlayScreen: View {
         // exactly where the reader had it, and the suggested point carries its
         // own **建议** token for whoever navigates to it.
         .onChange(of: motion.suggested) { _, destination in
-            guard let destination, let origin = game.selected,
-                  let piece = game.placement[origin] else { return }
+            guard let destination else { return }
+            // A board that places says the point and nothing else: the mark
+            // standing on it is the suggestion, and there is no piece to name.
+            guard !game.kind.isPlacement else {
+                AccessibilityNotification
+                    .Announcement(BoardView.hintAnnouncement(point: destination))
+                    .post()
+                return
+            }
+            guard let origin = game.selected, let piece = game.placement[origin],
+                  let kind = piece.kind else { return }
             AccessibilityNotification
-                .Announcement(BoardView.hintAnnouncement(game: game.kind, piece: piece,
+                .Announcement(BoardView.hintAnnouncement(game: game.kind,
+                                                         side: piece.side, kind: kind,
                                                          from: origin,
                                                          to: destination))
                 .post()
@@ -678,15 +688,15 @@ struct PlayScreen: View {
     /// resign, having no opponent to resign to. 提示 leads because it is the one
     /// control about the next move rather than about the game around it.
     ///
-    /// **The placement games carry smaller sets of the same grammar**: 悔棋 in
-    /// local play and 认输 against the machine, and that is all. Absence is what
-    /// says a capability is not there at all, and three of these are not: there
-    /// is no repetition to 判和 on, so a full board with no five draws itself
-    /// through the ordinary result notice; a stone has no orientation a player
-    /// could read, so 翻转棋盘 would turn a board nobody is reading the wrong way
-    /// up; and 提示's own presentation on these boards is the pending stone,
-    /// which is the next stage's — the one condition below is what that stage
-    /// removes.
+    /// **The placement games carry smaller sets of the same grammar**: 提示 and
+    /// 悔棋 in local play, and 认输 against the machine. Absence is what says a
+    /// capability is not there at all, and two of these are not: there is no
+    /// repetition to 判和 on, so a full board with no five draws itself through
+    /// the ordinary result notice, and a stone has no orientation a player could
+    /// read, so 翻转棋盘 would turn a board nobody is reading the wrong way up.
+    /// 提示 is here in every game, in each one's own presentation — the piece
+    /// taken up and its destination strengthened where a game moves, the pending
+    /// stone standing at the suggested point where it places.
     ///
     /// **The cluster is a scene's fixed set, and inside a scene nothing comes or
     /// goes.** A control whose act is momentarily impossible is disabled where
@@ -718,7 +728,7 @@ struct PlayScreen: View {
                           worded: Bool, carriesFlip: Bool) -> some View {
         let finished = showsFinishedScene(game, motion)
         return HStack(spacing: 8) {
-            if !finished, !game.kind.isPlacement {
+            if !finished {
                 hintControl(motion, worded: worded)
                     .transition(.opacity)
             }

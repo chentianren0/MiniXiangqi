@@ -299,12 +299,27 @@ struct BoardView: View {
     /// English, an ideographic colon and no space between side and piece in
     /// Chinese — and a separator hard-coded here would be one language's
     /// punctuation wrapped around the other language's words.
-    static func hintAnnouncement(game: GameKind, piece: Piece,
+    ///
+    /// The piece is taken apart by the caller rather than passed whole, so that
+    /// this cannot be reached for a stone: a stone has no kind, and a hint that
+    /// composed one out of the empty-point word would read *Black Empty h8 to
+    /// h8*. The board that places has its own announcement below.
+    static func hintAnnouncement(game: GameKind, side: Side, kind: PieceKind,
                                  from: Square, to: Square) -> String {
         String(format: String(localized: "board.a11y.hint.announcement"),
-               game.sideName(piece.side),
-               piece.kind?.name(for: piece.side) ?? String(localized: "board.a11y.empty"),
-               from.name, to.name)
+               game.sideName(side), kind.name(for: side), from.name, to.name)
+    }
+
+    /// What a screen reader is told when a suggestion appears on a board that
+    /// places rather than moves: **the point, in the game's own coordinates**.
+    ///
+    /// There is no piece to name — a stone is not one, and which side is putting
+    /// it down is what the turn status says — and there is no journey to
+    /// describe. The suggestion is a point, the mark standing on it is what the
+    /// player acts on, and the point carries its own 建议 token for whoever
+    /// navigates to it.
+    static func hintAnnouncement(point: Square) -> String {
+        String(format: String(localized: "board.a11y.hint.point"), point.name)
     }
 
     // MARK: - Go-style coordinates

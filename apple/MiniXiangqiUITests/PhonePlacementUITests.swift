@@ -34,19 +34,41 @@ final class PhonePlacementUITests: XCTestCase {
         "mxq-uitest-store-" + UUID().uuidString
     }
 
+    /// One gibibyte of "available", which the accepted arithmetic turns into a
+    /// 768 MiB Hash: over the 256 MiB minimum, and small enough that a launch
+    /// does not spend its time in the allocator. The same figure the other
+    /// suites force, for the same reason — and it applies to whichever engine a
+    /// game is played on, there being one memory policy for both.
+    private static let modestMemory = "1073741824"
+
     private func launch(replaying line: String? = nil,
-                        preferences: [String: String] = [:]) -> XCUIApplication {
+                        preferences: [String: String] = [:],
+                        availableMemory: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", scratchStoreName()]
         app.launchArguments += ["-mxq-defaults-suite", "mxq-uitests-phone"]
         app.launchArguments += ["-mxq-appearance", "light"]
         app.launchArguments += LaunchPreferences.arguments(overriding: preferences)
+        if let availableMemory {
+            app.launchArguments += ["-mxq-available-memory", availableMemory]
+        }
         if let line { app.launchArguments += ["-mxq-replay", line] }
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "the app should reach the foreground")
         return app
+    }
+
+    /// Waits for the turn status to say something.
+    private func waitForStatus(_ app: XCUIApplication, containing wanted: String,
+                               timeout: TimeInterval = 60) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if text(of: control(app, "turn-status")).contains(wanted) { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
     }
 
     private func control(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
@@ -111,10 +133,10 @@ final class PhonePlacementUITests: XCTestCase {
         XCTAssertEqual(text(of: control(app, "turn-status")).contains("轮到黑方"), true,
                        "the status is \(text(of: control(app, "turn-status")))")
 
-        // The cluster: 悔棋 alone in Free Play. 提示, 判和 and 翻转棋盘 are
+        // The cluster: 提示 and 悔棋 in Free Play. 判和 and 翻转棋盘 are
         // capabilities these games do not have, and absence is what says so.
+        XCTAssertTrue(control(app, "hint-request").exists)
         XCTAssertTrue(control(app, "cluster-undo").exists)
-        XCTAssertFalse(control(app, "hint-request").exists)
         XCTAssertFalse(control(app, "cluster-claim").exists)
         XCTAssertFalse(control(app, "cluster-flip").exists)
 
@@ -166,6 +188,167 @@ final class PhonePlacementUITests: XCTestCase {
         wait(for: [placed], timeout: 1)
         XCTAssertFalse(text(of: point(app, "i9")).contains("待确认"),
                        "and the mark is gone with the stone that took its place")
+    }
+
+    // MARK: - Playing the machine
+
+    /// A whole human-versus-AI game of Gomoku, from the home row to a reply.
+    ///
+    /// It would catch the interface gap this stage exists to close: readiness is
+    /// two identifiers compared, and while the frontend composed one of them out
+    /// of the *first* engine's revision the comparison could never match for a
+    /// game the second engine plays — so preparation succeeded, readiness stayed
+    /// false, and the reply loop asked for another preparation for ever. Nothing
+    /// short of a real game against a real search shows that: the engine really
+    /// prepares, the status really leaves the machine's side, and no stub can be
+    /// wrong in the way the real one was.
+    ///
+    /// It also carries the side mapping end to end. **我先手 maps to Black**,
+    /// which is the first mover in every game and the dark stone in these two,
+    /// and the only proof of that is the stone the player's own tap puts down.
+    ///
+    /// 快速 keeps it to a second a move.
+    func testHumanVersusAIGomokuGivesThePlayerBlackAndTheMachineAnswers() {
+        let app = launch(preferences: ["defaults.aiLevel": "fast",
+                                       "defaults.firstMover": "human-first"],
+                         availableMemory: Self.modestMemory)
+
+        let entry = app.buttons["mode-gomoku-human-versus-ai"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 15),
+                      "the Play home carries Gomoku's 人机对弈 row")
+        entry.tap()
+        let start = app.buttons["setup-start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5),
+                      "the row opens Gomoku's own pre-start page")
+        start.tap()
+        XCTAssertTrue(point(app, "h8").waitForExistence(timeout: 60),
+                      "开始对局 prepares the placement engine and opens the board")
+
+        // The cluster this mode carries: 提示, 悔棋 and 认输, and neither of the
+        // two these games do not have.
+        XCTAssertTrue(control(app, "hint-request").exists)
+        XCTAssertTrue(control(app, "cluster-undo").exists)
+        XCTAssertTrue(control(app, "cluster-resign").exists)
+        XCTAssertFalse(control(app, "cluster-claim").exists)
+        XCTAssertFalse(control(app, "cluster-flip").exists)
+
+        // 我先手 resolved the first mover, and the first mover is Black here.
+        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 10),
+                      "the status reads \(text(of: control(app, "turn-status")))")
+        XCTAssertTrue(waitForStatus(app, containing: "你", timeout: 5),
+                      "and the controller label names the turn as the player's own")
+
+        point(app, "h8").tap()
+        XCTAssertTrue(waitForLabel(point(app, "h8"), containing: "黑"),
+                      "我先手 put a black stone down — h8 reads "
+                      + text(of: point(app, "h8")))
+
+        // The machine's answer. Which point it takes is its own business, so
+        // what is asserted is that it took one and handed the turn back.
+        //
+        // **Its own turn is not asserted, and cannot honestly be**: the bridge
+        // leaves the engine's trivial-opening probe on, so a reply to a board
+        // with one stone on it comes back without a search — measured here, in
+        // less time than this process's first query into the tree after the tap.
+        // A poll for 轮到白方 would be asserting this process's sampling rate
+        // rather than the app, which is the lesson `PhonePlayUITests` already
+        // carries about waiting to *observe* a turn.
+        //
+        // The stone is what makes the durable claim whole. The turn coming back
+        // says a ply was committed; a white stone on the board says the machine
+        // is what committed it.
+        XCTAssertTrue(waitForStatus(app, containing: "轮到黑方", timeout: 120),
+                      "the machine answers within its own thinking time and hands "
+                      + "the turn back — the status reads "
+                      + text(of: control(app, "turn-status")))
+        let whiteStones = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                                  "point-", "白"))
+        XCTAssertGreaterThan(whiteStones.count, 0,
+                             "and it answered with a stone of its own")
+    }
+
+    // MARK: - The hint, in the placement grammar
+
+    /// **提示 on a board that places is the pending stone.** The engine's
+    /// suggestion arrives as the mark, at a point the player did not touch, and
+    /// tapping the mark plays the move through the ordinary input path.
+    ///
+    /// It would catch the presentation reverting to the movement grammar, which
+    /// fails silently and is why this is worth a running app: the control is
+    /// pressable, the search runs, the answer comes back, and the board never
+    /// changes. It also covers the lazy preparation a Free Play hint needs —
+    /// this is the first thing that ever asks the *second* engine to be prepared
+    /// outside game creation.
+    ///
+    /// The board is read across the press as well, which is the #181 rule: a
+    /// board in the stacked shape is sized from the cluster's reserved slot and
+    /// does not follow it, so a hint's indicator standing in the lamp's place
+    /// must move nothing. It is two reads here rather than a sampling loop —
+    /// this control was already on the row before the press, so what is left to
+    /// catch is an indicator that measures differently from the lamp, and that
+    /// shows at the answer.
+    func testTheHintIsThePendingStoneAndTappingItPlaysIt() {
+        let app = launch(preferences: ["defaults.aiLevel": "fast"],
+                         availableMemory: Self.modestMemory)
+        openFreePlay(app, row: "mode-gomoku-free-play")
+
+        let hint = control(app, "hint-request")
+        XCTAssertTrue(hint.isEnabled, "either turn is the player's own in Free Play")
+        let before = boardCorners(app)
+        hint.tap()
+
+        // The suggested point is found by the state it carries, never by name:
+        // the engine chooses the point, and the board says which one it chose.
+        let suggested = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "建议")).firstMatch
+        XCTAssertTrue(suggested.waitForExistence(timeout: 120),
+                      "a suggestion should arrive within the level's thinking time")
+        XCTAssertTrue(text(of: suggested).contains("待确认"),
+                      "and it is the pending stone standing at the point — it reads "
+                      + text(of: suggested))
+        XCTAssertTrue(text(of: suggested).contains("空"),
+                      "with nothing committed by showing it")
+        assertBoardIsWhereItWas(boardCorners(app), before,
+                                "the board should not move when a hint is asked for")
+
+        // Tapping the mark plays it, exactly as tapping a mark the player raised
+        // themselves does.
+        suggested.tap()
+        XCTAssertTrue(waitForStatus(app, containing: "轮到白方", timeout: 15),
+                      "tapping the suggestion plays it and the turn passes — the "
+                      + "status reads " + text(of: control(app, "turn-status")))
+        XCTAssertEqual(app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "建议")).count, 0,
+                       "and the suggestion went with the position it was about")
+    }
+
+    /// Where the board is and how big it is, read as two opposite corners of it:
+    /// the pair moves if the block moves and changes if the pitch does.
+    private func boardCorners(_ app: XCUIApplication) -> [CGRect] {
+        [point(app, "a1").frame, point(app, "o15").frame]
+    }
+
+    private func assertBoardIsWhereItWas(_ corners: [CGRect], _ was: [CGRect],
+                                         _ message: String, line: UInt = #line) {
+        XCTAssertEqual(corners.count, was.count, message, line: line)
+        for (now, before) in zip(corners, was) {
+            XCTAssertEqual(now.minX, before.minX, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.minY, before.minY, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.width, before.width, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.height, before.height, accuracy: 0.5, message, line: line)
+        }
+    }
+
+    /// Waits for an element's label to say something.
+    private func waitForLabel(_ element: XCUIElement, containing wanted: String,
+                              timeout: TimeInterval = 15) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, text(of: element).contains(wanted) { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
     }
 
     /// Renju's forbidden points, on the board and reachable by a screen reader.

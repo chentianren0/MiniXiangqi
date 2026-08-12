@@ -317,6 +317,44 @@ struct HintTests {
         #expect(apparatus.motion.hintEmphasis == 0)
     }
 
+    /// The pending stone standing at the suggested point, which is the whole of
+    /// the presentation on a board that places: there is no piece to take up,
+    /// and the mark is the game's own — so tapping it plays the move through the
+    /// ordinary input path, with nothing knowing the mark came from the engine.
+    ///
+    /// What this would catch is the presentation going back to the movement
+    /// grammar. A hint mechanic that assumes a mover shows nothing at all here,
+    /// and it shows nothing *silently*: the control is pressable, the search
+    /// runs, the answer arrives, and the board never changes.
+    @Test("On a board that places, the suggestion is the pending stone itself")
+    func aPlacementSuggestionIsThePendingStone() throws {
+        let apparatus = try makeApparatus(.freePlay(game: .gomoku15))
+        let suggested = Square("h8", on: GameKind.gomoku15.board)!
+        apparatus.engine.markReady(for: .gomoku15)
+        apparatus.hint.request()
+
+        apparatus.engine.answerHint(searchResult(.move, move: "h8", game: apparatus.game))
+
+        #expect(apparatus.game.selected == suggested,
+                "the mark is the game's own pending state, not a second mechanism")
+        #expect(apparatus.motion.suggested == suggested)
+        #expect(apparatus.motion.hintEmphasis == 1)
+        #expect(apparatus.game.placement[suggested] == nil,
+                "and nothing is committed by showing it")
+        apparatus.animator.completeAll()
+
+        // Tapping the mark plays it, through the ordinary apply — the same tap
+        // that commits a mark the player raised themselves.
+        apparatus.motion.tap(suggested)
+        apparatus.animator.completeAll()
+        #expect(apparatus.game.moves == ["h8"])
+        #expect(apparatus.game.placement[suggested]?.side == .red,
+                "the first mover's stone, which these games draw black")
+        #expect(apparatus.game.selected == nil)
+        #expect(apparatus.motion.suggested == nil)
+        #expect(apparatus.motion.hintEmphasis == 0)
+    }
+
     @Test("Under Reduce Motion the strengthened state arrives without the swell")
     func reduceMotionKeepsTheStateAndDropsThePulse() throws {
         let apparatus = try makeApparatus(humanVersusAI(), reduceMotion: true)
