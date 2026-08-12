@@ -7,8 +7,14 @@
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "new",
-            "value" : "Mini Xiangqi"
+            "state" : "translated",
+            "value" : "Star River"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闲敲棋子"
           }
         }
       }
@@ -19,14 +25,17 @@
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "new",
-            "value" : "MiniXiangqi"
+            "state" : "translated",
+            "value" : "Star River"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闲敲棋子"
           }
         }
       }
-    },
-    "Mini Xiangqi Game" : {
-
     },
     "NSLocalNetworkUsageDescription" : {
       "comment" : "The sentence inside the system's own local-network permission alert. It says what the access is for and names no transport.",
@@ -42,6 +51,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用于查找并连接附近对弈的对方设备。"
+          }
+        }
+      }
+    },
+    "Star River Game" : {
+      "comment" : "The exported game file's kind, as the system shows it beside a .mxq file.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Star River Game"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闲敲棋子对局"
           }
         }
       }

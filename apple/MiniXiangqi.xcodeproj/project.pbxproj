@@ -432,7 +432,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MiniXiangqi/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Mini Xiangqi";
+				INFOPLIST_KEY_CFBundleDisplayName = "Star River";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.board-games";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to find and connect to the other player's device for Nearby Play.";
@@ -488,7 +488,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MiniXiangqi/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Mini Xiangqi";
+				INFOPLIST_KEY_CFBundleDisplayName = "Star River";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.board-games";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to find and connect to the other player's device for Nearby Play.";

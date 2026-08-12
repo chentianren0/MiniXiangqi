@@ -346,7 +346,7 @@ Write-Host 'Writing the licence and the attribution note'
 & (Join-Path $PSScriptRoot 'New-DistributionNotices.ps1') -Destination $staging -Shape zip
 
 Set-Content -Path (Join-Path $staging 'README.md') -Encoding UTF8 -Value @"
-# Mini Xiangqi for Windows ($Architecture)
+# Star River for Windows ($Architecture)
 
 A native app for Mini Xiangqi and standard Xiangqi: play either against the AI
 or in Free Play, with a saved history you can replay, export and import. Everything happens

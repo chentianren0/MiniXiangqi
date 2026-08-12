@@ -64,8 +64,8 @@ internal static unsafe class Program
             ?? Path.Combine(Path.GetTempPath(), "mxq-smoke-" + Guid.NewGuid().ToString("N"));
         bool keepStore = Argument(args, "--store") is not null;
         Console.OutputEncoding = Encoding.UTF8;
-        Console.WriteLine("Mini Xiangqi — Windows core interface smoke harness");
-        Console.WriteLine("===================================================");
+        Console.WriteLine("Star River — Windows core interface smoke harness");
+        Console.WriteLine("=================================================");
         Console.WriteLine($"runtime        {RuntimeInformation.FrameworkDescription}");
         Console.WriteLine($"process        {RuntimeInformation.ProcessArchitecture}");
         Console.WriteLine($"assets         {assets}");

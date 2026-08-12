@@ -47,8 +47,8 @@ internal static class Program
         string directory = Argument(args, "--out") ?? Path.Combine(AppContext.BaseDirectory, "shots");
         Directory.CreateDirectory(directory);
 
-        Console.WriteLine("Mini Xiangqi — offscreen board renders");
-        Console.WriteLine("======================================");
+        Console.WriteLine("Star River — offscreen board renders");
+        Console.WriteLine("====================================");
         Console.WriteLine($"assets         {assets}");
         Console.WriteLine($"store          {store}");
         Console.WriteLine($"out            {directory}");

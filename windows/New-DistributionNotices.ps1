@@ -118,9 +118,9 @@ app rather than requiring them to be installed:
 Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $Destination 'LICENSE') -Force
 
 Set-Content -Path (Join-Path $Destination 'NOTICE.md') -Encoding UTF8 -Value @"
-# Mini Xiangqi — licences and attribution
+# Star River — licences and attribution
 
-Mini Xiangqi is licensed under the **GNU General Public License version 3**. The
+Star River is licensed under the **GNU General Public License version 3**. The
 full text is in ``LICENSE`` beside this file. The project's source is at
 <https://github.com/chentianren0/MiniXiangqi>.
 

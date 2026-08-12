@@ -23,10 +23,14 @@ struct AboutTests {
 
     @Test("The name is the product name of record")
     func theDisplayNameIsTheProductName() {
-        // The application's name is one name in both languages, carried
-        // by the project as the bundle's display name. The page reads it from
-        // there, so a project that lost the key would show an empty row.
-        #expect(About.displayName == "Mini Xiangqi")
+        // The application has a name per language — Star River and 闲敲棋子 —
+        // carried by the project as the bundle's display name and localized
+        // there. The page reads it from there, so a project that lost the key
+        // would show an empty row. Which of the two answers is the language the
+        // suite happens to run in, and pinning one of them would pin that
+        // accident rather than the name.
+        #expect(["Star River", "闲敲棋子"].contains(About.displayName),
+                "the About page's name row reads \(About.displayName)")
     }
 
     @Test("The version and the build are the running bundle's own")

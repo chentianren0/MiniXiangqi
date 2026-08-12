@@ -17,9 +17,11 @@ import Foundation
 
 enum About {
 
-    /// The name the application ships under — **Mini Xiangqi**, the product
-    /// name docs/product.md fixes and the project carries as the bundle's
-    /// display name. Read rather than typed, for the reason the version is.
+    /// The name the application ships under — **Star River**, and **闲敲棋子**
+    /// in Chinese: the product name docs/product.md fixes, which the project
+    /// carries as the bundle's display name and localizes there like any other
+    /// copy. Read rather than typed, for the reason the version is, so this
+    /// answers in whichever language the application is running in.
     static var displayName: String {
         string("CFBundleDisplayName") ?? string("CFBundleName") ?? ""
     }
