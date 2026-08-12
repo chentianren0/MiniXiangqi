@@ -30,13 +30,27 @@ struct BoardGameRulesTests {
         try TestCores.fresh().boardGameRules
     }
 
+    /// Black's five along the eighth rank, White answering down the a-file and
+    /// reaching nothing. Nine plies, so the ply that decides it is the first
+    /// mover's — which is what makes the mapping below testable at all.
+    static let fiveLine = ["d8", "a1", "e8", "a2", "f8", "a3", "g8", "a4", "h8"]
+
+    /// A double three at h8: Black holds the two points either side of it on the
+    /// rank and the two either side on the file, so placing there would make two
+    /// open threes at once. White's stones sit in the corners, out of every
+    /// line. Eight plies, so it is the first mover's turn — which is when
+    /// Renju's restriction is the one that applies.
+    static let doubleThreeLine = ["g8", "a1", "i8", "a15", "h7", "o1", "h9", "o15"]
+
     // MARK: - The games this peer plays
 
-    @Test("The two games answer with the rules contract's interpretation version")
+    @Test("Every game the app carries answers with the interpretation version")
     func theGamesItPlays() throws {
         let rules = try rules()
         #expect(rules.version(of: "minixiangqi") == "1")
         #expect(rules.version(of: "xiangqi") == "1")
+        #expect(rules.version(of: "gomoku-15") == "1")
+        #expect(rules.version(of: "renju") == "1")
     }
 
     @Test("Any other rules_id is a game this peer does not know")
@@ -44,16 +58,20 @@ struct BoardGameRulesTests {
         let rules = try rules()
         #expect(rules.version(of: "go-19") == nil)
         #expect(rules.version(of: "MiniXiangqi") == nil, "the identifier is lowercase and exact")
+        #expect(rules.version(of: "gomoku") == nil, "the size is part of the name")
+        #expect(rules.version(of: "renju-15") == nil, "and this one carries none")
         #expect(rules.version(of: "") == nil)
     }
 
     // MARK: - What stands
 
-    @Test("A game with no plies is ongoing, in either game")
+    @Test("A game with no plies is ongoing, in every game")
     func theStartIsOngoing() throws {
         let rules = try rules()
         #expect(rules.standing(after: [], of: "minixiangqi") == .ongoing)
         #expect(rules.standing(after: [], of: "xiangqi") == .ongoing)
+        #expect(rules.standing(after: [], of: "gomoku-15") == .ongoing)
+        #expect(rules.standing(after: [], of: "renju") == .ongoing)
     }
 
     @Test("A mate is a rules-decided end for the mover that delivered it")
@@ -149,5 +167,80 @@ struct BoardGameRulesTests {
                 == .decided(.draw, .threefoldRepetition))
         #expect(rules.verdict(for: "b1b2", after: claimed, of: "minixiangqi") == .unlawful)
         #expect(rules.verdict(for: TurnAction.claim, after: claimed, of: "minixiangqi") == .unlawful)
+    }
+
+    // MARK: - The games stones are placed in
+
+    /// One stone is a whole ply, and the two-square grammar is not a ply at all.
+    ///
+    /// It would catch a module that reached the wire with the movement games'
+    /// move text — the shape that would make every placement ply a violation on
+    /// the other device.
+    @Test("A placement ply is one point, and two points are not a ply")
+    func aPlacementPlyIsOnePoint() throws {
+        let rules = try rules()
+        #expect(rules.verdict(for: "h8", after: [], of: "gomoku-15") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "h8", after: [], of: "renju") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "h8h9", after: [], of: "gomoku-15") == .unlawful)
+        #expect(rules.verdict(for: "p8", after: [], of: "gomoku-15") == .unlawful,
+                "the board stops at o")
+        #expect(rules.verdict(for: "h8", after: ["h8"], of: "gomoku-15") == .unlawful,
+                "a point with a stone on it is not empty")
+        #expect(rules.verdict(for: "", after: [], of: "renju") == .unlawful)
+    }
+
+    /// **The wire's first mover is the black stone, and nothing had to be told
+    /// so.** The protocol names movers; the core names the side that moves
+    /// first; and the ply that wins here is the ninth, which is the first
+    /// mover's. A module that had inverted the pivot would report the other one.
+    ///
+    /// It would catch exactly the inversion this stage's map warned about — a
+    /// win landing on the wrong device's side of the protocol, which is the one
+    /// error a nearby game cannot recover from.
+    @Test("Five in a row is a rules-decided win for the mover that placed it")
+    func fiveInARowIsDecidedForTheFirstMover() throws {
+        let rules = try rules()
+        #expect(rules.standing(after: Array(Self.fiveLine.dropLast()), of: "gomoku-15")
+                == .ongoing)
+        #expect(rules.verdict(for: "h8", after: Array(Self.fiveLine.dropLast()),
+                              of: "gomoku-15")
+                == .lawful(.decided(.moverWins(.first), .fiveInARow)))
+        #expect(rules.standing(after: Self.fiveLine, of: "gomoku-15")
+                == .decided(.moverWins(.first), .fiveInARow))
+        #expect(rules.verdict(for: "b2", after: Self.fiveLine, of: "gomoku-15") == .unlawful,
+                "nothing is in sequence once the plies have decided the game")
+    }
+
+    /// Renju's restriction reaches the wire as the core's own answer: a
+    /// forbidden point is not a lawful ply, and the same point in the freestyle
+    /// game is.
+    ///
+    /// It would catch a module that judged a placement ply by emptiness — which
+    /// would accept a ply the other device is bound to refuse, and close the
+    /// connection over a game the two peers had agreed on.
+    @Test("A point Renju forbids is not a lawful ply, and Gomoku forbids none")
+    func aForbiddenPointIsNotALawfulPly() throws {
+        let rules = try rules()
+        #expect(rules.standing(after: Self.doubleThreeLine, of: "renju") == .ongoing)
+        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, of: "renju") == .unlawful)
+        #expect(rules.verdict(for: "b2", after: Self.doubleThreeLine, of: "renju")
+                == .lawful(.ongoing),
+                "and an ordinary point is still a ply")
+        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, of: "gomoku-15")
+                == .lawful(.ongoing),
+                "the restriction is Renju's own")
+    }
+
+    /// There is no repetition to claim in these games, so the claim is not a ply
+    /// of theirs — anywhere along one.
+    ///
+    /// It would catch the claim leaking into a game that has none, which would
+    /// end a nearby placement game as a draw nothing decided.
+    @Test("The claim is not a ply of a placement game")
+    func theClaimIsNotAPlacementPly() throws {
+        let rules = try rules()
+        #expect(rules.verdict(for: TurnAction.claim, after: [], of: "gomoku-15") == .unlawful)
+        #expect(rules.verdict(for: TurnAction.claim, after: Self.doubleThreeLine, of: "renju")
+                == .unlawful)
     }
 }

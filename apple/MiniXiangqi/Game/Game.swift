@@ -226,6 +226,14 @@ final class Game {
 
     /// The empty points the side to move may not play — Renju's forbidden
     /// points, marked on the board while Black is to move.
+    var forbiddenPoints: Set<Square> {
+        Self.forbiddenPoints(of: kind, in: placement, legalMoves: legalMoves,
+                             sideToMove: evaluation.sideToMove, isOver: isFinished)
+    }
+
+    /// The same question asked of a position rather than of this game, for the
+    /// reason `effect(ofTapAt:)` below is: there are two boards, and a second
+    /// copy of this would be a second place for them to mark different points.
     ///
     /// **Derived from the legal-move set and from nothing else.** A placement
     /// game's legal moves are its empty points less whatever is forbidden to the
@@ -234,13 +242,15 @@ final class Game {
     /// only thing that decided it. Nothing here knows what a double three is.
     ///
     /// Asked only where the answer can be non-empty: Renju is the one game with
-    /// forbidden points, and they are Black's alone. Free Play sits on both
-    /// sides of the board, so the marks appear and go with the turn there
-    /// exactly as they do against the machine.
-    var forbiddenPoints: Set<Square> {
-        guard kind == .renju, evaluation.sideToMove == .red, !isFinished else { return [] }
+    /// forbidden points, and they are Black's alone. Free Play and a nearby game
+    /// both sit on both sides of the board, so the marks appear and go with the
+    /// turn there exactly as they do against the machine.
+    static func forbiddenPoints(of game: GameKind, in placement: Placement,
+                                legalMoves: [Move], sideToMove: Side,
+                                isOver: Bool) -> Set<Square> {
+        guard game == .renju, sideToMove == .red, !isOver else { return [] }
         let legal = Set(legalMoves.map(\.to))
-        let board = kind.board
+        let board = game.board
         var forbidden: Set<Square> = []
         for rank in 0..<board.rankCount {
             for file in 0..<board.fileCount {

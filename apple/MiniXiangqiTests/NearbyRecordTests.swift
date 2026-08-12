@@ -44,9 +44,10 @@ struct NearbyRecordTests {
 
     /// A session this device's *peer* proposed: local takes the second mover,
     /// which is Black, so a line's even-indexed plies are the peer's.
-    private func peerProposed(plies: [String] = []) -> BoardGameSession {
+    private func peerProposed(_ game: GameKind = .miniXiangqi,
+                              plies: [String] = []) -> BoardGameSession {
         var session = BoardGameSession(id: Self.identifier, peer: Self.peer,
-                                       rulesID: GameKind.miniXiangqi.rulesID,
+                                       rulesID: game.rulesID,
                                        rulesVersion: "1", proposerMoves: .first,
                                        proposer: .peer)
         session.accepted = true
@@ -57,6 +58,12 @@ struct NearbyRecordTests {
     /// The mating line: three plies, and the third — index 2, an even index —
     /// is the first mover's.
     private static let mate = ["b1b3", "a6a5", "b3d3"]
+
+    /// The first mover's five along the eighth rank, the other player answering
+    /// down the a-file. Nine plies, and the ninth — index 8, an even index — is
+    /// the first mover's.
+    private static let fiveInARow = ["d8", "a1", "e8", "a2", "f8", "a3",
+                                     "g8", "a4", "h8"]
 
     // MARK: - Becoming the library's active game
 
@@ -373,6 +380,63 @@ struct NearbyRecordTests {
         #expect(!restored.ownPlyDecidedTheEnd,
                 "the claim is a ply, and this one is at an even index")
         #expect(restored.settled, "so this device owes no exchange for it")
+    }
+
+    // MARK: - A game stones were placed in
+
+    /// The whole record path for a game whose plies are single points: created
+    /// as the library's active nearby game, followed ply by ply as they land,
+    /// filed by the end the line itself decided, and read back out of History as
+    /// the game that was played.
+    ///
+    /// It would catch the store path refusing a single-square ply — which is
+    /// the one thing between a nearby placement game and the library, every call
+    /// on the way being the call the movement games already make — and a filing
+    /// that lost which game it was of.
+    @Test("A nearby placement game is followed, filed, and replays from History")
+    func aPlacementGameIsRecordedAndFiled() throws {
+        let core = try TestCores.fresh()
+        let record = memory(over: core)
+
+        record.follow([peerProposed(.gomoku15)])
+        let summary = try #require(try core.activeGameSummary())
+        #expect(summary.game == .gomoku15)
+        #expect(summary.mode == .nearby)
+        #expect(summary.localSide == .black,
+                "the peer proposed and took the first mover, which is the black stone")
+
+        // The line as the driver publishes it: one ply per publication, the last
+        // of them carrying the end its own plies decided.
+        for count in 1...Self.fiveInARow.count {
+            var live = peerProposed(.gomoku15,
+                                    plies: Array(Self.fiveInARow.prefix(count)))
+            if count == Self.fiveInARow.count {
+                live.rulesEnd = RulesDecision(result: .moverWins(.first),
+                                              reason: .fiveInARow)
+            }
+            record.follow([live])
+        }
+
+        #expect(try core.activeGameSummary() == nil,
+                "the peer's own decisive ply is settled here, so it filed")
+        let library = HistoryLibrary(store: core.history)
+        library.load()
+        let filed = try #require(library.records.first)
+        #expect(filed.game == .gomoku15)
+        #expect(filed.mode == .nearby)
+        #expect(filed.outcome == .redWins, "the first mover's five, which is Black's")
+        #expect(filed.reason == .fiveInARow)
+        #expect(filed.moveCount == Self.fiveInARow.count)
+
+        switch library.replay(of: filed, policy: MotionPolicy(reduceMotion: true),
+                              animator: ManualAnimator().animator,
+                              feedback: Feedback(perform: { _ in }, play: { _ in })) {
+        case .success(let replay):
+            defer { replay.close() }
+            #expect(replay.moves == Self.fiveInARow)
+        case .failure(let error):
+            throw error
+        }
     }
 
     // MARK: - A session the protocol parted with, and no result at all

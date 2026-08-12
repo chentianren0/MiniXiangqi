@@ -122,16 +122,12 @@ struct PlayHome: View {
 
         // The placement games, in the accepted order: Gomoku, then Renju as its
         // stricter sibling.
-        //
-        // **Two rows each for now**: 附近对弈 waits on the game modules a nearby
-        // placement game needs, and until they exist a row leading to a board
-        // that could not carry a game would be a promise the app cannot keep. A
-        // row arriving late is the smaller cost.
         Section {
             entry(PlaySelection(game: .gomoku15, mode: .humanVersusAI),
                   "mode.humanVersusAI", "mode-gomoku-human-versus-ai")
             entry(PlaySelection(game: .gomoku15, mode: .freePlay),
                   "mode.freePlay", "mode-gomoku-free-play")
+            nearbyEntry(.gomoku15, "mode-gomoku-nearby")
         } header: {
             Text(GameKind.gomoku15.localizedName)
         }
@@ -141,6 +137,7 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-renju-human-versus-ai")
             entry(PlaySelection(game: .renju, mode: .freePlay),
                   "mode.freePlay", "mode-renju-free-play")
+            nearbyEntry(.renju, "mode-renju-nearby")
         } header: {
             Text(GameKind.renju.localizedName)
         }

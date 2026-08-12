@@ -539,6 +539,12 @@ final class NearbyFlow {
         // The room is made before the proposal is answered, not after: an
         // accepted proposal is a game in progress, and a game in progress with
         // nowhere in the library to live is a game whose moves nothing records.
+        //
+        // Nothing is said when this finds nothing, and there is nothing to say:
+        // the proposal went away between the prompt and the answer, which takes
+        // the prompt with it. The second half cannot fail at all — the engine
+        // stores a session only for a `rules_id` its own oracle answered a
+        // version for, and that oracle's answer *is* this table.
         guard let game = driver.sessions.first(where: { $0.id == session })
             .flatMap({ GameKind(rulesID: $0.rulesID) })
         else { return }

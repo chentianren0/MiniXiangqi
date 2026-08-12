@@ -107,9 +107,13 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
         self.core = core
     }
 
-    /// The rules contract's interpretation version in decimal, which is the
-    /// string the wire compares byte-wise. It is one value because
-    /// docs/xiangqi-rules.md owns one interpretation for both games.
+    /// The interpretation version in decimal, which is the string the wire
+    /// compares byte-wise. It is one value for every game this peer plays, and
+    /// that is a fact about where each of them stands rather than a claim that
+    /// they share one interpretation: each game starts at "1" and each would
+    /// move on its own, so a single constant is exact for as long as no game has
+    /// moved off it. The first game to gain a second version is the one that
+    /// makes this a table.
     ///
     /// Readable beyond this oracle because a session rebuilt from the library
     /// states it too, and a resumed session that named a second value would be
@@ -117,13 +121,12 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     static let interpretationVersion = "1"
 
     func version(of rulesID: String) -> String? {
-        // The placement games' nearby modules — the rules rows, the first-mover
-        // pivot, the record path — are their own stage, and until they exist
-        // this peer does not implement those games. That is exactly what nil
-        // says here, and the wire already has the word for it: a proposal naming
-        // one is refused as an unknown game rather than accepted into a session
-        // half of which is missing.
-        guard let game = GameKind(rulesID: rulesID), !game.isPlacement else { return nil }
+        // Every game the app carries, it carries over the wire too: the whole
+        // of what a game module is here is this file's answers, and they are the
+        // core's for all four. A `rules_id` outside the table is a game this
+        // peer does not know, which is what nil says and what the wire's
+        // `unknown_game` refusal answers with.
+        guard GameKind(rulesID: rulesID) != nil else { return nil }
         return Self.interpretationVersion
     }
 
@@ -175,8 +178,14 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
         }
         guard result == MXQ_OK else { return nil }
 
-        // Red is the first mover in both games, by the rules contract's own
-        // starting positions; the protocol hears only the mover.
+        // **The protocol hears only the mover, and `Side` already is one.**
+        // `MXQ_COLOR_RED` is the core's word for the side that moves first in
+        // whatever game it is asked about — the red piece where a game moves,
+        // the black stone where it places — so the equation below is the same
+        // equation for all four games and names no colour. Which stone the first
+        // mover puts down is the `rules_id`'s business, exactly as the protocol
+        // says, and it is answered where every other surface asks it:
+        // `GameKind.sideName(_:)` and its registers.
         switch GameState(status.state) {
         case .ongoing: return .ongoing
         case .claimableDraw: return .claimable

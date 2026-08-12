@@ -69,8 +69,8 @@ final class PhoneNearbyUITests: XCTestCase {
 
     // MARK: - The entry
 
-    /// The rows stand on a device with no radio, and the four local ways to play
-    /// are exactly as they were.
+    /// The rows stand on a device with no radio, in every game's section, and
+    /// the local ways to play are exactly as they were.
     ///
     /// This device *is* the case: a Simulator has no Wi-Fi Aware at all, and the
     /// rows are drawn anyway, because the other way of reaching a device needs
@@ -90,6 +90,25 @@ final class PhoneNearbyUITests: XCTestCase {
                           "\(identifier) is untouched by the nearby entry")
         }
         attach(app, named: "phone-nearby-01-the-home-with-no-radio")
+
+        // Every game the app carries, it carries with somebody: the placement
+        // games' sections end in the same third row, further down the list.
+        for identifier in ["mode-gomoku-nearby", "mode-renju-nearby"] {
+            XCTAssertTrue(scrollTo(app, identifier),
+                          "\(identifier) completes that game's section")
+        }
+        attach(app, named: "phone-nearby-01b-the-placement-sections")
+    }
+
+    /// Brings a row into the list and answers whether it was there to bring: a
+    /// list realizes the rows it is showing, so a row below the fold has to be
+    /// scrolled to before it can be asked about at all.
+    private func scrollTo(_ app: XCUIApplication, _ identifier: String) -> Bool {
+        for _ in 0..<6 {
+            if app.buttons[identifier].exists { return true }
+            app.swipeUp()
+        }
+        return app.buttons[identifier].exists
     }
 
     /// Each game's section carries a third row, under that game's own two and
@@ -316,6 +335,120 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertEqual(asking.label, "对方请求悔棋")
         XCTAssertEqual(app.buttons["cluster-accept"].label, "接受")
         attach(app, named: "phone-nearby-08-a-take-back-asked")
+    }
+
+    // MARK: - A board stones are placed on
+    //
+    // The same staged sessions, in the two games the protocol carries without
+    // knowing anything about them. What is asked here is what only the drawn
+    // board can answer: that a nearby placement board is the placement board —
+    // stones, coordinates, the crosses — and that the cluster is the set these
+    // games have.
+
+    /// A point of the drawn board, by the coordinate it is named at.
+    private func point(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.descendants(matching: .any)["point-\(name)"]
+    }
+
+    /// An element's label, waited for rather than read once: what a board draws
+    /// after a tap arrives when the transition it rides does.
+    private func wait(_ element: XCUIElement, saying wanted: String,
+                      timeout: TimeInterval = 15) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, element.label.contains(wanted) { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
+    }
+
+    /// A nearby Gomoku board is the board: a stone stands where the session put
+    /// it, and the board is the fifteen-line one with the Go-style coordinates.
+    func testAPlacementBoardDrawsStonesAndCoordinates() {
+        let app = launch(board: "placement-off-turn")
+        let centre = point(app, "h8")
+        XCTAssertTrue(centre.waitForExistence(timeout: 30),
+                      "a 15-line board's own centre point is addressable")
+        XCTAssertTrue(centre.label.contains("黑"),
+                      "the first mover's stone is the black one — h8 reads "
+                      + "\(centre.label)")
+
+        // A point nothing stands on, and the far corner of a board that is
+        // fifteen lines each way rather than nine or seven.
+        XCTAssertTrue(point(app, "a1").label.contains("空"))
+        XCTAssertTrue(point(app, "o15").exists, "the board runs to o15")
+        attach(app, named: "phone-nearby-10-a-placement-board")
+    }
+
+    /// Off turn the cluster is the negotiations two people have between them,
+    /// and 翻转棋盘 is not there at all — a stone has no orientation to read.
+    func testThePlacementClusterKeepsTheNegotiationsAndDropsTheFlip() {
+        let app = launch(board: "placement-off-turn")
+        let offer = app.buttons["cluster-offer-draw"]
+        XCTAssertTrue(offer.waitForExistence(timeout: 30))
+        XCTAssertEqual(offer.label, "提和")
+        XCTAssertTrue(offer.isEnabled, "a draw offered to a person is meaningful")
+
+        let undo = app.buttons["cluster-undo"]
+        XCTAssertTrue(undo.exists)
+        XCTAssertTrue(undo.isEnabled, "this device has a stone of its own to ask back")
+        XCTAssertTrue(app.buttons["cluster-resign"].exists)
+        XCTAssertFalse(app.buttons["cluster-flip"].exists,
+                       "stones carry no orientation a player could read")
+        XCTAssertFalse(app.buttons["cluster-claim"].exists)
+        attach(app, named: "phone-nearby-11-the-placement-cluster")
+    }
+
+    /// On turn there is nothing to claim, so 认输 stands alone — and the Renju
+    /// position's forbidden point is on the board, marked as the core's answer
+    /// rather than as anything this screen worked out.
+    func testThePlacementOnTurnClusterAndTheForbiddenPoint() {
+        let app = launch(board: "placement-on-turn")
+        let resign = app.buttons["cluster-resign"]
+        XCTAssertTrue(resign.waitForExistence(timeout: 30))
+
+        XCTAssertFalse(app.buttons["cluster-claim"].exists,
+                       "there is no repetition in these games to claim")
+        XCTAssertFalse(app.buttons["cluster-flip"].exists)
+        XCTAssertFalse(app.buttons["cluster-offer-draw"].exists,
+                       "an offer is the off-turn player's to open")
+        XCTAssertFalse(app.buttons["cluster-undo"].exists)
+
+        XCTAssertTrue(point(app, "h8").label.contains("禁手"),
+                      "the point a double three would make is Black's to see — "
+                      + "h8 reads \(point(app, "h8").label)")
+        attach(app, named: "phone-nearby-12-a-renju-board-on-turn")
+    }
+
+    /// A stone placed on a nearby board stands on its point and passes the turn.
+    ///
+    /// The staged driver keeps the ply, which is what the engine does with one,
+    /// so this reaches the whole of the board's own commit path: the tap, the
+    /// point sent as its own single-square text, the stone drawn where it was
+    /// put, and the turn belonging to the other player afterwards. What it would
+    /// catch is the placement commit landing in the movement path, which has an
+    /// origin to read and a disc to send across the board and would draw nothing
+    /// at all here.
+    func testAStonePlacedOnANearbyBoardStandsAndPassesTheTurn() {
+        let app = launch(board: "placement-on-turn")
+        let target = point(app, "b2")
+        XCTAssertTrue(target.waitForExistence(timeout: 30))
+        XCTAssertTrue(target.label.contains("空"), "an empty point to place on")
+
+        let status = app.descendants(matching: .any)["turn-status"]
+        XCTAssertTrue(status.label.contains("轮到黑方"),
+                      "it is the first mover's turn — the status reads \(status.label)")
+
+        target.tap()
+
+        // The stone is on the point it was tapped, and it is this device's own
+        // colour: the first mover's, which these games call black.
+        XCTAssertTrue(wait(point(app, "b2"), saying: "黑"),
+                      "the stone stands where it was put — b2 reads "
+                      + "\(point(app, "b2").label)")
+        XCTAssertTrue(wait(status, saying: "轮到白方"),
+                      "and the turn has passed — the status reads \(status.label)")
+        attach(app, named: "phone-nearby-13-a-stone-placed")
     }
 }
 

@@ -62,7 +62,12 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-        var moves = [MxqMove](repeating: MxqMove(), count: 128)
+        // The one buffer bound this app has, which `Core` derives from the
+        // widest board it carries. It is the same constant an attached session's
+        // own call sizes by, because it is the same question asked of the same
+        // core — and an undersized buffer here would be a board quietly missing
+        // the points it could be played on rather than failing.
+        var moves = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
         var count = 0
 
         let start = Core.startFEN(for: game)

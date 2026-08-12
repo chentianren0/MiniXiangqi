@@ -30,7 +30,11 @@ struct NearbyHarnessScreen: View {
     private let launch = NearbyLaunch.current
 
     /// The proposal being composed, and the two text fields the intents take.
-    @State private var game = NearbyGame.miniXiangqi
+    ///
+    /// The game is the app's own vocabulary rather than a list of its own: a
+    /// harness with a second table of games is a harness that can be behind the
+    /// app about which games there are, which is the one thing it must not be.
+    @State private var game = GameKind.miniXiangqi
     @State private var proposerMoves = Mover.first
     @State private var moveText = ""
     @State private var keepText = ""
@@ -357,16 +361,18 @@ struct NearbyHarnessScreen: View {
     private var proposing: some View {
         Section {
             Picker(selection: $game) {
-                ForEach(NearbyGame.allCases) { game in
-                    Text(verbatim: game.name).tag(game)
+                ForEach(GameKind.allCases, id: \.self) { game in
+                    Text(verbatim: game.localizedName).tag(game)
                 }
             } label: {
                 Text(verbatim: "Game")
             }
 
+            // The mover is the protocol's and the same in every game; which
+            // side it is, is the chosen game's own naming, asked of it.
             Picker(selection: $proposerMoves) {
-                Text(verbatim: "First (红)").tag(Mover.first)
-                Text(verbatim: "Second (黑)").tag(Mover.second)
+                Text(verbatim: "First (\(game.sideName(.red)))").tag(Mover.first)
+                Text(verbatim: "Second (\(game.sideName(.black)))").tag(Mover.second)
             } label: {
                 Text(verbatim: "I move")
             }
@@ -537,28 +543,6 @@ struct NearbyHarnessScreen: View {
             }
         } header: {
             Text(verbatim: "Log (newest first)")
-        }
-    }
-}
-
-/// The two games this peer plays, under the `rules_id` the protocol names them
-/// by. The names are the games' own — proper nouns, not copy.
-enum NearbyGame: String, CaseIterable, Identifiable {
-    case miniXiangqi, xiangqi
-
-    var id: String { rawValue }
-
-    var rulesID: String {
-        switch self {
-        case .miniXiangqi: "minixiangqi"
-        case .xiangqi: "xiangqi"
-        }
-    }
-
-    var name: String {
-        switch self {
-        case .miniXiangqi: "迷你象棋"
-        case .xiangqi: "象棋"
         }
     }
 }
