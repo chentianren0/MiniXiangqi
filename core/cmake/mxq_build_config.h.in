@@ -52,4 +52,34 @@
 /* network.xiangqi.byte_length */
 #define MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH @MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH@u
 
+/* ------------------------------------------------------------------------- */
+/* The second engine                                                         */
+/* ------------------------------------------------------------------------- */
+
+/* pinned-inputs.json: gomoku_fork.revision */
+#define MXQ_BUILD_GOMOKU_FORK_REVISION "@MXQ_BUILD_GOMOKU_FORK_REVISION@"
+
+/* The weights, from pinned-inputs.json's gomoku_network.<rules>.files entries.
+ * Unlike the first engine's, these names are not load-bearing to the engine —
+ * it binds a weight file to a game by the rule and board-size masks in the
+ * file's own header, not by its name — so a name here is only how the bridge
+ * finds the bytes it then verifies. Freestyle has one file, which serves both
+ * sides; renju has one per side, because the forbidden-move rules apply to
+ * Black alone and the two sides are trained apart. */
+
+/* gomoku_network.gomoku-15.files[0] — role "black-and-white" */
+#define MXQ_BUILD_GOMOKU_NNUE_FILENAME "@MXQ_BUILD_GOMOKU_NNUE_FILENAME@"
+#define MXQ_BUILD_GOMOKU_NNUE_BYTE_LENGTH @MXQ_BUILD_GOMOKU_NNUE_BYTE_LENGTH@u
+#define MXQ_BUILD_GOMOKU_NNUE_SHA256 "@MXQ_BUILD_GOMOKU_NNUE_SHA256@"
+
+/* gomoku_network.renju.files[0] — role "black" */
+#define MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME "@MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME@"
+#define MXQ_BUILD_RENJU_BLACK_NNUE_BYTE_LENGTH @MXQ_BUILD_RENJU_BLACK_NNUE_BYTE_LENGTH@u
+#define MXQ_BUILD_RENJU_BLACK_NNUE_SHA256 "@MXQ_BUILD_RENJU_BLACK_NNUE_SHA256@"
+
+/* gomoku_network.renju.files[1] — role "white" */
+#define MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME "@MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME@"
+#define MXQ_BUILD_RENJU_WHITE_NNUE_BYTE_LENGTH @MXQ_BUILD_RENJU_WHITE_NNUE_BYTE_LENGTH@u
+#define MXQ_BUILD_RENJU_WHITE_NNUE_SHA256 "@MXQ_BUILD_RENJU_WHITE_NNUE_SHA256@"
+
 #endif /* MXQ_BUILD_CONFIG_H */
