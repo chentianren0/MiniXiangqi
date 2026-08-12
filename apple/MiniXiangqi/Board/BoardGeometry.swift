@@ -124,6 +124,43 @@ struct BoardGeometry {
     var hoverSide: CGFloat { 0.90 * pitch }
     var hoverCornerRadius: CGFloat { 0.12 * pitch }
 
+    // MARK: - The hint halo
+
+    // The suggested point carries a wash of active ink at low opacity, drawn
+    // beneath the pieces exactly where the pointer hover fill is drawn. It is
+    // emphasis rather than state — the strengthened marker and the muted rest
+    // of the set are what say which destination the engine chose — which is why
+    // it is the one mark on the board drawn below record strength and holds no
+    // contrast floor of its own. What bounds it instead is the cell it must
+    // stay inside and the ratio the marker standing *on* it must still reach;
+    // BoardStyleTests measures that composite rather than trusting these
+    // numbers.
+
+    /// The halo an empty suggested point carries, outermost first: filled
+    /// circles of active ink whose overlap makes one soft wash that fades
+    /// outward. Radii as multiples of the pitch, all inside the cell, since an
+    /// empty point has its whole cell free.
+    static let haloWashes: [(radius: CGFloat, opacity: Double)] = [
+        (0.47, 0.08), (0.38, 0.09), (0.29, 0.10)]
+
+    /// What the stack comes to where every wash overlaps — the ground the
+    /// suggested point's own dot stands on, and therefore the composite the
+    /// dot's active ink is measured against.
+    static var haloPeakOpacity: Double {
+        haloWashes.reduce(0) { $0 + $1.opacity - $0 * $1.opacity }
+    }
+
+    /// On an occupied point the cell is the disc's, so the wash takes the
+    /// marker band instead: one stroked circle behind the dashed capture ring,
+    /// filling the gaps between its dashes. Its inner edge falls at `0.41 p`, a
+    /// hair inside the `0.42 p` floor — that floor keeps *marker* ink off a
+    /// disc, and this is emphasis drawn beneath the pieces rather than a marker
+    /// on the disc's face, which it clears in any case: the face ends at
+    /// `0.40 p`. Its outer edge stays inside the cell.
+    var haloBandRadius: CGFloat { 0.45 * pitch }
+    var haloBandStroke: CGFloat { 0.08 * pitch }
+    static let haloBandOpacity: Double = 0.22
+
     // MARK: - Markers under emphasis
 
     // Two markers swell: the check rings' one-time pulse as they appear, and

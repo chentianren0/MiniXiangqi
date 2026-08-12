@@ -71,6 +71,54 @@ struct BoardGeometryTests {
         }
     }
 
+    @Test("The hint halo fills the space its point has free and no more",
+          arguments: GameKind.allCases)
+    func haloStaysInTheSpaceThePointHasFree(game: GameKind) {
+        let geometry = floorGeometry(for: game)
+        let p = geometry.pitch
+
+        // An empty point has its whole cell, so the washes are bounded by the
+        // cell alone — and by each other: they stack outermost first, so each
+        // must be smaller than the one it is drawn over.
+        var previous = geometry.markerOuterLimit
+        for wash in BoardGeometry.haloWashes {
+            #expect(wash.radius * p <= geometry.markerOuterLimit)
+            #expect(wash.radius * p < previous)
+            #expect(wash.opacity > 0 && wash.opacity < 1)
+            previous = wash.radius * p
+        }
+        #expect(BoardGeometry.haloPeakOpacity < 0.5,
+                "a wash is a wash: the stack never approaches the ink itself")
+
+        // An occupied point has only the marker band. The band's inner edge
+        // falls a hair inside the floor that keeps marker ink off a disc, which
+        // is deliberate — it is a wash beneath the pieces rather than a marker —
+        // and it still clears the disc's own face.
+        let inner = geometry.haloBandRadius - geometry.haloBandStroke / 2
+        let outer = geometry.haloBandRadius + geometry.haloBandStroke / 2
+        #expect(inner >= geometry.discDiameter / 2)
+        #expect(inner < geometry.markerInnerLimit)
+        #expect(outer <= geometry.markerOuterLimit)
+
+        // It sits behind the dashed capture ring so that the ring's dashes have
+        // something to show through them, at rest and strengthened alike.
+        for emphasis in [0.0, 1.0] {
+            let stroke = geometry.captureRingStroke(emphasis: emphasis)
+            let ring = geometry.captureRingRadius(stroke: stroke)
+            #expect(inner <= ring - stroke / 2)
+            #expect(outer > ring - stroke / 2)
+        }
+
+        // Record ink never stands on the halo: the last move's brackets are in
+        // the cell's corners, and both washes stop well short of them. It is
+        // why the composited measurement is about active ink alone.
+        let corner = p / 2 - geometry.lastMoveInset
+        let nearest = hypot(corner - geometry.lastMoveArm, corner)
+            - geometry.lastMoveStroke / 2
+        #expect(nearest > outer)
+        #expect(nearest > BoardGeometry.haloWashes[0].radius * p)
+    }
+
     @Test("The flip starts and ends exactly on the two orientations",
           arguments: GameKind.allCases)
     func flipPathEndsOnItsOrientations(game: GameKind) {

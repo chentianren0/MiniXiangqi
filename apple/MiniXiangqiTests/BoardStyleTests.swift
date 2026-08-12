@@ -58,6 +58,17 @@ private func contrast(_ a: Color, _ b: Color) -> Double {
     return (max(first, second) + 0.05) / (min(first, second) + 0.05)
 }
 
+/// One colour laid over another at `alpha`, in the components the two are drawn
+/// with. A wash beneath the pieces does not replace the board surface, it
+/// composites over it, so what a mark standing on the wash must reach its ratio
+/// against is the result rather than either colour alone.
+private func composite(_ over: Color, on base: Color, alpha: Double) -> Color {
+    let (ink, ground) = (sRGB(over), sRGB(base))
+    return Color(red: alpha * ink.red + (1 - alpha) * ground.red,
+                 green: alpha * ink.green + (1 - alpha) * ground.green,
+                 blue: alpha * ink.blue + (1 - alpha) * ground.blue)
+}
+
 @Suite("Traditional style contrast")
 @MainActor
 struct BoardStyleTests {
@@ -86,6 +97,45 @@ struct BoardStyleTests {
     @Test("Record ink reaches 3:1 against the board surface")
     func recordInkContrast() {
         #expect(contrast(style.recordInk, style.boardSurface) >= 3.0)
+    }
+
+    @Test("Active ink still reaches 4.5:1 where it stands on the hint halo")
+    func activeInkOverTheHalo() {
+        // The halo is the one ground other than the board surface that a marker
+        // stands on, and it is what bounds the wash: a halo strong enough to
+        // carry the suggested marker below its floor would be a halo that
+        // hides the mark it is emphasising. The two grounds are the two shapes
+        // the wash takes — the stack of circles beneath an empty point's dot,
+        // and the band behind a capture's dashed ring.
+        let stack = composite(style.activeInk, on: style.boardSurface,
+                              alpha: BoardGeometry.haloPeakOpacity)
+        #expect(contrast(style.activeInk, stack) >= 4.5)
+
+        let band = composite(style.activeInk, on: style.boardSurface,
+                             alpha: BoardGeometry.haloBandOpacity)
+        #expect(contrast(style.activeInk, band) >= 4.5)
+    }
+
+    @Test("Muted ink crosses between the two strengths and rests on each")
+    func mutedInkCrossesBetweenTheStrengths() {
+        // The muting is a crossing rather than a switch, because it rides the
+        // suggestion's own phase; its two ends are exactly the two strengths
+        // the style defines, so a muted marker is a record-ink marker and an
+        // unmuted one is untouched.
+        #expect(abs(contrast(style.markerInk(muted: 0), style.activeInk) - 1) < 0.001)
+        #expect(abs(contrast(style.markerInk(muted: 1), style.recordInk) - 1) < 0.001)
+        // Monotone in between: every step of the crossing moves the ink toward
+        // record strength and none of them overshoots it.
+        var remaining = contrast(style.markerInk(muted: 0), style.recordInk)
+        for step in 1...10 {
+            let next = contrast(style.markerInk(muted: Double(step) / 10), style.recordInk)
+            #expect(next < remaining)
+            remaining = next
+        }
+        // A muted marker is still a marker, so it holds record ink's own floor
+        // against the surface — which is also why Increase Contrast leaves it
+        // where it is rather than promoting it back to active.
+        #expect(contrast(style.markerInk(muted: 1), style.boardSurface) >= 3.0)
     }
 
     @Test("A style's decoration stays inside the band markers are kept out of",

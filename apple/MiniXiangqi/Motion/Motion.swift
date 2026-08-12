@@ -165,6 +165,26 @@ enum Motion {
     /// drawn around.
     static let markerRingGain: Double = 0.45
 
+    // MARK: - The suggested capture's drift
+
+    /// While a suggestion stands on a capture, its dashed ring turns: one
+    /// revolution in ten seconds, the one continuous motion the board ever
+    /// draws. It is permitted because the player asked for the state it marks,
+    /// and ten seconds is slow enough that the ring reads as a standing mark
+    /// that is alive rather than as an animation asking to be watched. A
+    /// rotation is motion, so Reduce Motion stops it and the dashes hold still.
+    static let dashDriftPeriod: TimeInterval = 10
+
+    /// How far the pattern has turned, in revolutions, `elapsed` after the
+    /// drift began. Whole turns are dropped, so the value stays inside one
+    /// revolution however long a suggestion stands. Time arrives as an argument
+    /// rather than from a clock, so the drift is a function a test can read
+    /// instead of a wall clock a test must wait out.
+    static func dashDrift(elapsed: TimeInterval) -> Double {
+        guard elapsed > 0 else { return 0 }
+        return (elapsed / dashDriftPeriod).truncatingRemainder(dividingBy: 1)
+    }
+
     // MARK: - The acknowledgment beat
 
     /// The turn status's background rises to full emphasis and falls back,

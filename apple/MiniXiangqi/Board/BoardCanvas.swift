@@ -22,9 +22,17 @@ struct SquarePhases: VectorArithmetic {
     init(_ values: [Square: Double] = [:]) { self.values = values }
     /// The lift target for a selection: the held square fully raised.
     init(raised square: Square?) { self.init(square.map { [$0: 1] } ?? [:]) }
+    /// One square at a progress of its own — a suggestion's strengthening,
+    /// which is a state of one point rather than of the board.
+    init(_ square: Square?, at progress: Double) {
+        self.init(square.map { [$0: progress] } ?? [:])
+    }
 
     subscript(square: Square) -> Double { values[square] ?? 0 }
-    var raised: [Square] { values.keys.filter { values[$0] ?? 0 > 0 } }
+    /// Every square this phase says anything about.
+    var marked: [Square] { values.keys.filter { values[$0] ?? 0 > 0 } }
+    /// The largest progress any square carries.
+    var strongest: Double { values.values.max() ?? 0 }
 
     static let zero = SquarePhases()
 
@@ -70,12 +78,25 @@ struct BoardPhases: VectorArithmetic {
     /// is a phase of its own rather than the one above because the two answer
     /// different things and can stand at once: an illegal tap strengthens every
     /// destination the held piece has, and a hint strengthens the one the
-    /// engine chose.
-    var hint: Double = 0
+    /// engine chose. It is per square for the reason the lift is: the point a
+    /// suggestion stands on is part of what the suggestion says, so a
+    /// suggestion arriving, clearing, or moving to another point interpolates
+    /// as one vector rather than jumping between two states.
+    var hint = SquarePhases()
     /// The selection lift, per square.
     var lifts = SquarePhases()
 
     static let zero = BoardPhases()
+
+    /// How far one destination marker's ink has dropped from active toward
+    /// record, 0 to 1. While a suggestion stands the rest of the set mutes, so
+    /// that the suggested marker is the one active-ink marker the selection
+    /// shows and finding it is a glance rather than a comparison. Stated as a
+    /// difference against the strongest suggestion on the board, so that the
+    /// muting arrives, clears, and moves with the suggestion itself.
+    func muting(at square: Square) -> Double {
+        min(max(hint.strongest - hint[square], 0), 1)
+    }
 
     static func + (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel + rhs.travel, fade: lhs.fade + rhs.fade,
@@ -93,13 +114,14 @@ struct BoardPhases: VectorArithmetic {
 
     mutating func scale(by rhs: Double) {
         travel *= rhs; fade *= rhs; flip *= rhs
-        check *= rhs; marker *= rhs; hint *= rhs
+        check *= rhs; marker *= rhs
+        hint.scale(by: rhs)
         lifts.scale(by: rhs)
     }
 
     var magnitudeSquared: Double {
         travel * travel + fade * fade + flip * flip + check * check
-            + marker * marker + hint * hint + lifts.magnitudeSquared
+            + marker * marker + hint.magnitudeSquared + lifts.magnitudeSquared
     }
 }
 
@@ -115,10 +137,11 @@ struct BoardCanvas: View, Animatable {
 
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
-    /// The destination a shown hint suggests. One of `destinations`, and drawn
-    /// as one — what it gets of its own is the strengthening `phases.hint`
-    /// carries.
-    var suggested: Square?
+    /// How far the dashes of a suggested capture's ring have turned, in
+    /// revolutions. The board's one continuous motion, and the one thing it
+    /// draws that changes outside a transaction, so it arrives as a value the
+    /// caller drives from a clock rather than as a phase the canvas animates.
+    var dashDrift: Double = 0
     var lastMove: Move?
     var checkedGeneral: Square?
     var transit: Transit?
@@ -152,10 +175,11 @@ struct BoardCanvas: View, Animatable {
         }
     }
 
-    /// The accepted layering, bottom to top: last-move brackets; destination
-    /// dots; resting discs; the disc in transit; rings around resting discs;
-    /// the held disc with its attached selection ring.
+    /// The accepted layering, bottom to top: the hint halo; last-move brackets;
+    /// destination dots; resting discs; the disc in transit; rings around
+    /// resting discs; the held disc with its attached selection ring.
     private func drawPosition(in context: inout GraphicsContext, flip: Double) {
+        drawHalo(in: &context, flip: flip)
         drawLastMove(in: &context, flip: flip)
         drawDestinations(in: &context, flip: flip)
         drawRestingPieces(in: &context, flip: flip)
@@ -214,6 +238,38 @@ struct BoardCanvas: View, Animatable {
 
     // MARK: - Markers
 
+    /// The halo the suggested point carries: a wash of active ink at low
+    /// opacity, drawn beneath the pieces exactly where the pointer hover fill
+    /// is drawn. It is a wash rather than a marker among the shape families —
+    /// it says *here*, and the strengthened marker above it and the muted rest
+    /// of the set are what carry the state — which is why it is the one mark
+    /// the board draws below record strength, and why the board without it
+    /// still says which destination the engine chose.
+    ///
+    /// It fills whatever space the point has free: an empty point's cell,
+    /// beneath the dot; a capture target's marker band, behind the dashed ring,
+    /// where it shows through the gaps between the dashes. Its opacity rides
+    /// the suggestion's own phase, so it arrives and goes with the suggestion.
+    private func drawHalo(in context: inout GraphicsContext, flip: Double) {
+        for square in phases.hint.marked {
+            let strength = min(max(phases.hint[square], 0), 1)
+            let centre = point(square, flip: flip)
+            guard !captures.contains(square) else {
+                context.stroke(
+                    circle(at: centre, radius: geometry.haloBandRadius),
+                    with: .color(style.activeInk
+                        .opacity(BoardGeometry.haloBandOpacity * strength)),
+                    lineWidth: geometry.haloBandStroke)
+                continue
+            }
+            for wash in BoardGeometry.haloWashes {
+                context.fill(circle(at: centre, radius: wash.radius * p),
+                             with: .color(style.activeInk
+                                 .opacity(wash.opacity * strength)))
+            }
+        }
+    }
+
     private func drawLastMove(in context: inout GraphicsContext, flip: Double) {
         guard let lastMove else { return }
         // One marker at two points, and the origin's half of it is drawn
@@ -255,7 +311,7 @@ struct BoardCanvas: View, Animatable {
             let centre = point(square, flip: flip)
             let box = CGRect(x: centre.x - diameter / 2, y: centre.y - diameter / 2,
                              width: diameter, height: diameter)
-            context.fill(Path(ellipseIn: box), with: .color(style.activeInk))
+            context.fill(Path(ellipseIn: box), with: .color(ink(at: square)))
         }
     }
 
@@ -264,7 +320,22 @@ struct BoardCanvas: View, Animatable {
     /// while an illegal tap is answered stays inside the one ceiling both
     /// markers are bounded by.
     private func emphasis(at square: Square) -> Double {
-        square == suggested ? max(phases.marker, phases.hint) : phases.marker
+        max(phases.marker, phases.hint[square])
+    }
+
+    /// The ink one destination marker is drawn in. Active, until a suggestion
+    /// stands: then every destination marker but the suggested one drops to
+    /// record ink, and the drop rides the suggestion's own phase, so the whole
+    /// set mutes and un-mutes in the transaction the suggestion arrives and
+    /// clears in.
+    ///
+    /// The ink a marker is drawn in and how strongly it is drawn are separate
+    /// questions, and the emphasis above answers only the second: a marker
+    /// strengthened while the set is muted keeps its muted ink, which is what
+    /// the contract requires of a drag's nearby strengthening — proximity never
+    /// unmutes.
+    private func ink(at square: Square) -> Color {
+        style.markerInk(muted: phases.muting(at: square))
     }
 
     private func drawRings(in context: inout GraphicsContext, flip: Double) {
@@ -278,10 +349,15 @@ struct BoardCanvas: View, Animatable {
             let circumference = 2 * CGFloat.pi * radius
             let dash = circumference * BoardGeometry.captureDashDegrees / 360
             let gap = circumference / CGFloat(BoardGeometry.captureDashCount) - dash
+            // A suggested capture's dashes turn, and only its: the drift is a
+            // fraction of a revolution, and a revolution around this ring is
+            // its whole circumference.
+            let drift = phases.hint[square] > 0 ? dashDrift * circumference : 0
             context.stroke(circle(at: point(square, flip: flip), radius: radius),
-                           with: .color(style.activeInk),
+                           with: .color(ink(at: square)),
                            style: StrokeStyle(lineWidth: stroke,
-                                              lineCap: .butt, dash: [dash, gap]))
+                                              lineCap: .butt, dash: [dash, gap],
+                                              dashPhase: drift))
         }
         // A double ring around a checked general, hidden while it is held and
         // absent while a committing transition runs: the rings belong to the
@@ -393,7 +469,7 @@ struct BoardCanvas: View, Animatable {
         // Ordered by progress — the higher a disc, the later it draws — with
         // the square as a tiebreak so equal heights never trade places
         // between frames.
-        let raised = phases.lifts.raised.sorted {
+        let raised = phases.lifts.marked.sorted {
             (phases.lifts[$0], $0.rank * geometry.board.fileCount + $0.file)
                 < (phases.lifts[$1], $1.rank * geometry.board.fileCount + $1.file)
         }
