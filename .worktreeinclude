@@ -10,3 +10,6 @@ apple/MiniXiangqi/Resources/minixiangqi-variants.ini
 # manifest-named networks makes the first build complete.
 apple/MiniXiangqi/Resources/minixiangqiaxf-ad52b8658c9e.nnue
 apple/MiniXiangqi/Resources/xiangqi-c07e94a5c7cb.nnue
+apple/MiniXiangqi/Resources/mix9svqfreestyle_bsmix-6bc0d1b0ff8e.bin.lz4
+apple/MiniXiangqi/Resources/mix9svqrenju_bs15_black-7ab8c974c30d.bin.lz4
+apple/MiniXiangqi/Resources/mix9svqrenju_bs15_white-a31f318518d3.bin.lz4
