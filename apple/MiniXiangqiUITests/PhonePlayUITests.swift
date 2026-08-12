@@ -67,15 +67,22 @@ final class PhonePlayUITests: XCTestCase {
     /// Mac's read the same table — plus the appearance, which is named here for
     /// the same reason it is named there: a screenshot series that let the
     /// system decide would change halfway through the evening.
+    ///
+    /// `contentSize` names the system's own text-size category, which is the
+    /// only way a test process can move a text size the reader owns.
     private func launch(replaying line: String? = nil,
                         history: String? = nil,
                         preferences: [String: String] = [:],
-                        availableMemory: String? = nil) -> XCUIApplication {
+                        availableMemory: String? = nil,
+                        contentSize: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", scratchStoreName()]
         app.launchArguments += ["-mxq-defaults-suite", "mxq-uitests-phone"]
         app.launchArguments += ["-mxq-appearance", "light"]
+        if let contentSize {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", contentSize]
+        }
         app.launchArguments += LaunchPreferences.arguments(overriding: preferences)
         if let availableMemory {
             app.launchArguments += ["-mxq-available-memory", availableMemory]
@@ -568,6 +575,32 @@ final class PhonePlayUITests: XCTestCase {
                       "and it answered by moving one of its own pieces — every one "
                       + "of Black's starting points is still occupied")
         attach(app, named: "phone-06-after-the-machines-reply")
+    }
+
+    // MARK: - The turn status at an accessibility text size
+
+    /// docs/interaction-design.md § Turn status: at an accessibility text size
+    /// the bar cannot hold the element at all, so it returns to its place above
+    /// the board — and the bar centre is then empty, because a board page has no
+    /// name to put back there either.
+    ///
+    /// The size is the reader's own setting, which a test process can only reach
+    /// by naming the system's content-size category at launch.
+    func testAtAnAccessibilityTextSizeTheStatusReturnsAboveTheBoard() {
+        let app = launch(replaying: Self.openingLine,
+                         contentSize: "UICTContentSizeCategoryAccessibilityL")
+        XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 30),
+                      "the replay fixture opens at the board it made")
+
+        let status = control(app, "turn-status")
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(status.frame.minY, app.buttons["play-back"].frame.maxY,
+                             "the element stands below the bar, not in it")
+        XCTAssertLessThan(status.frame.maxY, point(app, "a7").frame.minY,
+                          "and above the board, which is the place it came from")
+        XCTAssertFalse(app.navigationBars.staticTexts["对局"].exists,
+                       "the bar centre stays empty rather than taking a title back")
+        attach(app, named: "phone-07-the-status-at-an-accessibility-text-size")
     }
 
     // MARK: - The move record, on demand

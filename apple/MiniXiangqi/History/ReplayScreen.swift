@@ -167,12 +167,17 @@ struct ReplayScreen: View {
     private func stacked(_ replay: Replay, in size: CGSize) -> some View {
         let chrome = BoardLayout.stackedChrome(in: size, game: record.game,
                                                asking: headerHeight + panelHeight)
+        let geometry = BoardLayout.stackedGeometry(in: size, game: record.game,
+                                                   chrome: chrome)
         return VStack(spacing: 0) {
             headerBlock(replay, airBelow: 0)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { headerHeight = $0 }
 
-            board(replay, BoardLayout.stackedGeometry(in: size, game: record.game,
-                                                       chrome: chrome))
+            // A stacked board screen, so the same full-width fitting and the
+            // same surface behind it: where the width is what sized this board,
+            // it meets the glass rather than leaving a sliver of page beside it.
+            board(replay, geometry,
+                  bleed: BoardLayout.surfaceBleed(in: size.width, board: geometry))
 
             panel(replay, showsHeader: false, edge: .bottom)
                 .frame(height: max(0, chrome - headerHeight))
@@ -190,13 +195,17 @@ struct ReplayScreen: View {
     /// reserved, so asking for more than the phone has just pins the board on
     /// its floor. Asking for less is what hands the board its pitch back, and
     /// every point of it costs the list a point of the same height, so the
-    /// number is exactly where the two stop: **200** is the largest ask that
-    /// leaves a 402-point iPhone a 46-point pitch, and the smallest that still
-    /// draws the seven-ply game's fourth row whole beneath it. Beside the
+    /// number is exactly where the two stop: **200** leaves a 402-point iPhone
+    /// a 52-point pitch under the full-width fitting, and is the smallest ask
+    /// that still draws the seven-ply game's fourth row whole beneath it. What
+    /// binds this board is that height rather than the width — the panel is
+    /// granted its room before the board is fitted — so the full-width pitches
+    /// the play board reaches are not this screen's. Beside the
     /// board there is no such contest and the panel is the width it always was.
     private var panelHeight: CGFloat { 200 }
 
-    private func board(_ replay: Replay, _ geometry: BoardGeometry) -> some View {
+    private func board(_ replay: Replay, _ geometry: BoardGeometry,
+                       bleed: CGFloat = 0) -> some View {
         BoardView(geometry: geometry,
                   placement: replay.placement,
                   flipped: replay.flipped,
@@ -205,6 +214,7 @@ struct ReplayScreen: View {
                   transit: replay.transit,
                   transitFade: replay.transitFade,
                   policy: policy,
+                  surfaceBleed: bleed,
                   onTravelArrival: { replay.travelArrived() },
                   onFadeArrival: { replay.fadeArrived() })
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -31,7 +31,7 @@ import Observation
 @MainActor
 final class Hint {
 
-    /// What the turn status's hint slot is carrying.
+    /// What the hint control's own symbol's place is carrying.
     enum Activity: Equatable {
         /// Nothing at all: no search running, or one too young to show.
         case idle
@@ -103,10 +103,14 @@ final class Hint {
 
     // MARK: - Whether there is a hint to ask for
 
-    /// Whether a hint is on offer right now. The control is **absent** where
-    /// this is false rather than disabled: a control that can never be pressed
-    /// on the machine's turn is a promise about a turn that is not the
-    /// player's.
+    /// Whether a hint is on offer right now.
+    ///
+    /// The control **greys** where this is false rather than leaving the
+    /// cluster: it is the scene's fixed set, and a control that will be
+    /// pressable again on the player's own turn stays where a thumb last found
+    /// it. A finished board is a different scene and has dropped the control
+    /// with the game, which is absence saying a capability is gone rather than
+    /// an act being momentarily impossible.
     var isOffered: Bool {
         guard !game.isFinished else { return false }
         switch game.mode {

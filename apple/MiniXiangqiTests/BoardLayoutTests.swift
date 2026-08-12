@@ -164,6 +164,42 @@ struct BoardLayoutTests {
                 <= phone.width - 2 * BoardLayout.boardPadding)
     }
 
+    /// The shape rule spends an allowance beside the board that a board screen
+    /// does not, and the answer is the same either way.
+    ///
+    /// What is asserted is the property that makes the probe safe rather than
+    /// its arithmetic: the shape chosen is still the shape whose **drawn** board
+    /// is at least as large as the other's. Where the stacked candidate is bound
+    /// by the width it is the larger board by construction and is already
+    /// chosen; side by side wins only where the stacked board is bound by its
+    /// height or standing at its ceiling, and neither of those moves when the
+    /// air does.
+    @Test("The shape the rule picks is the shape whose drawn board is the larger")
+    func theShapeRuleIsUnmovedByTheAirTheBoardScreenDoesNotSpend() {
+        var wrong: [String] = []
+        for game in GameKind.allCases {
+            let floor = BoardGeometry.minimumPitch(for: game.board)
+            for width in stride(from: CGFloat(320), through: 1600, by: 40) {
+                for height in stride(from: CGFloat(400), through: 1600, by: 40) {
+                    let size = CGSize(width: width, height: height)
+                    let beside = BoardLayout.geometry(in: size, game: game).pitch
+                    let stacked = BoardLayout.stackedGeometry(in: size, game: game).pitch
+                    // Where both fall back to the floor there is no board to be
+                    // the larger: the rule is answering which way the space is
+                    // short, which is its own clause and not this one.
+                    if beside == floor, stacked == floor { continue }
+                    let larger: BoardLayout.Shape = beside >= stacked ? .sideBySide : .stacked
+                    if BoardLayout.shape(in: size, game: game) != larger {
+                        wrong.append("\(game) \(width)×\(height): rule says "
+                                     + "\(BoardLayout.shape(in: size, game: game)), "
+                                     + "beside draws \(beside) and stacked \(stacked)")
+                    }
+                }
+            }
+        }
+        #expect(wrong.isEmpty, "the rule and the drawn boards disagree at: \(wrong.prefix(5))")
+    }
+
     /// The surface behind the block runs to the screen edges where the width is
     /// what sized the board, and nowhere else.
     @Test("The board surface covers the pitch remainder, and never a real margin")
@@ -225,6 +261,8 @@ struct BoardLayoutTests {
         let without = replay(in: 720)
         #expect(without.pitch > withTheBar.pitch,
                 "and the bar's own height is pitch to replay's board")
+        #expect(without.pitch == 52,
+                "which is the figure the replay clause names for this phone")
         #expect(without.pitch < play(in: 720),
                 "though the full-width fitting lifts play's board past it, replay's being bound by its chrome's height rather than by the width")
 

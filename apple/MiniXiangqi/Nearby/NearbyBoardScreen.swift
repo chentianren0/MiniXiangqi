@@ -215,7 +215,12 @@ struct NearbyBoardScreen: View {
                 .overlay(alignment: .top) {
                     if statusStandsInBar {
                         quietLines(play)
+                            // The page's one leading edge, 16 points in: each
+                            // line brings 12 of its own, exactly as it does
+                            // inside the status block, and this is the rest.
+                            .padding(.horizontal, BoardLayout.panelInset - 12)
                             .padding(.top, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
@@ -415,14 +420,15 @@ struct NearbyBoardScreen: View {
     /// The way out replaces 认输 once the game is over, in 认输's own place —
     /// the same controls, keys and identifiers the other boards carry.
     private func controls(_ play: NearbyPlay, worded: Bool, carriesFlip: Bool) -> some View {
-        HStack(spacing: 8) {
-            if !play.isOver {
+        let over = Self.scene(of: play) == .over
+        return HStack(spacing: 8) {
+            if !over {
                 negotiations(play, worded: worded)
             }
 
             Spacer(minLength: 0)
 
-            if play.isOver {
+            if over {
                 // The one obvious next action once the game is over, and
                 // therefore the one thing on screen the tint rule allows —
                 // prominent only once the notice carrying it has been closed.
@@ -519,17 +525,14 @@ struct NearbyBoardScreen: View {
 
     /// A cluster control's label: its symbol and its word, or its symbol alone
     /// where the row has given the words up. The word is the accessibility label
-    /// either way, which each control states for itself. A word is drawn whole
-    /// or not at all, so that a row too narrow for its words measures as too
-    /// narrow rather than fitting by wrapping or truncating one of them: the
-    /// arrangement is what answers a narrow row, not the control.
+    /// either way, which each control states for itself, and it stays on one
+    /// line: these are one-act labels, and a control whose word wrapped would
+    /// make its row taller than the arrangement it was chosen as.
     @ViewBuilder
     private func clusterLabel(_ key: LocalizedStringKey, _ symbol: String,
                               worded: Bool) -> some View {
         if worded {
-            Label(key, systemImage: symbol)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            Label(key, systemImage: symbol).lineLimit(1)
         } else {
             Label(key, systemImage: symbol).labelStyle(.iconOnly)
         }
@@ -581,10 +584,17 @@ struct NearbyBoardScreen: View {
     /// The scenes this cluster has: a stretch of play whose acts are stable.
     /// Two of them are the two sides of the turn, one is answering what the
     /// other player asked for, and the last is a game that is over.
+    ///
+    /// **The finished scene waits for the landing**, which is the guard the
+    /// result notice in front of the board already keeps: the ply that ends the
+    /// game is still travelling when the session says it is over, and a cluster
+    /// that swapped there would swap ahead of the move that changed it. The
+    /// other three follow the session as it stands, having no landing of their
+    /// own to wait for.
     private enum Scene: Equatable { case onTurn, offTurn, answering, over }
 
     private static func scene(of play: NearbyPlay) -> Scene {
-        if play.isOver { return .over }
+        if play.isOver, !play.isCommitting { return .over }
         if play.standingItem != nil { return .answering }
         return play.controller == .you ? .onTurn : .offTurn
     }
@@ -595,7 +605,6 @@ struct NearbyBoardScreen: View {
     private func concluding(prominent: Bool) -> some View {
         let action = Button("control.done") { flow.leaveBoard() }
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
             .accessibilityIdentifier("cluster-done")
         if prominent {
             action.buttonStyle(.glassProminent)

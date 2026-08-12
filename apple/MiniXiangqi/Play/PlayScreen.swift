@@ -680,8 +680,9 @@ struct PlayScreen: View {
     /// the two forms.
     private func controls(_ game: Game, _ motion: PlayMotion,
                           worded: Bool, carriesFlip: Bool) -> some View {
-        HStack(spacing: 8) {
-            if !game.isFinished {
+        let finished = showsFinishedScene(game, motion)
+        return HStack(spacing: 8) {
+            if !finished {
                 hintControl(motion, worded: worded)
                     .transition(.opacity)
             }
@@ -699,7 +700,7 @@ struct PlayScreen: View {
             .accessibilityLabel(Text("control.undo"))
             .accessibilityIdentifier("cluster-undo")
 
-            if game.isFinished {
+            if finished {
                 // Prominent once it is the only one: while the notice stands in
                 // front of the board it carries the moment's tinted action, and
                 // the tint rule allows a single obvious next step rather than
@@ -719,7 +720,7 @@ struct PlayScreen: View {
                 .transition(.opacity)
             }
 
-            if game.isHumanVersusAI, !game.isFinished {
+            if game.isHumanVersusAI, !finished {
                 // 认输 ends the game and cannot be undone, so the symbol is the
                 // one every board game uses for it, and the alert still stands
                 // between the control and the act.
@@ -750,9 +751,10 @@ struct PlayScreen: View {
     /// screen reader the button is one element and keeps its word; that a search
     /// is running is its value, which is where a state that is not the control's
     /// name belongs.
+    @ViewBuilder
     private func hintControl(_ motion: PlayMotion, worded: Bool) -> some View {
         let thinking = play.hint?.activity == .thinking
-        return Button {
+        let control = Button {
             play.hint?.request()
         } label: {
             hintLabel(thinking: thinking, worded: worded)
@@ -760,8 +762,14 @@ struct PlayScreen: View {
         .buttonStyle(.glass)
         .disabled(!canHint(motion))
         .accessibilityLabel(Text("control.hint"))
-        .accessibilityValue(thinking ? Text("status.hintThinking") : Text(verbatim: ""))
         .accessibilityIdentifier("hint-request")
+        // A value only while there is one to say. An idle control has no state
+        // beyond its name, and an empty value is a value all the same.
+        if thinking {
+            control.accessibilityValue(Text("status.hintThinking"))
+        } else {
+            control
+        }
     }
 
     /// The lamp, or the indicator standing in its place, and the word beside
@@ -780,9 +788,7 @@ struct PlayScreen: View {
             }
         }
         if worded {
-            label
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            label.lineLimit(1)
         } else {
             label.labelStyle(.iconOnly)
         }
@@ -833,6 +839,7 @@ struct PlayScreen: View {
     /// nothing collapsing.
     @ViewBuilder
     private func controlCluster(_ game: Game, _ motion: PlayMotion) -> some View {
+        let finished = showsFinishedScene(game, motion)
         let arrangements = ViewThatFits(in: .horizontal) {
             controls(game, motion, worded: true, carriesFlip: true)
             wrappedControls(game, motion, worded: true)
@@ -841,12 +848,24 @@ struct PlayScreen: View {
         }
         if policy.reduceMotion {
             arrangements
-                .id(game.isFinished)
-                .animation(policy.crossfade, value: game.isFinished)
+                .id(finished)
+                .animation(policy.crossfade, value: finished)
         } else {
             arrangements
-                .animation(Motion.stateFadeAnimation, value: game.isFinished)
+                .animation(Motion.stateFadeAnimation, value: finished)
         }
+    }
+
+    /// Whether the cluster is standing in the finished scene.
+    ///
+    /// **It waits for the landing**, which is the guard the result notice in
+    /// front of the board already keeps: the ply that ends the game is still
+    /// travelling when the game says it is over, and a cluster that swapped
+    /// there would swap ahead of the move that changed it. The two results that
+    /// arrive with no piece moving — a claim, a resignation — have no travel to
+    /// wait out, and their swap is drawn the moment they are confirmed.
+    private func showsFinishedScene(_ game: Game, _ motion: PlayMotion) -> Bool {
+        game.isFinished && !motion.isCommitting
     }
 
     /// The cluster over two rows: the play controls above, 翻转棋盘 beneath with
@@ -867,20 +886,14 @@ struct PlayScreen: View {
     /// where the row has given the words up. The word is the accessibility label
     /// either way, which each control states for itself.
     ///
-    /// **A word is drawn whole or not at all**, which is what makes the
-    /// arrangement the answer to a narrow row rather than the control. Left
-    /// free to compress, a label wraps over two lines or truncates and the row
-    /// reports that it fits — so `ViewThatFits` would never reach the
-    /// arrangement that actually holds the cluster. Fixed at its own width the
-    /// row asks for what the words need, and a row that cannot have it is the
-    /// row that is passed over.
+    /// A word stays on one line: these are one-act labels, and a control whose
+    /// word wrapped would make its row taller than the arrangement it was
+    /// chosen as.
     @ViewBuilder
     private func clusterLabel(_ key: LocalizedStringKey, _ symbol: String,
                               worded: Bool) -> some View {
         if worded {
-            Label(key, systemImage: symbol)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            Label(key, systemImage: symbol).lineLimit(1)
         } else {
             Label(key, systemImage: symbol).labelStyle(.iconOnly)
         }
@@ -893,7 +906,6 @@ struct PlayScreen: View {
     private func concludingAction(prominent: Bool) -> some View {
         let action = Button("control.newGame") { startNewGame() }
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
             .accessibilityIdentifier("cluster-new-game")
         if prominent {
             action.buttonStyle(.glassProminent)

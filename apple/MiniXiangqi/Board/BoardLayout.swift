@@ -96,12 +96,17 @@ enum BoardLayout {
     /// than the panel's width.
     ///
     /// It spends the air beside the board as well, which a drawn board screen
-    /// does not — see `stackedGeometry`. The decision is one answer for every
-    /// page in the shape, and a board and the pre-start page that previews it
-    /// must not disagree about which shape they are in; so the rule compares
-    /// the two arrangements at the same allowance on both axes, exactly as it
-    /// spends the chrome *constant* rather than any chrome actually on screen.
-    /// What the board screen then declines to spend is the board screen's own.
+    /// does not — see `stackedGeometry` — and **that cannot change the answer**.
+    /// Where the stacked candidate is bound by the width, it is already the
+    /// larger board by construction: it is fitted into the same width less 48
+    /// points where the side-by-side candidate is fitted into that width less
+    /// the panel as well, so the rule has chosen stacked before any air is
+    /// argued about. Side by side therefore wins only where the stacked
+    /// candidate is bound by its height or standing at its maximum footprint,
+    /// and neither of those moves when the air beside the board does. What is
+    /// left is one probe answering for every page in the shape, which is what a
+    /// board and the pre-start page that previews it need in order not to
+    /// disagree about which shape they are in.
     private static func stackedPitch(in size: CGSize, game: GameKind) -> CGFloat? {
         BoardGeometry.fitting(stackedSpace(in: size, chrome: stackedChromeHeight,
                                            air: boardPadding),
