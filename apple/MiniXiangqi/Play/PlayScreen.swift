@@ -737,8 +737,6 @@ struct PlayScreen: View {
             }
 
             if carriesFlip { flipControl(motion, worded: worded) }
-
-            Spacer(minLength: 0)
         }
     }
 
@@ -840,12 +838,30 @@ struct PlayScreen: View {
     @ViewBuilder
     private func controlCluster(_ game: Game, _ motion: PlayMotion) -> some View {
         let finished = showsFinishedScene(game, motion)
+        // Every arrangement but the last is drawn at the width its own words
+        // need. An `HStack` proposes its children shares of the width it was
+        // given rather than what each asks for, and it does not iterate: what a
+        // child hands back is not offered again, so the last control can be
+        // starved by a few points while the row still has room to spare.
+        // Measured on a 402-point iPhone, English, the finished row: 350 points
+        // of words in 370 points of space, and 翻转棋盘 drawn as "Flip Boa…".
+        // A row at its own width proposes each control what it asked for.
+        //
+        // **The last arrangement is left compressible on purpose.** It is what
+        // is drawn when nothing fits — an accessibility text size, mainly — and
+        // a row that cannot yield there would run past the edge of the screen,
+        // which is the one thing the contract asks of this cluster. A word
+        // shortened is still a control on screen.
         let arrangements = ViewThatFits(in: .horizontal) {
-            controls(game, motion, worded: true, carriesFlip: true)
-            wrappedControls(game, motion, worded: true)
-            controls(game, motion, worded: false, carriesFlip: true)
+            atItsOwnWidth(controls(game, motion, worded: true, carriesFlip: true))
+            atItsOwnWidth(wrappedControls(game, motion, worded: true))
+            atItsOwnWidth(controls(game, motion, worded: false, carriesFlip: true))
             wrappedControls(game, motion, worded: false)
         }
+        // The row reads from the leading edge, and it is placed there from
+        // outside rather than pushed there by a trailing spacer — a spacer is
+        // one more child to divide the width among.
+        .frame(maxWidth: .infinity, alignment: .leading)
         if policy.reduceMotion {
             arrangements
                 .id(finished)
@@ -854,6 +870,14 @@ struct PlayScreen: View {
             arrangements
                 .animation(Motion.stateFadeAnimation, value: finished)
         }
+    }
+
+    /// An arrangement drawn at the width its own contents ask for, rather than
+    /// at a share of the width the page has. It is the row that is fixed, not
+    /// the labels: a label of its own fixed width cannot give way anywhere,
+    /// including in the arrangement that is drawn when nothing fits.
+    private func atItsOwnWidth(_ row: some View) -> some View {
+        row.fixedSize(horizontal: true, vertical: false)
     }
 
     /// Whether the cluster is standing in the finished scene.
@@ -875,10 +899,7 @@ struct PlayScreen: View {
                                  worded: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             controls(game, motion, worded: worded, carriesFlip: false)
-            HStack(spacing: 8) {
-                flipControl(motion, worded: true)
-                Spacer(minLength: 0)
-            }
+            flipControl(motion, worded: true)
         }
     }
 
