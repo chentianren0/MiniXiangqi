@@ -3,11 +3,16 @@
 #include "mxq_build_config.h"
 #include "mxq_core_state.hpp"
 #include "mxq_internal.hpp"
+#include "mxq_notation.hpp"
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
 #include "mxq_search.hpp"
 #include "mxq_session.hpp"
+#endif
+
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+#include "mxq_rapfi_bridge.hpp"
 #endif
 
 #include <cassert>
@@ -234,6 +239,25 @@ MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game, MxqGameProfile *out,
     }
 
     out->game = game;
+
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    /* The placement games' pins live in the second bridge, and they are asked of
+     * it for the reason the first bridge is asked below: the bridge is what
+     * pairs a game with the weights it verifies, and a report assembled beside
+     * it could name a pairing the bridge would refuse. Renju pins a network per
+     * side and this field carries one, so it carries the pair's — see
+     * MxqGameProfile. */
+    if (mxq::notation::move_class_of(game) ==
+        mxq::notation::MoveClass::Placement) {
+        const mxq::rapfi::Rules rules = mxq::rapfi::rules_of(game);
+        mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
+                          mxq::rapfi::rules_variant_id(rules));
+        mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
+                          mxq::rapfi::rules_nnue_sha256(rules));
+        return MXQ_OK;
+    }
+#endif
+
 #if defined(MXQ_ENABLE_RULES_FACADE)
     /* Read from the bridge's own pinned rows rather than from the build
      * configuration a second time: the bridge is what pairs a variant with the

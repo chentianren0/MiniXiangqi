@@ -7,12 +7,18 @@
  * the C interface. It is the counterpart of mxq_engine_bridge.hpp for the second
  * engine, and it is deliberately shaped like it.
  *
- * What this stage does NOT contain is as deliberate as what it does. There is no
- * legality answer, no result adjudication, no forbidden-point query and no
- * notation: those are the rules adapter, and they are a stage of their own. This
- * is search alone — prepare, think, cancel, release — and the vocabulary it
- * needs for that is a rule, a list of points already played, a thinking time,
- * and a point to play.
+ * It has two sides, exactly as the first bridge does: a rules side that answers
+ * legality and adjudication from the engine's own board machinery, and a search
+ * side that prepares, thinks, cancels and releases. They share the engine's
+ * process-global state and the mutex that serialises every mutation of it.
+ *
+ * The rules side is an adapter and not an implementation. Every question it
+ * answers is put to the engine's own tables — a forbidden point to
+ * Board::checkForbiddenPoint, a completed five to the per-rule pattern the board
+ * already maintains for the point being played — because the vendored engine is
+ * the rules authority for these games exactly as the vendored fork is for the
+ * xiangqi ones. A second reading here would be a second implementation, and two
+ * implementations of a rule disagree the day one of them is corrected.
  *
  * This engine reports failure by throwing, and docs/architecture.md forbids an
  * exception crossing the core's boundary, so every entry point below contains
@@ -69,6 +75,28 @@ enum class Rules {
  * weights are pinned under. */
 const char *rules_id(Rules rules);
 
+/* The rules one game is played under. The two vocabularies are deliberately
+ * separate, for the reason the first bridge's variant_of gives: MxqGameKind is a
+ * ruleset the product offers and an archive records, Rules is a configuration
+ * this engine can be asked to run, and the mapping is this function rather than
+ * an assumption that the enumerators line up. */
+Rules rules_of(MxqGameKind game);
+
+/* The engine's own name for a rule at this board size — what MxqGameProfile
+ * reports as the variant, and what a saved diagnostic names the configuration a
+ * move came from by. */
+const char *rules_variant_id(Rules rules);
+
+/* The SHA-256 pinned for that rule's network, lowercase hexadecimal. Where a
+ * rule pins a network per side it is the one Black plays with: the pins move
+ * together in the manifest, so one of them names the pair. */
+const char *rules_nnue_sha256(Rules rules);
+
+/* The revision this engine is vendored at. The core reports one fork revision
+ * through MxqVersion and it is the first engine's; this is the second's, and it
+ * is what a placement game's profile identifier carries. */
+const char *fork_revision();
+
 /* A point on the board, in the engine's own coordinates: x across, y up, both
  * zero-based, both below kBoardSize. The core's own notation for these games is
  * the rules adapter's business and is not decided here. */
@@ -82,6 +110,74 @@ struct Point {
  * read without a lock, exactly as the tables they build are. */
 Rules active_rules();
 bool  is_configured();
+
+/* ------------------------------------------------------------------------- */
+/* The rules side of the bridge                                              */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Adjudication as the core's contract describes it, independent of how the
+ * engine happens to hold it. The engine keeps a per-point, per-side, per-rule
+ * pattern and a forbidden-point predicate; MxqGameStatus wants a state and a
+ * reason. Translating once, here, keeps every caller from re-deriving it.
+ *
+ * at_occurrence is not among these: no outcome of a placement game is
+ * repetition-based, because no position of one ever occurs twice — every ply
+ * adds a stone and none is ever removed.
+ */
+struct Adjudication {
+    MxqGameState state;
+    MxqEndReason reason;
+};
+
+/* Why a replay did not complete. Returned rather than inferred from the detail
+ * string, for the reason the first bridge gives: move text reaches this from
+ * imported archives, so a history could otherwise name itself into the wrong
+ * error by containing the word the caller was matching on. */
+enum class ReplayError {
+    None,
+    StartFenInvalid, /* not a position of this game, or not the one it begins
+                      * from */
+    IllegalMove,     /* first_illegal is the offending index */
+    Faulted,         /* the engine threw building or playing the board */
+};
+
+/*
+ * Replay a placement game's line from its starting position, and report where it
+ * arrived.
+ *
+ * The game is the parameter rather than the rule, because a rules answer is a
+ * game's: the rule the engine is asked for and the notation the answer is
+ * spelled in both follow from it, and deriving them here is what stops a caller
+ * pairing one game's board with another's rule.
+ *
+ * It takes no prepared engine and no configuration. The pattern tables it reads
+ * are built once at static initialisation and are constants of the rule; the
+ * board is local to the call. So a rules query is answerable before any
+ * preparation and after any teardown, which is what the session surface needs —
+ * a game is played, undone and replayed whether or not an engine is up.
+ *
+ * start_fen must be the position this game begins from. These games have exactly
+ * one, and it is the empty board: the facade's whole contract is a starting
+ * position plus a complete history, and a board with stones on it is a position
+ * reached by play rather than one to begin from. Accepting one would be offering
+ * a start-from-position feature in two games and not the others, without the
+ * setup-legality predicate docs/game-data.md requires of any such feature.
+ *
+ * out_legal_moves, when asked for, is every point a legal placement may go on,
+ * in a fixed order: rank 1 upward, file a rightward. A finished game has none,
+ * exactly as a checkmated position has none.
+ *
+ * On anything but ReplayError::None the outputs are unspecified, as
+ * mxq_rules_evaluate documents. Takes g_mutex: it reads state configure() and
+ * deconfigure() write, and holds it for a board replay rather than for a think.
+ */
+ReplayError replay(MxqGameKind game, const char *start_fen,
+                   const char *const *moves, size_t move_count,
+                   std::string &out_fen, uint32_t &out_ply,
+                   Adjudication &out_adj,
+                   std::vector<std::string> *out_legal_moves,
+                   size_t &first_illegal, std::string &detail);
 
 /* Why configure() refused. Each maps onto one engine-domain status of the error
  * taxonomy in docs/core-interface.md. */

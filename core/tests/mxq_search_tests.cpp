@@ -632,13 +632,17 @@ void case_game_profile() {
 
 #if defined(NDEBUG)
     /* A game outside the closed vocabulary is a programming error, so this
-     * expectation is only observable where the assertion is compiled out. */
+     * expectation is only observable where the assertion is compiled out. The
+     * value is one past the last game any build carries rather than a literal
+     * that a widened vocabulary would quietly turn into a game this core does
+     * play — which is exactly what it did the first time the vocabulary grew. */
     MxqGameProfile refused;
     std::memset(&refused, 0, sizeof(refused));
     refused.struct_size = static_cast<uint32_t>(sizeof(refused));
     err = make_error();
-    c.check_status(mxq_core_game_profile(static_cast<MxqGameKind>(2), &refused,
-                                         &err),
+    c.check_status(mxq_core_game_profile(
+                       static_cast<MxqGameKind>(MXQ_GAME_KIND_RENJU + 1),
+                       &refused, &err),
                    MXQ_ERR_ARG_RANGE, "a game this core does not play");
 #endif
     c.report();

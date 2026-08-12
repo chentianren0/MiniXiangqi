@@ -8,6 +8,7 @@
 #include "mxq_engine_bridge.hpp"
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
+#include "mxq_rules.hpp"
 #include "mxq_sha256.hpp"
 #include "mxq_store.hpp"
 
@@ -144,7 +145,7 @@ struct Replayed {
     std::string              fen;
     bool                     in_check = false;
     uint32_t                 ply = 0;
-    engine::Adjudication     adj{};
+    rules::Adjudication      adj{};
     std::vector<std::string> legal;
 };
 
@@ -169,12 +170,12 @@ MxqStatus replay_prefix(const MxqGame &game, size_t ply_count, bool want_legal,
      * line runs from and which ruleset it is replayed under. Neither is derived
      * from the other, and neither is a default. */
     const MxqGameKind kind = game.config.game;
-    const engine::ReplayError rc = engine::replay(
-        engine::variant_of(kind), notation::start_fen(kind),
+    const rules::ReplayError rc = rules::replay(
+        kind, notation::start_fen(kind),
         moves.empty() ? nullptr : moves.data(), moves.size(), out.fen,
         out.in_check, out.ply, out.adj, want_legal ? &out.legal : nullptr,
         first_illegal, detail);
-    if (rc != engine::ReplayError::None) {
+    if (rc != rules::ReplayError::None) {
         fill_error(err, MXQ_ERR_INTERNAL_INVARIANT,
                    ("the retained line no longer replays: " + detail).c_str());
         return MXQ_ERR_INTERNAL_INVARIANT;
@@ -1050,6 +1051,24 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     if (rc != MXQ_OK) {
         return rc;
     }
+    /*
+     * Every session is store-attached and every store row carries the document
+     * the game encodes to, so a game this build's format has no rules_id for
+     * cannot have a session at all. The rules facade answers for it in full; it
+     * is persistence alone that refuses, and it refuses here rather than at the
+     * store's own constraint so that the diagnostic says which of the two facts
+     * is missing.
+     *
+     * MXQ_ERR_ARG_RANGE without asserting, by the split mxq.h documents: what
+     * this reports is two parts of one core at different stages of one widening,
+     * not a caller outside a vocabulary it owns.
+     */
+    if (!mxq::archive::records_game(config->game)) {
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "this build's archive format has no rules_id for that "
+                        "game, so no session can be created for one");
+        return MXQ_ERR_ARG_RANGE;
+    }
 
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
     const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;
@@ -1601,15 +1620,15 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     std::string detail;
     bool in_check = false;
     uint32_t ply = 0;
-    mxq::engine::Adjudication adj{};
+    mxq::rules::Adjudication adj{};
     size_t first_illegal = 0;
-    switch (mxq::engine::replay(mxq::engine::variant_of(game->config.game),
-                                mxq::notation::start_fen(game->config.game),
-                                texts.data(), texts.size(), fen, in_check, ply,
-                                adj, nullptr, first_illegal, detail)) {
-    case mxq::engine::ReplayError::None:
+    switch (mxq::rules::replay(game->config.game,
+                               mxq::notation::start_fen(game->config.game),
+                               texts.data(), texts.size(), fen, in_check, ply,
+                               adj, nullptr, first_illegal, detail)) {
+    case mxq::rules::ReplayError::None:
         break;
-    case mxq::engine::ReplayError::IllegalMove:
+    case mxq::rules::ReplayError::IllegalMove:
         if (first_illegal + 1 != line.size()) {
             /* An earlier ply stopped replaying: the retained line was legal
              * when it was committed, so this is not the caller's move being
@@ -1622,8 +1641,9 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
         mxq::fill_error(err, MXQ_ERR_RULES_ILLEGAL_MOVE,
                         "the move is not legal in this position");
         return MXQ_ERR_RULES_ILLEGAL_MOVE;
-    case mxq::engine::ReplayError::StartFenInvalid:
-    case mxq::engine::ReplayError::NotInitialised:
+    case mxq::rules::ReplayError::StartFenInvalid:
+    case mxq::rules::ReplayError::NotInitialised:
+    case mxq::rules::ReplayError::Faulted:
         mxq::fill_error(err, MXQ_ERR_INTERNAL_INVARIANT, detail.c_str());
         return MXQ_ERR_INTERNAL_INVARIANT;
     }
