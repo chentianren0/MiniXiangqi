@@ -43,6 +43,7 @@
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
+#include "mxq_rules.hpp"
 #include "mxq_session.hpp"
 #endif
 
@@ -1017,7 +1018,7 @@ bool terminal(MxqGameState state) {
  * replay ever runs.
  */
 MxqStatus check_terminal_pair(const Decoded &decoded,
-                              const engine::Adjudication &adj, MxqError *err) {
+                              const rules::Adjudication &adj, MxqError *err) {
     const std::string replayed = state_text(adj.state);
 
     if (decoded.end_reason == MXQ_END_REASON_RESIGNATION ||
@@ -1103,25 +1104,27 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
     std::string detail;
     bool in_check = false;
     uint32_t ply = 0;
-    engine::Adjudication adj{};
+    rules::Adjudication adj{};
     size_t first_illegal = 0;
 
-    switch (engine::replay(engine::variant_of(decoded.game),
-                           decoded.start_fen.c_str(),
-                           moves.empty() ? nullptr : moves.data(), moves.size(),
-                           fen, in_check, ply, adj, nullptr, first_illegal,
-                           detail)) {
-    case engine::ReplayError::None:
+    switch (rules::replay(decoded.game, decoded.start_fen.c_str(),
+                          moves.empty() ? nullptr : moves.data(), moves.size(),
+                          fen, in_check, ply, adj, nullptr, first_illegal,
+                          detail)) {
+    case rules::ReplayError::None:
         break;
-    case engine::ReplayError::IllegalMove:
+    case rules::ReplayError::IllegalMove:
         fill_error_index(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
                          ("the move line is not legal: " + detail).c_str(),
                          first_illegal);
         return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
-    case engine::ReplayError::StartFenInvalid:
-    case engine::ReplayError::NotInitialised:
+    case rules::ReplayError::StartFenInvalid:
+    case rules::ReplayError::NotInitialised:
         fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY, detail.c_str());
         return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    case rules::ReplayError::Faulted:
+        fill_error(err, MXQ_ERR_RESOURCE_ALLOCATION_FAILED, detail.c_str());
+        return MXQ_ERR_RESOURCE_ALLOCATION_FAILED;
     }
 
     if (!decoded.completed) {

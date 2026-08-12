@@ -73,6 +73,18 @@ std::string document_bytes(const Record &record, const std::string &content);
  * YYYY-MM-DDTHH:MM:SS.sssZ, the one spelling of an instant this format has. */
 std::string timestamp_text(int64_t epoch_ms);
 
+/*
+ * Whether this build's format records a game at all.
+ *
+ * It is rules_id_text's own domain asked as a question rather than an answer,
+ * and it exists because the core plays more games than its format writes: the
+ * game vocabulary and the format's rules_id vocabulary widen in their own
+ * stages, and between those stages a game with no rules_id is one no session can
+ * be created for. Every caller that would otherwise hand rules_id_text a game it
+ * has no name for asks this first, and the two widen together.
+ */
+bool records_game(MxqGameKind game);
+
 /* The closed serialised vocabularies, for the store's summary columns as much
  * as for the document. Absence is a null pointer, matching the archive, which
  * omits the member, and the store, which holds SQL NULL. */

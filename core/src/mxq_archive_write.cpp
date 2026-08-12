@@ -206,6 +206,18 @@ std::string timestamp_text(int64_t epoch_ms) {
 /* The closed vocabularies                                                 */
 /* ---------------------------------------------------------------------- */
 
+/* The same two rows as rules_id_text below, asked as a question. They widen
+ * together and are adjacent so that they cannot be widened apart. */
+bool records_game(MxqGameKind game) {
+    switch (game) {
+    case MXQ_GAME_KIND_MINI_XIANGQI:
+    case MXQ_GAME_KIND_XIANGQI:
+        return true;
+    default: break;
+    }
+    return false;
+}
+
 const char *rules_id_text(MxqGameKind game) {
     switch (game) {
     case MXQ_GAME_KIND_MINI_XIANGQI: return "minixiangqi";

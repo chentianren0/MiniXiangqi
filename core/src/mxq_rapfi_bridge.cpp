@@ -3,6 +3,7 @@
 #include "mxq_rapfi_bridge.hpp"
 
 #include "mxq_build_config.h"
+#include "mxq_notation.hpp"
 #include "mxq_sha256.hpp"
 
 #include "config.h"
@@ -19,6 +20,7 @@
 #include "search/searcher.h"
 #include "search/searchthread.h"
 
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -52,6 +54,8 @@ struct WeightPin {
 
 struct RulesPin {
     const char      *id;
+    const char      *variant_id; /* the engine's own name for the rule, at the
+                                  * one board size these games are played on */
     ::Rule           engine_rule;
     WeightPin        black;
     const WeightPin *white; /* null when `black` serves both sides */
@@ -63,11 +67,13 @@ constexpr WeightPin kRenjuWhite = {MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME,
 
 constexpr RulesPin kRulesPins[] = {
     {"gomoku-15",
+     "freestyle15",
      ::Rule::FREESTYLE,
      {MXQ_BUILD_GOMOKU_NNUE_FILENAME, MXQ_BUILD_GOMOKU_NNUE_BYTE_LENGTH,
       MXQ_BUILD_GOMOKU_NNUE_SHA256},
      nullptr},
     {"renju",
+     "renju15",
      ::Rule::RENJU,
      {MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME, MXQ_BUILD_RENJU_BLACK_NNUE_BYTE_LENGTH,
       MXQ_BUILD_RENJU_BLACK_NNUE_SHA256},
@@ -311,12 +317,233 @@ const char *rules_id(Rules rules) {
     return pin_of(rules).id;
 }
 
+Rules rules_of(MxqGameKind game) {
+    switch (game) {
+    case MXQ_GAME_KIND_GOMOKU_15:
+        return Rules::Gomoku15;
+    case MXQ_GAME_KIND_RENJU:
+        return Rules::Renju;
+    default:
+        break;
+    }
+    /* Every caller passes a game this engine plays; the gate above them is
+     * notation::move_class_of, which is the one place that knows which engine a
+     * game belongs to. Reaching here is that gate having been skipped. */
+    assert(false && "a game this engine does not play reached the bridge");
+    return Rules::Gomoku15;
+}
+
+const char *rules_variant_id(Rules rules) {
+    return pin_of(rules).variant_id;
+}
+
+const char *rules_nnue_sha256(Rules rules) {
+    return pin_of(rules).black.sha256;
+}
+
+const char *fork_revision() {
+    return MXQ_BUILD_GOMOKU_FORK_REVISION;
+}
+
 Rules active_rules() {
     return g_active_rules.load(std::memory_order_acquire);
 }
 
 bool is_configured() {
     return g_configured.load(std::memory_order_acquire);
+}
+
+/* ------------------------------------------------------------------------- */
+/* The rules side                                                            */
+/* ------------------------------------------------------------------------- */
+
+namespace {
+
+/*
+ * The engine's two sides and the core's, written out rather than left to the
+ * enumerators happening to agree.
+ *
+ * The engine's BLACK moves first in these games; the core's MXQ_COLOR_RED is
+ * the side that moves first in every game it plays. So they are the same side,
+ * and the placement games are the ones where the core's "red" is drawn as a
+ * black stone — a naming the frontend resolves, exactly as it resolves
+ * MXQ_GAME_KIND_MINI_XIANGQI into a word a player reads.
+ */
+MxqColor color_of(::Color side) {
+    return side == BLACK ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+}
+
+/* Which state a completed five gives, for the side that completed it. */
+MxqGameState win_for(::Color side) {
+    return side == BLACK ? MXQ_GAME_RED_WINS : MXQ_GAME_BLACK_WINS;
+}
+
+/*
+ * The body of replay(), with g_mutex held and with exceptions still able to
+ * escape it. replay() below is the guard around both.
+ *
+ * Every rules answer in here is the engine's own. A point is forbidden exactly
+ * when Board::checkForbiddenPoint says so — the search-independent query that
+ * resolves the recursive double-three cases rather than the table's first-pass
+ * classification. A placement completes a five exactly when the point's own
+ * Pattern4 for the side about to play it is A_FIVE, read before the stone lands.
+ * That one read carries all three of the rule differences this campaign named,
+ * because the tables it comes from are built per rule and per side:
+ *
+ *   - Freestyle checks no overline, so six in a row contains a five and wins for
+ *     either side.
+ *   - Renju checks the overline for Black alone, so Black's six is FORBID rather
+ *     than a five, and White's six still wins.
+ *   - A five that is also a double-four or a double-three is a five: the
+ *     classification answers A_FIVE before it considers forbidding anything, so
+ *     the move that wins is never the move that is refused.
+ *
+ * Nothing above restates any of that. The tables are the statement.
+ */
+ReplayError replay_locked(MxqGameKind game, const char *const *moves,
+                          size_t move_count, std::string &out_fen,
+                          uint32_t &out_ply, Adjudication &out_adj,
+                          std::vector<std::string> *out_legal_moves,
+                          size_t &first_illegal, std::string &detail) {
+    const RulesPin &pin = pin_of(rules_of(game));
+    const bool      renju = pin.engine_rule == ::Rule::RENJU;
+
+    Board board(kBoardSize);
+    board.newGame(pin.engine_rule);
+
+    out_adj.state = MXQ_GAME_ONGOING;
+    out_adj.reason = MXQ_END_REASON_NONE;
+
+    for (size_t i = 0; i < move_count; ++i) {
+        const char *text = (moves == nullptr) ? nullptr : moves[i];
+        int32_t     file = 0;
+        int32_t     rank = 0;
+        if (text == nullptr ||
+            !mxq::notation::point_of_square(game, text, file, rank)) {
+            first_illegal = i;
+            detail = "ply " + std::to_string(i) + " is not a point of this board";
+            return ReplayError::IllegalMove;
+        }
+        /* A move after the game ended is not a move of this game. The line is
+         * refused at the first ply that could not have been played, which is
+         * what MXQ_ERR_RULES_INVALID_HISTORY's index means. */
+        if (out_adj.state != MXQ_GAME_ONGOING) {
+            first_illegal = i;
+            detail = "ply " + std::to_string(i) + " follows the end of the game";
+            return ReplayError::IllegalMove;
+        }
+        const Pos pos(file, rank);
+        if (!board.isEmpty(pos)) {
+            first_illegal = i;
+            detail = "ply " + std::to_string(i) + " places a stone on an "
+                     "occupied point";
+            return ReplayError::IllegalMove;
+        }
+        const ::Color mover = board.sideToMove();
+        if (renju && mover == BLACK && board.checkForbiddenPoint(pos)) {
+            first_illegal = i;
+            detail = "ply " + std::to_string(i) + " is a forbidden point for "
+                     "Black under these rules";
+            return ReplayError::IllegalMove;
+        }
+
+        const Pattern4 completed = board.pattern4(pos, mover);
+        board.move(pin.engine_rule, pos);
+
+        if (completed == A_FIVE) {
+            out_adj.state = win_for(mover);
+            out_adj.reason = MXQ_END_REASON_FIVE_IN_A_ROW;
+        } else if (board.movesLeft() == 0) {
+            out_adj.state = MXQ_GAME_DRAW;
+            out_adj.reason = MXQ_END_REASON_BOARD_FULL;
+        }
+    }
+
+    out_ply = static_cast<uint32_t>(move_count);
+
+    std::vector<MxqColor> cells(static_cast<size_t>(kBoardSize) *
+                                    static_cast<size_t>(kBoardSize),
+                                MXQ_COLOR_NONE);
+    for (int32_t rank = 0; rank < kBoardSize; ++rank) {
+        for (int32_t file = 0; file < kBoardSize; ++file) {
+            const ::Color cell = board.get(Pos(file, rank));
+            if (cell == BLACK || cell == WHITE) {
+                cells[static_cast<size_t>(rank) *
+                          static_cast<size_t>(kBoardSize) +
+                      static_cast<size_t>(file)] = color_of(cell);
+            }
+        }
+    }
+    assert(color_of(board.sideToMove()) ==
+               ((move_count % 2u == 0u) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK) &&
+           "the engine's side to move and plain alternation disagree");
+    out_fen = mxq::notation::write_placement(game, cells.data(), cells.size(),
+                                             out_ply);
+
+    if (out_legal_moves != nullptr) {
+        out_legal_moves->clear();
+        /* A finished game offers no moves, exactly as a checkmated position
+         * offers none: the affordance and the outcome are one answer. */
+        if (out_adj.state == MXQ_GAME_ONGOING) {
+            const ::Color mover = board.sideToMove();
+            const bool    forbidden_applies = renju && mover == BLACK;
+            out_legal_moves->reserve(
+                static_cast<size_t>(board.movesLeft()));
+            for (int32_t rank = 0; rank < kBoardSize; ++rank) {
+                for (int32_t file = 0; file < kBoardSize; ++file) {
+                    const Pos pos(file, rank);
+                    if (!board.isEmpty(pos)) {
+                        continue;
+                    }
+                    if (forbidden_applies && board.checkForbiddenPoint(pos)) {
+                        continue;
+                    }
+                    out_legal_moves->push_back(
+                        mxq::notation::square_of_point(game, file, rank));
+                }
+            }
+        }
+    }
+    return ReplayError::None;
+}
+
+} /* namespace */
+
+ReplayError replay(MxqGameKind game, const char *start_fen,
+                   const char *const *moves, size_t move_count,
+                   std::string &out_fen, uint32_t &out_ply,
+                   Adjudication &out_adj,
+                   std::vector<std::string> *out_legal_moves,
+                   size_t &first_illegal, std::string &detail) {
+    first_illegal = 0;
+
+    if (start_fen == nullptr) {
+        detail = "the starting position was null";
+        return ReplayError::StartFenInvalid;
+    }
+    if (std::strcmp(start_fen, mxq::notation::start_fen(game)) != 0) {
+        std::string why;
+        if (!mxq::notation::well_formed_placement(game, start_fen, why)) {
+            detail = why;
+        } else {
+            detail = "this game begins from the empty board and from no other "
+                     "position";
+        }
+        return ReplayError::StartFenInvalid;
+    }
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    try {
+        return replay_locked(game, moves, move_count, out_fen, out_ply, out_adj,
+                             out_legal_moves, first_illegal, detail);
+    } catch (const std::exception &e) {
+        /* A board is 58 KiB of heap at this size and the vectors above are the
+         * only other allocation here, so what reaches this is an allocation the
+         * system could not meet. Reported as the engine faulting rather than as
+         * a rules answer: nothing about the position was decided. */
+        detail = std::string("the engine faulted replaying the line: ") + e.what();
+        return ReplayError::Faulted;
+    }
 }
 
 ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
