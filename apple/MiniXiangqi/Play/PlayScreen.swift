@@ -231,7 +231,10 @@ struct PlayScreen: View {
         // message the pre-start notice carries and the same 取消 / 重试, every
         // retry re-probing fresh. Only the memory failures take that message:
         // a damaged installation is a different situation, and naming the wrong
-        // cause is worse than naming none.
+        // cause is worse than naming none. What it takes instead is the hint's
+        // own body, which names neither the cause nor an opponent: the AI's
+        // stalled line belongs to the AI's own slot, and a Free Play game that
+        // asked for a hint has no opponent for a notice to speak about.
         .alert("alert.hintUnavailable.title",
                isPresented: Binding(get: { play.hint?.preparationFailure != nil },
                                     set: { if !$0 { play.hint?.dismissPreparationFailure() } })) {
@@ -240,7 +243,7 @@ struct PlayScreen: View {
         } message: {
             Text(play.hint?.preparationFailureNamesMemory ?? true
                  ? LocalizedStringKey("alert.aiUnavailable.message")
-                 : LocalizedStringKey("status.aiUnavailable"))
+                 : LocalizedStringKey("alert.hintUnavailable.message"))
         }
         // The suggestion, announced as it appears — composed from the board's
         // own point vocabulary, so a reader who cannot see the strengthened
