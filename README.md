@@ -65,7 +65,8 @@ ctest --test-dir build --output-on-failure
 - [Architecture](docs/architecture.md) — the shared core, native frontends, dependency direction, concurrency, and lifecycle.
 - [Core C interface](docs/core-interface.md) — the core's C surface: modules, functions, error taxonomy, threading contract, and versioning.
 - [Game data](docs/game-data.md) — the library store, versioned game archive, saving, history, migrations, import, and export.
-- [Engine integration](docs/engine-integration.md) — the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
+- [Engine integration](docs/engine-integration.md) — the movement games' engine: the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
+- [Placement engine integration](docs/placement-engine-integration.md) — the placement games' engine: its pins, its preflight, the memory policy it shares with the first, and its failure boundary.
 - [Testing](docs/testing.md) — durable validation requirements and release gates.
 
 ## Distribution and license
