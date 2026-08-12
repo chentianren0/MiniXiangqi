@@ -261,13 +261,13 @@ struct ReplayTests {
     /// screen makes, with the seams a test drives: the animator whose
     /// completions the test fires, and the feedback it listens to.
     private func replay(of line: [String],
-                        game: GameKind = .miniXiangqi,
+                        configuration: GameConfiguration = .freePlay(game: .miniXiangqi),
                         reduceMotion: Bool = false,
                         soundEnabled: Bool? = true) throws
         -> (replay: Replay, animator: ManualAnimator, heard: FeedbackRecorder,
             notation: [MoveReading], fens: [String]) {
         let core = try TestCores.fresh()
-        try core.create(.freePlay(game: game))
+        try core.create(configuration)
         let played = try Game(rules: core)
         try played.replay(line)
         let notation = played.notation
@@ -317,20 +317,33 @@ struct ReplayTests {
 
     /// A placement record replays with no orientation and no control for one.
     ///
+    /// **The record is the one that would have opened upside down**: a
+    /// human-versus-AI game whose machine moved first, so the human holds the
+    /// white stones and `humanSide` is black — the condition replay flipped on,
+    /// and the only record shape that can tell the fix from the absence of one.
+    /// A Free Play record has no human side at all and would pass either way.
+    ///
     /// It would catch the flip returning to the one surface the play cluster's
-    /// own rule does not reach: replay reads the record rather than a live
-    /// game, so nothing there had asked whether the game has an orientation at
-    /// all. It pins the opening orientation with it, because a record whose
-    /// human took the white stones would otherwise open upside down with no
-    /// control left to put it back.
+    /// own rule does not reach: replay reads a record rather than a live game,
+    /// so nothing there had asked whether the game has an orientation.
+    ///
+    /// **What it pins is the model's answer, not the transport's row.** The
+    /// control is drawn from `carriesFlip`, and that the view honours it is
+    /// read at the surface — this asserts the value every arrangement of that
+    /// row is built from.
     @Test("A placement record replays unflipped, with no flip control")
     func placementReplayCarriesNoFlip() throws {
-        let (replay, _, _, _, _) = try replay(of: Self.fiveInARowLine,
-                                              game: .gomoku15)
+        let (replay, _, _, _, _) = try replay(
+            of: Self.fiveInARowLine,
+            configuration: .humanVersusAI(game: .gomoku15, humanSide: .black,
+                                          level: .fast, choice: .aiFirst))
         defer { replay.close() }
 
+        #expect(replay.record.humanSide == .black,
+                "the machine moved first, so the human holds the white stones")
         #expect(!replay.carriesFlip, "stones have no orientation to read")
-        #expect(!replay.flipped)
+        #expect(!replay.flipped,
+                "and a board with no orientation opens as it is drawn")
         #expect(replay.moves == Self.fiveInARowLine,
                 "and it is the placement record it says it is")
     }

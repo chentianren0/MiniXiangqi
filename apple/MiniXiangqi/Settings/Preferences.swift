@@ -21,7 +21,7 @@
 //
 // **Every one is read at the moment of use** and nothing is cached at launch, so
 // a switch takes effect on the next event rather than on the next run. That was
-// already the rule the sound gate was written to; all five share it now, and
+// already the rule the sound gate was written to; all eight share it now, and
 // share one reader, so that "absent means the accepted default" is stated in one
 // place instead of once per consumer.
 //
@@ -41,7 +41,7 @@ import Foundation
 
 enum Preferences {
 
-    // MARK: - The five
+    // MARK: - The eight
 
     /// Whether the board is heard: the gate in front of `Feedback`'s heard half.
     static let sound = Flag(key: "sound.enabled", whenAbsent: true)

@@ -1,4 +1,4 @@
-// The four samples, held against what the app names and what it accepted.
+// The five samples, held against what the app names and what it accepted.
 //
 // docs/interaction-design.md, "Sound and haptics": the board's sounds are
 // short, and the conclusion is the only one long enough to be a gesture. The
