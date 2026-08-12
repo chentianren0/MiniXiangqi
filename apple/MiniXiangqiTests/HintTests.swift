@@ -21,11 +21,20 @@ struct HintTests {
 
     private static let board = GameKind.miniXiangqi.board
 
+    /// The start position a third time, which is what makes the draw
+    /// claimable: both cannons step out and back twice, taking nothing and
+    /// checking nothing, so the repetition is the neutral one.
+    private static let shuffleLine = ["b1b2", "b7b6", "b2b1", "b6b7",
+                                      "b1b2", "b7b6", "b2b1", "b6b7"]
+
     private func point(_ name: String) -> Square { Square(name, on: Self.board)! }
 
     /// A board, its opponent and its hint, wired exactly as PlayState wires
     /// them — the commit order included, since that order is what keeps a hint
-    /// search out of the AI's turn.
+    /// search out of the AI's turn. That the order holds is asserted against
+    /// PlayState's own wiring rather than against this copy of it: a fixture
+    /// cannot answer for the closure it imitates, and one that tried would
+    /// stay green with the production cancel deleted.
     private struct Apparatus {
         let hint: Hint
         let opponent: Opponent
@@ -141,6 +150,27 @@ struct HintTests {
         apparatus.hint.request()
         #expect(apparatus.engine.startedHintSearches == 0)
         #expect(apparatus.engine.preparations == 0)
+    }
+
+    @Test("A claimable repetition nobody has claimed has its hint like any other position")
+    func aClaimableRepetitionIsOfferedAHint() throws {
+        let core = try TestCores.fresh()
+        try core.create(.freePlay(game: .miniXiangqi))
+        let apparatus = try makeApparatus(over: core)
+        try apparatus.game.replay(Self.shuffleLine)
+        apparatus.engine.markReady(for: .miniXiangqi)
+
+        #expect(apparatus.game.evaluation.claimAvailable, "the premise: the claim is standing")
+        #expect(!apparatus.game.isFinished,
+                "and an unclaimed repetition is an ongoing game, not a result")
+
+        #expect(apparatus.hint.isOffered)
+        apparatus.hint.request()
+        #expect(apparatus.engine.startedHintSearches == 1,
+                "a standing offer to end the game is not a reason to refuse advice about it")
+
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b2", game: apparatus.game))
+        #expect(apparatus.motion.suggested == point("b2"), "and the suggestion arrives")
     }
 
     // MARK: - What it thinks with
@@ -393,23 +423,38 @@ struct HintTests {
 
     @Test("The player's own commit cancels the hint before the reply is asked for")
     func theCommitCancelsTheHintBeforeTheReply() throws {
-        let apparatus = try makeApparatus(humanVersusAI())
-        apparatus.engine.markReady(for: .miniXiangqi)
-        apparatus.hint.request()
-        #expect(apparatus.engine.startedHintSearches == 1)
+        // Driven through PlayState rather than through the apparatus, because
+        // the ordering is a property of the wiring the application ships:
+        // asserted against the fixture's own copy of that wiring, this stays
+        // green with the production cancel deleted, which is the one thing it
+        // exists to catch. So the game is created the way 开始对局 creates one,
+        // and the move is played on the board that creation put up.
+        let core = try TestCores.fresh()
+        let engine = TestEngine()
+        let state = PlayState(core: core, engine: engine)
+        state.choose(PlaySelection(game: .miniXiangqi, mode: .humanVersusAI))
+        state.draft = SetupDraft(firstMover: .humanFirst, level: .fast)
+        state.startGame(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .board)
 
-        play("b1", "b4", apparatus)
+        let hint = try #require(state.hint)
+        let motion = try #require(state.motion)
+        hint.request()
+        #expect(engine.startedHintSearches == 1)
 
-        #expect(apparatus.engine.cancelledTickets == [1], "the hint search was cancelled")
-        let cancelled = try #require(apparatus.engine.events.firstIndex(of: .cancel(1)))
-        let replyRequested = try #require(apparatus.engine.events.firstIndex(of: .search(1000)))
+        motion.tap(point("b1"))
+        motion.tap(point("b4"))
+
+        #expect(engine.cancelledTickets == [1], "the hint search was cancelled")
+        let cancelled = try #require(engine.events.firstIndex(of: .cancel(1)))
+        let replyRequested = try #require(engine.events.firstIndex(of: .search(1000)))
         #expect(cancelled < replyRequested,
                 """
                 and cancelled before the reply was requested: the engine thread runs \
                 one search at a time, and a reply queued behind a hint waits for it
                 """)
-        #expect(apparatus.hint.activity == .idle)
-        #expect(apparatus.motion.suggested == nil)
+        #expect(hint.activity == .idle)
+        #expect(motion.suggested == nil)
     }
 
     @Test("Undo cancels the hint and takes the suggestion with it")
@@ -459,6 +504,39 @@ struct HintTests {
         // A late answer to the cancelled search shows nothing.
         apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
         #expect(apparatus.motion.suggested == nil)
+    }
+
+    @Test("Memory pressure puts a running hint down with the table it was thinking on")
+    func memoryPressurePutsTheHintDown() throws {
+        let apparatus = try makeApparatus(.freePlay(game: .miniXiangqi))
+        apparatus.engine.markReady(for: .miniXiangqi)
+        apparatus.hint.request()
+        apparatus.clock.advance(by: Motion.thinkingIndicatorDelay + 0.1)
+        #expect(apparatus.hint.activity == .thinking)
+
+        // What the memory-pressure handler calls, in the order it calls it —
+        // the same order the suspension takes, and for the same reason: the
+        // release cancels every search and then tears the table down, and a
+        // hint whose own state outlived that would be a suggestion about a
+        // board the engine has been taken out from under.
+        apparatus.hint.cancel()
+        apparatus.opponent.memoryPressure()
+
+        #expect(apparatus.engine.cancelledTickets == [1])
+        #expect(apparatus.engine.cancelAlls == 1)
+        #expect(apparatus.engine.teardowns == 1, "the table is released whole")
+        #expect(apparatus.hint.activity == .idle)
+        #expect(apparatus.motion.suggested == nil)
+
+        // A late answer to the cancelled search shows nothing.
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        #expect(apparatus.motion.suggested == nil)
+
+        // And nothing of the hint's outlived the release: the next request
+        // finds no engine standing and prepares one, from a fresh probe.
+        apparatus.hint.request()
+        #expect(apparatus.engine.preparations == 1)
+        #expect(apparatus.engine.startedHintSearches == 2)
     }
 
     @Test("Leaving the board puts the hint down and releases the engine it prepared")
