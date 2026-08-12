@@ -1,6 +1,6 @@
 # Testing
 
-This document owns the validation categories, fixture expectations, and release gates: which evidence a change or build of the Mini Xiangqi application requires. It does not record individual run results, run commands, or work status; those belong in the CI workflows, the platform READMEs, and GitHub Issues.
+This document owns the validation categories, fixture expectations, and release gates: which evidence a change or build of the Star River application requires. It does not record individual run results, run commands, or work status; those belong in the CI workflows, the platform READMEs, and GitHub Issues.
 
 > **Status: binding**, except for the thresholds this document names as owed — performance, memory, energy and thermal figures per AI profile, and the retained-evidence list for a distribution candidate.
 
