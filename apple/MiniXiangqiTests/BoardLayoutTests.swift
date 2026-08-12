@@ -445,6 +445,54 @@ struct BoardLayoutTests {
         #expect(BoardLayout.stackedChrome(in: ample, game: mini, asking: 260) == 260)
     }
 
+    // MARK: - The cluster's reserved slot
+
+    /// docs/interaction-design.md, "Layout shapes": in the stacked shape the
+    /// board's frame does not follow the controls. The slot is the cluster's
+    /// tallest arrangement, so the board is sized around one number whichever
+    /// arrangement is drawn in it — and the number is derived from a row rather
+    /// than from the cluster on screen, which is what makes it the same number
+    /// under both.
+    ///
+    /// What this would catch is the coupling coming back: a reservation that
+    /// was one row again, or the drawn arrangement's own height feeding the
+    /// geometry, moves the board every time a row comes or goes.
+    @Test("The cluster's slot is its tallest arrangement, whichever one is drawn")
+    func theClusterSlotIsTheTallestArrangement() {
+        // A row of controls, and the two arrangements a cluster of them is
+        // drawn as: one row, or two with the air between them. Both inside the
+        // air the cluster keeps above and below itself.
+        let row: CGFloat = 34
+        let air = BoardLayout.clusterAir
+        let oneRow = row + 2 * air
+        let twoRows = 2 * row + 3 * air
+
+        let reserved = BoardLayout.stackedCluster(row: row)
+        #expect(reserved == twoRows, "the slot is the taller of the two")
+        #expect(reserved > oneRow, "and the shorter one is drawn inside it")
+
+        // The board is then sized around the slot. This phone grants it whole,
+        // so the board is the same board under either arrangement — which is
+        // the whole of the rule.
+        let phone = CGSize(width: 402, height: 720)
+        let chrome = BoardLayout.stackedChrome(in: phone, game: mini, asking: reserved)
+        #expect(chrome == reserved, "the slot fits, so it is granted whole")
+        let board = BoardLayout.stackedGeometry(in: phone, game: mini, chrome: chrome)
+        #expect(board.pitch > miniMinimumPitch, "with the board well off its floor")
+        #expect(board.blockSize.height <= phone.height - chrome)
+
+        // And the reservation goes through the same grant as any other chrome:
+        // a row grown by an accessibility text size asks for more than a short
+        // space has, and there the cluster is what yields, not the board.
+        let short = CGSize(width: 402, height: 480)
+        let outsized = BoardLayout.stackedCluster(row: 120)
+        let tightened = BoardLayout.stackedChrome(in: short, game: mini, asking: outsized)
+        #expect(tightened < outsized, "the chrome is what tightens, not the board")
+        let floored = BoardLayout.stackedGeometry(in: short, game: mini, chrome: tightened)
+        #expect(floored.pitch == miniMinimumPitch)
+        #expect(floored.blockSize.height <= short.height - tightened)
+    }
+
     @Test("A preview yields to the controls under it, below the interactive floor")
     func theStackedPreviewYields() {
         // The pre-start board is noninteractive and carries no size floor, so a

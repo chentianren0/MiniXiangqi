@@ -180,6 +180,66 @@ enum BoardLayout {
         max(0, min(wanted, size.height - minimumBoardHeight(for: game)))
     }
 
+    // MARK: - The cluster's reserved slot
+
+    /// The air the stacked shape keeps around the control cluster beneath the
+    /// board, and between the cluster's two rows when it takes two.
+    static let clusterAir: CGFloat = 8
+
+    /// One row of cluster controls, until a row has been measured. The
+    /// cluster's own share of the allowance above, less that air.
+    static let clusterRowHeight: CGFloat = 29
+
+    /// What the stacked shape reserves for the control cluster beneath the
+    /// board: the cluster's **tallest** arrangement, whichever one it is
+    /// drawing.
+    ///
+    /// docs/interaction-design.md, "Layout shapes": in this shape the board's
+    /// frame does not follow the controls. The cluster is one row or two — the
+    /// words wrap beneath, or the symbols do — and which it is changes with the
+    /// scene the game is in, with the text size and with the width. The board is
+    /// sized and centred around this reservation rather than around the
+    /// arrangement on screen, so a row coming or going moves nothing but the air
+    /// between the board and the controls. Two rows, with air above the cluster,
+    /// between its rows, and below it.
+    ///
+    /// `row` is one row's own height, measured rather than assumed: a row is as
+    /// tall as the reader's text size makes its controls.
+    static func stackedCluster(row: CGFloat) -> CGFloat {
+        2 * row + 3 * clusterAir
+    }
+
+    /// One row of the cluster, measured where it cannot be seen: what the
+    /// reservation above is two of.
+    ///
+    /// A row is as tall as the tallest control it can carry, so both label
+    /// forms stand in it — a row that has given up its words is a row of
+    /// symbols, and which form is drawn is the arrangement's answer rather than
+    /// the reservation's. It carries no identifier and nothing a screen reader
+    /// can reach: it is a measurement, and there is only one of every control on
+    /// this screen.
+    struct ClusterRow: View {
+        var report: (CGFloat) -> Void
+
+        var body: some View {
+            HStack(spacing: BoardLayout.clusterAir) {
+                Button { } label: {
+                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                        .lineLimit(1)
+                }
+                Button { } label: {
+                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                        .labelStyle(.iconOnly)
+                }
+            }
+            .buttonStyle(.glass)
+            .hidden()
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+            .onGeometryChange(for: CGFloat.self, of: \.size.height) { report($0) }
+        }
+    }
+
     /// The largest board a stacked **board screen** fits into the height its
     /// chrome leaves, bounded by the same floor and ceiling — and into the
     /// whole of the width.

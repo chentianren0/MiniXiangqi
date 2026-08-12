@@ -677,7 +677,7 @@ Piece characters are game content and are excluded from localization, as defined
 
 Two arrangements cover every device and window size, chosen by the available **space** rather than by device identity, so a resized Mac window and a multitasking iPad behave the same way as each other.
 
-- **Stacked**, used by iPhone portrait, by iPad portrait, and by any window that is narrow for its height — a half-screen Mac window included: the turn status in the bar's centre per [Turn status](#turn-status), the play controls below the board, and the board centred in the height between them.
+- **Stacked**, used by iPhone portrait, by iPad portrait, and by any window that is narrow for its height — a half-screen Mac window included: the turn status in the bar's centre per [Turn status](#turn-status), the play controls below the board in a slot reserved at their tallest arrangement, and the board centred in the height that slot leaves.
 - **Side by side**, used by iPad landscape, wide iPad window sizes, and Mac windows with width to spare, which is most of them: the board on one side with a panel beside it carrying the turn status, the move list, game metadata, and controls that do not need to sit under the thumb.
 
 **The rule is which arrangement gives the selected game's board more.** Both shapes fit the same board profile into the same rectangle and differ only in what they take out first: side by side takes the panel's width, stacked takes the chrome's height. Whichever leaves the larger pitch is used, and a tie goes to side by side, which shows the move list for free. A shape that cannot draw the selected game at its floor loses to one that can.
@@ -693,6 +693,8 @@ The board is sized to the largest instance of its own aspect ratio fitting **bot
 At their floors, Mini Xiangqi's core is 308 points square and Xiangqi's is 306 by 340. Width fitting is what keeps Xiangqi's taller block on a phone screen rather than off it. The smallest supported Mac display and largest-text setting remain running-frontend gates for the board, chrome and longer metadata together.
 
 **The board has the same maximum width footprint in both games.** Mini Xiangqi stops at pitch 102 and a 714-point core; Xiangqi stops at pitch 79 and a 711-point-wide core. Whole-point pitches keep every derived dimension stable. Surplus space goes to the surrounding layout, and the half-cell margin stays functional space rather than a spacer to inflate.
+
+**In the stacked shape the board's frame does not follow the controls.** The cluster's slot is reserved at its tallest arrangement, so which arrangement the cluster draws and which scene it is in — one row or two, a running game's controls or a finished one's, this side of a nearby turn or the other — changes neither where the board sits nor how large it is. The controls are anchored at the bottom of the slot and the spare height is air between them and the board.
 
 When space is short the surrounding chrome tightens before the board does. That preference has a floor: the board may not be driven below the sizes above, and neither may the chrome be driven below what its own controls require. Each platform therefore defines a minimum window size that keeps both above their floors, and the window stops resizing there rather than either becoming unusable.
 
