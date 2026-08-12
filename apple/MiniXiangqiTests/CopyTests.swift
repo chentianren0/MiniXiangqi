@@ -44,7 +44,7 @@ struct CopyTests {
             "alert.aiUnavailable.title", "alert.aiUnavailable.message",
             "alert.aiUnavailable.resumeMessage",
             "alert.gameNotStarted.title", "alert.gameNotStarted.message",
-            "alert.hintUnavailable.title",
+            "alert.hintUnavailable.title", "alert.hintUnavailable.message",
             "alert.newGame.title", "alert.newGame.metadataHeader",
             "alert.newGame.message",
             "alert.nearbyInvite.title", "alert.nearbyInvite.message",

@@ -316,6 +316,24 @@
         }
       }
     },
+    "alert.hintUnavailable.message": {
+      "comment": "The body under 无法获取提示 for every preparation failure that is not about memory, the memory ones keeping the accepted insufficient-memory message. It names no cause, because naming the wrong one is worse than naming none, and no opponent, because the mode that asked may have none.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A hint isn't available right now. Please try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法获取提示。请重试。"
+          }
+        }
+      }
+    },
     "alert.hintUnavailable.title": {
       "comment": "The hint's own title over the accepted insufficient-memory message: the reader asked for a hint rather than for an opponent, and Free Play has no opponent to fail to start.",
       "extractionState": "manual",
