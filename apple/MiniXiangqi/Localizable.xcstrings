@@ -2964,13 +2964,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When on, the first tap marks a point and tapping it again places the stone. When off, a tap places it straight away."
+            "value": "Applies to Gomoku and Renju. When on, the first tap marks a point and tapping it again places the stone; when off, a tap places it straight away."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开启后，第一次点击标记落点，再次点击该点才落子。关闭后，点击直接落子。"
+            "value": "适用于五子棋与连珠。开启后，第一次点击标记落点，再次点击该点才落子；关闭后，点击直接落子。"
           }
         }
       }
