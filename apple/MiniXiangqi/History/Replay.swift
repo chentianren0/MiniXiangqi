@@ -46,6 +46,15 @@ final class Replay {
         didSet { if flipped != oldValue { pause() } }
     }
 
+    /// Whether this record's game has an orientation to change.
+    ///
+    /// docs/interaction-design.md, "Board orientation": a placement board has
+    /// none — a stone carries nothing a player could read the wrong way up — so
+    /// it carries no flip control in play, in nearby play, or here. The
+    /// question is the play cluster's own, asked of the record's game rather
+    /// than of anything this screen holds.
+    var carriesFlip: Bool { !record.game.isPlacement }
+
     private(set) var autoplaying = false
     private var playback: Task<Void, Never>?
 
@@ -98,8 +107,10 @@ final class Replay {
         self.position = start
         self.placement = Placement(fen: start.fen, game: record.game)
         // The accepted history orientation: the human's own side at the bottom
-        // where there was a human side, Red at the bottom otherwise.
-        self.flipped = record.humanSide == .black
+        // where there was a human side, Red at the bottom otherwise — and a
+        // board with no orientation opens as it is drawn, which is what the
+        // play screen's own game does with the same question.
+        self.flipped = !record.game.isPlacement && record.humanSide == .black
         // Unowned: the transit belongs to this object and cannot outlive it.
         transits.arrived = { [unowned self] in announceLanding() }
     }

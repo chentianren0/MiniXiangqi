@@ -2,7 +2,8 @@
 //
 // docs/interaction-design.md, "Play controls": replay offers no move input, so
 // no play control applies — the cluster here is the transport plus the flip
-// control, and it is one of the three surfaces custom glass belongs to.
+// control, where the record's game has an orientation to change, and it is one
+// of the three surfaces custom glass belongs to.
 //
 // The transport is the five the contract names: jump to beginning, one move
 // back, play or pause, one move forward, jump to end. Every one of them is
@@ -30,6 +31,12 @@ struct ReplayTransport: View {
     var isAtStart: Bool
     var isAtEnd: Bool
     var autoplaying: Bool
+
+    /// Whether the record's game has an orientation to change. A placement
+    /// record has none, and the control is absent rather than disabled: absence
+    /// is what says a capability is not there at all, which is the same answer
+    /// the play cluster gives on the same boards.
+    var carriesFlip: Bool
 
     var goToStart: () -> Void
     var stepBack: () -> Void
@@ -63,21 +70,25 @@ struct ReplayTransport: View {
                         enabled: !isAtEnd, action: goToEnd)
             }
 
-            // The accepted orientation control, which replay keeps: a visible
-            // control rather than a hidden gesture, with the same label it
-            // carries during play. It spans the same width the transport above
-            // it spans, because the two are one cluster and a control whose
-            // trailing edge stops halfway is a control that has been dropped
-            // next to the row rather than placed under it.
-            Button {
-                flip()
-            } label: {
-                Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-                    .frame(maxWidth: .infinity)
+            // The accepted orientation control, which replay keeps for the
+            // games that have an orientation: a visible control rather than a
+            // hidden gesture, with the same label it carries during play. It
+            // spans the same width the transport above it spans, because the
+            // two are one cluster and a control whose trailing edge stops
+            // halfway is a control that has been dropped next to the row rather
+            // than placed under it. Without it the row is the whole cluster,
+            // and its own edges are already the ones the grid promises.
+            if carriesFlip {
+                Button {
+                    flip()
+                } label: {
+                    Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel(Text("control.flipBoard"))
+                .accessibilityIdentifier("replay-flip")
             }
-            .buttonStyle(.glass)
-            .accessibilityLabel(Text("control.flipBoard"))
-            .accessibilityIdentifier("replay-flip")
         }
     }
 
