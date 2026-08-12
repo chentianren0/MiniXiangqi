@@ -1,6 +1,6 @@
 # Star River
 
-Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, macOS, and Windows, carrying **Xiangqi**, **Mini Xiangqi**, **Gomoku**, and **Renju**, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
+Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, macOS, and Windows, carrying **Xiangqi** and **Mini Xiangqi**, with **Gomoku** and **Renju** on Apple platforms, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
 
 ## Get the app
 
