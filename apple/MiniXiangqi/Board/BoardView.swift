@@ -106,7 +106,11 @@ struct BoardView: View {
         // long as a suggestion stands rather than from one state to another —
         // so it is driven by the clock instead, on a schedule that ticks only
         // while it is running and is paused for every other moment of a game.
-        TimelineView(.animation(paused: !driftsDashes)) { context in
+        // The schedule has a 30 Hz floor: the drift turns thirty-six degrees a
+        // second, indistinguishable at that rate from the display's own, and
+        // every tick invalidates the whole canvas.
+        TimelineView(.animation(minimumInterval: 1.0 / 30,
+                                paused: !driftsDashes)) { context in
             canvas(dashDrift: drift(at: context.date))
         }
         .modifier(ArrivalReporter(progress: transit == nil ? 0 : 1,
