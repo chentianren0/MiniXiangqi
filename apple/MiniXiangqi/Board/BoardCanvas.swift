@@ -254,7 +254,11 @@ struct BoardCanvas: View, Animatable {
         for square in phases.hint.marked {
             let strength = min(max(phases.hint[square], 0), 1)
             let centre = point(square, flip: flip)
-            guard !captures.contains(square) else {
+            // The shape follows what is standing on the point, not the capture
+            // set: the set snaps with the position while the phase fades, and a
+            // clearing suggestion on a capture should fade out as the band it
+            // was, not as a cell wash drawn under a disc.
+            guard placement[square] == nil else {
                 context.stroke(
                     circle(at: centre, radius: geometry.haloBandRadius),
                     with: .color(style.activeInk
