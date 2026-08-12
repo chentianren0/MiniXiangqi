@@ -11,14 +11,14 @@ This document defines how the shared core packages, calls, constrains, and valid
 - The `dhbloo/rapfi` repository and the `dhbloo/rapfi-networks` weights repository are reference-only unless the user separately authorizes a contribution.
 - Engine source revision, patches, build inputs, networks, and hashes must be pinned reproducibly.
 - **The games this engine plays are `gomoku-15` and `renju`, and the set is closed.** Both are 15×15, and the size is not a parameter: each pinned network declares in its own header the board sizes it covers, and the renju pair covers 15 alone.
-- **This document owns the placement games' `rules_version`.** It is `1` for both. It increments only when a deliberate change to the pinned engine alters a legal move or a user-visible result — never for a revision bump that alters neither, never for search configuration, and never for prose.
+- **This document owns what the placement games' `rules_version` means.** Their accepted interpretation is the pinned engine's own, so what would change it is a deliberate change to that engine altering a legal move or a user-visible result — never a revision bump that alters neither, never search configuration, and never prose. The recorded value is `1`, as [game-data.md](game-data.md) records it for every game the app carries.
 
 ## Search facade boundary
 
 Which engine plays a game is not visible through the C interface, and neither is that there is more than one; that boundary and the facade's obligations are [core-interface.md](core-interface.md)'s and [engine-integration.md](engine-integration.md)'s, and they bind here unchanged. What this engine adds:
 
-- **One engine instance per process, and both games serialise through one bridge.** The engine's search state, transposition table, configuration and evaluator are process-global, so two instances are not expressible. Preparation and release are the only mutators of that state, both run on the facade's engine thread with no search outstanding, and both take one mutex, so nothing observes the engine mid-mutation. A search deliberately holds no mutex.
-- **A rules switch is a reconfiguration and takes the reconfiguration's exclusion.** The board is begun again and the transposition table is flushed whole, because an entry keyed under one rule's tables means something else under the other's.
+- **One engine instance per process, and both games serialise through one bridge.** The engine's search state, transposition table, configuration and evaluator are process-global, so two instances are not expressible. Preparation and release are the only things that change that configuration, both run on the facade's engine thread with no search outstanding, and both take one mutex, so nothing observes the engine mid-reconfiguration. A search changes the engine's own search state and deliberately holds no mutex while it does.
+- **A rules switch is a reconfiguration and takes the reconfiguration's exclusion.** The engine is brought up again for the new rule and the transposition table is flushed whole, because an entry keyed under one rule's tables means something else under the other's.
 - **A short table is the same answer as no table.** The engine's own halving degradation is refused: the memory policy computes a budget from a fresh probe and refuses below its minimum rather than playing with less.
 - **The rules side is an adapter, and the pinned engine is these games' rules authority.** Every rules answer is the engine's own — a forbidden point from its search-independent query, a completed five from the per-rule pattern the board already maintains. Nothing above the bridge re-derives a rule, and this project holds no conformance corpus over these games: the corpus the movement games carry exists because this project owns their rules, and it does not own these. What stands in its place is an adapter test set proving the wiring, and nothing more.
 - **A rules answer needs no prepared engine.** The tables a rules query reads are constants of the rule, so a game is played, undone and replayed whether or not an engine stands.
@@ -28,7 +28,7 @@ Which engine plays a game is not visible through the C interface, and neither is
 
 - The engine reports failure by throwing, and [architecture.md](architecture.md) forbids an exception or a process exit crossing the core's boundary, so every entry point contains one and returns a typed failure instead.
 - **One bound on that is accepted rather than claimed away.** The engine's worker threads carry no handler of their own and a starting search dispatches work onto them, so an allocation failure there terminates the process, uncatchable by construction. That is the same practical posture as the first engine, which is compiled without exceptions at all and whose allocation failure terminates too. A guard inside the fork's thread loop is a possible focused change if evidence asks for one.
-- The engine terminates the process when transposition-table allocation fails, and on Windows when freeing large-page memory fails inside the same Hash path. Recoverable allocation is a required focused change in the fork and is carried; recoverable release is owed, below.
+- **The unmodified engine** terminates the process when transposition-table allocation fails, and on Windows when freeing large-page memory fails — a path both the transposition table and the loaded NNUE weights are released through. Recoverable allocation is therefore a required focused change in the fork and is carried at the pinned revision; recoverable release is owed, below.
 - **The engine writes its messages and its errors to standard output, and a library must not write to a host application's.** That stream is redirected for the length of any call that can produce one, and the engine's message mode is set to none besides.
 
 ### The fork change set
@@ -40,7 +40,7 @@ The pinned fork carries only focused changes this contract requires, each record
 
 One change is owed and deliberately not yet carried:
 
-- **Recoverable large-page release**, the second half of the same hazard. The engine's Windows large-page free path exits the process when the release fails, and the Hash path reaches it through every table resize and through the table's destructor. The branch is Windows-only and no build this repository produces compiles this engine for Windows, so it is unreachable here; the manifest records it as pending with its trigger. **The trigger is exact: any Windows build of this engine lands the fork change first.**
+- **Recoverable large-page release**, the second half of the same hazard. The engine's Windows large-page free path exits the process when the release fails, and two owners reach it: the transposition table, through every resize and through its destructor, and the NNUE weights, whose large-page deleter frees them when an evaluator is dropped. The branch is Windows-only and no build this repository produces compiles this engine for Windows, so it is unreachable here; the manifest records it as pending with its trigger. **The trigger is exact: any Windows build of this engine lands the fork change first.**
 
 Neither applied change touches rules behaviour, so neither owes a rules fixture. A fork change that ever does touch rules behaviour lands together with the test that pins it.
 
@@ -48,7 +48,7 @@ Neither applied change touches rules behaviour, so neither owes a rules fixture.
 
 - The pinned revision reaches the core as a **copied source snapshot**, compiled by a core-owned build description, and never as an artifact the fork built.
 - **Nothing in the snapshot is edited here.** Every engine source change belongs to the fork and arrives as a new snapshot at a new pinned revision, which is what keeps the manifest's ordered patch list a description of the bytes the core compiles.
-- The snapshot excludes the engine's own `main`, its stdin protocol, and its offline command modules: the core is a library and drives the engine through its C++ API, so a second entry point and a training toolchain have no business in it. The excluded set and the recipe that reproduces the snapshot are recorded beside it.
+- The snapshot excludes the engine's own `main`, its stdin protocol, and the five offline command-module implementations — database maintenance, training-data preparation, opening generation, self-play and tuning: the core is a library and drives the engine through its C++ API, so a second entry point and a training toolchain have no business in it. The command directory's remaining sources compile, none of them reached by a search. The excluded set and the recipe that reproduces the snapshot are recorded beside it.
 - **The engine's configuration is the one compiled into it**, handed to it from memory. No configuration file is searched for and none is read: the engine's own resolution order reaches the working directory and a directory derived from the executable path, and inside an app bundle either would let a file left there replace the engine's configuration, weights included.
 - **Every asset path the engine is given is absolute and already verified**, so no working directory and no executable location can substitute an asset behind the app's back.
 - Third-party notices and corresponding-source availability for the GPLv3 engine and for every library vendored inside it must be prepared before any build containing it is distributed. Where a vendored library ships no licence text of its own, the notices carry that text from its own repository.
@@ -59,7 +59,7 @@ The lifecycle contract is one for both engines and is [engine-integration.md](en
 
 - **The three accepted levels are the shared ones**, defined in [engine-integration.md](engine-integration.md) § AI difficulty profiles and differing only in maximum thinking time. On this engine the one strongest configuration they share is alpha-beta search, the engine's strength knob at its maximum, one principal variation, no node or depth limit, and no pondering.
 - **A level's thinking time is a turn time, and there is no match clock.** The engine keeps its own small reserve inside that time and returns before it elapses.
-- **The trivial-opening probe stays on**, so a first move on an empty freestyle board is answered without a search. An instant reply is inside a level's maximum thinking time, which is the whole of what a level promises.
+- **The trivial-opening probe stays on**, so the engine's prepared openings answer where it has one. It is not what makes the first move instant: a board with no stone on it offers a search no candidate, and the centre point comes back whatever the probe is set to. Either way an instant reply is inside a level's maximum thinking time, which is the whole of what a level promises.
 - **A hint is an ordinary search under the prepared game's rules.** Its board presentation is the placement grammar's own, fixed in [interaction-design.md](interaction-design.md).
 
 ## Memory
@@ -112,6 +112,6 @@ The build verifies every hash before packaging and fails on a mismatch rather th
 
 ## Readiness
 
-**A frontend compares the profile identifier the core gives it; it never composes one.** `mxq_engine_profile_id` reports the identifier a named game would be prepared under and `mxq_engine_query` reports the one an engine stands prepared under, both defined in [core-interface.md](core-interface.md); readiness for a game is those two values compared whole. The identifier names the revision of the engine that game is played on, and there is more than one engine, so an identifier assembled above the C interface would be right for the games one engine plays and silently wrong for the rest. Comparing fewer segments is not the alternative it appears to be: it weakens an exact-identifier check to make up for a fact the interface states.
+**Readiness is the core's own answer compared, never a frontend's reconstruction.** The rule, and why no caller may compose an identifier of its own, are [core-interface.md](core-interface.md)'s.
 
-The identifier also names a move's configuration in a saved diagnostic record, so a move produced for one game is never attributed to another's engine or network.
+What is this engine's own is what its identifier carries: this engine's pinned revision, the prepared game's rule, and that game's network. So a move produced here is attributed to this engine's build and to no other's, in a saved diagnostic record as much as in a readiness comparison.

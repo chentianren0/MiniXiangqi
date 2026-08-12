@@ -11,7 +11,7 @@ This document owns the product definition, the target platforms, and the feature
 - The application is licensed under GPLv3, matching the engines it embeds.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
-- **Every build contains the AI networks of every game it plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the placement games' are redistributed weights and carry no strength claim of ours, per [placement-engine-integration.md](placement-engine-integration.md).
+- **Every build contains the AI networks of every game it plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the redistributed ones — built-in Xiangqi's and the placement games' — carry no strength claim of ours, per that document and [placement-engine-integration.md](placement-engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
 - Fully offline constrains the app, not the platform beneath it: the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
@@ -25,7 +25,7 @@ This document owns the product definition, the target platforms, and the feature
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
 - The application has one main window; multiple main windows are not supported.
 - iPhone runs in portrait orientation only. iPad supports every orientation, as iPadOS multitasking expects.
-- Captured pieces are not displayed during play. The board itself shows what remains, and a second inventory would compete with the board in both games.
+- Captured pieces are not displayed during play. The board itself shows what remains, and a second inventory would compete with the board in every game that captures.
 
 ## Play modes
 

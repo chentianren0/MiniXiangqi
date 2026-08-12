@@ -108,7 +108,7 @@ The target engine behavior follows the selected public rules sources and uses Fa
 
 ## Rules interpretation version
 
-The accepted rules interpretation carries an integer version, `rules_version`, owned by this document. It is `1` for both games. It increments only when an accepted interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` and this version, per [game-data.md](game-data.md).
+The accepted rules interpretation carries an integer version, `rules_version`, and this document owns what it means for the two games above. It is `1`, as it is for every game the app carries. It increments only when an accepted interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` and this version, per [game-data.md](game-data.md).
 
 ## Runtime rules authority
 
