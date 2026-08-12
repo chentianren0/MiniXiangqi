@@ -156,6 +156,9 @@ nonisolated enum EndReason: Sendable {
     case fiftyMoveRule, resignation, endedEarly
     /// The two ends two players declare to each other, and nearby play's alone.
     case agreedDraw, mutualResignation
+    /// The placement games' two, and theirs alone: they have no check to be
+    /// mated in and no other automatic end.
+    case fiveInARow, boardFull
 
     init(_ reason: MxqEndReason) {
         switch reason {
@@ -171,6 +174,8 @@ nonisolated enum EndReason: Sendable {
         case MxqEndReason(MXQ_END_REASON_ENDED_EARLY): self = .endedEarly
         case MxqEndReason(MXQ_END_REASON_AGREED_DRAW): self = .agreedDraw
         case MxqEndReason(MXQ_END_REASON_MUTUAL_RESIGNATION): self = .mutualResignation
+        case MxqEndReason(MXQ_END_REASON_FIVE_IN_A_ROW): self = .fiveInARow
+        case MxqEndReason(MXQ_END_REASON_BOARD_FULL): self = .boardFull
         default: self = .none
         }
     }

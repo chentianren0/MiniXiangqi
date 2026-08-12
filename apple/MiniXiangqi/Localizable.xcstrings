@@ -816,6 +816,24 @@
         }
       }
     },
+    "board.a11y.hint.point": {
+      "comment": "The VoiceOver announcement a shown hint posts on a board that places rather than moves: the point alone, in the game's own coordinates. No piece is named, a stone not being one.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggestion: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提示：%@"
+          }
+        }
+      }
+    },
     "board.a11y.inCheck": {
       "extractionState": "manual",
       "localizations": {
@@ -2456,6 +2474,24 @@
         }
       }
     },
+    "reason.boardFull": {
+      "comment": "The placement games' drawn end: every point is taken and no line of five stands.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Board Full"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棋盘已满"
+          }
+        }
+      }
+    },
     "reason.checkmate": {
       "extractionState": "manual",
       "localizations": {
@@ -2503,6 +2539,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "五十回合规则"
+          }
+        }
+      }
+    },
+    "reason.fiveInARow": {
+      "comment": "The placement games' won end: five of one side's stones in an unbroken line.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Five in a Row"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "五子连珠"
           }
         }
       }

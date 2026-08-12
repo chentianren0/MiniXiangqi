@@ -170,31 +170,60 @@ final class PlayMotion {
     /// is strengthened, arriving with the same one-time swell an illegal tap's
     /// answer arrives with.
     ///
-    /// Under Reduce Motion the strengthened state arrives without the swell,
-    /// which is the standing rule: the state survives, the travel goes. It
-    /// **stays** strengthened for as long as the suggestion is on the board
-    /// rather than relaxing back, because what the strengthening says is which
-    /// destination the engine chose, and a marker that decayed would leave the
-    /// suggestion with nothing saying it.
-    ///
     /// Whether the piece may be taken up at all is asked of the game, which is
     /// where the board's whole affordance lives: nothing here re-derives whose
     /// turn it is or what may be held.
     func showHint(_ move: Move) {
         guard !isCommitting, !isFlipping else { return }
-        // The suggestion is shown by taking up the piece that would make it,
-        // which is the one hint mechanic that assumes a mover. A placement game
-        // has none, and its own presentation — the pending stone standing at the
-        // suggested point — is not offered yet: the hint control is absent on
-        // those boards for exactly as long as this guard stands.
-        guard let origin = move.from else { return }
+        // A move with no origin is a stone going down, and its suggestion is
+        // shown in that game's own grammar rather than in this one: there is no
+        // piece to take up, so the mark is the whole of it.
+        guard let origin = move.from else { return markSuggestedPoint(move) }
         guard game.selected == origin
                 || game.effect(ofTapAt: origin) == .select(origin) else { return }
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
             game.selected = origin
             markerEmphasis = 0
         } completion: { }
-        suggested = move.to
+        raiseHint(at: move.to)
+    }
+
+    /// The same suggestion on a board that places rather than moves: **the
+    /// pending-stone mark, standing at the point the engine chose**.
+    ///
+    /// It is the placement grammar's own and introduces nothing — the mark is
+    /// the one the player's own first tap raises under 落子前确认, so tapping it
+    /// plays the move through the ordinary input path, and tapping another point
+    /// moves the mark exactly where that flow already moves it. Nothing has to
+    /// know the mark came from the engine for either to be true.
+    ///
+    /// Whether the point may be marked at all is asked of the game, exactly as
+    /// the branch above asks whether the piece may be taken up: an occupied
+    /// point, a point forbidden to the side to move, and a board waiting on the
+    /// opponent are all one answer here, and it is the game's.
+    private func markSuggestedPoint(_ move: Move) {
+        switch game.effect(ofTapAt: move.to) {
+        case .play, .select: break
+        case .cancelSelection, .illegal, .unavailable: return
+        }
+        animator.run(policy.movement(Motion.liftAnimation)) { [self] in
+            game.selected = move.to
+            markerEmphasis = 0
+        } completion: { }
+        raiseHint(at: move.to)
+    }
+
+    /// The suggestion's own emphasis, raised: the destination's marker on a
+    /// board that moves, the halo beneath the mark on one that places.
+    ///
+    /// Under Reduce Motion the strengthened state arrives without the swell,
+    /// which is the standing rule: the state survives, the travel goes. It
+    /// **stays** strengthened for as long as the suggestion is on the board
+    /// rather than relaxing back, because what the strengthening says is which
+    /// point the engine chose, and a marker that decayed would leave the
+    /// suggestion with nothing saying it.
+    private func raiseHint(at square: Square) {
+        suggested = square
         guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
             hintEmphasis = 1
             return
@@ -207,6 +236,13 @@ final class PlayMotion {
     /// Takes a suggestion off the board. Everything that ends one calls it: a
     /// commit, an Undo, a selection that moved elsewhere, and the hint's own
     /// cancellation when the board is left or the machine suspends.
+    ///
+    /// It takes down what the suggestion put up and nothing else. On a board
+    /// that places, the mark itself is left standing: it is the player's own
+    /// pending mark by then, indistinguishable and theirs to commit or move,
+    /// and every act that ends a suggestion already clears it — the commit and
+    /// the Undo through the game, the off-board tap through
+    /// `cancelSelection()`.
     func clearHint() {
         suggested = nil
         hintEmphasis = 0

@@ -332,27 +332,27 @@ extension Core: AIEngine {
                        as: UTF8.self))
     }
 
-    /// Reconstructs the identifier the core documents for one game's build
-    /// profile. Readiness is both a state and an exact profile match: an engine
-    /// prepared for the other game is not ready for this one.
+    /// The identifier the core states for one game's build profile: exactly
+    /// what `engineQuery()` reports once that game is prepared. Readiness is
+    /// both a state and an exact profile match — an engine prepared for another
+    /// game is not ready for this one — and both sides of that comparison are
+    /// the core's own words.
+    ///
+    /// **Nothing here composes an identifier, and nothing above the interface
+    /// can.** A profile names the revision of the engine its own game is played
+    /// on, this core has more than one, and only the core knows which game goes
+    /// to which: an identifier assembled here from `mxq_core_version` and
+    /// `mxq_core_game_profile` would be right for the games the first engine
+    /// plays and silently wrong for the rest — which is exactly what it was,
+    /// and why the placement games had no opponent to play against.
     func engineProfileID(for game: GameKind) throws -> String {
-        var version = MxqVersion()
-        version.struct_size = UInt32(MemoryLayout<MxqVersion>.size)
-        var profile = MxqGameProfile()
-        profile.struct_size = UInt32(MemoryLayout<MxqGameProfile>.size)
+        var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
+        var length = 0
         var err = freshError()
-        try check(mxq_core_version(&version, &err), err)
-        try check(mxq_core_game_profile(game.raw, &profile, &err), err)
-        guard let profileGame = GameKind(profile.game), profileGame == game else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported a mismatched game profile")
-        }
-
-        let coreRevision = string(of: version.core_revision, capacity: MXQ_REVISION_CAP)
-        let forkRevision = string(of: version.fork_revision, capacity: MXQ_REVISION_CAP)
-        let variantID = string(of: profile.variant_id, capacity: MXQ_VARIANT_ID_CAP)
-        let networkHash = string(of: profile.nnue_sha256, capacity: MXQ_SHA256_HEX_CAP)
-        return "\(coreRevision.prefix(12))-\(forkRevision.prefix(12))-\(variantID)-\(networkHash.prefix(12))"
+        try check(mxq_engine_profile_id(game.raw, &buffer, buffer.count, &length, &err),
+                  err)
+        return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
+                      as: UTF8.self)
     }
 
     func prepareEngine(for game: GameKind, _ budget: EngineBudget,

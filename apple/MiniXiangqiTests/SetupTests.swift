@@ -240,18 +240,29 @@ struct SetupTests {
         #expect(try !core.activeGameExists())
     }
 
-    @Test("The Swift profile composition matches the concrete core query")
-    func concreteProfileCompositionMatchesTheCore() throws {
+    /// Readiness is a comparison of two strings the core states, and this is the
+    /// frontend's side of it: that the identifier reaches Swift for **every**
+    /// game, that no two games collapse to one, and that a profile match alone
+    /// is not readiness.
+    ///
+    /// The placement games are what this would catch. Nothing above the C
+    /// interface can compose their identifiers — a profile names the revision of
+    /// the engine its own game is played on, and `MxqVersion` reports only the
+    /// first engine's — so a frontend that went back to assembling one would
+    /// answer here with two games sharing a string, which is the readiness check
+    /// silently passing for a board the engine is not prepared for.
+    @Test("Every game's readiness profile reaches Swift, and each is its own")
+    func everyGamesProfileIsItsOwn() throws {
         let core = try TestCores.fresh()
         let query = try core.engineQuery()
-        let miniProfile = try core.engineProfileID(for: .miniXiangqi)
-        let xiangqiProfile = try core.engineProfileID(for: .xiangqi)
+        let profiles = try GameKind.allCases.map { try core.engineProfileID(for: $0) }
 
         #expect(query.state == .uninitialized)
-        #expect(query.profileID == miniProfile,
+        #expect(profiles.allSatisfy { !$0.isEmpty })
+        #expect(Set(profiles).count == profiles.count,
+                "no two games may collapse to one readiness profile")
+        #expect(query.profileID == profiles[GameKind.allCases.firstIndex(of: .miniXiangqi)!],
                 "the core's initial rules posture is Mini Xiangqi")
-        #expect(query.profileID != xiangqiProfile,
-                "the two games must not collapse to one readiness profile")
         #expect(!core.engineIsReady(for: .miniXiangqi),
                 "a matching profile is still not ready before preparation")
     }
