@@ -84,12 +84,22 @@ struct BoardGeometry {
     /// A style's own rings and edge strokes live at or inside `0.40 p`.
     var styleDecorationLimit: CGFloat { 0.40 * pitch }
 
-    /// The centre-line radius of a disc's edge stroke. The stroke is drawn
-    /// inside the disc's own edge rather than centred on it, which is what
-    /// keeps a heavy edge — 传统's Black disc carries one — from reaching past
-    /// the style-decoration limit and into the band markers occupy.
+    /// The centre-line radius of any round body's edge stroke: the stroke is
+    /// drawn inside the body's own edge rather than centred on it, so a heavy
+    /// edge grows inward instead of past the body it draws.
+    ///
+    /// Written of a body rather than of the disc because there are two of them
+    /// now, and one home is what keeps a stone's edge from being placed by a
+    /// second, subtly different arithmetic.
+    func edgeRadius(body: CGFloat, stroke: CGFloat) -> CGFloat {
+        body / 2 - stroke / 2
+    }
+
+    /// The same, for the disc — whose heavy edge, 传统's Black one, is what the
+    /// rule was written for: inside the style-decoration limit, and clear of
+    /// the band markers occupy.
     func discEdgeRadius(stroke: CGFloat) -> CGFloat {
-        discDiameter / 2 - stroke / 2
+        edgeRadius(body: discDiameter, stroke: stroke)
     }
 
     /// How far a style's decoration actually reaches from the point's centre.

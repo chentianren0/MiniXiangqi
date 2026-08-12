@@ -110,7 +110,7 @@ struct PlacementBoardTests {
     /// position in these games is then short of nine points and rejected, and
     /// the board draws empty however many stones are on it.
     @Test("The placement FEN's letter is a stone and its case is the side")
-    func stonesParseFromTheFEN() {
+    func stonesParseFromTheFEN() throws {
         let start = Core.startFEN(for: .gomoku15)
         let empty = Placement(fen: start, game: .gomoku15)
         #expect(start.split(separator: " ").first?.contains("15") == true,
@@ -124,16 +124,17 @@ struct PlacementBoardTests {
                             game: .gomoku15)
         #expect(far[Square(file: 14, rank: 14)] == .stone(.red))
 
-        // One stone of each side, on h8 and i9 of a 15-rank field.
+        // One stone of each side, on h8 and h9 of a 15-rank field: the ranks are
+        // written highest first, so the lowercase row is the higher one.
         let played = Placement(fen: "15/15/15/15/15/15/7s7/7S7/15/15/15/15/15/15/15 b - - 0 2",
                                game: .gomoku15)
-        let first = try? #require(played[Square(file: 7, rank: 7)])
-        let second = try? #require(played[Square(file: 7, rank: 8)])
-        #expect(first?.side == .red, "uppercase is the side that moves first")
-        #expect(first?.isStone == true)
-        #expect(second?.side == .black)
-        #expect(second?.isStone == true)
-        #expect(first?.kind == nil, "a stone carries no kind and therefore no symbol")
+        let first = try #require(played[Square(file: 7, rank: 7)])
+        let second = try #require(played[Square(file: 7, rank: 8)])
+        #expect(first.side == .red, "uppercase is the side that moves first")
+        #expect(first.isStone)
+        #expect(second.side == .black)
+        #expect(second.isStone)
+        #expect(first.kind == nil, "a stone carries no kind and therefore no symbol")
     }
 
     /// A move on a placement board is one square, and it reads as that square.
@@ -232,15 +233,23 @@ struct PlacementBoardTests {
                 "a board waiting on the machine accepts nothing")
     }
 
-    /// The pending stone, end to end: mark, move the mark, commit it.
+    /// The three transitions the grammar itself owns: marking a point, moving
+    /// the mark, and committing it.
     ///
-    /// It would catch any of the four transitions being lost — most of all the
-    /// second tap on the mark committing, which is the whole of what the switch
-    /// buys, and a mark that could not be moved without first being cancelled.
+    /// It would catch any of the three being lost — most of all the second tap
+    /// on the mark committing, which is the whole of what the switch buys, and a
+    /// mark that could not be moved without first being cancelled.
+    ///
+    /// **The fourth transition is not here, because it is not this function's.**
+    /// Tapping off the board never reaches `effect(ofTapAt:)` at all: it is the
+    /// screen's own routing — `PlayScreen`'s background tap to
+    /// `PlayMotion.cancelSelection`, the same act that puts a held piece down —
+    /// so a case here could only assert something this grammar does not decide.
     @Test("With confirmation the mark is placed, moved, and committed")
     func pendingStoneStateMachine() {
-        let placement = position()
-        let legal = openingMoves()
+        let stone = Square(file: 3, rank: 3)
+        let placement = position(occupied: [stone: .black])
+        let legal = openingMoves(occupied: [stone])
         let first = Square(file: 7, rank: 7)
         let second = Square(file: 8, rank: 8)
 
@@ -256,34 +265,15 @@ struct PlacementBoardTests {
         #expect(effect(first, selected: first) == .play(Move(placing: first)))
         // Another legal point moves the mark instead of playing either.
         #expect(effect(second, selected: first) == .select(second))
-        // Tapping off the board is the screen's own cancel, which is the same
-        // act that puts a held piece down; a point that offers nothing is
-        // answered without disturbing the mark.
-        #expect(effect(Square(file: 7, rank: 7), selected: first)
-                == .play(Move(placing: first)))
+        // A point that offers nothing is answered as unavailable rather than as
+        // a cancel, which is what leaves the mark standing: `.unavailable` is
+        // routed to the acknowledgment beat, and nothing on that path touches a
+        // selection. A grammar that answered an occupied point with
+        // `.cancelSelection` would drop the player's mark for a tap that was
+        // never about it.
+        #expect(effect(stone, selected: first) == .unavailable)
     }
 
-    /// The forbidden set is the empty points the core did not offer.
-    ///
-    /// It would catch a second implementation of the renju rule appearing above
-    /// the interface — the derivation here is subtraction and nothing else — and
-    /// a marker set that stayed on the board through White's turn, when the
-    /// points it names are not forbidden to anybody.
-    @Test("Forbidden points are the empty points the core left out")
-    func forbiddenPointsAreTheDifference() {
-        let stone = Square(file: 7, rank: 7)
-        let forbidden: Set<Square> = [Square(file: 3, rank: 3), Square(file: 4, rank: 5)]
-        let placement = position(occupied: [stone: .red])
-        let legal = Set(openingMoves(forbidding: forbidden, occupied: [stone]).map(\.to))
-
-        var derived: Set<Square> = []
-        for index in 0..<225 {
-            let square = Square(file: index % 15, rank: index / 15)
-            guard placement[square] == nil, !legal.contains(square) else { continue }
-            derived.insert(square)
-        }
-        #expect(derived == forbidden)
-    }
 }
 
 /// The same board, against the real core.

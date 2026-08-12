@@ -585,9 +585,21 @@ struct BoardCanvas: View, Animatable {
             layer.fill(Path(ellipseIn: box), with: .color(face))
         }
         // The stroke is drawn inside the body's own edge rather than centred on
-        // it, which is what keeps a heavy edge inside the style-decoration limit
-        // and out of the band markers occupy.
-        context.stroke(circle(at: centre, radius: (body / 2 - edge / 2) * scale),
+        // it, so a heavy edge grows inward instead of past the body it draws.
+        //
+        // **What contains it differs between the two bodies.** A disc is 0.80 p
+        // across, so its edge stays inside the 0.40 p style-decoration limit and
+        // clear of the band markers occupy — the rule that limit exists for. A
+        // stone is 0.88 p and reaches 0.44 p, past it, and that is sound here
+        // rather than an oversight: the limit keeps marker ink off a piece, and
+        // on these boards no marker ever stands on one. The only mark a
+        // placement board draws on an *occupied* point is the last-move bracket,
+        // whose ink sits at ≈0.53 p from the centre, outside the stone; the
+        // selection ring marks the point a stone is not on yet; and every legal
+        // point is empty by the rule that makes it legal. It stays inside its
+        // own cell, which is the containment that applies to a body.
+        context.stroke(circle(at: centre,
+                              radius: geometry.edgeRadius(body: body, stroke: edge) * scale),
                        with: .color(stone ? style.stoneEdge(piece.side)
                                           : style.discEdge(piece.side)),
                        lineWidth: edge)
