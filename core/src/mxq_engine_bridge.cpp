@@ -3,6 +3,7 @@
 #include "mxq_engine_bridge.hpp"
 
 #include "mxq_build_config.h"
+#include "mxq_notation.hpp"
 #include "mxq_sha256.hpp"
 
 #include "apiutil.h"
@@ -19,6 +20,7 @@
 #include "uci.h"
 #include "variant.h"
 
+#include <cassert>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -357,6 +359,13 @@ Adjudication adjudicate(Position &pos,
 } /* namespace */
 
 Variant variant_of(MxqGameKind game) {
+    /* This engine plays the movement games and only those. It is asked here
+     * rather than trusted, because the default arm below answers with a real
+     * variant: a placement game that reached it would be searched and
+     * adjudicated as Mini Xiangqi rather than refused, which is the one way a
+     * dispatch that missed a site could fail silently instead of loudly. */
+    assert(notation::move_class_of(game) == notation::MoveClass::Movement &&
+           "a game this engine does not play reached the bridge");
     switch (game) {
     case MXQ_GAME_KIND_XIANGQI:
         return Variant::Xiangqi;
