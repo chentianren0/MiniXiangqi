@@ -1,0 +1,8 @@
+{
+  "class": "field validity: move notation",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "canonical notation",
+  "game": "renju",
+  "why": "A ply of a placement game is one square: a stone arrives and nothing moves. \"h8h9\" is two squares of the same board — legal text under the movement games' grammar and no ply of this one — so how many squares a move is must come from the game rather than from the text's length."
+}

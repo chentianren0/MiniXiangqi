@@ -927,23 +927,26 @@ void case_preparation_reaches_the_engine_the_game_is_played_on() {
 }
 
 /*
- * Catches: the persistence fence being crossed by accident. The archive format
- * has no rules_id for these games yet, and the writer asserts on one it cannot
- * name — so a session created for one would reach that assertion with a null
- * string behind it. This pins the refusal until the format widens, and it is the
- * case the stage that widens the format has to change.
+ * Catches: a placement game losing its way through persistence.
+ *
+ * Version 4 of the archive records these games, so a session can exist for one,
+ * and this drives the whole of what that means through the public surface —
+ * creation through both doors, the engine prepared, a real search whose answer
+ * is a legal empty point, that point committed by the ordinary apply, the
+ * commit surviving a shutdown and a resume, and the finished game exported and
+ * imported back. Between them they are the claim the stage-2 fence made
+ * untestable: the format, the store and the engine agree about what a placement
+ * game is.
+ *
+ * It would catch a rules_id the store cannot hold, a placement ply the archive
+ * cannot spell, a search answer the session refuses, and a row a resume cannot
+ * read back.
  */
-void case_persistence_still_refuses_these_games() {
-    Case c("no session exists for a game this build's format cannot record");
-    const fs::path store = scratch_dir("fence");
+void case_a_placement_game_lives_through_persistence() {
+    Case c("a placement game is created, played, saved, resumed and exchanged");
 
     MxqCore *core = nullptr;
     MxqError err = make_error();
-    if (init_core(store, &core, &err) != MXQ_OK) {
-        c.check(false, "mxq_core_init failed");
-        c.report();
-        return;
-    }
 
     MxqGameConfig config;
     std::memset(&config, 0, sizeof(config));
@@ -954,11 +957,10 @@ void case_persistence_still_refuses_these_games() {
     config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
     config.local_side = MXQ_COLOR_NONE;
 
-    /* The second door into creation, which shares the guard. It is asked with a
-     * configuration and a wire session it would otherwise accept — nearby mode,
-     * a local side, and a session that has retracted, claimed and declared
-     * nothing — so that what refuses is the fence and not one of the checks
-     * mxq_game_create_nearby makes before it reaches the shared body. */
+    /* The second door into creation, which shares the guard the first passes
+     * through. It is asked with a configuration and a wire session it would
+     * otherwise accept — nearby mode, a local side, and a session that has
+     * retracted, claimed and declared nothing. */
     MxqGameConfig nearby_config = config;
     nearby_config.mode = MXQ_PLAY_MODE_NEARBY;
     nearby_config.local_side = MXQ_COLOR_RED;
@@ -973,33 +975,213 @@ void case_persistence_still_refuses_these_games() {
                   "wifi-aware-device-77E1B0C2");
 
     for (MxqGameKind game : {MXQ_GAME_KIND_GOMOKU_15, MXQ_GAME_KIND_RENJU}) {
+        const std::string who =
+            game == MXQ_GAME_KIND_GOMOKU_15 ? "Gomoku" : "Renju";
         config.game = game;
         nearby_config.game = game;
 
-        MxqGame *refused = nullptr;
+        /* One library per game, because each game's evidence should stand on
+         * its own — and because the deterministic identity provider restarts
+         * with the core, which this case shuts down and reopens on purpose, so
+         * two games sharing one library would be handed one identity twice. */
+        const fs::path store =
+            scratch_dir(game == MXQ_GAME_KIND_GOMOKU_15 ? "persistence-gomoku"
+                                                        : "persistence-renju");
         err = make_error();
-        c.check_status(mxq_game_create(core, &config, &refused, &err),
-                       MXQ_ERR_ARG_RANGE,
-                       "a session for a game the format has no rules_id for");
-        c.check(refused == nullptr, "and no handle is issued");
+        if (init_core(store, &core, &err) != MXQ_OK) {
+            c.check(false, who + ": mxq_core_init failed");
+            c.report();
+            return;
+        }
 
-        MxqGame *refused_nearby = nullptr;
+        /* The second door first, because there are two and each has its own
+         * body before it reaches the shared one. Its game is filed straight
+         * away, to leave the single active game free for the door below. */
+        MxqGame *wired = nullptr;
+        err = make_error();
+        c.check_status(mxq_game_create_nearby(core, &nearby_config, &birth,
+                                              &wired, &err),
+                       MXQ_OK,
+                       who + " gets a nearby session too (" + err.detail + ")");
+        c.check(wired != nullptr, who + " has a nearby handle");
+        if (wired != nullptr) {
+            uint64_t wired_id = 0;
+            err = make_error();
+            c.check_status(
+                mxq_store_archive_and_clear(core, wired, &wired_id, &err),
+                MXQ_OK, who + "'s nearby game files (" + err.detail + ")");
+            mxq_game_release(wired);
+        }
+
+        MxqGame *local = nullptr;
+        err = make_error();
+        c.check_status(mxq_game_create(core, &config, &local, &err), MXQ_OK,
+                       who + " gets a store-attached session (" + err.detail +
+                           ")");
+        c.check(local != nullptr, who + " has a handle");
+        if (local == nullptr) {
+            continue;
+        }
+
+        /* A real search over that session, and the point it names committed by
+         * the ordinary apply. The engine is prepared for this game first: a
+         * search on an engine configured for another is the mistake the
+         * dispatch exists to prevent. */
+        MxqEngineBudget budget;
+        std::memset(&budget, 0, sizeof(budget));
+        budget.struct_size = static_cast<uint32_t>(sizeof(budget));
+        budget.active_processor_count = 2;
+        budget.available_bytes = 4ull * 1024 * 1024 * 1024;
+        budget.physical_bytes = 16ull * 1024 * 1024 * 1024;
+        MxqEnginePlan plan;
+        std::memset(&plan, 0, sizeof(plan));
+        plan.struct_size = static_cast<uint32_t>(sizeof(plan));
+        err = make_error();
+        c.check_status(mxq_engine_prepare(core, game, &budget, &plan, &err),
+                       MXQ_OK, who + " prepares its engine (" + err.detail +
+                                   ")");
+
+        /* Free Play freezes no thinking time, so the hint entry point is the
+         * one that takes a time as a value; it is a search in every other
+         * respect, including the legality check against the rules facade. */
+        MxqSearchResult result;
+        std::memset(&result, 0, sizeof(result));
+        result.struct_size = static_cast<uint32_t>(sizeof(result));
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, local, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_OK, who + " starts a search (" + err.detail + ")");
+        uint8_t ready = 0;
+        err = make_error();
+        c.check_status(mxq_search_wait(core, ticket, 30000, &result, &ready,
+                                       &err),
+                       MXQ_OK, who + " waits for its answer");
+        c.check_eq(static_cast<int64_t>(ready), 1, who + " got one");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   who + "'s search succeeded");
+
+        const std::string suggested(result.move.text);
+        c.check(suggested.size() >= 2 && suggested.size() <= 3,
+                who + "'s answer is one square of a 15x15 board: " + suggested);
+
+        err = make_error();
+        c.check_status(mxq_game_apply_move(local, suggested.c_str(), nullptr,
+                                           nullptr, &err),
+                       MXQ_OK,
+                       who + " commits the engine's own point (" + err.detail +
+                           ")");
+
+        /* What a relaunched application finds. The row carries the document the
+         * game encodes to, so a resume that read it back differently would
+         * produce different bytes. */
+        MxqBlob *before = nullptr;
+        err = make_error();
+        c.check_status(mxq_archive_encode(core, local, &before, &err), MXQ_OK,
+                       who + " encodes");
+        const std::string before_bytes =
+            before == nullptr
+                ? std::string()
+                : std::string(reinterpret_cast<const char *>(
+                                  mxq_blob_bytes(before)),
+                              mxq_blob_len(before));
+        mxq_blob_release(before);
+        c.check(before_bytes.find("\"rules_id\":\"" +
+                                  std::string(game == MXQ_GAME_KIND_GOMOKU_15
+                                                  ? "gomoku-15"
+                                                  : "renju") +
+                                  "\"") != std::string::npos,
+                who + "'s document names its own game");
+
+        mxq_game_release(local);
+        mxq_core_shutdown(core, nullptr);
+        core = nullptr;
+        err = make_error();
+        if (init_core(store, &core, &err) != MXQ_OK) {
+            c.check(false, who + ": the core did not reopen its store");
+            c.report();
+            return;
+        }
+
+        MxqGame *resumed = nullptr;
+        uint8_t exists = 0;
+        err = make_error();
+        c.check_status(mxq_game_resume_active(core, &resumed, &exists, &err),
+                       MXQ_OK, who + " resumes (" + err.detail + ")");
+        c.check_eq(static_cast<int64_t>(exists), 1,
+                   who + "'s game was in the library");
+        MxqBlob *after = nullptr;
+        err = make_error();
+        c.check_status(mxq_archive_encode(core, resumed, &after, &err), MXQ_OK,
+                       who + " encodes again");
+        const std::string after_bytes =
+            after == nullptr ? std::string()
+                             : std::string(reinterpret_cast<const char *>(
+                                               mxq_blob_bytes(after)),
+                                           mxq_blob_len(after));
+        mxq_blob_release(after);
+        c.check_eq(after_bytes, before_bytes,
+                   who + "'s resumed session encodes the same bytes");
+
+        /* Filed, then exported and imported back — the round trip a user makes
+         * when a file moves between two devices. */
+        uint64_t record_id = 0;
+        err = make_error();
+        c.check_status(mxq_store_archive_and_clear(core, resumed, &record_id,
+                                                   &err),
+                       MXQ_OK, who + " is filed (" + err.detail + ")");
+        MxqBlob *exported = nullptr;
+        err = make_error();
+        c.check_status(mxq_store_export(core, record_id, &exported, &err),
+                       MXQ_OK, who + " exports (" + err.detail + ")");
+        const std::string exported_bytes =
+            exported == nullptr
+                ? std::string()
+                : std::string(reinterpret_cast<const char *>(
+                                  mxq_blob_bytes(exported)),
+                              mxq_blob_len(exported));
+        mxq_blob_release(exported);
+        mxq_game_release(resumed);
+
+        MxqArchiveInfo info;
+        std::memset(&info, 0, sizeof(info));
+        info.struct_size = static_cast<uint32_t>(sizeof(info));
         err = make_error();
         c.check_status(
-            mxq_game_create_nearby(core, &nearby_config, &birth,
-                                   &refused_nearby, &err),
-            MXQ_ERR_ARG_RANGE,
-            "a nearby session for one, through the other door");
-        c.check(refused_nearby == nullptr, "and no handle there either");
+            mxq_archive_validate(
+                core, reinterpret_cast<const uint8_t *>(exported_bytes.data()),
+                exported_bytes.size(), &info, &err),
+            MXQ_OK, who + "'s export validates (" + err.detail + ")");
+        c.check_eq(static_cast<int64_t>(info.game), game,
+                   who + "'s export decodes to its own game");
+
+        MxqImportOutcome outcome = MXQ_IMPORT_CREATED;
+        uint64_t imported_id = 0;
+        MxqRecordSummary summary;
+        std::memset(&summary, 0, sizeof(summary));
+        summary.struct_size = static_cast<uint32_t>(sizeof(summary));
+        err = make_error();
+        c.check_status(
+            mxq_store_import(
+                core, reinterpret_cast<const uint8_t *>(exported_bytes.data()),
+                exported_bytes.size(), &outcome, &imported_id, &summary, &err),
+            MXQ_OK, who + "'s own file imports (" + err.detail + ")");
+        c.check_eq(static_cast<int64_t>(outcome), MXQ_IMPORT_EXISTING,
+                   who + "'s file is the record it came from");
+        c.check_eq(static_cast<int64_t>(imported_id),
+                   static_cast<int64_t>(record_id),
+                   who + "'s import returns that record");
+
+        uint8_t still_active = 1;
+        err = make_error();
+        c.check_status(mxq_store_active_exists(core, &still_active, &err),
+                       MXQ_OK, who + "'s library still answers");
+        c.check_eq(still_active, 0, who + "'s library holds no active game");
+
+        mxq_core_shutdown(core, nullptr);
+        core = nullptr;
     }
 
-    uint8_t exists = 1;
-    err = make_error();
-    c.check_status(mxq_store_active_exists(core, &exists, &err), MXQ_OK,
-                   "the library still answers");
-    c.check_eq(exists, 0, "and holds nothing");
-
-    mxq_core_shutdown(core, nullptr);
     c.report();
 }
 
@@ -1022,7 +1204,7 @@ int main() {
     case_an_overline_is_black_s_alone_to_fear();
     case_a_full_board_with_no_five_is_a_draw();
     case_preparation_reaches_the_engine_the_game_is_played_on();
-    case_persistence_still_refuses_these_games();
+    case_a_placement_game_lives_through_persistence();
 
     std::error_code cleanup;
     fs::remove_all(scratch_root(), cleanup);

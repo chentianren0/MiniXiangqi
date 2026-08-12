@@ -3,5 +3,5 @@
   "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
   "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
   "detail_contains": "\"rules_id\" is not",
-  "why": "rules_id names which of the two rulesets of xiangqi-rules.md a game was played under, and that vocabulary is closed. A file naming a third ruleset is not a later version of ours; it is not ours."
+  "why": "rules_id names which ruleset a game was played under, and that vocabulary is closed at four — the two of xiangqi-rules.md and the two placement games. A file naming a fifth is not a later version of ours; it is not ours."
 }

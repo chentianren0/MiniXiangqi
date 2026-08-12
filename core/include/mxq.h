@@ -565,7 +565,7 @@ enum {
     MXQ_PROVENANCE_IMPORTED       = 1, /* "imported" */
     MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved for a future
                                         * start-from-position feature and
-                                        * rejected by archive version 3 */
+                                        * rejected by archive version 4 */
 };
 
 /*

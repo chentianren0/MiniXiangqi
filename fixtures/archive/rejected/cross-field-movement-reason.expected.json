@@ -1,0 +1,8 @@
+{
+  "class": "cross-field: the rule reason and the game",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "movement game",
+  "game": "gomoku-15",
+  "why": "The other half of the same partition, and the half a one-sided check would miss. A placement game has no king to mate, so a Gomoku record cannot end in checkmate; the two directions are one rule and both are stated."
+}

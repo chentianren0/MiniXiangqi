@@ -272,6 +272,12 @@ struct Scenario {
     MxqGameConfig            config = make_config();
     std::vector<std::string> moves;
     std::string              archive; /* a golden in fixtures/archive/valid */
+    /* Whether the scenario's game is one only a build with the second engine
+     * carries. Which games a build carries is the build's, per mxq.h, so a
+     * scenario of a game this one has not got is reported as not evaluated
+     * rather than failed — the same posture the whole runner takes without the
+     * first engine. */
+    bool                     needs_gomoku = false;
     /* The status block, in the serialised vocabulary. */
     std::string              state;
     std::string              reason;
@@ -386,7 +392,8 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
 
     /* The game the scenario is of. Required rather than defaulted: a scenario
      * that did not say would be replayed under whichever game the runner
-     * happened to pick, which is the one thing a two-game corpus must not do. */
+     * happened to pick, which is the one thing a many-game corpus must not
+     * do. */
     {
         const mxqtest::JsonValue *game = config->member("game");
         if (game == nullptr || !game->is_string()) {
@@ -397,8 +404,14 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             out.config.game = MXQ_GAME_KIND_MINI_XIANGQI;
         } else if (game->string() == "xiangqi") {
             out.config.game = MXQ_GAME_KIND_XIANGQI;
+        } else if (game->string() == "gomoku-15") {
+            out.config.game = MXQ_GAME_KIND_GOMOKU_15;
+            out.needs_gomoku = true;
+        } else if (game->string() == "renju") {
+            out.config.game = MXQ_GAME_KIND_RENJU;
+            out.needs_gomoku = true;
         } else {
-            error = "\"config.game\" is not one of the two accepted games";
+            error = "\"config.game\" is not one of the accepted games";
             return false;
         }
     }
@@ -720,12 +733,21 @@ void check_legal_moves(Case &c, MxqCore *core, MxqGameKind kind,
             where + ": the session's legal-move set is the facade's");
 
     /* The from-square filter is exactly the subset with that origin, and a
-     * square with nothing on it is a count of zero rather than an error. */
+     * square with nothing on it is a count of zero rather than an error.
+     *
+     * Which prefix of a move is its origin is the game's own answer, asked of
+     * the notation rather than taken as two characters: "a1" is a prefix of
+     * "a10" as text and not a square of it, so a fixed-width comparison counts
+     * a tenth or a fifteenth rank's moves as another square's. */
     if (!from_facade.empty()) {
-        const std::string square = from_facade.front().substr(0, 2);
+        const std::string &first = from_facade.front();
+        const size_t width = mxq::notation::square_length(
+            kind, first.data(), first.size());
+        const std::string square = first.substr(0, width);
         size_t expected_here = 0;
         for (const std::string &move : from_facade) {
-            if (move.compare(0, 2, square) == 0) {
+            if (mxq::notation::move_begins_at(kind, move,
+                                              square.c_str())) {
                 ++expected_here;
             }
         }
@@ -788,6 +810,14 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
         return;
     }
     c.name = path.stem().string() + " — " + scenario.title;
+
+#if !MXQ_TEST_GOMOKU_FACADE
+    if (scenario.needs_gomoku) {
+        c.skip("the placement games need the second engine");
+        c.report();
+        return;
+    }
+#endif
 
     std::string golden;
     if (!scenario.archive.empty() &&

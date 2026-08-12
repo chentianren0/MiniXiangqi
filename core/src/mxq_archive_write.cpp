@@ -206,22 +206,12 @@ std::string timestamp_text(int64_t epoch_ms) {
 /* The closed vocabularies                                                 */
 /* ---------------------------------------------------------------------- */
 
-/* The same two rows as rules_id_text below, asked as a question. They widen
- * together and are adjacent so that they cannot be widened apart. */
-bool records_game(MxqGameKind game) {
-    switch (game) {
-    case MXQ_GAME_KIND_MINI_XIANGQI:
-    case MXQ_GAME_KIND_XIANGQI:
-        return true;
-    default: break;
-    }
-    return false;
-}
-
 const char *rules_id_text(MxqGameKind game) {
     switch (game) {
     case MXQ_GAME_KIND_MINI_XIANGQI: return "minixiangqi";
     case MXQ_GAME_KIND_XIANGQI:      return "xiangqi";
+    case MXQ_GAME_KIND_GOMOKU_15:    return "gomoku-15";
+    case MXQ_GAME_KIND_RENJU:        return "renju";
     default: break;
     }
     assert(false && "a game outside the closed vocabulary reached the writer");
@@ -294,6 +284,8 @@ const char *end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_FIFTY_MOVE_RULE:        return "fifty-move-rule";
     case MXQ_END_REASON_AGREED_DRAW:            return "agreed-draw";
     case MXQ_END_REASON_MUTUAL_RESIGNATION:     return "mutual-resignation";
+    case MXQ_END_REASON_FIVE_IN_A_ROW:          return "five-in-a-row";
+    case MXQ_END_REASON_BOARD_FULL:             return "board-full";
     default: break;
     }
     return nullptr; /* MXQ_END_REASON_NONE: no end is recorded */
@@ -309,10 +301,10 @@ std::string content_bytes(const Record &record) {
 
     members.emplace_back("rules_id", json_string(rules_id_text(record.config.game)));
     members.emplace_back("rules_version", std::to_string(MXQ_RULES_VERSION));
-    /* Version 3 defines exactly one initial position per game, so the writer
+    /* Version 4 defines exactly one initial position per game, so the writer
      * states that game's frozen one rather than carrying a start position it
      * would have to validate. Both members read the same field, which is what
-     * makes a document naming one game and opening from the other's board
+     * makes a document naming one game and opening from another's board
      * unwritable rather than merely refused. */
     members.emplace_back("start_fen",
                          json_string(notation::start_fen(record.config.game)));

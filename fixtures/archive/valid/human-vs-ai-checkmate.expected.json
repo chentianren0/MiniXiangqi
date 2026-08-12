@@ -2,7 +2,7 @@
   "title": "Human versus AI, red mates in three plies",
   "why": "The recorded terminal pair must agree with the replayed adjudication: this line really is checkmate, and the outcome names the same winner.",
   "info": {
-    "archive_version": 3,
+    "archive_version": 4,
     "game": "minixiangqi",
     "move_count": 3,
     "mode": "human-vs-ai",

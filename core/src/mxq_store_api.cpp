@@ -65,7 +65,9 @@ bool value_of(const std::string &text, const Value (&domain)[N],
 
 bool game_of(const std::string &text, MxqGameKind &out) {
     static const MxqGameKind domain[] = {MXQ_GAME_KIND_MINI_XIANGQI,
-                                         MXQ_GAME_KIND_XIANGQI};
+                                         MXQ_GAME_KIND_XIANGQI,
+                                         MXQ_GAME_KIND_GOMOKU_15,
+                                         MXQ_GAME_KIND_RENJU};
     return value_of(text, domain, archive::rules_id_text, out);
 }
 
@@ -116,7 +118,8 @@ bool end_reason_of(const std::string &text, MxqEndReason &out) {
         MXQ_END_REASON_PERPETUAL_CHASE,        MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK,
         MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE, MXQ_END_REASON_RESIGNATION,
         MXQ_END_REASON_ENDED_EARLY,            MXQ_END_REASON_FIFTY_MOVE_RULE,
-        MXQ_END_REASON_AGREED_DRAW,            MXQ_END_REASON_MUTUAL_RESIGNATION};
+        MXQ_END_REASON_AGREED_DRAW,            MXQ_END_REASON_MUTUAL_RESIGNATION,
+        MXQ_END_REASON_FIVE_IN_A_ROW,          MXQ_END_REASON_BOARD_FULL};
     if (text.empty()) {
         out = MXQ_END_REASON_NONE;
         return true;

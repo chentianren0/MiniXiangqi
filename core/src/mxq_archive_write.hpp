@@ -9,7 +9,7 @@
  * canonical spelling and the content hash is taken over exactly these bytes.
  *
  * Nothing here knows what a session is. It takes a Record — the complete
- * version 3 document as values — and returns bytes, so that the same writer
+ * version 4 document as values — and returns bytes, so that the same writer
  * serves an attached session's every commit, mxq_archive_encode, and the
  * export path when it lands, and none of them can spell a document its own
  * way.
@@ -28,7 +28,7 @@ namespace mxq {
 namespace archive {
 
 /*
- * One version 3 document, as values.
+ * One version 4 document, as values.
  *
  * config.game is what the document's rules_id spells and what its start_fen is
  * taken from: one field decides both, so a document cannot record one game's
@@ -72,18 +72,6 @@ std::string document_bytes(const Record &record, const std::string &content);
 /* The exact fixed-width RFC 3339 UTC spelling docs/game-data.md fixes:
  * YYYY-MM-DDTHH:MM:SS.sssZ, the one spelling of an instant this format has. */
 std::string timestamp_text(int64_t epoch_ms);
-
-/*
- * Whether this build's format records a game at all.
- *
- * It is rules_id_text's own domain asked as a question rather than an answer,
- * and it exists because the core plays more games than its format writes: the
- * game vocabulary and the format's rules_id vocabulary widen in their own
- * stages, and between those stages a game with no rules_id is one no session can
- * be created for. Every caller that would otherwise hand rules_id_text a game it
- * has no name for asks this first, and the two widen together.
- */
-bool records_game(MxqGameKind game);
 
 /* The closed serialised vocabularies, for the store's summary columns as much
  * as for the document. Absence is a null pointer, matching the archive, which

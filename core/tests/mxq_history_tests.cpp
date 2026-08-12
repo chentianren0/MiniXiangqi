@@ -394,6 +394,8 @@ std::string reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
     case MXQ_END_REASON_AGREED_DRAW: return "agreed-draw";
     case MXQ_END_REASON_MUTUAL_RESIGNATION: return "mutual-resignation";
+    case MXQ_END_REASON_FIVE_IN_A_ROW: return "five-in-a-row";
+    case MXQ_END_REASON_BOARD_FULL: return "board-full";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -482,6 +484,9 @@ struct Scenario {
     MxqGameConfig            config = make_config();
     std::vector<std::string> moves;
     Ending                   end;
+    /* Whether the scenario's game is one only a build with the second engine
+     * carries; see the session runner's own note. */
+    bool                     needs_gomoku = false;
 };
 
 bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
@@ -567,8 +572,14 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             out.config.game = MXQ_GAME_KIND_MINI_XIANGQI;
         } else if (game->string() == "xiangqi") {
             out.config.game = MXQ_GAME_KIND_XIANGQI;
+        } else if (game->string() == "gomoku-15") {
+            out.config.game = MXQ_GAME_KIND_GOMOKU_15;
+            out.needs_gomoku = true;
+        } else if (game->string() == "renju") {
+            out.config.game = MXQ_GAME_KIND_RENJU;
+            out.needs_gomoku = true;
         } else {
-            error = "\"config.game\" is not one of the two accepted games";
+            error = "\"config.game\" is not one of the accepted games";
             return false;
         }
     }
@@ -767,6 +778,14 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
         return;
     }
     c.name = path.stem().string() + " — " + scenario.title;
+
+#if !MXQ_TEST_GOMOKU_FACADE
+    if (scenario.needs_gomoku) {
+        c.skip("the placement games need the second engine");
+        c.report();
+        return;
+    }
+#endif
 
     std::string golden;
     if (!scenario.end.archive.empty() &&
@@ -1480,7 +1499,16 @@ void case_the_wire_session_lives_with_its_game() {
     std::snprintf(birth.peer_id, sizeof(birth.peer_id),
                   "wifi-aware-device-77E1B0C2");
 
-    /* A session at birth has retracted, claimed and declared nothing. */
+    /* The Free Play configuration this case asks two questions with, declared
+     * here rather than beside the first because the second is a build away. */
+    MxqGameConfig local = make_config();
+
+#if defined(NDEBUG)
+    /* A session at birth has retracted, claimed and declared nothing, a wire
+     * session belongs to a nearby game, and a session without an identifier is
+     * not one the protocol carries. All three are programming errors the
+     * contract has assert in a debug build, so the returned status is only a
+     * promise where that assertion is compiled out. */
     MxqNearbySession used = birth;
     used.undos = 1;
     MxqGame *refused = nullptr;
@@ -1489,7 +1517,6 @@ void case_the_wire_session_lives_with_its_game() {
                    MXQ_ERR_ARG_RANGE,
                    "a nearby game created over a session that has retracted");
     used = birth;
-    MxqGameConfig local = make_config();
     err = make_error();
     c.check_status(mxq_game_create_nearby(core, &local, &used, &refused, &err),
                    MXQ_ERR_ARG_RANGE, "a wire session over a Free Play game");
@@ -1498,6 +1525,7 @@ void case_the_wire_session_lives_with_its_game() {
     err = make_error();
     c.check_status(mxq_game_create_nearby(core, &config, &used, &refused, &err),
                    MXQ_ERR_ARG_RANGE, "a wire session with no identifier");
+#endif
 
     MxqGame *game = nullptr;
     err = make_error();
@@ -1556,6 +1584,9 @@ void case_the_wire_session_lives_with_its_game() {
      * which ends nothing until the resume exchange settles it. */
     MxqNearbySession sent = retracted;
     sent.sent_end = MXQ_NEARBY_TERMINAL_RESIGN;
+#if defined(NDEBUG)
+    /* A wire session's identity is frozen, and writing another's over it is a
+     * programming error that asserts in a debug build, as above. */
     MxqNearbySession stranger = sent;
     std::snprintf(stranger.session_id, sizeof(stranger.session_id),
                   "00000000-0000-7000-8000-000000000000");
@@ -1563,6 +1594,7 @@ void case_the_wire_session_lives_with_its_game() {
     c.check_status(mxq_game_set_nearby_session(game, &stranger, &err),
                    MXQ_ERR_ARG_RANGE,
                    "another session's bookkeeping written over this one's");
+#endif
     err = make_error();
     c.check_status(mxq_game_set_nearby_session(game, &sent, &err), MXQ_OK,
                    "the terminal this device sent is recorded");
