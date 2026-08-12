@@ -30,6 +30,11 @@ final class PhonePlacementUITests: XCTestCase {
     /// marks are on the board.
     private static let doubleThreeLine = "renju:g8,a1,i8,a15,h7,o1,h9,o15"
 
+    /// Black's five along rank 8, h through l, with White's four in the corners
+    /// and out of every line. Nine plies, the last of them the fifth stone: the
+    /// game ends on it, by the one reason these games win by.
+    private static let fiveInARowLine = "gomoku-15:h8,a1,i8,a15,j8,o1,k8,o15,l8"
+
     private func scratchStoreName() -> String {
         "mxq-uitest-store-" + UUID().uuidString
     }
@@ -281,13 +286,18 @@ final class PhonePlacementUITests: XCTestCase {
     /// this is the first thing that ever asks the *second* engine to be prepared
     /// outside game creation.
     ///
-    /// The board is read across the press as well, which is the #181 rule: a
-    /// board in the stacked shape is sized from the cluster's reserved slot and
-    /// does not follow it, so a hint's indicator standing in the lamp's place
-    /// must move nothing. It is two reads here rather than a sampling loop —
-    /// this control was already on the row before the press, so what is left to
-    /// catch is an indicator that measures differently from the lamp, and that
-    /// shows at the answer.
+    /// The board is read either side of the request as well, which is the #181
+    /// rule: a board in the stacked shape is sized from the cluster's reserved
+    /// slot and does not follow it. **What two reads can see is a permanent
+    /// displacement, and that is the whole of what they claim here.** The
+    /// transient state is out of reach on this board: the bridge leaves the
+    /// engine's trivial-opening probe on, so a hint about a near-empty position
+    /// answers before the indicator's own delay has elapsed, and both reads fall
+    /// on a cluster still showing the lamp. The indicator-against-lamp
+    /// measurement is pinned where a search is long enough to be looked at —
+    /// `PhonePlayUITests` samples it across a 深思 search — and the composition
+    /// under it is structural in any case, the indicator drawing inside the
+    /// lamp's own layout box.
     func testTheHintIsThePendingStoneAndTappingItPlaysIt() {
         let app = launch(preferences: ["defaults.aiLevel": "fast"],
                          availableMemory: Self.modestMemory)
@@ -310,7 +320,8 @@ final class PhonePlacementUITests: XCTestCase {
         XCTAssertTrue(text(of: suggested).contains("空"),
                       "with nothing committed by showing it")
         assertBoardIsWhereItWas(boardCorners(app), before,
-                                "the board should not move when a hint is asked for")
+                                "the board should be where it was once the "
+                                + "suggestion is standing on it")
 
         // Tapping the mark plays it, exactly as tapping a mark the player raised
         // themselves does.
@@ -349,6 +360,25 @@ final class PhonePlacementUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         return false
+    }
+
+    /// The result notice a placement game ends with, and the reason under it.
+    ///
+    /// It would catch a placement end reason that never crossed the C boundary.
+    /// `EndReason`'s `init` ends in a `default:` arm, so a reason it has no case
+    /// for becomes `.none` — and `.none` is *no words*, which the notice draws by
+    /// omitting the line rather than by saying anything wrong. Both these games'
+    /// reasons were missing that way, in Free Play as much as against the
+    /// machine, and nothing on screen said so. The title is right either way,
+    /// which is why the reason line is what has to be read.
+    func testFiveInARowEndsTheGameWithItsOwnReason() {
+        let app = launch(replaying: Self.fiveInARowLine)
+        XCTAssertTrue(control(app, "result-title").waitForExistence(timeout: 30),
+                      "a finished game presents its result")
+        XCTAssertEqual(text(of: control(app, "result-title")), "黑方获胜",
+                       "the first mover's stones are the black ones")
+        XCTAssertEqual(text(of: control(app, "result-reason")), "五子连珠",
+                       "and the reason is this game's own")
     }
 
     /// Renju's forbidden points, on the board and reachable by a screen reader.
