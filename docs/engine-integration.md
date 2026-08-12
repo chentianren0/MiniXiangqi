@@ -1,6 +1,6 @@
 # Engine Integration
 
-This document defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine, and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Fairy-Stockfish repository.
+This document defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine — the engine the movement games are played on — and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Fairy-Stockfish repository, and it does not define the placement games' engine, whose counterpart contract is [placement-engine-integration.md](placement-engine-integration.md).
 
 > **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md).
 
