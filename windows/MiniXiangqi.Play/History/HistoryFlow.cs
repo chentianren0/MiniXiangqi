@@ -71,7 +71,7 @@ public enum HistoryAlert
     /// <summary>这个文件和历史中的一盘棋冲突 — same game, different content. 好.</summary>
     ImportConflict,
 
-    /// <summary>这个文件由更新版本的 Mini Xiangqi 创建. No word in it means corrupt. 好.</summary>
+    /// <summary>这个文件由更新版本的闲敲棋子创建. No word in it means corrupt. 好.</summary>
     ImportNewerVersion,
 
     /// <summary>无法读取这个对局文件 — every other refusal the archive domain has. 好.</summary>

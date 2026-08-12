@@ -43,13 +43,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mini Xiangqi is free software, released under the GNU General Public License v3."
+            "value": "Star River is free software, released under the GNU General Public License v3."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mini Xiangqi 是自由软件，依据 GNU General Public License v3 发布。"
+            "value": "闲敲棋子是自由软件，依据 GNU General Public License v3 发布。"
           }
         }
       }
@@ -462,13 +462,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This version can't read it. Update Mini Xiangqi and try again. History is unchanged."
+            "value": "This version can't read it. Update Star River and try again. History is unchanged."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。"
+            "value": "当前版本无法读取它。请更新闲敲棋子后再试。历史没有改变。"
           }
         }
       }
@@ -479,13 +479,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This File Was Created by a Newer Version of Mini Xiangqi"
+            "value": "This File Was Created by a Newer Version of Star River"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个文件由更新版本的 Mini Xiangqi 创建"
+            "value": "这个文件由更新版本的闲敲棋子创建"
           }
         }
       }

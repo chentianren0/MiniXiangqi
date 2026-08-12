@@ -52,6 +52,9 @@ final class PhoneSettingsUITests: XCTestCase {
         /// source the licence is about.
         let about, name, version, build: String
         let license, licenseStatement, source: String
+        /// The product's own name in this language, which is what the name row
+        /// carries — the bundle's display name is localized like any other copy.
+        let productName: String
 
         static let chinese = Language(
             code: "zh-Hans", short: "zh",
@@ -68,8 +71,9 @@ final class PhoneSettingsUITests: XCTestCase {
             defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
             about: "关于", name: "名称", version: "版本", build: "构建版本",
             license: "许可证",
-            licenseStatement: "Mini Xiangqi 是自由软件，依据 GNU General Public License v3 发布。",
-            source: "源代码")
+            licenseStatement: "闲敲棋子是自由软件，依据 GNU General Public License v3 发布。",
+            source: "源代码",
+            productName: "闲敲棋子")
 
         static let english = Language(
             code: "en", short: "en",
@@ -86,8 +90,9 @@ final class PhoneSettingsUITests: XCTestCase {
             defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.",
             about: "About", name: "Name", version: "Version", build: "Build",
             license: "License",
-            licenseStatement: "Mini Xiangqi is free software, released under the GNU General Public License v3.",
-            source: "Source Code")
+            licenseStatement: "Star River is free software, released under the GNU General Public License v3.",
+            source: "Source Code",
+            productName: "Star River")
     }
 
     /// The preferences database a launch reads and writes, so no test here ever
@@ -333,7 +338,7 @@ final class PhoneSettingsUITests: XCTestCase {
                 .trimmingCharacters(in: .whitespaces).isEmpty,
                            "\(identifier) should carry a value beside its label")
         }
-        XCTAssertTrue(detail(of: "about-name", in: app).contains("Mini Xiangqi"),
+        XCTAssertTrue(detail(of: "about-name", in: app).contains(language.productName),
                       "名称 should carry the product name — it reads "
                       + detail(of: "about-name", in: app))
         for identifier in ["about-version", "about-build"] {

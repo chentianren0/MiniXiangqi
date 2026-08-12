@@ -66,8 +66,8 @@ final class HistoryScreenUITests: XCTestCase {
             duplicateTitle: "这盘棋已经在历史里",
             duplicateMessage: "文件里的对局和历史中的一盘完全相同，所以没有重复添加。",
             view: "查看", ok: "好",
-            newerVersionTitle: "这个文件由更新版本的 Mini Xiangqi 创建",
-            newerVersionMessage: "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。")
+            newerVersionTitle: "这个文件由更新版本的闲敲棋子创建",
+            newerVersionMessage: "当前版本无法读取它。请更新闲敲棋子后再试。历史没有改变。")
 
         static let english = Language(
             code: "en", short: "en",
@@ -86,8 +86,8 @@ final class HistoryScreenUITests: XCTestCase {
             duplicateTitle: "This Game Is Already in History",
             duplicateMessage: "The game in this file is identical to one already in History, so it wasn't added again.",
             view: "View", ok: "OK",
-            newerVersionTitle: "This File Was Created by a Newer Version of Mini Xiangqi",
-            newerVersionMessage: "This version can't read it. Update Mini Xiangqi and try again. History is unchanged.")
+            newerVersionTitle: "This File Was Created by a Newer Version of Star River",
+            newerVersionMessage: "This version can't read it. Update Star River and try again. History is unchanged.")
     }
 
     /// One of the archive corpus's own goldens, verbatim: a human-versus-AI

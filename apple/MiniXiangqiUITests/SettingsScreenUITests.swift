@@ -58,6 +58,9 @@ final class SettingsScreenUITests: XCTestCase {
         /// source the licence is about.
         let about, name, version, build: String
         let license, licenseStatement, source: String
+        /// The product's own name in this language, which is what the name row
+        /// carries — the bundle's display name is localized like any other copy.
+        let productName: String
         /// What a deletion asks, when it asks.
         let deleteTitle, delete, cancel: String
         /// The oldest of the three filed games — the one the deletion tests
@@ -79,8 +82,9 @@ final class SettingsScreenUITests: XCTestCase {
             defaultsFooter: "这些设置用于开始新的人机对弈，不会改变进行中的对局。",
             about: "关于", name: "名称", version: "版本", build: "构建版本",
             license: "许可证",
-            licenseStatement: "Mini Xiangqi 是自由软件，依据 GNU General Public License v3 发布。",
+            licenseStatement: "闲敲棋子是自由软件，依据 GNU General Public License v3 发布。",
             source: "源代码",
+            productName: "闲敲棋子",
             deleteTitle: "删除这盘棋？", delete: "删除", cancel: "取消",
             oldestRow: "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步")
 
@@ -99,8 +103,9 @@ final class SettingsScreenUITests: XCTestCase {
             defaultsFooter: "These settings apply when you start a new Human versus AI game. They don't change a game in progress.",
             about: "About", name: "Name", version: "Version", build: "Build",
             license: "License",
-            licenseStatement: "Mini Xiangqi is free software, released under the GNU General Public License v3.",
+            licenseStatement: "Star River is free software, released under the GNU General Public License v3.",
             source: "Source Code",
+            productName: "Star River",
             deleteTitle: "Delete this game?", delete: "Delete", cancel: "Cancel",
             oldestRow: "Mini Xiangqi · Free Play · Red Wins · Checkmate · 3 moves")
     }
@@ -411,7 +416,7 @@ final class SettingsScreenUITests: XCTestCase {
             XCTAssertTrue(control(app, identifier).exists)
             XCTAssertTrue(app.staticTexts[label].exists, "\(identifier) should read \(label)")
         }
-        XCTAssertTrue(detail(app, "about-name").contains("Mini Xiangqi"),
+        XCTAssertTrue(detail(app, "about-name").contains(language.productName),
                       "名称 should carry the product name — it reads " + detail(app, "about-name"))
         for identifier in ["about-version", "about-build"] {
             XCTAssertTrue(detail(app, identifier).contains(where: \.isNumber),

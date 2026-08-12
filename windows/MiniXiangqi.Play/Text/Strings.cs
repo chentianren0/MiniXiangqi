@@ -228,11 +228,11 @@ public static class Strings
                 "It is the same game as one in History, but its contents differ. History is unchanged. "
                 + "To use this file, delete that game from History first."),
             ["alert.importNewerVersion.title"] = new(
-                "这个文件由更新版本的 Mini Xiangqi 创建",
-                "This File Was Created by a Newer Version of Mini Xiangqi"),
+                "这个文件由更新版本的闲敲棋子创建",
+                "This File Was Created by a Newer Version of Star River"),
             ["alert.importNewerVersion.message"] = new(
-                "当前版本无法读取它。请更新 Mini Xiangqi 后再试。历史没有改变。",
-                "This version can't read it. Update Mini Xiangqi and try again. History is unchanged."),
+                "当前版本无法读取它。请更新闲敲棋子后再试。历史没有改变。",
+                "This version can't read it. Update Star River and try again. History is unchanged."),
             ["alert.importUnreadable.title"] = new("无法读取这个对局文件", "Can't Read This Game File"),
             ["alert.importUnreadable.message"] = new(
                 "文件的内容无效或过大，无法导入。历史没有改变。请确认文件完整，或者向对方要一份新的。",
@@ -344,7 +344,7 @@ public static class Strings
             // Composition.
             ["metadata.join"] = new("{0} · {1}", "{0} · {1}"),
             ["moveList.rowNumber"] = new("{0}.", "{0}."),
-            ["app.displayName"] = new("Mini Xiangqi", "Mini Xiangqi"),
+            ["app.displayName"] = new("闲敲棋子", "Star River"),
 
             // Board accessibility. The point description is composed from the
             // square name, then this vocabulary in the order the board contract

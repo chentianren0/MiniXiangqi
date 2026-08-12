@@ -28,8 +28,9 @@ import Foundation
 
 extension GameKind {
     /// The one display name for a game, shared by section headings, setup and
-    /// every metadata line. The application name remains Mini Xiangqi; this is
-    /// the name of the ruleset a particular row or game belongs to.
+    /// every metadata line. The application is named Star River; this is the
+    /// name of the ruleset a particular row or game belongs to, and **Mini
+    /// Xiangqi** here is one of the four games rather than the product.
     var localizedName: String {
         switch self {
         case .miniXiangqi: String(localized: "game.miniXiangqi")
