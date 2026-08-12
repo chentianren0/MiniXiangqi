@@ -71,7 +71,12 @@
 #include "mxq_engine_bridge.hpp"
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
+#include "mxq_rules.hpp"
 #include "mxq_session.hpp"
+
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+#include "mxq_rapfi_bridge.hpp"
+#endif
 
 #include <atomic>
 #include <cassert>
@@ -145,44 +150,87 @@ uint64_t g_next_ticket = 1; /* 0 is never issued */
 
 std::atomic<int32_t> g_engine_state{MXQ_ENGINE_STATE_UNINITIALIZED};
 
+/*
+ * The game an engine is prepared for, or -1 when none is.
+ *
+ * The facade holds this rather than asking a bridge, and that is the change two
+ * engines make: each bridge knows what it is configured for and neither knows
+ * whether the other is, so "which game would a search run in" is a question only
+ * the thing that dispatches between them can answer. Written on the engine
+ * thread by preparation and teardown; read by mxq_search_start and
+ * mxq_engine_query on any thread, which is why it is atomic.
+ */
+std::atomic<int32_t> g_prepared_game{-1};
+
 /* The one retained result: under its ticket until the next search or
  * shutdown. */
 bool g_retained_valid = false;
 MxqSearchResult g_retained{};
 
-/* The profile identifier: the two build revisions MxqVersion reports and the
- * two per-game facts MxqGameProfile does, composed once into the bounded string
- * mxq_engine_query and every result report. Twelve characters of each revision
- * and of the network hash name a build as unambiguously as the axes themselves
- * do at this scale, and keep the whole under MXQ_PROFILE_ID_CAP. */
-std::string compose_profile_id(engine::Variant variant) {
+/* The profile identifier: the core revision, the revision of the engine fork
+ * this game is played on, and the two per-game facts MxqGameProfile reports,
+ * composed once into the bounded string mxq_engine_query and every result report
+ * carry. Twelve characters of each revision and of the network hash name a build
+ * as unambiguously as the axes themselves do at this scale, and keep the whole
+ * under MXQ_PROFILE_ID_CAP.
+ *
+ * The fork revision is the one the game's own engine is vendored at. Naming the
+ * first engine's for a game the second one plays would attribute a move to a
+ * build that had nothing to do with it. */
+std::string compose_profile_id(MxqGameKind game) {
     const auto first12 = [](const char *value) {
         const std::string s(value);
         return s.size() > 12 ? s.substr(0, 12) : s;
     };
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    if (notation::move_class_of(game) == notation::MoveClass::Placement) {
+        const rapfi::Rules rules = rapfi::rules_of(game);
+        return first12(MXQ_BUILD_CORE_REVISION) + "-" +
+               first12(rapfi::fork_revision()) + "-" +
+               rapfi::rules_variant_id(rules) + "-" +
+               first12(rapfi::rules_nnue_sha256(rules));
+    }
+#endif
+    const engine::Variant variant = engine::variant_of(game);
     return first12(MXQ_BUILD_CORE_REVISION) + "-" +
            first12(MXQ_BUILD_FORK_REVISION) + "-" +
            engine::variant_id(variant) + "-" +
            first12(engine::variant_nnue_sha256(variant));
 }
 
-/* The profile of one variant, composed once each. Two of the four axes are
- * per-variant, so the identifier is too: a move produced under one variant must
- * not be attributed to the other's network. */
-const std::string &profile_id_of(engine::Variant variant) {
-    static const std::string mini =
-        compose_profile_id(engine::Variant::MiniXiangqi);
-    static const std::string xiangqi =
-        compose_profile_id(engine::Variant::Xiangqi);
-    return variant == engine::Variant::Xiangqi ? xiangqi : mini;
+/* The profile of one game, composed once each. Three of the four parts are that
+ * game's own, so the identifier is: a move produced for one game must not be
+ * attributed to another's network. */
+const std::string &profile_id_of(MxqGameKind game) {
+    static const std::string composed[] = {
+        compose_profile_id(MXQ_GAME_KIND_MINI_XIANGQI),
+        compose_profile_id(MXQ_GAME_KIND_XIANGQI),
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+        compose_profile_id(MXQ_GAME_KIND_GOMOKU_15),
+        compose_profile_id(MXQ_GAME_KIND_RENJU),
+#endif
+    };
+    const size_t count = sizeof(composed) / sizeof(composed[0]);
+    assert(notation::known_game(game) && static_cast<size_t>(game) < count &&
+           "a game outside the closed vocabulary");
+    return composed[static_cast<size_t>(game) < count
+                        ? static_cast<size_t>(game)
+                        : 0u];
 }
 
 /* The profile of the configuration a move would be produced by right now: the
- * variant the engine's tables are built for, which is what a search would run
- * in. Before any preparation that is the rules posture's variant, and the
- * bridge is the one place that knows which. */
+ * game an engine is prepared for. Before any preparation there is none, and what
+ * is reported is the movement engine's own rules posture — its tables are built
+ * for a variant whether or not anything asked for one, and that is what a search
+ * would run in if one could start at all. */
 const std::string &profile_id() {
-    return profile_id_of(engine::active_variant());
+    const int32_t prepared = g_prepared_game.load(std::memory_order_acquire);
+    if (prepared >= 0) {
+        return profile_id_of(static_cast<MxqGameKind>(prepared));
+    }
+    return profile_id_of(engine::active_variant() == engine::Variant::Xiangqi
+                             ? MXQ_GAME_KIND_XIANGQI
+                             : MXQ_GAME_KIND_MINI_XIANGQI);
 }
 
 /* Whether a search task is outstanding: queued or running. Caller holds
@@ -206,40 +254,218 @@ bool search_outstanding_locked() {
 /* The engine thread                                                       */
 /* ---------------------------------------------------------------------- */
 
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+/* Whether this game is played on the second engine. One question, asked from the
+ * notation table, so that the dispatch below and the rules dispatch in
+ * mxq_rules.cpp cannot ever answer it differently. It exists only where that
+ * engine does: without it this core carries no game it could answer yes for. */
+bool played_on_gomoku_engine(MxqGameKind game) {
+    return notation::move_class_of(game) == notation::MoveClass::Placement;
+}
+#endif
+
+/* Release every engine. Both bridges are idempotent about it and neither is
+ * expensive when nothing is configured, and calling both is what makes "one
+ * engine is prepared at a time" true rather than merely intended. */
+void deconfigure_all() {
+    engine::deconfigure();
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    rapfi::deconfigure();
+#endif
+}
+
+/* Ask whichever engine is running to stop. Both are asked, for the same reason
+ * both are released: the facade knows a search is outstanding and the cheapest
+ * correct thing is to tell both, each of which is a flag store on an engine that
+ * is not thinking. */
+void abort_all() {
+    engine::search_abort();
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    rapfi::search_abort();
+#endif
+}
+
 void run_prepare(Task &task) {
     std::string detail;
-    const engine::ConfigureError rc =
-        engine::configure(engine::variant_of(task.game), task.threads,
-                          task.hash_mib, task.assets_dir, detail);
+    MxqStatus   status = MXQ_OK;
+
+    /*
+     * The other engine is released first, and that is the shape of "one engine
+     * is prepared at a time" with two of them. The memory plan is computed once
+     * from one probe and sized for one transposition table; leaving the previous
+     * engine holding its own would put two tables on a device the plan sized for
+     * one. Releasing before configuring rather than after also means a failed
+     * preparation leaves nothing prepared, which is what the observable state
+     * below already promises.
+     */
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    if (played_on_gomoku_engine(task.game)) {
+        engine::deconfigure();
+        switch (rapfi::configure(rapfi::rules_of(task.game), task.threads,
+                                 task.hash_mib, task.assets_dir, detail)) {
+        case rapfi::ConfigureError::None:
+            status = MXQ_OK;
+            break;
+        case rapfi::ConfigureError::InsufficientMemory:
+            /* Only rapfi::prepare returns it, and the facade computes the plan
+             * itself and refuses below the minimum before it ever gets here. */
+            status = MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY;
+            break;
+        case rapfi::ConfigureError::AssetMissing:
+            status = MXQ_ERR_ENGINE_ASSET_MISSING;
+            break;
+        case rapfi::ConfigureError::AssetMismatch:
+            status = MXQ_ERR_ENGINE_ASSET_MISMATCH;
+            break;
+        case rapfi::ConfigureError::RulesLoadFailed:
+            status = MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED;
+            break;
+        case rapfi::ConfigureError::HashAllocationFailed:
+            status = MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED;
+            break;
+        }
+    } else
+#endif
+    {
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+        rapfi::deconfigure();
+#endif
+        switch (engine::configure(engine::variant_of(task.game), task.threads,
+                                  task.hash_mib, task.assets_dir, detail)) {
+        case engine::ConfigureError::None:
+            status = MXQ_OK;
+            break;
+        case engine::ConfigureError::AssetMissing:
+            status = MXQ_ERR_ENGINE_ASSET_MISSING;
+            break;
+        case engine::ConfigureError::AssetMismatch:
+            status = MXQ_ERR_ENGINE_ASSET_MISMATCH;
+            break;
+        case engine::ConfigureError::VariantLoadFailed:
+            status = MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED;
+            break;
+        case engine::ConfigureError::HashAllocationFailed:
+            status = MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED;
+            break;
+        }
+    }
+
     task.detail = detail;
-    switch (rc) {
-    case engine::ConfigureError::None:
-        task.status = MXQ_OK;
+    task.status = status;
+    if (status == MXQ_OK) {
+        g_prepared_game.store(task.game, std::memory_order_release);
         g_engine_state.store(MXQ_ENGINE_STATE_READY, std::memory_order_release);
         return;
-    case engine::ConfigureError::AssetMissing:
-        task.status = MXQ_ERR_ENGINE_ASSET_MISSING;
-        break;
-    case engine::ConfigureError::AssetMismatch:
-        task.status = MXQ_ERR_ENGINE_ASSET_MISMATCH;
-        break;
-    case engine::ConfigureError::VariantLoadFailed:
-        task.status = MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED;
-        break;
-    case engine::ConfigureError::HashAllocationFailed:
-        task.status = MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED;
-        break;
     }
     /* configure() unwound whole; the observable state says so. */
+    g_prepared_game.store(-1, std::memory_order_release);
     g_engine_state.store(MXQ_ENGINE_STATE_UNINITIALIZED,
                          std::memory_order_release);
 }
 
 void run_teardown(Task &task) {
-    engine::deconfigure();
+    deconfigure_all();
+    g_prepared_game.store(-1, std::memory_order_release);
     g_engine_state.store(MXQ_ENGINE_STATE_UNINITIALIZED,
                          std::memory_order_release);
     task.status = MXQ_OK;
+}
+
+/*
+ * What one engine's run reported, in the terms the delivery ladder shares.
+ *
+ * The two engines have their own typed failures and their own move vocabulary —
+ * one returns canonical text, the other a point — and what the ladder needs of
+ * either is the same three facts: a move in this game's notation or none,
+ * whether the engine can still be trusted afterwards, and the engine-domain
+ * status a failure is delivered as. Translating each engine's answer into these
+ * once, here, is what keeps the ladder one ladder.
+ */
+struct EngineRun {
+    bool        produced = false;
+    bool        faulted = false;
+    MxqStatus   status = MXQ_OK;
+    std::string move;
+    int32_t     score_cp = 0;
+    uint32_t    depth = 0;
+    uint64_t    nodes = 0;
+};
+
+/* Drive the engine this task's game is played on. Caller: the engine thread,
+ * with the engine prepared for that game. */
+EngineRun run_engine(const Task &task, std::string &detail) {
+    EngineRun out;
+
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+    if (played_on_gomoku_engine(task.game)) {
+        /* The second engine speaks points, and the snapshot is text. Every one
+         * of these was a legal move when the session accepted it, so a ply that
+         * does not parse is an invariant breach rather than a rules answer. */
+        std::vector<rapfi::Point> points;
+        points.reserve(task.moves.size());
+        for (const std::string &move : task.moves) {
+            int32_t file = 0;
+            int32_t rank = 0;
+            if (!notation::point_of_square(task.game, move.c_str(), file,
+                                           rank)) {
+                detail = "the snapshot carries a ply that is not a point of "
+                         "this board";
+                out.faulted = true;
+                out.status = MXQ_ERR_ENGINE_FAULTED;
+                return out;
+            }
+            rapfi::Point point;
+            point.x = static_cast<uint8_t>(file);
+            point.y = static_cast<uint8_t>(rank);
+            points.push_back(point);
+        }
+
+        rapfi::SearchOutput produced;
+        switch (rapfi::search_run(points, task.movetime_ms, task.cancelled,
+                                  produced, detail)) {
+        case rapfi::SearchError::None:
+            out.produced = true;
+            out.move = notation::square_of_point(task.game, produced.point.x,
+                                                 produced.point.y);
+            out.score_cp = produced.score_cp;
+            out.depth = produced.depth;
+            out.nodes = produced.nodes;
+            break;
+        case rapfi::SearchError::NoMove:
+            /* The engine answering a position it found no move in, which is not
+             * a fault. */
+            out.status = MXQ_ERR_ENGINE_NO_MOVE;
+            break;
+        case rapfi::SearchError::NotConfigured:
+        case rapfi::SearchError::ReplayFailed:
+        case rapfi::SearchError::Faulted:
+            out.faulted = true;
+            out.status = MXQ_ERR_ENGINE_FAULTED;
+            break;
+        }
+        return out;
+    }
+#endif
+
+    engine::SearchOutput produced;
+    switch (engine::search_run(task.start_fen, task.moves, task.movetime_ms,
+                               task.cancelled, produced, detail)) {
+    case engine::SearchError::None:
+        out.produced = true;
+        out.move = produced.move;
+        out.score_cp = produced.score_cp;
+        out.depth = produced.depth;
+        out.nodes = produced.nodes;
+        break;
+    case engine::SearchError::NoMove:
+        out.status = MXQ_ERR_ENGINE_NO_MOVE;
+        break;
+    case engine::SearchError::ReplayFailed:
+        out.faulted = true;
+        out.status = MXQ_ERR_ENGINE_FAULTED;
+        break;
+    }
+    return out;
 }
 
 /*
@@ -262,21 +488,19 @@ void run_search(Task &task) {
      * configuration it was produced by, and mxq_search_start already refused a
      * session whose game the engine is not prepared for. */
     copy_bounded(result.profile_id, sizeof(result.profile_id),
-                 profile_id_of(engine::variant_of(task.game)).c_str());
+                 profile_id_of(task.game).c_str());
 
     /* The engine runs only for a job nobody has cancelled on an engine that
      * is still prepared; the ladder below decides what is delivered either
      * way. */
-    engine::SearchOutput output;
-    engine::SearchError ran = engine::SearchError::None;
+    EngineRun ran;
     std::string engine_detail;
     bool engine_ran = false;
     const bool ready = g_engine_state.load(std::memory_order_acquire) ==
                        MXQ_ENGINE_STATE_READY;
     if (!task.cancelled.load(std::memory_order_acquire) && ready) {
         const auto begun = std::chrono::steady_clock::now();
-        ran = engine::search_run(task.start_fen, task.moves, task.movetime_ms,
-                                 task.cancelled, output, engine_detail);
+        ran = run_engine(task, engine_detail);
         result.elapsed_ms = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - begun)
@@ -287,10 +511,9 @@ void run_search(Task &task) {
     /* A fault is recorded before the ladder runs, because it is a fact about
      * the engine rather than about this result's delivery: a cancelled or
      * stale classification below must not leave a faulted engine trusted for
-     * the next search. NoMove is the engine answering a position with no
-     * moves, not a fault. */
-    if (engine_ran && ran != engine::SearchError::None &&
-        ran != engine::SearchError::NoMove) {
+     * the next search. A position with no move is the engine answering, not a
+     * fault. */
+    if (engine_ran && ran.faulted) {
         g_engine_state.store(MXQ_ENGINE_STATE_FAULTED,
                              std::memory_order_release);
     }
@@ -324,29 +547,27 @@ void run_search(Task &task) {
             result.status = MXQ_ERR_ENGINE_NOT_PREPARED;
             break;
         }
-        if (!engine_ran || ran != engine::SearchError::None) {
+        if (!engine_ran || !ran.produced) {
             result.outcome = MXQ_SEARCH_FAILED;
-            if (ran == engine::SearchError::NoMove) {
-                result.status = MXQ_ERR_ENGINE_NO_MOVE;
-            } else {
-                /* The snapshot stopped replaying under the engine: it was
-                 * legal when the session accepted it, so the engine side can
-                 * no longer be trusted until it is torn down and prepared
-                 * again. The state transition already happened above, ahead
-                 * of the ladder. */
-                result.status = MXQ_ERR_ENGINE_FAULTED;
-            }
+            /* Either the engine answered with no move — its own answer, not a
+             * fault — or the snapshot stopped replaying under it, which was
+             * legal when the session accepted it and means the engine side can
+             * no longer be trusted until it is torn down and prepared again.
+             * That state transition already happened above, ahead of the
+             * ladder. */
+            result.status = engine_ran ? ran.status : MXQ_ERR_ENGINE_FAULTED;
             break;
         }
 
-        result.score_cp = output.score_cp;
-        result.depth = output.depth;
-        result.nodes = output.nodes;
+        result.score_cp = ran.score_cp;
+        result.depth = ran.depth;
+        result.nodes = ran.nodes;
 
         /* 4. Malformed. */
-        /* Judged against the board of the game this search is for, through
-         * the same authority the session surface judges a caller with. */
-        if (!notation::well_formed_move(task.game, output.move)) {
+        /* Judged against the board and the move class of the game this search
+         * is for, through the same authority the session surface judges a
+         * caller with. */
+        if (!notation::well_formed_move(task.game, ran.move)) {
             result.outcome = MXQ_SEARCH_MALFORMED;
             break;
         }
@@ -360,20 +581,19 @@ void run_search(Task &task) {
             for (const std::string &move : task.moves) {
                 line.push_back(move.c_str());
             }
-            line.push_back(output.move.c_str());
+            line.push_back(ran.move.c_str());
 
             std::string fen;
             std::string detail;
             bool in_check = false;
             uint32_t ply = 0;
-            engine::Adjudication adj{};
+            rules::Adjudication adj{};
             size_t first_illegal = 0;
-            const engine::ReplayError replayed = engine::replay(
-                engine::variant_of(task.game), task.start_fen.c_str(),
-                line.data(), line.size(), fen, in_check, ply, adj, nullptr,
-                first_illegal, detail);
-            if (replayed != engine::ReplayError::None) {
-                if (replayed == engine::ReplayError::IllegalMove &&
+            const rules::ReplayError replayed = rules::replay(
+                task.game, task.start_fen.c_str(), line.data(), line.size(),
+                fen, in_check, ply, adj, nullptr, first_illegal, detail);
+            if (replayed != rules::ReplayError::None) {
+                if (replayed == rules::ReplayError::IllegalMove &&
                     first_illegal + 1 == line.size()) {
                     result.outcome = MXQ_SEARCH_ILLEGAL;
                     break;
@@ -392,7 +612,7 @@ void run_search(Task &task) {
         /* The survivor. */
         result.outcome = MXQ_SEARCH_MOVE;
         copy_bounded(result.move.text, sizeof(result.move.text),
-                     output.move.c_str());
+                     ran.move.c_str());
         break;
     }
 
@@ -459,7 +679,7 @@ void cancel_all_locked() {
     }
     if (g_running != nullptr && g_running->kind == Task::Kind::Search) {
         g_running->cancelled.store(true, std::memory_order_release);
-        engine::search_abort();
+        abort_all();
     }
 }
 
@@ -621,20 +841,21 @@ MxqStatus start(MxqCore *core, const MxqGame *game, Purpose purpose,
             return MXQ_ERR_STATE_ENGINE_NOT_READY;
         }
         /*
-         * The engine runs one variant at a time, and it is this session's game
-         * that must be the one: the tables a search reads are the prepared
-         * variant's, so a session of the other game would fail to replay under
-         * them and be delivered as a fault. Refusing here says the true thing
-         * instead — the engine is not ready for THIS game — and the caller
-         * prepares for it.
+         * One game is prepared at a time, and it is this session's game that
+         * must be the one: the tables a search reads are the prepared game's, so
+         * a session of another would fail to replay under them and be delivered
+         * as a fault — and where the two games are played on different engines,
+         * the prepared engine has no notion of the other's board at all.
+         * Refusing here says the true thing instead — the engine is not ready
+         * for THIS game — and the caller prepares for it.
          *
-         * It is asked after the state, not before, because an unprepared
-         * engine's active variant is the rules posture's rather than a
-         * preparation: asking first would answer a session of the other game
-         * with "prepared for the other game" on a core that has prepared
-         * nothing at all, and send the caller to correct the wrong thing.
+         * It is asked after the state, not before, because a core that has
+         * prepared nothing has no prepared game to compare against: asking first
+         * would answer with "prepared for another game" on a core that prepared
+         * none, and send the caller to correct the wrong thing.
          */
-        if (engine::active_variant() != engine::variant_of(game->config.game)) {
+        if (g_prepared_game.load(std::memory_order_acquire) !=
+            game->config.game) {
             fill_error(err, MXQ_ERR_STATE_ENGINE_NOT_READY,
                        "the engine is prepared for the other game; "
                        "prepare it for this session's game first");
@@ -680,6 +901,7 @@ void startup() {
     g_running.reset();
     g_next_ticket = 1;
     g_retained_valid = false;
+    g_prepared_game.store(-1, std::memory_order_release);
     g_engine_state.store(MXQ_ENGINE_STATE_UNINITIALIZED,
                          std::memory_order_release);
     g_thread = std::thread(engine_thread_main);
@@ -707,10 +929,11 @@ void shutdown() {
         g_retained_valid = false;
         std::memset(&g_retained, 0, sizeof(g_retained));
     }
-    /* The engine thread is joined, so no search is running; release the
-     * engine whole. Concurrent rules queries are safe against this — it
-     * serialises on the bridge's own mutex. */
-    engine::deconfigure();
+    /* The engine thread is joined, so no search is running; release every
+     * engine whole. Concurrent rules queries are safe against this — each
+     * serialises on its own bridge's mutex. */
+    deconfigure_all();
+    g_prepared_game.store(-1, std::memory_order_release);
     g_engine_state.store(MXQ_ENGINE_STATE_UNINITIALIZED,
                          std::memory_order_release);
 }
@@ -897,7 +1120,7 @@ MxqStatus MXQ_CALL mxq_search_cancel(MxqCore *core, uint64_t ticket,
         mxq::search::g_running->ticket == ticket) {
         mxq::search::g_running->cancelled.store(true,
                                                 std::memory_order_release);
-        mxq::engine::search_abort();
+        mxq::search::abort_all();
     }
     return MXQ_OK;
 }
