@@ -88,20 +88,28 @@ int32_t file_count_of(const Board &board) {
  * the end. Returns the number of characters consumed, or 0 when the rank is not
  * one this encoding spells.
  *
- * Two spellings of one rank are what this refuses beyond counting to the file
- * count: a run of empties written with a leading zero, and a run written
- * immediately after another run — "7 8" and "15" would otherwise both mean an
- * empty rank of fifteen, and a position with two spellings is a position two
- * documents disagree about while meaning the same thing.
+ * A rank has exactly one spelling, and two mechanics between them are what make
+ * that true rather than a rule written down beside them:
+ *
+ *   - the rank must total exactly the file count, so no prefix of one is a rank
+ *     and no rank runs past its own board;
+ *   - digit consumption is greedy, so two adjacent runs are not spellable at
+ *     all. "1" then "14" is read as 114, which is past the file count and
+ *     refused there — there is no input that reaches this loop as two runs in a
+ *     row.
+ *
+ * The one spelling those two do not exclude is a run written with a leading
+ * zero, and that is the test below: "07" and "7" would otherwise both be seven
+ * empty points, and a position with two spellings is a position two documents
+ * disagree about while meaning the same thing.
  */
 size_t placement_rank_length(const Board &board, const char *text, size_t len) {
     const int32_t files = file_count_of(board);
     int32_t       filled = 0;
     size_t        i = 0;
-    bool          previous_was_run = false;
     while (i < len && text[i] != '/') {
         if (is_digit(text[i])) {
-            if (previous_was_run || text[i] == '0') {
+            if (text[i] == '0') {
                 return 0;
             }
             int32_t run = 0;
@@ -113,11 +121,9 @@ size_t placement_rank_length(const Board &board, const char *text, size_t len) {
                 }
             }
             filled += run;
-            previous_was_run = true;
         } else if (text[i] == kFirstMoverStone || text[i] == kSecondMoverStone) {
             ++filled;
             ++i;
-            previous_was_run = false;
         } else {
             return 0;
         }
@@ -356,9 +362,10 @@ std::string write_placement(MxqGameKind game, const MxqColor *cells,
 
     std::string out;
     /* The board field at its widest is one character per point plus a separator
-     * between ranks; the suffixes are ten more. Reserving it is not an
-     * optimisation but a bound stated where the encoding is: this string is
-     * copied into MxqPosition.fen, whose capacity mxq.h derives from exactly
+     * between ranks; the suffixes are twelve more at 15x15, where a full board
+     * is 225 plies and the fullmove number runs to three digits. Reserving it is
+     * not an optimisation but a bound stated where the encoding is: this string
+     * is copied into MxqPosition.fen, whose capacity mxq.h derives from exactly
      * this arithmetic. */
     out.reserve(static_cast<size_t>(files) * static_cast<size_t>(ranks) +
                 static_cast<size_t>(ranks) + 16u);

@@ -134,7 +134,9 @@ extern "C" {
  *                                                        total = 394
  *
  * 512 is the next power of two above that and leaves 118 bytes spare. Today's
- * widest is the 15x15 placement field at 239 characters plus 10 of suffix.
+ * widest is a full 15x15 placement board: 239 characters of field, and 12 of
+ * suffix — " b - - 0 113", the fullmove number of a 225-ply game running to
+ * three digits.
  */
 #define MXQ_FEN_CAP 512
 
@@ -1729,6 +1731,17 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * MXQ_ERR_RULES_INVALID_HISTORY and sets *out_first_illegal_index to its index;
  * out_position and out_status are then unspecified. out_position, out_status
  * and out_first_illegal_index are each optional.
+ *
+ * Which start_fen a game may be begun from is the game's, and the two classes
+ * differ. A movement game takes any position mxq_rules_validate_fen accepts,
+ * which is what lets a fixture state a position and replay from it. A placement
+ * game takes its own frozen starting position and no other, returning
+ * MXQ_ERR_RULES_INVALID_FEN for anything else: those games have exactly one
+ * position that is not reached by play, and beginning from a board with stones
+ * on it would be a start-from-position feature offered in two games without the
+ * setup-legality predicate every such feature owes. So a placement position that
+ * validates is not necessarily one this entry will start from, and the two
+ * questions stay distinct on purpose.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.

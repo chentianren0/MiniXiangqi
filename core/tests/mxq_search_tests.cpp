@@ -71,6 +71,12 @@
 #include "mxq_sha256.hpp"
 #endif
 
+#if MXQ_TEST_GOMOKU_FACADE
+/* The second engine's bridge, for the one case that asserts each engine is
+ * released when the other is prepared: see the header comment. */
+#include "mxq_rapfi_bridge.hpp"
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -516,6 +522,103 @@ void case_prepare_applies_the_plan() {
     }
     c.report();
 }
+
+#if MXQ_TEST_GOMOKU_FACADE
+/*
+ * Preparing one game's engine releases the other engine first.
+ *
+ * That is load-bearing rather than tidy: one memory plan is computed from one
+ * probe and sized for one transposition table, so an engine left prepared beside
+ * the one being prepared would put two tables on a device the plan sized for
+ * one. Nothing observable through the C surface distinguishes it — the profile
+ * identifier and MxqEngineState both derive from the facade's own record of
+ * which game is prepared, and would read identically if neither release ran.
+ *
+ * So this reaches past the surface, at the two named places and for the reason
+ * this file's header already gives for the other three: the claim is about the
+ * engines' own state, and asking the facade to report on itself would test the
+ * report. Each bridge's released posture is read where that bridge keeps it —
+ * the first engine's transposition table and pool size, the second engine's own
+ * configured flag.
+ */
+void case_preparing_one_engine_releases_the_other() {
+    Case c("preparing for a game releases the engine the other game is played on");
+
+    /* One asset directory holding what both engines need, which is the shape a
+     * distribution ships: the core takes one. */
+    const fs::path assets = scratch_dir("both-engines-assets");
+    {
+        std::error_code ec;
+        const std::string movement = staged_assets();
+        for (const std::string &source :
+             {movement, std::string(MXQ_TEST_GOMOKU_ASSETS_DIR)}) {
+            if (source.empty()) {
+                continue;
+            }
+            for (const fs::directory_entry &entry :
+                 fs::directory_iterator(fs::path(source), ec)) {
+                fs::copy_file(entry.path(), assets / entry.path().filename(),
+                              fs::copy_options::overwrite_existing, ec);
+            }
+        }
+    }
+
+    const fs::path store = scratch_dir("both-engines-store");
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store.string(), assets.string(), &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const MxqEngineBudget budget = sufficient_budget();
+    const auto prepare = [&](MxqGameKind game, const std::string &who) {
+        MxqEnginePlan plan;
+        std::memset(&plan, 0, sizeof(plan));
+        plan.struct_size = static_cast<uint32_t>(sizeof(plan));
+        MxqError local = make_error();
+        c.check_status(mxq_engine_prepare(core, game, &budget, &plan, &local),
+                       MXQ_OK, who + " prepares (" + local.detail + ")");
+    };
+
+    /* A movement game: its own engine holds a table, and the placement engine
+     * holds nothing. */
+    prepare(MXQ_GAME_KIND_MINI_XIANGQI, "Mini Xiangqi");
+    c.check(Stockfish::TT.allocated(),
+            "the movement engine holds its transposition table");
+    c.check(!mxq::rapfi::is_configured(),
+            "and the placement engine is not configured beside it");
+
+    /* A placement game: the movement engine goes back to the rules posture it
+     * holds when nothing is prepared, table released whole. */
+    prepare(MXQ_GAME_KIND_GOMOKU_15, "Gomoku");
+    c.check(mxq::rapfi::is_configured(),
+            "the placement engine is configured");
+    c.check(!Stockfish::TT.allocated(),
+            "and the movement engine's table was released first");
+    c.check_eq(static_cast<int64_t>(Stockfish::Threads.size()), 1,
+               "its pool with it");
+
+    /* And back, which is the direction a player switching games takes. The app's
+     * own game again rather than the other movement one: the staged directory is
+     * the shipped shape, which holds one movement network, and which movement
+     * game this is does not matter to the direction being asserted. */
+    prepare(MXQ_GAME_KIND_MINI_XIANGQI, "Mini Xiangqi");
+    c.check(Stockfish::TT.allocated(),
+            "the movement engine holds a table again");
+    c.check(!mxq::rapfi::is_configured(),
+            "and the placement engine was released first");
+
+    err = make_error();
+    c.check_status(mxq_engine_teardown(core, &err), MXQ_OK, "teardown");
+    c.check(!Stockfish::TT.allocated() && !mxq::rapfi::is_configured(),
+            "teardown releases both");
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+#endif /* MXQ_TEST_GOMOKU_FACADE */
 
 void case_insufficient_memory_initialises_nothing() {
     Case c("a budget below the minimum refuses without initialising anything");
@@ -2951,6 +3054,9 @@ int main() {
 
     case_query_before_prepare();
     case_prepare_applies_the_plan();
+#if MXQ_TEST_GOMOKU_FACADE
+    case_preparing_one_engine_releases_the_other();
+#endif
     case_insufficient_memory_initialises_nothing();
     case_missing_network();
     case_wrong_basename_network();
