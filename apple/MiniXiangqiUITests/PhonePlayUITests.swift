@@ -620,8 +620,17 @@ final class PhonePlayUITests: XCTestCase {
     /// than the app — the lesson this suite already carries about waiting to
     /// *observe* 轮到黑方. What is asserted is the durable fact: every moment
     /// the board was read, from the press onward, it was where it started.
+    ///
+    /// **深思 rather than 标准**, for the reason the Mac's own suite takes it:
+    /// a Free Play hint takes the level the player has called theirs, and at
+    /// three seconds nothing says a board read lands inside the search at all —
+    /// a test whose reads all fell after the answer would pass on a build with
+    /// the defect in it. Five seconds is longer than the queries that lead up
+    /// to the reads, so the thinking state is a state this process can be sure
+    /// of having looked at.
     func testTheBoardStandsStillWhileAHintIsThoughtAbout() {
         let app = launch(replaying: Self.openingLine,
+                         preferences: ["defaults.aiLevel": "deep"],
                          availableMemory: Self.modestMemory)
         XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 30),
                       "the replay fixture opens at the board it made")

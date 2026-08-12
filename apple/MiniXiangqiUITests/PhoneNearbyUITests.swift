@@ -268,6 +268,16 @@ final class PhoneNearbyUITests: XCTestCase {
         let flip = offTurn.buttons["cluster-flip"]
         XCTAssertGreaterThan(flip.frame.minY, off[0].maxY,
                              "the cluster stands below the board")
+        // **And it really has wrapped**, which is this test's premise rather
+        // than an incidental: 翻转棋盘 is on a row of its own, beneath the
+        // negotiations. A width or a set that stopped wrapping here would leave
+        // the two scenes the same height and the comparison below with nothing
+        // to catch, so it is asserted rather than assumed.
+        XCTAssertGreaterThan(flip.frame.minY,
+                             offTurn.buttons["cluster-offer-draw"].frame.maxY,
+                             "the off-turn set wraps to a second row on this phone — "
+                             + "翻转棋盘 is at \(flip.frame) and 提和 at "
+                             + "\(offTurn.buttons["cluster-offer-draw"].frame)")
         XCTAssertTrue(offTurn.frame.contains(flip.frame),
                       "and inside the screen — it is at \(flip.frame)")
         offTurn.terminate()
