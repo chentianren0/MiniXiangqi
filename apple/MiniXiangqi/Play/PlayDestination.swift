@@ -107,7 +107,6 @@ struct PlayDestination: View {
         NavigationStack {
             page
                 .playContentFloor()
-                .navigationTitle("nav.play")
                 // The root carries the platform's large title and the two pages
                 // over it carry the inline one, which is what iOS does with a
                 // stack: a large title announces a destination you have arrived
@@ -115,6 +114,12 @@ struct PlayDestination: View {
                 // that walks back out. It is also what the board can afford —
                 // a large title is most of a phone's spare height, and the
                 // stacked shape spends that height on the board.
+                //
+                // **The title itself belongs to the page**, because a board page
+                // in the stacked shape has none: its bar centre carries the turn
+                // status in the title's place, per docs/interaction-design.md
+                // § Turn status. A title set here would stand over that one and
+                // name a page nobody needs named.
                 #if !os(macOS)
                 .navigationBarTitleDisplayMode(showsBackControl ? .inline : .large)
                 #endif
@@ -159,8 +164,12 @@ struct PlayDestination: View {
         switch play.page {
         case .home:
             PlayHome(play: play, nearby: nearby)
+                .navigationTitle("nav.play")
         case .setup(let selection):
             SetupScreen(play: play, selection: selection)
+                .navigationTitle("nav.play")
+        // The board titles itself, and in the stacked shape it does not: what
+        // stands in the bar's centre there is the turn status.
         case .board:
             PlayScreen(play: play, replay: replay)
         }

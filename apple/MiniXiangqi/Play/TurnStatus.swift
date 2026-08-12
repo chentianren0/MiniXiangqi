@@ -5,10 +5,35 @@
 // Free Play carries no human-or-AI controller label, because the same person
 // controls both sides. The design adds no separate instruction such as "your
 // turn", and turn ownership is never carried by colour alone.
+//
+// **Where the element stands follows the layout shape**, and it keeps its
+// duties wherever it stands. Beside the board it is the panel's first section;
+// in the stacked shape it is the page's bar centre, in the title's place, which
+// a board page does not spend on a name. The two forms say the same things at
+// the room each has: the description and the acknowledgment beat on its own
+// background in both, and in the bar nothing else — the lines a bar centre
+// cannot hold hang beneath it, hung by the screen that knows what is under the
+// bar. At an accessibility text size the bar cannot hold the element at all and
+// the screen puts it back above the board.
+//
+// It carries nothing of the hint. The control, its activity and its disabling
+// are the play-control cluster's, per "Hints".
 
 import SwiftUI
 
 struct TurnStatus: View {
+    /// Where the element stands, which is the whole of what the two forms
+    /// differ by: the room each has, and therefore what the element draws
+    /// itself and what it leaves to the screen around it.
+    enum Placement {
+        /// The measured chrome above the board, and the panel's first section.
+        case block
+        /// The page's bar centre, in the title's place.
+        case bar
+    }
+
+    var placement: Placement = .block
+
     var state: GameState
     var reason: EndReason
 
@@ -36,25 +61,9 @@ struct TurnStatus: View {
     var activity: Opponent.Activity = .idle
 
     /// The inline retry the stalled slot carries, per decision 2. The alert has
-    /// already been answered with 稍后 by the time this shows.
+    /// already been answered with 稍后 by the time this shows. In the bar the
+    /// slot hangs beneath the element instead, so the screen passes none.
     var retry: (() -> Void)?
-
-    /// Asking the engine for a suggestion, where one is on offer.
-    ///
-    /// **Nil is the control's absence rather than a disabled control**: a hint
-    /// is possible on the player's own turn in a live game and at no other
-    /// moment, and a word standing greyed out through the machine's turn would
-    /// be a promise about a turn that is not theirs. It sits beside the
-    /// controller label where there is one and beside the side-to-move line in
-    /// Free Play, which has none — the AI activity slot's own placement
-    /// grammar, on the other turn — and it takes the weight the platform gives
-    /// an action written into a line of prose, exactly as the stalled slot's
-    /// inline retry does.
-    var requestHint: (() -> Void)?
-
-    /// What the hint slot's own activity is: an indicator beside the control
-    /// once a hint search has run long enough to be worth showing.
-    var hintActivity: Hint.Activity = .idle
 
     /// Who controls the side to move, where the answer is not "the person
     /// holding this device". Free Play has none — the same person controls both
@@ -81,26 +90,24 @@ struct TurnStatus: View {
     /// because tint on the play screen belongs to the sides.
     var beatEmphasis: Double = 0
 
+    @ViewBuilder
     var body: some View {
+        switch placement {
+        case .block: block
+        case .bar: bar
+        }
+    }
+
+    /// The element as a block: the description, the stalled slot beneath it,
+    /// and the beat over the whole.
+    private var block: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // The description, and the hint beside the line it belongs to.
-            //
-            // The hint sits **outside** the combined element, for the reason
-            // the stalled slot's retry does: a control folded into one is a
-            // control a screen reader cannot reach. Which line it stands beside
-            // is the baseline the row aligns on — the controller label's, which
-            // is the description's last line, and the side-to-move line's in
-            // Free Play, where there is no controller label to stand beside.
-            HStack(alignment: controller == nil ? .firstTextBaseline : .lastTextBaseline,
-                   spacing: 6) {
-                description
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("turn-status")
-
-                if let requestHint { hintSlot(requestHint) }
-
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 6) {
+                primaryText(.title3.weight(.medium))
+                secondaryText(.callout)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("turn-status")
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // The stalled slot: the AI cannot start right now, the game is
@@ -108,103 +115,81 @@ struct TurnStatus: View {
             // stays *outside* the combined element above, because a control
             // folded into one is a control a screen reader cannot reach.
             if activity == .stalled, let retry {
-                HStack(spacing: 8) {
-                    Text("status.aiUnavailable")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("ai-stalled")
-                    inlineRetry(retry)
-                        .accessibilityIdentifier("ai-retry")
-                }
+                StalledSlot(retry: retry)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // PlayScreen counts on this 12: the panel's one left edge is its
         // panelInset less this padding. They move together or not at all.
         .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
-                .accessibilityHidden(true)
-        }
+        .background { beat(cornerRadius: 10) }
     }
 
-    /// The description itself, combined into one element so a screen reader
-    /// hears one sentence about the state rather than three fragments.
-    private var description: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(primaryLine)
-                .font(.title3.weight(.medium))
-                .contentTransition(.identity)
+    /// The element in the bar's centre: the same description at the weights a
+    /// title and its subtitle take, and nothing else.
+    ///
+    /// Beside where the centre holds both lines, and over two lines where it
+    /// does not — the degradation the play controls make for the same reason,
+    /// and the one a bar's own title and subtitle already read as. Each line
+    /// stays a single line either way: a status that wrapped would push the
+    /// bar down over the board it is about.
+    private var bar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                primaryText(.subheadline.weight(.semibold))
+                secondaryText(.caption)
+            }
+            VStack(spacing: 1) {
+                primaryText(.subheadline.weight(.semibold))
+                secondaryText(.caption)
+            }
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("turn-status")
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background { beat(cornerRadius: 8) }
+    }
 
-            if let secondary {
-                HStack(spacing: 6) {
-                    Text(secondary)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+    /// Whose turn it is, at the weight the form gives its first line.
+    private func primaryText(_ font: Font) -> some View {
+        Text(primaryLine)
+            .font(font)
+            .contentTransition(.identity)
+    }
 
-                    // The indicator sits beside the controller label, which is
-                    // the head of this line. The system's own, at its smallest,
-                    // drawn directly like everything else the status says — and
-                    // carrying no material at all, which is the one thing this
-                    // indicator is not allowed.
-                    if activity == .thinking {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel(Text("status.aiThinking"))
-                            .accessibilityIdentifier("ai-thinking")
-                    }
+    /// What else is true of the turn, and the AI's activity riding beside it.
+    @ViewBuilder
+    private func secondaryText(_ font: Font) -> some View {
+        if let secondary {
+            HStack(spacing: 6) {
+                Text(secondary)
+                    .font(font)
+                    .foregroundStyle(.secondary)
+
+                // The indicator sits beside the controller label, which is
+                // the head of this line. The system's own, at its smallest,
+                // drawn directly like everything else the status says — and
+                // carrying no material at all, which is the one thing this
+                // indicator is not allowed.
+                if activity == .thinking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(Text("status.aiThinking"))
+                        .accessibilityIdentifier("ai-thinking")
                 }
             }
         }
     }
 
-    /// **提示**, and the activity a hint search shows once it has run long
-    /// enough to be worth showing — the AI activity slot's own threshold, for
-    /// the AI activity slot's own reason.
-    @ViewBuilder
-    private func hintSlot(_ request: @escaping () -> Void) -> some View {
-        HStack(spacing: 6) {
-            inlineHint(request)
-                .accessibilityIdentifier("hint-request")
-
-            if hintActivity == .thinking {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(Text("status.hintThinking"))
-                    .accessibilityIdentifier("hint-thinking")
-            }
-        }
-    }
-
-    /// The hint control, in each platform's own inline-action weight — the
-    /// stalled slot's retry is the precedent, and this is the same kind of
-    /// thing: an action written into a line about the game rather than a member
-    /// of the play-control cluster, which stays at its accepted four.
-    @ViewBuilder
-    private func inlineHint(_ request: @escaping () -> Void) -> some View {
-        #if os(macOS)
-        Button("control.hint", action: request).buttonStyle(.link)
-        #else
-        Button("control.hint", action: request).buttonStyle(.borderless)
-        #endif
-    }
-
-    /// The stalled slot's 重试, in each platform's own inline-action weight.
-    ///
-    /// It sits inside a sentence about the game rather than in a control
-    /// cluster, so it takes the style the platform gives an action written into
-    /// text: AppKit's link style on macOS, which UIKit has no counterpart for,
-    /// and the borderless style on iOS and iPadOS, which is the accent-tinted
-    /// text button the platform puts beside a line of prose. Same control, same
-    /// identifier, same words; only the weight is the platform's.
-    @ViewBuilder
-    private func inlineRetry(_ retry: @escaping () -> Void) -> some View {
-        #if os(macOS)
-        Button("control.tryAgain", action: retry).buttonStyle(.link)
-        #else
-        Button("control.tryAgain", action: retry).buttonStyle(.borderless)
-        #endif
+    /// The acknowledgment beat's own background. Input the game cannot accept
+    /// is answered on the element wherever the element stands, which in the bar
+    /// is the bar's centre rising and falling rather than the page's.
+    private func beat(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
+            .accessibilityHidden(true)
     }
 
     private var primaryLine: String {
@@ -255,6 +240,48 @@ struct TurnStatus: View {
         case (let owner?, nil): owner
         case (nil, let rest?): rest
         case (nil, nil): nil
+        }
+    }
+}
+
+extension TurnStatus {
+    /// The stalled state: the AI could not be prepared mid-game, the player
+    /// answered 稍后, and the game is saved. Issue #71's decision 2 puts it in
+    /// the turn status's own activity slot with an inline 重试 beside it.
+    ///
+    /// It is a type of its own because it stands in two places for one reason:
+    /// inside the element where the element is a block, and beneath the bar
+    /// where the element is in it. Same words, same identifiers, same act.
+    struct StalledSlot: View {
+        var retry: () -> Void
+
+        var body: some View {
+            HStack(spacing: 8) {
+                Text("status.aiUnavailable")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("ai-stalled")
+                inlineRetry
+                    .accessibilityIdentifier("ai-retry")
+            }
+        }
+
+        /// 重试, in each platform's own inline-action weight.
+        ///
+        /// It sits inside a sentence about the game rather than in a control
+        /// cluster, so it takes the style the platform gives an action written
+        /// into text: AppKit's link style on macOS, which UIKit has no
+        /// counterpart for, and the borderless style on iOS and iPadOS, which
+        /// is the accent-tinted text button the platform puts beside a line of
+        /// prose. Same control, same identifier, same words; only the weight is
+        /// the platform's.
+        @ViewBuilder
+        private var inlineRetry: some View {
+            #if os(macOS)
+            Button("control.tryAgain", action: retry).buttonStyle(.link)
+            #else
+            Button("control.tryAgain", action: retry).buttonStyle(.borderless)
+            #endif
         }
     }
 }

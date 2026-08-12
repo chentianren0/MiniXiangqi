@@ -760,6 +760,10 @@ final class PlayScreenUITests: XCTestCase {
                       "the concluding action takes the draw claim's slot")
         XCTAssertFalse(app.buttons["cluster-claim"].exists,
                        "a finished game has no draw to judge")
+        // A finished board is a scene of its own, and it has dropped the hint
+        // with the draw: there is no next move to ask about.
+        XCTAssertFalse(app.windows.firstMatch.descendants(matching: .any)["hint-request"].exists,
+                       "and no hint left to ask for")
         attach(app, named: "11-the-finished-board-with-the-notice-closed")
 
         // Closing is final for this result: nothing the player does to the
@@ -1155,23 +1159,47 @@ final class PlayScreenUITests: XCTestCase {
         // The smallest window the product allows, where the English labels are
         // materially wider than the Chinese they translate. Both states of the
         // cluster are photographed, because the finished game's concluding
-        // action is the longest of the three and is what the flip control's
-        // fallback to its symbol exists for. Nothing here says what the
-        // cluster should look like; it says that all of it is still on screen,
-        // and the frames are what the words are read off.
+        // action is the longest label the cluster ever carries and the live
+        // scene is the widest set. Nothing here says which arrangement the
+        // cluster should take; it says that all of it is still on screen, that
+        // no row mixes the two forms, and the frames are what the words are read
+        // off.
         for (line, name) in [(Self.evidenceLine, "play"), (Self.mateLine, "result")] {
             let smallest = launch(replaying: line, in: language, window: "320x240")
             let window = smallest.windows.firstMatch.frame
-            let cluster = ["cluster-undo",
-                           line == Self.mateLine ? "cluster-new-game" : "cluster-claim",
-                           "cluster-flip"]
+            let finished = line == Self.mateLine
+            let cluster = (finished ? [] : ["hint-request"])
+                + ["cluster-undo",
+                   finished ? "cluster-new-game" : "cluster-claim",
+                   "cluster-flip"]
+            var rows: [CGFloat: [(String, CGFloat)]] = [:]
             for identifier in cluster {
                 let button = smallest.buttons[identifier]
                 XCTAssertTrue(button.exists, "\(identifier) should still be there at the minimum")
                 XCTAssertTrue(window.contains(button.frame),
                               "\(identifier) should sit inside the minimum window, not past it")
+                // The concluding action is the one control that is its word
+                // alone, in every arrangement, so it says nothing about which
+                // form its row took.
+                if identifier != "cluster-new-game" {
+                    rows[button.frame.minY.rounded(), default: []]
+                        .append((identifier, button.frame.width))
+                }
                 print("CLUSTER-EVIDENCE \(language.short)-\(name) \(identifier) "
                       + "label=\(button.label) width=\(button.frame.width)")
+            }
+
+            // **Words and symbols degrade together.** A control carrying its
+            // word is materially wider than one standing as its symbol, and 56
+            // points lies between the two in both languages here; what is
+            // asserted is that a row's controls are all on one side of that
+            // line, never that either width is a particular number.
+            for (top, row) in rows {
+                let worded = row.filter { $0.1 >= 56 }.map(\.0)
+                let symbolled = row.filter { $0.1 < 56 }.map(\.0)
+                XCTAssertTrue(worded.isEmpty || symbolled.isEmpty,
+                              "the row at \(top) mixes forms: \(worded) carry words "
+                              + "while \(symbolled) stand as symbols")
             }
             attach(smallest, named: "\(language.short)-\(name)-minimum-window")
         }

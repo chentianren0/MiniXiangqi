@@ -3,11 +3,12 @@
 //
 // docs/interaction-design.md, "Layout shapes" and "Nearby play". It is the local
 // game's own screen in every visible respect — the same two arrangements, the
-// same turn status above or beside the board, the same board and the same motion
-// language, the same result notice in front of it — and it differs only where
-// the game itself differs: the turn belongs to the protocol rather than to a
-// search, the opponent is a person rather than the machine, and the play
-// controls are the ones a nearby game has.
+// same turn status in the bar's centre or beside the board, the same board and
+// the same motion language, the same result notice in front of it — and it
+// differs only where the game itself differs: the turn belongs to the protocol
+// rather than to a search, the opponent is a person rather than the machine, and
+// the play controls are the ones a nearby game has, which is every mode's cluster
+// less the hint and with the negotiations of whoever's turn it is.
 //
 // **There is no connection chrome.** Connections idle out between moves by the
 // radio's own design and the driver brings them back underneath; a board that
@@ -52,6 +53,10 @@ struct NearbyBoardScreen: View {
 
     @Environment(\.motionPolicy) private var policy
     @Environment(\.horizontalSizeClass) private var widthClass
+
+    /// Whether the reader is at one of the accessibility text sizes, which is
+    /// what decides where the turn status stands in the stacked shape.
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Group {
@@ -145,6 +150,9 @@ struct NearbyBoardScreen: View {
 
     // MARK: - The two shapes
 
+    /// The board on one side, the panel beside it. This shape's board page is a
+    /// page like any other and carries the inline title beside the control that
+    /// walks back out.
     private func sideBySide(_ play: NearbyPlay, in size: CGSize) -> some View {
         HStack(spacing: 0) {
             boardBlock(play, BoardLayout.geometry(in: size, game: play.game))
@@ -153,7 +161,7 @@ struct NearbyBoardScreen: View {
                 .onTapGesture { play.cancelSelection() }
 
             VStack(alignment: .leading, spacing: 0) {
-                status(play)
+                statusBlock(play)
                     .padding(.horizontal, BoardLayout.panelInset - 12)
                     .padding(.vertical, 8)
 
@@ -176,48 +184,96 @@ struct NearbyBoardScreen: View {
             .onTapGesture { play.cancelSelection() }
             .frame(width: BoardLayout.panelWidth)
         }
+        .navigationTitle("nav.play")
     }
 
+    /// The turn status in the bar's centre, the play controls below the board,
+    /// and the board fitted to the full width in the height between them.
+    ///
+    /// At an accessibility text size the element returns to its place above the
+    /// board, exactly as it does on the local board, and the bar centre stays
+    /// empty: a page over a board needs no name either way.
     private func stacked(_ play: NearbyPlay, in size: CGSize) -> some View {
-        VStack(spacing: 0) {
-            status(play)
-                .padding(.horizontal, BoardLayout.panelInset - 12)
-                .padding(.vertical, 8)
-                .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusHeight = $0 }
+        let chrome = (statusStandsInBar ? 0 : statusHeight) + controlsHeight
+        let geometry = BoardLayout.stackedGeometry(in: size, game: play.game, chrome: chrome)
+        return VStack(spacing: 0) {
+            if !statusStandsInBar {
+                statusBlock(play)
+                    .padding(.horizontal, BoardLayout.panelInset - 12)
+                    .padding(.vertical, 8)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusHeight = $0 }
+            }
 
-            boardBlock(play,
-                       BoardLayout.stackedGeometry(in: size, game: play.game,
-                                                   chrome: statusHeight + controlsHeight))
+            boardBlock(play, geometry,
+                       bleed: BoardLayout.surfaceBleed(in: size.width, board: geometry))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .onTapGesture { play.cancelSelection() }
+                // The lines the bar cannot hold, hung just beneath it in front
+                // of the air above the board — where they hang beneath the
+                // status block in the other arrangement.
+                .overlay(alignment: .top) {
+                    if statusStandsInBar {
+                        quietLines(play)
+                            // The page's one leading edge, 16 points in: each
+                            // line brings 12 of its own, exactly as it does
+                            // inside the status block, and this is the rest.
+                            .padding(.horizontal, BoardLayout.panelInset - 12)
+                            .padding(.top, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
 
             controls(play)
                 .padding(.horizontal, BoardLayout.panelInset)
                 .padding(.vertical, 8)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { controlsHeight = $0 }
         }
+        .toolbar {
+            if statusStandsInBar {
+                ToolbarItem(placement: .principal) {
+                    turnStatus(play, placement: .bar)
+                }
+            }
+        }
     }
+
+    /// Whether the turn status is in the bar rather than above the board.
+    private var statusStandsInBar: Bool { !typeSize.isAccessibilitySize }
 
     // MARK: - The status
 
-    /// The turn status, what the other player is asking for, and the one line
-    /// that is ever said about the link.
+    /// The turn status and the quiet lines beneath it, where the element stands
+    /// above the board or beside it.
+    private func statusBlock(_ play: NearbyPlay) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            turnStatus(play, placement: .block)
+            quietLines(play)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func turnStatus(_ play: NearbyPlay,
+                            placement: TurnStatus.Placement) -> some View {
+        TurnStatus(placement: placement,
+                   state: play.statusState,
+                   reason: play.end?.reason ?? play.evaluation.reason,
+                   reasonText: play.reasonText,
+                   sideToMove: play.evaluation.sideToMove,
+                   inCheck: play.evaluation.inCheck,
+                   controller: play.controller,
+                   beatEmphasis: play.beatEmphasis)
+    }
+
+    /// What the other player is asking for, the one line that is ever said
+    /// about the link, and the save-failure capsule.
     ///
     /// The offer and the request are named here rather than on a control,
     /// because a control says what pressing it does and this says what somebody
     /// else has done — which is the same division the claim already keeps
     /// between 判和 and 可判和, in the same quiet register, in the same place.
-    private func status(_ play: NearbyPlay) -> some View {
+    private func quietLines(_ play: NearbyPlay) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            TurnStatus(state: play.statusState,
-                       reason: play.end?.reason ?? play.evaluation.reason,
-                       reasonText: play.reasonText,
-                       sideToMove: play.evaluation.sideToMove,
-                       inCheck: play.evaluation.inCheck,
-                       controller: play.controller,
-                       beatEmphasis: play.beatEmphasis)
-
             if let asking = play.standingItem {
                 Text(Self.asked(asking))
                     .font(.callout)
@@ -264,7 +320,8 @@ struct NearbyBoardScreen: View {
 
     // MARK: - The board
 
-    private func boardBlock(_ play: NearbyPlay, _ geometry: BoardGeometry) -> some View {
+    private func boardBlock(_ play: NearbyPlay, _ geometry: BoardGeometry,
+                            bleed: CGFloat = 0) -> some View {
         ZStack {
             BoardView(geometry: geometry,
                       placement: play.placement,
@@ -279,6 +336,7 @@ struct NearbyBoardScreen: View {
                       checkEmphasis: play.checkEmphasis,
                       markerEmphasis: play.markerEmphasis,
                       policy: play.policy,
+                      surfaceBleed: bleed,
                       onTap: { tap($0, play) },
                       onTravelArrival: { play.travelArrived() },
                       onFadeArrival: { play.fadeArrived() },
@@ -348,116 +406,205 @@ struct NearbyBoardScreen: View {
     /// own do: an offer and a request are the off-turn peer's to open, a claim
     /// is a turn action of the side to move, and an acceptance answers something
     /// that arrived on this device's turn. So off turn the cluster carries 提和
-    /// and 悔棋, and on turn it carries 判和 — with 接受 in place of it while the
-    /// other player has something standing, which is the one moment a claim is
-    /// not what the turn is about. Each is disabled exactly when the engine
-    /// would refuse it, which is the same grammar the local cluster keeps for
-    /// 判和 and 悔棋: a control that will be available on the next ply stays on
-    /// screen rather than coming and going with it.
+    /// and 悔棋, and on turn it carries 判和 — with 接受 in the claim's own place
+    /// while the other player has something standing, which is the one moment a
+    /// claim is not what the turn is about. Each is disabled exactly when the
+    /// engine would refuse it, which is the same grammar the local cluster keeps
+    /// for 判和 and 悔棋: a control that will be available on the next ply stays
+    /// on screen rather than coming and going with it.
     ///
-    /// 认输 and 翻转棋盘 are throughout, and the way out replaces 认输 once the
-    /// game is over — the same controls, keys and identifiers the other boards
-    /// carry. Never more than four, which is the composition the contract
-    /// already settles a place for.
-    private func controls(_ play: NearbyPlay, compact: Bool, carriesFlip: Bool) -> some View {
-        HStack(spacing: 8) {
-            if play.isOver {
+    /// **认输 and 翻转棋盘 stand at the trailing end and therefore never move**,
+    /// with the negotiations leading and the space between them: the turn
+    /// passing changes the leading side of the row and leaves the two controls
+    /// that are true of the whole game exactly where a thumb last found them.
+    /// The way out replaces 认输 once the game is over, in 认输's own place —
+    /// the same controls, keys and identifiers the other boards carry.
+    private func controls(_ play: NearbyPlay, worded: Bool, carriesFlip: Bool) -> some View {
+        let over = Self.scene(of: play) == .over
+        return HStack(spacing: 8) {
+            if !over {
+                negotiations(play, worded: worded)
+            }
+
+            Spacer(minLength: 0)
+
+            if over {
                 // The one obvious next action once the game is over, and
                 // therefore the one thing on screen the tint rule allows —
                 // prominent only once the notice carrying it has been closed.
                 concluding(prominent: !showsResult)
+                    .transition(.opacity)
             } else {
-                negotiations(play)
-
-                Button("control.resign") { resignPresented = true }
-                    .buttonStyle(.glass)
-                    .disabled(!play.canResign)
-                    .accessibilityIdentifier("cluster-resign")
+                Button {
+                    resignPresented = true
+                } label: {
+                    clusterLabel("control.resign", "flag.fill", worded: worded)
+                }
+                .buttonStyle(.glass)
+                .disabled(!play.canResign)
+                .accessibilityLabel(Text("control.resign"))
+                .accessibilityIdentifier("cluster-resign")
+                .transition(.opacity)
             }
 
-            if carriesFlip { flipControl(play, compact: compact) }
-
-            Spacer(minLength: 0)
+            if carriesFlip { flipControl(play, worded: worded) }
         }
     }
 
     /// The two or one this side of the turn has.
     @ViewBuilder
-    private func negotiations(_ play: NearbyPlay) -> some View {
+    private func negotiations(_ play: NearbyPlay, worded: Bool) -> some View {
         if let asking = play.standingItem {
             // Answering what the other player asked for. It follows something
             // the status line is already naming and is the player's own
             // deliberate answer to it, so nothing stands between the press and
             // the act — there is no second confirmation of a confirmation.
-            Button("control.accept") { play.accept() }
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("cluster-accept")
-                .accessibilityHint(Text(Self.asked(asking)))
+            Button {
+                play.accept()
+            } label: {
+                clusterLabel("control.accept", "checkmark", worded: worded)
+            }
+            .buttonStyle(.glass)
+            .accessibilityLabel(Text("control.accept"))
+            .accessibilityIdentifier("cluster-accept")
+            .accessibilityHint(Text(Self.asked(asking)))
+            .transition(.opacity)
         } else if play.controller == .you {
             // The claim, presented the way the local game presents it.
-            Button("control.claimDraw") { claimPresented = true }
-                .buttonStyle(.glass)
-                .disabled(!play.claimStands)
-                .accessibilityIdentifier("cluster-claim")
+            Button {
+                claimPresented = true
+            } label: {
+                clusterLabel("control.claimDraw", "equal", worded: worded)
+            }
+            .buttonStyle(.glass)
+            .disabled(!play.claimStands)
+            .accessibilityLabel(Text("control.claimDraw"))
+            .accessibilityIdentifier("cluster-claim")
+            .transition(.opacity)
         } else {
-            Button("control.offerDraw") { play.offerDraw() }
-                .buttonStyle(.glass)
-                .disabled(!play.canOfferDraw)
-                .accessibilityIdentifier("cluster-offer-draw")
+            // 提和 asks for the equal rather than taking it, and the two
+            // figures are as near a handshake as the platform's symbols come:
+            // the act belongs to the pair rather than to this device.
+            Button {
+                play.offerDraw()
+            } label: {
+                clusterLabel("control.offerDraw", "figure.2.left.holdinghands",
+                             worded: worded)
+            }
+            .buttonStyle(.glass)
+            .disabled(!play.canOfferDraw)
+            .accessibilityLabel(Text("control.offerDraw"))
+            .accessibilityIdentifier("cluster-offer-draw")
+            .transition(.opacity)
 
-            Button("control.undo") { play.requestUndo() }
-                .buttonStyle(.glass)
-                .disabled(!play.canRequestUndo)
-                .accessibilityIdentifier("cluster-undo")
+            Button {
+                play.requestUndo()
+            } label: {
+                clusterLabel("control.undo", "arrow.uturn.backward", worded: worded)
+            }
+            .buttonStyle(.glass)
+            .disabled(!play.canRequestUndo)
+            .accessibilityLabel(Text("control.undo"))
+            .accessibilityIdentifier("cluster-undo")
+            .transition(.opacity)
         }
     }
 
     /// 翻转棋盘, in the one arrangement or the other — the same control, key and
     /// identifier the play screen's cluster carries.
-    private func flipControl(_ play: NearbyPlay, compact: Bool) -> some View {
+    private func flipControl(_ play: NearbyPlay, worded: Bool) -> some View {
         Button {
             play.flip()
         } label: {
-            if compact {
-                Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-                    .labelStyle(.iconOnly)
-            } else {
-                Label("control.flipBoard", systemImage: "arrow.up.arrow.down")
-            }
+            clusterLabel("control.flipBoard", "arrow.up.arrow.down", worded: worded)
         }
         .buttonStyle(.glass)
         .accessibilityLabel(Text("control.flipBoard"))
         .accessibilityIdentifier("cluster-flip")
     }
 
-    /// The cluster at whichever of its arrangements fits, which is the
-    /// contract's own answer for a four-control cluster: one row where one row
-    /// holds it, the trailing word given up before the line is, and 翻转棋盘
-    /// dropping to a second row beneath the others where even that will not fit.
-    /// It is the arrangement the play screen's cluster already uses in this same
-    /// panel rather than a new idea.
-    private func controls(_ play: NearbyPlay) -> some View {
-        ViewThatFits(in: .horizontal) {
-            controls(play, compact: false, carriesFlip: true)
-            controls(play, compact: true, carriesFlip: true)
-            wrappedControls(play, compact: false)
-            wrappedControls(play, compact: true)
+    /// A cluster control's label: its symbol and its word, or its symbol alone
+    /// where the row has given the words up. The word is the accessibility label
+    /// either way, which each control states for itself, and it stays on one
+    /// line: these are one-act labels, and a control whose word wrapped would
+    /// make its row taller than the arrangement it was chosen as.
+    @ViewBuilder
+    private func clusterLabel(_ key: LocalizedStringKey, _ symbol: String,
+                              worded: Bool) -> some View {
+        if worded {
+            Label(key, systemImage: symbol).lineLimit(1)
+        } else {
+            Label(key, systemImage: symbol).labelStyle(.iconOnly)
         }
     }
 
-    private func wrappedControls(_ play: NearbyPlay, compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            controls(play, compact: compact, carriesFlip: false)
+    /// The cluster at whichever of its arrangements fits: one row with every
+    /// word, the same row wrapped with 翻转棋盘 beneath, one row of symbols, and
+    /// that row wrapped. Words outrank one-rowness, and no row mixes the two
+    /// forms — the play screen's own grammar, in the same words.
+    ///
+    /// **The turn passing is one drawn transition.** 认输 and 翻转棋盘 hold their
+    /// identity and their trailing places across it while the leading acts swap:
+    /// the departing ones fade as their width closes and the arriving ones fade
+    /// in, riding the landing of the ply that passed the turn — or, where
+    /// nothing lands, the moment the game ended. Under Reduce Motion the two
+    /// sets crossfade as wholes, nothing sliding and nothing collapsing.
+    @ViewBuilder
+    private func controls(_ play: NearbyPlay) -> some View {
+        let scene = Self.scene(of: play)
+        let arrangements = ViewThatFits(in: .horizontal) {
+            controls(play, worded: true, carriesFlip: true)
+            wrappedControls(play, worded: true)
+            controls(play, worded: false, carriesFlip: true)
+            wrappedControls(play, worded: false)
+        }
+        if policy.reduceMotion {
+            arrangements
+                .id(scene)
+                .animation(policy.crossfade, value: scene)
+        } else {
+            arrangements
+                .animation(Motion.stateFadeAnimation, value: scene)
+        }
+    }
+
+    /// The cluster over two rows, with 翻转棋盘 beneath the two controls that
+    /// never move: the row above is anchored at its trailing end, so the row
+    /// below is anchored there too.
+    private func wrappedControls(_ play: NearbyPlay, worded: Bool) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            controls(play, worded: worded, carriesFlip: false)
             HStack(spacing: 8) {
-                flipControl(play, compact: false)
                 Spacer(minLength: 0)
+                flipControl(play, worded: true)
             }
         }
     }
 
+    /// The scenes this cluster has: a stretch of play whose acts are stable.
+    /// Two of them are the two sides of the turn, one is answering what the
+    /// other player asked for, and the last is a game that is over.
+    ///
+    /// **The finished scene waits for the landing**, which is the guard the
+    /// result notice in front of the board already keeps: the ply that ends the
+    /// game is still travelling when the session says it is over, and a cluster
+    /// that swapped there would swap ahead of the move that changed it. The
+    /// other three follow the session as it stands, having no landing of their
+    /// own to wait for.
+    private enum Scene: Equatable { case onTurn, offTurn, answering, over }
+
+    private static func scene(of play: NearbyPlay) -> Scene {
+        if play.isOver, !play.isCommitting { return .over }
+        if play.standingItem != nil { return .answering }
+        return play.controller == .you ? .onTurn : .offTurn
+    }
+
+    /// The way out, which is the one control that is its word alone in every
+    /// arrangement — the same rule the local board's concluding action keeps.
     @ViewBuilder
     private func concluding(prominent: Bool) -> some View {
         let action = Button("control.done") { flow.leaveBoard() }
+            .lineLimit(1)
             .accessibilityIdentifier("cluster-done")
         if prominent {
             action.buttonStyle(.glassProminent)

@@ -94,8 +94,22 @@ enum BoardLayout {
 
     /// The same, for the stacked shape, spending the chrome allowance rather
     /// than the panel's width.
+    ///
+    /// It spends the air beside the board as well, which a drawn board screen
+    /// does not — see `stackedGeometry` — and **that cannot change the answer**.
+    /// Where the stacked candidate is bound by the width, it is already the
+    /// larger board by construction: it is fitted into the same width less 48
+    /// points where the side-by-side candidate is fitted into that width less
+    /// the panel as well, so the rule has chosen stacked before any air is
+    /// argued about. Side by side therefore wins only where the stacked
+    /// candidate is bound by its height or standing at its maximum footprint,
+    /// and neither of those moves when the air beside the board does. What is
+    /// left is one probe answering for every page in the shape, which is what a
+    /// board and the pre-start page that previews it need in order not to
+    /// disagree about which shape they are in.
     private static func stackedPitch(in size: CGSize, game: GameKind) -> CGFloat? {
-        BoardGeometry.fitting(stackedSpace(in: size, chrome: stackedChromeHeight),
+        BoardGeometry.fitting(stackedSpace(in: size, chrome: stackedChromeHeight,
+                                           air: boardPadding),
                               board: game.board)
             .map { min($0.pitch, BoardGeometry.maximumPitch(for: game.board)) }
     }
@@ -119,8 +133,18 @@ enum BoardLayout {
 
     // MARK: - Stacked
 
-    private static func stackedSpace(in size: CGSize, chrome: CGFloat) -> CGSize {
-        CGSize(width: size.width - 2 * boardPadding,
+    /// The rectangle a stacked board is fitted into: the width less whatever
+    /// air is kept beside it, and the height less the chrome and its own
+    /// allowance.
+    ///
+    /// The air is a parameter because the two things drawn in this shape
+    /// answer it differently — a board screen keeps none and a pre-start
+    /// preview keeps the allowance — and that difference belongs here rather
+    /// than at the call sites, so that every caller of the same kind gets the
+    /// same answer without knowing the arithmetic.
+    private static func stackedSpace(in size: CGSize, chrome: CGFloat,
+                                     air: CGFloat) -> CGSize {
+        CGSize(width: size.width - 2 * air,
                height: size.height - chrome - 2 * boardPadding)
     }
 
@@ -156,20 +180,53 @@ enum BoardLayout {
         max(0, min(wanted, size.height - minimumBoardHeight(for: game)))
     }
 
-    /// The largest board that fits between the status above it and the controls
-    /// below it, bounded by the same floor and ceiling.
+    /// The largest board a stacked **board screen** fits into the height its
+    /// chrome leaves, bounded by the same floor and ceiling — and into the
+    /// whole of the width.
     ///
-    /// `chrome` is what those two actually came to, so a status line grown by an
-    /// accessibility text size takes its room from the board rather than
+    /// docs/interaction-design.md, "Layout shapes": the shape spends no
+    /// horizontal allowance on a board screen. The block takes the screen's
+    /// width, the whole-point pitch leaves a few points of remainder at most,
+    /// and the air the allowance held moves above and below the board, where
+    /// the height is. It is what this shape exists to buy: a 402-point phone
+    /// carries Xiangqi at pitch 44 rather than 39. Where something other than
+    /// the width binds the board — an iPad's capped footprint, a short window —
+    /// nothing changes, because there the width was never what was short.
+    ///
+    /// `chrome` is what the chrome actually came to, so a status line grown by
+    /// an accessibility text size takes its room from the board rather than
     /// overflowing the screen.
     static func stackedGeometry(in size: CGSize, game: GameKind,
                                 chrome: CGFloat = stackedChromeHeight) -> BoardGeometry {
         let board = game.board
-        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome),
+        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome, air: 0),
                                            board: board)
             ?? BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
         return BoardGeometry(board: board,
                              pitch: min(fitted.pitch, BoardGeometry.maximumPitch(for: board)))
+    }
+
+    /// How far the style's board surface runs past the block on each side of a
+    /// stacked board screen.
+    ///
+    /// docs/interaction-design.md, "Layout shapes": the surface runs to the
+    /// screen edges beneath the numeral strips, so the board meets the glass
+    /// without a sliver of page beside it. What a whole-point pitch cannot
+    /// spend is a few points — a 402-point phone leaves Xiangqi six — and the
+    /// page showing through there reads as a board laid crookedly on the screen
+    /// rather than as a margin.
+    ///
+    /// What the width is *bound* by is the line between the two readings. Only
+    /// a board the width itself sized leaves a remainder of that kind, and it
+    /// is always less than one file; where the board was bound by the height or
+    /// stopped at its maximum footprint — an iPad in portrait, where the board
+    /// stops 120 points short of the screen — the space beside it is the
+    /// surrounding layout's air by the contract's own rule, and painting it
+    /// would inflate the board's margin instead of ending it.
+    static func surfaceBleed(in width: CGFloat, board: BoardGeometry) -> CGFloat {
+        let widthBound = (width / CGFloat(board.board.fileCount)).rounded(.down)
+        guard board.pitch >= widthBound else { return 0 }
+        return max(0, (width - board.blockSize.width) / 2)
     }
 
     // MARK: - Previews
@@ -193,10 +250,17 @@ enum BoardLayout {
 
     /// The same preview in the stacked shape, with the setup controls beneath
     /// it in place of the panel beside it.
+    ///
+    /// **A preview keeps its air.** The full-width fitting above is the board
+    /// screens': a preview sits among setup controls on a page rather than
+    /// alone on a screen, and a picture of a board running edge to edge between
+    /// two rows of controls would read as the page's header rather than as the
+    /// board the page is about.
     static func stackedPreviewGeometry(in size: CGSize, game: GameKind,
                                        chrome: CGFloat) -> BoardGeometry {
         let board = game.board
-        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome),
+        let fitted = BoardGeometry.fitting(stackedSpace(in: size, chrome: chrome,
+                                                        air: boardPadding),
                                            board: board, floor: previewFloorPitch)
             ?? BoardGeometry(board: board, pitch: previewFloorPitch)
         return BoardGeometry(board: board,
