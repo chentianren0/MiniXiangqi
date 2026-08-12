@@ -164,7 +164,7 @@
     "upstream_repository": "https://github.com/dhbloo/rapfi",
     "upstream_base_revision": "3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7",
     "license": "GPL-3.0-or-later",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. Neither touches rules behaviour, so neither owes a rules corpus; the boundary recorded on issue #164 is that a fork change which ever does touch rules behaviour lands together with the test that pins it.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first, followed by patches_pending: what this contract asks of the fork and the pinned revision does not yet carry. Neither applied change touches rules behaviour, so neither owes a rules corpus; the boundary recorded on issue #164 is that a fork change which ever does touch rules behaviour lands together with the test that pins it.",
     "patches": [
       {
         "id": "recoverable-hash-allocation",
@@ -191,7 +191,19 @@
       }
     ],
     "_merge_revision_about": "merge_revision is null in both entries because the fork pull request carrying them — chentianren0/rapfi#1 — is open and unmerged at the revision this manifest pins. The pin is the branch head, which is what the core compiles; the field is filled when the pull request merges and the revision is re-pinned to the merge.",
-    "patches_pending": [],
+    "patches_pending": [
+      {
+        "id": "recoverable-large-page-free",
+        "summary": "The second half of the process-exit hazard, which the applied recoverable-hash-allocation patch covers only the first half of. MemAlloc::alignedLargePageFree in Rapfi/core/platform.cpp calls std::exit(EXIT_FAILURE) when VirtualFree fails, inside #ifdef _WIN32, and the Hash path reaches it: HashTable::releaseTable, called from every resize and from the destructor, frees through it. docs/engine-integration.md's failure-containment rule names both halves for the first engine, and the fork change there covers both; this one does not yet.",
+        "deferred_because": "The branch is Windows-only and this engine is not built for Windows. Campaign #164 is Apple-only, MXQ_ENABLE_GOMOKU_FACADE is set by no Windows build, and core/third_party/rapfi/CMakeLists.txt compiles the snapshot for Apple targets alone — so the exit is unreachable in everything this repository produces. Landing a fork change for a branch nothing compiles would be recording work rather than doing it.",
+        "trigger": "Any Windows build of this engine lands it first. That is the whole condition: the moment MXQ_ENABLE_GOMOKU_FACADE is set on a Windows target, the branch is compiled and the exit is reachable, and the error contract forbids an exit crossing the core boundary.",
+        "_stdout_note": "The same #ifdef _WIN32 lines write with std::printf and fflush(stdout) — platform.cpp's own comment explains that the allocator layer deliberately depends on no output module. Those bypass the bridge's std::cout redirection entirely, since they are C stdio rather than an iostream. Unreachable here for the same reason the exit is, and recorded together with it so that a Windows build inherits both facts at once.",
+        "required_by": [
+          "docs/architecture.md",
+          "docs/engine-integration.md"
+        ]
+      }
+    ],
     "static_library": {
       "established": true,
       "_note": "The fork's static-library target is rapfi_engine, behind the BUILD_ENGINE_LIBRARY option, and it landed at 265b7d6. The core does not consume the artifact: it compiles the copied source snapshot with a core-owned CMakeLists.txt, because the app needs arm64, arm64e and x86_64 from one build system and the fork's CMake produces one architecture per configure. core/third_party/rapfi/README.md records what would change if the core switched.",
@@ -605,8 +617,8 @@
       "committed_to_version_control": true,
       "provenance": {
         "_about": "Redistributed rather than trained here. dhbloo/rapfi-networks is the weights repository of the Rapfi engine, and it dedicates every weight file in it to the public domain: its README states that all weight files are released freely under CC0, and the repository root carries the full CC0 1.0 Universal text as LICENSE. Both were read at the source before these bytes were accepted.",
-        "license_statement": "https://github.com/dhbloo/rapfi-networks#readme",
-        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/master/LICENSE",
+        "license_statement": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/README.md",
+        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/LICENSE",
         "source_repository": "https://github.com/dhbloo/rapfi-networks",
         "source_revision": "e32ad77a5364363b3e3a02b3f9e8610ade19ea98",
         "trained_by": "the Rapfi developers",
@@ -667,8 +679,8 @@
       "committed_to_version_control": true,
       "provenance": {
         "_about": "Redistributed rather than trained here, from the same repository and under the same dedication as the freestyle weights above: dhbloo/rapfi-networks releases every weight file in it under CC0, stated in its README and carried in full as the repository's LICENSE. Both were read at the source before these bytes were accepted.",
-        "license_statement": "https://github.com/dhbloo/rapfi-networks#readme",
-        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/master/LICENSE",
+        "license_statement": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/README.md",
+        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/LICENSE",
         "source_repository": "https://github.com/dhbloo/rapfi-networks",
         "source_revision": "e32ad77a5364363b3e3a02b3f9e8610ade19ea98",
         "trained_by": "the Rapfi developers",

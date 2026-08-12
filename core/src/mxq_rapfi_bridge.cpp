@@ -130,23 +130,37 @@ bool g_config_loaded = false;
  * message mode is set to NONE besides. Belt and braces, and the braces are the
  * ones that hold: messageMode is data the engine reads, and a path that forgets
  * to read it is a path this catches anyway.
+ *
+ * std::cout only. The engine writes nothing to std::cerr — every message and
+ * every error goes through iohelper.h's sync_cout(), including ERRORL — so
+ * swapping cerr would redirect a stream this engine never uses and take the
+ * host's own diagnostics with it. That is the first bridge's posture too.
+ *
+ * One write is out of reach of this and is stated rather than implied:
+ * core/platform.cpp's Windows large-page free path uses std::printf, which is C
+ * stdio and not std::cout. It is unreachable here — that path is inside
+ * #ifdef _WIN32 and this engine is not built for Windows — and it is recorded
+ * as pending fork work in pinned-inputs.json for the same reason.
  */
 class CoutSilencer {
 public:
-    CoutSilencer()
-        : cout_(std::cout.rdbuf(sink_.rdbuf())),
-          cerr_(std::cerr.rdbuf(sink_.rdbuf())) {}
-    ~CoutSilencer() {
-        std::cout.rdbuf(cout_);
-        std::cerr.rdbuf(cerr_);
-    }
+    CoutSilencer() : saved_(std::cout.rdbuf(&sink_)) {}
+    ~CoutSilencer() { std::cout.rdbuf(saved_); }
     CoutSilencer(const CoutSilencer &) = delete;
     CoutSilencer &operator=(const CoutSilencer &) = delete;
 
 private:
-    std::ostringstream sink_;
-    std::streambuf    *cout_;
-    std::streambuf    *cerr_;
+    /* Discarding rather than accumulating. A buffer would be a memory leak
+     * shaped like a guard: this one spans a whole search, and a search at the
+     * engine's ordinary message level writes a line per iteration. */
+    struct Sink : std::streambuf {
+        int overflow(int c) override { return c; }
+        std::streamsize xsputn(const char *, std::streamsize n) override {
+            return n;
+        }
+    };
+    Sink            sink_;
+    std::streambuf *saved_;
 };
 
 /* One selected weight file: where it is, and the pins it must satisfy. */
@@ -203,8 +217,20 @@ bool verify_weights(const std::vector<WeightChoice> &weights, bool &out_missing,
             out_missing = true;
             return false;
         }
-        std::string bytes((std::istreambuf_iterator<char>(in)),
-                          std::istreambuf_iterator<char>());
+        /* Ten megabytes into a std::string, which can throw. Treated as a file
+         * this build cannot read rather than as an engine failure: whether the
+         * bytes did not arrive or could not be held, the file is not usable and
+         * the caller's answer is the same. */
+        std::string bytes;
+        try {
+            bytes.assign(std::istreambuf_iterator<char>(in),
+                         std::istreambuf_iterator<char>());
+        } catch (const std::exception &e) {
+            detail = std::string("cannot read the weight file at ") +
+                     weight.path + ": " + e.what();
+            out_missing = true;
+            return false;
+        }
         if (in.bad()) {
             detail = "cannot read the weight file at " + weight.path;
             out_missing = true;
@@ -296,6 +322,8 @@ bool is_configured() {
 ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
                        const std::string &assets_dir, MxqEnginePlan &out_applied,
                        std::string &detail) {
+    /* Nothing here throws — the plan is arithmetic over values, and configure()
+     * below is guarded in its own right. */
     std::memset(&out_applied, 0, sizeof(out_applied));
     out_applied.struct_size = static_cast<uint32_t>(sizeof(out_applied));
 
@@ -315,9 +343,13 @@ ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
                      assets_dir, detail);
 }
 
-ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
-                         const std::string &assets_dir, std::string &detail) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+namespace {
+
+/* The body of configure(), with g_mutex already held and with exceptions still
+ * able to escape it. configure() below is the guard around both. */
+ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib,
+                                const std::string &assets_dir,
+                                std::string &detail) {
     const RulesPin &wanted = pin_of(rules);
 
     /* Gate 1: which files. */
@@ -338,26 +370,27 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
     {
         CoutSilencer silence;
 
-        /* Every configuration starts from the released posture, and the thread
-         * set is created exactly once inside it. That is not tidiness — it
-         * avoids a deadlock in the engine's own thread teardown.
+        /* Every configuration starts from the released posture and creates its
+         * thread set exactly once inside it. That is not tidiness — it is half
+         * of the answer to a deadlock in the engine's own thread teardown.
          *
          * SearchThread::init() starts the worker and then queues the thread's
-         * first task, which is what leaves `running` true until the worker picks
-         * it up. SearchThread's destructor sets `exit` and then waits for
-         * `running` to fall. If the destructor runs before that first task has
-         * been picked up, the worker's next look at its loop sees `exit` and
-         * returns without ever clearing `running` — and the destructor waits for
-         * a flag that nothing will ever clear again. Destroying a thread set
-         * immediately after creating it is what makes that window reachable, and
-         * setupSearcher() re-creates the whole set on its own (it calls
-         * setNumThreads with the current count), so calling it while threads
-         * exist and then resizing is exactly the sequence that provokes it.
+         * first task, which leaves `running` true until the worker picks it up.
+         * SearchThread's destructor sets `exit` and then waits for `running` to
+         * fall. If the destructor runs before that first task has been picked
+         * up, the worker's next look at its loop sees `exit` and returns without
+         * ever clearing `running` — and the destructor waits for a flag nothing
+         * will ever clear again. Destroying a thread set soon after creating it
+         * is what makes that window reachable, and setupSearcher() re-creates
+         * the whole set on its own (it calls setNumThreads with the current
+         * count), so calling it while threads exist and then resizing is exactly
+         * the sequence that provokes it.
          *
          * Releasing first means setupSearcher and setupEvaluator both run
          * against an empty thread set, where they only record what they are
-         * given, and setNumThreads below creates the threads once, after
-         * everything they need is in place. */
+         * given. The other half is below: after the threads are created, this
+         * function waits for them to pick their init task up, which closes the
+         * window rather than merely making it narrow. */
         Search::Engine.stopThinking();
         Search::Engine.setNumThreads(0);
 
@@ -416,6 +449,29 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
          * table — which is what a rules switch needs and what a first
          * preparation needs equally. */
         Search::Engine.setNumThreads(threads);
+
+        /* The other half of the deadlock answer, and it has to be here rather
+         * than left to the calls after it.
+         *
+         * Nothing further down this function is a synchronisation point on
+         * every path. clear(true) reaches HashTable::clear, which spawns
+         * threads of its own rather than driving these. setMemoryLimit reaches
+         * HashTable::resize, which returns early when the size has not changed —
+         * before its waitForIdle — so a re-preparation at the same table size
+         * passes straight through. Gate 3 then calls setBoardAndEvaluator
+         * directly, which startThinking would have reached only after waiting.
+         * So on the rules-switch path the workers could still be holding an
+         * unpicked init task when a refusal below unwinds to setNumThreads(0),
+         * which is exactly the destroy-before-pickup ordering the race needs.
+         *
+         * Waiting here also closes a data race that has nothing to do with the
+         * deadlock: the init task writes each thread's numaId, and
+         * setBoardAndEvaluator reads it. The write only happens for a thread
+         * count above Numa::BindGroupThreshold, so it is a race the accepted
+         * memory plan reaches on any machine that reports more than eight
+         * processors. */
+        Search::Engine.waitForIdle();
+
         Search::Engine.clear(true);
     }
 
@@ -473,10 +529,19 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
         Search::Engine.main()->setBoardAndEvaluator(probe);
     }
     if (Search::Engine.main()->evaluator == nullptr) {
-        detail = "the engine's effective evaluator for " + std::string(wanted.id) +
-                 " at " + std::to_string(kBoardSize) +
-                 "x" + std::to_string(kBoardSize) +
-                 " is classical, not the pinned network";
+        /* What a null evaluator means is deliberately not narrowed to one
+         * cause. The maker returns nothing when the weights do not cover the
+         * rule or the size, and equally when a load failed — a short read, a
+         * decompression error, an allocation that could not be met. It writes a
+         * message about which, and that message goes to a stream this bridge is
+         * silencing, so naming one cause here would be a guess printed as a
+         * fact. What the caller can act on is the same either way: the engine
+         * has no network for this game and must not play. */
+        detail = "the engine has no NNUE evaluator for " + std::string(wanted.id) +
+                 " at " + std::to_string(kBoardSize) + "x" +
+                 std::to_string(kBoardSize) +
+                 "; the pinned weights either do not cover it or did not load, "
+                 "and a search would silently use classical evaluation";
         deconfigure_locked();
         return ConfigureError::AssetMismatch;
     }
@@ -486,14 +551,50 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
     return ConfigureError::None;
 }
 
-void deconfigure() {
+} /* namespace */
+
+ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
+                         const std::string &assets_dir, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_mutex);
-    deconfigure_locked();
+    try {
+        return configure_locked(rules, threads, hash_mib, assets_dir, detail);
+    } catch (const std::exception &e) {
+        /* docs/architecture.md: no exception, and nothing that terminates the
+         * process, may cross the core's boundary. This engine throws to report
+         * — a bad allocation building a board, a thread the system would not
+         * create, a weight stream that ended early — and every one of those
+         * arrives here as one answer: the engine did not come up. Unwound whole
+         * afterwards, because a half-configured engine is not a state anything
+         * defines. */
+        detail = std::string("the engine failed to prepare: ") + e.what();
+        try {
+            deconfigure_locked();
+        } catch (...) {
+            /* Teardown has nothing left to report with and nowhere better to
+             * go: the caller is already being told the preparation failed. */
+        }
+        return ConfigureError::RulesLoadFailed;
+    }
 }
 
-SearchError search_run(const std::vector<Point> &moves, uint32_t movetime_ms,
-                       const std::atomic<bool> &cancelled, SearchOutput &out,
-                       std::string &detail) {
+void deconfigure() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    try {
+        deconfigure_locked();
+    } catch (...) {
+        /* Release returns void by design — a caller tearing an engine down has
+         * no decision left to make — so a throw here has nothing to be reported
+         * as. Swallowed rather than allowed to cross the boundary. */
+    }
+}
+
+namespace {
+
+/* The body of search_run(), with exceptions still able to escape it. */
+SearchError search_run_unguarded(const std::vector<Point> &moves,
+                                 uint32_t movetime_ms,
+                                 const std::atomic<bool> &cancelled,
+                                 SearchOutput &out, std::string &detail) {
     /* No g_mutex here, deliberately: see the serialisation design in
      * mxq_rapfi_bridge.hpp. */
     if (!g_configured.load(std::memory_order_acquire)) {
@@ -588,6 +689,19 @@ SearchError search_run(const std::vector<Point> &moves, uint32_t movetime_ms,
     }
     out.nodes = Search::Engine.nodesSearched();
     return SearchError::None;
+}
+
+} /* namespace */
+
+SearchError search_run(const std::vector<Point> &moves, uint32_t movetime_ms,
+                       const std::atomic<bool> &cancelled, SearchOutput &out,
+                       std::string &detail) {
+    try {
+        return search_run_unguarded(moves, movetime_ms, cancelled, out, detail);
+    } catch (const std::exception &e) {
+        detail = std::string("the engine faulted during the search: ") + e.what();
+        return SearchError::Faulted;
+    }
 }
 
 void search_abort() {

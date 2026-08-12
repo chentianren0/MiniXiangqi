@@ -69,6 +69,13 @@ checked with:
 cd upstream && shasum -a 256 -c ../SOURCES.sha256
 ```
 
+The recipe extracts over `upstream/` rather than clearing it first, so a file the
+fork **deleted** between two revisions would survive a re-cut and sit there
+unlisted. `SOURCES.sha256` is what catches that — it is regenerated from the tree
+as it stands, so a survivor appears in it as a line the previous manifest did not
+have. Clear `upstream/` before re-cutting if you would rather not rely on
+reading that diff.
+
 ## What is excluded, and why
 
 | Excluded | Reason |
@@ -87,6 +94,17 @@ framework or a network dependency, and the source investigation on issue #164
 established that none of the categories that make an engine unusable inside an
 app bundle is present: no `dlopen`, no `fork`/`exec`/`popen`/`system`, no
 `getenv`, no JIT, no `mprotect`, and no hand-written assembly.
+
+**One process exit is still in the snapshot, unreachable and recorded rather
+than removed.** `Rapfi/core/platform.cpp`'s `MemAlloc::alignedLargePageFree`
+calls `std::exit(EXIT_FAILURE)` when `VirtualFree` fails, and the transposition
+table frees through it — the second half of the hazard whose first half the
+`recoverable-hash-allocation` fork change fixes. The branch is inside
+`#ifdef _WIN32` and this engine is built for Apple targets alone, so nothing this
+repository produces can reach it. It is carried as
+`gomoku_fork.patches_pending` in
+[`pinned-inputs.json`](../../../pinned-inputs.json), with the trigger stated
+there: any Windows build of this engine lands the fork change first.
 
 Three externals survive, and one of them is required rather than convenient:
 **lz4**, because every NNUE weight file is an LZ4 frame and

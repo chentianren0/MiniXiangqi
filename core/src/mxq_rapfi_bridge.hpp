@@ -14,6 +14,17 @@
  * needs for that is a rule, a list of points already played, a thinking time,
  * and a point to play.
  *
+ * This engine reports failure by throwing, and docs/architecture.md forbids an
+ * exception crossing the core's boundary, so every entry point below contains
+ * one and returns a typed failure instead. One bound on that is accepted rather
+ * than claimed away: the engine's worker threads have no handler of their own,
+ * and startThinking dispatches the board clone and the root-move setup onto
+ * them, so a bad allocation there terminates the process and no handler here
+ * can see it. That is the same practical posture as the first engine, which is
+ * compiled without exceptions at all and whose allocation failure would
+ * terminate too. A guard inside the fork's thread loop is a possible focused
+ * change if evidence ever asks for one.
+ *
  * Compiled only when MXQ_ENABLE_GOMOKU_FACADE is ON.
  */
 
@@ -173,6 +184,8 @@ enum class SearchError {
     ReplayFailed,  /* a move in the snapshot is not playable: an invariant
                     * breach, because it was legal when it was accepted */
     NoMove,        /* the engine reported no best point at all */
+    Faulted,       /* the engine threw: an allocation it could not meet, a
+                    * thread the system would not create */
 };
 
 /* What one completed search reports, in bounded diagnostic terms. */

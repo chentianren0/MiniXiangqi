@@ -13,6 +13,18 @@ cmake_minimum_required(VERSION 3.24)
 # what the core itself is written in.
 enable_language(C)
 
+# NEON dotprod is armv8.2-a and safe on A12 and newer, so whether it may be
+# selected is the Apple deployment target's answer rather than this file's. It is
+# declared here so that the arm64 branch below reads a variable this build
+# defines rather than one it hopes was set; nothing sets it today, and
+# pinned-inputs.json records the decision as unanswered for want of a
+# measurement rather than for want of a floor.
+option(MXQ_RAPFI_NEON_DOTPROD
+       "Select NEON dotprod on arm64 targets. Requires every supported device \
+to be A12 or newer, which the app's deployment target does guarantee; off until \
+a measurement says what it buys."
+       OFF)
+
 set(MXQ_RAPFI_UPSTREAM "${CMAKE_CURRENT_SOURCE_DIR}/upstream")
 set(MXQ_RAPFI_SRC "${MXQ_RAPFI_UPSTREAM}/Rapfi")
 set(MXQ_RAPFI_EXTERNAL "${MXQ_RAPFI_SRC}/external")
@@ -264,6 +276,36 @@ if(NOT MSVC)
 else()
   target_compile_options(mxq_rapfi PRIVATE /W3)
 endif()
+
+# The one warning family that has to be suppressed on the INTERFACE rather than
+# privately, mirroring the Fairy-Stockfish target beside this one for the same
+# reason. This engine is C++17 and its headers do arithmetic and bitwise
+# operations on differently typed enums, which C++20 deprecated. The core is
+# C++20, and the bridge includes eleven of those headers while linking
+# mxq_warnings — so with MXQ_WARNINGS_AS_ERRORS on, our own translation unit
+# would fail to compile because of the vendored snapshot's style. The engine's
+# own sources never see it; they are built as C++17.
+#
+# It compiles clean today, which is exactly when to write the guard: nothing
+# about the snapshot promises the next one will, and the failure lands on our
+# file rather than on the header it comes from.
+#
+# Scoped to the specific deprecation rather than a blanket -w or /w, and both
+# spellings are listed because the same deprecation has two names — Clang and
+# GCC call it -Wdeprecated-enum-enum-conversion, MSVC calls it C5054. The probe
+# is what keeps the list safe: a compiler that does not know a flag never
+# receives it.
+include(CheckCXXCompilerFlag)
+foreach(mxq_rapfi_flag -Wno-deprecated-enum-enum-conversion
+                       -Wno-deprecated-anon-enum-enum-conversion
+                       /wd5054)
+  string(MAKE_C_IDENTIFIER "MXQ_RAPFI_HAVE${mxq_rapfi_flag}" mxq_rapfi_flag_var)
+  check_cxx_compiler_flag("${mxq_rapfi_flag}" ${mxq_rapfi_flag_var})
+  if(${mxq_rapfi_flag_var})
+    target_compile_options(mxq_rapfi INTERFACE
+      "$<$<COMPILE_LANGUAGE:CXX>:${mxq_rapfi_flag}>")
+  endif()
+endforeach()
 
 # --------------------------------------------------------------------------
 # Link dependencies

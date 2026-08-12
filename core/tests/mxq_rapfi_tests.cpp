@@ -19,14 +19,23 @@
  * claims about the engine's own globals, and a runner that asked the bridge to
  * report on itself would test the report rather than the state.
  *
- * The preflight that matters most here is the third one, and it is the reason
- * this engine needs a preflight at all. A weight set that does not cover the
+ * The third preflight is the one this engine needs a preflight for at all, and
+ * it is stated here rather than tested, because **it cannot be provoked while
+ * every pinned file covers its own rule.** A weight set that does not cover the
  * rule or the board size raises an exception the engine's own evaluator maker
- * catches and discards; what is left is an engine playing on classical
- * evaluation, with the configuration still looking exactly as it was asked for
- * and nothing anywhere saying otherwise. The case below provokes that with real
- * bytes — the renju weights offered for the freestyle rule, which is precisely a
- * rule mask that does not match — and requires the refusal.
+ * catches and discards, leaving an engine on classical evaluation with the
+ * configuration looking exactly as it was asked for. But reaching that gate
+ * means getting a wrong-rule file past the byte gate first, and the byte gate
+ * checks each file against the pins of the name it was staged under — so a renju
+ * file under the freestyle name is refused on its length, several gates early.
+ * There is no way to build the input the third gate is for without either
+ * re-pinning a file or reaching around the bridge's own selection.
+ *
+ * So the case below asserts what is actually true and useful — a wrong-rule file
+ * cannot get past the pins by any route — and the gate itself stands as defence
+ * against a future re-pin, when a file that is genuinely pinned but genuinely
+ * wrong for its rule becomes constructible. That is the day it earns its keep,
+ * and the day it would be too late to add it.
  *
  * With the engine in the build, a missing or mismatched staged weight file FAILS
  * this suite with the staging message rather than skipping: a suite that
@@ -43,7 +52,6 @@
 
 #if MXQ_TEST_GOMOKU_FACADE
 /* The engine's own globals, deliberately: see the header comment. */
-#include "config.h"
 #include "search/hashtable.h"
 #include "search/searchengine.h"
 #include "search/searchthread.h"
@@ -395,59 +403,42 @@ void case_damaged_weight_refuses() {
     c.report();
 }
 
-void case_wrong_rule_weights_are_caught_by_the_preflight() {
-    Case c("weights that do not cover the rule are refused, not degraded");
+void case_wrong_rule_weights_cannot_pass_the_pins() {
+    Case c("a weight file for another rule cannot get past the pins");
     if (!staging_ok(c)) {
         c.report();
         return;
     }
     mxq::rapfi::deconfigure();
 
-    /* The case the third preflight exists for, provoked with real weights.
+    /* Real renju weights, staged under the freestyle file's name — the shape of
+     * a genuine mistake rather than of damage, since every byte is a byte the
+     * project ships.
      *
-     * The renju weights carry a rule mask naming renju alone. Offered for the
-     * freestyle rule they raise UnsupportedRuleError inside the engine's
-     * evaluator maker, which catches it, finds no other weight entry, and
-     * returns no evaluator at all — leaving the engine playing on classical
-     * evaluation with the configuration looking exactly as it was asked for.
-     * Nothing in the engine reports that, and every byte-level check passes,
-     * because the bytes are genuine.
+     * What refuses it is the byte gate, on length, because that gate checks each
+     * file against the pins of the name it was staged under and these two files
+     * are not the same size. This case asserts that, and not more: the refusal
+     * arrives well before the effective-evaluator gate, and the two share a
+     * status, so an assertion here cannot tell which one spoke.
      *
-     * They are staged under the freestyle file's name so that the byte preflight
-     * has something to verify: this is not a test of the wrong bytes, it is a
-     * test of the right bytes for the wrong rule, and it must survive the two
-     * gates before it to reach the one it is about.
-     */
+     * That is the honest state of things, and the header at the top of this file
+     * says why it is not a gap: while every pinned file covers its own rule,
+     * there is no input that reaches the third gate. What this case does prove
+     * is the property that actually protects the player today — a file for the
+     * wrong rule cannot be configured by any route the bridge offers. */
     const fs::path dir = scratch_dir("renju-weights-as-freestyle");
     fs::copy_file(fs::path(staged_assets()) / kRenjuBlackWeight,
                   dir / kGomokuWeight);
 
-    /* The byte pins are the freestyle file's, so the renju bytes fail gate two
-     * first. That refusal is correct and is not what this case is about, so the
-     * bridge is driven at the gate under test instead: configure() with an asset
-     * directory whose freestyle name holds renju weights is refused, and the
-     * status distinguishes which gate refused it. */
     MxqEnginePlan plan = empty_plan();
     std::string detail;
-    ConfigureError rc = mxq::rapfi::prepare(Rules::Gomoku15, ample_budget(),
-                                            dir.string(), plan, detail);
+    const ConfigureError rc = mxq::rapfi::prepare(
+        Rules::Gomoku15, ample_budget(), dir.string(), plan, detail);
     check_configure(c, rc, ConfigureError::AssetMismatch,
                     "renju weights under the freestyle name refuse");
     c.check(!mxq::rapfi::is_configured(), "nothing is configured");
     c.check(!effective_evaluator_is_nnue(),
             "no evaluator survives the refusal");
-
-    /* And the gate itself, reached by preparing renju from the real directory
-     * and then asking the engine what evaluator it has for freestyle at this
-     * size. If the maker answered for a rule its weights do not cover, this is
-     * where it would show. */
-    rc = mxq::rapfi::prepare(Rules::Renju, ample_budget(), staged_assets(), plan,
-                             detail);
-    check_configure(c, rc, ConfigureError::None,
-                    "renju prepares from its own weights (" + detail + ")");
-    c.check(effective_evaluator_is_nnue(),
-            "renju's effective evaluator is its network");
-    mxq::rapfi::deconfigure();
     c.report();
 }
 
@@ -691,8 +682,17 @@ void case_teardown_releases_everything() {
 
     c.check(!mxq::rapfi::is_configured(), "the bridge reports not prepared");
     c.check(Search::Engine.empty(), "no engine threads survive the teardown");
+    /* "Released whole" means down to the floor the table's own class invariant
+     * keeps, not down to nothing: resize(0) clamps to one bucket, because
+     * probe(), store() and prefetch() are unguarded and rest on there being at
+     * least one. hashSizeKB() reports buckets divided by sixteen, so one bucket
+     * reads as zero KiB — the assertion below would pass on a table of up to
+     * fifteen buckets as well, so what it really pins is that no real table
+     * survived, which is the claim worth making. It fails loudly if a
+     * preparation's table is still there. */
     c.check_eq(static_cast<int64_t>(Search::TT.hashSizeKB()), 0,
-               "the transposition table is released whole");
+               "no allocated transposition table survives the teardown "
+               "(the one-bucket floor reads as zero KiB)");
     /* And a second teardown is harmless, which is what a deterministic one
      * means: the shutdown path runs it after the facade already has. */
     mxq::rapfi::deconfigure();
@@ -708,27 +708,45 @@ void case_teardown_releases_everything() {
 }
 
 void case_the_engine_is_silent() {
-    Case c("the engine writes nothing to standard output");
+    Case c("preparing and searching write nothing to standard output");
     if (!staging_ok(c)) {
         c.report();
         return;
     }
     mxq::rapfi::deconfigure();
+
+    /* The outcome, not the switch. Asserting that messageMode is NONE would
+     * assert that the line of the bridge which sets it ran — true, and no
+     * evidence at all about whether anything reaches the host's stdout, which is
+     * the thing a library must not touch. So this captures the stream around a
+     * real preparation and a real search and requires the capture to be empty.
+     *
+     * The one write it cannot see is stated rather than implied: platform.cpp's
+     * Windows large-page path uses C stdio, which no rdbuf swap intercepts. It
+     * is unreachable in this build. */
+    std::ostringstream captured;
+    std::streambuf *saved = std::cout.rdbuf(captured.rdbuf());
+
     MxqEnginePlan plan = empty_plan();
     std::string detail;
-    if (mxq::rapfi::prepare(Rules::Gomoku15, ample_budget(), staged_assets(),
-                            plan, detail) != ConfigureError::None) {
-        c.check(false, "prepare: " + detail);
-        c.report();
-        return;
+    const ConfigureError rc = mxq::rapfi::prepare(
+        Rules::Gomoku15, ample_budget(), staged_assets(), plan, detail);
+    if (rc == ConfigureError::None) {
+        std::atomic<bool> cancelled{false};
+        mxq::rapfi::SearchOutput out;
+        mxq::rapfi::search_run({{7, 7}, {7, 8}, {8, 7}}, 200, cancelled, out,
+                               detail);
     }
-    /* The message mode is data the engine reads before it prints. A library that
-     * wrote to a host application's standard output would be a defect whatever
-     * it wrote, and this is the switch that stops most of it; the bridge also
-     * redirects the stream for the length of every call that can produce one. */
-    c.check(Config::GeneralCfg.messageMode == MsgMode::NONE,
-            "the engine's message mode is off after preparation");
     mxq::rapfi::deconfigure();
+
+    std::cout.rdbuf(saved);
+
+    check_configure(c, rc, ConfigureError::None, "prepare (" + detail + ")");
+    const std::string leaked = captured.str();
+    c.check(leaked.empty(),
+            "nothing reached standard output; captured " +
+                std::to_string(leaked.size()) + " bytes: \"" +
+                leaked.substr(0, 120) + "\"");
     c.report();
 }
 
@@ -744,7 +762,7 @@ int main() {
     case_insufficient_memory_refuses();
     case_missing_weight_refuses();
     case_damaged_weight_refuses();
-    case_wrong_rule_weights_are_caught_by_the_preflight();
+    case_wrong_rule_weights_cannot_pass_the_pins();
 
     case_search_each_game();
     case_search_refuses_an_occupied_point();
