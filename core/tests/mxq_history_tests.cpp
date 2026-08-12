@@ -1480,7 +1480,16 @@ void case_the_wire_session_lives_with_its_game() {
     std::snprintf(birth.peer_id, sizeof(birth.peer_id),
                   "wifi-aware-device-77E1B0C2");
 
-    /* A session at birth has retracted, claimed and declared nothing. */
+    /* The Free Play configuration this case asks two questions with, declared
+     * here rather than beside the first because the second is a build away. */
+    MxqGameConfig local = make_config();
+
+#if defined(NDEBUG)
+    /* A session at birth has retracted, claimed and declared nothing, a wire
+     * session belongs to a nearby game, and a session without an identifier is
+     * not one the protocol carries. All three are programming errors the
+     * contract has assert in a debug build, so the returned status is only a
+     * promise where that assertion is compiled out. */
     MxqNearbySession used = birth;
     used.undos = 1;
     MxqGame *refused = nullptr;
@@ -1489,7 +1498,6 @@ void case_the_wire_session_lives_with_its_game() {
                    MXQ_ERR_ARG_RANGE,
                    "a nearby game created over a session that has retracted");
     used = birth;
-    MxqGameConfig local = make_config();
     err = make_error();
     c.check_status(mxq_game_create_nearby(core, &local, &used, &refused, &err),
                    MXQ_ERR_ARG_RANGE, "a wire session over a Free Play game");
@@ -1498,6 +1506,7 @@ void case_the_wire_session_lives_with_its_game() {
     err = make_error();
     c.check_status(mxq_game_create_nearby(core, &config, &used, &refused, &err),
                    MXQ_ERR_ARG_RANGE, "a wire session with no identifier");
+#endif
 
     MxqGame *game = nullptr;
     err = make_error();
@@ -1556,6 +1565,9 @@ void case_the_wire_session_lives_with_its_game() {
      * which ends nothing until the resume exchange settles it. */
     MxqNearbySession sent = retracted;
     sent.sent_end = MXQ_NEARBY_TERMINAL_RESIGN;
+#if defined(NDEBUG)
+    /* A wire session's identity is frozen, and writing another's over it is a
+     * programming error that asserts in a debug build, as above. */
     MxqNearbySession stranger = sent;
     std::snprintf(stranger.session_id, sizeof(stranger.session_id),
                   "00000000-0000-7000-8000-000000000000");
@@ -1563,6 +1575,7 @@ void case_the_wire_session_lives_with_its_game() {
     c.check_status(mxq_game_set_nearby_session(game, &stranger, &err),
                    MXQ_ERR_ARG_RANGE,
                    "another session's bookkeeping written over this one's");
+#endif
     err = make_error();
     c.check_status(mxq_game_set_nearby_session(game, &sent, &err), MXQ_OK,
                    "the terminal this device sent is recorded");
