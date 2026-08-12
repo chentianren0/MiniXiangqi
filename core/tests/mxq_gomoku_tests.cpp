@@ -406,6 +406,11 @@ void case_a_position_has_one_spelling() {
         const char *fen;
         const char *why;
     };
+    /* Two empty runs in a row are not among these, and cannot be: digit
+     * consumption is greedy, so "1" then "14" is read as one run of 114 and
+     * refused for running past the board rather than for being two runs. There
+     * is no text that reaches the parser as adjacent runs, so there is no case
+     * to write for it. */
     const Rejected rejected[] = {
         {"15/15/15/15/15/15/15/7S7/15/15/15/15/15/15 b - - 0 1",
          "fourteen ranks"},
@@ -413,8 +418,8 @@ void case_a_position_has_one_spelling() {
          "sixteen ranks"},
         {"15/15/15/15/15/15/15/7S8/15/15/15/15/15/15/15 b - - 0 1",
          "a rank of sixteen points"},
-        {"15/15/15/15/15/15/15/7S7/15/15/15/15/15/7 7 b - - 0 1",
-         "two empty runs where one would do"},
+        {"15/15/15/15/15/15/15/7S7/15/15/15/15/15/15/15 b - - 0 1 1",
+         "seven fields"},
         {"15/15/15/15/15/15/15/7S7/15/15/15/15/15/15/015 b - - 0 1",
          "an empty run with a leading zero"},
         {"15/15/15/15/15/15/15/7S7/15/15/15/15/15/15/15 x - - 0 1",
@@ -808,11 +813,17 @@ void case_a_full_board_with_no_five_is_a_draw() {
                "with nothing to claim: it is automatic");
 
     /* And the position it wrote, which is the widest string this interface
-     * carries and the one MXQ_FEN_CAP is sized from. */
+     * carries and the one every recorded figure about MXQ_FEN_CAP's headroom is
+     * measured against. The number is asserted exactly rather than bounded,
+     * because a loose bound is what let it be recorded wrong: 239 characters of
+     * board field and 12 of suffix — " b - - 0 113", the fullmove number of a
+     * 225-ply game running to three digits. mxq.h and core-interface.md both
+     * quote it, and this is the position that produces it. */
     const std::string fen(full.position.fen);
-    c.check(fen.find('/') != std::string::npos && fen.size() > 239,
-            "the full board writes a position of its own width, at " +
-                std::to_string(fen.size()) + " characters");
+    c.check_eq(static_cast<int64_t>(fen.size()), 251,
+               "the widest position this interface carries");
+    c.check_eq(fen.substr(fen.size() - 12), " b - - 0 113",
+               "and the suffix the count includes");
     c.check(fen.size() < MXQ_FEN_CAP,
             "which fits the capacity with room to spare");
     err = make_error();
@@ -943,14 +954,43 @@ void case_persistence_still_refuses_these_games() {
     config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
     config.local_side = MXQ_COLOR_NONE;
 
+    /* The second door into creation, which shares the guard. It is asked with a
+     * configuration and a wire session it would otherwise accept — nearby mode,
+     * a local side, and a session that has retracted, claimed and declared
+     * nothing — so that what refuses is the fence and not one of the checks
+     * mxq_game_create_nearby makes before it reaches the shared body. */
+    MxqGameConfig nearby_config = config;
+    nearby_config.mode = MXQ_PLAY_MODE_NEARBY;
+    nearby_config.local_side = MXQ_COLOR_RED;
+
+    MxqNearbySession birth;
+    std::memset(&birth, 0, sizeof(birth));
+    birth.struct_size = static_cast<uint32_t>(sizeof(birth));
+    birth.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    std::snprintf(birth.session_id, sizeof(birth.session_id),
+                  "019b76da-a800-7000-8000-000000000000");
+    std::snprintf(birth.peer_id, sizeof(birth.peer_id),
+                  "wifi-aware-device-77E1B0C2");
+
     for (MxqGameKind game : {MXQ_GAME_KIND_GOMOKU_15, MXQ_GAME_KIND_RENJU}) {
         config.game = game;
+        nearby_config.game = game;
+
         MxqGame *refused = nullptr;
         err = make_error();
         c.check_status(mxq_game_create(core, &config, &refused, &err),
                        MXQ_ERR_ARG_RANGE,
                        "a session for a game the format has no rules_id for");
         c.check(refused == nullptr, "and no handle is issued");
+
+        MxqGame *refused_nearby = nullptr;
+        err = make_error();
+        c.check_status(
+            mxq_game_create_nearby(core, &nearby_config, &birth,
+                                   &refused_nearby, &err),
+            MXQ_ERR_ARG_RANGE,
+            "a nearby session for one, through the other door");
+        c.check(refused_nearby == nullptr, "and no handle there either");
     }
 
     uint8_t exists = 1;

@@ -234,6 +234,13 @@ target_include_directories(mxq_search_tests PRIVATE
 if(MXQ_ENABLE_RULES_FACADE)
   target_link_libraries(mxq_search_tests PRIVATE mxq::fairy-stockfish)
 endif()
+# And the second engine, for the one case that asserts each engine is released
+# when the other is prepared. That claim is about the two engines' own state and
+# nothing through the C surface distinguishes it, so the case reads each bridge's
+# released posture where that bridge keeps it — which needs both linked.
+if(MXQ_ENABLE_GOMOKU_FACADE)
+  target_link_libraries(mxq_search_tests PRIVATE mxq::rapfi)
+endif()
 # The staging problem is a sentence written for a person, and it becomes a C
 # string literal on a compiler command line, which two of its characters cannot
 # survive. A semicolon is a CMake list separator wherever it appears — inside an
@@ -269,6 +276,8 @@ target_compile_definitions(mxq_search_tests PRIVATE
   MXQ_TEST_XIANGQI_VARIANT_ID="${MXQ_BUILD_XIANGQI_VARIANT_ID}"
   MXQ_TEST_NNUE_STAGED=${MXQ_TEST_NNUE_STAGED}
   MXQ_TEST_NNUE_PROBLEM="${MXQ_TEST_NNUE_PROBLEM_TEXT}"
+  MXQ_TEST_GOMOKU_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_GOMOKU_FACADE}>,$<BOOL:${MXQ_ENABLE_RULES_FACADE}>>,1,0>
+  MXQ_TEST_GOMOKU_ASSETS_DIR="${MXQ_TEST_GOMOKU_ASSETS_DIR}"
 )
 
 add_test(NAME engine_search COMMAND mxq_search_tests)
