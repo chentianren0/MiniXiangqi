@@ -7,8 +7,8 @@
 //
 // **Each game has a section of its own, and that is the whole of the
 // extensibility.** A section offers the ways to play that game that the app can
-// actually carry: the two xiangqi games offer all three, and the placement games
-// offer 自由对弈 while the other two are being built. The selection carried by
+// actually carry, which is all three for every game the app carries where the
+// platform carries nearby play at all. The selection carried by
 // every row is explicit, so neither its setup nor a game created from it can
 // fall through to a hidden default.
 //

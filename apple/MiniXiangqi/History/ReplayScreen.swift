@@ -252,6 +252,7 @@ struct ReplayScreen: View {
             ReplayTransport(isAtStart: replay.isAtStart,
                             isAtEnd: replay.isAtEnd,
                             autoplaying: replay.autoplaying,
+                            carriesFlip: replay.carriesFlip,
                             goToStart: { replay.goToStart() },
                             stepBack: { replay.stepBack() },
                             toggleAutoplay: { replay.toggleAutoplay() },
