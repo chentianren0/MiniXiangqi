@@ -751,6 +751,199 @@ void case_game_profile() {
     c.report();
 }
 
+/* Every game this build carries, in the vocabulary's own order. Two cases below
+ * ask the same question of each of them, and a list written twice would be a
+ * list that stopped covering a game the day one copy was extended. */
+const std::vector<MxqGameKind> &carried_games() {
+    static const std::vector<MxqGameKind> games = {
+        MXQ_GAME_KIND_MINI_XIANGQI,
+        MXQ_GAME_KIND_XIANGQI,
+#if MXQ_TEST_GOMOKU_FACADE
+        MXQ_GAME_KIND_GOMOKU_15,
+        MXQ_GAME_KIND_RENJU,
+#endif
+    };
+    return games;
+}
+
+/* One game's profile identifier, or an empty string where the entry refused. */
+std::string expected_profile_id(Case &c, MxqGameKind game,
+                                const std::string &what) {
+    char buffer[MXQ_PROFILE_ID_CAP];
+    std::memset(buffer, 0, sizeof(buffer));
+    size_t len = 0;
+    MxqError err = make_error();
+    const MxqStatus status =
+        mxq_engine_profile_id(game, buffer, sizeof(buffer), &len, &err);
+    c.check_status(status, MXQ_OK, what);
+    if (status != MXQ_OK) {
+        return std::string();
+    }
+    c.check(len > 0 && buffer[0] != '\0', what + ": a non-empty identifier");
+    return std::string(buffer);
+}
+
+/*
+ * mxq_engine_profile_id, whole: the identifier a game would be prepared under.
+ *
+ * It runs where mxq_core_game_profile above runs — before any core exists —
+ * because that is its shape rather than a convenience. What it asserts is the
+ * one fact no other entry states: a profile names the revision of the engine
+ * *its own game* is played on, and this core has two of those. MxqVersion
+ * reports the first engine's, so a caller composing an identifier out of that
+ * and mxq_core_game_profile is right for the two games that engine plays and
+ * silently wrong for the two it does not.
+ *
+ * That is not a hypothetical shape of mistake. It is the defect that kept
+ * human-versus-AI off the placement games until this entry existed, and what
+ * this case would catch is its return: a composition "simplified" to one
+ * revision, or a segment dropped from it, either of which would make two games
+ * answer with one identifier and attribute a move to a build that never played
+ * it.
+ */
+void case_expected_profile_id() {
+    Case c("mxq_engine_profile_id names each game's own engine, before any "
+           "core exists");
+
+    MxqVersion version;
+    std::memset(&version, 0, sizeof(version));
+    version.struct_size = static_cast<uint32_t>(sizeof(version));
+    MxqError err = make_error();
+    c.check_status(mxq_core_version(&version, &err), MXQ_OK,
+                   "the version axes, before mxq_core_init");
+    /* Twelve characters is what the identifier carries of a revision. Asked as
+     * a substring rather than by taking the identifier apart, so that this
+     * asserts which engine is named and not how the parts are joined. */
+    const std::string reported_fork =
+        std::string(version.fork_revision).substr(0, 12);
+
+    std::vector<std::string> identifiers;
+    for (const MxqGameKind game : carried_games()) {
+        identifiers.push_back(expected_profile_id(
+            c, game, "game " + std::to_string(static_cast<int>(game)) +
+                         ", before mxq_core_init"));
+    }
+
+    /* Each game's own. Three of the four parts a profile is composed of are
+     * that game's, so two games sharing an identifier would attribute one
+     * game's moves to the other's network. */
+    for (size_t i = 0; i < identifiers.size(); ++i) {
+        for (size_t j = i + 1; j < identifiers.size(); ++j) {
+            c.check(identifiers[i] != identifiers[j],
+                    "each game's identifier is its own (" + identifiers[i] +
+                        " / " + identifiers[j] + ")");
+        }
+    }
+
+    /* The movement games are played on the fork MxqVersion names, and the
+     * placement games are not. The second half is the gap this entry closes:
+     * the revision a placement game's profile carries is one no other entry
+     * reports, so there is nothing above this interface to compose it from. */
+    c.check(identifiers[0].find(reported_fork) != std::string::npos &&
+                identifiers[1].find(reported_fork) != std::string::npos,
+            "the movement games name the fork revision MxqVersion reports");
+#if MXQ_TEST_GOMOKU_FACADE
+    c.check(identifiers[2].find(reported_fork) == std::string::npos &&
+                identifiers[3].find(reported_fork) == std::string::npos,
+            "and the placement games name a revision it does not report");
+#endif
+
+#if defined(NDEBUG)
+    /* A game outside the closed vocabulary is a programming error, so this
+     * expectation is only observable where the assertion is compiled out. One
+     * past the last game any build carries, for the reason the case above gives
+     * for the same value. */
+    char refused[MXQ_PROFILE_ID_CAP];
+    size_t refused_len = 0;
+    err = make_error();
+    c.check_status(mxq_engine_profile_id(
+                       static_cast<MxqGameKind>(MXQ_GAME_KIND_RENJU + 1),
+                       refused, sizeof(refused), &refused_len, &err),
+                   MXQ_ERR_ARG_RANGE, "a game this core does not play");
+#endif
+    c.report();
+}
+
+/*
+ * The identifier a game *would* be prepared under is the one it *is* prepared
+ * under, for every game this build carries.
+ *
+ * These two answers are what readiness is decided by: a frontend compares what
+ * mxq_engine_query reports against what this game needs, and acts on whether
+ * they are the same string. So a divergence between them is not a diagnostic
+ * inaccuracy. It is either an engine that never reads as ready — which stalls a
+ * human-versus-AI game in a preparation loop that can never end — or one that
+ * always does, which searches a position on whatever board the engine happens
+ * to hold. Nothing else in this suite would notice either: every other case
+ * reads one of the two answers and never both.
+ */
+void case_expected_profile_matches_the_prepared_one() {
+    Case c("the profile a game would be prepared under is the one it is "
+           "prepared under");
+
+    /* One asset directory holding what every engine in this build needs, which
+     * is the shape a distribution ships: the core takes one. */
+    const fs::path assets = scratch_dir("every-engine-assets");
+    {
+        std::error_code ec;
+        for (const std::string &source : {staged_xiangqi_assets(),
+                                          std::string(MXQ_TEST_GOMOKU_ASSETS_DIR)}) {
+            if (source.empty()) {
+                continue;
+            }
+            for (const fs::directory_entry &entry :
+                 fs::directory_iterator(fs::path(source), ec)) {
+                fs::copy_file(entry.path(), assets / entry.path().filename(),
+                              fs::copy_options::overwrite_existing, ec);
+            }
+        }
+    }
+
+    const fs::path store = scratch_dir("every-engine-store");
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store.string(), assets.string(), &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const MxqEngineBudget budget = sufficient_budget();
+    for (const MxqGameKind game : carried_games()) {
+        const std::string who = "game " + std::to_string(static_cast<int>(game));
+        MxqEnginePlan plan;
+        std::memset(&plan, 0, sizeof(plan));
+        plan.struct_size = static_cast<uint32_t>(sizeof(plan));
+        err = make_error();
+        const MxqStatus prepared_status =
+            mxq_engine_prepare(core, game, &budget, &plan, &err);
+        c.check_status(prepared_status, MXQ_OK,
+                       who + " prepares (" + err.detail + ")");
+        if (prepared_status != MXQ_OK) {
+            continue;
+        }
+
+        MxqEngineState state = MXQ_ENGINE_STATE_UNINITIALIZED;
+        char prepared[MXQ_PROFILE_ID_CAP];
+        std::memset(prepared, 0, sizeof(prepared));
+        size_t len = 0;
+        err = make_error();
+        c.check_status(mxq_engine_query(core, &state, prepared,
+                                        sizeof(prepared), &len, &err),
+                       MXQ_OK, who + " queries");
+        c.check_eq(static_cast<int64_t>(state), MXQ_ENGINE_STATE_READY,
+                   who + " is ready");
+        c.check_eq(std::string(prepared),
+                   expected_profile_id(c, game, who + " expects"),
+                   who + " is prepared under the profile it expects");
+    }
+
+    err = make_error();
+    c.check_status(mxq_engine_teardown(core, &err), MXQ_OK, "teardown");
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_missing_network() {
     Case c("a missing network refuses as asset-missing and the AI does not "
            "start");
@@ -933,6 +1126,7 @@ struct ReentrantProbe {
     MxqStatus plan_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus version_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus profile_status = MXQ_ERR_ARG_REENTRANT;
+    MxqStatus profile_id_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus start_fen_status = MXQ_ERR_ARG_REENTRANT;
     MxqStatus versions_status = MXQ_ERR_ARG_REENTRANT;
 };
@@ -973,6 +1167,12 @@ void reentrant_callback(const MxqSearchResult *result, void *user_data) {
     profile.struct_size = static_cast<uint32_t>(sizeof(profile));
     probe->profile_status =
         mxq_core_game_profile(MXQ_GAME_KIND_MINI_XIANGQI, &profile, nullptr);
+
+    char profile_id[MXQ_PROFILE_ID_CAP];
+    size_t profile_id_len = 0;
+    probe->profile_id_status =
+        mxq_engine_profile_id(MXQ_GAME_KIND_MINI_XIANGQI, profile_id,
+                              sizeof(profile_id), &profile_id_len, nullptr);
 
     char fen[MXQ_FEN_CAP];
     size_t len = 0;
@@ -1098,6 +1298,8 @@ void case_search_end_to_end() {
                        "mxq_core_version is legal inside the callback");
         c.check_status(probe.profile_status, MXQ_OK,
                        "mxq_core_game_profile is legal inside the callback");
+        c.check_status(probe.profile_id_status, MXQ_OK,
+                       "mxq_engine_profile_id is legal inside the callback");
         c.check_status(probe.start_fen_status, MXQ_OK,
                        "mxq_rules_start_fen is legal inside the callback");
         c.check_status(probe.versions_status, MXQ_OK,
@@ -3051,9 +3253,13 @@ int main() {
      * position rather than the order is what looks wrong here — the case
      * above creates no core, and every case below creates one. */
     case_game_profile();
+    /* And the identifier composed from it, which is the other thing no core
+     * has to exist for. */
+    case_expected_profile_id();
 
     case_query_before_prepare();
     case_prepare_applies_the_plan();
+    case_expected_profile_matches_the_prepared_one();
 #if MXQ_TEST_GOMOKU_FACADE
     case_preparing_one_engine_releases_the_other();
 #endif

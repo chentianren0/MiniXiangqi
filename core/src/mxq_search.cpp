@@ -1051,6 +1051,21 @@ MxqStatus MXQ_CALL mxq_engine_query(MxqCore *core, MxqEngineState *out_state,
                              cap, out_len, err);
 }
 
+/* The same string the query above would report once this game is prepared, and
+ * it is composed by the same function for that reason: two compositions would
+ * agree until the day one of them was edited, and the whole use of this entry is
+ * a comparison against the other's answer. */
+MxqStatus MXQ_CALL mxq_engine_profile_id(MxqGameKind game, char *out,
+                                         size_t cap, size_t *out_len,
+                                         MxqError *err) {
+    const MxqStatus rc = mxq::require_game(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    return mxq::write_string(mxq::search::profile_id_of(game).c_str(), out, cap,
+                             out_len, err);
+}
+
 MxqStatus MXQ_CALL mxq_search_start(MxqCore *core, const MxqGame *game,
                                     const MxqSearchRequest *request,
                                     MxqSearchCallback callback, void *user_data,
