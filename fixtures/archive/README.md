@@ -138,6 +138,7 @@ One archive per rejection class of the accepted validation order, each stating t
 | closed vocabulary | `rules-id-wrong` | `MALFORMED` | `MALFORMED` |
 | cross-field: the rule reason and the game | `cross-field-placement-reason` | `MALFORMED` | `MALFORMED` |
 | cross-field: the rule reason and the game | `cross-field-movement-reason` | `MALFORMED` | `MALFORMED` |
+| cross-field: the rule reason and the game | `cross-field-fifty-move-game` | `MALFORMED` | `MALFORMED` |
 | field validity: move notation | `move-notation-placement` | `MALFORMED` | `MALFORMED` |
 | field validity: move notation | `move-notation-other-board` | `MALFORMED` | `MALFORMED` |
 | rules tier: initial position | `start-fen-other-game` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
@@ -186,7 +187,7 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 
 ### The game axis is read before the rest of `content`
 
-`rules_id` decides how three other members are judged, which is why four rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `move-notation-placement` is a `renju` document whose ply is spelled as a movement — two squares of its own board, and no ply of a game where a stone arrives and nothing moves, which is why how many squares a move is comes from the game rather than from the text's length. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. And `cross-field-placement-reason` and `cross-field-movement-reason` are the two directions of one rule — a rule reason belongs to the kind of game whose rules produce it — because a partition checked on one side only refuses half of what it knows.
+`rules_id` decides how three other members are judged, which is why four rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `move-notation-placement` is a `renju` document whose ply is spelled as a movement — two squares of its own board, and no ply of a game where a stone arrives and nothing moves, which is why how many squares a move is comes from the game rather than from the text's length. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. And `cross-field-placement-reason` and `cross-field-movement-reason` are the two directions of one rule — a rule reason belongs to the kind of game whose rules produce it — because a partition checked on one side only refuses half of what it knows, with `cross-field-fifty-move-game` for the narrowing inside it, the move-count rule that is Xiangqi's and not Mini Xiangqi's.
 
 ## What the read path does not enforce
 

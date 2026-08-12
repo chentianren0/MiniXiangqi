@@ -309,6 +309,51 @@ void case_schema_enforces_its_invariants() {
                     "', 'xiangqi', 'free-play', 4, 'draw', 'fifty-move-rule', "
                     "'locally-played', 1000, 2000, 3000);");
 
+    /* The wider rule the same axis creates, which the move-count rule is a
+     * narrowing of: a rule reason belongs to the kind of game whose rules
+     * produce it, and both directions are constraints because a partition
+     * checked on one side refuses half of what it knows. Each refusal is
+     * followed by the row that differs only in the game, for the reason the
+     * pair above exists: without the acceptance, a constraint that refused the
+     * reason outright would pass. */
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-00000000001a', x'7b7d', '") +
+                     kHex64 +
+                     "', 'minixiangqi', 'free-play', 4, 'draw', 'board-full', "
+                     "'locally-played', 1000, 2000, 3000);",
+                 "a board to fill is a placement game's");
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms) VALUES "
+                            "('00000000-0000-7000-8000-00000000001b', x'7b7d', '") +
+                    kHex64 +
+                    "', 'gomoku-15', 'free-play', 4, 'draw', 'board-full', "
+                    "'locally-played', 1000, 2000, 3000);");
+
+    exec_refused(db,
+                 std::string("INSERT INTO game (game_id, archive, "
+                             "content_sha256, rules_id, mode, move_count, "
+                             "outcome, end_reason, provenance, started_at_ms, "
+                             "ended_at_ms, added_at_ms) VALUES "
+                             "('00000000-0000-7000-8000-00000000001c', x'7b7d', '") +
+                     kHex64 +
+                     "', 'renju', 'free-play', 4, 'red-wins', 'checkmate', "
+                     "'locally-played', 1000, 2000, 3000);",
+                 "a king to mate is a movement game's");
+    exec_ok(db, std::string("INSERT INTO game (game_id, archive, "
+                            "content_sha256, rules_id, mode, move_count, "
+                            "outcome, end_reason, provenance, started_at_ms, "
+                            "ended_at_ms, added_at_ms) VALUES "
+                            "('00000000-0000-7000-8000-00000000001d', x'7b7d', '") +
+                    kHex64 +
+                    "', 'minixiangqi', 'free-play', 4, 'red-wins', 'checkmate', "
+                    "'locally-played', 1000, 2000, 3000);");
+
     /* A representative cross-field rule: a draw outcome must carry a draw
      * reason. */
     exec_refused(db,

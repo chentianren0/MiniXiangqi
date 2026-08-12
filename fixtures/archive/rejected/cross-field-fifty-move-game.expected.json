@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: the rule reason and the game",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "Xiangqi's end reason",
+  "why": "Narrower than the movement-versus-placement partition: the move-count rule is Xiangqi's, and Mini Xiangqi has none, so a Mini Xiangqi record cannot have ended by it. The store refuses the row as a constraint and the reader refuses the file, which is where a file problem is supposed to be reported — a database error would be the wrong voice for it."
+}

@@ -404,7 +404,7 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *   - the required pragmas are applied and then read back and verified:
  *     journal_mode=WAL, synchronous=FULL, foreign_keys=ON;
  *   - a fresh database receives the complete schema version 4 in one
- *     transaction, and its user_version pragma is set to 3;
+ *     transaction, and its user_version pragma is set to 4;
  *   - an existing database is verified: the three tables must exist and be
  *     STRICT, and the single library row must be present;
  *   - a database recording any other schema version is refused, and never

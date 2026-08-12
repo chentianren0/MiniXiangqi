@@ -86,11 +86,15 @@ constexpr size_t kMaxMembers      = 32u;
  * start_fen is the one member with a further constraint — a value this reader
  * accepts must be one MxqPosition.fen can carry — and that is a relationship
  * between a format bound and an ABI capacity, so it is asserted at compile time
- * rather than branched on per file. It used to be a runtime check against
- * MXQ_FEN_CAP itself, which made the format's bound a consequence of the
- * capacity: when the cap moved from 96 to 512 for the placement games, the
- * format's bound moved with it, silently and unremarked. A capacity that ever
- * shrinks below the format's bound now fails the build instead.
+ * rather than branched on per file. It used to be a second runtime bound at
+ * stage 4, comparing against MXQ_FEN_CAP itself, and two authorities for one
+ * number is what makes a number move without anyone deciding it: while the cap
+ * was 96 that branch was the tighter of the two and decided the member's bound;
+ * when the cap became 512 for the placement games it fell behind the general
+ * limit and stopped deciding anything, so start_fen widened from 96 to 256 by
+ * arithmetic rather than by choice, and the branch that used to state it became
+ * unreachable. Removing it leaves one authority, and a capacity that ever
+ * shrinks below it fails the build instead of a file.
  */
 constexpr size_t kMaxStringBytes = 256u;
 
