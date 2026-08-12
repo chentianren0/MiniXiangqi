@@ -10,10 +10,11 @@
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
  * 61 functions, three opaque handles.
  *
- * The core plays two games — Mini Xiangqi and Xiangqi — and MxqGameKind is the
- * axis that names which. Every rules question is asked of one game: the board,
- * the move notation, the starting position, the adjudication rules and the
- * engine variant all follow from it, and nothing infers it from a position.
+ * The core plays four games — Mini Xiangqi, Xiangqi, Gomoku and Renju — and
+ * MxqGameKind is the axis that names which. Every rules question is asked of one
+ * game: the board, the move notation, the starting position, the adjudication
+ * rules and the engine it is played on all follow from it, and nothing infers it
+ * from a position.
  *
  * Conventions, all from that contract:
  *
@@ -102,26 +103,40 @@ extern "C" {
  * version, the store schema version, and the engine profile — are reported
  * separately by MxqVersion and are never conflated with this one.
  */
-#define MXQ_API_VERSION_MAJOR 2
-#define MXQ_API_VERSION_MINOR 3
+#define MXQ_API_VERSION_MAJOR 3
+#define MXQ_API_VERSION_MINOR 0
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
 /* Capacities                                                                */
 /* ------------------------------------------------------------------------- */
 
-/* "<from><to>", where a square is a file letter and a rank written in decimal:
- * two characters on a board of seven ranks and up to three on one of ten, so a
- * move is four to six characters and "a9a10" is the longest either game spells.
- * 8 leaves room for the NUL and keeps the struct 4-aligned. No move suffix
- * exists in either ruleset. */
+/* A move, in whichever of the two grammars its game has. A square is a file
+ * letter and a rank written in decimal, so it is two characters on a board of
+ * seven ranks and up to three on one of ten or fifteen. A movement game spells
+ * "<from><to>" and reaches six characters at "a9a10"; a placement game spells
+ * one square and reaches three at "o15". 8 leaves room for the NUL and keeps the
+ * struct 4-aligned. No move suffix exists in any ruleset. */
 #define MXQ_MOVE_TEXT_CAP 8
 
-/* A 6-field FEN of either game, NUL-terminated. The longest position either can
- * reach is shorter than the 68-byte Xiangqi starting FEN by a wide margin, and
- * the capacity is fixed rather than per-game so that MxqPosition has one
- * layout. */
-#define MXQ_FEN_CAP 96
+/*
+ * A 6-field FEN of any game, NUL-terminated. Fixed rather than per-game so that
+ * MxqPosition has one layout.
+ *
+ * Sized for the largest board this core may plausibly ever carry rather than for
+ * the largest it carries today, so that a bigger game later costs no second
+ * change to this struct's size. The arithmetic, at 19x19 — the largest square
+ * board any of these games is played on anywhere:
+ *
+ *     board field   19 characters per rank x 19 ranks, plus 18 separators = 379
+ *     the suffixes  " w - - 361 181" at their longest = 14
+ *     the NUL       1
+ *                                                        total = 394
+ *
+ * 512 is the next power of two above that and leaves 118 bytes spare. Today's
+ * widest is the 15x15 placement field at 239 characters plus 10 of suffix.
+ */
+#define MXQ_FEN_CAP 512
 
 /* MxqError.detail: a short English diagnostic. Final, and measured: the longest
  * fixed diagnostic in the core is 112 bytes, so every path-free diagnostic fits
@@ -264,13 +279,18 @@ enum {
     MXQ_ERR_STATE_ENGINE_NOT_READY    = 2013,
 
     /* Rules domain: 3000. Malformed and illegal are always distinguished. */
-    MXQ_ERR_RULES_MALFORMED_MOVE   = 3001, /* not two squares of the game's own
-                                            * board: a file letter and a rank in
-                                            * decimal without a leading zero,
-                                            * twice, and nothing else.
-                                            * ^([a-g][1-7]){2}$ in Mini Xiangqi
-                                            * and ^([a-i](10|[1-9])){2}$ in
-                                            * Xiangqi */
+    MXQ_ERR_RULES_MALFORMED_MOVE   = 3001, /* not a move of the game's own board.
+                                            * A square is a file letter and a
+                                            * rank in decimal without a leading
+                                            * zero; how many squares a move is
+                                            * follows from the game and never
+                                            * from the text's length. A movement
+                                            * game spells two — ^([a-g][1-7]){2}$
+                                            * in Mini Xiangqi,
+                                            * ^([a-i](10|[1-9])){2}$ in Xiangqi —
+                                            * and a placement game spells one:
+                                            * ^[a-o](1[0-5]|[1-9])$ in Gomoku and
+                                            * Renju */
     MXQ_ERR_RULES_ILLEGAL_MOVE     = 3002, /* well-formed but not legal here */
     MXQ_ERR_RULES_INVALID_FEN      = 3003, /* fails the frozen structural
                                             * encoding of the game it was asked
@@ -377,11 +397,19 @@ enum {
  * simply omits the member, and they appear only where the configuration has no
  * such value — that is, in Free Play.
  */
+/*
+ * The two sides, named for the xiangqi pieces and meaning "the side that moves
+ * first" and "the other" in every game. The placement games call their sides
+ * black and white stones and Black moves first, so MXQ_COLOR_RED is the black
+ * stone there: the core keeps one colour axis and one first-mover rule, and what
+ * a side is drawn and called is the frontend's, exactly as "minixiangqi" naming
+ * MXQ_GAME_KIND_MINI_XIANGQI is.
+ */
 typedef int32_t MxqColor;
 enum {
     MXQ_COLOR_NONE  = -1,
-    MXQ_COLOR_RED   = 0, /* uppercase pieces, moves first */
-    MXQ_COLOR_BLACK = 1  /* lowercase pieces */
+    MXQ_COLOR_RED   = 0, /* uppercase pieces and stones, moves first */
+    MXQ_COLOR_BLACK = 1  /* lowercase pieces and stones */
 };
 
 typedef int32_t MxqPlayMode;
@@ -398,21 +426,34 @@ enum {
 };
 
 /*
- * Which of the two games is being played: the board, the move notation, the
- * starting position, the adjudication rules and the engine variant all follow
- * from it. It is the archive's rules_id, and it is deliberately not
- * MxqPlayMode: how a game is played against whom is a different question from
- * which game it is, and every combination of the two exists.
+ * Which game is being played: the board, the move notation, the starting
+ * position, the adjudication rules and the engine all follow from it. It is the
+ * archive's rules_id, and it is deliberately not MxqPlayMode: how a game is
+ * played against whom is a different question from which game it is, and every
+ * combination of the two exists.
  *
  * A game's kind is frozen at creation and is never inferred from a position.
- * The two boards differ in size today, so a FEN happens to imply one — but the
- * ruleset is not a property of the board, and a core that read it off the
- * position would be guessing the moment two games shared a geometry.
+ * Gomoku and Renju share a board exactly, and the two xiangqi boards differ in
+ * size — so a FEN happens to imply one of those two, and implies nothing at all
+ * about the other pair. The ruleset is not a property of the board, and a core
+ * that read it off the position would be guessing.
+ *
+ * A rules-and-size combination is its own game rather than an option of one:
+ * Gomoku and Renju differ in what Black may play and in what wins, which is not
+ * a setting a game can carry mid-line.
+ *
+ * The vocabulary is the header's; which of it a build carries is the build's. A
+ * core compiled without the engine a game is played on does not carry that game,
+ * and every entry taking MxqGameKind answers MXQ_ERR_ARG_RANGE for it exactly as
+ * for a value outside the vocabulary. Every shipped build carries all four.
  */
 typedef int32_t MxqGameKind;
 enum {
     MXQ_GAME_KIND_MINI_XIANGQI = 0, /* serialised "minixiangqi"; 7x7 */
-    MXQ_GAME_KIND_XIANGQI      = 1  /* serialised "xiangqi"; 9x10 */
+    MXQ_GAME_KIND_XIANGQI      = 1, /* serialised "xiangqi"; 9x10 */
+    MXQ_GAME_KIND_GOMOKU_15    = 2, /* serialised "gomoku-15"; 15x15 freestyle */
+    MXQ_GAME_KIND_RENJU        = 3  /* serialised "renju"; 15x15, with Black's
+                                     * forbidden moves */
 };
 
 typedef int32_t MxqAiLevel;
@@ -496,10 +537,23 @@ enum {
     MXQ_END_REASON_AGREED_DRAW            = 11, /* "agreed-draw"; a draw, and
                                                  * MXQ_PLAY_MODE_NEARBY's alone:
                                                  * the two players agreed to it */
-    MXQ_END_REASON_MUTUAL_RESIGNATION     = 12  /* "mutual-resignation"; a draw,
+    MXQ_END_REASON_MUTUAL_RESIGNATION     = 12, /* "mutual-resignation"; a draw,
                                                  * and nearby's alone: both
                                                  * players resigned, which is a
                                                  * draw rather than two losses */
+    MXQ_END_REASON_FIVE_IN_A_ROW          = 13, /* "five-in-a-row"; the placement
+                                                 * games' win, and theirs alone.
+                                                 * What counts as one is the
+                                                 * game's: Gomoku wins with five
+                                                 * or more, and Renju with five
+                                                 * or more for White and exactly
+                                                 * five for Black */
+    MXQ_END_REASON_BOARD_FULL             = 14  /* "board-full"; a draw, and the
+                                                 * placement games' alone: every
+                                                 * point is taken and no line of
+                                                 * five was made. Automatic, like
+                                                 * every rule reason but the
+                                                 * neutral repetition */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */
@@ -677,6 +731,11 @@ typedef struct MxqVersion {
  * network that variant is searched with. Both are pinned per game, and reading
  * a network against the other game's pins would verify it against nothing —
  * which is why this is one struct rather than two parallel lookups.
+ *
+ * variant_id is the identifier the game's own engine knows it by. nnue_sha256 is
+ * the network pinned for it; where a game pins a network per side — Renju does,
+ * its two sides being trained apart — this is the one Black plays with, and the
+ * pins move together, so it names the pinned set rather than only itself.
  */
 typedef struct MxqGameProfile {
     uint32_t    struct_size;
@@ -746,6 +805,30 @@ typedef struct MxqMove {
  * every accepted mutation, and it is the staleness authority: an in-flight
  * search result whose revision no longer matches is rejected even if no one
  * cancelled it.
+ *
+ * The FEN is six fields for every game. The xiangqi games' encoding is the
+ * frozen one of docs/xiangqi-rules.md. The placement games take the same shape,
+ * and the shape is the whole of what they share with it:
+ *
+ *     <board> <side to move> - - <halfmove clock> <fullmove number>
+ *
+ * The board field is fifteen ranks separated by '/', highest rank first and file
+ * a leftmost within each, exactly as the xiangqi games write theirs. A run of
+ * empty points is its count in decimal; a stone is one letter, and the letter is
+ * a stone's kind while its case is its side — 'S' for the first mover's stone
+ * and 's' for the other's, which is the convention the xiangqi games' piece
+ * letters already follow. It is deliberately not 'b' and 'w' for the black and
+ * white stones the player sees: the case already carries the side, the side-to-
+ * move field already spells the first mover 'w', and a board field naming the
+ * first mover 'b' beside it would read as its own contradiction.
+ *
+ * The third and fourth fields are '-' in these games, which have neither of the
+ * things they record, and the halfmove clock is always 0: nothing is ever
+ * captured and no placement is reversible, so no move-count rule can exist to
+ * count toward. They are carried rather than dropped so that one FEN shape
+ * serves every game and nothing above this interface parses two.
+ *
+ * in_check is 0 in the placement games, which have no check to be in.
  */
 typedef struct MxqPosition {
     uint32_t struct_size;
@@ -1171,9 +1254,16 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * three shapes is a programming error and returns MXQ_ERR_ARG_RANGE, as is a
  * game outside the closed vocabulary.
  *
- * The single-active-game rule spans both games and every mode: the library
+ * The single-active-game rule spans every game and every mode: the library
  * holds one active game, so creating one while any is active returns
  * MXQ_ERR_STATE_ACTIVE_GAME_EXISTS.
+ *
+ * A session is store-attached, so a game the store cannot hold cannot have one:
+ * a game outside the archive format's own rules_id vocabulary returns
+ * MXQ_ERR_ARG_RANGE without asserting, which is the same split
+ * MxqSearchRequest.movetime_ms takes — it reports two parts of this core at
+ * different stages of one widening, not a caller outside a vocabulary it owns.
+ * The rules facade answers for such a game in full; only persistence refuses it.
  *
  * Thread: any non-UI thread except inside a search callback — except the
  * store-attached active game, whose own calls docs/core-interface.md's
@@ -1693,10 +1783,15 @@ MXQ_API MxqStatus MXQ_CALL mxq_engine_plan(const MxqEngineBudget *budget,
  * configuration, not merely that the file exists and parses — so the engine's
  * own fatal verification path is never reached.
  *
+ * Which engine is prepared follows from the game and is not otherwise visible:
+ * the movement games and the placement games are searched by different engines,
+ * and a preparation for one releases the other, because one memory plan is
+ * computed and applied at a time.
+ *
  * The engine is prepared for exactly one game at a time, because the tables a
- * search reads are that game's variant's. Preparing for the other game is an
- * ordinary second call; a search on a session of a game the engine is not
- * prepared for is refused with MXQ_ERR_STATE_ENGINE_NOT_READY.
+ * search reads are that game's. Preparing for another game is an ordinary
+ * second call; a search on a session of a game the engine is not prepared for is
+ * refused with MXQ_ERR_STATE_ENGINE_NOT_READY.
  *
  * Returns MXQ_ERR_STATE_SEARCH_IN_PROGRESS rather than stalling if a search is
  * outstanding, and MXQ_ERR_ARG_RANGE for a game outside the closed vocabulary.
