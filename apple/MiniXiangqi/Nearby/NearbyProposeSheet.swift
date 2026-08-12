@@ -259,12 +259,15 @@ private struct NearbyAnswers: ViewModifier {
         // neutral label, the same one its row carries.
         let peer = flow.peers.first { $0.peer == invitation.peer }
         parts.append(NearbyLabel(name: peer?.name, peer: invitation.peer).text)
+        // Which side a mover *is* is the game's own naming — 红 where a game
+        // moves, 黑 where it places — so it is asked of the one place that
+        // answers it, and asked of the game this invitation names. The mover
+        // itself never moves: the first mover is `Side.red` in every game,
+        // whatever that side's pieces are called.
         if let game = GameKind(rulesID: invitation.rulesID) {
             parts.append(game.localizedName)
+            parts.append(game.youAreText(invitation.localMover == .first ? .red : .black))
         }
-        parts.append(invitation.localMover == .first
-                     ? String(localized: "metadata.youRed")
-                     : String(localized: "metadata.youBlack"))
         return [parts.joined(by: String(localized: "metadata.join")),
                 "",
                 String(localized: "alert.nearbyInvite.message")].joined(separator: "\n")

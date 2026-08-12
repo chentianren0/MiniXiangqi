@@ -269,8 +269,11 @@ final class NearbyRecord: NearbyRecording {
         held = session
         written = birth
         refusedRoomFor = nil
+        // The side is named through the game, as every surface names one: `Side`
+        // is the core's first-mover axis, and a line that spelled it 红 would
+        // tell a Gomoku player holding black stones they had red ones.
         log.note("\(NearbyDriver.short(session.id)) is the library's active "
-                 + "game, \(localSide == .red ? "red" : "black") here.")
+                 + "game, \(game.sideName(localSide)) here.")
         adopt(session)
     }
 

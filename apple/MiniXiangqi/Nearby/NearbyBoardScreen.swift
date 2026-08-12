@@ -344,6 +344,7 @@ struct NearbyBoardScreen: View {
                       selected: play.selected,
                       destinations: play.destinations,
                       captures: play.captures,
+                      forbidden: play.forbiddenPoints,
                       lastMove: play.lastMove,
                       checkedGeneral: play.checkedGeneral,
                       transit: play.transit,
@@ -434,6 +435,15 @@ struct NearbyBoardScreen: View {
     /// that are true of the whole game exactly where a thumb last found them.
     /// The way out replaces 认输 once the game is over, in 认输's own place —
     /// the same controls, keys and identifiers the other boards carry.
+    ///
+    /// **The placement games carry a smaller set of the same grammar**, and for
+    /// the reasons their local cluster carries one: there is no repetition to
+    /// 判和 on, so the on-turn side of the turn is 认输 alone, and a stone has no
+    /// orientation a player could read, so 翻转棋盘 would turn a board nobody is
+    /// reading the wrong way up. What stays is everything two people need
+    /// between them — 提和, which is meaningful precisely because the other side
+    /// is a person, 悔棋, 接受, and 认输 — because none of those is a right the
+    /// game grants: they are the protocol's, and the protocol carries every game.
     private func controls(_ play: NearbyPlay, worded: Bool, carriesFlip: Bool) -> some View {
         let over = Self.scene(of: play) == .over
         return HStack(spacing: 8) {
@@ -462,11 +472,19 @@ struct NearbyBoardScreen: View {
                 .transition(.opacity)
             }
 
-            if carriesFlip { flipControl(play, worded: worded) }
+            if carriesFlip, !play.game.isPlacement {
+                flipControl(play, worded: worded)
+            }
         }
     }
 
-    /// The two or one this side of the turn has.
+    /// The two, the one, or the none this side of the turn has.
+    ///
+    /// The last of those is a placement game's own turn: 判和 is the only act
+    /// this side of the turn ever had, and these games have no repetition to
+    /// claim, so what the leading side of the row holds is nothing at all and
+    /// 认输 stands alone. Absence is what says a capability is not there —
+    /// exactly what the local placement cluster says by leaving 判和 out.
     @ViewBuilder
     private func negotiations(_ play: NearbyPlay, worded: Bool) -> some View {
         if let asking = play.standingItem {
@@ -485,17 +503,19 @@ struct NearbyBoardScreen: View {
             .accessibilityHint(Text(Self.asked(asking)))
             .transition(.opacity)
         } else if play.controller == .you {
-            // The claim, presented the way the local game presents it.
-            Button {
-                claimPresented = true
-            } label: {
-                clusterLabel("control.claimDraw", "equal", worded: worded)
+            if !play.game.isPlacement {
+                // The claim, presented the way the local game presents it.
+                Button {
+                    claimPresented = true
+                } label: {
+                    clusterLabel("control.claimDraw", "equal", worded: worded)
+                }
+                .buttonStyle(.glass)
+                .disabled(!play.claimStands)
+                .accessibilityLabel(Text("control.claimDraw"))
+                .accessibilityIdentifier("cluster-claim")
+                .transition(.opacity)
             }
-            .buttonStyle(.glass)
-            .disabled(!play.claimStands)
-            .accessibilityLabel(Text("control.claimDraw"))
-            .accessibilityIdentifier("cluster-claim")
-            .transition(.opacity)
         } else {
             // 提和 asks for the equal rather than taking it, and the two
             // figures are as near a handshake as the platform's symbols come:
@@ -586,12 +606,17 @@ struct NearbyBoardScreen: View {
     /// The cluster over two rows, with 翻转棋盘 beneath the two controls that
     /// never move: the row above is anchored at its trailing end, so the row
     /// below is anchored there too.
+    @ViewBuilder
     private func wrappedControls(_ play: NearbyPlay, worded: Bool) -> some View {
         VStack(alignment: .trailing, spacing: BoardLayout.clusterAir) {
             controls(play, worded: worded, carriesFlip: false)
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                flipControl(play, worded: true)
+            // A cluster with no 翻转棋盘 has nothing to wrap: this arrangement is
+            // the one above, and the row beneath it is the control that left.
+            if !play.game.isPlacement {
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    flipControl(play, worded: true)
+                }
             }
         }
     }

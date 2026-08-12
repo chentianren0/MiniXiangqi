@@ -631,6 +631,90 @@ struct NearbyFlowTests {
         #expect(other.transit == nil, "nobody wants to watch three moves go past")
     }
 
+    // MARK: - The board stones are placed on
+
+    /// A ply of this device's player's own, on a board that places: the point
+    /// goes to the driver as its own single-square text, and the stone stands
+    /// where it was put with nothing crossing the board to get there.
+    ///
+    /// It would catch the placement commit falling into the movement path — the
+    /// map's own warning, since that path reads a piece off an origin a
+    /// placement ply has not got and would draw and send nothing at all.
+    @Test("A tap on a placement board sends the point and stands the stone on it")
+    func aPlacedStoneIsSentAndStands() throws {
+        let driver = FakeDriver()
+        let live = session(proposer: .local, accepted: true, rulesID: "gomoku-15")
+        let play = try #require(board(live, driver: driver, positions: PlacementPositions()))
+        let point = Square(file: 7, rank: 7)
+
+        play.tap(point)
+        #expect(driver.played == ["h8"], "the wire carries the point and nothing else")
+        #expect(play.shown == ["h8"])
+        #expect(play.lastMove == Move(placing: point))
+        #expect(play.transit == nil, "a stone comes from off the board and crosses none of it")
+        #expect(!play.isCommitting, "and holds no gate, having no travel to hold one for")
+    }
+
+    /// A ply the engine refuses did not happen, which is the same rule the
+    /// movement path keeps: nothing is drawn and the board stays where it was.
+    @Test("A placement ply the engine refuses leaves the board where it stood")
+    func aRefusedPlacementIsNotDrawn() throws {
+        let driver = FakeDriver()
+        driver.refuses = .unknownSession
+        let live = session(proposer: .local, accepted: true, rulesID: "gomoku-15")
+        let play = try #require(board(live, driver: driver, positions: PlacementPositions()))
+
+        play.tap(Square(file: 7, rank: 7))
+        #expect(play.shown.isEmpty)
+        #expect(play.lastMove == nil)
+    }
+
+    /// The other player's stone, and a stone the two players agreed to take
+    /// back: both are the position changing, and neither is anything travelling.
+    @Test("An arriving stone and a retracted one both arrive as the position")
+    func stonesArriveAndLeaveAsThePosition() throws {
+        let live = session(proposer: .local, accepted: true, rulesID: "gomoku-15")
+        let play = try #require(board(live, positions: PlacementPositions()))
+
+        play.sync(with: with(live) { $0.plies = ["h8"] })
+        #expect(play.shown == ["h8"])
+        #expect(play.lastMove == Move(placing: Square(file: 7, rank: 7)))
+        #expect(play.transit == nil)
+
+        play.sync(with: with(live) { $0.plies = []; $0.undos = 1; $0.retractedTo = 0 })
+        #expect(play.shown.isEmpty)
+        #expect(play.lastMove == nil, "and the brackets go with the ply that left")
+        #expect(play.transit == nil)
+    }
+
+    /// Renju's forbidden points reach the nearby board, and they leave it when
+    /// the game is over.
+    ///
+    /// The derivation is the shared one and the answer is the core's; what is
+    /// asked here is that this board asks it at all, and that it stops asking
+    /// where a finished position has no legal moves to subtract from — the
+    /// window this board has and the local one does not, since a ply is landed
+    /// here before the engine has published what it decided.
+    @Test("A nearby Renju board marks what the core left out, and marks nothing once over")
+    func theNearbyBoardCarriesTheForbiddenPoints() throws {
+        let point = Square(file: 7, rank: 7)
+        let live = session(proposer: .local, accepted: true, rulesID: "renju")
+        let play = try #require(board(live,
+                                      positions: PlacementPositions(forbidding: point)))
+        #expect(play.forbiddenPoints == [point])
+
+        let free = session(proposer: .local, accepted: true, rulesID: "gomoku-15")
+        let freestyle = try #require(board(free,
+                                           positions: PlacementPositions(forbidding: point)))
+        #expect(freestyle.forbiddenPoints.isEmpty, "the restriction is Renju's own")
+
+        let finished = try #require(board(live,
+                                          positions: PlacementPositions(forbidding: point,
+                                                                        over: true)))
+        #expect(finished.forbiddenPoints.isEmpty,
+                "a finished position has no legal moves, so every empty point would read as forbidden")
+    }
+
     // MARK: - The claim
 
     @Test("The claim stands exactly where the engine says it stands")
@@ -921,9 +1005,10 @@ struct NearbyFlowTests {
     }
 
     private func session(id: String = "S", proposer: Party,
-                         accepted: Bool = false) -> BoardGameSession {
+                         accepted: Bool = false,
+                         rulesID: String = "minixiangqi") -> BoardGameSession {
         var session = BoardGameSession(id: id, peer: NearbyPeer.other.peer,
-                                       rulesID: "minixiangqi", rulesVersion: "1",
+                                       rulesID: rulesID, rulesVersion: "1",
                                        proposerMoves: .first, proposer: proposer)
         session.connection = ConnectionID("c")
         session.accepted = accepted
@@ -1147,6 +1232,33 @@ private nonisolated struct ClaimablePositions: NearbyPositions {
         guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
         standing.evaluation.state = .claimableDraw
         standing.evaluation.claimAvailable = true
+        return standing
+    }
+}
+
+/// The same, on a board stones are placed on: every point the plies have not
+/// taken is a legal placement, which is what an empty board's own answer is,
+/// less whatever a case wants forbidden. What a position actually is remains the
+/// core's, and the oracle's own suite is where that is asked.
+private nonisolated struct PlacementPositions: NearbyPositions {
+    /// A point this game forbids the side to move, where a case wants one.
+    var forbidding: Square?
+    /// Whether the position has ended, which is when the core answers with no
+    /// legal moves at all.
+    var over = false
+
+    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+        guard !over else {
+            standing.evaluation.state = .redWins
+            standing.evaluation.reason = .fiveInARow
+            return standing
+        }
+        let board = game.board
+        standing.legalMoves = (0..<board.squareCount)
+            .map { Square(file: $0 % board.fileCount, rank: $0 / board.fileCount) }
+            .filter { $0 != forbidding && !plies.contains($0.name) }
+            .map(\.name)
         return standing
     }
 }

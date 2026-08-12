@@ -43,9 +43,11 @@ nonisolated struct NearbyEnd: Equatable, Sendable {
     /// Whether the two players agreed the draw between themselves.
     var byAgreement: Bool
 
-    /// The protocol names movers and the app names colours. Red is the first
-    /// mover in both games, by the rules contract's own starting positions,
-    /// which is the same sentence the rules oracle makes on its side.
+    /// The protocol names movers and the core names the side that moves first,
+    /// which is what `Side.red` is in every game the app carries — the same
+    /// equation the rules oracle makes on its side, and the same reason neither
+    /// of them names a colour. What the first mover's stones or pieces are
+    /// called is the game's, and every surface asks `GameKind` for it.
     init(_ end: BoardGameEnd) {
         state = switch end.result {
         case .moverWins(.first): .redWins
@@ -140,11 +142,16 @@ final class NearbyPlay {
         self.evaluation = standing.evaluation
         self.placement = Placement(fen: standing.evaluation.fen, game: game)
         // The accepted orientation rule, applied to the side this device is
-        // playing: your own pieces are at the bottom, and Red at the bottom is
-        // the unflipped board. Where it starts and not where it must stay — the
-        // flip control turns it over, and a board turned round stays turned
-        // round across leaving it, which is what the given value carries.
-        self.flipped = flipped ?? (session.localMover == .second)
+        // playing: your own pieces are at the bottom, and the first mover at the
+        // bottom is the unflipped board. Where it starts and not where it must
+        // stay — the flip control turns it over, and a board turned round stays
+        // turned round across leaving it, which is what the given value carries.
+        //
+        // A placement board has no orientation to have, which is why these games
+        // carry no flip control: stones say nothing a player could read the
+        // wrong way up. So it opens, and stays, as it is drawn — the same
+        // sentence the local board's own initialiser makes.
+        self.flipped = game.isPlacement ? false : (flipped ?? (session.localMover == .second))
         adopt(standing)
         self.lastMove = shown.last.flatMap { Move(text: $0, on: game.board) }
         soundedConclusion = session.end != nil
@@ -168,6 +175,23 @@ final class NearbyPlay {
 
     var captures: Set<Square> {
         Set(destinations.filter { placement[$0] != nil })
+    }
+
+    /// The points the side to move may not play — Renju's, marked while Black is
+    /// to move. Asked of the one place that derives them, over this board's own
+    /// position: a nearby game sits on both sides of the board exactly as Free
+    /// Play does, so the marks appear and go with the turn.
+    ///
+    /// **A finished position is over for this purpose the instant the position
+    /// says so**, ahead of the session saying it — which is the local board's
+    /// own rule and matters more here, because this device lands its own ply
+    /// before the engine publishes what it decided. A finished position has no
+    /// legal moves at all, and a derivation that ran over one would read every
+    /// empty point on the board as forbidden.
+    var forbiddenPoints: Set<Square> {
+        Game.forbiddenPoints(of: game, in: placement, legalMoves: legalMoves,
+                             sideToMove: evaluation.sideToMove,
+                             isOver: isOver || evaluation.isOver)
     }
 
     var checkedGeneral: Square? {
@@ -371,18 +395,29 @@ final class NearbyPlay {
         }
 
         if session.plies.count == shown.count + 1, session.plies.dropLast() == shown,
-           let text = session.plies.last, let move = Move(text: text, on: game.board),
-           // Every ply here has an origin: this peer plays no placement game
-           // over the wire yet, and refuses a proposal for one outright.
-           let origin = move.from, let piece = placement[origin] {
-            advance(move, piece, to: session.plies, standing)
-            return
+           let text = session.plies.last, let move = Move(text: text, on: game.board) {
+            // A ply with no origin is a stone, which came from off the board and
+            // has nothing to cross it: it appears on its point with the
+            // position, which is what a placed stone does.
+            guard let origin = move.from else {
+                return place(session.plies, standing, lastMove: move)
+            }
+            if let piece = placement[origin] {
+                return advance(move, piece, to: session.plies, standing)
+            }
         }
         if shown.count == session.plies.count + 1, shown.dropLast() == session.plies,
-           let text = shown.last, let move = Move(text: text, on: game.board),
-           let mover = placement[move.to] {
-            reverse(move, mover, to: session.plies, standing)
-            return
+           let text = shown.last, let move = Move(text: text, on: game.board) {
+            // And a stone taken back goes back off the board rather than home,
+            // so the same nothing travels.
+            guard move.from != nil else {
+                return place(session.plies, standing,
+                             lastMove: session.plies.last
+                                 .flatMap { Move(text: $0, on: game.board) })
+            }
+            if let mover = placement[move.to] {
+                return reverse(move, mover, to: session.plies, standing)
+            }
         }
         cut(to: session.plies)
     }
@@ -425,6 +460,27 @@ final class NearbyPlay {
         transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
+    /// One stone put down or taken back, on either device.
+    ///
+    /// **Nothing travels, because nothing travelled to arrive.** A stone comes
+    /// from off the board and goes back there, so there is no disc to carry and
+    /// no committing transition to hold a gate for: the position changes over
+    /// the ordinary state fade and the board is immediately the board again. It
+    /// is the local board's own placement transition, in the one thing that
+    /// differs here — the ply may be the other player's, and a stone the two
+    /// players agreed to take back is drawn exactly as one going down is,
+    /// because a retraction on this board is an Undo with a second person in it.
+    ///
+    /// The landing is the change, so the feedback fires with it rather than
+    /// waiting for an arrival that never comes.
+    private func place(_ plies: [String], _ standing: NearbyStanding, lastMove move: Move?) {
+        markerEmphasis = 0
+        animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
+            land(plies, standing, lastMove: move)
+        } completion: { }
+        announceLanding(stone: true)
+    }
+
     /// The position, arrived at rather than travelled to. Nothing lands, so
     /// nothing sounds: a board catching up with a line it was away from is not a
     /// move being made.
@@ -451,9 +507,14 @@ final class NearbyPlay {
         if session.state == .active, session.isLocalTurn, !isLinked {
             reachedForABlockedBoard = true
         }
+        // The board's whole grammar, asked in one place for both boards — the
+        // optional pending-stone confirmation included. It is the board's own
+        // rather than a mode's: a player who asked to confirm their stones asked
+        // it of the board they place them on, and a nearby board is that board.
         switch Game.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
                            sideToMove: evaluation.sideToMove, selected: selected,
-                           acceptsInput: acceptsInput) {
+                           acceptsInput: acceptsInput,
+                           confirmsPlacement: Preferences.placementConfirmation.value()) {
         case .cancelSelection: cancelSelection()
         case .play(let move): commit(move)
         case .select: select(square)
@@ -486,9 +547,24 @@ final class NearbyPlay {
     /// says so, quietly, which is the whole of what this stage's presentation
     /// owes an idle radio.
     private func commit(_ move: Move) {
-        guard let origin = move.from, let piece = placement[origin],
-              let standing = positions.standing(of: game, after: shown + [move.text])
+        guard let standing = positions.standing(of: game, after: shown + [move.text])
         else { return }
+        // **Whether this is a stone is one question, asked the one way**: a ply
+        // with no origin, which is what the parser answers for a placement board
+        // and never for a movement one. `sync` discriminates on exactly this, and
+        // two sites answering it differently would be two answers to have.
+        //
+        // A stone of this device's player's own: the driver is asked first,
+        // exactly as it is below, and a ply it refuses is a ply that did not
+        // happen — nothing is sent and nothing is drawn.
+        guard let origin = move.from else {
+            guard (try? driver.play(move.text, in: sessionID)) != nil else { return }
+            place(shown + [move.text], standing, lastMove: move)
+            return
+        }
+        // A move whose origin carries nothing is not a move this board can draw,
+        // and it is not a stone either.
+        guard let piece = placement[origin] else { return }
         let captured = placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         markerEmphasis = 0
@@ -577,11 +653,13 @@ final class NearbyPlay {
         legalMoves = standing.legalMoves.compactMap { Move(text: $0, on: game.board) }
     }
 
-    /// The disc has met the board. One sound per landing, chosen by what the
-    /// arrived position means, through the same seam play and replay use.
-    private func announceLanding() {
+    /// The disc has met the board — or the stone has. One sound per landing,
+    /// chosen by what the arrived position means, through the same seam play and
+    /// replay use; `stone` is the one thing the arrival itself has to say, since
+    /// a placed stone reaches its point with no transit to read it off.
+    private func announceLanding(stone: Bool = false) {
         feedback.perform(.landing)
-        feedback.play(.ofTheLanding(transit,
+        feedback.play(.ofTheLanding(transit, stone: stone,
                                     finished: end != nil || evaluation.isOver,
                                     inCheck: checkedGeneral != nil))
         soundedConclusion = soundedConclusion || end != nil || evaluation.isOver

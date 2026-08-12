@@ -30,6 +30,13 @@ enum NearbyStage: String, CaseIterable {
     case undoAsked = "undo-asked"
     /// This player's turn, in a position the claim stands in.
     case claimable
+    /// A board stones are placed on, the other player's turn: the negotiations
+    /// stand here as they stand in any game, and 翻转棋盘 does not.
+    case placementOffTurn = "placement-off-turn"
+    /// A board stones are placed on, this player's turn — in a Renju position
+    /// whose forbidden point is Black's to see, so the crosses are on the board
+    /// while the cluster is at its own side of the turn.
+    case placementOnTurn = "placement-on-turn"
 
     /// `-mxq-nearby-board <stage>`, where one was named.
     static var named: Self? {
@@ -41,17 +48,33 @@ enum NearbyStage: String, CaseIterable {
     private static let shuffle = ["b1b2", "b7b6", "b2b1", "b6b7",
                                   "b1b2", "b7b6", "b2b1", "b6b7"]
 
+    /// A double three at h8: Black holds the two points either side of it on the
+    /// rank and the two either side on the file, so placing there would make two
+    /// open threes at once. White's stones sit in the corners, out of every
+    /// line. The same line the placement suite verifies against the core.
+    private static let doubleThree = ["g8", "a1", "i8", "a15",
+                                      "h7", "o1", "h9", "o15"]
+
+    /// The game the moment is played in.
+    var game: GameKind {
+        switch self {
+        case .offTurn, .onTurn, .offered, .undoAsked, .claimable: .miniXiangqi
+        case .placementOffTurn: .gomoku15
+        case .placementOnTurn: .renju
+        }
+    }
+
     /// One session in that moment.
     ///
     /// Whose turn it is is the ply count's own parity against the mover this
     /// device holds, exactly as it is in a real session — this device takes the
     /// first mover throughout, so an even line is its turn and an odd one is
-    /// not. Every line here is one the rules oracle's own suite plays against
-    /// the core, so the board behind these has a real position to draw.
+    /// not. Every line here is one a suite plays against the core, so the board
+    /// behind these has a real position to draw.
     var session: BoardGameSession {
         var session = BoardGameSession(id: "staged-session",
                                        peer: PeerDeviceID("staged-peer"),
-                                       rulesID: GameKind.miniXiangqi.rulesID,
+                                       rulesID: game.rulesID,
                                        rulesVersion: "1",
                                        proposerMoves: .first, proposer: .local)
         session.accepted = true
@@ -69,6 +92,11 @@ enum NearbyStage: String, CaseIterable {
             session.plies = ["b1b2", "b7b6"]
         case .claimable:
             session.plies = Self.shuffle
+        case .placementOffTurn:
+            // One stone, this device's own, on the centre point.
+            session.plies = ["h8"]
+        case .placementOnTurn:
+            session.plies = Self.doubleThree
         }
         switch self {
         case .offered:
@@ -91,7 +119,14 @@ enum NearbyStage: String, CaseIterable {
 }
 
 /// A driver holding one staged session, speaking to nobody.
+///
+/// **It keeps the plies it is handed and nothing else.** A ply is the one intent
+/// whose whole point is what it leaves behind — the stone stands and the turn
+/// passes — and a driver that dropped it would stage a board that could be
+/// tapped and never a board that had been. Everything else is still recorded and
+/// dropped: no wire, no rules, no negotiation, no library.
 @MainActor
+@Observable
 final class NearbyStagedDriver: NearbyDriving {
     private(set) var sessions: [BoardGameSession]
     let declines: [NearbyDecline] = []
@@ -107,7 +142,12 @@ final class NearbyStagedDriver: NearbyDriving {
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
                  proposerMoves: Mover) throws(BoardGameRefusal) { }
     func answer(_ session: String, accepting: Bool) throws(BoardGameRefusal) { }
-    func play(_ text: String, in session: String) throws(BoardGameRefusal) { }
+
+    func play(_ text: String, in session: String) throws(BoardGameRefusal) {
+        guard let index = sessions.firstIndex(where: { $0.id == session }) else { return }
+        sessions[index].plies.append(text)
+    }
+
     func resign(in session: String) throws(BoardGameRefusal) { }
     func claim(in session: String) throws(BoardGameRefusal) { }
     func offerDraw(in session: String) throws(BoardGameRefusal) { }
