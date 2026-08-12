@@ -216,6 +216,35 @@ fs::path scratch_dir(const char *name) {
     return dir;
 }
 
+/*
+ * One scratch directory holding what more than one engine needs at once, which
+ * is the shape a distribution actually ships: the core takes one asset
+ * directory, and a build that carries two engines stages both into it.
+ *
+ * The movement staging is the parameter because the two cases below want
+ * different ones of it — the shipped one-network shape, or that plus the
+ * built-in variant's network — and which a case takes is part of what that case
+ * is about. An empty source is skipped rather than failing, so a build without
+ * the second engine stages exactly what it has.
+ */
+fs::path stage_every_engines_assets(const char *name,
+                                    const std::string &movement) {
+    const fs::path assets = scratch_dir(name);
+    std::error_code ec;
+    for (const std::string &source :
+         {movement, std::string(MXQ_TEST_GOMOKU_ASSETS_DIR)}) {
+        if (source.empty()) {
+            continue;
+        }
+        for (const fs::directory_entry &entry :
+             fs::directory_iterator(fs::path(source), ec)) {
+            fs::copy_file(entry.path(), assets / entry.path().filename(),
+                          fs::copy_options::overwrite_existing, ec);
+        }
+    }
+    return assets;
+}
+
 MxqError make_error() {
     MxqError err;
     std::memset(&err, 0, sizeof(err));
@@ -544,24 +573,10 @@ void case_prepare_applies_the_plan() {
 void case_preparing_one_engine_releases_the_other() {
     Case c("preparing for a game releases the engine the other game is played on");
 
-    /* One asset directory holding what both engines need, which is the shape a
-     * distribution ships: the core takes one. */
-    const fs::path assets = scratch_dir("both-engines-assets");
-    {
-        std::error_code ec;
-        const std::string movement = staged_assets();
-        for (const std::string &source :
-             {movement, std::string(MXQ_TEST_GOMOKU_ASSETS_DIR)}) {
-            if (source.empty()) {
-                continue;
-            }
-            for (const fs::directory_entry &entry :
-                 fs::directory_iterator(fs::path(source), ec)) {
-                fs::copy_file(entry.path(), assets / entry.path().filename(),
-                              fs::copy_options::overwrite_existing, ec);
-            }
-        }
-    }
+    /* The shipped shape of the movement staging — one network, for the variant
+     * the app plays — beside the second engine's own. */
+    const fs::path assets =
+        stage_every_engines_assets("both-engines-assets", staged_assets());
 
     const fs::path store = scratch_dir("both-engines-store");
     MxqCore *core = nullptr;
@@ -881,23 +896,11 @@ void case_expected_profile_matches_the_prepared_one() {
     Case c("the profile a game would be prepared under is the one it is "
            "prepared under");
 
-    /* One asset directory holding what every engine in this build needs, which
-     * is the shape a distribution ships: the core takes one. */
-    const fs::path assets = scratch_dir("every-engine-assets");
-    {
-        std::error_code ec;
-        for (const std::string &source : {staged_xiangqi_assets(),
-                                          std::string(MXQ_TEST_GOMOKU_ASSETS_DIR)}) {
-            if (source.empty()) {
-                continue;
-            }
-            for (const fs::directory_entry &entry :
-                 fs::directory_iterator(fs::path(source), ec)) {
-                fs::copy_file(entry.path(), assets / entry.path().filename(),
-                              fs::copy_options::overwrite_existing, ec);
-            }
-        }
-    }
+    /* Both movement networks rather than the shipped one, because this case
+     * prepares every game the build carries and one of them is the built-in
+     * variant. */
+    const fs::path assets = stage_every_engines_assets(
+        "every-engine-assets", staged_xiangqi_assets());
 
     const fs::path store = scratch_dir("every-engine-store");
     MxqCore *core = nullptr;
