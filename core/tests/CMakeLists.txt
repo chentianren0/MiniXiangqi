@@ -327,3 +327,32 @@ add_test(NAME gomoku_engine COMMAND mxq_rapfi_tests)
 set_tests_properties(gomoku_engine PROPERTIES
   LABELS "engine;gomoku"
 )
+
+# The placement games' adapter runner: their notation, the legality and
+# adjudication the second engine answers, and the engine dispatch that reaches
+# it. Everything through the public C surface — which is the difference from the
+# runner above, and the whole reason both exist: that one was written when no
+# public entry point reached this engine, and this one exists because now they
+# all do. It links no engine directly for the same reason.
+#
+# It needs both asset directories. mxq_core_init loads the first engine's variant
+# configuration before anything else, a preparation for a placement game reads
+# the second engine's weights, and the core takes one asset directory — so the
+# suite copies both stagings into one scratch directory, which is the shape a
+# distribution actually ships.
+
+add_executable(mxq_gomoku_tests
+  mxq_gomoku_tests.cpp
+)
+target_link_libraries(mxq_gomoku_tests PRIVATE mxq::core mxq_warnings)
+
+target_compile_definitions(mxq_gomoku_tests PRIVATE
+  MXQ_TEST_GOMOKU_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_GOMOKU_FACADE}>,$<BOOL:${MXQ_ENABLE_RULES_FACADE}>>,1,0>
+  MXQ_TEST_ASSETS_DIR="${MXQ_TEST_ASSETS_DIR}"
+  MXQ_TEST_GOMOKU_ASSETS_DIR="${MXQ_TEST_GOMOKU_ASSETS_DIR}"
+)
+
+add_test(NAME gomoku_rules COMMAND mxq_gomoku_tests)
+set_tests_properties(gomoku_rules PROPERTIES
+  LABELS "rules;gomoku"
+)
