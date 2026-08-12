@@ -123,16 +123,19 @@ nonisolated enum PlayMode: Sendable {
 
 /// The closed rules vocabulary shared with the core. There is deliberately no
 /// fallback: an unknown C value is a broken boundary, not Mini Xiangqi.
+///
+/// The case names are the archive's own `rules_id`s, so the enum, the C
+/// enumerator and the serialized name are one vocabulary read three ways.
 nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
-    case miniXiangqi, xiangqi
+    case miniXiangqi, xiangqi, gomoku15, renju
 
     init?(_ game: MxqGameKind) {
-        if game == MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI) {
-            self = .miniXiangqi
-        } else if game == MxqGameKind(MXQ_GAME_KIND_XIANGQI) {
-            self = .xiangqi
-        } else {
-            return nil
+        switch game {
+        case MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI): self = .miniXiangqi
+        case MxqGameKind(MXQ_GAME_KIND_XIANGQI): self = .xiangqi
+        case MxqGameKind(MXQ_GAME_KIND_GOMOKU_15): self = .gomoku15
+        case MxqGameKind(MXQ_GAME_KIND_RENJU): self = .renju
+        default: return nil
         }
     }
 
@@ -140,6 +143,8 @@ nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
         switch self {
         case .miniXiangqi: MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI)
         case .xiangqi: MxqGameKind(MXQ_GAME_KIND_XIANGQI)
+        case .gomoku15: MxqGameKind(MXQ_GAME_KIND_GOMOKU_15)
+        case .renju: MxqGameKind(MXQ_GAME_KIND_RENJU)
         }
     }
 }
@@ -561,6 +566,22 @@ final class Core {
                       as: UTF8.self)
     }
 
+    /// One buffer wide enough for the legal moves of every game this app plays.
+    ///
+    /// **There is no C constant to read**: docs/core-interface.md, "Capacity
+    /// constants", says so out loud — the buffer protocol answers the count
+    /// instead, and only the ABI-frozen capacities take headroom. It also
+    /// derives the bound this reads, and derives it from the board: a placement
+    /// game's legal moves are its empty points less any point forbidden to the
+    /// side to move, so the bound *is* the board, reached exactly once per game
+    /// at the opening. That is the largest of the four — the movement games'
+    /// derived bounds are 119 in Xiangqi and 77 measured in Mini Xiangqi — so
+    /// the placement board's own point count is what one array is sized to.
+    ///
+    /// Read from the board rather than written as a number, so a wider board
+    /// arriving later cannot leave this behind.
+    nonisolated static let legalMoveCapacity = GameKind.gomoku15.board.squareCount
+
     // MARK: - Plumbing
 
     /// The attached session, or the typed refusal that says the caller asked a
@@ -726,10 +747,10 @@ extension Core: Rules {
         let session = try attachedSession()
         var err = freshError()
         var count = 0
-        // One call sized to the widest position this ruleset can reach. The
-        // count comes back either way, so an undersized buffer is a bug here
-        // rather than a routine outcome to loop on.
-        var buffer = [MxqMove](repeating: MxqMove(), count: 128)
+        // One call sized to the widest position any of these rulesets can
+        // reach. The count comes back either way, so an undersized buffer is a
+        // bug here rather than a routine outcome to loop on.
+        var buffer = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
 
         try check(mxq_game_legal_moves(session, &buffer, buffer.count,
                                       &count, &err), err)

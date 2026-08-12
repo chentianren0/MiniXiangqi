@@ -283,9 +283,14 @@ enum BoardLayout {
     /// stops 120 points short of the screen — the space beside it is the
     /// surrounding layout's air by the contract's own rule, and painting it
     /// would inflate the board's margin instead of ending it.
+    /// Whether the width is what bound the board is asked of the block rather
+    /// than derived from the file count, because a block is not always as wide
+    /// as its core: a Go-style board carries a strip up its side. The question
+    /// is the same either way — would one more point of pitch have overflowed
+    /// this width — and asking it of the block answers it for every board.
     static func surfaceBleed(in width: CGFloat, board: BoardGeometry) -> CGFloat {
-        let widthBound = (width / CGFloat(board.board.fileCount)).rounded(.down)
-        guard board.pitch >= widthBound else { return 0 }
+        let larger = BoardGeometry(board: board.board, pitch: board.pitch + 1)
+        guard larger.blockSize.width > width else { return 0 }
         return max(0, (width - board.blockSize.width) / 2)
     }
 
@@ -343,7 +348,7 @@ enum BoardLayout {
         GameKind.allCases.map { game in
             let board = game.board
             return BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
-                .coreSize.width
+                .blockSize.width
         }.max()! + panelWidth + 2 * boardPadding
     }
 

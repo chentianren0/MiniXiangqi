@@ -184,7 +184,11 @@ final class Game {
         // The accepted orientation rule, applied once: in human-versus-AI play
         // the human's own side is at the bottom, and Red at the bottom is the
         // unflipped board. Free Play opens unflipped and keeps its flip control.
-        self.flipped = configuration.humanSide == .black
+        //
+        // A placement board has no orientation to have: stones carry nothing a
+        // player could read the wrong way up, which is why these games drop the
+        // flip control altogether — so it opens, and stays, as it is drawn.
+        self.flipped = !configuration.game.isPlacement && configuration.humanSide == .black
         refreshLegalMoves()
     }
 
@@ -218,6 +222,34 @@ final class Game {
 
     var captures: Set<Square> {
         Set(destinations.filter { placement[$0] != nil })
+    }
+
+    /// The empty points the side to move may not play — Renju's forbidden
+    /// points, marked on the board while Black is to move.
+    ///
+    /// **Derived from the legal-move set and from nothing else.** A placement
+    /// game's legal moves are its empty points less whatever is forbidden to the
+    /// side to move, so the difference between the two *is* the forbidden set,
+    /// and the core — which asks the engine's own board machinery — remains the
+    /// only thing that decided it. Nothing here knows what a double three is.
+    ///
+    /// Asked only where the answer can be non-empty: Renju is the one game with
+    /// forbidden points, and they are Black's alone. Free Play sits on both
+    /// sides of the board, so the marks appear and go with the turn there
+    /// exactly as they do against the machine.
+    var forbiddenPoints: Set<Square> {
+        guard kind == .renju, evaluation.sideToMove == .red, !isFinished else { return [] }
+        let legal = Set(legalMoves.map(\.to))
+        let board = kind.board
+        var forbidden: Set<Square> = []
+        for rank in 0..<board.rankCount {
+            for file in 0..<board.fileCount {
+                let square = Square(file: file, rank: rank)
+                guard placement[square] == nil, !legal.contains(square) else { continue }
+                forbidden.insert(square)
+            }
+        }
+        return forbidden
     }
 
     /// The checked general, so the board can ring it. The side to move is the
@@ -285,7 +317,8 @@ final class Game {
         case cancelSelection
         /// A legal move, ready to play.
         case play(Move)
-        /// Take up this piece.
+        /// Take up this piece — or, where the game places rather than moves and
+        /// the player has asked to confirm, mark this point for the stone.
         case select(Square)
         /// A point the held piece cannot reach. It moves nothing and keeps the
         /// selection, so the correction is one tap away; the answer — the
@@ -306,7 +339,8 @@ final class Game {
         // preparation that has not succeeded yet.
         Self.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
                     sideToMove: evaluation.sideToMove, selected: selected,
-                    acceptsInput: !isFinished && !searchExpected)
+                    acceptsInput: !isFinished && !searchExpected,
+                    confirmsPlacement: Preferences.placementConfirmation.value())
     }
 
     /// The same question asked of a position rather than of this game: what a
@@ -322,11 +356,17 @@ final class Game {
     /// moves are the core's answer, and this only reads them.
     static func effect(ofTapAt square: Square, in placement: Placement,
                        legalMoves: [Move], sideToMove: Side, selected: Square?,
-                       acceptsInput: Bool) -> TapEffect {
+                       acceptsInput: Bool,
+                       confirmsPlacement: Bool = false) -> TapEffect {
         // Refused here rather than by each caller: a board with nothing left to
         // play, or one whose turn it is not, has nothing to offer at any point
         // on it.
         guard acceptsInput else { return .unavailable }
+
+        guard placement.board.play == .movement else {
+            return placementEffect(ofTapAt: square, legalMoves: legalMoves,
+                                   selected: selected, confirming: confirmsPlacement)
+        }
 
         if square == selected { return .cancelSelection }
         if let selected, let move = legalMoves.first(where: {
@@ -336,6 +376,38 @@ final class Game {
         }
         if placement[square]?.side == sideToMove { return .select(square) }
         return selected == nil ? .unavailable : .illegal
+    }
+
+    /// The same question on a board a stone is placed on.
+    ///
+    /// There is no piece to take up and no destination to send it to, so the
+    /// select-then-destination grammar above has nothing to say here. What
+    /// replaces it is one of two grammars, chosen by the player:
+    ///
+    /// - **Plain**, the default: a tap on a legal point plays it, under exactly
+    ///   the committing rules, sounds and haptics a move goes through.
+    /// - **Confirmed**, where the accepted Settings switch is on: the first tap
+    ///   marks the point, tapping the mark commits it, tapping another legal
+    ///   point moves the mark, and tapping off the board cancels it — which is
+    ///   `PlayMotion.cancelSelection`, the same act that puts a held piece down.
+    ///   Never an alert, and Undo remains the recovery either way.
+    ///
+    /// A point that carries no legal move is occupied or forbidden to the side
+    /// to move. Either way it offers nothing, and — unlike a movement board,
+    /// where an illegal tap answers by strengthening the destinations the held
+    /// piece *does* have — this board draws no destinations, so there is nothing
+    /// to strengthen and nothing to say on the board at all. That is exactly the
+    /// unavailable case: the turn status takes it with the acknowledgment beat
+    /// and the same lightest feedback an illegal tap gets, and the mark, if one
+    /// stands, is left alone.
+    private static func placementEffect(ofTapAt square: Square, legalMoves: [Move],
+                                        selected: Square?,
+                                        confirming: Bool) -> TapEffect {
+        guard let move = legalMoves.first(where: { $0.to == square }) else {
+            return .unavailable
+        }
+        guard confirming, square != selected else { return .play(move) }
+        return .select(square)
     }
 
     func tap(_ square: Square) {

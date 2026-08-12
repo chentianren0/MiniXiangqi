@@ -77,7 +77,19 @@ struct MoveReading: Hashable {
     /// The move as the player reads it, given the placement *before* it — which
     /// is what both readings are of, so they are taken together and from the one
     /// placement.
+    ///
+    /// **A placement move reads as its coordinate, in both.** The 记谱法
+    /// preference selects between two ways of writing a xiangqi move, and these
+    /// games have one convention of their own: the point the stone went on,
+    /// spelled exactly as the board's own edges spell it. So the preference is
+    /// inert here rather than being consulted and ignored — both readings are
+    /// the same string, and whichever the list is drawn in, it draws that.
     init(of move: Move, in placement: Placement) {
+        guard move.from != nil else {
+            traditional = move.to.name
+            wxf = move.to.name
+            return
+        }
         traditional = MoveNotation.text(for: move, in: placement)
         wxf = WXFNotation.text(for: move, in: placement)
     }

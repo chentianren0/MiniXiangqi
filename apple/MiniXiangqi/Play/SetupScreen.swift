@@ -88,9 +88,11 @@ struct SetupScreen: View {
     }
 
     /// The human's side is at the bottom, and 随机 previews Red until it is
-    /// resolved. Red at the bottom is the unflipped board.
+    /// resolved. Red at the bottom is the unflipped board — and a placement
+    /// board has no orientation at all, so it previews as it will be played.
     private var previewsFlipped: Bool {
-        mode == .humanVersusAI && play.draft.previewsHumanAsBlack
+        mode == .humanVersusAI && !selection.game.isPlacement
+            && play.draft.previewsHumanAsBlack
     }
 
     /// The setup controls, beside the preview or beneath it.
@@ -210,9 +212,15 @@ struct SetupScreen: View {
         #endif
     }
 
+    /// Free Play's one sentence, which names the two sides this game has. The
+    /// sides are the game's own vocabulary — Red and Black on a xiangqi board,
+    /// Black and White on a placement one — and which of them moves first is the
+    /// same fact in both, said in each game's words.
     private var freePlaySetup: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("setup.freePlayExplanation")
+            Text(selection.game.isPlacement
+                 ? "setup.freePlayExplanation.placement"
+                 : "setup.freePlayExplanation")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("setup-explanation")

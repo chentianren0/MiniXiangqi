@@ -299,20 +299,31 @@ struct BoardLayoutTests {
                                   game: .xiangqi) == .sideBySide)
     }
 
-    @Test("The unified macOS floor holds either game side by side")
+    @Test("The unified macOS floor holds every game side by side")
     func macOSFloorStaysSideBySide() {
-        // The width is Mini Xiangqi's existing side-by-side floor; Xiangqi's
-        // taller floor sets the shared height. Either game can therefore be
-        // switched in without changing the window's minimum.
+        // The width is the widest *block* any game's floor board needs beside
+        // the panel, and the placement games are now what sets it: fifteen files
+        // at pitch 20 is 300 points of core and one strip of numbers up its
+        // side. Xiangqi's taller floor still sets the shared height. Any game
+        // can therefore be switched in without changing the window's minimum,
+        // which is the whole point of a unified floor.
         let floor = CGSize(width: BoardLayout.minimumWidth, height: BoardLayout.minimumHeight)
-        #expect(floor == CGSize(width: 616, height: 416))
+        #expect(floor == CGSize(width: 626, height: 416))
         #expect(BoardLayout.minimumBoardHeight(for: .miniXiangqi) == 388)
         #expect(BoardLayout.minimumBoardHeight(for: .xiangqi) == 416)
+        #expect(BoardLayout.minimumBoardHeight(for: .gomoku15) == 361)
+        // At the floor every game is side by side and at or above its own
+        // interactive floor — at it for the game that set the width, and a
+        // point above it for the games whose boards are narrower than the one
+        // that did. What the floor promises is that no game is drawn below its
+        // floor there, not that every game is drawn exactly at it.
         for game in GameKind.allCases {
             #expect(BoardLayout.shape(in: floor, game: game) == .sideBySide)
             #expect(BoardLayout.geometry(in: floor, game: game).pitch
-                    == BoardGeometry.minimumPitch(for: game.board))
+                    >= BoardGeometry.minimumPitch(for: game.board))
         }
+        #expect(BoardLayout.geometry(in: floor, game: .gomoku15).pitch == 20,
+                "the placement board is the one the floor is measured against")
     }
 
     @Test("An ordinary Mac window stays side by side")

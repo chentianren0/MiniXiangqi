@@ -41,6 +41,9 @@
 import SwiftUI
 
 struct ResultNotice: View {
+    /// Which game the result belongs to, because who won is said in that game's
+    /// own words for its two sides.
+    var game: GameKind
     var state: GameState
     var reason: EndReason
     /// Whether the game is already an immutable History record.
@@ -144,8 +147,8 @@ struct ResultNotice: View {
     private var title: String {
         if recorded { return String(localized: "result.recorded") }
         switch state {
-        case .redWins: return String(localized: "result.redWins")
-        case .blackWins: return String(localized: "result.blackWins")
+        case .redWins: return game.resultText(.red)
+        case .blackWins: return game.resultText(.black)
         // A finished game that neither side won is a draw, whether the core
         // adjudicated it or the player claimed it.
         case .draw, .ongoing, .claimableDraw: return String(localized: "result.draw")

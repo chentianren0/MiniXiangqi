@@ -60,8 +60,14 @@ struct BoardGeometryTests {
                        + BoardGeometry.maximumPitch(for: board)) / 2,
                       BoardGeometry.maximumPitch(for: board)] {
             let geometry = BoardGeometry(board: board, pitch: pitch)
-            #expect(geometry.lastMoveOriginStroke > geometry.gridStroke)
-            #expect(geometry.lastMoveOriginStroke < geometry.lastMoveStroke)
+            // The origin's half of the marker exists to say which way a move
+            // went. A placement went no way at all — it has no origin — so the
+            // board draws one bracket there and this pair of bounds is about a
+            // mark those games never carry.
+            if board.play == .movement {
+                #expect(geometry.lastMoveOriginStroke > geometry.gridStroke)
+                #expect(geometry.lastMoveOriginStroke < geometry.lastMoveStroke)
+            }
             let reach = geometry.pitch / 2 - geometry.lastMoveInset
                 + geometry.lastMoveStroke / 2
             #expect(reach < geometry.pitch / 2)

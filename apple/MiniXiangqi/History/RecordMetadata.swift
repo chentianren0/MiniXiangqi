@@ -30,9 +30,7 @@ extension RecordSummary {
     var metadataLine: String {
         var parts = [game.localizedName, modeText]
         if mode == .humanVersusAI, let humanSide {
-            parts.append(humanSide == .red
-                         ? String(localized: "metadata.youRed")
-                         : String(localized: "metadata.youBlack"))
+            parts.append(game.youAreText(humanSide))
         }
         parts.append(resultText)
         if let reasonText { parts.append(reasonText) }
@@ -53,8 +51,8 @@ extension RecordSummary {
     /// with no competitive result says why instead.
     var resultText: String {
         switch outcome {
-        case .redWins: String(localized: "result.redWins")
-        case .blackWins: String(localized: "result.blackWins")
+        case .redWins: game.resultText(.red)
+        case .blackWins: game.resultText(.black)
         case .draw: String(localized: "result.draw")
         case .none: reason.text
         }

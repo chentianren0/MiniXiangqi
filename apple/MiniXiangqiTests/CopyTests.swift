@@ -58,9 +58,11 @@ struct CopyTests {
             "alert.importUnreadable.title", "alert.importUnreadable.message",
             "alert.importSaveFailed.title", "alert.importSaveFailed.message",
             "alert.importDamagedRecord.title", "alert.importDamagedRecord.message",
-            "board.a11y.red", "board.a11y.black", "board.a11y.empty",
+            "board.a11y.red", "board.a11y.black", "board.a11y.white",
+            "board.a11y.empty",
             "board.a11y.selected", "board.a11y.legalMove", "board.a11y.capture",
             "board.a11y.inCheck", "board.a11y.suggested",
+            "board.a11y.pending", "board.a11y.forbidden",
             "board.a11y.hint.announcement",
             "control.undo", "control.claimDraw", "control.offerDraw",
             "control.flipBoard", "control.hint",
@@ -77,9 +79,10 @@ struct CopyTests {
             "history.section.pinned", "history.section.others",
             "history.empty.title", "history.empty.description",
             "metadata.join", "metadata.moveCount", "moveList.rowNumber",
-            "metadata.youRed", "metadata.youBlack", "metadata.imported",
+            "metadata.youRed", "metadata.youBlack", "metadata.youWhite",
+            "metadata.imported",
             "metadata.inProgress",
-            "game.miniXiangqi", "game.xiangqi",
+            "game.miniXiangqi", "game.xiangqi", "game.gomoku", "game.renju",
             "mode.humanVersusAI", "mode.freePlay", "mode.nearby",
             "nav.play", "nav.history", "nav.settings", "nav.resumeGame",
             "nearby.theyMoveFirst", "nearby.devices", "nearby.searching",
@@ -99,12 +102,13 @@ struct CopyTests {
             "settings.notation.wxf",
             "settings.sound.label", "settings.haptics.label",
             "settings.confirmDelete.label", "settings.confirmDelete.footer",
+            "settings.confirmPlacement.label", "settings.confirmPlacement.footer",
             "settings.defaults.group", "settings.defaults.firstMover",
             "settings.defaults.aiLevel", "settings.defaults.footer",
             "setup.thisGame", "setup.firstMover", "setup.iMoveFirst",
             "setup.aiMovesFirst", "setup.random", "setup.aiLevel",
             "setup.level.fast", "setup.level.standard", "setup.level.deep",
-            "setup.freePlayExplanation",
+            "setup.freePlayExplanation", "setup.freePlayExplanation.placement",
             "replay.progress", "replay.first", "replay.previous",
             "replay.next", "replay.last", "replay.autoplay", "replay.pause",
             "piece.general", "piece.advisor", "piece.elephant", "piece.chariot",
@@ -115,11 +119,14 @@ struct CopyTests {
             "reason.fiftyMoveRule",
             "reason.resignation", "reason.endedEarly",
             "reason.agreedDraw", "reason.mutualResignation",
-            "result.redWins", "result.blackWins", "result.draw", "result.announcement",
+            "result.redWins", "result.blackWins", "result.whiteWins",
+            "result.draw", "result.announcement",
             "result.recorded",
-            "status.redToMove", "status.blackToMove", "status.check",
+            "status.redToMove", "status.blackToMove", "status.whiteToMove",
+            "status.check",
             "status.sideToMove.checked", "status.drawAvailable",
-            "status.redWins", "status.blackWins", "status.draw",
+            "status.redWins", "status.blackWins", "status.whiteWins",
+            "status.draw",
             "status.saveFailed",
             "status.controller.you", "status.controller.ai", "status.controller.peer",
             "status.aiThinking", "status.aiUnavailable", "status.hintThinking",
@@ -153,12 +160,45 @@ struct CopyTests {
                 == "Used to find and connect to the other player's device for Nearby Play.")
     }
 
-    @Test("The two game names are complete and distinct in both languages")
+    @Test("The four game names are complete and distinct in both languages")
     func gameNamesAreAcceptedCopy() throws {
         #expect(try value("game.xiangqi", in: "zh-Hans") == "象棋")
         #expect(try value("game.xiangqi", in: "en") == "Xiangqi")
         #expect(try value("game.miniXiangqi", in: "zh-Hans") == "迷你象棋")
         #expect(try value("game.miniXiangqi", in: "en") == "Mini Xiangqi")
+        #expect(try value("game.gomoku", in: "zh-Hans") == "五子棋")
+        #expect(try value("game.gomoku", in: "en") == "Gomoku")
+        #expect(try value("game.renju", in: "zh-Hans") == "连珠")
+        #expect(try value("game.renju", in: "en") == "Renju")
+        // Four names, four distinct words in each language: a section heading
+        // that repeated another game's name would send a player to the wrong
+        // board.
+        let names = GameKind.allCases.map(\.localizedName)
+        #expect(Set(names).count == GameKind.allCases.count)
+    }
+
+    /// What the placement games call their sides, in both languages.
+    ///
+    /// The mapping is the load-bearing part and the one a reader cannot check
+    /// from the catalog alone: `Side.red` is the core's first mover, and on
+    /// these boards the first mover is the *black* stone. A future change that
+    /// carried the xiangqi words onto a gomoku board would leave a Go player
+    /// reading 红方 about a black stone, which is what this pins.
+    @Test("A placement game names its sides Black and White, first mover Black")
+    func placementSideNamesFollowTheStones() throws {
+        #expect(GameKind.gomoku15.sideToMoveText(.red) == String(localized: "status.blackToMove"))
+        #expect(GameKind.gomoku15.sideToMoveText(.black) == String(localized: "status.whiteToMove"))
+        #expect(GameKind.renju.sideName(.red) == String(localized: "board.a11y.black"))
+        #expect(GameKind.renju.sideName(.black) == String(localized: "board.a11y.white"))
+        #expect(GameKind.renju.youAreText(.red) == String(localized: "metadata.youBlack"))
+        #expect(GameKind.renju.youAreText(.black) == String(localized: "metadata.youWhite"))
+        #expect(GameKind.gomoku15.winsText(.red) == String(localized: "status.blackWins"))
+        #expect(GameKind.gomoku15.resultText(.black) == String(localized: "result.whiteWins"))
+        // And the xiangqi games are untouched by any of it.
+        #expect(GameKind.xiangqi.sideToMoveText(.red) == String(localized: "status.redToMove"))
+        #expect(try value("status.whiteToMove", in: "zh-Hans") == "轮到白方")
+        #expect(try value("status.whiteToMove", in: "en") == "White to Move")
+        #expect(try value("board.a11y.white", in: "zh-Hans") == "白")
     }
 
     @Test("A piece is named by its character in Chinese and by its name in English")

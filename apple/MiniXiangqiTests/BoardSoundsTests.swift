@@ -18,19 +18,25 @@ struct BoardSoundsTests {
     func everySoundLoads() {
         let sounds = BoardSounds()
         #expect(sounds.missing.isEmpty,
-                "the app names four sounds and the bundle must carry all four")
-        #expect(Feedback.Sound.allCases.count == 4)
+                "the app names five sounds and the bundle must carry all five")
+        #expect(Feedback.Sound.allCases.count == 5)
     }
 
     @Test("A landing's sounds are short, and the conclusion is the one gesture")
     func lengthsMatchTheAcceptedCharacter() throws {
         let sounds = BoardSounds()
-        for sound in [Feedback.Sound.plain, .capture, .check] {
+        for sound in [Feedback.Sound.plain, .capture, .check, .stone] {
             let duration = try #require(sounds.duration(of: sound))
             #expect(duration > 0)
             #expect(duration <= 0.150,
                     "a landing is an impact: \(sound.resource) runs \(duration) s")
         }
+        // The stone is the sharper, smaller of the two landings — the accepted
+        // proposal, ratified by ear, and pinned here so a re-tuning pass cannot
+        // quietly make it the disc's equal.
+        let stone = try #require(sounds.duration(of: .stone))
+        let disc = try #require(sounds.duration(of: .plain))
+        #expect(stone < disc, "a stone lets go faster than a wooden disc")
         let conclusion = try #require(sounds.duration(of: .conclusion))
         #expect(conclusion > 0.150, "the game settling is not another tock")
         #expect(conclusion <= 0.450)

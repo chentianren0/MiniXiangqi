@@ -6,10 +6,11 @@
 // pre-start state, which is where the preview board lives.
 //
 // **Each game has a section of its own, and that is the whole of the
-// extensibility.** Xiangqi and Mini Xiangqi each offer 人机对弈 and 自由对弈,
-// under a heading that names the game. The selection carried by every row is
-// explicit, so neither its setup nor a game created from it can fall through to
-// a hidden default.
+// extensibility.** A section offers the ways to play that game that the app can
+// actually carry: the two xiangqi games offer all three, and the placement games
+// offer 自由对弈 while the other two are being built. The selection carried by
+// every row is explicit, so neither its setup nor a game created from it can
+// fall through to a hidden default.
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": with a game active the page shows its metadata and a direct Resume, and
@@ -117,6 +118,32 @@ struct PlayHome: View {
             nearbyEntry(.miniXiangqi, "mode-mini-xiangqi-nearby")
         } header: {
             Text(GameKind.miniXiangqi.localizedName)
+        }
+
+        // The placement games, in the accepted order: Gomoku, then Renju as its
+        // stricter sibling.
+        //
+        // **One row each for now**, and both of the missing ones are missing for
+        // the same reason: there is nothing behind them yet. 附近对弈 waits on the
+        // game modules a nearby placement game needs, and 人机对弈 waits on the
+        // frontend being able to tell whether the second engine is prepared —
+        // `Engine.engineProfileID(for:)` reconstructs that identifier from
+        // `MxqVersion.fork_revision`, which is the *first* engine's revision, so
+        // the comparison can never match for a game the second engine plays. A
+        // row that led to a board the machine would never answer on would be a
+        // promise the app cannot keep; a row arriving late is the smaller cost.
+        Section {
+            entry(PlaySelection(game: .gomoku15, mode: .freePlay),
+                  "mode.freePlay", "mode-gomoku-free-play")
+        } header: {
+            Text(GameKind.gomoku15.localizedName)
+        }
+
+        Section {
+            entry(PlaySelection(game: .renju, mode: .freePlay),
+                  "mode.freePlay", "mode-renju-free-play")
+        } header: {
+            Text(GameKind.renju.localizedName)
         }
     }
 
