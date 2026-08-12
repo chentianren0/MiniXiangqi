@@ -14,14 +14,14 @@ This document defines the system's stable boundaries: the shared core, the nativ
 
 ## Shared core
 
-The core is a C++ library exposing a stable C interface, embedding the pinned `chentianren0/Fairy-Stockfish` fork as an in-process library. C++ is not a choice that can be revisited: Fairy-Stockfish is C++ and must build on every platform, so the core concentrates the remaining correctness-critical logic beside it rather than duplicating that logic per platform. The core owns:
+The core is a C++ library exposing a stable C interface, embedding two pinned engine forks as in-process libraries: `chentianren0/Fairy-Stockfish` for the movement games and `chentianren0/rapfi` for the placement games. C++ is not a choice that can be revisited: both engines are C++ and must build on every platform that carries them, so the core concentrates the remaining correctness-critical logic beside them rather than duplicating that logic per platform. The core owns:
 
-- **Rules facade** — legal-move generation, move application, check state, and authoritative result adjudication, including repetition, claimable draws, perpetual check, and perpetual chase. The facade is deterministic over position and history. It is validated by the approved conformance fixtures required by [xiangqi-rules.md](xiangqi-rules.md); agreement with unvalidated engine behavior is never its authority. The core exposes it two ways: inside a **game session**, which composes it with the game's frozen configuration — mode, resolved human side, AI level and thinking time — because undo, resign, and search eligibility are mode-aware; and session-free over an initial position plus complete move history, which is the fixture-harness and import-validation surface.
-- **Search facade** — engine sessions that receive an app-approved position and history and return a proposed move or typed failure, with the option profiles, cancellation, and lifecycle defined in [engine-integration.md](engine-integration.md). Search output never mutates game state, and adjudication never derives from search scores.
+- **Rules facade** — legal-move generation, move application, check state, and authoritative result adjudication, including repetition, claimable draws, perpetual check, and perpetual chase. The facade is deterministic over position and history. Where this project owns a game's rules it is validated by the approved conformance fixtures required by [xiangqi-rules.md](xiangqi-rules.md), and agreement with unvalidated engine behavior is never its authority. The core exposes it two ways: inside a **game session**, which composes it with the game's frozen configuration — mode, resolved human side, AI level and thinking time — because undo, resign, and search eligibility are mode-aware; and session-free over an initial position plus complete move history, which is the fixture-harness and import-validation surface.
+- **Search facade** — engine sessions that receive an app-approved position and history and return a proposed move or typed failure, with the option profiles, cancellation, and lifecycle defined in [engine-integration.md](engine-integration.md) and [placement-engine-integration.md](placement-engine-integration.md). Search output never mutates game state, and adjudication never derives from search scores.
 - **Game archive codec** — encoding, decoding, and validation of the versioned portable game format defined in [game-data.md](game-data.md).
 - **Library store** — the SQLite-backed game library: the single active game, autosave, History records, pin metadata, import, export, deletion, and their transactional invariants.
 
-The rules facade and the search facade are two contracts over one pinned engine implementation. Sharing the implementation is an efficiency choice; the fixtures remain the independent authority, and when an approved fixture exposes an engine mismatch, the fork receives a focused change rather than the contract bending to the engine.
+The rules facade and the search facade are two contracts over the pinned engine implementations, and a game's rules answers and its search answers always come from the same one. Sharing an implementation between the two facades is an efficiency choice where this project owns the rules: there the fixtures remain the independent authority, and when an approved fixture exposes an engine mismatch, the fork receives a focused change rather than the contract bending to the engine. Where the pinned engine is itself the rules authority — the placement games, per [placement-engine-integration.md](placement-engine-integration.md) — there is no corpus over it, and the facade above it is an adapter that adds no rule of its own.
 
 ## Native frontends
 
@@ -40,7 +40,7 @@ Frontends must not reimplement rules, result classification, archive parsing, or
 Dependencies point inward:
 
 1. Frontends depend only on the core's C interface, through a thin idiomatic binding per platform — Swift on Apple platforms, C# P/Invoke on Windows.
-2. The core depends on Fairy-Stockfish and SQLite as internal, replaceable components; neither is visible through the C interface.
+2. The core depends on its two engines and on SQLite as internal, replaceable components; none of them is visible through the C interface, and neither is the fact that there is more than one engine.
 3. The core never depends on UI frameworks, platform services, or frontend code. Platform-specific values it needs — storage paths, memory budgets, processor counts — are passed in by the frontend.
 
 ## Concurrency and lifecycle

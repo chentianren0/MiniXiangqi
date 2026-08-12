@@ -7,11 +7,11 @@ This document owns the product definition, the target platforms, and the feature
 ## Product identity and distribution
 
 - The product name is **Mini Xiangqi**.
-- The product exists for Xiangqi education inside a small internal group. Education means learning through complete games of **Xiangqi** or **Mini Xiangqi**, against the AI or in Free Play. Structured lessons and practice drills are not part of the product.
-- The application is licensed under GPLv3, matching its Fairy-Stockfish dependency.
+- The product exists for board-game education inside a small internal group. Education means learning through complete games of the games it carries — **Xiangqi**, **Mini Xiangqi**, **Gomoku**, and **Renju** — against the AI or in Free Play. Structured lessons and practice drills are not part of the product.
+- The application is licensed under GPLv3, matching the engines it embeds.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
-- **Every build contains both AI network files, the Windows zip included**, so there is no file a recipient has to add. What the bundled networks play like is measured in [engine-integration.md](engine-integration.md).
+- **Every build contains the AI networks of every game it plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the placement games' are redistributed weights and carry no strength claim of ours, per [placement-engine-integration.md](placement-engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
 - Fully offline constrains the app, not the platform beneath it: the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
@@ -29,15 +29,15 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Play modes
 
-- Xiangqi and Mini Xiangqi each offer the same three modes.
+- Every game a build carries offers the same three modes. **Gomoku and Renju are carried on Apple platforms**; the Windows frontend carries the two xiangqi games.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
-- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because Red moves first, the resolved choice determines the human player's Red or Black side, which is retained in game metadata.
+- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because each game's first mover is fixed — Red in the xiangqi games, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
 - The AI offers three difficulty levels that differ only in maximum thinking time: **Fast** at 1 second per move, **Standard** at 3 seconds per move, and **Deep** at 5 seconds per move. **Standard** is the new-install default.
-- **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in both games, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
+- **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in every game, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
 - **A hint is never offered in Nearby Play.** A suggestion engine on one side of a game between two people is not this product's nearby play.
 - **Nothing about a hint is recorded.** It is presentation, like flipping the board: the game, its History record, and every export are exactly what they would have been without it, and no assisted marker exists.
 - A chess clock is not part of the product.
@@ -47,10 +47,10 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Games and history
 
-- There can be only one active game across Xiangqi and Mini Xiangqi.
+- There can be only one active game across every game the app carries.
 - The active game is saved automatically and can be resumed after the application exits and reopens.
 - Before starting another game, the user must save the active game to History.
-- Selecting any of the four game-and-mode entries while a game is active immediately presents the same confirmation with the active game's factual metadata. Every entry remains interactive for both an ongoing game and an unconfirmed natural terminal result.
+- Selecting any game-and-mode entry while a game is active immediately presents the same confirmation with the active game's factual metadata. Every entry remains interactive for both an ongoing game and an unconfirmed natural terminal result.
 - Cancelling leaves the active game unchanged. **Save and Continue** atomically saves it to History according to its current state, clears it as the active game, and then opens the selected mode's transient pre-start state.
 - An ordinary ongoing game is saved as ended early without a competitive result. This includes a neutral threefold repetition that is merely claimable and has not been claimed.
 - An unconfirmed natural terminal result is saved with its actual result and termination reason rather than being reclassified as ended early.
@@ -77,6 +77,7 @@ Settings holds the persistent user preferences:
 - the default first-mover choice for human-versus-AI setup;
 - the default AI level;
 - **Confirm Before Deleting**, enabled by default;
+- **Confirm Before Placing**, disabled by default, which turns on the placement games' pending-stone flow defined in [interaction-design.md](interaction-design.md) and applies to those games alone;
 - a sound toggle and a separate haptics toggle, the latter offered only where the hardware supports haptics;
 - the **piece symbols**, Chinese characters by default or pictorial icons, as defined in [interaction-design.md](interaction-design.md);
 - the **notation**, traditional Chinese or WXF, defaulting to whichever the interface language reads — the traditional rendering under the Chinese interface, WXF under the English one — as defined in [interaction-design.md](interaction-design.md).
@@ -85,7 +86,7 @@ The **piece style** is not offered. The three accepted styles in [interaction-de
 
 The piece symbols and the notation are two independent preferences rather than one: a player learning the characters may want icons on the discs while reading the Chinese move list they are learning from, and an international player wants both changed. **The piece symbols do not follow the interface language; the notation does.** The symbols keep **Chinese Characters** everywhere, because a locale-driven default there would surprise anyone comparing two machines over a board whose discs are game content rather than interface copy. The notation is the opposite case: it is a list to be *read*, and opening an English-language reader on characters they cannot read teaches them neither notation. Both remain preferences and neither is a migration: a choice once made stands whatever language the interface is in.
 
-**The Windows frontend offers four of those preferences and hides the other three, and each absence is a row that has nothing to offer *yet*.** It offers the two human-versus-AI defaults, the sound toggle, and **Confirm Before Deleting**. The **notation** is absent because the Windows move record is the core's own canonical coordinate text in both languages, so the preference has nothing to choose between until the two proper renderings arrive with it. The **piece symbols** are absent because only **Chinese Characters** is drawn there, which is the piece style's case exactly, and the row lands when the second symbol set does. The **haptics** toggle is absent because the platform's touchpad haptics API — named in [interaction-design.md](interaction-design.md) § Sound and haptics — is experimental, gated to Windows 11 24H2 and later, and carried by rare hardware, so the switch would do nothing on nearly every machine. None of the three is a preference the platform *disagrees* with: the keys and their vocabularies are shared, and a Windows launch leaves whatever an Apple frontend stored under them exactly as it found it.
+**The Windows frontend offers four of those preferences and hides the other four.** It offers the two human-versus-AI defaults, the sound toggle, and **Confirm Before Deleting**. **Confirm Before Placing** is absent because that platform carries no placement game for the switch to be about; each of the remaining three is a row that has nothing to offer *yet*. The **notation** is absent because the Windows move record is the core's own canonical coordinate text in both languages, so the preference has nothing to choose between until the two proper renderings arrive with it. The **piece symbols** are absent because only **Chinese Characters** is drawn there, which is the piece style's case exactly, and the row lands when the second symbol set does. The **haptics** toggle is absent because the platform's touchpad haptics API — named in [interaction-design.md](interaction-design.md) § Sound and haptics — is experimental, gated to Windows 11 24H2 and later, and carried by rare hardware, so the switch would do nothing on nearly every machine. None of the three is a preference the platform *disagrees* with: the keys and their vocabularies are shared, and a Windows launch leaves whatever an Apple frontend stored under them exactly as it found it.
 
 Settings stores no game data, and changing a default never alters an active game. It holds no interface-language control: the app follows the language the operating system selects for it. On Apple platforms that is already a per-app setting the system provides, so our own control would duplicate it and create a second source of truth. On Windows the app follows the system's language preference list.
 
