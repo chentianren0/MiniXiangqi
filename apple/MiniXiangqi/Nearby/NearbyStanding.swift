@@ -65,8 +65,16 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         // The one buffer bound this app has, which `Core` derives from the
         // widest board it carries. It is the same constant an attached session's
         // own call sizes by, because it is the same question asked of the same
-        // core — and an undersized buffer here would be a board quietly missing
-        // the points it could be played on rather than failing.
+        // core.
+        //
+        // **An undersized buffer here takes the board away rather than
+        // shortening it.** A short cap is answered with
+        // `MXQ_ERR_ARG_BUFFER_TOO_SMALL` — routine, and the whole reason the
+        // count comes back separately — so the call below fails its `== MXQ_OK`,
+        // this answers nil, `NearbyPlay.init?` fails, and the board does not
+        // open at all. That is what makes the bound load-bearing rather than
+        // generous: at the old 128 a nearby placement game would have been
+        // unopenable until something like a hundred stones were down.
         var moves = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
         var count = 0
 

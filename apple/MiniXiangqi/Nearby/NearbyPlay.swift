@@ -549,14 +549,22 @@ final class NearbyPlay {
     private func commit(_ move: Move) {
         guard let standing = positions.standing(of: game, after: shown + [move.text])
         else { return }
+        // **Whether this is a stone is one question, asked the one way**: a ply
+        // with no origin, which is what the parser answers for a placement board
+        // and never for a movement one. `sync` discriminates on exactly this, and
+        // two sites answering it differently would be two answers to have.
+        //
         // A stone of this device's player's own: the driver is asked first,
         // exactly as it is below, and a ply it refuses is a ply that did not
         // happen — nothing is sent and nothing is drawn.
-        guard let origin = move.from, let piece = placement[origin] else {
+        guard let origin = move.from else {
             guard (try? driver.play(move.text, in: sessionID)) != nil else { return }
             place(shown + [move.text], standing, lastMove: move)
             return
         }
+        // A move whose origin carries nothing is not a move this board can draw,
+        // and it is not a stone either.
+        guard let piece = placement[origin] else { return }
         let captured = placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         markerEmphasis = 0
