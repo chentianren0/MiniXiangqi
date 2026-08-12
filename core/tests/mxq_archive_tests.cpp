@@ -169,6 +169,8 @@ std::string game_text(MxqGameKind game) {
     switch (game) {
     case MXQ_GAME_KIND_MINI_XIANGQI: return "minixiangqi";
     case MXQ_GAME_KIND_XIANGQI: return "xiangqi";
+    case MXQ_GAME_KIND_GOMOKU_15: return "gomoku-15";
+    case MXQ_GAME_KIND_RENJU: return "renju";
     default: break;
     }
     return "unknown(" + std::to_string(game) + ")";
@@ -200,6 +202,8 @@ std::string end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
     case MXQ_END_REASON_AGREED_DRAW: return "agreed-draw";
     case MXQ_END_REASON_MUTUAL_RESIGNATION: return "mutual-resignation";
+    case MXQ_END_REASON_FIVE_IN_A_ROW: return "five-in-a-row";
+    case MXQ_END_REASON_BOARD_FULL: return "board-full";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -474,6 +478,30 @@ void check_info(Case &c, const MxqArchiveInfo &info,
                where + ".game_id");
 }
 
+/*
+ * Whether a fixture is of a game this build does not carry.
+ *
+ * Which games a build carries is the build's, per mxq.h: a core without the
+ * second engine has no board, no move grammar and no frozen start for the
+ * placement games, so it refuses their documents at the closed-vocabulary check
+ * rather than reading them. A fixture of one is therefore reported as not
+ * evaluated in such a build, exactly as every validate expectation is without
+ * the first engine — never as a pass. `game` names the game: a golden's sidecar
+ * already states it inside `info`, and a rejection's states it at the top level
+ * where it is of a game at all.
+ */
+bool carried_by_this_build(const mxqtest::JsonValue *game) {
+#if MXQ_TEST_GOMOKU_FACADE
+    (void)game;
+    return true;
+#else
+    if (game == nullptr || !game->is_string()) {
+        return true;
+    }
+    return game->string() != "gomoku-15" && game->string() != "renju";
+#endif
+}
+
 void run_golden(MxqCore *core, const fs::path &file, const fs::path &sidecar) {
     Case c;
     c.name = "valid/" + file.filename().string();
@@ -492,6 +520,11 @@ void run_golden(MxqCore *core, const fs::path &file, const fs::path &sidecar) {
         ++g_errored;
         std::cout << "  ERROR     " << c.name
                   << "\n            the sidecar has no \"info\" object\n";
+        return;
+    }
+    if (!carried_by_this_build(want_info->member("game"))) {
+        c.skip("the placement games need the second engine");
+        report(c);
         return;
     }
 
@@ -542,6 +575,12 @@ void run_rejection(MxqCore *core, const fs::path &file,
         ++g_errored;
         std::cout << "  ERROR     " << c.name << "\n            "
                   << (error.empty() ? "cannot read the archive" : error) << "\n";
+        return;
+    }
+
+    if (!carried_by_this_build(expected.member("game"))) {
+        c.skip("the placement games need the second engine");
+        report(c);
         return;
     }
 
@@ -614,7 +653,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
  */
 std::string document_with_plies(size_t count) {
     std::string doc =
-        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":3,"
+        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":4,"
         "\"content\":{\"mode\":\"free-play\",\"moves\":[";
     for (size_t i = 0; i < count; ++i) {
         if (i != 0) {
@@ -740,10 +779,10 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     rc = mxq_archive_supported_versions(&min_readable, &current, &err);
     c.check(rc == MXQ_OK, "mxq_archive_supported_versions failed");
     /* One version is defined, so the window is one version wide: the corpus
-     * above is entirely version 3, and a build that quietly kept reading an
+     * above is entirely version 4, and a build that quietly kept reading an
      * earlier shape would widen this pair rather than fail a fixture. */
-    c.check_eq(static_cast<int64_t>(min_readable), 3, "minimum readable");
-    c.check_eq(static_cast<int64_t>(current), 3, "current");
+    c.check_eq(static_cast<int64_t>(min_readable), 4, "minimum readable");
+    c.check_eq(static_cast<int64_t>(current), 4, "current");
 
     report(c);
 }

@@ -216,6 +216,48 @@ bool read_sidecar(const fs::path &path, mxqtest::JsonValue &out,
     return true;
 }
 
+/*
+ * The corpus, less any fixture of a game this build does not carry.
+ *
+ * Which games a build carries is the build's, per mxq.h: without the second
+ * engine the placement games' documents are refused at the closed-vocabulary
+ * check, so a corpus run over them here would be asserting the wrong thing.
+ * The sidecar names the game — inside `info` for a golden, at the top level for
+ * a rejection — and the count that was dropped is printed rather than passed
+ * over in silence.
+ */
+size_t drop_games_this_build_lacks(std::vector<fs::path> &files) {
+#if MXQ_TEST_GOMOKU_FACADE
+    (void)files;
+    return 0;
+#else
+    const size_t before = files.size();
+    std::vector<fs::path> kept;
+    for (const fs::path &file : files) {
+        mxqtest::JsonValue expected;
+        std::string error;
+        std::string game;
+        if (read_sidecar(file.parent_path() /
+                             (file.stem().string() + ".expected.json"),
+                         expected, error)) {
+            const mxqtest::JsonValue *named = expected.member("game");
+            if (named == nullptr) {
+                const mxqtest::JsonValue *info = expected.member("info");
+                named = info == nullptr ? nullptr : info->member("game");
+            }
+            if (named != nullptr && named->is_string()) {
+                game = named->string();
+            }
+        }
+        if (game != "gomoku-15" && game != "renju") {
+            kept.push_back(file);
+        }
+    }
+    files = kept;
+    return before - files.size();
+#endif
+}
+
 std::vector<fs::path> archives_in(const fs::path &dir, std::string &error) {
     std::vector<fs::path> files;
     std::error_code ec;
@@ -1244,15 +1286,21 @@ int main(int argc, char **argv) {
 
 #if MXQ_TEST_RULES_FACADE
     std::string error;
-    const std::vector<fs::path> goldens =
-        archives_in(fixtures / "valid", error);
-    const std::vector<fs::path> rejected =
-        archives_in(fixtures / "rejected", error);
+    std::vector<fs::path> goldens = archives_in(fixtures / "valid", error);
+    std::vector<fs::path> rejected = archives_in(fixtures / "rejected", error);
     if (!error.empty() || goldens.empty() || rejected.empty()) {
         std::cerr << "  ERROR the archive corpus is missing: "
                   << (error.empty() ? "one of its directories is empty" : error)
                   << "\n";
         return 2;
+    }
+
+    const size_t dropped = drop_games_this_build_lacks(goldens) +
+                           drop_games_this_build_lacks(rejected);
+    if (dropped > 0) {
+        std::cout << "  NOT RUN   " << dropped
+                  << " fixtures of the placement games, which need the second "
+                     "engine\n";
     }
 
     /*

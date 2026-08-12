@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: the rule reason and the game",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "placement",
+  "why": "A rule reason belongs to the kind of game whose rules produce it. Only a placement game has a board to fill, so a Mini Xiangqi record cannot end board-full — and it is refused as a cross-field mistake at stage 4 rather than left for the replay to disagree with, because the file is wrong about itself before any board is set up."
+}

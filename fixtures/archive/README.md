@@ -1,6 +1,6 @@
 # Game Archive Fixtures
 
-This directory holds the approved, executable fixtures for the version 3 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
+This directory holds the approved, executable fixtures for the version 4 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
 
 Normative stance: every expected value comes from the accepted archive format, its serialized vocabularies, its cross-field rules, and its validation order — never from what the codec currently happens to do. A file here that the codec disagrees with is a codec defect until the contract says otherwise.
 
@@ -58,12 +58,16 @@ Every golden asserts three things:
 | `nearby-resignation` | nearby, complete | `red-wins` / `resignation` |
 | `nearby-agreed-draw` | nearby, complete | `draw` / `agreed-draw` |
 | `nearby-mutual-resignation` | nearby, complete | `draw` / `mutual-resignation` |
+| `renju-free-play-active` | Renju, Free Play, active | none |
+| `gomoku-15-five-in-a-row` | Gomoku, Free Play, complete | `red-wins` / `five-in-a-row` |
 
-Between them they cover both games, all four `outcome` values, the terminal pairs a version 3 file can carry, all three modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play and nearby play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
+Between them they cover every game the format records, all four `outcome` values, the terminal pairs a version 4 file can carry, all three modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play and nearby play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
 
 The four nearby goldens also carry the portability law: none of them names a peer device, a pairing, or which side this device's player took. `nearby-resignation` is a resignation with no `human_side` to check its winner against — the outcome names the winner and the side that resigned is its opposite — and the two draws are the ends only two players can reach.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 3 document and not an incomplete one.
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 4 document and not an incomplete one.
+
+The two placement goldens are what the second board looks like in this format: a frozen empty 15×15 start, single-square plies, and — in `gomoku-15-five-in-a-row` — an end only a placement game's rules reach. A codec carrying a movement game's start position, move grammar or end-reason set passes every xiangqi golden unchanged and fails these two.
 
 ### Sidecar
 
@@ -72,7 +76,7 @@ The active-game shape is the archive as the store holds it while the game is bei
   "title": "…",
   "why": "…",
   "info": {
-    "archive_version": 3,
+    "archive_version": 4,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
@@ -132,6 +136,9 @@ One archive per rejection class of the accepted validation order, each stating t
 | closed vocabulary | `vocabulary-outcome` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `vocabulary-end-reason` | `MALFORMED` | `MALFORMED` |
 | closed vocabulary | `rules-id-wrong` | `MALFORMED` | `MALFORMED` |
+| cross-field: the rule reason and the game | `cross-field-placement-reason` | `MALFORMED` | `MALFORMED` |
+| cross-field: the rule reason and the game | `cross-field-movement-reason` | `MALFORMED` | `MALFORMED` |
+| field validity: move notation | `move-notation-placement` | `MALFORMED` | `MALFORMED` |
 | field validity: move notation | `move-notation-other-board` | `MALFORMED` | `MALFORMED` |
 | rules tier: initial position | `start-fen-other-game` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | field validity: `game_id` | `game-id-not-uuid7` | `MALFORMED` | `MALFORMED` |
@@ -169,17 +176,17 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 }
 ```
 
-`probe` and `validate` are the exact `MxqStatus` constant names. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member no version of this format knows, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
+`probe` and `validate` are the exact `MxqStatus` constant names. `game` is optional and names the game the fixture is of, stated where that game is one a build may not carry; a runner in a build without it reports the fixture as not evaluated rather than asserting a refusal it would get for the wrong reason. `detail_contains` is a substring the diagnostic must carry, which is how the distinct created-by-a-newer-version message is pinned — `version-newer` requires the words *created by a newer version*, and that file also carries a member no version of this format knows, so it additionally pins that version dispatch answers **before** the unknown-member rule. `detail_index` is checked against `MxqError.detail_index` where the status carries one.
 
 ### Two versions are dispatched on, not one
 
-`archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary of two values: a file naming a third ruleset is not a later version of ours, so it is `MALFORMED`.
+`archive_version` says how the file is written; `rules_version` says which rules interpretation the game was played under. A file this build cannot reproduce for either reason gets the same answer family — `UNSUPPORTED_VERSION`, never corruption — with the diagnostic naming which of the two it was. `rules_id`, by contrast, is a closed vocabulary: a file naming a ruleset outside it is not a later version of ours, so it is `MALFORMED`.
 
 `archive_version` is dispatched on in both directions, and `version-newer` and `version-older` are the pair. A file from ahead of this build and a file from behind it are different sentences to a reader — one says the build is old, the other says the file is — and each carries the diagnostic that says which. Both are refusals, and a refusal is the whole of what happens: the file is not read, and nothing else is done to it.
 
 ### The game axis is read before the rest of `content`
 
-`rules_id` decides how two other members are judged, which is why two rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. Between them they pin that the board and the starting position both follow the named game rather than a constant.
+`rules_id` decides how three other members are judged, which is why four rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `move-notation-placement` is a `renju` document whose ply is spelled as a movement — two squares of its own board, and no ply of a game where a stone arrives and nothing moves, which is why how many squares a move is comes from the game rather than from the text's length. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. And `cross-field-placement-reason` and `cross-field-movement-reason` are the two directions of one rule — a rule reason belongs to the kind of game whose rules produce it — because a partition checked on one side only refuses half of what it knows.
 
 ## What the read path does not enforce
 
@@ -191,7 +198,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The active shapes are its one deliberate divergence: they are valid version 3 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The active shapes are its one deliberate divergence: they are valid version 4 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

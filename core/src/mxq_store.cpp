@@ -1,6 +1,6 @@
 /* Opening, creating and closing the library store.
  *
- * The schema created here is the one docs/game-data.md accepts as version 3,
+ * The schema created here is the one docs/game-data.md accepts as version 4,
  * transcribed constraint for constraint; the connection regime — write-ahead
  * logging, full synchronous durability, foreign keys on — is the same
  * contract's, applied and then read back rather than assumed. Everything that
@@ -25,8 +25,8 @@ namespace store {
 namespace {
 
 /*
- * Schema version 3, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 3"). Four STRICT tables; the single library row with the
+ * Schema version 4, exactly as accepted in docs/game-data.md ("Library store
+ * schema, version 4"). Four STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship, the local-perspective rule and time
  * ordering as check constraints;
@@ -37,10 +37,10 @@ namespace {
  * Text columns carry the serialized identifier vocabulary of game-data.md
  * verbatim, so the database is self-describing and the closed sets are
  * legible as constraints — the game axis, rules_id, among them: a library
- * holds records of both games, and which game a row is of is a column with a
- * CHECK rather than something to decode a blob for.
+ * holds records of every game the app carries, and which game a row is of is a
+ * column with a CHECK rather than something to decode a blob for.
  */
-const char *const kSchemaV3 = R"SQL(
+const char *const kSchemaV4 = R"SQL(
 CREATE TABLE meta (
   key   TEXT NOT NULL PRIMARY KEY,
   value TEXT NOT NULL
@@ -57,7 +57,8 @@ CREATE TABLE game (
   -- Which game this record is of: the archive's own rules_id, held as a column
   -- so a mixed History list can be labelled and ordered without decoding a
   -- blob per row.
-  rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi')),
+  rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi',
+                                                          'gomoku-15', 'renju')),
   mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play', 'nearby')),
   human_side         TEXT    CHECK (human_side IN ('red', 'black')),
   ai_level           TEXT    CHECK (ai_level IN ('fast', 'standard', 'deep')),
@@ -73,7 +74,8 @@ CREATE TABLE game (
                                                    'resignation', 'ended-early',
                                                    'fifty-move-rule',
                                                    'agreed-draw',
-                                                   'mutual-resignation')),
+                                                   'mutual-resignation',
+                                                   'five-in-a-row', 'board-full')),
   provenance         TEXT    NOT NULL CHECK (provenance IN ('locally-played', 'imported')),
   -- Local perspective: the side this device's player took. Library metadata,
   -- like provenance and pin state, and the archive holds nothing like it.
@@ -99,9 +101,25 @@ CREATE TABLE game (
          (end_reason IN ('threefold-repetition',
                          'mutual-perpetual-check', 'mutual-perpetual-chase',
                          'fifty-move-rule',
-                         'agreed-draw', 'mutual-resignation')))),
-  -- The move-count rule is Xiangqi's; Mini Xiangqi has none, so a record of it
-  -- cannot carry that reason.
+                         'agreed-draw', 'mutual-resignation',
+                         'board-full')))),
+  -- A rule reason belongs to the kind of game whose rules produce it, both ways
+  -- round. The placement games have the line of five to make and the board to
+  -- fill; the movement games have the king to mate, the side to leave without a
+  -- move, and the position that occurs twice — which no placement game has,
+  -- since every ply there adds a stone and none is ever removed. The declared
+  -- ends belong to every game and are governed by mode below.
+  CHECK (end_reason IS NULL OR
+         end_reason NOT IN ('five-in-a-row', 'board-full') OR
+         rules_id IN ('gomoku-15', 'renju')),
+  CHECK (end_reason IS NULL OR
+         end_reason NOT IN ('checkmate', 'stalemate', 'threefold-repetition',
+                            'perpetual-check', 'perpetual-chase',
+                            'mutual-perpetual-check', 'mutual-perpetual-chase',
+                            'fifty-move-rule') OR
+         rules_id IN ('minixiangqi', 'xiangqi')),
+  -- Narrower than the partition above: the move-count rule is Xiangqi's, and
+  -- Mini Xiangqi has none, so a record of it cannot carry that reason either.
   CHECK (end_reason IS NULL OR end_reason <> 'fifty-move-rule' OR
          rules_id = 'xiangqi'),
   -- A resignation needs an opponent to resign to, and the outcome names the
@@ -277,7 +295,7 @@ END;
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
 -- Non-authoritative bookkeeping; nothing reads this table to decide anything.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '3');
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '4');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh
@@ -383,7 +401,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
 }
 
 /* The structural verification run on every successful open: the four tables
- * of schema version 3 exist and are STRICT, and the single library row is
+ * of schema version 4 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
 MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
@@ -403,7 +421,7 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (value != "4") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                     "the store does not hold the four STRICT tables of schema "
-                    "version 3 (found " + value + ")");
+                    "version 4 (found " + value + ")");
     }
 
     if (!query_first_column(db, "SELECT count(*) FROM library;", value, rc,
@@ -424,16 +442,16 @@ MxqStatus create_schema(sqlite3 *db, MxqError *err) {
     if (!exec(db, "BEGIN IMMEDIATE;", rc, detail)) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
-    if (!exec(db, kSchemaV3, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 3;", rc, detail)) {
+    if (!exec(db, kSchemaV4, rc, detail) ||
+        !exec(db, "PRAGMA user_version = 4;", rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 3: " + cause);
+        return fail_sqlite(err, rc, "cannot create schema version 4: " + cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 3: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version 4: " + detail);
     }
     return MXQ_OK;
 }

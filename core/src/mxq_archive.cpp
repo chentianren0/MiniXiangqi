@@ -64,7 +64,38 @@ constexpr size_t kMaxArchiveBytes = 1024u * 1024u; /* 1 MiB per file */
 constexpr size_t kMaxPlies        = 10000u;
 constexpr size_t kMaxDepth        = 4u;
 constexpr size_t kMaxMembers      = 32u;
-constexpr size_t kMaxStringBytes  = 256u;
+
+/*
+ * The string bound is version 4's own number, decided rather than inherited.
+ *
+ * 256 bytes is what every string this format carries fits inside with room to
+ * spare: the widest is start_fen, whose domain is the four frozen starting
+ * positions and whose widest member is Xiangqi's at 69 bytes; the timestamps
+ * are 24, game_id is 36, a ply is at most 6, and the serialised identifiers are
+ * shorter than any of them. It also admits the widest position any game this
+ * build carries can reach — a full 15x15 placement board is 251 characters —
+ * so a version that ever permits an initial position other than a frozen start
+ * meets a bound already wide enough for one, and revisits it together with the
+ * setup-legality predicate such a version owes.
+ *
+ * It is one bound for every string, start_fen included, and the parser applies
+ * it at stage 2 rather than any field re-stating it at stage 4: the accepted
+ * validation order requires a file that fails two ways to be reported by the
+ * earlier one, and a second copy of a number is a second authority for it.
+ *
+ * start_fen is the one member with a further constraint — a value this reader
+ * accepts must be one MxqPosition.fen can carry — and that is a relationship
+ * between a format bound and an ABI capacity, so it is asserted at compile time
+ * rather than branched on per file. It used to be a runtime check against
+ * MXQ_FEN_CAP itself, which made the format's bound a consequence of the
+ * capacity: when the cap moved from 96 to 512 for the placement games, the
+ * format's bound moved with it, silently and unremarked. A capacity that ever
+ * shrinks below the format's bound now fails the build instead.
+ */
+constexpr size_t kMaxStringBytes = 256u;
+
+static_assert(kMaxStringBytes < MXQ_FEN_CAP,
+              "a start_fen this reader accepts must fit MxqPosition.fen");
 
 /*
  * These bound the import surface and nothing else. Live local play is not
@@ -91,7 +122,7 @@ json::Limits limits() {
  * The same reader with the two *size* bounds lifted — plies here, the file
  * size at the transport stage — and the three that describe the format's own
  * shape kept. Depth, members per object and string length are properties of a
- * version 3 document rather than of how long a game ran, no document this core
+ * version 4 document rather than of how long a game ran, no document this core
  * writes approaches them, and keeping them means a corrupted row cannot steer
  * the reader into unbounded work.
  */
@@ -102,7 +133,7 @@ json::Limits stored_limits() {
 }
 
 /* The in-band type check. The extension and the UTI are hints; this is not.
- * It names the file format, which both games share; which game a file records
+ * It names the file format, which every game shares; which game a file records
  * is content.rules_id. */
 constexpr const char *kArchiveFormat = "minixiangqi-game";
 
@@ -113,9 +144,9 @@ constexpr const char *kArchiveFormat = "minixiangqi-game";
 struct Decoded {
     uint32_t            archive_version = 0;
     std::string         game_id;
-    /* The ruleset identity of docs/xiangqi-rules.md, decoded: which of the two
-     * games this document records, and therefore which board its moves are read
-     * against and which starting position it must open from. Not an engine
+    /* The ruleset identity, decoded: which game this document records, and
+     * therefore which board its moves are read against, which starting position
+     * it must open from, and which rule reasons it may end with. Not an engine
      * variant. */
     MxqGameKind         game = MXQ_GAME_KIND_MINI_XIANGQI;
     int64_t             rules_version = 0;
@@ -196,7 +227,7 @@ bool only_known_members(const json::Value &object, const char *const *known,
         if (!found) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           std::string(where) + " has an unknown member \"" +
-                              name + "\" in archive version 3");
+                              name + "\" in archive version 4");
         }
     }
     return true;
@@ -313,13 +344,27 @@ bool parse_timestamp(const std::string &text, int64_t &out_ms) {
     return true;
 }
 
-/* The closed serialised vocabularies of docs/game-data.md. Unknown values are
+/*
+ * The closed serialised vocabularies of docs/game-data.md. Unknown values are
  * rejected rather than mapped to a default: a value this build does not know is
- * a value it cannot honour. */
+ * a value it cannot honour.
+ *
+ * rules_id has four spellings, of which a build accepts the ones it carries.
+ * Which games a build carries is the build's, per mxq.h: a core compiled
+ * without the engine a game is played on does not carry that game, and here
+ * that is not a preference but a necessity — the board, the move grammar and
+ * the frozen start of a game this build does not carry are not in it, so there
+ * is nothing to read the rest of the document against. Such a document meets
+ * the same closed-vocabulary refusal any other unreadable rules_id meets, which
+ * is what the header's rule says everywhere else. Every shipped build carries
+ * all four.
+ */
 bool read_rules_id(const std::string &text, MxqGameKind &out) {
     for (const MxqGameKind game : {MXQ_GAME_KIND_MINI_XIANGQI,
-                                   MXQ_GAME_KIND_XIANGQI}) {
-        if (text == rules_id_text(game)) {
+                                   MXQ_GAME_KIND_XIANGQI,
+                                   MXQ_GAME_KIND_GOMOKU_15,
+                                   MXQ_GAME_KIND_RENJU}) {
+        if (notation::known_game(game) && text == rules_id_text(game)) {
             out = game;
             return true;
         }
@@ -456,6 +501,14 @@ bool read_end_reason(const std::string &text, MxqEndReason &out) {
         out = MXQ_END_REASON_MUTUAL_RESIGNATION;
         return true;
     }
+    if (text == "five-in-a-row") {
+        out = MXQ_END_REASON_FIVE_IN_A_ROW;
+        return true;
+    }
+    if (text == "board-full") {
+        out = MXQ_END_REASON_BOARD_FULL;
+        return true;
+    }
     return false;
 }
 
@@ -465,7 +518,41 @@ bool is_draw_reason(MxqEndReason reason) {
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
            reason == MXQ_END_REASON_FIFTY_MOVE_RULE ||
            reason == MXQ_END_REASON_AGREED_DRAW ||
-           reason == MXQ_END_REASON_MUTUAL_RESIGNATION;
+           reason == MXQ_END_REASON_MUTUAL_RESIGNATION ||
+           reason == MXQ_END_REASON_BOARD_FULL;
+}
+
+/*
+ * Which reasons the rules of a game can produce, as against the ones a player
+ * or a pair of players declare.
+ *
+ * The rule reasons partition by what kind of game reaches them, and the
+ * partition is total: eight belong to the movement games — a placement game has
+ * no king to mate, no side to leave without a move, and no position that occurs
+ * twice, since every ply adds a stone and none is ever removed — and two belong
+ * to the placement games, which are the only ones with a line of five to make
+ * or a board to fill. The four declared ends — resignation, ended-early,
+ * agreed-draw, mutual-resignation — belong to every game and are governed by
+ * mode instead, above.
+ *
+ * Both halves are stated because a partition checked on one side only refuses
+ * half of what it knows: a xiangqi document recording "board-full" and a gomoku
+ * document recording "checkmate" are the same mistake.
+ */
+bool is_movement_rule_reason(MxqEndReason reason) {
+    return reason == MXQ_END_REASON_CHECKMATE ||
+           reason == MXQ_END_REASON_STALEMATE ||
+           reason == MXQ_END_REASON_THREEFOLD_REPETITION ||
+           reason == MXQ_END_REASON_PERPETUAL_CHECK ||
+           reason == MXQ_END_REASON_PERPETUAL_CHASE ||
+           reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK ||
+           reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
+           reason == MXQ_END_REASON_FIFTY_MOVE_RULE;
+}
+
+bool is_placement_rule_reason(MxqEndReason reason) {
+    return reason == MXQ_END_REASON_FIVE_IN_A_ROW ||
+           reason == MXQ_END_REASON_BOARD_FULL;
 }
 
 /* The two ends only two players can reach, and therefore only a nearby record
@@ -609,8 +696,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     }
     if (!read_rules_id(rules_id->string(), out.game)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                      "\"rules_id\" is not one of \"minixiangqi\", "
-                      "\"xiangqi\"");
+                      "\"rules_id\" is not a game this build carries");
     }
 
     const json::Value *rules_version =
@@ -649,19 +735,18 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
         return false;
     }
     /*
-     * The capacity bound is field validity, not a rules judgment, and the
-     * split it creates is deliberate: a start_fen at or over MXQ_FEN_CAP is
-     * refused here at stage 4, because no such string can cross the interface
-     * in MxqPosition.fen whatever it says, while a shorter FEN that is merely
-     * wrong is carried on and resolved at the rules tier, where being "not the
-     * frozen starting position" is a replay answer rather than a structural
-     * one. Probe therefore accepts every wrong-but-carryable FEN, which is
-     * exactly what probe promises.
+     * How long a start_fen may be is the format's one string bound, applied by
+     * the parser at stage 2 — where a file that fails two ways must be reported,
+     * and where every other string of the document is bounded too. What is left
+     * for stage 4 is the one structural thing that bound cannot say: a FEN is
+     * not nothing. A shorter FEN that is merely wrong is carried on and resolved
+     * at the rules tier, where being "not the frozen starting position" is a
+     * replay answer rather than a structural one, so probe accepts every
+     * wrong-but-carryable FEN — which is exactly what probe promises.
      */
-    if (start_fen->string().empty() ||
-        start_fen->string().size() >= MXQ_FEN_CAP) {
+    if (start_fen->string().empty()) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                      "\"start_fen\" is not a FEN this build can carry");
+                      "\"start_fen\" is empty");
     }
     out.start_fen = start_fen->string();
 
@@ -888,6 +973,29 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
                       "\"agreed-draw\" and \"mutual-resignation\" are nearby "
                       "end reasons");
     }
+    /* A rule reason belongs to the kind of game whose rules produce it, both
+     * ways round; see is_movement_rule_reason. The move class is the game's own
+     * and is asked of the game rules_id named, which is why that member is read
+     * before this one runs. */
+    const bool placement =
+        notation::move_class_of(out.game) == notation::MoveClass::Placement;
+    if (is_placement_rule_reason(out.end_reason) && !placement) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "\"five-in-a-row\" and \"board-full\" are the placement "
+                      "games' end reasons");
+    }
+    if (is_movement_rule_reason(out.end_reason) && placement) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "that end reason is one only a movement game's rules "
+                      "reach");
+    }
+    /* Narrower than the partition above, and older: the move-count rule is
+     * Xiangqi's alone, and Mini Xiangqi has none. */
+    if (out.end_reason == MXQ_END_REASON_FIFTY_MOVE_RULE &&
+        out.game != MXQ_GAME_KIND_XIANGQI) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "\"fifty-move-rule\" is Xiangqi's end reason");
+    }
     if (out.ended_at_ms < out.started_at_ms) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"ended_at\" is before \"started_at\"");
@@ -903,7 +1011,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
  * import-facing entry point, which applies the accepted file-size and ply
  * bounds, and the store's own path back into a game it wrote, which must
  * not. Everything else about the ladder is identical, because a stored
- * document is a version 3 document like any other. */
+ * document is a version 4 document like any other. */
 bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
             Reject &err) {
     /* Stage 1: transport and size. */
@@ -1075,7 +1183,7 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  * Stage 5, the rules tier, in one place because two entry points run it.
  *
  * The initial position must be exactly the frozen starting FEN of the game
- * rules_id names — version 3 defines no other for either game, and the
+ * rules_id names — version 4 defines no other for any of the four, and the
  * setup-legality predicate a later version would need does not exist — then
  * every move must be legal in sequence, then the recorded terminal pair must
  * agree with the replayed adjudication.
@@ -1090,7 +1198,7 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
     if (decoded.start_fen != notation::start_fen(decoded.game)) {
         fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
                    "\"start_fen\" is not this game's frozen starting position, "
-                   "which is the only initial position version 3 defines");
+                   "which is the only initial position version 4 defines");
         return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
     }
 
@@ -1209,7 +1317,7 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
      *
      * It comes last, after the accepted validation order has run entire, and
      * not among its stages. It is not one of them: those five decide whether
-     * the bytes are a version 3 archive, and this decides whether that archive
+     * the bytes are a version 4 archive, and this decides whether that archive
      * is a game an import may file. Asking it earlier would mask a rejection
      * class the corpus names — an incomplete document with an illegal move
      * would be reported for the shape rather than for the move — and the answer

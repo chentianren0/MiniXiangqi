@@ -2,7 +2,7 @@
   "title": "Human versus AI, the human resigns as Red",
   "why": "A resignation is human-versus-AI only, its outcome is the win for the side opposite human_side, and it requires a non-terminal final position.",
   "info": {
-    "archive_version": 3,
+    "archive_version": 4,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "human-vs-ai",

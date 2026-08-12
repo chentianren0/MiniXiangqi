@@ -1,0 +1,21 @@
+{
+  "title": "Renju, Free Play, two stones: the round trip on a placement board",
+  "why": "The whole session round trip under a game whose plies place rather than move. It pins that a session created for a placement game is store-attached like any other — created, committed per ply, resumed from its row and encoded to the bytes that row holds — under the frozen empty 15x15 start its own game names. A core that carried the movement games' start position, move grammar or rules_id would pass every xiangqi scenario unchanged and fail here.",
+  "config": {
+    "game": "renju",
+    "mode": "free-play"
+  },
+  "moves": ["h8", "i9"],
+  "archive": "renju-free-play-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": [1, 1]
+}

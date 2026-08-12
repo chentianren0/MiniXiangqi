@@ -1051,25 +1051,6 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     if (rc != MXQ_OK) {
         return rc;
     }
-    /*
-     * Every session is store-attached and every store row carries the document
-     * the game encodes to, so a game this build's format has no rules_id for
-     * cannot have a session at all. The rules facade answers for it in full; it
-     * is persistence alone that refuses, and it refuses here rather than at the
-     * store's own constraint so that the diagnostic says which of the two facts
-     * is missing.
-     *
-     * MXQ_ERR_ARG_RANGE without asserting, by the split mxq.h documents: what
-     * this reports is two parts of one core at different stages of one widening,
-     * not a caller outside a vocabulary it owns.
-     */
-    if (!mxq::archive::records_game(config->game)) {
-        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "this build's archive format has no rules_id for that "
-                        "game, so no session can be created for one");
-        return MXQ_ERR_ARG_RANGE;
-    }
-
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
     const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;
     bool shape_ok =

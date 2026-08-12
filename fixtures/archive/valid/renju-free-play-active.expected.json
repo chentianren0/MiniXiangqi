@@ -1,0 +1,16 @@
+{
+  "title": "Renju, Free Play, active after two stones",
+  "why": "The active shape of a placement game. Its rules_id, its start_fen and its move notation are all the 15x15 board's — a frozen empty position and single-square plies — which is what makes a codec carrying a movement game's constants fail here rather than everywhere.",
+  "info": {
+    "archive_version": 4,
+    "game": "renju",
+    "move_count": 2,
+    "mode": "free-play",
+    "human_side": null,
+    "outcome": "none",
+    "end_reason": null,
+    "started_at_ms": 1767225600000,
+    "ended_at_ms": 0,
+    "game_id": "019b76da-a80d-7000-8000-00000000000d"
+  }
+}

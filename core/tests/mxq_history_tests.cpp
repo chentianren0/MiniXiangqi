@@ -394,6 +394,8 @@ std::string reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
     case MXQ_END_REASON_AGREED_DRAW: return "agreed-draw";
     case MXQ_END_REASON_MUTUAL_RESIGNATION: return "mutual-resignation";
+    case MXQ_END_REASON_FIVE_IN_A_ROW: return "five-in-a-row";
+    case MXQ_END_REASON_BOARD_FULL: return "board-full";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -482,6 +484,9 @@ struct Scenario {
     MxqGameConfig            config = make_config();
     std::vector<std::string> moves;
     Ending                   end;
+    /* Whether the scenario's game is one only a build with the second engine
+     * carries; see the session runner's own note. */
+    bool                     needs_gomoku = false;
 };
 
 bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
@@ -567,8 +572,14 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             out.config.game = MXQ_GAME_KIND_MINI_XIANGQI;
         } else if (game->string() == "xiangqi") {
             out.config.game = MXQ_GAME_KIND_XIANGQI;
+        } else if (game->string() == "gomoku-15") {
+            out.config.game = MXQ_GAME_KIND_GOMOKU_15;
+            out.needs_gomoku = true;
+        } else if (game->string() == "renju") {
+            out.config.game = MXQ_GAME_KIND_RENJU;
+            out.needs_gomoku = true;
         } else {
-            error = "\"config.game\" is not one of the two accepted games";
+            error = "\"config.game\" is not one of the accepted games";
             return false;
         }
     }
@@ -767,6 +778,14 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
         return;
     }
     c.name = path.stem().string() + " — " + scenario.title;
+
+#if !MXQ_TEST_GOMOKU_FACADE
+    if (scenario.needs_gomoku) {
+        c.skip("the placement games need the second engine");
+        c.report();
+        return;
+    }
+#endif
 
     std::string golden;
     if (!scenario.end.archive.empty() &&

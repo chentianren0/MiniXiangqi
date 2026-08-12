@@ -1,0 +1,16 @@
+{
+  "title": "Gomoku, the line of five confirmed as its own result",
+  "why": "The end only a placement game reaches, recorded and replayed. It pins the version 4 vocabulary end to end: the reason five-in-a-row is written, read back, and agreed with by the replayed adjudication, and the cross-field rule that keeps it to the games whose rules produce it holds for the file the core itself wrote. Its bytes are the corpus's gomoku-15-five-in-a-row golden.",
+  "config": {
+    "game": "gomoku-15",
+    "mode": "free-play"
+  },
+  "moves": ["a1", "a3", "b1", "b3", "c1", "c3", "d1", "d3", "e1"],
+  "end": {
+    "action": "confirm_result",
+    "archive": "gomoku-15-five-in-a-row.mxq",
+    "outcome": "red-wins",
+    "end_reason": "five-in-a-row",
+    "state": "red-wins"
+  }
+}
