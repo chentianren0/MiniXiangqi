@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 0
+#define MXQ_API_VERSION_MINOR 1
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -1099,9 +1099,10 @@ typedef struct MxqSearchResult {
  *
  * It must copy and return. Inside it the legal calls are the status and blob
  * helpers — mxq_status_domain, mxq_status_name, mxq_blob_bytes, mxq_blob_len,
- * mxq_blob_release — together with the five pure queries that take no core
+ * mxq_blob_release — together with the six pure queries that take no core
  * instance and no lock: mxq_core_version, mxq_core_game_profile,
- * mxq_rules_start_fen, mxq_engine_plan and mxq_archive_supported_versions.
+ * mxq_rules_start_fen, mxq_engine_plan, mxq_engine_profile_id and
+ * mxq_archive_supported_versions.
  * Every other core function that can report
  * returns MXQ_ERR_ARG_REENTRANT, before it judges any handle it was passed;
  * mxq_game_release returns void and so has nothing to report with, and is
@@ -1174,8 +1175,8 @@ MXQ_API void MXQ_CALL mxq_blob_release(MxqBlob *blob);
 /*
  * Report the four independent version axes and the two build revisions.
  * Callable before mxq_core_init, as are the other queries that take no core
- * instance: mxq_core_game_profile, mxq_rules_start_fen, mxq_engine_plan and
- * mxq_archive_supported_versions.
+ * instance: mxq_core_game_profile, mxq_rules_start_fen, mxq_engine_plan,
+ * mxq_engine_profile_id and mxq_archive_supported_versions.
  *
  * Thread: any thread, including inside a search callback.
  * Blocking: no.
@@ -1845,6 +1846,33 @@ MXQ_API MxqStatus MXQ_CALL mxq_engine_query(MxqCore *core,
                                             MxqEngineState *out_state,
                                             char *out_profile_id, size_t cap,
                                             size_t *out_len, MxqError *err);
+
+/*
+ * Report the profile identifier a search of this game would run under: exactly
+ * what mxq_engine_query reports once this game is prepared, and what every
+ * result of such a search names. It is to mxq_engine_query what mxq_engine_plan
+ * is to mxq_engine_prepare — the answer without the act — and it exists because
+ * the parts an identifier is composed of are not all reported anywhere else: a
+ * game names the revision of the engine *it* is played on, and there is more
+ * than one engine, so no caller can assemble this from mxq_core_version and
+ * mxq_core_game_profile. A caller that assembled it from those would be right
+ * for the games one engine plays and silently wrong for the rest.
+ *
+ * Whether the engine is ready for a game is therefore this value against
+ * mxq_engine_query's, compared whole: one identifier stated by the core against
+ * another stated by the core, with nothing reconstructed in between.
+ *
+ * A game outside the closed vocabulary is a programming error and returns
+ * MXQ_ERR_ARG_RANGE. Callable before mxq_core_init: this is a build fact, not a
+ * property of a core instance. Same buffer convention as mxq_rules_start_fen;
+ * MXQ_PROFILE_ID_CAP is always sufficient.
+ *
+ * Thread: any thread, including inside a search callback.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_engine_profile_id(MxqGameKind game, char *out,
+                                                 size_t cap, size_t *out_len,
+                                                 MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Search facade — mxq_search_                                               */
