@@ -1,35 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-  The keys the generated Info.plist cannot carry: the game archive's type, the
-  Wi-Fi Aware service declaration, and the Bonjour service list.
-
-  GENERATE_INFOPLIST_FILE stays on and this file is its base, so every
-  INFOPLIST_KEY_* build setting still lands in the built plist and only what is
-  written here is written by hand. NSLocalNetworkUsageDescription is one of
-  those settings rather than a key here; its sentence is localized in
-  InfoPlist.xcstrings, which is the string of record for it, and it names no
-  transport, no band and no path, as the interaction contract requires of every
-  word this application writes.
-
-  docs/game-data.md fixes all three parts of the type declaration — the
-  extension, the identifier, and the conformance to public.json — and UTType
-  .miniXiangqiGame in History/GameFile.swift is the same identifier spelled for
-  Swift. The two must agree; this file is what registers the type with the
-  system, and the Swift constant only names it. It is exported rather than
-  imported because this application defines the type, and it is deliberately
-  not accompanied by CFBundleDocumentTypes: declaring the type is not claiming
-  to open one. Import happens on the History destination, where the list is
-  already on screen to receive the result.
-
-  WiFiAwareServices declares the nearby-play service: `_boardgame._tcp`,
-  Publishable and Subscribable because both peers run the publisher and the
-  subscriber together. Apple crashes the app on an invalid service name (RFC
-  6763 §4.1.2 / RFC 6335 §5.1). The com.apple.developer.wifi-aware entitlement
-  in MiniXiangqi-iOS.entitlements is this declaration's other half; only iPhone
-  and iPad sign with it. NSBonjourServices is the other path's half of the same
-  declaration: the same service name, because it names the same thing.
--->
 <plist version="1.0">
 <dict>
 	<key>NSBonjourServices</key>
