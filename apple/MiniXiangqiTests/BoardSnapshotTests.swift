@@ -81,19 +81,21 @@ struct BoardSnapshotTests {
         #expect(size == geometry.blockSize)
     }
 
-    @Test("A suggestion renders as the selection plus one strengthened destination")
+    @Test("A suggestion renders as the selection with one destination said three ways")
     func suggestion() throws {
-        // The same position and the same held piece, with a hint shown on it:
-        // what a suggestion adds to the board is the strengthening on one
-        // destination it already had, and nothing else — so this frame is the
-        // one above with `c2` grown.
+        // The same position and the same held piece, with a hint shown on it.
+        // A suggestion adds no marker of its own: this frame is the one above
+        // with `b4` grown, the rest of its set dropped to record ink, and the
+        // halo laid beneath the suggested point. The suggestion is put on an
+        // empty point deliberately — that is where the halo fills the cell, and
+        // a wash beneath an occupied point would be a wash beneath a disc.
         let view = BoardView(
             geometry: geometry,
             placement: Placement(fen: "rcnkncr/p1ppp1p/7/2C4/7/P1PPP1P/R1NKNCR w - - 0 1", game: .miniXiangqi),
             selected: Square("c4", on: GameKind.miniXiangqi.board),
             destinations: [Square("c5", on: GameKind.miniXiangqi.board)!, Square("c6", on: GameKind.miniXiangqi.board)!, Square("b4", on: GameKind.miniXiangqi.board)!, Square("c2", on: GameKind.miniXiangqi.board)!],
             captures: [Square("c6", on: GameKind.miniXiangqi.board)!],
-            suggested: Square("c2", on: GameKind.miniXiangqi.board),
+            suggested: Square("b4", on: GameKind.miniXiangqi.board),
             lastMove: Move(text: "c1c4", on: GameKind.miniXiangqi.board),
             checkedGeneral: Square("d7", on: GameKind.miniXiangqi.board),
             hintEmphasis: 1)
@@ -131,7 +133,7 @@ struct MotionFrameTests {
     }
 
     private func frame(_ game: Game, transit: Transit? = nil,
-                       suggested: Square? = nil,
+                       dashDrift: Double = 0,
                        phases: BoardPhases, reduceMotion: Bool = false) -> some View {
         BoardCanvas(geometry: geometry,
                     placement: game.placement,
@@ -139,7 +141,7 @@ struct MotionFrameTests {
                     policy: MotionPolicy(reduceMotion: reduceMotion),
                     destinations: game.destinations,
                     captures: game.captures,
-                    suggested: suggested,
+                    dashDrift: dashDrift,
                     lastMove: game.lastMove,
                     checkedGeneral: game.checkedGeneral,
                     transit: transit,
@@ -201,17 +203,26 @@ struct MotionFrameTests {
         #expect(size == geometry.coreSize)
     }
 
-    @Test("A suggestion at full emphasis: one destination strengthened, the rest at rest")
+    @Test("A suggestion at full emphasis: one destination strengthened, the rest muted")
     func suggestionAtFullEmphasis() throws {
         // The same held piece as the frame above, with the capture it can make
-        // suggested rather than every destination answered — which is the whole
-        // visual difference between the two phases, and the reason they are two.
+        // suggested rather than every destination answered. Where that frame
+        // strengthens the whole set, this one strengthens the suggested marker,
+        // drops the rest of the set to record ink, and lays the halo under the
+        // suggested point — the three things a standing suggestion says.
+        //
+        // The dashes are drawn half a dash-cell round, which is as far from the
+        // pattern's rest position as the drift ever carries them: a whole cell
+        // is the pattern repeating, so the frame furthest from rest is the one
+        // worth looking at.
         let game = try game(playing: ["d2d3", "d6d5", "d3d4"])
         game.tap(Square("d5", on: GameKind.miniXiangqi.board)!)
-        let size = try render(frame(game, suggested: Square("d4", on: GameKind.miniXiangqi.board),
-                                    phases: BoardPhases(hint: 1,
-                                                        lifts: SquarePhases(raised: game.selected))),
-                              named: "suggestion-at-full-emphasis")
+        let suggested = Square("d4", on: GameKind.miniXiangqi.board)
+        let size = try render(
+            frame(game, dashDrift: 0.5 / Double(BoardGeometry.captureDashCount),
+                  phases: BoardPhases(hint: SquarePhases(suggested, at: 1),
+                                      lifts: SquarePhases(raised: game.selected))),
+            named: "suggestion-at-full-emphasis")
         #expect(size == geometry.coreSize)
     }
 }

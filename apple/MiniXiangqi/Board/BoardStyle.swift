@@ -27,6 +27,21 @@ struct BoardStyle {
     var activeInk: Color
     var recordInk: Color
 
+    /// The marker ink `muted` of the way from its active strength to its record
+    /// strength. While a suggestion stands the rest of the held piece's
+    /// destinations drop to record ink, so that the suggested marker is the one
+    /// active-ink mark the selection shows; they cross between the two strengths
+    /// rather than switching, because the drop rides the suggestion's own phase.
+    /// Mixed in the device's own space, which is the space the two strengths are
+    /// stated in and the space a wash composites over the board in.
+    ///
+    /// A muted marker is the one place record strength is itself the live
+    /// distinction, so Increase Contrast leaves it where it is: promoting it to
+    /// active-ink values would erase the only thing the muting says.
+    func markerInk(muted: Double) -> Color {
+        activeInk.mix(with: recordInk, by: min(max(muted, 0), 1), in: .device)
+    }
+
     /// A disc shadow, held as components so the lift can blend between the
     /// resting and lift shadows: the shadow rises with the scale, per the
     /// accepted selection transition, rather than snapping between two looks.

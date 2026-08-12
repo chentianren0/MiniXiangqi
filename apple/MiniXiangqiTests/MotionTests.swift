@@ -168,6 +168,85 @@ struct MotionTests {
                     - geometry.markerOuterLimit) < 1e-9)
     }
 
+    // MARK: - The one continuous motion
+
+    @Test("A suggested capture's dashes turn a revolution in about ten seconds")
+    func dashDriftTurnsSlowly() {
+        #expect(Motion.dashDriftPeriod >= 8 && Motion.dashDriftPeriod <= 12,
+                "the contract accepts roughly ten seconds")
+        #expect(Motion.dashDrift(elapsed: 0) == 0,
+                "the dashes start where the pattern draws them at rest")
+        #expect(Motion.dashDrift(elapsed: Motion.dashDriftPeriod / 4) == 0.25)
+        #expect(Motion.dashDrift(elapsed: Motion.dashDriftPeriod) == 0,
+                "a whole revolution is the rest position again")
+        #expect(Motion.dashDrift(elapsed: 2.5 * Motion.dashDriftPeriod) == 0.5,
+                "and whole turns are dropped, however long a suggestion stands")
+        // Monotone inside a revolution, and never outside one: the phase is a
+        // position on the ring, not an accumulating quantity.
+        var previous = -1.0
+        for step in 0..<100 {
+            let drift = Motion.dashDrift(elapsed: Double(step) / 100 * Motion.dashDriftPeriod)
+            #expect(drift >= 0 && drift < 1)
+            #expect(drift > previous)
+            previous = drift
+        }
+    }
+
+    @Test("The dashes turn only for a suggested capture, and never under Reduce Motion")
+    func dashDriftRunsOnlyWhileASuggestedCaptureStands() {
+        let board = GameKind.miniXiangqi.board
+        let capture = Square("d4", on: board)!
+        let empty = Square("d3", on: board)!
+        func view(suggested: Square?, reduceMotion: Bool = false) -> BoardView {
+            BoardView(geometry: BoardGeometry(board: board,
+                                              pitch: BoardGeometry.minimumPitch(for: board)),
+                      placement: Placement(fen: Core.startFEN(for: .miniXiangqi),
+                                           game: .miniXiangqi),
+                      destinations: [capture, empty],
+                      captures: [capture],
+                      suggested: suggested,
+                      hintEmphasis: suggested == nil ? 0 : 1,
+                      policy: MotionPolicy(reduceMotion: reduceMotion))
+        }
+        #expect(view(suggested: capture).driftsDashes)
+        #expect(!view(suggested: empty).driftsDashes,
+                "an empty point has no dashes to turn")
+        #expect(!view(suggested: nil).driftsDashes,
+                "and the drift ends with everything that ends the suggestion")
+        #expect(!view(suggested: capture, reduceMotion: true).driftsDashes,
+                "a rotation is motion, so Reduce Motion holds the dashes still")
+    }
+
+    // MARK: - The suggestion's own phase
+
+    @Test("A standing suggestion mutes every destination marker but its own")
+    func aSuggestionMutesTheRestOfTheSet() {
+        let board = GameKind.miniXiangqi.board
+        let suggested = Square("b4", on: board)!
+        let other = Square("c4", on: board)!
+
+        #expect(BoardPhases.zero.muting(at: other) == 0,
+                "with no suggestion on the board the whole set is active ink")
+
+        let shown = BoardPhases(hint: SquarePhases(suggested, at: 1))
+        #expect(shown.muting(at: suggested) == 0,
+                "the suggested marker is the one active-ink marker the set shows")
+        #expect(shown.muting(at: other) == 1)
+
+        // Arriving and clearing are the same interpolation seen from two ends,
+        // and the suggested marker is never muted at any point along it.
+        let arriving = BoardPhases(hint: SquarePhases(suggested, at: 0.4))
+        #expect(arriving.muting(at: suggested) == 0)
+        #expect(arriving.muting(at: other) == 0.4)
+
+        // A suggestion that moves carries the muting with it rather than
+        // dropping the whole set and raising it again.
+        let midway = BoardPhases(hint: SquarePhases([suggested: 0.5, other: 0.5]))
+        #expect(midway.muting(at: suggested) == 0)
+        #expect(midway.muting(at: other) == 0)
+        #expect(midway.muting(at: Square("d4", on: board)!) == 0.5)
+    }
+
     @Test("The transit lift holds the disc raised and settles it at the end")
     func transitLiftEnvelope() {
         // A tapped move departs raised — the player was holding it.
@@ -244,12 +323,19 @@ struct MotionTests {
 
     @Test("Board phases compose componentwise")
     func boardPhasesArithmetic() {
-        var phases = BoardPhases(travel: 1, fade: 0.5, flip: 1, check: 0.2, marker: 0.4)
+        let suggested = Square("b4", on: GameKind.miniXiangqi.board)!
+        var phases = BoardPhases(travel: 1, fade: 0.5, flip: 1, check: 0.2, marker: 0.4,
+                                 hint: SquarePhases(suggested, at: 1))
         phases.scale(by: 0.5)
         #expect(phases.travel == 0.5 && phases.fade == 0.25 && phases.flip == 0.5)
+        #expect(phases.hint[suggested] == 0.5,
+                "the suggestion interpolates with everything else, per square")
         let sum = phases + phases
         #expect(sum.travel == 1 && sum.check == 0.2 && sum.marker == 0.4)
+        #expect(sum.hint[suggested] == 1)
         #expect((sum - phases).fade == 0.25)
+        #expect((sum - phases).hint[suggested] == 0.5)
         #expect(BoardPhases.zero.magnitudeSquared == 0)
+        #expect(BoardPhases(hint: SquarePhases(suggested, at: 1)).magnitudeSquared == 1)
     }
 }

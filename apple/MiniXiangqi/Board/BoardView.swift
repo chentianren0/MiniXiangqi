@@ -42,9 +42,16 @@ struct BoardView: View {
     var markerEmphasis: Double = 0
     /// How strongly the suggested destination is drawn — the hint's own
     /// emphasis, which arrives with a swell in full motion and at once under
-    /// Reduce Motion.
+    /// Reduce Motion. It carries the muting and the halo with it: all three are
+    /// the one suggestion, so all three ride the one phase.
     var hintEmphasis: Double = 0
     var policy = MotionPolicy(reduceMotion: false)
+
+    /// When the running dash drift began, or nil when none is running. The
+    /// dashes turn from where they are drawn at rest rather than from wherever
+    /// a shared clock happens to stand, so a suggestion shown on a capture ring
+    /// already on the board sets it turning instead of jolting it.
+    @State private var driftStart: Date?
 
     var style: BoardStyle = .traditional
     var onTap: (Square) -> Void = { _ in }
@@ -94,6 +101,27 @@ struct BoardView: View {
     // MARK: - The board core
 
     private var core: some View {
+        // Every other thing the board draws changes inside a transaction and is
+        // interpolated as a phase. The drift is the exception — it turns for as
+        // long as a suggestion stands rather than from one state to another —
+        // so it is driven by the clock instead, on a schedule that ticks only
+        // while it is running and is paused for every other moment of a game.
+        TimelineView(.animation(paused: !driftsDashes)) { context in
+            canvas(dashDrift: drift(at: context.date))
+        }
+        .modifier(ArrivalReporter(progress: transit == nil ? 0 : 1,
+                                  arrived: onTravelArrival))
+        .modifier(ArrivalReporter(progress: transitFade, arrived: onFadeArrival))
+        .modifier(ArrivalReporter(progress: flipped ? 1 : 0, arrived: onFlipArrival))
+        .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
+        .background(style.boardSurface)
+        .overlay(points)
+        .onChange(of: driftsDashes, initial: true) { _, drifting in
+            driftStart = drifting ? .now : nil
+        }
+    }
+
+    private func canvas(dashDrift: Double) -> some View {
         BoardCanvas(geometry: geometry,
                     placement: placement,
                     style: style,
@@ -101,7 +129,7 @@ struct BoardView: View {
                     policy: policy,
                     destinations: destinations,
                     captures: captures,
-                    suggested: suggested,
+                    dashDrift: dashDrift,
                     lastMove: lastMove,
                     checkedGeneral: checkedGeneral,
                     transit: transit,
@@ -111,15 +139,26 @@ struct BoardView: View {
                                         flip: flipped ? 1 : 0,
                                         check: checkEmphasis,
                                         marker: markerEmphasis,
-                                        hint: hintEmphasis,
+                                        hint: SquarePhases(suggested, at: hintEmphasis),
                                         lifts: SquarePhases(raised: selected)))
-            .modifier(ArrivalReporter(progress: transit == nil ? 0 : 1,
-                                      arrived: onTravelArrival))
-            .modifier(ArrivalReporter(progress: transitFade, arrived: onFadeArrival))
-            .modifier(ArrivalReporter(progress: flipped ? 1 : 0, arrived: onFlipArrival))
-            .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
-            .background(style.boardSurface)
-            .overlay(points)
+    }
+
+    /// Whether the board's one continuous motion is running: a suggested
+    /// capture's dashes turn for as long as the suggestion stands, and stop the
+    /// instant anything takes it off the board. A rotation is motion, so under
+    /// Reduce Motion they hold still and the suggestion is said by the marks
+    /// that do not move.
+    var driftsDashes: Bool {
+        guard let suggested, !policy.reduceMotion else { return false }
+        return captures.contains(suggested)
+    }
+
+    /// How far the dashes have turned by `date`, from the instant the drift
+    /// began. At rest, and for every ring but the suggested one, they are drawn
+    /// exactly where the pattern places them.
+    private func drift(at date: Date) -> Double {
+        guard driftsDashes, let driftStart else { return 0 }
+        return Motion.dashDrift(elapsed: date.timeIntervalSince(driftStart))
     }
 
     /// One element per point, over the drawn board.
