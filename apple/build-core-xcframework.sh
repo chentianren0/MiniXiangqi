@@ -66,10 +66,11 @@ deployment_target=26.5
 # Simulator included, since a simulator binary is an iOS binary built against
 # another SDK rather than a macOS one.
 #
-# The core is three static libraries — the facade, the vendored engine and the
-# vendored SQLite — and an XCFramework carries one, so they are combined per
-# architecture with libtool and then joined across architectures with lipo,
-# rather than left for every consumer to link in the right order.
+# The core is five static libraries — the facade, the two vendored engines, the
+# lz4 the second engine decompresses its weights with, and the vendored SQLite —
+# and an XCFramework carries one, so they are combined per architecture with
+# libtool and then joined across architectures with lipo, rather than left for
+# every consumer to link in the right order.
 build_platform() {
   sdk=$1
   system=$2
@@ -80,6 +81,7 @@ build_platform() {
     build="$staging/$sdk-$arch"
     set -- -S "$root/core" -B "$build" -G Ninja \
            -DMXQ_ENABLE_RULES_FACADE=ON \
+           -DMXQ_ENABLE_GOMOKU_FACADE=ON \
            -DCMAKE_BUILD_TYPE=Release \
            -DCMAKE_OSX_SYSROOT="$sdk" \
            -DCMAKE_OSX_ARCHITECTURES="$arch" \
@@ -95,6 +97,8 @@ build_platform() {
     libtool -static -no_warning_for_no_symbols -o "$slice" \
             "$build/libmxqcore.a" \
             "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
+            "$build/third_party/rapfi/libmxqrapfi.a" \
+            "$build/third_party/rapfi/libmxqrapfilz4.a" \
             "$build/third_party/sqlite/libmxqsqlite.a"
     slices="$slices $slice"
   done
@@ -261,19 +265,49 @@ verify_network "$mini_nnue_source" "$mini_nnue_name" "$mini_nnue_length" \
 verify_network "$xiangqi_nnue_source" "$xiangqi_nnue_name" "$xiangqi_nnue_length" \
                "$xiangqi_nnue_sha256" MXQ_XIANGQI_NNUE_SOURCE
 
-# Exactly the two pinned networks end up in Resources, so anything else goes
+# The second engine's weights, under exactly the same policy and verified the
+# same way. They are keyed differently in the manifest because they are bound to
+# a game differently: this engine reads the rule and the board size out of a
+# file's own header rather than off its name, and it takes one file per SIDE, so
+# gomoku_network is a map of games each holding a list of files with a role each.
+# Freestyle has one file, which serves both sides; renju has one per side.
+#
+# There is no override variable for these. MXQ_NNUE_SOURCE exists because trying
+# a candidate network before committing it is how this project's own network was
+# replaced; nothing trains these, so nothing tries a candidate.
+gomoku_weight_names=""
+gomoku_weight_sources=""
+for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
+  gomoku_game=${gomoku_entry%.*}
+  gomoku_index=${gomoku_entry##*.}
+  gomoku_key="gomoku_network.$gomoku_game.files.$gomoku_index"
+  gomoku_name=$(plutil -extract "$gomoku_key.filename" raw -o - "$root/pinned-inputs.json")
+  gomoku_length=$(plutil -extract "$gomoku_key.byte_length" raw -o - "$root/pinned-inputs.json")
+  gomoku_sha256=$(plutil -extract "$gomoku_key.sha256" raw -o - "$root/pinned-inputs.json")
+  gomoku_source="$root/core/assets/$gomoku_name"
+  verify_network "$gomoku_source" "$gomoku_name" "$gomoku_length" \
+                 "$gomoku_sha256" "(no override; $gomoku_key)"
+  gomoku_weight_names="$gomoku_weight_names $gomoku_name"
+  gomoku_weight_sources="$gomoku_weight_sources $gomoku_source"
+done
+gomoku_weight_names=${gomoku_weight_names# }
+gomoku_weight_sources=${gomoku_weight_sources# }
+
+# Exactly the pinned weight files end up in Resources, so anything else goes
 # first.
 #
-# This matters the moment the bundled network's NAME changes, which it did when
+# This matters the moment a bundled network's NAME changes, which it did when
 # the project's own network replaced the community one. Copying the new name
 # beside the old leaves an extra file, and apple/MiniXiangqi is a
 # file-system-synchronized group: every one would be bundled into the .app and
-# would ship. The runtime would not notice — the bridge prefers the pinned
+# would ship. The runtime would not notice — each bridge asks for the pinned
 # basenames — which is exactly why nothing else would catch it.
 #
-# An unmatched glob expands to the pattern itself in a POSIX shell, so the
-# existence test is what makes "no networks here" a no-op rather than an attempt
-# to delete a file called *.nnue.
+# Two sweeps because the two engines' weights have different extensions: the
+# first engine's are .nnue, and the second's are LZ4 frames named .bin.lz4 as
+# they are published. An unmatched glob expands to the pattern itself in a POSIX
+# shell, so the existence test is what makes "none here" a no-op rather than an
+# attempt to delete a file called *.nnue.
 for stale in "$resources"/*.nnue; do
   [ -e "$stale" ] || continue
   staged_name=$(basename "$stale")
@@ -285,10 +319,27 @@ for stale in "$resources"/*.nnue; do
       ;;
   esac
 done
+for stale in "$resources"/*.bin.lz4; do
+  [ -e "$stale" ] || continue
+  staged_name=$(basename "$stale")
+  keep=0
+  for expected in $gomoku_weight_names; do
+    [ "$staged_name" = "$expected" ] && keep=1
+  done
+  if [ "$keep" -eq 0 ]; then
+    rm -f "$stale"
+    echo "removed a weight file that is no longer bundled: $staged_name"
+  fi
+done
 
 cp "$mini_nnue_source" "$resources/$mini_nnue_name"
 cp "$xiangqi_nnue_source" "$resources/$xiangqi_nnue_name"
 echo "staged the pinned networks as $mini_nnue_name and $xiangqi_nnue_name"
+
+for gomoku_source in $gomoku_weight_sources; do
+  cp "$gomoku_source" "$resources/$(basename "$gomoku_source")"
+done
+echo "staged the pinned weight files: $gomoku_weight_names"
 
 echo "built $output"
 lipo -info "$output"/*/libMiniXiangqiCore.a

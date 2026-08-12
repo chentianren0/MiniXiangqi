@@ -15,7 +15,12 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # The per-file lines carry paths, and the final hash must not: the same
 # sources checked out at another root — a worktree — are the same core, so the
 # paths are made tree-relative before the digest of digests.
+# core/cmake is in the list because mxq_build_config.h.in is compiled into the
+# core: it is where every pinned name, byte length and hash reaches the bridges
+# as a macro, so a change to it changes the library without changing anything
+# else here.
 find "$root/core/src" "$root/core/include" "$root/core/assets" \
+     "$root/core/cmake" \
      "$root/core/third_party" "$root/core/CMakeLists.txt" \
      "$root/pinned-inputs.json" \
      "$root/apple/build-core-xcframework.sh" \

@@ -134,3 +134,54 @@ verify_staged_network() {
 
 verify_staged_network "$mini_variant_id" "$mini_nnue_name"
 verify_staged_network xiangqi "$xiangqi_nnue_name"
+
+# The second engine's weights, under the same rule and for the same reasons:
+# exactly the pinned set, each at its pinned length and hash. They are checked
+# separately because they are named and keyed differently — LZ4 frames under
+# .bin.lz4, keyed in the manifest by the game and then by the file's role, one
+# file for freestyle and one per side for renju.
+gomoku_expected=""
+for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
+  gomoku_game=${gomoku_entry%.*}
+  gomoku_index=${gomoku_entry##*.}
+  gomoku_key="gomoku_network.$gomoku_game.files.$gomoku_index"
+  gomoku_name=$(plutil -extract "$gomoku_key.filename" raw -o - "$root/pinned-inputs.json")
+  gomoku_path="$resources/$gomoku_name"
+  if [ ! -f "$gomoku_path" ]; then
+    echo "error: the bundled weight file $gomoku_name has not been staged." >&2
+    echo "note: run ./apple/build-core-xcframework.sh, which verifies it against pinned-inputs.json and stages it from core/assets." >&2
+    exit 1
+  fi
+  gomoku_length=$(plutil -extract "$gomoku_key.byte_length" raw -o - "$root/pinned-inputs.json")
+  actual_length=$(wc -c < "$gomoku_path" | tr -d ' ')
+  if [ "$actual_length" != "$gomoku_length" ]; then
+    echo "error: the bundled weight file $gomoku_name is $actual_length bytes; pinned-inputs.json pins $gomoku_length." >&2
+    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
+    exit 1
+  fi
+  gomoku_sha256=$(plutil -extract "$gomoku_key.sha256" raw -o - "$root/pinned-inputs.json")
+  actual_sha256=$(shasum -a 256 "$gomoku_path" | cut -d' ' -f1)
+  if [ "$actual_sha256" != "$gomoku_sha256" ]; then
+    echo "error: the bundled weight file $gomoku_name does not match the SHA-256 pinned-inputs.json pins." >&2
+    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
+    exit 1
+  fi
+  gomoku_expected="$gomoku_expected $gomoku_name"
+done
+
+# And nothing else with that extension, for the same reason the .nnue sweep
+# above exists: Resources is a file-system-synchronized group, so a leftover
+# file from a previous pin ships.
+for staged in "$resources"/*.bin.lz4; do
+  [ -e "$staged" ] || continue
+  staged_name=$(basename "$staged")
+  found=0
+  for expected in $gomoku_expected; do
+    [ "$staged_name" = "$expected" ] && found=1
+  done
+  if [ "$found" -eq 0 ]; then
+    echo "error: unexpected bundled weight file: $staged_name" >&2
+    echo "note: run ./apple/build-core-xcframework.sh, which removes unexpected weight files before staging the pinned ones." >&2
+    exit 1
+  fi
+done

@@ -48,6 +48,14 @@ While it is off, third_party/fairy-stockfish is not added at all and every \
 fixture reports NOT IMPLEMENTED rather than passing."
        OFF)
 
+option(MXQ_ENABLE_GOMOKU_FACADE
+       "Compile and link the vendored Rapfi fork into the core, and build the \
+second engine bridge against it. Off by default for the same reason the first \
+engine is: it is a multi-minute build and nothing else in the core needs it. \
+While it is off, third_party/rapfi is not added at all and the Rapfi bridge is \
+absent from the library rather than stubbed."
+       OFF)
+
 option(MXQ_BUILD_SHARED_LIBRARY
        "Also build the C ABI as a shared library, for a frontend that loads the \
 core at runtime instead of linking it: mxqcore.dll on Windows, which the C# \
@@ -109,6 +117,45 @@ mxq_pinned_get(MXQ_BUILD_NNUE_BYTE_LENGTH network ${MXQ_BUILD_VARIANT_ID} byte_l
 mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_SHA256 network ${MXQ_BUILD_XIANGQI_VARIANT_ID} sha256)
 mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_FILENAME network ${MXQ_BUILD_XIANGQI_VARIANT_ID} filename)
 mxq_pinned_get(MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH network ${MXQ_BUILD_XIANGQI_VARIANT_ID} byte_length)
+
+# The second engine's pins. Its weights are not keyed by a variant identifier,
+# because Rapfi has no such concept: a weight file declares the rules and the
+# board sizes it covers in its own header, and it is bound to a SIDE rather than
+# to a game. So the manifest keys these by the rules identifier and each entry
+# carries a list of files with a role each — one file serving both sides for
+# freestyle, one per side for renju, which is not symmetric.
+mxq_pinned_get(MXQ_BUILD_GOMOKU_FORK_REVISION gomoku_fork revision)
+
+# Read one file entry out of gomoku_network.<rules>.files[<index>] into
+# <prefix>_FILENAME / _BYTE_LENGTH / _SHA256.
+function(mxq_gomoku_network_get prefix rules index)
+  mxq_pinned_get(filename gomoku_network ${rules} files ${index} filename)
+  mxq_pinned_get(byte_length gomoku_network ${rules} files ${index} byte_length)
+  mxq_pinned_get(sha256 gomoku_network ${rules} files ${index} sha256)
+  set(${prefix}_FILENAME "${filename}" PARENT_SCOPE)
+  set(${prefix}_BYTE_LENGTH "${byte_length}" PARENT_SCOPE)
+  set(${prefix}_SHA256 "${sha256}" PARENT_SCOPE)
+endfunction()
+
+mxq_gomoku_network_get(MXQ_BUILD_GOMOKU_NNUE gomoku-15 0)
+mxq_gomoku_network_get(MXQ_BUILD_RENJU_BLACK_NNUE renju 0)
+mxq_gomoku_network_get(MXQ_BUILD_RENJU_WHITE_NNUE renju 1)
+
+# The roles are asserted rather than assumed: the indices above are positions in
+# a list, and a manifest edit that reordered renju's two files would otherwise
+# hand Black's weights to White silently — which is exactly the kind of failure
+# this engine does not report, since neither file's header distinguishes a side.
+mxq_pinned_get(mxq_gomoku_role_0 gomoku_network gomoku-15 files 0 role)
+mxq_pinned_get(mxq_renju_role_0 gomoku_network renju files 0 role)
+mxq_pinned_get(mxq_renju_role_1 gomoku_network renju files 1 role)
+if(NOT mxq_gomoku_role_0 STREQUAL "black-and-white"
+   OR NOT mxq_renju_role_0 STREQUAL "black"
+   OR NOT mxq_renju_role_1 STREQUAL "white")
+  message(FATAL_ERROR
+          "pinned-inputs.json: gomoku_network file roles are not the order this "
+          "build reads them in (gomoku-15: ${mxq_gomoku_role_0}; renju: "
+          "${mxq_renju_role_0}, ${mxq_renju_role_1})")
+endif()
 
 # The core's own revision. Absent a git checkout — an exported source tree, for
 # instance — it is reported as "unknown" rather than guessed.
@@ -219,6 +266,10 @@ set(MXQ_CORE_SOURCES
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_search.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_session.cpp>
+  # The second engine's bridge, gated on its own engine rather than on the
+  # first: the two are independent components and either can be left out of a
+  # build without the other noticing.
+  $<$<BOOL:${MXQ_ENABLE_GOMOKU_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_rapfi_bridge.cpp>
   src/mxq_status.cpp
 )
 
@@ -277,6 +328,9 @@ foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
   if(MXQ_ENABLE_RULES_FACADE)
     target_compile_definitions(${mxq_target} PRIVATE MXQ_ENABLE_RULES_FACADE=1)
   endif()
+  if(MXQ_ENABLE_GOMOKU_FACADE)
+    target_compile_definitions(${mxq_target} PRIVATE MXQ_ENABLE_GOMOKU_FACADE=1)
+  endif()
 
   set_target_properties(${mxq_target} PROPERTIES
     CXX_VISIBILITY_PRESET hidden
@@ -294,19 +348,21 @@ endforeach()
 # mxq_core privately, which is what keeps it invisible through mxq.h, as
 # docs/architecture.md requires. See core/third_party/README.md.
 #
-# Both inputs are vendored. The fork is additionally gated on
-# MXQ_ENABLE_RULES_FACADE, so the default configuration does not compile it: it
-# is a multi-minute build and nothing else in the core needs it. SQLite is not
-# gated: the store is part of the core on every configuration, and the
-# amalgamation compiles in seconds.
+# All three inputs are vendored. Each engine is gated on its own option, so the
+# default configuration compiles neither: each is a multi-minute build and
+# nothing else in the core needs it, and leaving one out must not depend on the
+# other. SQLite is not gated: the store is part of the core on every
+# configuration, and the amalgamation compiles in seconds.
 
-set(MXQ_OPTIONAL_DEPS fairy-stockfish)
-foreach(mxq_dep IN ITEMS fairy-stockfish sqlite)
+set(MXQ_DEP_GATE_fairy-stockfish MXQ_ENABLE_RULES_FACADE)
+set(MXQ_DEP_GATE_rapfi MXQ_ENABLE_GOMOKU_FACADE)
+foreach(mxq_dep IN ITEMS fairy-stockfish rapfi sqlite)
+  set(mxq_dep_gate "${MXQ_DEP_GATE_${mxq_dep}}")
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/${mxq_dep}/CMakeLists.txt")
     message(STATUS "Mini Xiangqi core: ${mxq_dep} not vendored")
-  elseif(mxq_dep IN_LIST MXQ_OPTIONAL_DEPS AND NOT MXQ_ENABLE_RULES_FACADE)
+  elseif(mxq_dep_gate AND NOT ${mxq_dep_gate})
     message(STATUS "Mini Xiangqi core: ${mxq_dep} vendored but not built "
-                   "(MXQ_ENABLE_RULES_FACADE is OFF)")
+                   "(${mxq_dep_gate} is OFF)")
   else()
     add_subdirectory("third_party/${mxq_dep}")
     foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
@@ -329,7 +385,7 @@ endforeach()
 # sqlite3_ surface alongside mxq.h's own functions; with it, mxq.h's own and
 # nothing else.
 if(MXQ_BUILD_SHARED_LIBRARY)
-  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_sqlite)
+  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_rapfi mxq_rapfi_lz4 mxq_sqlite)
     if(TARGET ${mxq_vendored})
       set_target_properties(${mxq_vendored} PROPERTIES
         C_VISIBILITY_PRESET hidden
@@ -490,6 +546,62 @@ else()
   set(MXQ_TEST_XIANGQI_ASSETS_DIR "")
   set(MXQ_TEST_NNUE_STAGED 0)
   set(MXQ_TEST_NNUE_PROBLEM "the engine is not in this build")
+endif()
+
+# --------------------------------------------------------------------------
+# The second engine's staged test assets
+# --------------------------------------------------------------------------
+#
+# The same rule, applied to the second engine's weights: nothing is staged that
+# has not been checked against the byte length and SHA-256 pinned-inputs.json
+# pins for it, and a mismatch stages nothing at all rather than half a set.
+#
+# There is one directory rather than two, and the difference from the first
+# engine's staging is the difference between the engines. Fairy-Stockfish takes
+# one network per variant and selects it by basename, so which networks are
+# present changes what the engine does and the shipped shape is worth staging
+# separately. Rapfi takes a weight file per side and the bridge hands over the
+# paths for the rule it is preparing, so a file for the other rule sitting in the
+# directory is never looked at. What ships is all three.
+
+if(MXQ_ENABLE_GOMOKU_FACADE)
+  set(MXQ_TEST_GOMOKU_ASSETS_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-assets-gomoku")
+  set(MXQ_TEST_GOMOKU_NNUE_STAGED 0)
+  set(MXQ_TEST_GOMOKU_NNUE_PROBLEM "")
+
+  file(REMOVE_RECURSE "${MXQ_TEST_GOMOKU_ASSETS_DIR}")
+
+  foreach(mxq_gomoku_net IN ITEMS MXQ_BUILD_GOMOKU_NNUE
+                                  MXQ_BUILD_RENJU_BLACK_NNUE
+                                  MXQ_BUILD_RENJU_WHITE_NNUE)
+    if(MXQ_TEST_GOMOKU_NNUE_PROBLEM STREQUAL "")
+      mxq_verify_network(MXQ_TEST_GOMOKU_NNUE_PROBLEM
+                         "${CMAKE_CURRENT_SOURCE_DIR}/assets/${${mxq_gomoku_net}_FILENAME}"
+                         ${${mxq_gomoku_net}_BYTE_LENGTH}
+                         "${${mxq_gomoku_net}_SHA256}")
+    endif()
+  endforeach()
+
+  if(MXQ_TEST_GOMOKU_NNUE_PROBLEM STREQUAL "")
+    file(MAKE_DIRECTORY "${MXQ_TEST_GOMOKU_ASSETS_DIR}")
+    foreach(mxq_gomoku_net IN ITEMS MXQ_BUILD_GOMOKU_NNUE
+                                    MXQ_BUILD_RENJU_BLACK_NNUE
+                                    MXQ_BUILD_RENJU_WHITE_NNUE)
+      file(COPY_FILE
+           "${CMAKE_CURRENT_SOURCE_DIR}/assets/${${mxq_gomoku_net}_FILENAME}"
+           "${MXQ_TEST_GOMOKU_ASSETS_DIR}/${${mxq_gomoku_net}_FILENAME}"
+           ONLY_IF_DIFFERENT)
+    endforeach()
+    set(MXQ_TEST_GOMOKU_NNUE_STAGED 1)
+    message(STATUS "Mini Xiangqi core: Rapfi weights staged for tests")
+  else()
+    message(WARNING "Mini Xiangqi core: ${MXQ_TEST_GOMOKU_NNUE_PROBLEM}; "
+                    "the Rapfi bridge tests will FAIL")
+  endif()
+else()
+  set(MXQ_TEST_GOMOKU_ASSETS_DIR "")
+  set(MXQ_TEST_GOMOKU_NNUE_STAGED 0)
+  set(MXQ_TEST_GOMOKU_NNUE_PROBLEM "the second engine is not in this build")
 endif()
 
 # --------------------------------------------------------------------------

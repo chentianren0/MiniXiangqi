@@ -2,7 +2,7 @@
   "manifest_format": "minixiangqi-pinned-inputs",
   "manifest_version": 1,
   "_about": "The single source of truth for every input a reproducible Mini Xiangqi build consumes, per docs/engine-integration.md. The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The Fairy-Stockfish fork repository owns how its patches are implemented and how its own artifacts are built; this file records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.",
-  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. A packaging build now exists and has consumed part of it — windows/package-zip.ps1, first run in CI on 2026-07-31 — but only the Windows entry's, so the names below are still a proposal rather than a frozen schema and the Apple entries are still waiting on their own. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. Three fields have been added under that licence rather than by fixing the schema, all in build_flags.platforms.windows: toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times and one boolean over one 'toolchain' object cannot say that half of it is measured; packaging_flags, for the same reason one step further on, since the deployment settings a packaging build applies and the compile flags it does not are two different measurements; and toolchain_core's per-architecture split, because two machines established it and one of them is a CI runner. manifest_version stays 1: nothing existing changed shape except toolchain_core, whose only reader is a human, and the reader in core/CMakeLists.txt asks for none of this. The network section was added to under the same licence on 2026-07-31, when the project's own network replaced the community one: path, which is not a new shape at all — the variant entry beside it already carried one, and the network needed one for the same reason, because it is now a file in this repository rather than bytes fetched from elsewhere; and provenance, which is what the old network never had and is the whole reason this one exists. network._ci_delivery was removed rather than rewritten: there is no delivery left to describe. One more was added on the same licence later that day, when the Microsoft Store became the intended public channel: build_flags.platforms.windows.packaging_flags.store_package, because the deployment settings of two distributions are two measurements and the flat fields beside it — which were the whole of packaging_flags until then — describe the zip alone. Nothing in packaging_flags changed shape or value; the new object sits beside what was there, carries its own 'established' flag for the same reason toolchain_core does, and holds null in every field only a run can answer. The network section was reshaped on 2026-08-01, when the core gained a second variant to search: it is no longer one flat entry but a map of one entry per variant, keyed by that variant's engine identifier, each carrying what the flat entry carried. That one does have machine readers, and they changed with it — core/CMakeLists.txt, apple/build-core-xcframework.sh, apple/check-core-is-current.sh and windows/package-zip.ps1 all address a network by its variant key now. manifest_version still stays 1: every reader of the old flat shape was moved to the map in the same change, so no consumer is left that a version bump would be telling anything.",
+  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. A packaging build now exists and has consumed part of it — windows/package-zip.ps1, first run in CI on 2026-07-31 — but only the Windows entry's, so the names below are still a proposal rather than a frozen schema and the Apple entries are still waiting on their own. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. Three fields have been added under that licence rather than by fixing the schema, all in build_flags.platforms.windows: toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times and one boolean over one 'toolchain' object cannot say that half of it is measured; packaging_flags, for the same reason one step further on, since the deployment settings a packaging build applies and the compile flags it does not are two different measurements; and toolchain_core's per-architecture split, because two machines established it and one of them is a CI runner. manifest_version stays 1: nothing existing changed shape except toolchain_core, whose only reader is a human, and the reader in core/CMakeLists.txt asks for none of this. The network section was added to under the same licence on 2026-07-31, when the project's own network replaced the community one: path, which is not a new shape at all — the variant entry beside it already carried one, and the network needed one for the same reason, because it is now a file in this repository rather than bytes fetched from elsewhere; and provenance, which is what the old network never had and is the whole reason this one exists. network._ci_delivery was removed rather than rewritten: there is no delivery left to describe. One more was added on the same licence later that day, when the Microsoft Store became the intended public channel: build_flags.platforms.windows.packaging_flags.store_package, because the deployment settings of two distributions are two measurements and the flat fields beside it — which were the whole of packaging_flags until then — describe the zip alone. Nothing in packaging_flags changed shape or value; the new object sits beside what was there, carries its own 'established' flag for the same reason toolchain_core does, and holds null in every field only a run can answer. The network section was reshaped on 2026-08-01, when the core gained a second variant to search: it is no longer one flat entry but a map of one entry per variant, keyed by that variant's engine identifier, each carrying what the flat entry carried. That one does have machine readers, and they changed with it — core/CMakeLists.txt, apple/build-core-xcframework.sh, apple/check-core-is-current.sh and windows/package-zip.ps1 all address a network by its variant key now. manifest_version still stays 1: every reader of the old flat shape was moved to the map in the same change, so no consumer is left that a version bump would be telling anything. Two top-level keys were added on the same licence on 2026-08-12, when the core gained a second engine for the placement games: gomoku_fork, which mirrors fork's shape — repository, revision, upstream base, an ordered patch list, a static-library note and a vendored block — because it is the same kind of thing about a different engine, and gomoku_network, which does not mirror network's shape and could not. The two engines bind weights to a game differently: Fairy-Stockfish binds by filename prefix and takes one file per variant, Rapfi binds by a rule mask and a board-size mask inside the file's own header and takes one file per side, so an entry there is a list of files with a role each rather than a single file. Both are additions beside what exists and nothing existing changed shape, so manifest_version stays 1 and every reader of 'fork' and 'network' reads exactly what it read before. gomoku_fork.core_build is the one field with no counterpart at all: it records the define and flag set the CORE's own build of the vendored snapshot applies, per architecture profile, which build_flags.platforms.* deliberately does not carry because those fields describe a packaging build. Putting the core build's answer in a field that describes somebody else's build is the confusion that entry is shaped to avoid, so the answer went next to the engine it is about instead.",
   "fork": {
     "repository": "https://github.com/chentianren0/Fairy-Stockfish",
     "revision": "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e",
@@ -154,6 +154,145 @@
       "file_manifest": "core/third_party/fairy-stockfish/SOURCES.sha256",
       "file_manifest_sha256": "85e6fbb2ff9b59c39cc58c7b1e54d7053a2047674d266d0aaae20ad041f1f305",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
+    }
+  },
+  "gomoku_fork": {
+    "_about": "The second engine: the pinned chentianren0/rapfi fork, which the core embeds behind its own search facade for the placement games. It sits beside 'fork' rather than inside it because the two are separate engines with separate revisions, separate patch lists and separate networks; nothing about one describes the other. Fairy-Stockfish cannot host these games — a 12x10 board ceiling, and chess search is the wrong shape for a placement game — so the second engine is a necessity rather than a preference.",
+    "repository": "https://github.com/chentianren0/rapfi",
+    "revision": "265b7d66c7b57bbd8689c8dfd1efb4133e02b5ed",
+    "revision_committed_at": "2026-08-12T00:34:18-07:00",
+    "upstream_repository": "https://github.com/dhbloo/rapfi",
+    "upstream_base_revision": "3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7",
+    "license": "GPL-3.0-or-later",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first, followed by patches_pending: what this contract asks of the fork and the pinned revision does not yet carry. Neither applied change touches rules behaviour, so neither owes a rules corpus; the boundary recorded on issue #164 is that a fork change which ever does touch rules behaviour lands together with the test that pins it.",
+    "patches": [
+      {
+        "id": "recoverable-hash-allocation",
+        "summary": "Replaces the unconditional std::exit(EXIT_FAILURE) in HashTable::resize with a failure the embedding can observe: HashTable::resize and Searcher::setMemoryLimit return a bool, HashTable::allocated() answers the same question afterwards for a caller reached through a path with no error channel, and a failed resize leaves the table on a static scratch bucket so that no unguarded probe or store has to change. Nothing changes when the allocation succeeds.",
+        "required_by": [
+          "docs/architecture.md",
+          "https://github.com/chentianren0/MiniXiangqi/issues/164"
+        ],
+        "merge_revision": null,
+        "commits": [
+          "b2e35a6"
+        ]
+      },
+      {
+        "id": "engine-library-target",
+        "summary": "Adds rapfi_engine, a static library target behind the BUILD_ENGINE_LIBRARY option, carrying the same sources as the executable without main(), without the piskvork/Yixin stdin protocol in command/gomocup.cpp, and without the command modules. The pbrain-rapfi executable is the file set it always was.",
+        "required_by": [
+          "https://github.com/chentianren0/MiniXiangqi/issues/164"
+        ],
+        "merge_revision": null,
+        "commits": [
+          "265b7d6"
+        ]
+      }
+    ],
+    "_merge_revision_about": "merge_revision is null in both entries because the fork pull request carrying them — chentianren0/rapfi#1 — is open and unmerged at the revision this manifest pins. The pin is the branch head, which is what the core compiles; the field is filled when the pull request merges and the revision is re-pinned to the merge.",
+    "patches_pending": [
+      {
+        "id": "recoverable-large-page-free",
+        "summary": "The second half of the process-exit hazard, which the applied recoverable-hash-allocation patch covers only the first half of. MemAlloc::alignedLargePageFree in Rapfi/core/platform.cpp calls std::exit(EXIT_FAILURE) when VirtualFree fails, inside #ifdef _WIN32, and the Hash path reaches it: HashTable::releaseTable, called from every resize and from the destructor, frees through it. docs/engine-integration.md's failure-containment rule names both halves for the first engine, and the fork change there covers both; this one does not yet.",
+        "deferred_because": "The branch is Windows-only and this engine is not built for Windows. Campaign #164 is Apple-only, MXQ_ENABLE_GOMOKU_FACADE is set by no Windows build, and core/third_party/rapfi/CMakeLists.txt compiles the snapshot for Apple targets alone — so the exit is unreachable in everything this repository produces. Landing a fork change for a branch nothing compiles would be recording work rather than doing it.",
+        "trigger": "Any Windows build of this engine lands it first. That is the whole condition: the moment MXQ_ENABLE_GOMOKU_FACADE is set on a Windows target, the branch is compiled and the exit is reachable, and the error contract forbids an exit crossing the core boundary.",
+        "_stdout_note": "The same #ifdef _WIN32 lines write with std::printf and fflush(stdout) — platform.cpp's own comment explains that the allocator layer deliberately depends on no output module. Those bypass the bridge's std::cout redirection entirely, since they are C stdio rather than an iostream. Unreachable here for the same reason the exit is, and recorded together with it so that a Windows build inherits both facts at once.",
+        "required_by": [
+          "docs/architecture.md",
+          "docs/engine-integration.md"
+        ]
+      }
+    ],
+    "static_library": {
+      "established": true,
+      "_note": "The fork's static-library target is rapfi_engine, behind the BUILD_ENGINE_LIBRARY option, and it landed at 265b7d6. The core does not consume the artifact: it compiles the copied source snapshot with a core-owned CMakeLists.txt, because the app needs arm64, arm64e and x86_64 from one build system and the fork's CMake produces one architecture per configure. core/third_party/rapfi/README.md records what would change if the core switched.",
+      "artifact_name": "librapfi_engine.a",
+      "build_command": "cmake -S Rapfi -B build -DCMAKE_BUILD_TYPE=Release -DUSE_NEON=ON -DBUILD_ENGINE_LIBRARY=ON && cmake --build build --target rapfi_engine"
+    },
+    "vendored": {
+      "_about": "How the pinned revision reaches the core: as a copied source snapshot compiled by a core-owned CMakeLists.txt, rather than as an artifact built by the fork. The copied-snapshot choice is justified against a submodule and a subtree once, for both engines, in core/third_party/fairy-stockfish/README.md; core/third_party/rapfi/README.md records the re-cut recipe and what is left out.",
+      "established": true,
+      "method": "copied-source-snapshot",
+      "path": "core/third_party/rapfi/upstream",
+      "source_paths": [
+        "AUTHORS",
+        "Copying.txt",
+        "Readme.md",
+        "Rapfi"
+      ],
+      "excluded_paths": [
+        "Rapfi/main.cpp",
+        "Rapfi/command/gomocup.cpp",
+        "Rapfi/command/database.cpp",
+        "Rapfi/command/dataprep.cpp",
+        "Rapfi/command/opengen.cpp",
+        "Rapfi/command/selfplay.cpp",
+        "Rapfi/command/tuning.cpp",
+        "Rapfi/tuning",
+        "Rapfi/CMakeLists.txt",
+        "Rapfi/CMakePresets.json",
+        "Rapfi/emscripten",
+        "Rapfi/eval/onnxevaluator.cpp",
+        "Rapfi/eval/onnxevaluator.h",
+        "Rapfi/external/cxxopts",
+        "Rapfi/external/flat.hpp",
+        "Rapfi/external/libnpy",
+        "Rapfi/external/thread-pool",
+        "Rapfi/external/zip",
+        "Rapfi/external/*/CMakeLists.txt"
+      ],
+      "_excluded_about": "The engine's own main(), the whole piskvork/Yixin stdin protocol, the command modules and their tuning sources, the fork's build system, the WebAssembly shell, the opt-in ONNX Runtime evaluator, and the five externals that are reached only from inside a COMMAND_MODULES guard. Gomocalc/, Trainer/, Networks/, .github/ and Logo.png are outside source_paths and so are not present either.",
+      "file_manifest": "core/third_party/rapfi/SOURCES.sha256",
+      "file_manifest_sha256": "3ffbb4d8210235ca0ebef504fcadbec60bb24e56560d1cdbed8097c267cb4ae2",
+      "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
+    },
+    "core_build": {
+      "_about": "What the core's own CMake build of this snapshot applies, per architecture profile. It is recorded here rather than in build_flags.platforms.*, and the distinction is the one that entry already makes: those fields describe a packaging build, and copying a core build's flags into them would make an unestablished value look established. Each is cited back to a line of the fork's CMakeLists.txt at the pinned revision in core/third_party/rapfi/CMakeLists.txt, which is where the reasoning also lives. 'established' is per profile: apple/build-core-xcframework.sh produces the two arm profiles and no x86_64 one, so only the two it produces are established.",
+      "established": true,
+      "shared_defines": [
+        "MULTI_THREADING"
+      ],
+      "_shared_defines_about": "COMMAND_MODULES is deliberately absent and its absence is load-bearing: the module sources are not in the snapshot, and core/compressor.cpp and command/argutils.{h,cpp} switch on the define to reach externals that are not in it either. MULTI_THREADING is required rather than a margin — without it the fork collapses startThinking() to a synchronous call, which the facade's asynchronous search and cooperative cancellation cannot be expressed over.",
+      "profiles": {
+        "arm64": {
+          "established": true,
+          "defines": [
+            "USE_NEON"
+          ],
+          "flags": [],
+          "_note": "NEON is baseline on arm64, so it needs no -march. It is selected explicitly rather than left to the fork's host probe, which is skipped under CMAKE_CROSSCOMPILING and can fail on Apple Clang, silently producing a scalar build. NEON dotprod is off: it is armv8.2-a, safe on A12 and newer, and whether that is every device this build runs on is the deployment target's answer rather than the architecture's — see the note under gomoku_fork.core_build.neon_dotprod."
+        },
+        "arm64e": {
+          "established": true,
+          "defines": [
+            "USE_NEON"
+          ],
+          "flags": [],
+          "_note": "Identical to arm64, and the absence of -march is what makes it correct: arm64e requires an armv8.3-a baseline, which the fork's own -march=armv8-a+simd would silently lower. The source investigation on issue #164 established that nothing pointer-authentication breaks is present in this engine — no hand-written assembly, no function-pointer punning, no pointer tagging, no JIT."
+        },
+        "x86_64": {
+          "established": false,
+          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 simulator — five slices and no x86_64 among them. The branch exists in core/third_party/rapfi/CMakeLists.txt for a host that configures the core natively on x86_64 and for the Windows build when the second engine reaches it, and what it would apply is written below rather than left to be guessed. It becomes established when a build produces it.",
+          "defines": [
+            "USE_SSE"
+          ],
+          "flags": [
+            "-msse",
+            "-msse2",
+            "-msse3",
+            "-mssse3",
+            "-msse4",
+            "-msse4.1"
+          ],
+          "_note": "SSE4.1 is the engine's own USE_SSE profile and the floor every x86_64 target meets. AVX2 is deliberately not selected: correctness on whatever host runs the build outranks a search rate on a slice that is not a supported device."
+        }
+      },
+      "neon_dotprod": {
+        "established": false,
+        "enabled": null,
+        "_note": "MXQ_RAPFI_NEON_DOTPROD is the switch, and it is off in every profile above. Turning it on is a deployment-floor decision rather than a build one: NEON dotprod is armv8.2-a and safe on A12 and newer, so it needs the Apple deployment target to guarantee A12-or-newer devices. The Xcode project's IPHONEOS_DEPLOYMENT_TARGET is 26.6, well past the release that dropped every pre-A12 device, so the floor does hold. What is missing is the other half: no build has produced a dotprod slice and no measurement says what it buys. The switch exists, it is off, and this field stays unanswered rather than being turned on by an argument alone."
+      }
     }
   },
   "build_flags": {
@@ -429,6 +568,123 @@
         "source_url": "https://raw.githubusercontent.com/fairy-stockfish/Fairy-Stockfish-NNUE/master/xiangqi-c07e94a5c7cb.nnue",
         "trained_by": "the Pikafish developers",
         "accepted_on": "2026-08-01"
+      },
+      "established": true
+    }
+  },
+  "gomoku_network": {
+    "_about": "The NNUE weights the second engine searches with, keyed by the rules identifier of the game they are for. It is a separate map from 'network' beside it because the two engines bind weights to a game in different ways, and one shape cannot say both: Fairy-Stockfish binds by filename prefix and takes one file per variant, while Rapfi binds by a rule mask and a board-size mask inside the file's own header and takes one file per SIDE. So an entry here holds a list of files with a role each, and the name of a file carries no meaning to the engine at all — which is why these are committed under our own naming convention, the upstream basename plus the first twelve characters of the SHA-256, rather than under the name they were published as. byte_length and sha256 are over content, and no consumer stages or hands the engine a path it has not verified against them first. Both frontends bundle every file in this map so either game can prepare its own engine profile.",
+    "_evaluator_about": "All of them are mix9svq weights, which is the only evaluator architecture dhbloo/rapfi-networks publishes at the pinned revision: the repository holds a mix9svq directory and a classical one, and no mix10 directory exists. The strongest available CC0-dedicated weights for these two games are therefore the mix9svq ones, and 'strongest available' is settled by what is published rather than by a comparison this project ran.",
+    "_header_about": "Each file's header was read before it was accepted, by decompressing the LZ4 frame and parsing the 20-byte StandardHeader the engine parses (Rapfi/eval/weightloader.h:116-125): magic 0xacd8cc6a, an architecture hash, a rule bitmask where 1 is freestyle, 2 is standard and 4 is renju, and a board-size bitmask whose bit i means size i+1. Those are recorded per file below because they are the whole of what the engine checks, and because the failure they guard against is silent: a weight set that does not cover the rule or the size throws UnsupportedRuleError or UnsupportedBoardSizeError, which the evaluator maker swallows (Rapfi/eval/evalconfig.cpp:85-88), leaving the engine playing on classical evaluation with nothing reported. The facade's preflight is what catches that at preparation; these recorded masks are what make the pin describe the reason.",
+    "gomoku-15": {
+      "_about": "Freestyle Gomoku on 15x15. One file serves both sides: mix9svq declares separateBlackAndWhiteWeights, but a weight configuration that names a single weight_file resolves it as both the black and the white path (Rapfi/eval/evalconfig.cpp:70-76), which is how this network is published and configured upstream.",
+      "rule": "freestyle",
+      "board_size": 15,
+      "evaluator": "mix9svq",
+      "files": [
+        {
+          "role": "black-and-white",
+          "filename": "mix9svqfreestyle_bsmix-6bc0d1b0ff8e.bin.lz4",
+          "path": "core/assets/mix9svqfreestyle_bsmix-6bc0d1b0ff8e.bin.lz4",
+          "upstream_filename": "mix9svq/mix9svqfreestyle_bsmix.bin.lz4",
+          "byte_length": 10030398,
+          "sha256": "6bc0d1b0ff8e1d857f7f412923cd458f38f1a435087c91ae71fec3676c23ef62",
+          "header": {
+            "magic": "0xacd8cc6a",
+            "arch_hash": "0x84e275f6",
+            "rule_mask": "0x00000001",
+            "rules": [
+              "freestyle"
+            ],
+            "boardsize_mask": "0x003ff000",
+            "board_sizes": [
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22
+            ],
+            "description": "model=mix9svq_basicns_64f32p64v32d65536c; Weight exported by pytorch-nnue-trainer (commit hash 4ff0971) at Sat May 24 11:41:23 2025."
+          }
+        }
+      ],
+      "license": "CC0-1.0",
+      "committed_to_version_control": true,
+      "provenance": {
+        "_about": "Redistributed rather than trained here. dhbloo/rapfi-networks is the weights repository of the Rapfi engine, and it dedicates every weight file in it to the public domain: its README states that all weight files are released freely under CC0, and the repository root carries the full CC0 1.0 Universal text as LICENSE. Both were read at the source before these bytes were accepted.",
+        "license_statement": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/README.md",
+        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/LICENSE",
+        "source_repository": "https://github.com/dhbloo/rapfi-networks",
+        "source_revision": "e32ad77a5364363b3e3a02b3f9e8610ade19ea98",
+        "trained_by": "the Rapfi developers",
+        "accepted_on": "2026-08-12"
+      },
+      "established": true
+    },
+    "renju": {
+      "_about": "Renju on 15x15. Two files, one per side, which is what mix9svq's separateBlackAndWhiteWeights means when a weight configuration names weight_file_black and weight_file_white: renju is not symmetric — the forbidden-move rules apply to Black alone — so the two sides are trained and stored apart.",
+      "rule": "renju",
+      "board_size": 15,
+      "evaluator": "mix9svq",
+      "files": [
+        {
+          "role": "black",
+          "filename": "mix9svqrenju_bs15_black-7ab8c974c30d.bin.lz4",
+          "path": "core/assets/mix9svqrenju_bs15_black-7ab8c974c30d.bin.lz4",
+          "upstream_filename": "mix9svq/mix9svqrenju_bs15_black.bin.lz4",
+          "byte_length": 9984172,
+          "sha256": "7ab8c974c30da07717ce6a504616a62ac8c981500503f0ced0fadefd3f46c5ec",
+          "header": {
+            "magic": "0xacd8cc6a",
+            "arch_hash": "0x84e275f6",
+            "rule_mask": "0x00000004",
+            "rules": [
+              "renju"
+            ],
+            "boardsize_mask": "0x00004000",
+            "board_sizes": [
+              15
+            ],
+            "description": "model=mix9svq_basicns_64f32p64v32d65536c; Weight exported by pytorch-nnue-trainer (commit hash 4ff0971) at Wed May 21 07:03:09 2025."
+          }
+        },
+        {
+          "role": "white",
+          "filename": "mix9svqrenju_bs15_white-a31f318518d3.bin.lz4",
+          "path": "core/assets/mix9svqrenju_bs15_white-a31f318518d3.bin.lz4",
+          "upstream_filename": "mix9svq/mix9svqrenju_bs15_white.bin.lz4",
+          "byte_length": 9844944,
+          "sha256": "a31f318518d3b5630489054d9eb013fd5353c553999640c2bcfd8d95e6fe4e4e",
+          "header": {
+            "magic": "0xacd8cc6a",
+            "arch_hash": "0x84e275f6",
+            "rule_mask": "0x00000004",
+            "rules": [
+              "renju"
+            ],
+            "boardsize_mask": "0x00004000",
+            "board_sizes": [
+              15
+            ],
+            "description": "model=mix9svq_basicns_64f32p64v32d65536c; Weight exported by pytorch-nnue-trainer (commit hash 4ff0971) at Wed May 21 07:03:40 2025."
+          }
+        }
+      ],
+      "license": "CC0-1.0",
+      "committed_to_version_control": true,
+      "provenance": {
+        "_about": "Redistributed rather than trained here, from the same repository and under the same dedication as the freestyle weights above: dhbloo/rapfi-networks releases every weight file in it under CC0, stated in its README and carried in full as the repository's LICENSE. Both were read at the source before these bytes were accepted.",
+        "license_statement": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/README.md",
+        "license_text": "https://github.com/dhbloo/rapfi-networks/blob/e32ad77a5364363b3e3a02b3f9e8610ade19ea98/LICENSE",
+        "source_repository": "https://github.com/dhbloo/rapfi-networks",
+        "source_revision": "e32ad77a5364363b3e3a02b3f9e8610ade19ea98",
+        "trained_by": "the Rapfi developers",
+        "accepted_on": "2026-08-12"
       },
       "established": true
     }

@@ -275,3 +275,55 @@ add_test(NAME engine_search COMMAND mxq_search_tests)
 set_tests_properties(engine_search PROPERTIES
   LABELS "engine;search"
 )
+
+# The second engine's bridge runner: preparation with its three preflights,
+# search under each of the two games, cancellation, the rules switch, and
+# teardown.
+#
+# It drives the bridge directly rather than a public C entry point, because at
+# this stage there is no public entry point to drive: the game vocabulary the C
+# surface speaks names two games and neither is played on this engine. The
+# precedent is the runner above, which reaches past the C surface for the same
+# reason on the variant axis. It links the vendored engine directly for the same
+# reason too — "the effective evaluator is the network", "the table was released
+# whole" and "the thread count is the plan's" are claims about the engine's own
+# globals.
+#
+# One staged asset directory, verified against pinned-inputs.json at configure
+# time. With the engine in the build and no verified weights staged, the runner
+# FAILS with the staging problem rather than skipping; without the engine it
+# reports NOT IMPLEMENTED.
+
+add_executable(mxq_rapfi_tests
+  mxq_rapfi_tests.cpp
+)
+target_link_libraries(mxq_rapfi_tests PRIVATE mxq::core mxq_warnings)
+target_include_directories(mxq_rapfi_tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+if(MXQ_ENABLE_GOMOKU_FACADE)
+  target_link_libraries(mxq_rapfi_tests PRIVATE mxq::rapfi)
+endif()
+
+# The same two characters sanitised for the same two reasons as above: a
+# semicolon is a CMake list separator wherever it appears, and a backslash is a
+# C escape, so a native Windows path in the staging message would silently
+# become whatever it happened to spell.
+string(REPLACE ";" "," MXQ_TEST_GOMOKU_NNUE_PROBLEM_TEXT "${MXQ_TEST_GOMOKU_NNUE_PROBLEM}")
+string(REPLACE "\\" "/" MXQ_TEST_GOMOKU_NNUE_PROBLEM_TEXT "${MXQ_TEST_GOMOKU_NNUE_PROBLEM_TEXT}")
+
+target_compile_definitions(mxq_rapfi_tests PRIVATE
+  MXQ_TEST_GOMOKU_FACADE=$<IF:$<BOOL:${MXQ_ENABLE_GOMOKU_FACADE}>,1,0>
+  MXQ_TEST_GOMOKU_ASSETS_DIR="${MXQ_TEST_GOMOKU_ASSETS_DIR}"
+  MXQ_TEST_GOMOKU_NNUE_FILENAME="${MXQ_BUILD_GOMOKU_NNUE_FILENAME}"
+  MXQ_TEST_GOMOKU_NNUE_BYTE_LENGTH=${MXQ_BUILD_GOMOKU_NNUE_BYTE_LENGTH}
+  MXQ_TEST_RENJU_BLACK_NNUE_FILENAME="${MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME}"
+  MXQ_TEST_RENJU_WHITE_NNUE_FILENAME="${MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME}"
+  MXQ_TEST_GOMOKU_NNUE_STAGED=${MXQ_TEST_GOMOKU_NNUE_STAGED}
+  MXQ_TEST_GOMOKU_NNUE_PROBLEM="${MXQ_TEST_GOMOKU_NNUE_PROBLEM_TEXT}"
+)
+
+add_test(NAME gomoku_engine COMMAND mxq_rapfi_tests)
+set_tests_properties(gomoku_engine PROPERTIES
+  LABELS "engine;gomoku"
+)
