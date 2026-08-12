@@ -1,6 +1,6 @@
 # Rules
 
-This document is the one contract for legal play and user-visible results in the two games this product plays: **Mini Xiangqi** on a 7-by-7 board and **Xiangqi** on a 9-by-10 board. It owns the adopted interpretation of the rules and the identifiers that connect prose to the executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, or UI presentation.
+This document is the one contract for legal play and user-visible results in the product's two xiangqi games: **Mini Xiangqi** on a 7-by-7 board and **Xiangqi** on a 9-by-10 board. It owns the adopted interpretation of their rules and the identifiers that connect prose to the executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, UI presentation, or the placement games, whose rules authority is their pinned engine per [placement-engine-integration.md](placement-engine-integration.md).
 
 > **Status: binding, with one gap a reader must know about.** Everything stated here is accepted. The exact prose definitions of protection, interruption, discovered and pinned attacks, and of what makes two violations the same class are not settled; the approved fixtures pin those cases by instance rather than by definition, and the fixtures are the authority until the prose exists.
 
@@ -8,7 +8,7 @@ The two games share almost everything: one notation, one position record, one ad
 
 ## The game axis
 
-Every position, move, archive and session belongs to exactly one game. Nothing infers which: the two boards differ in size today, so a position happens to imply one, but the ruleset is not a property of the board and a core reading it off the position would be guessing the moment two games shared a geometry. The identifier is `rules_id`, with exactly two values:
+Every position, move, archive and session belongs to exactly one game. Nothing infers which: the two boards differ in size today, so a position happens to imply one, but the ruleset is not a property of the board and a core reading it off the position would be guessing the moment two games shared a geometry. The identifier is `rules_id`, and two of its values are this document's:
 
 | `rules_id` | board | palace | river | pieces per side |
 |---|---|---|---|---|
@@ -108,7 +108,7 @@ The target engine behavior follows the selected public rules sources and uses Fa
 
 ## Rules interpretation version
 
-The accepted rules interpretation carries an integer version, `rules_version`, owned by this document. It is `1` for both games. It increments only when an accepted interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` and this version, per [game-data.md](game-data.md).
+The accepted rules interpretation carries an integer version, `rules_version`, and this document owns what it means for the two games above. It is `1`, as it is for every game the app carries. It increments only when an accepted interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` and this version, per [game-data.md](game-data.md).
 
 ## Runtime rules authority
 
