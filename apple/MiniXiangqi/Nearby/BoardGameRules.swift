@@ -70,15 +70,20 @@ nonisolated protocol BoardGameRules: Sendable {
     func verdict(for text: String, after plies: [String], of rulesID: String) -> PlyVerdict
 }
 
-/// The two games this peer plays, under the `rules_id` the protocol names them
+/// Every game, under the `rules_id` the protocol and the archive both name it
 /// by. One table, in both directions: the oracle reads it to answer what an
 /// arriving `rules_id` means, and the surfaces read it to say which game a
-/// proposal is for. A `rules_id` outside it is a game this peer does not know.
+/// proposal is for. A `rules_id` outside it is not a game at all.
+///
+/// Knowing a name is not the same as playing the game: which of these this peer
+/// carries over the wire is `version(of:)`'s answer below.
 nonisolated extension GameKind {
     var rulesID: String {
         switch self {
         case .miniXiangqi: "minixiangqi"
         case .xiangqi: "xiangqi"
+        case .gomoku15: "gomoku-15"
+        case .renju: "renju"
         }
     }
 
@@ -112,7 +117,14 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     static let interpretationVersion = "1"
 
     func version(of rulesID: String) -> String? {
-        GameKind(rulesID: rulesID) == nil ? nil : Self.interpretationVersion
+        // The placement games' nearby modules — the rules rows, the first-mover
+        // pivot, the record path — are their own stage, and until they exist
+        // this peer does not implement those games. That is exactly what nil
+        // says here, and the wire already has the word for it: a proposal naming
+        // one is refused as an unknown game rather than accepted into a session
+        // half of which is missing.
+        guard let game = GameKind(rulesID: rulesID), !game.isPlacement else { return nil }
+        return Self.interpretationVersion
     }
 
     func standing(after plies: [String], of rulesID: String) -> RulesStanding {

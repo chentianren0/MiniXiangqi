@@ -265,7 +265,8 @@ struct PlayScreen: View {
             guard let destination, let origin = game.selected,
                   let piece = game.placement[origin] else { return }
             AccessibilityNotification
-                .Announcement(BoardView.hintAnnouncement(piece: piece, from: origin,
+                .Announcement(BoardView.hintAnnouncement(game: game.kind, piece: piece,
+                                                         from: origin,
                                                          to: destination))
                 .post()
         }
@@ -458,6 +459,7 @@ struct PlayScreen: View {
                       selected: game.selected,
                       destinations: game.destinations,
                       captures: game.captures,
+                      forbidden: game.forbiddenPoints,
                       suggested: motion.suggested,
                       lastMove: game.lastMove,
                       checkedGeneral: game.checkedGeneral,
@@ -478,7 +480,8 @@ struct PlayScreen: View {
             // and the move has to finish being shown before an announcement
             // stands in front of it.
             if game.isFinished, !play.resultDismissed, !motion.isCommitting {
-                ResultNotice(state: game.presentedState,
+                ResultNotice(game: game.kind,
+                             state: game.presentedState,
                              reason: game.presentedReason,
                              // A filed game is a History record, and the notice
                              // reads as one: the claimed draw, whose claim was
@@ -630,6 +633,7 @@ struct PlayScreen: View {
     private func turnStatus(_ game: Game, _ motion: PlayMotion,
                             placement: TurnStatus.Placement) -> some View {
         TurnStatus(placement: placement,
+                   game: game.kind,
                    state: game.presentedState,
                    reason: game.presentedReason,
                    sideToMove: game.evaluation.sideToMove,
@@ -674,6 +678,16 @@ struct PlayScreen: View {
     /// resign, having no opponent to resign to. 提示 leads because it is the one
     /// control about the next move rather than about the game around it.
     ///
+    /// **The placement games carry smaller sets of the same grammar**: 悔棋 in
+    /// local play and 认输 against the machine, and that is all. Absence is what
+    /// says a capability is not there at all, and three of these are not: there
+    /// is no repetition to 判和 on, so a full board with no five draws itself
+    /// through the ordinary result notice; a stone has no orientation a player
+    /// could read, so 翻转棋盘 would turn a board nobody is reading the wrong way
+    /// up; and 提示's own presentation on these boards is the pending stone,
+    /// which is the next stage's — the one condition below is what that stage
+    /// removes.
+    ///
     /// **The cluster is a scene's fixed set, and inside a scene nothing comes or
     /// goes.** A control whose act is momentarily impossible is disabled where
     /// it stands: 提示 greys through the machine's turn, 判和 until a claim
@@ -704,7 +718,7 @@ struct PlayScreen: View {
                           worded: Bool, carriesFlip: Bool) -> some View {
         let finished = showsFinishedScene(game, motion)
         return HStack(spacing: 8) {
-            if !finished {
+            if !finished, !game.kind.isPlacement {
                 hintControl(motion, worded: worded)
                     .transition(.opacity)
             }
@@ -729,7 +743,7 @@ struct PlayScreen: View {
                 // two competing for the eye.
                 concludingAction(prominent: play.resultDismissed)
                     .transition(.opacity)
-            } else {
+            } else if !game.kind.isPlacement {
                 Button {
                     claimPresented = true
                 } label: {
@@ -758,7 +772,9 @@ struct PlayScreen: View {
                 .transition(.opacity)
             }
 
-            if carriesFlip { flipControl(motion, worded: worded) }
+            if carriesFlip, !game.kind.isPlacement {
+                flipControl(motion, worded: worded)
+            }
         }
     }
 
@@ -930,7 +946,9 @@ struct PlayScreen: View {
                                  worded: Bool) -> some View {
         VStack(alignment: .leading, spacing: BoardLayout.clusterAir) {
             controls(game, motion, worded: worded, carriesFlip: false)
-            flipControl(motion, worded: true)
+            // A cluster with no 翻转棋盘 has nothing to wrap: this arrangement is
+            // the one above, and the row beneath it is the control that left.
+            if !game.kind.isPlacement { flipControl(motion, worded: true) }
         }
     }
 

@@ -125,7 +125,9 @@ struct GameSessionTests {
     @Test("An unknown core game value has no Swift fallback")
     func unknownGameKindIsRejected() {
         var raw = GameConfiguration.freePlay(game: .miniXiangqi).raw
-        raw.game = MxqGameKind(2)
+        // Past the four the core carries, so it is a value no build of this app
+        // has heard of — which is the state this test is about.
+        raw.game = MxqGameKind(4)
 
         #expect(GameConfiguration(raw) == nil,
                 "an expanded core vocabulary must not silently become Mini Xiangqi")

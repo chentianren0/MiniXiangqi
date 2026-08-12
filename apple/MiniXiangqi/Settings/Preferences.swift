@@ -13,6 +13,7 @@
 // | `sound.enabled` | Bool | on |
 // | `haptics.enabled` | Bool | on |
 // | `deleteConfirmation.enabled` | Bool | on |
+// | `placementConfirmation.enabled` | Bool | off |
 // | `pieces.symbols` | `hanzi` \| `icons` | `hanzi` |
 // | `notation.style` | `traditional` \| `wxf` | the interface language's own |
 // | `defaults.firstMover` | `human-first` \| `ai-first` \| `random` | `human-first` |
@@ -56,6 +57,18 @@ enum Preferences {
     /// switch says out loud.
     static let deleteConfirmation = Flag(key: "deleteConfirmation.enabled",
                                          whenAbsent: true)
+
+    /// Whether placing a stone asks first. **Off by default**, which is the
+    /// accepted decision: a tap places the stone, and the pending stone is the
+    /// flow a player turns on. On means a tap marks the point instead — see
+    /// `Game.placementEffect(ofTapAt:…)`, which owns the grammar — and the mark
+    /// is committed by tapping it again.
+    ///
+    /// It is the delete confirmation's shape and not its default, because the
+    /// two protect different things: a deletion cannot be undone, and a stone
+    /// placed by mistake is one Undo away wherever it is placed.
+    static let placementConfirmation = Flag(key: "placementConfirmation.enabled",
+                                            whenAbsent: false)
 
     /// What the discs carry — the accepted symbol sets of
     /// docs/interaction-design.md § Piece symbols: `hanzi`, the default, or

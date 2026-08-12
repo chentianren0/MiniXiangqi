@@ -14,10 +14,11 @@
 // and footed, because its two values need saying what they are for: they
 // initialize the next game's setup and never reach the game already on the
 // board. The two feedback switches are their own group with no header, of equal
-// standing and neither nested under the other. 删除前确认 is a group of its own so
-// that its footer is unmistakably about it: turning it off makes a deletion
-// immediate, and a deletion cannot be undone. Those two are the only footers on
-// the screen — a footer under every group is a screen nobody reads.
+// standing and neither nested under the other. 落子前确认 and 删除前确认 are each a
+// group of their own so that each footer is unmistakably about the switch above
+// it: one changes how a stone is placed, the other makes a deletion immediate,
+// and a deletion cannot be undone. Those are the only footers on the screen — a
+// footer under every group is a screen nobody reads.
 // 关于 is last and is not a preference at all: it is the way to what the
 // application is and what it is licensed under, which is a page rather than a
 // control, so it takes a group of its own at the foot where nothing above it
@@ -48,6 +49,7 @@ struct SettingsScreen: View {
     @State private var sound = Preferences.sound.value()
     @State private var haptics = Preferences.haptics.value()
     @State private var confirmsDeletion = Preferences.deleteConfirmation.value()
+    @State private var confirmsPlacement = Preferences.placementConfirmation.value()
     @State private var symbols = Preferences.pieceSymbols.value()
     @State private var notation = Preferences.notationStyle.value()
     @State private var firstMover = Preferences.defaultFirstMover.value()
@@ -59,6 +61,7 @@ struct SettingsScreen: View {
                 board
                 humanVersusAIDefaults
                 feedback
+                placement
                 deletion
                 about
             }
@@ -74,6 +77,9 @@ struct SettingsScreen: View {
         .onChange(of: haptics) { Preferences.haptics.set(haptics) }
         .onChange(of: confirmsDeletion) {
             Preferences.deleteConfirmation.set(confirmsDeletion)
+        }
+        .onChange(of: confirmsPlacement) {
+            Preferences.placementConfirmation.set(confirmsPlacement)
         }
         .onChange(of: symbols) { Preferences.pieceSymbols.set(symbols) }
         .onChange(of: notation) { Preferences.notationStyle.set(notation) }
@@ -149,6 +155,23 @@ struct SettingsScreen: View {
                 Toggle("settings.haptics.label", isOn: $haptics)
                     .accessibilityIdentifier("settings-haptics")
             }
+        }
+    }
+
+    /// 落子前确认: the optional pending stone of the placement games.
+    ///
+    /// A group of its own with a footer, the shape 删除前确认 already set for an
+    /// optional confirmation — and the footer says what the flow *is* rather
+    /// than warning about it, because nothing here is irreversible: what the
+    /// switch buys is a second look before a stone goes down, and Undo is the
+    /// recovery whichever way it stands.
+    private var placement: some View {
+        Section {
+            Toggle("settings.confirmPlacement.label", isOn: $confirmsPlacement)
+                .accessibilityIdentifier("settings-confirm-placement")
+        } footer: {
+            Text("settings.confirmPlacement.footer")
+                .accessibilityIdentifier("settings-confirm-placement-footer")
         }
     }
 

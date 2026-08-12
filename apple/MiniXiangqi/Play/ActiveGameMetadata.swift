@@ -34,6 +34,74 @@ extension GameKind {
         switch self {
         case .miniXiangqi: String(localized: "game.miniXiangqi")
         case .xiangqi: String(localized: "game.xiangqi")
+        case .gomoku15: String(localized: "game.gomoku")
+        case .renju: String(localized: "game.renju")
+        }
+    }
+
+    // MARK: - What a game calls its two sides
+    //
+    // `Side` is the core's own axis and means "the side that moves first" and
+    // "the other" in every game: MXQ_COLOR_RED is the first mover, and in the
+    // placement games the first mover is the *black* stone. So everything below
+    // is a naming and never a re-derivation — the same `Side` reads 红 on a
+    // xiangqi board and 黑 on a gomoku one, and nothing above the interface
+    // decides which side moves first.
+    //
+    // One home, because six surfaces ask it: the turn status, the two metadata
+    // lines, the result notice, the setup page and the board's accessibility
+    // labels. A second copy would be a second place for a game to be told its
+    // sides are something they are not.
+
+    /// The bare word for a side — the accessibility labels' vocabulary, and the
+    /// one every register below is built on.
+    func sideName(_ side: Side) -> String {
+        switch (isPlacement, side) {
+        case (false, .red): String(localized: "board.a11y.red")
+        case (false, .black): String(localized: "board.a11y.black")
+        case (true, .red): String(localized: "board.a11y.black")
+        case (true, .black): String(localized: "board.a11y.white")
+        }
+    }
+
+    /// Whose turn it is, in the turn status's own register.
+    func sideToMoveText(_ side: Side) -> String {
+        switch (isPlacement, side) {
+        case (false, .red): String(localized: "status.redToMove")
+        case (false, .black): String(localized: "status.blackToMove")
+        case (true, .red): String(localized: "status.blackToMove")
+        case (true, .black): String(localized: "status.whiteToMove")
+        }
+    }
+
+    /// Who won, in the turn status's shorter register — 红方胜.
+    func winsText(_ side: Side) -> String {
+        switch (isPlacement, side) {
+        case (false, .red): String(localized: "status.redWins")
+        case (false, .black): String(localized: "status.blackWins")
+        case (true, .red): String(localized: "status.blackWins")
+        case (true, .black): String(localized: "status.whiteWins")
+        }
+    }
+
+    /// Who won, in the longer register the metadata lines and the result notice
+    /// use — 红方获胜.
+    func resultText(_ side: Side) -> String {
+        switch (isPlacement, side) {
+        case (false, .red): String(localized: "result.redWins")
+        case (false, .black): String(localized: "result.blackWins")
+        case (true, .red): String(localized: "result.blackWins")
+        case (true, .black): String(localized: "result.whiteWins")
+        }
+    }
+
+    /// Which side the player has, on a metadata line.
+    func youAreText(_ side: Side) -> String {
+        switch (isPlacement, side) {
+        case (false, .red): String(localized: "metadata.youRed")
+        case (false, .black): String(localized: "metadata.youBlack")
+        case (true, .red): String(localized: "metadata.youBlack")
+        case (true, .black): String(localized: "metadata.youWhite")
         }
     }
 }
@@ -44,9 +112,7 @@ extension ActiveGameSummary {
     var metadataLine: String {
         var parts = [game.localizedName, modeText]
         if mode == .humanVersusAI, let humanSide {
-            parts.append(humanSide == .red
-                         ? String(localized: "metadata.youRed")
-                         : String(localized: "metadata.youBlack"))
+            parts.append(game.youAreText(humanSide))
         }
         parts += stateParts
         parts.append(moveCountText)
@@ -94,9 +160,9 @@ extension ActiveGameSummary {
             [String(localized: "metadata.inProgress"),
              String(localized: "status.drawAvailable")]
         case .redWins:
-            [String(localized: "result.redWins")] + reasonParts
+            [game.resultText(.red)] + reasonParts
         case .blackWins:
-            [String(localized: "result.blackWins")] + reasonParts
+            [game.resultText(.black)] + reasonParts
         case .draw:
             [String(localized: "result.draw")] + reasonParts
         }
@@ -108,11 +174,7 @@ extension ActiveGameSummary {
         reason == .none ? [] : [reason.text]
     }
 
-    private var sideToMoveText: String {
-        sideToMove == .red
-            ? String(localized: "status.redToMove")
-            : String(localized: "status.blackToMove")
-    }
+    private var sideToMoveText: String { game.sideToMoveText(sideToMove) }
 
     /// Plies, which is what 步 counts, and the core's own count of them.
     var moveCountText: String {

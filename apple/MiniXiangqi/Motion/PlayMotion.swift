@@ -182,10 +182,16 @@ final class PlayMotion {
     /// turn it is or what may be held.
     func showHint(_ move: Move) {
         guard !isCommitting, !isFlipping else { return }
-        guard game.selected == move.from
-                || game.effect(ofTapAt: move.from) == .select(move.from) else { return }
+        // The suggestion is shown by taking up the piece that would make it,
+        // which is the one hint mechanic that assumes a mover. A placement game
+        // has none, and its own presentation — the pending stone standing at the
+        // suggested point — is not offered yet: the hint control is absent on
+        // those boards for exactly as long as this guard stands.
+        guard let origin = move.from else { return }
+        guard game.selected == origin
+                || game.effect(ofTapAt: origin) == .select(origin) else { return }
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
-            game.selected = move.from
+            game.selected = origin
             markerEmphasis = 0
         } completion: { }
         suggested = move.to
@@ -217,6 +223,7 @@ final class PlayMotion {
     /// bounded by 240.
     func undo() {
         guard canUndo else { return }
+        guard !game.kind.isPlacement else { return undoPlacements() }
         let plies = max(game.evaluation.undoPlies, 1)
         var played: [Move] = []
         for text in game.moves.suffix(plies) {
@@ -226,8 +233,11 @@ final class PlayMotion {
             }
             played.append(move)
         }
+        // Every ply of a movement game has an origin to carry its piece back
+        // to; the games whose plies do not are answered above, before this.
         guard played.count == plies, let last = played.last,
-              let mover = game.placement[last.to] else { return }
+              let lastOrigin = last.from, let mover = game.placement[last.to]
+        else { return }
 
         // The cycle's first ply, and the piece that made it. Both are read off
         // the position *between* the two moves, which is the core's answer
@@ -257,13 +267,13 @@ final class PlayMotion {
                 ? (first?.to == last.to ? nil : between?[last.to])
                 : game.placement[last.to]
             return Transit(kind: .undo,
-                           move: Move(from: last.to, to: last.from),
+                           move: Move(from: last.to, to: lastOrigin),
                            piece: mover,
                            fading: restored.map { ($0, last.to) })
         }
-        if let first, let firstMover {
+        if let first, let firstOrigin = first.from, let firstMover {
             transits.pair(with: Transit(kind: .undo,
-                                        move: Move(from: first.to, to: first.from),
+                                        move: Move(from: first.to, to: firstOrigin),
                                         piece: firstMover,
                                         fading: game.placement[first.to].map { ($0, first.to) }))
         }
@@ -273,11 +283,36 @@ final class PlayMotion {
         transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
+    /// Takes back the stones of one decision, however many that is.
+    ///
+    /// **Nothing travels, because nothing travelled to arrive.** A stone came
+    /// from off the board and goes back there, so there is no disc to carry home
+    /// and no committing transition to hold a gate for: the position changes
+    /// over the ordinary state fade and the board is immediately the board
+    /// again. What is kept is everything the act means — the commit is announced
+    /// so a hint goes down and the opponent hears it, the landing is felt and
+    /// heard, and a refusal leaves the game exactly where it stood.
+    private func undoPlacements() {
+        markerEmphasis = 0
+        clearHint()
+        animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
+            game.undo()
+        } completion: { }
+        guard game.failure == nil else { return }
+        committed?()
+        announcePlacement()
+        landed?()
+    }
+
     /// The opponent's reply, drawn in the same move language a person's move
     /// is drawn in and leaving the same last-move brackets behind. The floor
     /// that decides *when* it departs is the opponent's, not this file's: by
     /// the time this is called the move is due.
     func playOpponent(_ move: Move) {
+        guard move.from != nil else {
+            place(move) { [self] in game.playOpponent(move) }
+            return
+        }
         commit(move) { [self] in game.playOpponent(move) }
     }
 
@@ -370,7 +405,42 @@ final class PlayMotion {
     }
 
     private func commit(_ move: Move) {
+        guard move.from != nil else {
+            place(move) { [self] in game.tap(move.to) }
+            return
+        }
         commit(move) { [self] in game.tap(move.to) }
+    }
+
+    /// One stone going down, whoever puts it there.
+    ///
+    /// The counterpart of `commit(_:apply:)` for a game that places rather than
+    /// moves, and deliberately not the same machine: `TransitMotion` exists to
+    /// carry a body across the board and to hold a gate open until it lands, and
+    /// a stone does neither. It appears on the point it was committed to, with
+    /// the position — which is what a placed stone does — and the landing is the
+    /// commit, so the feedback fires there. There is no window to discard input
+    /// in because there is no window: the next tap acts on the position the
+    /// stone is already part of.
+    private func place(_ move: Move, apply: () -> Void) {
+        markerEmphasis = 0
+        clearHint()
+        animator.run(policy.fade(Motion.stateFadeAnimation), body: apply) { }
+        guard game.lastMove == move, game.failure == nil,
+              game.opponentFailure == nil else { return }
+        committed?()
+        announcePlacement()
+        landed?()
+    }
+
+    /// A stone landing: felt with the same pattern every landing is felt with,
+    /// and heard as the stone's own click — or as the conclusion, where the
+    /// stone that landed ended the game, which is the standing rule for every
+    /// landing on every board.
+    private func announcePlacement() {
+        feedback.perform(.landing)
+        feedback.play(.ofTheLanding(nil, stone: true,
+                                    finished: game.isFinished, inCheck: false))
     }
 
     /// One move travelling to its point, whoever is making it. What differs
@@ -378,7 +448,7 @@ final class PlayMotion {
     /// everything drawn is the same, which is what the accepted motion language
     /// asks for.
     private func commit(_ move: Move, apply: () -> Void) {
-        guard let piece = game.placement[move.from] else { return }
+        guard let origin = move.from, let piece = game.placement[origin] else { return }
         let captured = game.placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.kind.board)
         begin(.move)

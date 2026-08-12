@@ -22,7 +22,15 @@ struct BoardGeometry {
 
     /// The accepted shared approximate width range. Each game's pitch remains
     /// a whole point so every derived dimension stays on stable pixel bounds:
-    /// Mini Xiangqi is 44...102 and Xiangqi is 34...79.
+    /// Mini Xiangqi is 44...102, Xiangqi is 34...79, and the two placement
+    /// boards are 20...47.
+    ///
+    /// **The placement games take the smaller floor the same formula gives
+    /// them**, rather than a floor of their own: the width band is the shared
+    /// footprint, and fifteen files divide it into twenty. A stone carries no
+    /// symbol, so what the smaller cell costs is tap-target size and not
+    /// legibility — which is the trade the accepted decision names, and which is
+    /// ratified against a rendered board rather than argued here.
     static let minimumCoreWidth: CGFloat = 308
     static let maximumCoreWidth: CGFloat = 714
 
@@ -63,15 +71,35 @@ struct BoardGeometry {
     var discDiameter: CGFloat { 0.80 * pitch }
     var symbolSize: CGFloat { 0.50 * pitch }
 
+    /// A stone is wider than a disc for its cell, as a real set's is: stones sit
+    /// nearly edge to edge on a Go board, and the space a disc leaves round
+    /// itself is where a character needs air. Still inside its own cell, so
+    /// neighbouring stones never overlap.
+    var stoneDiameter: CGFloat { 0.88 * pitch }
+
+    /// A printed star point: a small filled dot in the grid's own ink, part of
+    /// the board rather than a marker on it.
+    var starPointRadius: CGFloat { 0.055 * pitch }
+
     /// A style's own rings and edge strokes live at or inside `0.40 p`.
     var styleDecorationLimit: CGFloat { 0.40 * pitch }
 
-    /// The centre-line radius of a disc's edge stroke. The stroke is drawn
-    /// inside the disc's own edge rather than centred on it, which is what
-    /// keeps a heavy edge — 传统's Black disc carries one — from reaching past
-    /// the style-decoration limit and into the band markers occupy.
+    /// The centre-line radius of any round body's edge stroke: the stroke is
+    /// drawn inside the body's own edge rather than centred on it, so a heavy
+    /// edge grows inward instead of past the body it draws.
+    ///
+    /// Written of a body rather than of the disc because there are two of them
+    /// now, and one home is what keeps a stone's edge from being placed by a
+    /// second, subtly different arithmetic.
+    func edgeRadius(body: CGFloat, stroke: CGFloat) -> CGFloat {
+        body / 2 - stroke / 2
+    }
+
+    /// The same, for the disc — whose heavy edge, 传统's Black one, is what the
+    /// rule was written for: inside the style-decoration limit, and clear of
+    /// the band markers occupy.
     func discEdgeRadius(stroke: CGFloat) -> CGFloat {
-        discDiameter / 2 - stroke / 2
+        edgeRadius(body: discDiameter, stroke: stroke)
     }
 
     /// How far a style's decoration actually reaches from the point's centre.
@@ -123,6 +151,12 @@ struct BoardGeometry {
 
     var hoverSide: CGFloat { 0.90 * pitch }
     var hoverCornerRadius: CGFloat { 0.12 * pitch }
+
+    /// The cross on a point the side to move may not play. Half its diagonal,
+    /// so the arms reach `0.22 p √2 ≈ 0.31 p` from the centre and the whole mark
+    /// stays well inside its cell.
+    var forbiddenArm: CGFloat { 0.22 * pitch }
+    var forbiddenStroke: CGFloat { 0.045 * pitch }
 
     // MARK: - The hint halo
 
@@ -201,7 +235,24 @@ struct BoardGeometry {
                 outer: checkRingOuterRadius - grown)
     }
 
-    // MARK: - File numerals
+    // MARK: - The edge coordinates
+
+    /// How a board labels its edges, which follows from how it is played.
+    ///
+    /// The xiangqi boards carry a **file numeral strip above and below**, each
+    /// showing the numbers of the player it faces, in the script the 记谱法
+    /// preference selects. The placement games carry **Go-style coordinates**
+    /// instead: letters along the bottom and numbers up the side, the one
+    /// convention those games have, which the Notation preference does not
+    /// reach.
+    enum Coordinates { case fileNumerals, goStyle }
+
+    var coordinates: Coordinates {
+        switch board.play {
+        case .movement: .fileNumerals
+        case .placement: .goStyle
+        }
+    }
 
     /// `0.32 p`, rounded to the nearest point and clamped to between 13 and 20.
     var numeralSize: CGFloat { min(max((0.32 * pitch).rounded(), 13), 20) }
@@ -209,10 +260,27 @@ struct BoardGeometry {
     /// outer line and the tallest numeral.
     var stripHeight: CGFloat { (0.08 * pitch + 0.887 * numeralSize).rounded() }
 
-    /// The board core together with the two file-numeral strips — the rectangle
-    /// no glass surface may intersect.
+    /// The width of a strip that runs *up* a side rather than across an edge.
+    /// The same clear space, and room for the widest label a side carries: two
+    /// digits, at `1.25 s` for the pair.
+    var stripWidth: CGFloat { (0.08 * pitch + 1.25 * numeralSize).rounded() }
+
+    /// The board core together with its coordinate strips — the rectangle no
+    /// glass surface may intersect.
+    ///
+    /// The two conventions spend the room differently: file numerals take a
+    /// strip off the height at each end, and Go-style coordinates take one off
+    /// the height and one off the width. Everything that fits a board asks this
+    /// rather than the core, so neither has to know which convention it is
+    /// fitting.
     var blockSize: CGSize {
-        CGSize(width: coreSize.width, height: coreSize.height + 2 * stripHeight)
+        switch coordinates {
+        case .fileNumerals:
+            CGSize(width: coreSize.width, height: coreSize.height + 2 * stripHeight)
+        case .goStyle:
+            CGSize(width: coreSize.width + stripWidth,
+                   height: coreSize.height + stripHeight)
+        }
     }
 
     // MARK: - Placing points
@@ -274,6 +342,13 @@ struct BoardGeometry {
     /// preview passes a lower one: the floor exists to protect interaction, and
     /// a preview has none to protect, so it yields space to the setup controls
     /// whenever they need it.
+    ///
+    /// Both of the block's dimensions are asked about, because a block is not
+    /// always as wide as its core: a Go-style board carries a strip up its side,
+    /// and the pitch the width alone suggests can be one too large for it. A
+    /// board whose coordinates cost only height is unaffected — its block is
+    /// exactly its core wide, so the first candidate already fits the width by
+    /// construction.
     static func fitting(_ size: CGSize, board: BoardDefinition,
                         floor: CGFloat? = nil) -> BoardGeometry? {
         let floor = floor ?? minimumPitch(for: board)
@@ -281,7 +356,8 @@ struct BoardGeometry {
                         maximumPitch(for: board))
         while pitch >= floor {
             let candidate = BoardGeometry(board: board, pitch: pitch)
-            if candidate.blockSize.height <= size.height { return candidate }
+            if candidate.blockSize.height <= size.height,
+               candidate.blockSize.width <= size.width { return candidate }
             pitch -= 1
         }
         return nil

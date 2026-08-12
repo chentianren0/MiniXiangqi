@@ -230,9 +230,13 @@ final class Replay {
         let forward = target > ply
         guard abs(target - ply) == 1, !transits.isRunning,
               let played = Move(text: moves[min(ply, target)], on: record.game.board),
+              // A placement has no origin and nothing travels: the stone is on
+              // the point or it is not, so a step through one walks rather than
+              // draws, which is the same answer a jump gets.
+              let origin = played.from,
               // The mover, read from the position it is leaving: forward it
               // stands at the move's origin, backward at its destination.
-              let mover = placement[forward ? played.from : played.to]
+              let mover = placement[forward ? origin : played.to]
         else {
             transits.cut()
             walk(to: target)
@@ -254,7 +258,7 @@ final class Replay {
                 // Undo draws during play: the mover returns the way it came,
                 // and whatever it took reappears where it stood.
                 : Transit(kind: .undo,
-                          move: Move(from: played.to, to: played.from),
+                          move: Move(from: played.to, to: origin),
                           piece: mover,
                           fading: placement[played.to].map { ($0, played.to) })
         }

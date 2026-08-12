@@ -50,9 +50,12 @@ enum Motion {
 
     /// The distance a move travels, in pitches. Euclidean, because that is the
     /// length of the line the disc is drawn along.
+    /// A placement crosses nothing — the stone arrives from off the board — so
+    /// it has no distance and nothing here is asked to invent one.
     static func distance(of move: Move) -> Double {
-        let df = Double(move.to.file - move.from.file)
-        let dr = Double(move.to.rank - move.from.rank)
+        guard let from = move.from else { return 0 }
+        let df = Double(move.to.file - from.file)
+        let dr = Double(move.to.rank - from.rank)
         return (df * df + dr * dr).squareRoot()
     }
 

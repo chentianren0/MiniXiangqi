@@ -904,7 +904,7 @@ final class PlayState {
         return line
     }
 
-    /// The games `-mxq-history minixiangqi:a1a2,b7b5;xiangqi:a1a2,…` names,
+    /// The games `-mxq-history minixiangqi:a1a2,b7b5;gomoku-15:h8,i9,…` names,
     /// each played and filed before the board opens, so that a screenshot of
     /// the History list has a library to show and a UI test has records to act
     /// on. Games are separated by `;`, every game name is mandatory, and plies
@@ -949,6 +949,8 @@ final class PlayState {
             switch parts[0] {
             case "minixiangqi": game = .miniXiangqi
             case "xiangqi": game = .xiangqi
+            case "gomoku-15": game = .gomoku15
+            case "renju": game = .renju
             default: return nil
             }
             moves = String(parts[1]).split(separator: ",").map(String.init)
@@ -958,7 +960,7 @@ final class PlayState {
     private struct InvalidLaunchLine: Error, CustomStringConvertible {
         var argument: String
         var description: String {
-            "debug replay line must name minixiangqi or xiangqi: \(argument)"
+            "debug replay line must name one of the four games: \(argument)"
         }
     }
     #endif

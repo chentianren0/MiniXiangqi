@@ -83,7 +83,7 @@ struct HapticsTests {
         #expect(Feedback.Event.allCases.count == 2,
                 "a third event would need a decision in the feel table")
         #expect(Feedback.Event.allCases.filter { $0.feel == .impact } == [.landing])
-        #expect(Feedback.Sound.allCases.count == 4,
+        #expect(Feedback.Sound.allCases.count == 5,
                 "the heard half is where a landing's meaning is carried")
     }
 

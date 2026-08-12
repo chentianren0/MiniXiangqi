@@ -84,6 +84,26 @@ struct BoardStyleTests {
         #expect(contrast(style.discEdge(side), style.boardSurface) >= 3.0)
     }
 
+    /// A stone's boundary carries the same 3:1 a disc's does — and on a stone it
+    /// is carrying it alone, because a stone has no symbol to say whose it is.
+    ///
+    /// It would catch a light stone tuned until it disappeared into the wood,
+    /// which is exactly the failure the boundary rule exists to prevent and the
+    /// one a screenshot at a small pitch would not settle.
+    @Test("Each stone boundary reaches 3:1 against the board surface",
+          arguments: [Side.red, .black])
+    func stoneEdgeContrast(side: Side) {
+        #expect(contrast(style.stoneEdge(side), style.boardSurface) >= 3.0)
+    }
+
+    /// The two stones are told apart by their faces alone, so the faces have to
+    /// be far apart — further than the 4.5:1 a symbol needs against its disc,
+    /// since here the colour is the whole of the distinction.
+    @Test("The two stone faces are unmistakable against each other")
+    func stoneFacesAreDistinct() {
+        #expect(contrast(style.stoneFace(.red), style.stoneFace(.black)) >= 4.5)
+    }
+
     @Test("Each symbol reaches 4.5:1 against its own disc face", arguments: [Side.red, .black])
     func symbolContrast(side: Side) {
         #expect(contrast(style.symbol(side), style.discFace) >= 4.5)

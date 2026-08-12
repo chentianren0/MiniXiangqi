@@ -137,6 +137,10 @@ struct BoardCanvas: View, Animatable {
 
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
+    /// The points the side to move may not play, where a game has any. Renju's
+    /// forbidden points during Black's turn are the only ones today; every other
+    /// game hands an empty set and draws nothing.
+    var forbidden: Set<Square> = []
     /// How far the dashes of a suggested capture's ring have turned, in
     /// revolutions. The board's one continuous motion, and the one thing it
     /// draws that changes outside a transaction, so it arrives as a value the
@@ -182,6 +186,7 @@ struct BoardCanvas: View, Animatable {
         drawHalo(in: &context, flip: flip)
         drawLastMove(in: &context, flip: flip)
         drawDestinations(in: &context, flip: flip)
+        drawForbidden(in: &context, flip: flip)
         drawRestingPieces(in: &context, flip: flip)
         drawTransit(in: &context, flip: flip)
         drawRings(in: &context, flip: flip)
@@ -234,6 +239,16 @@ struct BoardCanvas: View, Animatable {
                                           rank: palace.ranks.upperBound), flip: 0))
         }
         context.stroke(path, with: .color(style.grid), lineWidth: geometry.gridStroke)
+
+        // The board's own printed reference points, in the grid's ink and at the
+        // grid's own weight of presence: they are part of the board rather than
+        // marks on it, which is why they are drawn here and not among the
+        // markers, and why a stone simply covers one.
+        for square in geometry.board.starPoints {
+            context.fill(circle(at: point(square, flip: 0),
+                                radius: geometry.starPointRadius),
+                         with: .color(style.grid))
+        }
     }
 
     // MARK: - Markers
@@ -281,8 +296,12 @@ struct BoardCanvas: View, Animatable {
         // which two points it touched. Weight alone: same shape, same record
         // ink, same inset — a paler ink would eat into the contrast the ink
         // has to hold.
-        for (square, stroke) in [(lastMove.from, geometry.lastMoveOriginStroke),
-                                 (lastMove.to, geometry.lastMoveStroke)] {
+        //
+        // A placement has no origin, so it is marked at the one point it
+        // touched: there is no direction to say.
+        let marks = [(lastMove.to, geometry.lastMoveStroke)]
+            + (lastMove.from.map { [($0, geometry.lastMoveOriginStroke)] } ?? [])
+        for (square, stroke) in marks {
             context.stroke(bracketPath(at: point(square, flip: flip)),
                            with: .color(style.recordInk),
                            style: StrokeStyle(lineWidth: stroke, lineCap: .round))
@@ -317,6 +336,31 @@ struct BoardCanvas: View, Animatable {
                              width: diameter, height: diameter)
             context.fill(Path(ellipseIn: box), with: .color(ink(at: square)))
         }
+    }
+
+    /// The points the side to move may not play: a small cross at each, inside
+    /// its own cell, in **record** ink.
+    ///
+    /// A cross because it has to be unmistakable against every circular marker
+    /// the board draws, and because it is what a renju board prints; record ink
+    /// because active ink is what says *you may*, and a prohibition drawn in it
+    /// would compete with the affordances rather than qualify them. Every
+    /// forbidden point is empty by the rule that makes it forbidden, so the
+    /// cross never falls on a stone and nothing here has to clear one.
+    private func drawForbidden(in context: inout GraphicsContext, flip: Double) {
+        guard !forbidden.isEmpty else { return }
+        let arm = geometry.forbiddenArm
+        var path = Path()
+        for square in forbidden {
+            let centre = point(square, flip: flip)
+            path.move(to: CGPoint(x: centre.x - arm, y: centre.y - arm))
+            path.addLine(to: CGPoint(x: centre.x + arm, y: centre.y + arm))
+            path.move(to: CGPoint(x: centre.x - arm, y: centre.y + arm))
+            path.addLine(to: CGPoint(x: centre.x + arm, y: centre.y - arm))
+        }
+        context.stroke(path, with: .color(style.recordInk),
+                       style: StrokeStyle(lineWidth: geometry.forbiddenStroke,
+                                          lineCap: .round))
     }
 
     /// How strongly one point's marker is drawn. The suggested point takes the
@@ -429,6 +473,10 @@ struct BoardCanvas: View, Animatable {
 
     private func draw(_ transit: Transit, in context: inout GraphicsContext,
                       flip: Double) {
+        // A transit is a body crossing the board, so it has an origin to cross
+        // from. The placement games commit with nothing travelling and build
+        // none; this is the type saying so rather than a case to handle.
+        guard let origin = transit.move.from else { return }
         let progress = phases.travel
 
         if let fading = transit.fading {
@@ -446,7 +494,7 @@ struct BoardCanvas: View, Animatable {
             }
         }
 
-        let from = point(transit.move.from, flip: flip)
+        let from = point(origin, flip: flip)
         let to = point(transit.move.to, flip: flip)
         if policy.reduceMotion {
             // The travel without motion: a dissolve between the two ends.
@@ -478,17 +526,28 @@ struct BoardCanvas: View, Animatable {
                 < (phases.lifts[$1], $1.rank * geometry.board.fileCount + $1.file)
         }
         for square in raised {
-            guard let piece = placement[square], !inTransit.contains(square) else { continue }
             let lift = phases.lifts[square]
             let centre = point(square, flip: flip)
-            if policy.reduceMotion {
-                draw(piece, at: centre, lift: 1, opacity: lift, in: context)
+            if let piece = placement[square] {
+                guard !inTransit.contains(square) else { continue }
+                if policy.reduceMotion {
+                    draw(piece, at: centre, lift: 1, opacity: lift, in: context)
+                } else {
+                    draw(piece, at: centre, lift: lift, in: context)
+                }
             } else {
-                draw(piece, at: centre, lift: lift, in: context)
+                // A placement game marks an *empty* point: the stone is not on
+                // the board until the mark is confirmed, so the ring below is
+                // the whole of the mark. Every other board raises a point only
+                // by holding the piece standing on it, and a ring left behind
+                // at a vacated origin while a move animates away from it would
+                // be a mark about nothing.
+                guard geometry.board.play == .placement else { continue }
             }
-            // The solid selection ring, attached to the piece. Lift and
-            // shadow may not carry selection alone; the ring is what makes
-            // the state certain, so it rides the same progress.
+            // The solid selection ring, attached to the piece — or standing on
+            // its own where the game places rather than moves. Lift and shadow
+            // may not carry selection alone; the ring is what makes the state
+            // certain, so it rides the same progress.
             context.stroke(circle(at: centre, radius: geometry.selectionRingRadius),
                            with: .color(style.activeInk.opacity(lift)),
                            lineWidth: geometry.selectionRingStroke)
@@ -509,19 +568,41 @@ struct BoardCanvas: View, Animatable {
 
         let scale = (1 + (geometry.selectionLift - 1) * lift) * externalScale
         let shadow = style.restingShadow.blended(toward: style.liftShadow, by: lift)
-        let diameter = geometry.discDiameter * scale
+        // A stone is the same body drawn in the two things that differ: it is
+        // wider for its cell, its face is its side, and it carries no symbol.
+        let stone = piece.isStone
+        let body = stone ? geometry.stoneDiameter : geometry.discDiameter
+        let diameter = body * scale
         let box = CGRect(x: centre.x - diameter / 2, y: centre.y - diameter / 2,
                          width: diameter, height: diameter)
-        let edge = style.discEdgeStroke(piece.side) * p
+        let edge = (stone ? style.stoneEdgeStroke : style.discEdgeStroke(piece.side)) * p
+        let face = stone ? style.stoneFace(piece.side) : style.discFace
 
         context.drawLayer { layer in
             layer.addFilter(.shadow(color: shadow.color,
                                     radius: shadow.radius * p,
                                     y: shadow.y * p))
-            layer.fill(Path(ellipseIn: box), with: .color(style.discFace))
+            layer.fill(Path(ellipseIn: box), with: .color(face))
         }
-        context.stroke(circle(at: centre, radius: geometry.discEdgeRadius(stroke: edge) * scale),
-                       with: .color(style.discEdge(piece.side)), lineWidth: edge)
+        // The stroke is drawn inside the body's own edge rather than centred on
+        // it, so a heavy edge grows inward instead of past the body it draws.
+        //
+        // **What contains it differs between the two bodies.** A disc is 0.80 p
+        // across, so its edge stays inside the 0.40 p style-decoration limit and
+        // clear of the band markers occupy — the rule that limit exists for. A
+        // stone is 0.88 p and reaches 0.44 p, past it, and that is sound here
+        // rather than an oversight: the limit keeps marker ink off a piece, and
+        // on these boards no marker ever stands on one. The only mark a
+        // placement board draws on an *occupied* point is the last-move bracket,
+        // whose ink sits at ≈0.53 p from the centre, outside the stone; the
+        // selection ring marks the point a stone is not on yet; and every legal
+        // point is empty by the rule that makes it legal. It stays inside its
+        // own cell, which is the containment that applies to a body.
+        context.stroke(circle(at: centre,
+                              radius: geometry.edgeRadius(body: body, stroke: edge) * scale),
+                       with: .color(stone ? style.stoneEdge(piece.side)
+                                          : style.discEdge(piece.side)),
+                       lineWidth: edge)
 
         drawSymbol(of: piece, at: centre, scale: scale, in: &context)
     }
@@ -535,12 +616,16 @@ struct BoardCanvas: View, Animatable {
     /// stand upright throughout a flip.
     private func drawSymbol(of piece: Piece, at centre: CGPoint, scale: CGFloat,
                             in context: inout GraphicsContext) {
+        // A stone carries none, in either set: its colour is what says whose it
+        // is, and a symbol on it would be inventing a distinction the game does
+        // not make.
+        guard let kind = piece.kind else { return }
         let size = geometry.symbolSize * scale
         let ink = style.symbol(piece.side)
         switch symbols {
         case .hanzi:
             var symbol = context.resolve(
-                Text(piece.kind.character(for: piece.side))
+                Text(kind.character(for: piece.side))
                     .font(.system(size: size, weight: .medium))
                     .foregroundStyle(ink))
             symbol.shading = .color(ink)
@@ -548,7 +633,7 @@ struct BoardCanvas: View, Animatable {
         case .icons:
             let box = CGRect(x: centre.x - size / 2, y: centre.y - size / 2,
                              width: size, height: size)
-            context.fill(PieceIcon.path(for: piece.kind, in: box),
+            context.fill(PieceIcon.path(for: kind, in: box),
                          with: .color(ink), style: FillStyle(eoFill: true))
         }
     }

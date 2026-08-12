@@ -21,9 +21,9 @@
 // default, unless the test names its own — and what the app reads is then the
 // launch's own answer rather than the machine's.
 //
-// The seven keys are `Settings/Preferences.swift`'s: this list is that table,
-// and a preference added there without being added here is a preference the
-// tests would go back to inheriting.
+// The keys are `Settings/Preferences.swift`'s: this list is that table, and a
+// preference added there without being added here is a preference the tests
+// would go back to inheriting.
 //
 // **This file is the one thing both platforms' suites share, and it is
 // deliberately the only one.** The bundle now builds for an iOS Simulator as
@@ -55,6 +55,10 @@ enum LaunchPreferences {
         "sound.enabled": "1",
         "haptics.enabled": "1",
         "deleteConfirmation.enabled": "1",
+        // Off on a new installation, which is the accepted default for this one:
+        // a tap places the stone, and the pending stone is what a player turns
+        // on. A test that wants the confirmed grammar names it.
+        "placementConfirmation.enabled": "0",
         "pieces.symbols": "hanzi",
         "notation.style": "traditional",
         "defaults.firstMover": "human-first",

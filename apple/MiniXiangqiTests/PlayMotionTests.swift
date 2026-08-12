@@ -469,9 +469,10 @@ struct PlayMotionTests {
         let last = try #require(line.last.flatMap {
             Move(text: $0, on: GameKind.miniXiangqi.board)
         })
+        let origin = try #require(last.from)
         let (motion, animator, recorder) = try makeMotion(playing: Array(line.dropLast()),
                                                           defaults: defaults)
-        motion.tap(last.from)
+        motion.tap(origin)
         motion.tap(last.to)
         animator.completeAll()
         return (motion, recorder)

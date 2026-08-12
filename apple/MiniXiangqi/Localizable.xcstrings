@@ -780,6 +780,24 @@
         }
       }
     },
+    "board.a11y.forbidden": {
+      "comment": "The state token on a point the side to move may not play — Renju's forbidden points during Black's turn.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forbidden"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "禁手"
+          }
+        }
+      }
+    },
     "board.a11y.hint.announcement": {
       "comment": "The VoiceOver announcement a shown hint posts, composed from the point vocabulary: the side, the piece, and the two point names. What stands between them is each language's own.",
       "extractionState": "manual",
@@ -832,6 +850,24 @@
         }
       }
     },
+    "board.a11y.pending": {
+      "comment": "The state token on a point marked for a stone that has not been committed yet. The placement games' counterpart to board.a11y.selected, which names a piece taken up.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待确认"
+          }
+        }
+      }
+    },
     "board.a11y.red": {
       "extractionState": "manual",
       "localizations": {
@@ -880,6 +916,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "建议"
+          }
+        }
+      }
+    },
+    "board.a11y.white": {
+      "comment": "The bare side word a screen reader reads on a placement board, beside board.a11y.black.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "White"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "白"
           }
         }
       }
@@ -1400,6 +1454,24 @@
         }
       }
     },
+    "game.gomoku": {
+      "comment": "The game name used in the Play-home section, pre-start setup and game metadata. Freestyle five-in-a-row on a 15x15 board.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gomoku"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "五子棋"
+          }
+        }
+      }
+    },
     "game.miniXiangqi": {
       "comment": "The game name used in the Play-home section, pre-start setup and game metadata. It does not change the application's display name.",
       "extractionState": "manual",
@@ -1414,6 +1486,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "迷你象棋"
+          }
+        }
+      }
+    },
+    "game.renju": {
+      "comment": "The game name used in the Play-home section, pre-start setup and game metadata. Five-in-a-row on a 15x15 board with Black's forbidden moves.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renju"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连珠"
           }
         }
       }
@@ -1619,6 +1709,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "你执红"
+          }
+        }
+      }
+    },
+    "metadata.youWhite": {
+      "comment": "Which side the player has, on a metadata line, in a placement game.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You: White"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你执白"
           }
         }
       }
@@ -2742,6 +2850,24 @@
         }
       }
     },
+    "result.whiteWins": {
+      "comment": "The longer register the metadata lines and the result notice use, for the placement games' second side.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "White Wins"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "白方获胜"
+          }
+        }
+      }
+    },
     "settings.confirmDelete.footer": {
       "comment": "The one footer in Settings. It says what turning the switch off costs, and that the cost cannot be undone; the second sentence is the permanence the product contract fixes, not a warning added here.",
       "extractionState": "manual",
@@ -2773,6 +2899,42 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除前确认"
+          }
+        }
+      }
+    },
+    "settings.confirmPlacement.footer": {
+      "comment": "What the switch does, in both positions. Nothing here is irreversible — Undo takes a stone back either way — so it says what the flow is rather than warning about it.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, the first tap marks a point and tapping it again places the stone. When off, a tap places it straight away."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，第一次点击标记落点，再次点击该点才落子。关闭后，点击直接落子。"
+          }
+        }
+      }
+    },
+    "settings.confirmPlacement.label": {
+      "comment": "The optional pending-stone flow of the placement games.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Before Placing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "落子前确认"
           }
         }
       }
@@ -3066,6 +3228,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "你将控制红黑双方，红方先行。"
+          }
+        }
+      }
+    },
+    "setup.freePlayExplanation.placement": {
+      "comment": "Free Play's sentence in a placement game, in that game's own side names.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You control both Black and White. Black moves first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你将控制黑白双方，黑方先行。"
           }
         }
       }
@@ -3428,6 +3608,42 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@　%2$@"
+          }
+        }
+      }
+    },
+    "status.whiteToMove": {
+      "comment": "The placement games' counterpart to the two xiangqi sides. Their first mover is Black, so this is the second.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "White to Move"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轮到白方"
+          }
+        }
+      }
+    },
+    "status.whiteWins": {
+      "comment": "The turn status's shorter register, for the placement games' second side.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "White Wins"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "白方胜"
           }
         }
       }

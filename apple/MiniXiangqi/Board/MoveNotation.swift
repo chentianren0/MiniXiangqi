@@ -20,32 +20,37 @@ enum MoveNotation {
 
     /// The move as the player reads it, given the placement *before* it.
     static func text(for move: Move, in placement: Placement) -> String {
-        guard let piece = placement[move.from] else { return move.text }
+        // A movement move, which is the only kind this rendering is of: the
+        // placement games have one convention of their own, and `MoveReading`
+        // answers it before either notation is asked.
+        guard let origin = move.from, let piece = placement[origin],
+              let kind = piece.kind
+        else { return move.text }
         let board = placement.board
 
         // A disambiguator opens the move and the piece name follows it —
         // 前炮退二, not 炮前退二 — and it replaces the file rather than joining
         // it. A file, when there is one, follows the piece name instead.
-        let name = piece.kind.character(for: piece.side)
+        let name = kind.character(for: piece.side)
         let opening: String
-        if let marker = disambiguation(for: piece, at: move.from, in: placement) {
+        if let marker = disambiguation(for: piece, at: origin, in: placement) {
             // With a second file doubled, the leading word alone no longer
             // says which piece moved, so the origin file returns after the
             // name — 前兵六进一, 后卒3进1. Pieces alone on their file never
             // reach here and keep the plain form.
             opening = doubledFiles(of: piece, in: placement) > 1
-                ? marker + name + number(file: move.from.file, for: piece.side, on: board)
+                ? marker + name + number(file: origin.file, for: piece.side, on: board)
                 : marker + name
         } else {
-            opening = name + number(file: move.from.file, for: piece.side, on: board)
+            opening = name + number(file: origin.file, for: piece.side, on: board)
         }
 
         // 进 is toward the opponent, which is up the board for Red and down for
         // Black; 平 is across, and carries the destination file rather than a
         // distance.
-        let forward = piece.side == .red ? move.to.rank > move.from.rank
-                                         : move.to.rank < move.from.rank
-        if move.to.rank == move.from.rank {
+        let forward = piece.side == .red ? move.to.rank > origin.rank
+                                         : move.to.rank < origin.rank
+        if move.to.rank == origin.rank {
             return opening + "平" + number(file: move.to.file, for: piece.side, on: board)
         }
 
@@ -53,11 +58,11 @@ enum MoveNotation {
         // A horse, advisor, or elephant does not move along a file, so what
         // follows its direction is the destination file rather than a number
         // of ranks.
-        let value = switch piece.kind {
+        let value = switch kind {
         case .horse, .advisor, .elephant:
             number(file: move.to.file, for: piece.side, on: board)
         case .general, .chariot, .cannon, .soldier:
-            numeral(abs(move.to.rank - move.from.rank), for: piece.side)
+            numeral(abs(move.to.rank - origin.rank), for: piece.side)
         }
         return opening + direction + value
     }

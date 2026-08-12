@@ -13,11 +13,34 @@ nonisolated struct BoardDefinition: Hashable, Sendable {
         let ranks: ClosedRange<Int>
     }
 
+    /// How a game reaches the board, which is what everything above this type
+    /// branches on: what stands on a point, how many squares a move spells, and
+    /// how the edges are labelled.
+    ///
+    /// It is the board's rather than the game's because those three questions
+    /// are all about the board, and because every consumer here already holds a
+    /// `BoardDefinition` and would otherwise have to be handed the game beside
+    /// it. The core makes the same division: `MXQ_ERR_RULES_MALFORMED_MOVE`
+    /// spells one grammar per game and says how many squares a move is "follows
+    /// from the game and never from the text's length".
+    enum Play: Hashable, Sendable {
+        /// A piece is taken up and put down somewhere else — the xiangqi games.
+        case movement
+        /// A stone is placed on an empty point and never moves again.
+        case placement
+    }
+
     let fileCount: Int
     let rankCount: Int
     let palaces: [Palace]
     /// The zero-based rank below the river. `nil` means the board has no river.
     let riverAfterRank: Int?
+    /// The board's own printed reference points, drawn in the grid's ink as part
+    /// of the grid. Empty where a board has none — the xiangqi boards, whose
+    /// starting points are deliberately unmarked so that nothing competes with
+    /// the markers carrying live information.
+    let starPoints: [Square]
+    let play: Play
 
     var squareCount: Int { fileCount * rankCount }
 
@@ -27,6 +50,12 @@ nonisolated struct BoardDefinition: Hashable, Sendable {
 }
 
 extension GameKind {
+    /// Whether this game places stones rather than moving pieces — asked often
+    /// enough that it is written once instead of spelling `board.play` at each
+    /// site, and here rather than beside the game's other names because it is a
+    /// fact about the board.
+    nonisolated var isPlacement: Bool { board.play == .placement }
+
     nonisolated var board: BoardDefinition {
         switch self {
         case .miniXiangqi:
@@ -35,14 +64,32 @@ extension GameKind {
                                 .init(files: 2...4, ranks: 0...2),
                                 .init(files: 2...4, ranks: 4...6),
                             ],
-                            riverAfterRank: nil)
+                            riverAfterRank: nil,
+                            starPoints: [],
+                            play: .movement)
         case .xiangqi:
             BoardDefinition(fileCount: 9, rankCount: 10,
                             palaces: [
                                 .init(files: 3...5, ranks: 0...2),
                                 .init(files: 3...5, ranks: 7...9),
                             ],
-                            riverAfterRank: 4)
+                            riverAfterRank: 4,
+                            starPoints: [],
+                            play: .movement)
+        // The two placement boards are one board: fifteen lines each way, no
+        // palace, no river, and the five star points a 15-line board carries —
+        // the four at the fourth line in from each corner and the one at the
+        // centre, which is where a printed set puts them.
+        case .gomoku15, .renju:
+            BoardDefinition(fileCount: 15, rankCount: 15,
+                            palaces: [],
+                            riverAfterRank: nil,
+                            starPoints: [Square(file: 3, rank: 3),
+                                         Square(file: 3, rank: 11),
+                                         Square(file: 7, rank: 7),
+                                         Square(file: 11, rank: 3),
+                                         Square(file: 11, rank: 11)],
+                            play: .placement)
         }
     }
 }
@@ -52,9 +99,12 @@ nonisolated struct Square: Hashable, Sendable {
     var file: Int
     var rank: Int
 
-    var name: String {
-        String(UnicodeScalar(UInt8(97 + file))) + String(rank + 1)
-    }
+    /// The file's letter, which is also what a Go-style edge is labelled with.
+    /// No letter is skipped: this is the core's own spelling, and an edge that
+    /// left one out would disagree with every move the list prints.
+    var fileLetter: String { String(UnicodeScalar(UInt8(97 + file))) }
+
+    var name: String { fileLetter + String(rank + 1) }
 
     init(file: Int, rank: Int) {
         self.file = file
@@ -134,9 +184,22 @@ enum PieceKind: Character, CaseIterable {
     }
 }
 
+/// What stands on a point.
+///
+/// A movement game's piece carries a kind, and the kind is what the disc shows;
+/// a placement game's stone carries nothing but its side, because the accepted
+/// design gives stones no symbols at all. So the kind is optional rather than
+/// gaining a fourteenth-and-a-half member: a stone is not one of the piece
+/// characters, and every place that draws or names a kind has to answer for the
+/// stone anyway.
 struct Piece: Hashable {
-    var kind: PieceKind
+    /// `nil` on a stone, which has no kind to carry.
+    var kind: PieceKind?
     var side: Side
+
+    static func stone(_ side: Side) -> Piece { Piece(kind: nil, side: side) }
+
+    var isStone: Bool { kind == nil }
 }
 
 /// The placement a FEN denotes. Only the placement: the side to move, the
@@ -160,6 +223,13 @@ struct Placement {
     /// Parses the piece-placement field, which lists the highest rank first and
     /// rank 1 last. A malformed field yields an empty board rather than a crash: the
     /// FEN came from the core, so a failure here is a bug to see on screen.
+    ///
+    /// A run of empty points is its count in decimal in every game. What the
+    /// letters mean is the game's: a movement game writes one of the seven piece
+    /// letters, and a placement game writes `S` alone — the core's own encoding,
+    /// where the letter is the stone's kind and its case is its side, and
+    /// deliberately not `b`/`w`, which would contradict the side-to-move field
+    /// beside it.
     init(fen: String, game: GameKind) {
         self.game = game
         guard let placement = fen.split(separator: " ").first else { return }
@@ -170,49 +240,95 @@ struct Placement {
         for (row, line) in lines.enumerated() {
             let rank = board.rankCount - 1 - row
             var file = 0
+            // A run of empty points is its count in **decimal**, so its digits
+            // are accumulated rather than taken one at a time: a 15-file board
+            // writes a whole empty rank as `15`, and reading that as a 1 and a 5
+            // would leave nine points unaccounted for and the whole rank
+            // rejected. The boards that came before never reached ten.
+            var run: Int?
+            func closeRun() -> Bool {
+                guard let skip = run else { return true }
+                guard skip > 0, file + skip <= board.fileCount else { return false }
+                file += skip
+                run = nil
+                return true
+            }
+
             for character in line {
-                if let skip = character.wholeNumberValue {
-                    guard skip > 0, file + skip <= board.fileCount else { return }
-                    file += skip
+                if character.isASCII, let digit = character.wholeNumberValue {
+                    run = (run ?? 0) * 10 + digit
                     continue
                 }
+                guard closeRun() else { return }
                 let side: Side = character.isUppercase ? .red : .black
-                guard let kind = PieceKind(rawValue: Character(character.lowercased())),
+                guard let piece = Self.piece(letter: Character(character.lowercased()),
+                                             side: side, on: board),
                       file < board.fileCount else { return }
-                parsed[Square(file: file, rank: rank)] = Piece(kind: kind, side: side)
+                parsed[Square(file: file, rank: rank)] = piece
                 file += 1
             }
-            guard file == board.fileCount else { return }
+            guard closeRun(), file == board.fileCount else { return }
         }
         pieces = parsed
     }
+
+    /// What one lowercased FEN letter denotes on this board.
+    private static func piece(letter: Character, side: Side,
+                              on board: BoardDefinition) -> Piece? {
+        switch board.play {
+        case .movement:
+            return PieceKind(rawValue: letter).map { Piece(kind: $0, side: side) }
+        case .placement:
+            return letter == "s" ? .stone(side) : nil
+        }
+    }
 }
 
-/// A move in the frozen canonical notation, `"<from><to>"`. There is no suffix:
-/// this ruleset has no promotion, castling, en passant, drop, or gating.
+/// A move in the frozen canonical notation. There is no suffix in any of these
+/// rulesets: no promotion, castling, en passant, drop, or gating.
+///
+/// **How many squares a move spells follows from the game**, exactly as the core
+/// says it does: a movement game writes `"<from><to>"` and a placement game
+/// writes the one point the stone arrives at. So a placement carries no origin,
+/// and `from` is optional rather than a second square standing for the same
+/// point — a stone comes from off the board, and an origin invented here would
+/// be a square the notation never named.
 struct Move: Hashable {
-    var from: Square
+    /// The point the mover leaves. `nil` for a placement.
+    var from: Square?
     var to: Square
 
-    var text: String { from.name + to.name }
+    var text: String { (from?.name ?? "") + to.name }
 
     init(from: Square, to: Square) {
         self.from = from
         self.to = to
     }
 
-    init?(text: some StringProtocol, on board: BoardDefinition) {
-        let characters = Array(text)
-        guard (4...6).contains(characters.count) else { return nil }
+    /// A stone arriving on an empty point.
+    init(placing square: Square) {
+        self.from = nil
+        self.to = square
+    }
 
-        let candidates = [2, 3].compactMap { split -> (Square, Square)? in
-            guard split < characters.count,
-                  let from = Square(String(characters[..<split]), on: board),
-                  let to = Square(String(characters[split...]), on: board)
-            else { return nil }
-            return (from, to)
+    init?(text: some StringProtocol, on board: BoardDefinition) {
+        switch board.play {
+        case .placement:
+            guard let square = Square(text, on: board) else { return nil }
+            self.init(placing: square)
+        case .movement:
+            let characters = Array(text)
+            guard (4...6).contains(characters.count) else { return nil }
+
+            let candidates = [2, 3].compactMap { split -> (Square, Square)? in
+                guard split < characters.count,
+                      let from = Square(String(characters[..<split]), on: board),
+                      let to = Square(String(characters[split...]), on: board)
+                else { return nil }
+                return (from, to)
+            }
+            guard candidates.count == 1, let (from, to) = candidates.first else { return nil }
+            self.init(from: from, to: to)
         }
-        guard candidates.count == 1, let (from, to) = candidates.first else { return nil }
-        self.init(from: from, to: to)
     }
 }

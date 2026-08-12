@@ -372,7 +372,9 @@ final class NearbyPlay {
 
         if session.plies.count == shown.count + 1, session.plies.dropLast() == shown,
            let text = session.plies.last, let move = Move(text: text, on: game.board),
-           let piece = placement[move.from] {
+           // Every ply here has an origin: this peer plays no placement game
+           // over the wire yet, and refuses a proposal for one outright.
+           let origin = move.from, let piece = placement[origin] {
             advance(move, piece, to: session.plies, standing)
             return
         }
@@ -406,6 +408,7 @@ final class NearbyPlay {
     /// an Undo with a second person in it.
     private func reverse(_ move: Move, _ mover: Piece, to plies: [String],
                          _ standing: NearbyStanding) {
+        guard let origin = move.from else { return }
         // What the ply took is read off the position it is going back to, which
         // is the core's answer rather than a placement worked out here.
         let restored = Placement(fen: standing.evaluation.fen, game: game)[move.to]
@@ -413,7 +416,7 @@ final class NearbyPlay {
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
             land(plies, standing,
                  lastMove: plies.last.flatMap { Move(text: $0, on: game.board) })
-            return Transit(kind: .undo, move: Move(from: move.to, to: move.from),
+            return Transit(kind: .undo, move: Move(from: move.to, to: origin),
                            piece: mover, fading: restored.map { ($0, move.to) })
         }
         // The restored piece returns as the mover departs, inside the travel, so
@@ -483,7 +486,7 @@ final class NearbyPlay {
     /// says so, quietly, which is the whole of what this stage's presentation
     /// owes an idle radio.
     private func commit(_ move: Move) {
-        guard let piece = placement[move.from],
+        guard let origin = move.from, let piece = placement[origin],
               let standing = positions.standing(of: game, after: shown + [move.text])
         else { return }
         let captured = placement[move.to]

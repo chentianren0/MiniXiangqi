@@ -19,9 +19,13 @@ struct BoardView: View {
     /// both ways at the same window size.
     var showsNumerals: Bool = true
 
+    /// The point the player is holding: the piece taken up in a movement game,
+    /// and the marked point awaiting confirmation in a placement one.
     var selected: Square?
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
+    /// The points the side to move may not play, where the game has any.
+    var forbidden: Set<Square> = []
     /// The destination a shown hint suggests, where one is shown. It is one of
     /// the held piece's own destinations and is drawn as one; what it gains is
     /// the strengthening below and, for a screen reader, a state token beside
@@ -99,20 +103,42 @@ struct BoardView: View {
     private var p: CGFloat { geometry.pitch }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showsNumerals { numeralStrip(atTop: true) }
-            core
-            if showsNumerals { numeralStrip(atTop: false) }
-        }
+        block
         // The pitch is unchanged either way, so the two renderings differ by
         // exactly the room the strips take and by nothing else.
-        .frame(width: geometry.blockSize.width,
+        .frame(width: showsNumerals ? geometry.blockSize.width : geometry.coreSize.width,
                height: showsNumerals ? geometry.blockSize.height : geometry.coreSize.height)
         // The surface behind the whole block, which is what runs past it where
         // the layout asks. The core and the strips carry their own fill too, so
         // this changes nothing at all where the bleed is none.
         .background {
             style.boardSurface.padding(.horizontal, -surfaceBleed)
+        }
+    }
+
+    /// The board and whatever labels its edges, laid out the way its own
+    /// convention asks: file numerals above and below, or Go-style letters
+    /// beneath with numbers up the leading side.
+    @ViewBuilder
+    private var block: some View {
+        switch geometry.coordinates {
+        case .fileNumerals:
+            VStack(spacing: 0) {
+                if showsNumerals { numeralStrip(atTop: true) }
+                core
+                if showsNumerals { numeralStrip(atTop: false) }
+            }
+        case .goStyle:
+            // Top-aligned, so the numbers up the side stand beside the core's
+            // own rows rather than being centred against the block the letter
+            // strip beneath makes taller.
+            HStack(alignment: .top, spacing: 0) {
+                if showsNumerals { rankNumberStrip }
+                VStack(spacing: 0) {
+                    core
+                    if showsNumerals { fileLetterStrip }
+                }
+            }
         }
     }
 
@@ -150,6 +176,7 @@ struct BoardView: View {
                     policy: policy,
                     destinations: destinations,
                     captures: captures,
+                    forbidden: forbidden,
                     dashDrift: dashDrift,
                     lastMove: lastMove,
                     checkedGeneral: checkedGeneral,
@@ -237,14 +264,21 @@ struct BoardView: View {
     private func describe(_ square: Square) -> String {
         var parts = [square.name]
         if let piece = placement[square] {
-            parts.append(piece.side == .red
-                         ? String(localized: "board.a11y.red")
-                         : String(localized: "board.a11y.black"))
-            parts.append(piece.kind.name(for: piece.side))
+            parts.append(placement.game.sideName(piece.side))
+            // A stone has no kind and therefore no name of its own: what it is
+            // has already been said by the side beside it.
+            if let kind = piece.kind { parts.append(kind.name(for: piece.side)) }
         } else {
             parts.append(String(localized: "board.a11y.empty"))
         }
-        if square == selected { parts.append(String(localized: "board.a11y.selected")) }
+        if square == selected {
+            // The same state under two names, because it is two states: a piece
+            // taken up, and a point marked for a stone that is not down yet.
+            parts.append(geometry.board.play == .placement
+                         ? String(localized: "board.a11y.pending")
+                         : String(localized: "board.a11y.selected"))
+        }
+        if forbidden.contains(square) { parts.append(String(localized: "board.a11y.forbidden")) }
         if captures.contains(square) { parts.append(String(localized: "board.a11y.capture")) }
         else if destinations.contains(square) { parts.append(String(localized: "board.a11y.legalMove")) }
         // A suggested point is a legal destination first and a suggestion
@@ -265,13 +299,64 @@ struct BoardView: View {
     /// English, an ideographic colon and no space between side and piece in
     /// Chinese — and a separator hard-coded here would be one language's
     /// punctuation wrapped around the other language's words.
-    static func hintAnnouncement(piece: Piece, from: Square, to: Square) -> String {
+    static func hintAnnouncement(game: GameKind, piece: Piece,
+                                 from: Square, to: Square) -> String {
         String(format: String(localized: "board.a11y.hint.announcement"),
-               piece.side == .red
-                   ? String(localized: "board.a11y.red")
-                   : String(localized: "board.a11y.black"),
-               piece.kind.name(for: piece.side),
+               game.sideName(piece.side),
+               piece.kind?.name(for: piece.side) ?? String(localized: "board.a11y.empty"),
                from.name, to.name)
+    }
+
+    // MARK: - Go-style coordinates
+
+    /// The letters along the bottom edge, `a` at the leading end.
+    ///
+    /// A coordinate is absolute, so an orientation re-orders the labels and
+    /// never renames them — and these are the coordinates the core itself
+    /// spells, letter for letter, with no letter skipped: the move list beside
+    /// the board reads `h8`, and an edge that had left `i` out would send a
+    /// reader to the wrong line.
+    ///
+    /// The 记谱法 preference is not consulted anywhere in this pair. These games
+    /// have one convention of their own, and a xiangqi reading has nothing to
+    /// say about a board with no files to number from a player's own right.
+    private var fileLetterStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<geometry.board.fileCount, id: \.self) { column in
+                let file = flipped ? geometry.board.fileCount - 1 - column : column
+                Text(Square(file: file, rank: 0).fileLetter)
+                    .font(.system(size: geometry.numeralSize, weight: .bold))
+                    .foregroundStyle(style.grid)
+                    .frame(width: p)
+            }
+        }
+        .frame(width: geometry.coreSize.width, height: geometry.stripHeight)
+        .background(style.boardSurface)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("file-letters")
+        .accessibilityLabel((0..<geometry.board.fileCount)
+            .map { Square(file: $0, rank: 0).fileLetter }
+            .joined(separator: " "))
+    }
+
+    /// The numbers up the leading side, `1` at the bottom.
+    private var rankNumberStrip: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<geometry.board.rankCount, id: \.self) { row in
+                let rank = flipped ? row : geometry.board.rankCount - 1 - row
+                Text(String(rank + 1))
+                    .font(.system(size: geometry.numeralSize, weight: .bold))
+                    .foregroundStyle(style.grid)
+                    .frame(height: p)
+            }
+        }
+        .frame(width: geometry.stripWidth, height: geometry.coreSize.height)
+        .background(style.boardSurface)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("rank-numbers")
+        .accessibilityLabel((1...geometry.board.rankCount)
+            .map(String.init)
+            .joined(separator: " "))
     }
 
     // MARK: - File numerals

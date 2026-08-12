@@ -619,7 +619,8 @@ struct NearbyFlowTests {
         #expect(play.transit?.kind == .undo)
 
         let ply = try #require(Move(text: "b1b2", on: GameKind.miniXiangqi.board))
-        #expect(play.transit?.move == Move(from: ply.to, to: ply.from),
+        let origin = try #require(ply.from)
+        #expect(play.transit?.move == Move(from: ply.to, to: origin),
                 "the mover travels home, which is the ply read backwards")
 
         // A longer truncation is not a move being taken back, so it cuts.

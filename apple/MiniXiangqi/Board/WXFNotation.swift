@@ -30,25 +30,30 @@ enum WXFNotation {
 
     /// The move as the player reads it, given the placement *before* it.
     static func text(for move: Move, in placement: Placement) -> String {
-        guard let piece = placement[move.from] else { return move.text }
+        // A movement move, which is the only kind this rendering is of: the
+        // placement games have one convention of their own, and `MoveReading`
+        // answers it before either notation is asked.
+        guard let source = move.from, let piece = placement[source],
+              let kind = piece.kind
+        else { return move.text }
         let board = placement.board
 
         // W1's first two slots. The piece slot carries the type's letter unless
         // an index has replaced it; the origin slot carries the file unless a
         // marker has replaced it. Only one of the two is ever substituted.
         let opening: String
-        switch origin(of: piece, at: move.from, in: placement) {
+        switch origin(of: piece, at: source, in: placement) {
         case .file:
-            opening = letter(piece.kind) + number(file: move.from.file, for: piece.side,
+            opening = letter(kind) + number(file: source.file, for: piece.side,
                                                   on: board)
         case .marker(let marker):
             // W3: the marker stands in the file's own slot, after the letter —
             // R+=3, not +R=3 — and the file itself goes.
-            opening = letter(piece.kind) + marker
+            opening = letter(kind) + marker
         case .index(let index):
             // W4 and W5: the index stands in the letter's slot instead, and the
             // file stays where it was.
-            opening = String(index) + number(file: move.from.file, for: piece.side,
+            opening = String(index) + number(file: source.file, for: piece.side,
                                              on: board)
         }
 
@@ -56,11 +61,11 @@ enum WXFNotation {
         // Black; `=` is across, and a move across is the one that cannot be a
         // move along a file.
         let direction: String
-        if move.to.rank == move.from.rank {
+        if move.to.rank == source.rank {
             direction = "="
         } else {
-            let forward = piece.side == .red ? move.to.rank > move.from.rank
-                                             : move.to.rank < move.from.rank
+            let forward = piece.side == .red ? move.to.rank > source.rank
+                                             : move.to.rank < source.rank
             direction = forward ? "+" : "-"
         }
 
@@ -68,8 +73,8 @@ enum WXFNotation {
         // its file counts the ranks it crossed, and a move that leaves its file
         // names the file it arrived on. That covers Mini Xiangqi's horse and
         // Xiangqi's horse, advisor, and elephant without a piece-type branch.
-        let value = move.to.file == move.from.file
-            ? String(abs(move.to.rank - move.from.rank))
+        let value = move.to.file == source.file
+            ? String(abs(move.to.rank - source.rank))
             : number(file: move.to.file, for: piece.side, on: board)
         return opening + direction + value
     }

@@ -270,6 +270,7 @@ struct NearbyBoardScreen: View {
     private func turnStatus(_ play: NearbyPlay,
                             placement: TurnStatus.Placement) -> some View {
         TurnStatus(placement: placement,
+                   game: play.game,
                    state: play.statusState,
                    reason: play.end?.reason ?? play.evaluation.reason,
                    reasonText: play.reasonText,
@@ -360,7 +361,7 @@ struct NearbyBoardScreen: View {
             // and the move has to finish being shown before an announcement
             // stands in front of it.
             if let end = play.end, showsResult, !play.isCommitting {
-                NearbyNotice(title: Self.title(of: end.state),
+                NearbyNotice(title: Self.title(of: end.state, in: play.game),
                              detail: play.reasonText ?? "",
                              done: { flow.leaveBoard() },
                              close: { dismissResult() })
@@ -381,10 +382,10 @@ struct NearbyBoardScreen: View {
 
     /// The fuller wording the notice has room for, which is the same vocabulary
     /// the local game's notice uses for the same three results.
-    private static func title(of state: GameState) -> String {
+    private static func title(of state: GameState, in game: GameKind) -> String {
         switch state {
-        case .redWins: String(localized: "result.redWins")
-        case .blackWins: String(localized: "result.blackWins")
+        case .redWins: game.resultText(.red)
+        case .blackWins: game.resultText(.black)
         case .draw, .ongoing, .claimableDraw: String(localized: "result.draw")
         }
     }

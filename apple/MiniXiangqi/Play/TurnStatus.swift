@@ -34,6 +34,10 @@ struct TurnStatus: View {
 
     var placement: Placement = .block
 
+    /// Which game this is a status for, because what its two sides are called
+    /// is the game's — 红方 and 黑方 on a xiangqi board, 黑方 and 白方 on a
+    /// placement one. The side itself is the core's answer either way.
+    var game: GameKind
     var state: GameState
     var reason: EndReason
 
@@ -195,8 +199,8 @@ struct TurnStatus: View {
     private var primaryLine: String {
         switch state {
         case .ongoing, .claimableDraw: sideToMoveLine
-        case .redWins: String(localized: "status.redWins")
-        case .blackWins: String(localized: "status.blackWins")
+        case .redWins: game.winsText(.red)
+        case .blackWins: game.winsText(.black)
         case .draw: String(localized: "status.draw")
         }
     }
@@ -210,9 +214,10 @@ struct TurnStatus: View {
     /// ordinary one in English — and a separator hard-coded here would be one
     /// language's punctuation wrapped around the other language's words.
     private var sideToMoveLine: String {
-        let side = sideToMove == .red
-            ? String(localized: "status.redToMove")
-            : String(localized: "status.blackToMove")
+        let side = game.sideToMoveText(sideToMove)
+        // The placement games have no check to be in, and the core says so: it
+        // reports `in_check` as 0 there. So the token needs no gate of its own —
+        // it never has anything to accompany.
         guard inCheck else { return side }
         return String(format: String(localized: "status.sideToMove.checked"),
                       side, String(localized: "status.check"))
