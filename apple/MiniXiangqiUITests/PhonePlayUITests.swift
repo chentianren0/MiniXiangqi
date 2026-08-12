@@ -577,6 +577,90 @@ final class PhonePlayUITests: XCTestCase {
         attach(app, named: "phone-06-after-the-machines-reply")
     }
 
+    // MARK: - The board stands still under the controls
+
+    /// Where the board is and how big it is, read as two opposite corners of
+    /// it: the pair moves if the block moves and changes if the pitch does.
+    private func boardCorners(_ app: XCUIApplication) -> [CGRect] {
+        [point(app, "a1").frame, point(app, "g7").frame]
+    }
+
+    private func assertBoardIsWhereItWas(_ corners: [CGRect], _ was: [CGRect],
+                                         _ message: String,
+                                         line: UInt = #line) {
+        XCTAssertEqual(corners.count, was.count, message, line: line)
+        for (now, before) in zip(corners, was) {
+            XCTAssertEqual(now.minX, before.minX, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.minY, before.minY, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.width, before.width, accuracy: 0.5, message, line: line)
+            XCTAssertEqual(now.height, before.height, accuracy: 0.5, message, line: line)
+        }
+    }
+
+    /// docs/interaction-design.md § Layout shapes: in the stacked shape the
+    /// board's frame does not follow the controls. A hint is where a player
+    /// meets that rule first — the control's symbol becomes an indicator while
+    /// the search runs — and a board that moved under a thumb the moment 提示
+    /// was pressed is exactly the defect this pins.
+    ///
+    /// What it would catch: an indicator that measures differently from the
+    /// lamp it stands in for, and a board sized from the cluster's live height
+    /// instead of from its reserved slot. Either moves the board here.
+    ///
+    /// **The board is read from the press until the suggestion lands**, rather
+    /// than at one chosen moment. The indicator itself cannot be addressed from
+    /// a test process — it is drawn inside the control, and a control is one
+    /// element to a screen reader — so what is watched is the board, from the
+    /// press through to the answer.
+    ///
+    /// **How many of those reads fall inside the search is not asserted**, and
+    /// deliberately: measured on this Simulator, the first tree-wide query
+    /// after a tap can return later than a three-second search does, so a count
+    /// asserted here would be asserting this process's sampling rate rather
+    /// than the app — the lesson this suite already carries about waiting to
+    /// *observe* 轮到黑方. What is asserted is the durable fact: every moment
+    /// the board was read, from the press onward, it was where it started.
+    func testTheBoardStandsStillWhileAHintIsThoughtAbout() {
+        let app = launch(replaying: Self.openingLine,
+                         availableMemory: Self.modestMemory)
+        XCTAssertTrue(point(app, "d4").waitForExistence(timeout: 30),
+                      "the replay fixture opens at the board it made")
+        let before = boardCorners(app)
+
+        app.buttons["hint-request"].tap()
+
+        // Read at once, before any tree-wide query has been made: this is the
+        // earliest a test process can look at the board after pressing 提示.
+        var samples = [boardCorners(app)]
+        let suggested = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "建议")).firstMatch
+        let deadline = Date().addingTimeInterval(60)
+        while !suggested.exists, Date() < deadline {
+            samples.append(boardCorners(app))
+        }
+        XCTAssertTrue(suggested.exists,
+                      "the search should answer with a suggestion on the board")
+        XCTAssertEqual(app.buttons["hint-request"].label, "提示",
+                       "the control is the same control, still saying its word")
+
+        for sample in samples {
+            assertBoardIsWhereItWas(sample, before,
+                                    "the board should not move while a hint is thought about")
+        }
+        assertBoardIsWhereItWas(boardCorners(app), before,
+                                "nor once the suggestion is on the board")
+
+        // And the slot the board was sized around is really under it: the
+        // controls stand below the board and inside the screen, rather than
+        // beneath a board drawn over them.
+        let hint = app.buttons["hint-request"]
+        XCTAssertGreaterThan(hint.frame.minY, point(app, "a1").frame.maxY,
+                             "the cluster stands below the board")
+        XCTAssertTrue(app.frame.contains(hint.frame),
+                      "and inside the screen — it is at \(hint.frame)")
+        attach(app, named: "phone-16-the-board-after-a-hint")
+    }
+
     // MARK: - The turn status at an accessibility text size
 
     /// docs/interaction-design.md § Turn status: at an accessibility text size

@@ -40,10 +40,11 @@ struct NearbyBoardScreen: View {
     @State private var resignPresented = false
     @State private var claimPresented = false
 
-    /// What the stacked shape's chrome actually came to, measured rather than
-    /// assumed, exactly as the play screen measures its own.
+    /// What the stacked shape's chrome came to, exactly as the play screen
+    /// takes it: the status above the board measured, and the cluster below it
+    /// reserved at its tallest arrangement out of one measured row.
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
-    @State private var controlsHeight = BoardLayout.stackedChromeHeight / 2
+    @State private var controlRow = BoardLayout.clusterRowHeight
 
     /// Whether the save-failure capsule is up. Raised when the library refuses
     /// a ply of this device's player's own, and transient: it answers the touch
@@ -190,11 +191,21 @@ struct NearbyBoardScreen: View {
     /// The turn status in the bar's centre, the play controls below the board,
     /// and the board fitted to the full width in the height between them.
     ///
+    /// **The cluster's slot is reserved at its tallest arrangement**, as it is
+    /// on the local board and for a reason this board feels every ply: the turn
+    /// passing swaps the negotiations for the claim, and the two sets are not
+    /// the same width — one of them wraps to a second row on a phone where the
+    /// other does not. The board is sized around the reservation, so it stands
+    /// still while they trade places.
+    ///
     /// At an accessibility text size the element returns to its place above the
     /// board, exactly as it does on the local board, and the bar centre stays
     /// empty: a page over a board needs no name either way.
     private func stacked(_ play: NearbyPlay, in size: CGSize) -> some View {
-        let chrome = (statusStandsInBar ? 0 : statusHeight) + controlsHeight
+        let status = statusStandsInBar ? 0 : statusHeight
+        let chrome = BoardLayout.stackedChrome(
+            in: size, game: play.game,
+            asking: status + BoardLayout.stackedCluster(row: controlRow))
         let geometry = BoardLayout.stackedGeometry(in: size, game: play.game, chrome: chrome)
         return VStack(spacing: 0) {
             if !statusStandsInBar {
@@ -226,9 +237,12 @@ struct NearbyBoardScreen: View {
 
             controls(play)
                 .padding(.horizontal, BoardLayout.panelInset)
-                .padding(.vertical, 8)
-                .onGeometryChange(for: CGFloat.self, of: \.size.height) { controlsHeight = $0 }
+                .padding(.vertical, BoardLayout.clusterAir)
+                .frame(height: max(0, chrome - status), alignment: .bottom)
         }
+        // The row the reservation is two of, measured behind the whole layout,
+        // where it costs nothing and cannot be reached.
+        .background { BoardLayout.ClusterRow { controlRow = $0 } }
         .toolbar {
             if statusStandsInBar {
                 ToolbarItem(placement: .principal) {
@@ -572,7 +586,7 @@ struct NearbyBoardScreen: View {
     /// never move: the row above is anchored at its trailing end, so the row
     /// below is anchored there too.
     private func wrappedControls(_ play: NearbyPlay, worded: Bool) -> some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .trailing, spacing: BoardLayout.clusterAir) {
             controls(play, worded: worded, carriesFlip: false)
             HStack(spacing: 8) {
                 Spacer(minLength: 0)

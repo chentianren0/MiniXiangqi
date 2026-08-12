@@ -243,6 +243,61 @@ final class PhoneNearbyUITests: XCTestCase {
         attach(app, named: "phone-nearby-07-a-draw-offered")
     }
 
+    /// docs/interaction-design.md § Layout shapes: in the stacked shape the
+    /// board's frame does not follow the controls, and a nearby game is where
+    /// that is felt every ply. The turn passing swaps the two negotiations for
+    /// the claim, and the two sets are not the same width — on this phone one
+    /// of them wraps to a second row where the other stands in one — so a board
+    /// sized around the cluster on screen would rise and fall with every turn.
+    ///
+    /// The two sides of the turn are two launches, because a Simulator has no
+    /// radio to pass one with: the moments are staged, exactly as every other
+    /// board in this file is, and what is compared is the board each moment
+    /// draws. What it would catch: the board's geometry reading the cluster's
+    /// live height again, and any control added to one side of the turn and not
+    /// the other paying for itself out of the board.
+    func testTheBoardIsTheSameBoardOnBothSidesOfTheTurn() {
+        let offTurn = launch(board: "off-turn")
+        XCTAssertTrue(offTurn.buttons["cluster-offer-draw"].waitForExistence(timeout: 30),
+                      "the off-turn cluster carries the negotiations")
+        let off = corners(offTurn)
+        // This is the side that wraps on this phone, so it is where the slot is
+        // asked for the whole of what it reserves: the second row stands below
+        // the board and inside the screen rather than under a board drawn over
+        // it.
+        let flip = offTurn.buttons["cluster-flip"]
+        XCTAssertGreaterThan(flip.frame.minY, off[0].maxY,
+                             "the cluster stands below the board")
+        XCTAssertTrue(offTurn.frame.contains(flip.frame),
+                      "and inside the screen — it is at \(flip.frame)")
+        offTurn.terminate()
+
+        let onTurn = launch(board: "on-turn")
+        XCTAssertTrue(onTurn.buttons["cluster-claim"].waitForExistence(timeout: 30),
+                      "and the on-turn cluster carries the claim")
+        let on = corners(onTurn)
+
+        for (side, other) in zip(on, off) {
+            XCTAssertEqual(side.minX, other.minX, accuracy: 0.5,
+                           "the board does not move when the turn passes")
+            XCTAssertEqual(side.minY, other.minY, accuracy: 0.5,
+                           "the board does not move when the turn passes — it is at "
+                           + "\(side) on turn and \(other) off it")
+            XCTAssertEqual(side.width, other.width, accuracy: 0.5,
+                           "nor change size — it is \(side) on turn and \(other) off it")
+            XCTAssertEqual(side.height, other.height, accuracy: 0.5,
+                           "nor change size — it is \(side) on turn and \(other) off it")
+        }
+        attach(onTurn, named: "phone-nearby-09-the-board-across-the-turn")
+    }
+
+    /// Where the board is and how big it is, read as two opposite corners of
+    /// it: the pair moves if the block moves and changes if the pitch does.
+    private func corners(_ app: XCUIApplication) -> [CGRect] {
+        [app.descendants(matching: .any)["point-a1"].frame,
+         app.descendants(matching: .any)["point-g7"].frame]
+    }
+
     /// And a take-back asked for is the same shape with its own words.
     func testAnArrivingTakeBackIsALineAndAnAnswer() {
         let app = launch(board: "undo-asked")

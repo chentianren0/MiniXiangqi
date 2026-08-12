@@ -74,12 +74,17 @@ struct PlayScreen: View {
     @State private var moveListShown = false
 
     /// What the stacked shape's chrome actually came to, measured rather than
-    /// assumed: the controls below the board, and the status above it at an
-    /// accessibility text size, where the bar cannot hold it and it is taller
-    /// than the allowance the shape rule spends. They start at the allowance so
-    /// the first frame is already the right size.
+    /// assumed: the status above the board at an accessibility text size, where
+    /// the bar cannot hold it and it is taller than the allowance the shape rule
+    /// spends. It starts at the allowance's own share so the first frame is
+    /// already the right size.
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
-    @State private var controlsHeight = BoardLayout.stackedChromeHeight / 2
+
+    /// One row of the control cluster, measured — the quantity the cluster's
+    /// reserved slot is two of. What is measured is a row rather than the
+    /// cluster, because the cluster's own height is the thing the board is not
+    /// allowed to follow.
+    @State private var controlRow = BoardLayout.clusterRowHeight
 
     @Environment(\.motionPolicy) private var policy
 
@@ -298,16 +303,30 @@ struct PlayScreen: View {
     /// The turn status in the bar's centre, the play controls below the board,
     /// and the board fitted to the full width in the height between them.
     ///
-    /// The chrome's height is measured and handed to the geometry rather than
-    /// assumed, so the board is sized around what the chrome actually came to.
-    /// Nothing in it depends on the board's size, so there is no loop in the
-    /// two reading each other.
+    /// **The cluster's slot is reserved at its tallest arrangement**, and the
+    /// board is sized around the reservation rather than around the arrangement
+    /// on screen. A cluster that wrapped to two rows when a scene changed — or
+    /// while a hint search ran, or at a wider text size — would otherwise move
+    /// the board under the player's thumb every time it did. The drawn
+    /// arrangement is anchored at the bottom of the slot, so the controls stay
+    /// where a thumb last found them and the slot's spare height is air between
+    /// them and the board.
+    ///
+    /// The height is what the chrome is *granted* rather than what it asks for,
+    /// which is what keeps the board inside the space it is drawn in: where the
+    /// grant is short the cluster is what gives way, per the contract's own
+    /// order. Nothing in the chrome depends on the board's size, so there is no
+    /// loop in the two reading each other.
     ///
     /// At an accessibility text size the element returns to its place above the
     /// board — the bar cannot hold it there — and the bar centre stays empty,
     /// because a page over a board still needs no name.
     private func stacked(_ game: Game, _ motion: PlayMotion, in size: CGSize) -> some View {
-        VStack(spacing: 0) {
+        let status = statusStandsInBar ? 0 : statusHeight
+        let chrome = BoardLayout.stackedChrome(
+            in: size, game: game.kind,
+            asking: status + BoardLayout.stackedCluster(row: controlRow))
+        return VStack(spacing: 0) {
             if !statusStandsInBar {
                 turnStatus(game, motion, placement: .block)
                     .padding(.horizontal, BoardLayout.panelInset - 12)
@@ -328,13 +347,16 @@ struct PlayScreen: View {
                     .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusHeight = $0 }
             }
 
-            board(game, motion, in: size)
+            board(game, motion, in: size, chrome: chrome)
 
             controlCluster(game, motion)
                 .padding(.horizontal, BoardLayout.panelInset)
-                .padding(.vertical, 8)
-                .onGeometryChange(for: CGFloat.self, of: \.size.height) { controlsHeight = $0 }
+                .padding(.vertical, BoardLayout.clusterAir)
+                .frame(height: max(0, chrome - status), alignment: .bottom)
         }
+        // The row the reservation is two of, measured behind the whole layout,
+        // where it costs nothing and cannot be reached.
+        .background { BoardLayout.ClusterRow { controlRow = $0 } }
         .toolbar {
             // The status in the title's place, which a board page does not
             // spend on a name.
@@ -369,8 +391,8 @@ struct PlayScreen: View {
     /// save-failure capsule, and the stalled slot with the retry that answers
     /// it. The overlay is applied outside the board's own tap area so that the
     /// retry is pressed rather than the board behind it.
-    private func board(_ game: Game, _ motion: PlayMotion, in size: CGSize) -> some View {
-        let chrome = (statusStandsInBar ? 0 : statusHeight) + controlsHeight
+    private func board(_ game: Game, _ motion: PlayMotion, in size: CGSize,
+                       chrome: CGFloat) -> some View {
         let geometry = BoardLayout.stackedGeometry(in: size, game: game.kind, chrome: chrome)
         return boardBlock(game, motion, geometry,
                           bleed: BoardLayout.surfaceBleed(in: size.width, board: geometry))
@@ -772,18 +794,27 @@ struct PlayScreen: View {
 
     /// The lamp, or the indicator standing in its place, and the word beside
     /// either where the row carries words.
+    ///
+    /// **The indicator draws inside the lamp's own layout box.** The lamp is
+    /// what is laid out in both states — hidden while the search runs, with the
+    /// indicator over it — so the control measures the same idle or thinking,
+    /// in either label style. A control that changed size when a search started
+    /// would change its row's width, and near the width a row is chosen at, the
+    /// arrangement under it.
     @ViewBuilder
     private func hintLabel(thinking: Bool, worded: Bool) -> some View {
         let label = Label {
             Text("control.hint")
         } icon: {
-            if thinking {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityIdentifier("hint-thinking")
-            } else {
-                Image(systemName: "lightbulb")
-            }
+            Image(systemName: "lightbulb")
+                .opacity(thinking ? 0 : 1)
+                .overlay {
+                    if thinking {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityIdentifier("hint-thinking")
+                    }
+                }
         }
         if worded {
             label.lineLimit(1)
@@ -897,7 +928,7 @@ struct PlayScreen: View {
     /// row it arrives on has the whole of it.
     private func wrappedControls(_ game: Game, _ motion: PlayMotion,
                                  worded: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: BoardLayout.clusterAir) {
             controls(game, motion, worded: worded, carriesFlip: false)
             flipControl(motion, worded: true)
         }
