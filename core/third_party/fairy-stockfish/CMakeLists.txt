@@ -209,10 +209,12 @@ if(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$" AND MSVC)
   # is untouched.
   target_compile_definitions(mxq_fairy_stockfish PUBLIC NO_PREFETCH)
   set(MXQ_FS_ARCH_PROFILE "general-64 on arm64/MSVC (portable: no popcnt, no prefetch, no neon — all three are Clang-only or x86-only on this compiler)")
-elseif(MXQ_FS_ARCH MATCHES "^(arm64|aarch64|ARM64)$")
-  # The fork's ARCH=apple-silicon profile: popcnt and neon, no SSE.
+elseif(MXQ_FS_ARCH MATCHES "^(arm64|arm64e|aarch64|ARM64)$")
+  # The fork's ARCH=apple-silicon profile: popcnt and neon, no SSE. arm64e is
+  # the same ISA baseline and better (armv8.3-a); NEON arrives from the target
+  # triple, and no -march is passed that could lower it.
   target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_POPCNT USE_NEON)
-  set(MXQ_FS_ARCH_PROFILE "apple-silicon (arm64: popcnt, neon)")
+  set(MXQ_FS_ARCH_PROFILE "apple-silicon (arm64/arm64e: popcnt, neon)")
 elseif(MXQ_FS_ARCH MATCHES "^(x86_64|AMD64|amd64)$")
   target_compile_definitions(mxq_fairy_stockfish PUBLIC USE_POPCNT)
   if(NOT MSVC)
