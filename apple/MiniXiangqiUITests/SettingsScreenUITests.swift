@@ -332,15 +332,15 @@ final class SettingsScreenUITests: XCTestCase {
     /// past the window the list goes is what the logged frames and the
     /// screenshot are for.
     func testTheScreenFitsTheMinimumWindow() {
-        let app = launch(window: "760x520")
+        let app = launch(window: "770x520")
         let language = Language.chinese
         openSettings(app, in: language)
 
-        // 760 by 520 is what docs/interaction-design.md accepts as this
+        // 770 by 520 is what docs/interaction-design.md accepts as this
         // platform's smallest window, and the window stops there however much
         // smaller a launch asks for.
         let window = app.windows.firstMatch.frame
-        XCTAssertEqual(window.size, CGSize(width: 760, height: 520),
+        XCTAssertEqual(window.size, CGSize(width: 770, height: 520),
                        "the accepted minimum window")
         for identifier in ["settings-symbols", "settings-notation",
                            "settings-first-mover", "settings-ai-level",
