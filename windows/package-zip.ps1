@@ -348,7 +348,7 @@ Write-Host 'Writing the licence and the attribution note'
 Set-Content -Path (Join-Path $staging 'README.md') -Encoding UTF8 -Value @"
 # Star River for Windows ($Architecture)
 
-A native app for Mini Xiangqi and standard Xiangqi: play either against the AI
+A native app for Xiangqi and Mini Xiangqi: play either against the AI
 or in Free Play, with a saved history you can replay, export and import. Everything happens
 on this machine — the app never uses the network.
 

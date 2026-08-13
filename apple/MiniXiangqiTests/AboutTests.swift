@@ -25,10 +25,17 @@ struct AboutTests {
     func theDisplayNameIsTheProductName() {
         // The application has a name per language — Star River and 闲敲棋子 —
         // carried by the project as the bundle's display name and localized
-        // there. The page reads it from there, so a project that lost the key
-        // would show an empty row. Which of the two answers is the language the
+        // there. Which of the two the page answers with is the language the
         // suite happens to run in, and pinning one of them would pin that
         // accident rather than the name.
+        //
+        // The key is asserted for itself because the row cannot speak for it:
+        // `About.displayName` falls back to `CFBundleName`, which now carries
+        // the same two names, so a project that lost `CFBundleDisplayName`
+        // alone would still fill the row. What that loss would change is the
+        // name the system shows under the icon, and only this catches it.
+        #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") != nil,
+                "the bundle still carries the display-name key the page prefers")
         #expect(["Star River", "闲敲棋子"].contains(About.displayName),
                 "the About page's name row reads \(About.displayName)")
     }
