@@ -1,4 +1,4 @@
-// The Play destination, and the three pages inside it.
+// The Play destination, and the pages inside it.
 //
 // docs/interaction-design.md, "Starting and configuring a game" and "Saving the
 // active game before choosing a new mode": the home is the root, each mode's
@@ -18,7 +18,7 @@
 // a game walked away from and returned to came back at the home rather than at
 // its board. Rebuilding the stack per visit fixed the first symptom and not the
 // second. Drawing the page is what this destination actually needs: one window,
-// one game, three pages, and no history to keep.
+// one game, a handful of pages, and no history to keep.
 //
 // What that costs is the system's own back button and the gestures around it,
 // and what it buys is a destination that is where the state says it is. The
@@ -168,6 +168,13 @@ struct PlayDestination: View {
         case .setup(let selection):
             SetupScreen(play: play, selection: selection)
                 .navigationTitle("nav.play")
+        // The Custom Scene editor: a pre-start page like the one above it, over
+        // an interactive board rather than a preview.
+        case .customScene:
+            if let scene = play.scene {
+                CustomSceneScreen(play: play, scene: scene)
+                    .navigationTitle("nav.play")
+            }
         // The board titles itself, and in the stacked shape it does not: what
         // stands in the bar's centre there is the turn status.
         case .board:

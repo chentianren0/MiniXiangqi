@@ -36,6 +36,12 @@ final class Replay {
     /// final one.
     private(set) var ply = 0
 
+    /// Whose ply 0 was — the side the record's own start position had to move,
+    /// read from the core once. A record whose game began from a composed
+    /// position may open with Black, and the move list pairs and numbers from
+    /// this rather than from a parity.
+    let firstMover: Side
+
     private(set) var position: ReplayPosition
     private(set) var placement: Placement
 
@@ -106,6 +112,8 @@ final class Replay {
         let start = try session.position(atPly: 0)
         self.position = start
         self.placement = Placement(fen: start.fen, game: record.game)
+        // The start position's own side to move, which is whose ply 0 was.
+        self.firstMover = start.sideToMove
         // The accepted history orientation: the human's own side at the bottom
         // where there was a human side, Red at the bottom otherwise — and a
         // board with no orientation opens as it is drawn, which is what the

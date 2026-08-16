@@ -41,7 +41,7 @@ struct PlayHome: View {
         }
         // The native presentation of a grouped list of choices on this platform,
         // and the one that gives a section its header. The title is the
-        // destination's rather than this page's, because all three pages carry
+        // destination's rather than this page's, because every page in it carries
         // the same one.
         .formStyle(.grouped)
         // The accepted confirmation. A system alert, blocking until it is
@@ -106,6 +106,14 @@ struct PlayHome: View {
             entry(PlaySelection(game: .xiangqi, mode: .freePlay),
                   "mode.freePlay", "mode-xiangqi-free-play")
             nearbyEntry(.xiangqi, "mode-xiangqi-nearby")
+            // Last of all, and in this section alone: Custom Scene is Xiangqi's
+            // own, because Xiangqi is the one game whose rules say which
+            // positions it may be set up in. It is a row like the others and
+            // not a fourth way to play — what it opens is the editor, and what
+            // the editor starts is an ordinary Free Play game.
+            row("mode.customScene", "mode-xiangqi-custom-scene") {
+                play.chooseCustomScene()
+            }
         } header: {
             Text(GameKind.xiangqi.localizedName)
         }

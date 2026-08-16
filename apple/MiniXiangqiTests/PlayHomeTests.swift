@@ -87,6 +87,7 @@ final class ParkedArchive: Rules {
     func moveHistory() throws -> [String] { try real.moveHistory() }
     func legalMoves() throws -> [String] { try real.legalMoves() }
     func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
+    func firstMover() throws -> Side { try real.firstMover() }
 }
 
 /// The catalog's answer in whatever language the host is running, which is the

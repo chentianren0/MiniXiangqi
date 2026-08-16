@@ -566,6 +566,7 @@ final class ParkedNearbyArchive: NearbyLibrary {
     func moveHistory() throws -> [String] { try core.moveHistory() }
     func legalMoves() throws -> [String] { try core.legalMoves() }
     func fen(atPly ply: Int) throws -> String { try core.fen(atPly: ply) }
+    func firstMover() throws -> Side { try core.firstMover() }
     func activeGameSummary() throws -> ActiveGameSummary? { try core.activeGameSummary() }
     func createNearby(_ configuration: GameConfiguration,
                       wire: NearbyWireSession) throws {

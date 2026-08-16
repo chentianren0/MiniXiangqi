@@ -1749,6 +1749,24 @@
         }
       }
     },
+    "mode.customScene": {
+      "comment": "The last row of the Xiangqi section on the Play home. It opens the editor; what the editor starts is an ordinary Free Play game.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Scene"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定排局"
+          }
+        }
+      }
+    },
     "mode.freePlay": {
       "extractionState": "manual",
       "localizations": {
@@ -2918,6 +2936,182 @@
           "stringUnit": {
             "state": "translated",
             "value": "白方获胜"
+          }
+        }
+      }
+    },
+    "scene.palette": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pieces"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棋子"
+          }
+        }
+      }
+    },
+    "scene.reason.decided": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This position already has a result, so there is no game to start from it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个局面已经有结果了，无法从这里开始对局。"
+          }
+        }
+      }
+    },
+    "scene.reason.elephantSide": {
+      "comment": "The arguments are the side and the point it stands on.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@'s elephant on %2$@ is off its own side's points."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@方 %2$@ 上的象不在本方的象位上。"
+          }
+        }
+      }
+    },
+    "scene.reason.facingGenerals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The two generals face each other on an open file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双方的将帅在同一条直线上照面。"
+          }
+        }
+      }
+    },
+    "scene.reason.generals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Place a general for each side."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先给双方各放一个将帅。"
+          }
+        }
+      }
+    },
+    "scene.reason.opponentInCheck": {
+      "comment": "The one argument is the side, used twice.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ is in check, so %1$@ must move first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@方被将军，应由%1$@方先行。"
+          }
+        }
+      }
+    },
+    "scene.reason.palace": {
+      "comment": "The arguments are the side and the point it stands on.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@'s piece on %2$@ is outside the palace."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@方 %2$@ 上的棋子出了九宫。"
+          }
+        }
+      }
+    },
+    "scene.reason.pieceCount": {
+      "comment": "The argument is the side, in the board's own word for it.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ has too many of a piece."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@方有一种棋子放多了。"
+          }
+        }
+      }
+    },
+    "scene.reason.soldierRank": {
+      "comment": "The arguments are the side and the point it stands on.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@'s soldier on %2$@ stands behind its own starting rank."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@方 %2$@ 上的兵在本方兵线之后。"
+          }
+        }
+      }
+    },
+    "scene.sideToMove": {
+      "comment": "The Custom Scene editor's side choice: the side whose move the game's first ply will be.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moves First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先行方"
           }
         }
       }

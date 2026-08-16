@@ -17,11 +17,21 @@
 // behaviour asks for them: the move the board is showing is indicated, and any
 // move can be selected to jump to it. During play neither applies — the list
 // is a record of what has happened, and the last row is always the position.
+//
+// **A pair is the first mover's ply and the answer to it**, and which side
+// opens is the game's start position's to say. A game composed in the Custom
+// Scene editor may open with Black, and its first row then carries an empty Red
+// cell; the numbering starts at 1 on the game's own first ply either way. No
+// mover is read off a ply's parity.
 
 import SwiftUI
 
 struct MoveList: View {
     var notation: [MoveReading]
+
+    /// Whose ply index 0 is. It comes from the game or the record — which asked
+    /// the core — and never from anything worked out here.
+    var firstMover: Side = .red
 
     /// The move the board is showing, as an index into `notation`. `nil` during
     /// play, and at replay's initial position, where no move has produced what
@@ -39,24 +49,20 @@ struct MoveList: View {
     @AppStorage(NotationStyle.key, store: Preferences.defaults)
     private var style: NotationStyle = .resolvedForInterfaceLanguage
 
-    private var rows: [(number: Int, red: String, black: String?)] {
-        stride(from: 0, to: notation.count, by: 2).map { index in
-            (number: index / 2 + 1,
-             red: notation[index].text(in: style),
-             black: index + 1 < notation.count ? notation[index + 1].text(in: style) : nil)
-        }
+    private var pairing: MovePairing {
+        MovePairing(plies: notation.count, firstMover: firstMover)
     }
 
     /// The row the shown move sits in, which is what a walk scrolls to.
     private var currentRow: Int? {
-        currentMove.map { $0 / 2 + 1 }
+        currentMove.map { pairing.row(of: $0) }
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(rows, id: \.number) { row in
+                    ForEach(pairing.rows, id: \.number) { row in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             // Numerals and a full stop, keyed all the same: it
                             // is what a row is numbered with, and what a
@@ -66,12 +72,12 @@ struct MoveList: View {
                                 .font(.callout.monospacedDigit())
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 28, alignment: .trailing)
-                            move(row.red, at: (row.number - 1) * 2)
-                            if let black = row.black {
-                                move(black, at: (row.number - 1) * 2 + 1)
-                            } else {
-                                Color.clear.frame(width: 76, height: 0)
-                            }
+                            // A row whose Red cell is empty is a Black-first
+                            // game's first row: the pair is still Red's slot
+                            // and Black's, and the slot nobody played is left
+                            // standing rather than closed up.
+                            cell(row.red)
+                            cell(row.black)
                         }
                         .font(.callout)
                         .id(row.number)
@@ -80,13 +86,22 @@ struct MoveList: View {
                 .padding(.vertical, 4)
             }
             .onChange(of: notation.count) {
-                guard let last = rows.last else { return }
+                guard let last = pairing.rows.last else { return }
                 scroll(proxy, to: last.number)
             }
             .onChange(of: currentRow) {
                 guard let currentRow else { return }
                 scroll(proxy, to: currentRow)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func cell(_ index: Int?) -> some View {
+        if let index {
+            move(notation[index].text(in: style), at: index)
+        } else {
+            Color.clear.frame(width: 76, height: 0)
         }
     }
 
@@ -125,5 +140,50 @@ struct MoveList: View {
         withAnimation(policy.scroll(.default)) {
             proxy.scrollTo(row, anchor: .bottom)
         }
+    }
+}
+
+/// How a line of plies falls into numbered pairs, given who opened it.
+///
+/// It is a value rather than a computation inside the view because the answer
+/// is the contract's own — a pair is the first mover's ply and the answer to
+/// it, the first pair is numbered 1, and which side opens is the start
+/// position's to say — and because the words in the cells are the only thing
+/// about the list that a notation preference changes. A Red-first game is the
+/// identity case: slot and ply index are the same number.
+nonisolated struct MovePairing: Equatable {
+    /// One printed row: its number, and the ply in each side's cell where the
+    /// line has one.
+    struct Row: Equatable {
+        var number: Int
+        /// The index into the line of the Red cell's ply, or nil where the row
+        /// has none — the first row of a game Black opened.
+        var red: Int?
+        /// The same for the Black cell, nil where the line stops at Red's ply.
+        var black: Int?
+    }
+
+    var plies: Int
+    var firstMover: Side
+
+    /// How far the first mover's ply sits into its pair. Zero when Red opened,
+    /// one when Black did — Black's ply being the second cell of the pair.
+    private var offset: Int { firstMover == .red ? 0 : 1 }
+
+    var rows: [Row] {
+        guard plies > 0 else { return [] }
+        return stride(from: 0, to: plies + offset, by: 2).map { slot in
+            Row(number: slot / 2 + 1,
+                red: ply(atSlot: slot),
+                black: ply(atSlot: slot + 1))
+        }
+    }
+
+    /// Which row a ply is printed in, which is what a walk scrolls to.
+    func row(of ply: Int) -> Int { (ply + offset) / 2 + 1 }
+
+    private func ply(atSlot slot: Int) -> Int? {
+        let index = slot - offset
+        return (0..<plies).contains(index) ? index : nil
     }
 }
