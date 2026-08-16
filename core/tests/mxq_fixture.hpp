@@ -45,6 +45,33 @@ struct Boundary {
     std::string expect;
 };
 
+/*
+ * What the setup-legality predicate must answer for `start_fen`.
+ *
+ * A setup fixture asks a different question from every other one here — not
+ * what may be played over a position but whether its game may begin there — so
+ * it carries this instead of `moves`, `assertions` and `boundary` rather than
+ * alongside them. A history has no meaning for it, and asserting a legal-move
+ * set over a position no game could reach would be pinning an answer nothing
+ * asks for.
+ *
+ * `status` is the answer the entry returns, stated rather than derived: a
+ * position may also be refused before any rule is reached, for not being a
+ * position of the game's board at all, and that refusal is worth pinning
+ * because the predicate reads the frozen encoding more strictly than the
+ * engine's structural validator does.
+ *
+ * `rule` is non-null exactly for `illegal-position`, and `side` and `square`
+ * are null whenever it is. Which of the two a broken rule carries is that
+ * rule's own, and the fixtures are where that is pinned.
+ */
+struct SetupExpect {
+    std::string status;                /* ok, illegal-position, invalid-fen */
+    std::optional<std::string> rule;
+    std::optional<std::string> side;   /* "red" or "black" */
+    std::optional<std::string> square;
+};
+
 struct Fixture {
     std::string id;
     std::string title;
@@ -66,6 +93,11 @@ struct Fixture {
     GameStateExpect game_state;
 
     std::optional<Boundary> boundary;
+
+    /* Present exactly for a setup fixture, and then every member above from
+     * `moves` down is absent from the file and unread here. */
+    std::optional<SetupExpect> setup;
+
     std::string rationale;
 
     /* How many normative expectations this fixture carries, for the report. */

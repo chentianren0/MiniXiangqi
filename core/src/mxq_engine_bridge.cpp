@@ -427,6 +427,38 @@ bool validate_fen(Variant variant, const char *fen, std::string &detail) {
     return true;
 }
 
+ProbeError side_to_move_in_check(Variant variant, const char *fen,
+                                 bool &out_in_check, std::string &detail) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_ready) {
+        detail = "the engine is not initialised";
+        return ProbeError::NotInitialised;
+    }
+    if (fen == nullptr) {
+        detail = "fen was null";
+        return ProbeError::FenInvalid;
+    }
+
+    const Stockfish::Variant *v = variant_object(variant);
+    if (FEN::validate_fen(std::string(fen), v, false) != FEN::FEN_OK) {
+        detail = "the FEN does not satisfy the frozen structural encoding";
+        return ProbeError::FenInvalid;
+    }
+
+    /* One state record and no move list: nothing here is ever advanced, so the
+     * deque a replay needs to keep do_move's back-pointers alive has no
+     * counterpart. set() computes the checkers as part of the position's state,
+     * which is the whole of what this reads. It is on the heap rather than the
+     * stack for the reason every StateInfo in this file is: the record carries
+     * an NNUE accumulator and a per-square array, and the allocator is what
+     * honours its alignment without this file having to know the number. */
+    auto state = std::make_unique<StateInfo>();
+    Position pos;
+    pos.set(v, std::string(fen), false, state.get(), Threads.main());
+    out_in_check = static_cast<bool>(pos.checkers());
+    return ProbeError::None;
+}
+
 ReplayError replay(Variant variant, const char *start_fen,
                    const char *const *moves, size_t move_count,
                    std::string &out_fen,

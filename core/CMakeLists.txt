@@ -266,6 +266,11 @@ set(MXQ_CORE_SOURCES
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_engine_bridge.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_search.cpp>
   $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_session.cpp>
+  # The setup-legality predicate. Gated with the rest of the facade because the
+  # one question it cannot answer by arithmetic — is a side in check — is the
+  # engine's, so mxq_rules_validate_setup is absent from an engine-less build
+  # exactly as its neighbours in mxq_rules.cpp are.
+  $<$<BOOL:${MXQ_ENABLE_RULES_FACADE}>:${CMAKE_CURRENT_SOURCE_DIR}/src/mxq_setup.cpp>
   # The second engine's bridge, gated on its own engine rather than on the
   # first: the two are independent components and either can be left out of a
   # build without the other noticing.

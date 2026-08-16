@@ -113,9 +113,9 @@ bool move_begins_at(MxqGameKind game, const std::string &move,
 /*
  * Whether the whole NUL-terminated string is a position of this placement
  * game's board, judged against the frozen structural encoding and nothing else:
- * it says nothing about whether the position could be reached by play, which is
- * the setup-legality question mxq.h reserves MXQ_ERR_RULES_ILLEGAL_POSITION for
- * and which no game in this core answers.
+ * it says nothing about whether the game may be set up there, which is
+ * mxq_rules_validate_setup's question and answers MXQ_ERR_RULES_ILLEGAL_POSITION
+ * for every position of these games but their frozen start.
  *
  * Structural includes having exactly one spelling. An empty run may not follow
  * another empty run and may not be written with a leading zero, the third and

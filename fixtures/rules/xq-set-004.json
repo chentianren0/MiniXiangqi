@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-004",
+  "title": "Setup: an elephant across the river, on the other side's point",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/2B6/9/9/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "elephant-side",
+    "side": "red",
+    "square": "c6"
+  },
+  "rationale": "c6 is an elephant point, and it is Black's. An elephant never crosses the river, so Red's seven points are the ones on Red's own side and no other; a rule read as \"an elephant point\" rather than \"its own side's\" would accept this position."
+}

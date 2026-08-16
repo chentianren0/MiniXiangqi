@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-009",
+  "title": "Setup: a last rank spelling eight points is a position of no board",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/9/9/4K3 w - - 0 1",
+  "setup": {
+    "status": "invalid-fen",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "The last rank spells eight points on a board of nine. The engine's structural validator checks a rank's width only where a '/' follows it, so it never checks this one and accepts the FEN; the predicate reads the frozen encoding, refuses it, and reaches no setup rule. That strictness is load-bearing rather than fussy — it is what keeps the predicate judging the same board the engine plays — and this is what pins it: a parse loosened toward the validator would start answering about a board with a rank missing a point."
+}

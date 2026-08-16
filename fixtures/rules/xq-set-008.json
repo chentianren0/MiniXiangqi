@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-008",
+  "title": "Setup: the side to move may stand in check",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/4r4/9/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "ok",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "The chariot on e5 checks the red general, and Red is to move: the check is answered as the first move, which is exactly the exercise a tutorial position of this shape sets. Only the side NOT to move standing in check is illegal, and this fixture is what separates the two."
+}

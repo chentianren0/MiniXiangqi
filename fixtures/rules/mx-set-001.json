@@ -1,0 +1,14 @@
+{
+  "id": "mx-set-001",
+  "title": "Setup: Mini Xiangqi accepts its frozen starting position",
+  "area": "set",
+  "variant": "minixiangqi",
+  "start_fen": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1",
+  "setup": {
+    "status": "ok",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "Every game the predicate does not define a setup for accepts its own frozen start, and this is the half of that rule a refusal fixture cannot state: a predicate that answered \"illegal\" for every position of a game it has no rules for would refuse the one position every game of it begins from, and every stored record of one with it."
+}

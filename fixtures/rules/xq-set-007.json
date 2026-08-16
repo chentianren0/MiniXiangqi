@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-007",
+  "title": "Setup: the two generals facing on an empty file",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "facing-generals",
+    "side": null,
+    "square": null
+  },
+  "rationale": "Two bare generals on file e with nothing between them attack each other, so the position offers a general the capture of a general whichever side is to move. The violation belongs to neither side and names none: it is a relation between the two generals, and the frontend knows where both stand."
+}

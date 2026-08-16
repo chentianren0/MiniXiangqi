@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-006",
+  "title": "Setup: the side not to move stands in check",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/3R5/9/9/9/9/9/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "opponent-in-check",
+    "side": "black",
+    "square": "d10"
+  },
+  "rationale": "The chariot on d9 attacks the black general, and Red is to move — so Black is left in check with no move to answer with, which no position a game could be played from ever is. The report names the checked side and its general's square, and the answer is reached by reading the position with the side to move flipped rather than by making the capture the position offers."
+}

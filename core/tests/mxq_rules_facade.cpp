@@ -39,6 +39,31 @@ std::string reason_identifier(MxqEndReason reason) {
     return "unknown(" + std::to_string(reason) + ")";
 }
 
+std::string rule_identifier(MxqSetupRule rule) {
+    switch (rule) {
+    case MXQ_SETUP_RULE_NONE: return "";
+    case MXQ_SETUP_RULE_PIECE_COUNT: return "piece-count";
+    case MXQ_SETUP_RULE_PALACE: return "palace";
+    case MXQ_SETUP_RULE_ELEPHANT_SIDE: return "elephant-side";
+    case MXQ_SETUP_RULE_SOLDIER_RANK: return "soldier-rank";
+    case MXQ_SETUP_RULE_FACING_GENERALS: return "facing-generals";
+    case MXQ_SETUP_RULE_OPPONENT_IN_CHECK: return "opponent-in-check";
+    case MXQ_SETUP_RULE_NOT_FROZEN_START: return "not-frozen-start";
+    default: break;
+    }
+    return "unknown(" + std::to_string(rule) + ")";
+}
+
+std::string color_identifier(MxqColor color) {
+    switch (color) {
+    case MXQ_COLOR_NONE: return "";
+    case MXQ_COLOR_RED: return "red";
+    case MXQ_COLOR_BLACK: return "black";
+    default: break;
+    }
+    return "unknown(" + std::to_string(color) + ")";
+}
+
 bool rules_facade_built() { return MXQ_TEST_RULES_FACADE != 0; }
 
 RulesFacade::~RulesFacade() { close(); }
@@ -138,6 +163,14 @@ MxqStatus RulesFacade::legal_moves(MxqGameKind game,
     return MXQ_OK;
 }
 
+MxqStatus RulesFacade::validate_setup(MxqGameKind game, const std::string &fen,
+                                      MxqSetupViolation &violation, MxqError &err) {
+    assert(is_open());
+    std::memset(&violation, 0, sizeof(violation));
+    violation.struct_size = static_cast<uint32_t>(sizeof(violation));
+    return mxq_rules_validate_setup(core_, game, fen.c_str(), &violation, &err);
+}
+
 #else /* MXQ_TEST_RULES_FACADE */
 
 bool RulesFacade::open(const std::string &store_directory,
@@ -182,6 +215,16 @@ MxqStatus RulesFacade::legal_moves(MxqGameKind game,
     (void)start_fen;
     (void)moves;
     (void)out;
+    (void)err;
+    assert(false && "the rules facade is not built; open() must gate this");
+    return MXQ_ERR_INTERNAL_INVARIANT;
+}
+
+MxqStatus RulesFacade::validate_setup(MxqGameKind game, const std::string &fen,
+                                      MxqSetupViolation &violation, MxqError &err) {
+    (void)game;
+    (void)fen;
+    (void)violation;
     (void)err;
     assert(false && "the rules facade is not built; open() must gate this");
     return MXQ_ERR_INTERNAL_INVARIANT;
