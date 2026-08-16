@@ -170,10 +170,17 @@ struct PlayDestination: View {
                 .navigationTitle("nav.play")
         // The Custom Scene editor: a pre-start page like the one above it, over
         // an interactive board rather than a preview.
+        //
+        // **It is titled with its own name rather than with Play's.** A
+        // pre-start page for a mode is a page about that mode, and this one is
+        // the only page in the destination that is a *place* rather than a
+        // step: it is where a position is composed, it stands alone with the
+        // destination bar hidden, and a title reading 对局 over it named the
+        // destination the reader had already left.
         case .customScene:
             if let scene = play.scene {
                 CustomSceneScreen(play: play, scene: scene)
-                    .navigationTitle("nav.play")
+                    .navigationTitle("mode.customScene")
             }
         // The board titles itself, and in the stacked shape it does not: what
         // stands in the bar's centre there is the turn status.

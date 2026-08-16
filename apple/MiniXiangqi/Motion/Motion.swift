@@ -188,6 +188,38 @@ enum Motion {
         return (elapsed / dashDriftPeriod).truncatingRemainder(dividingBy: 1)
     }
 
+    // MARK: - A refused placement
+
+    /// The Custom Scene editor's answer to a point that will not take the piece
+    /// being held: the disc is offered, shakes off across the point, and goes.
+    ///
+    /// 360 ms for the whole answer — long enough for three crossings to be seen
+    /// as a refusal rather than a glitch, short enough that the next attempt is
+    /// not waited on. The amplitude is a fraction of the pitch, like every other
+    /// board dimension, so the shake stays inside the point's own cell at every
+    /// board size — which is the containment that applies to a body, and which
+    /// is what fixes the number: a disc's radius is 0.40 p and its cell reaches
+    /// 0.50 p, so 0.10 p is the whole of what a body has to move in.
+    /// `MotionTests` measures that against the drawn disc rather than trusting
+    /// this comment.
+    static let refusal: TimeInterval = 0.36
+    static let refusalCrossings: Double = 3
+    static let refusalAmplitude: Double = 0.10
+
+    /// How far the refused disc stands from the point it was offered to, in
+    /// pitches, `progress` of the way through the answer. A damped oscillation:
+    /// it starts and ends on the point, and each crossing is smaller than the
+    /// one before, so the disc settles as it fades rather than being cut off
+    /// mid-swing.
+    ///
+    /// It is a rotation-free translation and therefore motion, so Reduce Motion
+    /// removes it — the disc still appears and still goes, without moving.
+    static func refusalOffset(_ progress: Double) -> Double {
+        let clamped = min(max(progress, 0), 1)
+        return sin(clamped * 2 * .pi * refusalCrossings) * refusalAmplitude
+            * (1 - clamped)
+    }
+
     // MARK: - The acknowledgment beat
 
     /// The turn status's background rises to full emphasis and falls back,

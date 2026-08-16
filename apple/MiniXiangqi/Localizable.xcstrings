@@ -2940,19 +2940,38 @@
         }
       }
     },
-    "scene.palette": {
+    "scene.firstMover": {
+      "comment": "The Custom Scene editor's first-mover choice: the name over the segmented control, and the control's own name for a screen reader.",
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pieces"
+            "value": "First to Move"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "棋子"
+            "value": "先行方"
+          }
+        }
+      }
+    },
+    "scene.firstMover.caption": {
+      "comment": "Under the first-mover control: what choosing a side does.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The side you choose makes the first move of the game."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选的一方走本局的第一步。"
           }
         }
       }
@@ -3098,20 +3117,38 @@
         }
       }
     },
-    "scene.sideToMove": {
-      "comment": "The Custom Scene editor's side choice: the side whose move the game's first ply will be.",
+    "scene.side.black": {
+      "comment": "The Custom Scene editor's tag for Black: on the board's top half, and over Black's palette row.",
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moves First"
+            "value": "Black"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "先行方"
+            "value": "黑方"
+          }
+        }
+      }
+    },
+    "scene.side.red": {
+      "comment": "The Custom Scene editor's tag for Red: on the board's bottom half, and over Red's palette row. A visible label rather than the bare accessibility word.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Red"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "红方"
           }
         }
       }

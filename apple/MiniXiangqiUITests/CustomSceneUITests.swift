@@ -46,6 +46,18 @@ final class CustomSceneUITests: XCTestCase {
         return (element.value as? String) ?? element.label
     }
 
+    /// An element, waited for before it is read. A label taken from the
+    /// snapshot the page was still assembling in reads back empty, and an
+    /// assertion made there is a race that passes on a fast run.
+    private func settled(_ element: XCUIElement,
+                         _ message: String = "",
+                         file: StaticString = #filePath,
+                         line: UInt = #line) -> XCUIElement {
+        XCTAssertTrue(element.waitForExistence(timeout: 10), message,
+                      file: file, line: line)
+        return element
+    }
+
     /// Puts one piece down: pick the entry, then tap the point.
     private func place(_ app: XCUIApplication, _ side: String, _ letter: String,
                        at square: String) {
@@ -91,6 +103,28 @@ final class CustomSceneUITests: XCTestCase {
         XCTAssertEqual(palette(app, "red", "k").value as? String, "1",
                        "each entry carries how many of it remain")
         XCTAssertEqual(palette(app, "red", "p").value as? String, "5")
+
+        // The board says whose half is whose, and each palette row says whose
+        // pieces are in it.
+        let top = settled(app.staticTexts["scene-half-black"])
+        let bottom = settled(app.staticTexts["scene-half-red"])
+        XCTAssertEqual(reading(app, "scene-half-black"), "黑方")
+        XCTAssertEqual(reading(app, "scene-half-red"), "红方")
+        XCTAssertLessThan(top.frame.midY, bottom.frame.midY,
+                          "黑方 over the top half, 红方 under the bottom")
+        let redRow = settled(app.staticTexts["palette-side-red"])
+        let blackRow = settled(app.staticTexts["palette-side-black"])
+        XCTAssertEqual(reading(app, "palette-side-red"), "红方")
+        XCTAssertEqual(reading(app, "palette-side-black"), "黑方")
+        XCTAssertLessThan(redRow.frame.minY, blackRow.frame.minY,
+                          "Red's row first, as the entries arrive")
+
+        // The first-mover choice says what it is and what choosing does.
+        _ = settled(app.staticTexts["scene-first-mover"])
+        XCTAssertEqual(reading(app, "scene-first-mover"), "先行方")
+        _ = settled(app.staticTexts["scene-first-mover-caption"])
+        XCTAssertEqual(reading(app, "scene-first-mover-caption"),
+                       "所选的一方走本局的第一步。")
         attach(app, named: "70-the-custom-scene-editor")
 
         // It is a pre-start page over the home, left by the toolbar's own back
@@ -131,6 +165,17 @@ final class CustomSceneUITests: XCTestCase {
         point(app, "a1").click()
         XCTAssertEqual(palette(app, "red", "r").value as? String, "2")
         place(app, "red", "r", at: "a1")
+
+        // A point that will not take the held piece does not take it: the
+        // advisor offered outside the palace shakes off, the point stays empty
+        // and the entry is still in hand for the point that does take it.
+        place(app, "red", "a", at: "c1")
+        XCTAssertEqual(point(app, "c1").label, "c1 空")
+        XCTAssertEqual(palette(app, "red", "a").value as? String, "2",
+                       "nothing was spent on a point that refused it")
+        point(app, "d1").click()
+        XCTAssertEqual(point(app, "d1").label, "d1 红 仕",
+                       "and the point inside the palace takes the same piece")
 
         app.windows.firstMatch.radioButtons["黑"].click()
         attach(app, named: "71-a-composed-scene")

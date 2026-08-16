@@ -117,6 +117,62 @@ struct CustomSceneTests {
         }
     }
 
+    // MARK: - The point that will not take the piece
+
+    /// A held piece offered to a point the core reports as no place for it does
+    /// not land, and the page is handed the sentence to say at that moment.
+    ///
+    /// The class and the point are the core's, and which sentence each class
+    /// comes to is pinned above. What is asserted here is what the refusal
+    /// *does*: the draft is untouched, the piece is still held, and the very
+    /// next point that does take it takes it.
+    @Test("A point the core refuses the piece at does not take it, and says why")
+    func anIllegalPointRefusesTheHeldPiece() throws {
+        let core = try TestCores.fresh()
+        let scene = CustomScene(core: core)
+        try generals(scene)
+        let advisor = Self.red(.advisor)
+
+        let outside = try square("c1")
+        scene.pick(advisor)
+        scene.tap(outside)
+
+        let refusal = try #require(scene.refusal, "the point answered")
+        #expect(refusal.square == outside)
+        #expect(refusal.piece == advisor)
+        #expect(!refusal.reason.isEmpty, "and it answered with a sentence")
+        #expect(scene.pieces[outside] == nil, "and the draft did not change")
+        #expect(scene.remaining(advisor) == 2)
+        #expect(scene.isHeld(advisor), "the piece is still in hand")
+        #expect(scene.verdict == .startable, "nor did what the core says about it")
+
+        // The point that does take it takes it, and the refusal is spent.
+        scene.tap(try square("d1"))
+        #expect(scene.pieces[try square("d1")] == advisor)
+        #expect(scene.refusal == nil)
+    }
+
+    /// The refusals that are about the whole position rather than about the
+    /// point just touched stay placeable, because a composer builds through
+    /// them: the piece lands and the standing reason line reports it.
+    @Test("A position-wide refusal is an intermediate state and still places")
+    func aPositionWideRefusalStillPlaces() throws {
+        let core = try TestCores.fresh()
+        let scene = CustomScene(core: core)
+        scene.sideToMove = .black
+        try generals(scene)
+
+        let chariot = Self.black(.chariot)
+        scene.pick(chariot)
+        scene.tap(try square("e10"))
+
+        #expect(scene.refusal == nil, "the point took it")
+        #expect(scene.pieces[try square("e10")] == chariot)
+        #expect(scene.verdict == .violation(SetupViolation(rule: .opponentInCheck,
+                                                           side: .red, square: "e1")),
+                "and the standing reason is what reports the position")
+    }
+
     // MARK: - The one plain reason
 
     @Test("Until both generals stand, the reason is the generals")
@@ -136,6 +192,13 @@ struct CustomSceneTests {
     /// One position per class the editor can be shown, because the classes are
     /// the axis the copy is keyed on: a mapping that named the wrong one would
     /// tell a player to fix something that is not wrong.
+    ///
+    /// **The classes reach the page two ways, and each is asked here the way it
+    /// arrives.** The two that are about the whole position stand in the
+    /// verdict, because the piece that makes them true still lands. The three
+    /// that are about where one piece may stand never become a verdict at all —
+    /// the point refuses the piece — so they are read off the refusal, whose
+    /// sentence is the same sentence the verdict would have carried.
     @Test("Each refusal the core makes is carried as its own class, side and point")
     func eachRefusalIsCarriedAsItsOwnClass() throws {
         let core = try TestCores.fresh()
@@ -148,25 +211,27 @@ struct CustomSceneTests {
             return scene.verdict
         }
 
+        /// What a point says back when it will not take the piece offered to
+        /// it, over a board that already has its two generals.
+        func refusal(of piece: Piece, at name: String) throws -> String? {
+            let scene = CustomScene(core: core)
+            try generals(scene)
+            scene.pick(piece)
+            scene.tap(try square(name))
+            return scene.refusal?.reason
+        }
+
+        /// The sentence one class, side and point comes to.
+        func sentence(_ rule: SetupRule, _ side: Side?, _ square: String) -> String? {
+            CustomScene.Verdict
+                .violation(SetupViolation(rule: rule, side: side, square: square))
+                .reason
+        }
+
         #expect(try verdict(of: [("e1", Self.red(.general)),
                                  ("e10", Self.black(.general))])
                 == .violation(SetupViolation(rule: .facingGenerals, side: nil, square: "")),
                 "the relation belongs to neither side and names no point")
-
-        #expect(try verdict(of: [("e1", Self.red(.general)),
-                                 ("d10", Self.black(.general)),
-                                 ("c1", Self.red(.advisor))])
-                == .violation(SetupViolation(rule: .palace, side: .red, square: "c1")))
-
-        #expect(try verdict(of: [("e1", Self.red(.general)),
-                                 ("d10", Self.black(.general)),
-                                 ("f1", Self.red(.elephant))])
-                == .violation(SetupViolation(rule: .elephantSide, side: .red, square: "f1")))
-
-        #expect(try verdict(of: [("e1", Self.red(.general)),
-                                 ("d10", Self.black(.general)),
-                                 ("g1", Self.red(.soldier))])
-                == .violation(SetupViolation(rule: .soldierRank, side: .red, square: "g1")))
 
         #expect(try verdict(of: [("e1", Self.red(.general)),
                                  ("d10", Self.black(.general)),
@@ -175,6 +240,15 @@ struct CustomSceneTests {
                 == .violation(SetupViolation(rule: .opponentInCheck, side: .red,
                                              square: "e1")),
                 "the side not to move is the one that may not be in check")
+
+        #expect(try refusal(of: Self.red(.advisor), at: "c1")
+                == sentence(.palace, .red, "c1"))
+
+        #expect(try refusal(of: Self.red(.elephant), at: "f1")
+                == sentence(.elephantSide, .red, "f1"))
+
+        #expect(try refusal(of: Self.red(.soldier), at: "g1")
+                == sentence(.soldierRank, .red, "g1"))
     }
 
     @Test("Every reason the editor can show is a sentence, and the startable one is none")

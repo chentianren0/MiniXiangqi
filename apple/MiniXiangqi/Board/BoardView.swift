@@ -9,6 +9,18 @@
 
 import SwiftUI
 
+/// A piece offered to a point that would not take it, and how far through the
+/// board's answer the refusal has come — 0 as it is offered, 1 once it has
+/// gone.
+///
+/// Which points refuse which pieces is not asked here and is not asked
+/// anywhere above the core: this carries the answer, not the rule.
+struct RefusedPlacement: Equatable {
+    var square: Square
+    var piece: Piece
+    var shake: Double
+}
+
 struct BoardView: View {
     var geometry: BoardGeometry
     var placement: Placement
@@ -33,6 +45,25 @@ struct BoardView: View {
     var suggested: Square?
     var lastMove: Move?
     var checkedGeneral: Square?
+
+    /// The points whose discs stand at rest on a board being **composed**, and
+    /// the point whose disc is leaving one. Together they are what makes a
+    /// placement scale in and a removal scale out: a point nobody has mentioned
+    /// interpolates from nothing, and the point that is leaving is named until
+    /// its disc has gone, so it never snaps back to full size on the way out.
+    ///
+    /// A board that is played hands neither, and every disc on it is drawn at
+    /// full size — which is what a board with no palette beside it means by a
+    /// piece being where it is.
+    var settled: Set<Square> = []
+    var leaving: Square?
+
+    /// A piece offered to a point and refused, with how far through its answer
+    /// the refusal has come. Only the board being composed carries one: it is
+    /// the editor's answer to a point the core reports as no place for that
+    /// piece, and a board being played refuses a *move*, which the markers
+    /// already answer.
+    var refused: RefusedPlacement?
 
     /// The running committing transition and the emphasis phases, from
     /// PlayMotion. A static board — a snapshot, a preview — leaves them at
@@ -163,8 +194,36 @@ struct BoardView: View {
         .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
         .background(style.boardSurface)
         .overlay(points)
+        .overlay(refusal)
         .onChange(of: driftsDashes, initial: true) { _, drifting in
             driftStart = drifting ? .now : nil
+        }
+    }
+
+    /// The refused disc, over the point it was offered to: the piece the player
+    /// is holding, drawn where they aimed it, shaking off and going.
+    ///
+    /// It is drawn over the core rather than into the canvas because it is not
+    /// part of the position — nothing landed — and because what it does is
+    /// move, which is the one thing the canvas's phases are not for. It takes
+    /// no input: the point beneath it is still the point, and a second tap on
+    /// it is a second attempt.
+    ///
+    /// Under Reduce Motion it does not move. The disc still appears at the
+    /// point and still goes, because opacity is not motion and the state has to
+    /// arrive either way; what disappears is the shake.
+    @ViewBuilder
+    private var refusal: some View {
+        if let refused {
+            PieceDisc(piece: refused.piece, pitch: p, board: geometry.board,
+                      style: style, symbols: PieceSymbols.named(storedSymbols))
+                .offset(x: policy.reduceMotion
+                        ? 0 : Motion.refusalOffset(refused.shake) * p)
+                .opacity(1 - refused.shake)
+                .position(geometry.center(of: refused.square, flipped: flipped))
+                .frame(width: geometry.coreSize.width, height: geometry.coreSize.height)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 
@@ -188,7 +247,17 @@ struct BoardView: View {
                                         check: checkEmphasis,
                                         marker: markerEmphasis,
                                         hint: SquarePhases(suggested, at: hintEmphasis),
-                                        lifts: SquarePhases(raised: selected)))
+                                        lifts: SquarePhases(raised: selected),
+                                        settled: settlePhases))
+    }
+
+    /// Every settled point at rest and the leaving point at nothing. Empty on
+    /// every board that is played, which is what leaves its discs at full size.
+    private var settlePhases: SquarePhases {
+        guard !settled.isEmpty || leaving != nil else { return SquarePhases() }
+        var values = Dictionary(uniqueKeysWithValues: settled.map { ($0, 1.0) })
+        if let leaving { values[leaving] = 0 }
+        return SquarePhases(values)
     }
 
     /// Whether the board's one continuous motion is running: a suggested
