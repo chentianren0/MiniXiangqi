@@ -48,6 +48,13 @@ struct CustomSceneScreen: View {
     /// How far through its answer a refused placement is, 0 at rest.
     @State private var refusalShake: Double = 0
 
+    /// The 棋子符号 preference, declared exactly as `BoardView` declares it and
+    /// for the same reason: read here rather than sampled once, so that
+    /// flipping the preference repaints the palette on the frame it repaints
+    /// the board. A palette that read it any other way would be a second
+    /// answer to which symbols a piece carries.
+    @AppStorage(PieceSymbols.key, store: Preferences.defaults) private var storedSymbols: String?
+
     private var game: GameKind { CustomScene.game }
 
     private var style: BoardStyle { .traditional }
@@ -213,7 +220,12 @@ struct CustomSceneScreen: View {
     /// answer rather than overlapping it — and a cancelled answer leaves the
     /// clearing to the one that replaced it.
     private func answerRefusal() async {
-        guard scene.refusal != nil else { return }
+        guard let refusal = scene.refusal else { return }
+        // The shake is the sighted answer and the disc it moves is hidden, so
+        // without this a refusal happens silently: the point stays empty, the
+        // piece stays held, and nothing says why. The sentence is the one the
+        // panel is showing, so both readers are told the same thing.
+        AccessibilityNotification.Announcement(refusal.reason).post()
         if refusalShake != 0 {
             // A refusal arriving inside another's answer starts from the point
             // rather than from wherever the last swing had reached. The frame
@@ -345,8 +357,7 @@ struct CustomSceneScreen: View {
         let remaining = scene.remaining(piece)
         return Button { scene.pick(piece) } label: {
             PieceDisc(piece: piece, pitch: discPitch, board: game.board,
-                      style: style,
-                      symbols: PieceSymbols.current(in: Preferences.defaults))
+                      style: style, symbols: PieceSymbols.named(storedSymbols))
                 // How many are left, on the disc's own corner rather than
                 // beneath it. The panel beneath a stacked board is the height
                 // the board is not getting, so a line of its own per row is a

@@ -24,7 +24,7 @@ Settings is five preference groups with an **About** page under them, which stat
 
 The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
-**The two board screens hide the destination bar where that bar stands across the bottom of the screen.** The board and [History replay](#history-replay) hide it while they are up; the three homes — the Play home, the History list, Settings — keep it, and so does a mode's pre-start page. Leaving a board screen brings it back, so no destination is ever more than the page's own back control away and no capability is withdrawn.
+**The two board screens hide the destination bar where that bar stands across the bottom of the screen.** The board and [History replay](#history-replay) hide it while they are up; the three homes — the Play home, the History list, Settings — keep it, and so does a mode's pre-start page, [Custom Scene](#custom-scene) excepted under its own rule below. Leaving a board screen brings it back, so no destination is ever more than the page's own back control away and no capability is withdrawn.
 
 **[Custom Scene](#custom-scene) hides it too, and wherever that bar exists rather than only where it stands across the bottom.** What the bar costs there is not height alone: a switch to another destination discards the position being composed, so the editor is a page that stands alone at every width. Its back control is the way out and brings the bar back.
 

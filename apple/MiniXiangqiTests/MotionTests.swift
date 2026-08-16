@@ -192,6 +192,32 @@ struct MotionTests {
         }
     }
 
+    // MARK: - The refused placement
+
+    @Test("A refused disc shakes across its point and stays inside the cell")
+    func refusalShakeIsBoundedByTheCell() {
+        #expect(Motion.refusalOffset(0) == 0,
+                "the disc is offered on the point it was aimed at")
+        #expect(Motion.refusalOffset(1) == 0, "and it ends there")
+        // Damped: every crossing is smaller than the one before, so the disc
+        // settles as it fades rather than being cut off mid-swing.
+        #expect(abs(Motion.refusalOffset(0.25 / Motion.refusalCrossings))
+                > abs(Motion.refusalOffset(1 - 0.25 / Motion.refusalCrossings)))
+
+        // The stated containment: a disc carried this far from the centre keeps
+        // its whole body inside the point's own cell, at every board size,
+        // because both quantities are fractions of the pitch. Measured against
+        // the drawn disc rather than against the constant.
+        let geometry = BoardGeometry(board: GameKind.xiangqi.board, pitch: 44)
+        let reach = Motion.refusalAmplitude * geometry.pitch
+            + geometry.discDiameter / 2
+        #expect(reach <= geometry.markerOuterLimit + 1e-9)
+        // And the amplitude is what the offset actually reaches, so the bound
+        // above is a bound on the drawn disc rather than on a constant.
+        let peak = (0...1000).map { abs(Motion.refusalOffset(Double($0) / 1000)) }.max()!
+        #expect(peak <= Motion.refusalAmplitude)
+    }
+
     @Test("The dashes turn only for a suggested capture, and never under Reduce Motion")
     func dashDriftRunsOnlyWhileASuggestedCaptureStands() {
         let board = GameKind.miniXiangqi.board
@@ -337,5 +363,16 @@ struct MotionTests {
         #expect((sum - phases).hint[suggested] == 0.5)
         #expect(BoardPhases.zero.magnitudeSquared == 0)
         #expect(BoardPhases(hint: SquarePhases(suggested, at: 1)).magnitudeSquared == 1)
+
+        // The settle phase's resting value is **one**, and it is carried by the
+        // point being unmentioned rather than by a number. A board that is
+        // played says nothing about any point, and every disc on it is drawn at
+        // full size; a point mentioned at nothing is a disc that has gone. The
+        // two are not the same answer, and a reader that could not tell them
+        // apart would draw every piece in the app at zero size.
+        #expect(BoardPhases.zero.settled.stated(suggested) == nil,
+                "a played board mentions no point, so every disc is at rest")
+        #expect(SquarePhases([suggested: 0]).stated(suggested) == 0,
+                "and a leaving point is mentioned at nothing, which is not nil")
     }
 }

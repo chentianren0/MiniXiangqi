@@ -197,11 +197,14 @@ enum Motion {
     /// as a refusal rather than a glitch, short enough that the next attempt is
     /// not waited on. The amplitude is a fraction of the pitch, like every other
     /// board dimension, so the shake stays inside the point's own cell at every
-    /// board size: 0.14 p out from a disc whose radius is 0.40 p keeps the whole
-    /// body within the 0.50 p cell.
+    /// board size — which is the containment that applies to a body, and which
+    /// is what fixes the number: a disc's radius is 0.40 p and its cell reaches
+    /// 0.50 p, so 0.10 p is the whole of what a body has to move in.
+    /// `MotionTests` measures that against the drawn disc rather than trusting
+    /// this comment.
     static let refusal: TimeInterval = 0.36
     static let refusalCrossings: Double = 3
-    static let refusalAmplitude: Double = 0.14
+    static let refusalAmplitude: Double = 0.10
 
     /// How far the refused disc stands from the point it was offered to, in
     /// pitches, `progress` of the way through the answer. A damped oscillation:
