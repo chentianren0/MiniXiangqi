@@ -282,7 +282,9 @@ final class CustomScene {
             // report: the core says which side's complement is wrong and the
             // draft's own material says the piece is still in the palette. Both
             // halves are needed — a count violation with both generals down is
-            // some other piece, and it is a violation like any other.
+            // some other piece over its cap, which the palette's own counts
+            // never deal, so that arm is the core's to reach and not this
+            // editor's; it is a violation like any other all the same.
             verdict = violation.rule == .pieceCount && !hasBothGenerals
                 ? .incomplete : .violation(violation)
         case .malformed:
