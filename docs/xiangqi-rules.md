@@ -81,7 +81,7 @@ A Xiangqi position is one to set up in when all of the following hold. They are 
 - **The palace.** Every general and every advisor stands inside its own palace, `d1`–`f3` for Red and `d8`–`f10` for Black.
 - **The elephants' side.** Every elephant stands on one of the seven points its own side of the river offers it: `a3`, `c1`, `c5`, `e3`, `g1`, `g5` and `i3` for Red, and `a8`, `c6`, `c10`, `e8`, `g6`, `g10` and `i8` for Black.
 - **The soldiers' rank.** No soldier stands behind its own starting soldier rank: a Red soldier on rank 4 or above, a Black soldier on rank 7 or below.
-- **The side not to move is not in check.** The two generals facing each other on an otherwise empty file is such a check, so a position that stands them so is refused by this clause. The side **to** move may stand in check, and answering it is that side's first move.
+- **The side not to move is not in check.** The two generals facing each other on an otherwise empty file is such a check, so a position that stands them so is refused by this clause, and that instance is reported distinctly and ahead of the rest of the clause — reporting granularity, which is [core-interface.md](core-interface.md)'s rather than a clause of its own here. The side **to** move may stand in check, and answering it is that side's first move.
 
 The predicate reads piece placement and the side to move, which is the whole of what a position record denotes. Whether a position is worth playing is not its question and neither is whether it is already decided: a position offering the side to move no legal move is a legal setup and is not a game to begin, which is [core-interface.md](core-interface.md)'s rule for creating a session rather than this document's.
 

@@ -22,7 +22,7 @@ Which engine plays a game is not visible through the C interface, and neither is
 - **A short table is the same answer as no table.** The engine's own halving degradation is refused: the memory policy computes a budget from a fresh probe and refuses below its minimum rather than playing with less.
 - **The rules side is an adapter, and the pinned engine is these games' rules authority.** Every rules answer is the engine's own — a forbidden point from its search-independent query, a completed five from the per-rule pattern the board already maintains. Nothing above the bridge re-derives a rule, and this project holds no conformance corpus over these games: the corpus the movement games carry exists because this project owns their rules, and it does not own these. What stands in its place is an adapter test set proving the wiring, and nothing more.
 - **A rules answer needs no prepared engine.** The tables a rules query reads are constants of the rule, so a game is played, undone and replayed whether or not an engine stands.
-- **These games begin from the empty board and from no other position.** A board with stones on it is a position reached by play rather than one to begin from, and accepting one would offer a start-from-position feature in two games without the setup-legality predicate [game-data.md](game-data.md) requires of any such feature.
+- **These games begin from the empty board and from no other position.** A board with stones on it is a position reached by play rather than one to begin from, and these games' rules define no setup-legality predicate, so the frozen start is the whole of what they begin from — which is the start policy [game-data.md](game-data.md) states for a game that defines none.
 
 ### Failure containment
 
