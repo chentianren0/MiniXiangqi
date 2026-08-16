@@ -115,7 +115,8 @@ MXQ_ASSERT_AT(MxqGameStatus, claim_available, 20);
 MXQ_ASSERT_AT(MxqGameStatus, undo_available, 21);
 MXQ_ASSERT_AT(MxqGameStatus, resign_available, 22);
 MXQ_ASSERT_AT(MxqGameStatus, search_expected, 23);
-MXQ_ASSERT_SIZE(MxqGameStatus, 24);
+MXQ_ASSERT_AT(MxqGameStatus, side_to_move, 24);
+MXQ_ASSERT_SIZE(MxqGameStatus, 28);
 
 MXQ_ASSERT_BLITTABLE(MxqSetupViolation);
 MXQ_ASSERT_AT(MxqSetupViolation, rule, 4);
@@ -131,7 +132,8 @@ MXQ_ASSERT_AT(MxqGameConfig, first_mover_choice, 16);
 MXQ_ASSERT_AT(MxqGameConfig, ai_movetime_ms, 20);
 MXQ_ASSERT_AT(MxqGameConfig, game, 24);
 MXQ_ASSERT_AT(MxqGameConfig, local_side, 28);
-MXQ_ASSERT_SIZE(MxqGameConfig, 32);
+MXQ_ASSERT_AT(MxqGameConfig, start_fen, 32);
+MXQ_ASSERT_SIZE(MxqGameConfig, 32 + MXQ_FEN_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqRecordSummary);
 MXQ_ASSERT_AT(MxqRecordSummary, move_count, 4);

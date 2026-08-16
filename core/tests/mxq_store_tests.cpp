@@ -188,7 +188,7 @@ void case_fresh_open_creates_schema() {
         return;
     }
     /* The recorded schema version and the persistent half of the regime. */
-    check_eq(query_text(db, "PRAGMA user_version;"), "4", "user_version");
+    check_eq(query_text(db, "PRAGMA user_version;"), "5", "user_version");
     check_eq(query_text(db, "PRAGMA journal_mode;"), "wal",
              "journal_mode persisted in the file");
     /* The compiled defaults from the hardened option set reach even a fresh
@@ -239,7 +239,7 @@ void case_fresh_open_creates_schema() {
              "1", "no active game on a fresh store");
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
                             "key='created_schema_version';"),
-             "4", "the meta bookkeeping row");
+             "5", "the meta bookkeeping row");
     /* A library that has recorded no mutation is at revision 0, which is what
      * a caller comparing revisions starts from. */
     check_eq(query_text(db, "SELECT value FROM meta WHERE "
@@ -521,7 +521,7 @@ void case_reopen_is_idempotent() {
     if (db == nullptr) {
         return;
     }
-    check_eq(query_text(db, "PRAGMA user_version;"), "4",
+    check_eq(query_text(db, "PRAGMA user_version;"), "5",
              "user_version unchanged after reopens");
     check_eq(query_text(db, "SELECT count(*) FROM library;"), "1",
              "still exactly one library row");
@@ -550,7 +550,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 5;");
+    exec_ok(db, "PRAGMA user_version = 6;");
     sqlite3_close(db);
 
     err = make_error();
@@ -568,7 +568,7 @@ void case_newer_schema_is_refused() {
     if (db == nullptr) {
         return;
     }
-    exec_ok(db, "PRAGMA user_version = 4;");
+    exec_ok(db, "PRAGMA user_version = 5;");
     sqlite3_close(db);
 
     err = make_error();

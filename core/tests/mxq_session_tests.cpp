@@ -72,6 +72,14 @@ int g_failed = 0;
 int g_skipped = 0;
 int g_checks = 0;
 
+/* The one skip the closing banner speaks for, matched by value. Two things skip
+ * here and they are two different absences: this one, and a scenario of a game
+ * only a build with the second engine carries. A banner that fired on the total
+ * announced that the session surface was missing from a build that had it,
+ * which is a report about the build that is not true of it. */
+const char *const kNoFacade = "the mxq_game_ functions need the rules facade";
+int g_skipped_no_facade = 0;
+
 /* ---------------------------------------------------------------------- */
 /* One case's verdict                                                      */
 /* ---------------------------------------------------------------------- */
@@ -114,6 +122,9 @@ struct Case {
         }
         if (!skip_reason.empty()) {
             ++g_skipped;
+            if (skip_reason == kNoFacade) {
+                ++g_skipped_no_facade;
+            }
             std::cout << "  SKIP      " << name << "  (" << skip_reason << ")\n";
             return;
         }
@@ -390,6 +401,23 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         return false;
     }
 
+    /* The position the game begins from, where the scenario composes one.
+     * Absent is the game's frozen start, exactly as the empty member is on the
+     * other side of the interface — a scenario says where it begins only when
+     * that is something to say. */
+    if (const mxqtest::JsonValue *start = config->member("start_fen")) {
+        if (!start->is_string()) {
+            error = "\"config.start_fen\" is not a string";
+            return false;
+        }
+        if (start->string().size() >= sizeof(out.config.start_fen)) {
+            error = "\"config.start_fen\" is longer than the interface carries";
+            return false;
+        }
+        std::memcpy(out.config.start_fen, start->string().c_str(),
+                    start->string().size() + 1);
+    }
+
     /* The game the scenario is of. Required rather than defaulted: a scenario
      * that did not say would be replayed under whichever game the runner
      * happened to pick, which is the one thing a many-game corpus must not
@@ -560,6 +588,20 @@ void check_status(Case &c, const MxqGame *game, const Scenario &scenario,
                where + ": resign_available");
     c.check_eq(status.search_expected, scenario.search_expected ? 1 : 0,
                where + ": search_expected");
+
+    /* Whose turn it is, against the position's own answer rather than against a
+     * transcription here. The scenario states no side to move for the same
+     * reason it states no FEN: the position is already compared with the
+     * session-free facade, so the assertion worth making is that the two
+     * reports of one fact agree — and one of them is what the Play home reads
+     * from mxq_store_active_summary, where no position is returned at all. */
+    MxqPosition position = make_position();
+    err = make_error();
+    if (mxq_game_position(game, &position, &err) == MXQ_OK) {
+        c.check_eq(status.side_to_move, position.side_to_move,
+                   where + ": the status and the position name one side to "
+                           "move");
+    }
 }
 
 void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
@@ -587,6 +629,12 @@ void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
      * blob it is not in cannot be what carried it. */
     c.check_eq(config.local_side, scenario.config.local_side,
                where + ": local_side");
+    /* Where the game began. Reading it back after the resume is the assertion
+     * that matters: a composed start survives a close and a reopen through the
+     * document alone, and a build that substituted the frozen array on the way
+     * back would answer here with a position the scenario never named. */
+    c.check_eq(std::string(config.start_fen),
+               std::string(scenario.config.start_fen), where + ": start_fen");
 }
 
 /*
@@ -597,13 +645,21 @@ void check_config(Case &c, const MxqGame *game, const Scenario &scenario,
  * the conformance corpus rather than against a FEN transcribed into a second
  * file here.
  */
-void check_positions(Case &c, MxqCore *core, MxqGameKind kind,
+void check_positions(Case &c, MxqCore *core, const MxqGameConfig &config,
                      const MxqGame *game,
                      const std::vector<std::string> &moves,
                      const std::string &where) {
+    const MxqGameKind kind = config.game;
     char start_fen[MXQ_FEN_CAP];
     size_t fen_len = 0;
     mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
+    /* The scenario's own start where it composed one. The empty member means
+     * the frozen start, so this is the same convention the core applies and
+     * not a second reading of it. */
+    if (config.start_fen[0] != '\0') {
+        std::memcpy(start_fen, config.start_fen,
+                    std::strlen(config.start_fen) + 1);
+    }
 
     for (size_t ply = 0; ply <= moves.size(); ++ply) {
         std::vector<const char *> texts;
@@ -613,11 +669,12 @@ void check_positions(Case &c, MxqCore *core, MxqGameKind kind,
         }
 
         MxqPosition expected = make_position();
+        MxqGameStatus expected_status = make_status();
         MxqError err = make_error();
         MxqStatus rc = mxq_rules_evaluate(core, kind, start_fen,
                                           texts.empty() ? nullptr : texts.data(),
-                                          texts.size(), &expected, nullptr,
-                                          nullptr, &err);
+                                          texts.size(), &expected,
+                                          &expected_status, nullptr, &err);
         c.check(rc == MXQ_OK, where + ": the facade could not evaluate the "
                                       "prefix of length " +
                                   std::to_string(ply));
@@ -640,6 +697,14 @@ void check_positions(Case &c, MxqCore *core, MxqGameKind kind,
                    where + ": ply_count at ply " + std::to_string(ply));
         c.check_eq(got.side_to_move, expected.side_to_move,
                    where + ": side to move at ply " + std::to_string(ply));
+        /* The facade's two output shapes report one side to move. Asked here
+         * rather than in a case of its own because a scenario beginning from a
+         * composed position runs every ply of it with Black to move at the
+         * even ones, and a member nothing writes reads Red. */
+        c.check_eq(expected_status.side_to_move, expected.side_to_move,
+                   where + ": the facade's status and position name one side "
+                           "to move at ply " +
+                       std::to_string(ply));
         c.check_eq(got.in_check, expected.in_check,
                    where + ": in_check at ply " + std::to_string(ply));
 
@@ -670,13 +735,18 @@ void check_positions(Case &c, MxqCore *core, MxqGameKind kind,
 }
 
 /* The legal-move set, against the same facade, plus the from-square filter. */
-void check_legal_moves(Case &c, MxqCore *core, MxqGameKind kind,
+void check_legal_moves(Case &c, MxqCore *core, const MxqGameConfig &config,
                        const MxqGame *game,
                        const std::vector<std::string> &moves,
                        const std::string &where) {
+    const MxqGameKind kind = config.game;
     char start_fen[MXQ_FEN_CAP];
     size_t fen_len = 0;
     mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
+    if (config.start_fen[0] != '\0') {
+        std::memcpy(start_fen, config.start_fen,
+                    std::strlen(config.start_fen) + 1);
+    }
 
     std::vector<const char *> texts;
     texts.reserve(moves.size());
@@ -891,8 +961,8 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
     const std::string id_before = game_id_of(game, c, "before the close");
     check_config(c, game, scenario, "before the close");
     check_status(c, game, scenario, "before the close");
-    check_positions(c, core, scenario.config.game, game, scenario.moves, "before the close");
-    check_legal_moves(c, core, scenario.config.game, game, scenario.moves, "before the close");
+    check_positions(c, core, scenario.config, game, scenario.moves, "before the close");
+    check_legal_moves(c, core, scenario.config, game, scenario.moves, "before the close");
     const std::vector<std::string> history_before =
         history_of(game, c, "before the close");
     c.check(history_before == scenario.moves,
@@ -965,7 +1035,7 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
                "the identity survives the round trip");
     check_config(c, game, scenario, "after the resume");
     check_status(c, game, scenario, "after the resume");
-    check_positions(c, core, scenario.config.game, game, scenario.moves, "after the resume");
+    check_positions(c, core, scenario.config, game, scenario.moves, "after the resume");
     const std::vector<std::string> history_after =
         history_of(game, c, "after the resume");
     c.check(history_after == history_before,
@@ -1136,6 +1206,172 @@ void case_second_active_game() {
     c.check_eq(position.ply_count, 0, "the first game is unchanged");
 
     mxq_game_release(first);
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/*
+ * The three questions creation asks of a composed start, and the two entries
+ * that never take one.
+ *
+ * One case rather than five, because it is one ladder: what it pins is that
+ * each rung answers in its own code and that the earlier rung wins, which a
+ * build that collapsed two of them into one status would fail here and nowhere
+ * else. The frozen start reaching the same ladder is the fourth check — a game
+ * created the way every game before this one was must still be created.
+ */
+void case_start_position_ladder() {
+    Case c("the three questions a composed start is asked, in order");
+    const fs::path store = scratch_dir("start-ladder");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const auto with_start = [](const char *fen) {
+        MxqGameConfig config = make_config();
+        config.game = MXQ_GAME_KIND_XIANGQI;
+        std::memcpy(config.start_fen, fen, std::strlen(fen) + 1);
+        return config;
+    };
+    const auto refused = [&](const MxqGameConfig &config, MxqStatus want,
+                             const std::string &what) {
+        MxqGame *game = reinterpret_cast<MxqGame *>(0x1);
+        MxqError e = make_error();
+        const MxqStatus rc = mxq_game_create(core, &config, &game, &e);
+        c.check(rc == want, what + ": expected " +
+                                std::string(mxq_status_name(want)) + ", got " +
+                                std::string(mxq_status_name(rc)) + " (" +
+                                e.detail + ")");
+        c.check(game == nullptr, what + ": no session was produced");
+    };
+
+    /* Rung one, twice: a position of the other game's board, and a position of
+     * this one carrying the counters a game with plies behind it would. Both
+     * are how a start is spelled, so both are the same code. */
+    refused(with_start("rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"),
+            MXQ_ERR_RULES_INVALID_FEN, "a position of the other game's board");
+    refused(with_start("4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 3 7"),
+            MXQ_ERR_RULES_INVALID_FEN, "counters no start carries");
+
+    /* Rung two: a position of this board that the predicate refuses — Red is
+     * not to move and stands in check. */
+    refused(with_start("4k4/9/9/9/9/9/4r4/9/9/4K4 b - - 0 1"),
+            MXQ_ERR_RULES_ILLEGAL_POSITION, "an illegal setup");
+
+    /* Rung three: a legal setup that is already decided. Black is to move and
+     * has no legal move, which is a loss for the side that cannot move and
+     * therefore no game to begin. */
+    refused(with_start("3k5/9/9/9/9/9/9/4R4/3R5/4K4 b - - 0 1"),
+            MXQ_ERR_STATE_GAME_OVER, "a position with a result of its own");
+
+    /* Nearby play takes no composed start at all: the wire protocol carries
+     * none, so a game begun from one is not a game two devices could both be
+     * in. */
+#if defined(NDEBUG)
+    {
+        MxqGameConfig config =
+            with_start("4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1");
+        config.mode = MXQ_PLAY_MODE_NEARBY;
+        config.local_side = MXQ_COLOR_RED;
+        MxqNearbySession session;
+        std::memset(&session, 0, sizeof(session));
+        session.struct_size = static_cast<uint32_t>(sizeof(session));
+        session.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+        session.sent_end = MXQ_NEARBY_TERMINAL_NONE;
+        std::memcpy(session.session_id, "019b76da-a800-7000-8000-000000000000",
+                    37);
+        std::memcpy(session.peer_id, "peer", 5);
+        MxqGame *game = nullptr;
+        err = make_error();
+        const MxqStatus rc =
+            mxq_game_create_nearby(core, &config, &session, &game, &err);
+        c.check(rc == MXQ_ERR_ARG_RANGE,
+                std::string("a nearby game refuses a composed start, got ") +
+                    mxq_status_name(rc));
+        c.check(game == nullptr, "and creates nothing");
+    }
+#endif
+
+    /* Human-versus-AI takes none either, and for its own reason:
+     * first_mover_choice is archive content that cannot be reconstructed, and
+     * it says nothing about a game whose start names its own side to move. */
+#if defined(NDEBUG)
+    {
+        MxqGameConfig config =
+            with_start("4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1");
+        config.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+        config.human_side = MXQ_COLOR_RED;
+        config.ai_level = MXQ_AI_LEVEL_FAST;
+        config.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
+        config.ai_movetime_ms = 1000;
+        refused(config, MXQ_ERR_ARG_RANGE,
+                "a composed start in human-versus-AI play");
+    }
+#endif
+
+    /* The frozen start spelled out is the game's own start, everywhere the
+     * empty member is: it is created, and it reads back empty, so one committed
+     * game answers one way about where it began. */
+    {
+        MxqGameConfig explicit_frozen = make_config();
+        explicit_frozen.game = MXQ_GAME_KIND_XIANGQI;
+        char frozen[MXQ_FEN_CAP];
+        size_t frozen_len = 0;
+        mxq_rules_start_fen(MXQ_GAME_KIND_XIANGQI, frozen, sizeof(frozen),
+                            &frozen_len, nullptr);
+        std::memcpy(explicit_frozen.start_fen, frozen, frozen_len + 1);
+
+        MxqGame *plain = nullptr;
+        err = make_error();
+        c.check(mxq_game_create(core, &explicit_frozen, &plain, &err) == MXQ_OK,
+                std::string("the frozen start spelled out is created: ") +
+                    err.detail);
+        if (plain != nullptr) {
+            MxqGameConfig read_back = make_config();
+            c.check(mxq_game_config(plain, &read_back, nullptr) == MXQ_OK,
+                    "the frozen-start game answers");
+            c.check_eq(std::string(read_back.start_fen), std::string(),
+                       "a start that is the frozen one reads back empty");
+            /* Filed rather than released: the library holds one active game,
+             * and the scene below is the next one. */
+            c.check(mxq_store_archive_and_clear(core, plain, nullptr, nullptr) ==
+                        MXQ_OK,
+                    "and is filed, leaving the library free");
+            mxq_game_release(plain);
+        }
+    }
+
+    /* And the position the whole ladder exists for is created, from the start
+     * the configuration named and with Black making ply 0. */
+    MxqGameConfig scene =
+        with_start("4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1");
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check(mxq_game_create(core, &scene, &game, &err) == MXQ_OK,
+            std::string("the scene is created: ") + err.detail);
+    if (game != nullptr) {
+        MxqPosition position = make_position();
+        c.check(mxq_game_position(game, &position, nullptr) == MXQ_OK,
+                "the scene answers");
+        c.check_eq(std::string(position.fen), std::string(scene.start_fen),
+                   "the session begins from the composed position");
+        c.check_eq(position.side_to_move, MXQ_COLOR_BLACK,
+                   "the composed position's own side moves first");
+        MxqGameStatus status = make_status();
+        c.check(mxq_game_status(game, &status, nullptr) == MXQ_OK,
+                "the scene has a status");
+        c.check_eq(status.side_to_move, MXQ_COLOR_BLACK,
+                   "the status names the side to move");
+        c.check_eq(status.state, MXQ_GAME_ONGOING, "the scene is a game");
+        mxq_game_release(game);
+    }
+
     mxq_core_shutdown(core, nullptr);
     c.report();
 }
@@ -1693,6 +1929,7 @@ int main(int argc, char **argv) {
 
     case_notation_grammar();
     case_second_active_game();
+    case_start_position_ladder();
     case_resume_without_a_game();
     case_refused_moves_change_nothing();
     case_failed_commit_leaves_the_game_unchanged();
@@ -1705,7 +1942,7 @@ int main(int argc, char **argv) {
     fs::remove_all(scratch_root(), cleanup);
 #else
     Case skipped("the session round trip");
-    skipped.skip("the mxq_game_ functions need the rules facade");
+    skipped.skip(kNoFacade);
     skipped.report();
 #endif
 
@@ -1714,7 +1951,7 @@ int main(int argc, char **argv) {
               << total << " cases: " << g_passed << " passed, " << g_failed
               << " failed, " << g_skipped << " skipped\n"
               << g_checks << " expectations evaluated\n";
-    if (g_skipped > 0) {
+    if (g_skipped_no_facade > 0) {
         std::cout << "\nNOT IMPLEMENTED: the session surface is not in this "
                      "build. Build with -DMXQ_ENABLE_RULES_FACADE=ON to "
                      "evaluate it.\n";

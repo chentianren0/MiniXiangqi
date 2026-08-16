@@ -307,10 +307,18 @@ enum {
                                             * about */
     MXQ_ERR_RULES_ILLEGAL_POSITION = 3004, /* structurally a position of this
                                             * game's board, but not one the game
-                                            * may be set up in. Returned by
-                                            * mxq_rules_validate_setup and by
-                                            * nothing else; MxqSetupViolation
-                                            * carries which rule it breaks */
+                                            * may be set up in. The setup
+                                            * question's refusal wherever it is
+                                            * asked: from
+                                            * mxq_rules_validate_setup, from
+                                            * mxq_game_create for a start the
+                                            * game will not begin from, and from
+                                            * mxq_archive_validate and
+                                            * mxq_store_import for a document
+                                            * whose start the predicate refuses.
+                                            * MxqSetupViolation carries which
+                                            * rule it breaks where the entry
+                                            * offers one */
     MXQ_ERR_RULES_INVALID_HISTORY  = 3005, /* MxqError.detail_index carries the
                                             * first illegal move's index */
 
@@ -623,9 +631,11 @@ typedef int32_t MxqProvenance;
 enum {
     MXQ_PROVENANCE_LOCALLY_PLAYED = 0, /* "locally-played" */
     MXQ_PROVENANCE_IMPORTED       = 1, /* "imported" */
-    MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved for a future
-                                        * start-from-position feature and
-                                        * rejected by archive version 4 */
+    MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved, and rejected by
+                                        * archive version 5. A game composed
+                                        * from a position is identified by that
+                                        * position, which start_fen already
+                                        * carries, so nothing writes this */
 };
 
 /*
@@ -918,6 +928,14 @@ typedef struct MxqGameStatus {
     uint8_t      undo_available;
     uint8_t      resign_available;
     uint8_t      search_expected;
+    /* Whose turn it is in the position this line has reached, derived from the
+     * start position and the plies. It is here as well as on MxqPosition
+     * because mxq_store_active_summary reports a status and no position, and
+     * the Play home's side-to-move line is read rather than worked out: a game
+     * whose start has Black to move has Black making ply 0, so a frontend
+     * counting plies would name the wrong side. Both are one replay's answer,
+     * never a stored flag. */
+    MxqColor     side_to_move;
 } MxqGameStatus;
 
 /*
@@ -977,6 +995,12 @@ typedef struct MxqSetupViolation {
  * in docs/game-data.md keeps that out of a file two devices could exchange. The
  * store holds it as library metadata beside pin state and provenance, and it is
  * what MxqRecordSummary.local_side reads back.
+ *
+ * start_fen is the position the game begins from, and the empty string is that
+ * game's frozen start. A non-empty value is asked the three questions
+ * mxq_game_create documents, and the core keeps the member canonical: a start
+ * that is the frozen one reads back empty, so one committed game answers one
+ * way whether it was just created or resumed from the store.
  */
 typedef struct MxqGameConfig {
     uint32_t            struct_size;
@@ -987,6 +1011,7 @@ typedef struct MxqGameConfig {
     uint32_t            ai_movetime_ms; /* the exact frozen movetime */
     MxqGameKind         game;
     MxqColor            local_side;
+    char                start_fen[MXQ_FEN_CAP]; /* "" is the frozen start */
 } MxqGameConfig;
 
 /*
@@ -1356,6 +1381,33 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * holds one active game, so creating one while any is active returns
  * MXQ_ERR_STATE_ACTIVE_GAME_EXISTS.
  *
+ * A session begins from its game's frozen start unless the configuration names
+ * another position. An empty start_fen is that frozen start, and so is the
+ * frozen start spelled out — the member is canonical, and either reads back
+ * empty from mxq_game_config. A composed start belongs to
+ * MXQ_PLAY_MODE_FREE_PLAY and to no other mode: any other mode carrying one is
+ * MXQ_ERR_ARG_RANGE, a programming error like the configuration shape it is
+ * part of. A composed start is asked three questions in order, and creation
+ * refuses at the first that fails:
+ *
+ *   structure       MXQ_ERR_RULES_INVALID_FEN. The frozen encoding of this
+ *                   game's board, and the counters a start carries — halfmove 0
+ *                   and fullmove 1, a game beginning from a position having no
+ *                   plies behind it to count. Any other counters are refused on
+ *                   this rung with everything else about the position's
+ *                   spelling
+ *   setup legality  MXQ_ERR_RULES_ILLEGAL_POSITION, exactly as
+ *                   mxq_rules_validate_setup answers it. Xiangqi is the one
+ *                   game whose rules define a predicate; every other game
+ *                   refuses here for any position but its frozen start
+ *   startability    MXQ_ERR_STATE_GAME_OVER. Creation's own question and not
+ *                   the predicate's: a position that already has a result of
+ *                   its own is no game to play
+ *
+ * Ply 0 is the first move played from that position, by whichever side it has
+ * to move, and every mover this core reports derives from the start position
+ * and the ply rather than from the ply's parity.
+ *
  * A session is store-attached, so a game the store cannot hold cannot have one:
  * a game outside the archive format's own rules_id vocabulary returns
  * MXQ_ERR_ARG_RANGE without asserting, which is the same split
@@ -1388,6 +1440,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  * MXQ_ERR_ARG_RANGE — a game with no plies has retracted nothing and declared
  * nothing.
  *
+ * A nearby game begins from its game's frozen start and from no other: the
+ * protocol in docs/boardgame-protocol.md carries no start position, so a
+ * composed one is a game the two devices could not be playing. A composed
+ * start_fen is therefore MXQ_ERR_ARG_RANGE here, beside the mode's own refusal
+ * and for the same reason — a configuration this entry cannot honour. The
+ * frozen start spelled out is not one, here as everywhere.
+ *
  * Thread and blocking: mxq_game_create's.
  */
 MXQ_API MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
@@ -1409,11 +1468,14 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
  * single-owner rule refuses, asked of the row rather than of the session.
  *
  * The stored record is decoded, checked against the content hash the library
- * recorded for it, and replayed, all before a session exists, so a row this
- * build can no longer read or no longer reproduce is refused as
- * MXQ_ERR_STORE_CORRUPT rather than as an archive rejection: nothing was
- * imported, and the answer is about the library rather than about a file the
- * user chose. The import size bounds are deliberately not applied here — a
+ * recorded for it, judged for the position it begins from, and replayed, all
+ * before a session exists, so a row this build can no longer read or no longer
+ * reproduce is refused as MXQ_ERR_STORE_CORRUPT rather than as an archive
+ * rejection: nothing was imported, and the answer is about the library rather
+ * than about a file the user chose. The start is judged before the replay
+ * rather than after it because a damaged one can be a position offering the
+ * capture of a general, which the engine asserts against rather than
+ * adjudicates. The import size bounds are deliberately not applied here — a
  * locally produced game longer than they allow must always resume.
  *
  * Thread: any non-UI thread except inside a search callback — except the
@@ -1818,7 +1880,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
 
 /*
  * Whether game may be set up in the position fen states: the setup-legality
- * predicate, and the one entry that returns MXQ_ERR_RULES_ILLEGAL_POSITION.
+ * predicate, asked directly. It is the same predicate mxq_game_create and the
+ * archive's rules tier ask, which is why they answer with this entry's own
+ * MXQ_ERR_RULES_ILLEGAL_POSITION rather than a code of their own.
  *
  * MXQ_OK is a legal setup and MXQ_ERR_RULES_ILLEGAL_POSITION an illegal one.
  * Structural validity is the precondition rather than part of the answer, so a

@@ -277,11 +277,16 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
         return MXQ_ERR_RESOURCE_ALLOCATION_FAILED;
     }
 
+    /* One reading of the replayed position, for both output shapes. Read twice
+     * it would be right twice until one of the two stopped being written, which
+     * is a side to move that is Red because nothing set it. */
+    const MxqColor side_to_move =
+        (fen.find(" w ") != std::string::npos) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+
     if (out_position != nullptr) {
         out_position->ply_count = ply;
         out_position->position_revision = 0; /* session-free: no revision exists */
-        out_position->side_to_move =
-            (fen.find(" w ") != std::string::npos) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+        out_position->side_to_move = side_to_move;
         out_position->in_check = in_check ? 1u : 0u;
         mxq::copy_bounded(out_position->fen, sizeof(out_position->fen), fen.c_str());
     }
@@ -290,6 +295,7 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
         out_status->state = adj.state;
         out_status->reason = adj.reason;
         out_status->at_occurrence = adj.at_occurrence;
+        out_status->side_to_move = side_to_move;
         /* Session-free: undo, claim, resign and search are properties of a game
          * session, not of a position and a history. They read as unavailable
          * rather than as guesses. */

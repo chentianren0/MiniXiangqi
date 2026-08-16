@@ -1,0 +1,8 @@
+{
+  "class": "rules tier: initial position",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "halfmove 0 and fullmove 1",
+  "game": "xiangqi",
+  "why": "The same composed position the golden opens from, spelled with the counters of a game that has plies behind it. A start has none to count, so this is not a start at all — refused on the structural rung of the rules tier, in the archive's own voice, and not by the setup predicate, whose clauses read the pieces and the side to move and would accept these. It pins the import side of the counters rule, which is a different mapping from creation's: there the same position is MXQ_ERR_RULES_INVALID_FEN."
+}

@@ -2673,6 +2673,126 @@ mxq::engine::ConfigureError configure_for(mxq::engine::Variant variant,
                                   detail);
 }
 
+/*
+ * The start axis through the whole path, once: create a Xiangqi Free Play
+ * session from a composed position with Black to move, prepare, ask for a hint,
+ * apply it, and encode.
+ *
+ * The hint is the assertion that matters and it needs no transcribed move to
+ * make it. A search snapshots the session's start and its move line, so a build
+ * that snapshotted the frozen array instead would search the opening array,
+ * propose a move of it, and have that move refused by the delivery ladder's
+ * legality rung — the outcome would be MXQ_SEARCH_REJECTED rather than a move
+ * this position can take. Everything after it is the same session continuing:
+ * Black made ply 0, so Red is to move, and the document the session encodes
+ * carries the composed start back through the validator that judges one.
+ */
+void case_a_composed_start_through_search_and_the_archive() {
+    Case c("a Xiangqi session composed from a position with Black to move is "
+           "searched, moved and encoded from that position");
+    const fs::path store = scratch_dir("composed-start");
+    MxqError err = make_error();
+    MxqCore *core = nullptr;
+    c.check_status(
+        init_core(store.string(), staged_xiangqi_assets(), &core, &err), MXQ_OK,
+        "core init against the two-network directory");
+    if (core == nullptr) {
+        c.report();
+        return;
+    }
+
+    const MxqEngineBudget budget = sufficient_budget();
+    MxqEnginePlan applied = make_plan();
+    err = make_error();
+    c.check_status(mxq_engine_prepare(core, MXQ_GAME_KIND_XIANGQI, &budget,
+                                      &applied, &err),
+                   MXQ_OK, "prepare for xiangqi");
+
+    /* Black's chariot, cannon and soldier against Red's chariot and soldier,
+     * with the two generals on one file and Red's soldier between them. A legal
+     * setup, undecided, and Black's to move. */
+    const char *const kScene = "4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1";
+    MxqGameConfig config = free_play_config(MXQ_GAME_KIND_XIANGQI);
+    std::memcpy(config.start_fen, kScene, std::strlen(kScene) + 1);
+
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create(core, &config, &game, &err), MXQ_OK,
+                   "the scene is created");
+    if (game != nullptr) {
+        MxqPosition before;
+        std::memset(&before, 0, sizeof(before));
+        before.struct_size = static_cast<uint32_t>(sizeof(before));
+        c.check_status(mxq_game_position(game, &before, &err), MXQ_OK,
+                       "the scene's position");
+        c.check_eq(std::string(before.fen), std::string(kScene),
+                   "the session begins from the composed position");
+        c.check_eq(before.side_to_move, MXQ_COLOR_BLACK,
+                   "whose move ply 0 is");
+        c.check_eq(before.ply_count, 0, "no ply has been played");
+
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_OK, "hint start on the scene");
+        MxqSearchResult result = make_result();
+        uint8_t ready = 0;
+        c.check_status(mxq_search_wait(core, ticket, 20000, &result, &ready,
+                                       &err),
+                       MXQ_OK, "wait");
+        c.check_eq(ready, 1, "the hint arrived");
+        c.check_eq(static_cast<int64_t>(result.outcome), MXQ_SEARCH_MOVE,
+                   "the outcome is a move, which it is only if the search "
+                   "snapshotted this session's own start");
+
+        MxqPosition after;
+        std::memset(&after, 0, sizeof(after));
+        after.struct_size = static_cast<uint32_t>(sizeof(after));
+        MxqGameStatus status;
+        std::memset(&status, 0, sizeof(status));
+        status.struct_size = static_cast<uint32_t>(sizeof(status));
+        err = make_error();
+        c.check_status(mxq_game_apply_move(game, result.move.text, &after,
+                                           &status, &err),
+                       MXQ_OK,
+                       std::string("the proposed move applies, got: ") +
+                           result.move.text);
+        c.check_eq(after.side_to_move, MXQ_COLOR_RED,
+                   "Black having made ply 0, Red answers it");
+        c.check_eq(status.side_to_move, MXQ_COLOR_RED,
+                   "and the status says so too");
+        c.check_eq(status.undo_plies, 1,
+                   "Free Play takes one ply back, counted from the start's own "
+                   "side");
+
+        /* And the document, through the validator that judges a start. */
+        MxqBlob *blob = nullptr;
+        err = make_error();
+        c.check_status(mxq_archive_encode(core, game, &blob, &err), MXQ_OK,
+                       "the session encodes");
+        if (blob != nullptr) {
+            MxqArchiveInfo info;
+            std::memset(&info, 0, sizeof(info));
+            info.struct_size = static_cast<uint32_t>(sizeof(info));
+            err = make_error();
+            c.check_status(mxq_archive_validate(core, mxq_blob_bytes(blob),
+                                                mxq_blob_len(blob), &info,
+                                                &err),
+                           MXQ_OK,
+                           "and validates, composed start and all");
+            c.check_eq(static_cast<int64_t>(info.game), MXQ_GAME_KIND_XIANGQI,
+                       "as the game it names");
+            c.check_eq(static_cast<int64_t>(info.move_count), 1,
+                       "carrying the one ply played");
+            mxq_blob_release(blob);
+        }
+        mxq_game_release(game);
+    }
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_xiangqi_searches_under_its_own_network() {
     Case c("built-in xiangqi prepares under the xiangqi network, from a "
            "directory holding both, and searches its 9x10 board");
@@ -3301,6 +3421,7 @@ int main() {
      * which the facade does not see. */
     case_the_c_surface_prepares_the_other_game();
     case_a_session_of_the_unprepared_game_is_refused();
+    case_a_composed_start_through_search_and_the_archive();
 
     case_xiangqi_searches_under_its_own_network();
     case_teardown_returns_the_bridge_to_the_app_variant();

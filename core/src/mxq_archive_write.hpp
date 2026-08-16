@@ -9,7 +9,7 @@
  * canonical spelling and the content hash is taken over exactly these bytes.
  *
  * Nothing here knows what a session is. It takes a Record — the complete
- * version 4 document as values — and returns bytes, so that the same writer
+ * version 5 document as values — and returns bytes, so that the same writer
  * serves an attached session's every commit, mxq_archive_encode, and the
  * export path when it lands, and none of them can spell a document its own
  * way.
@@ -28,11 +28,11 @@ namespace mxq {
 namespace archive {
 
 /*
- * One version 4 document, as values.
+ * One version 5 document, as values.
  *
- * config.game is what the document's rules_id spells and what its start_fen is
- * taken from: one field decides both, so a document cannot record one game's
- * identity beside the other's opening position.
+ * config is what the document's rules_id spells and what its start_fen is taken
+ * from: one struct decides both, so a document cannot record one game's
+ * identity beside a position of the other's board.
  *
  * The terminal trio is present exactly when completed is true; an active
  * game's stored content omits outcome, end_reason and ended_at, which is the

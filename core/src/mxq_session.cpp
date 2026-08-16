@@ -9,6 +9,7 @@
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
 #include "mxq_rules.hpp"
+#include "mxq_setup.hpp"
 #include "mxq_sha256.hpp"
 #include "mxq_store.hpp"
 
@@ -166,18 +167,23 @@ MxqStatus replay_prefix(const MxqGame &game, size_t ply_count, bool want_legal,
 
     std::string detail;
     size_t first_illegal = 0;
-    /* The session's own game decides everything: which starting position the
-     * line runs from and which ruleset it is replayed under. Neither is derived
-     * from the other, and neither is a default. */
+    /* The session's own configuration decides everything: which starting
+     * position the line runs from and which ruleset it is replayed under.
+     * Neither is derived from the other, and neither is a default — the start is
+     * the game's frozen one only where the configuration named no other. */
     const MxqGameKind kind = game.config.game;
     const rules::ReplayError rc = rules::replay(
-        kind, notation::start_fen(kind),
+        kind, notation::start_fen(game.config),
         moves.empty() ? nullptr : moves.data(), moves.size(), out.fen,
         out.in_check, out.ply, out.adj, want_legal ? &out.legal : nullptr,
         first_illegal, detail);
     if (rc != rules::ReplayError::None) {
+        /* "this game" rather than "the retained line": the shortest prefix this
+         * replays is no prefix at all, which is the start position by itself,
+         * and a game with no plies yet has no line to say has stopped
+         * replaying. */
         fill_error(err, MXQ_ERR_INTERNAL_INVARIANT,
-                   ("the retained line no longer replays: " + detail).c_str());
+                   ("this game no longer replays: " + detail).c_str());
         return MXQ_ERR_INTERNAL_INVARIANT;
     }
     return MXQ_OK;
@@ -188,10 +194,47 @@ MxqColor side_to_move(const std::string &fen) {
                                                 : MXQ_COLOR_BLACK;
 }
 
-/* Red moves first from the frozen starting position, so the side that made
- * ply i is decided by i's parity and never has to be tracked. */
-MxqColor mover_of(size_t ply_index) {
-    return (ply_index % 2 == 0) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+/*
+ * Which side made ply i.
+ *
+ * Ply 0 is the first move played from the session's start position, by
+ * whichever side that position has to move — Red from a frozen start, and
+ * whichever side a composed one names. So the parity alone decides nothing:
+ * it selects between the start's side and the other, and the start is what
+ * says which those are.
+ */
+MxqColor mover_of(const MxqGameConfig &config, size_t ply_index) {
+    const MxqColor first = side_to_move(notation::start_fen(config));
+    const MxqColor second =
+        first == MXQ_COLOR_RED ? MXQ_COLOR_BLACK : MXQ_COLOR_RED;
+    return (ply_index % 2 == 0) ? first : second;
+}
+
+/*
+ * The start a caller's configuration names, or the empty string where it names
+ * the game's own — which an empty member and the frozen FEN spelled out both
+ * do. Every entry that judges a start reads it through here, so "this
+ * configuration composes a position" is one answer rather than three.
+ *
+ * The read is bounded by the member's declared size rather than by a
+ * terminator, because the array is the caller's: a member left unterminated is
+ * a caller's defect, and reading past it would make that defect this core's
+ * crash. What comes back is a std::string, so nothing downstream is reading the
+ * caller's storage any more.
+ */
+std::string named_start(const MxqGameConfig &config) {
+    const void *nul =
+        std::memchr(config.start_fen, '\0', sizeof(config.start_fen));
+    const size_t length =
+        nul != nullptr
+            ? static_cast<size_t>(static_cast<const char *>(nul) -
+                                  config.start_fen)
+            : sizeof(config.start_fen);
+    std::string named(config.start_fen, length);
+    if (named == notation::start_fen(config.game)) {
+        named.clear();
+    }
+    return named;
 }
 
 bool terminal(MxqGameState state) {
@@ -228,7 +271,7 @@ uint32_t undo_plies_for(const MxqGame &game) {
     if (game.config.mode != MXQ_PLAY_MODE_HUMAN_VS_AI) {
         return 1;
     }
-    if (mover_of(n - 1) == game.config.human_side) {
+    if (mover_of(game.config, n - 1) == game.config.human_side) {
         return 1;
     }
     return n >= 2 ? 2u : 0u;
@@ -239,6 +282,11 @@ void fill_status(const MxqGame &game, const Replayed &replayed,
     out->state = replayed.adj.state;
     out->reason = replayed.adj.reason;
     out->at_occurrence = replayed.adj.at_occurrence;
+    /* Whose turn it is, from the replayed position and never from a ply count.
+     * Reported in every state, the finished ones included: what a finished game
+     * is nobody's turn for is a presentation rule, and `state` is what says the
+     * game is finished. */
+    out->side_to_move = side_to_move(replayed.fen);
 
     /*
      * A session that can no longer mutate offers nothing. A replay and an
@@ -710,11 +758,24 @@ MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
                          "a History record may");
         return MXQ_ERR_STORE_CORRUPT;
     }
-    if (stored.start_fen != notation::start_fen(stored.config.game)) {
-        fill_error(err, MXQ_ERR_STORE_CORRUPT,
-                   "the stored game does not start from its game's frozen "
-                   "starting position");
-        return MXQ_ERR_STORE_CORRUPT;
+    /* The start, against the same per-game policy an import applies. A row this
+     * core wrote can only hold a start creation accepted, so a start that no
+     * longer passes is damage to the library rather than an answer about a
+     * position — which is why every rung of the policy lands on one status
+     * here. */
+    {
+        setup::Violation violation;
+        std::string why;
+        if (setup::judge_start(stored.config.game,
+                               notation::start_fen(stored.config), violation,
+                               why) != setup::StartError::None) {
+            fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                       ("the stored game does not start from a position its "
+                        "game may begin from: " +
+                        why)
+                           .c_str());
+            return MXQ_ERR_STORE_CORRUPT;
+        }
     }
 
     std::unique_ptr<MxqGame> game =
@@ -872,6 +933,35 @@ archive::Record record_of(const MxqGame &game) {
 MxqStatus status_of_line(const MxqGameConfig &config,
                          const std::vector<std::string> &moves,
                          MxqGameStatus *out, MxqError *err) {
+    /*
+     * The start, before the line is replayed from it.
+     *
+     * This is the one function that replays a line from a configuration it did
+     * not create — the summary surface reads a row and asks it — so it is where
+     * the policy is applied for those callers. It is not the same check as
+     * creation's, and it cannot be: what reaches here has already been stored,
+     * so a start that no longer passes is a damaged library rather than an
+     * answer about a position, and every rung lands on MXQ_ERR_STORE_CORRUPT.
+     *
+     * It is asked at all because the engine is not a validator: a damaged start
+     * offering the capture of a general trips an assertion inside the replay,
+     * and the Play home reads this at launch, so the refusal has to arrive
+     * before the position reaches the engine rather than instead of an answer.
+     */
+    {
+        setup::Violation violation;
+        std::string why;
+        if (setup::judge_start(config.game, notation::start_fen(config),
+                               violation, why) != setup::StartError::None) {
+            fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                       ("the stored game does not start from a position its "
+                        "game may begin from: " +
+                        why)
+                           .c_str());
+            return MXQ_ERR_STORE_CORRUPT;
+        }
+    }
+
     /* A session is its configuration plus its move line plus replay, and this
      * borrows exactly that much of one. It is never registered and never
      * handed out, so it is not a session in the sense mxq.h uses the word: no
@@ -1089,6 +1179,65 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
         return MXQ_ERR_ARG_RANGE;
     }
 
+    /* The start this configuration names, or nothing where it names the game's
+     * own. A frozen start spelled out is the game's own, so everything below
+     * treats it exactly as an absent member. */
+    const std::string named = mxq::session::named_start(*config);
+
+    /*
+     * A composed start is Free Play's, and only Free Play's.
+     *
+     * The other two modes each have a fact a composed position would make
+     * meaningless. Nearby play's is the wire protocol, which carries no start.
+     * Human-versus-AI's is first_mover_choice, which the archive records and
+     * cannot reconstruct: "human first" is a statement about a game whose first
+     * mover is the frozen start's, and a position naming its own side to move
+     * leaves it saying nothing. A vs-AI-from-a-scene feature is a contract
+     * change rather than something to inherit muddled here.
+     */
+    if (!named.empty() && config->mode != MXQ_PLAY_MODE_FREE_PLAY) {
+        assert(false && "a composed start belongs to a Free Play game");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a game begun from a composed position is a Free Play "
+                        "game; the other modes begin from the frozen start");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    /*
+     * The start, and the three questions mxq.h asks of one.
+     *
+     * They are three because they are three different things to be wrong about,
+     * and a caller composing a position asks them in this order too: how the
+     * position is spelled, whether the game may be set up in it, and whether it
+     * is a game to play at all. None of them is a programming error — a
+     * composed position arrives from a person, so every refusal here is an
+     * answer the frontend shows rather than a caller it catches.
+     *
+     * A start the game's own skips the first two: the frozen start passes each
+     * of them by construction, and the session that begins from it is the
+     * session every mode has always had.
+     */
+    if (!named.empty()) {
+        mxq::setup::Violation violation;
+        std::string why;
+        switch (mxq::setup::judge_start(config->game, named.c_str(), violation,
+                                        why)) {
+        case mxq::setup::StartError::None:
+            break;
+        case mxq::setup::StartError::Structural:
+        case mxq::setup::StartError::NotInitialised:
+            /* The pairing mxq_rules_validate_setup makes of the same two
+             * conditions, for the same reason: an engine that never came up
+             * cannot say what board a FEN is of, so the honest answer is the
+             * one about the FEN. */
+            mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, why.c_str());
+            return MXQ_ERR_RULES_INVALID_FEN;
+        case mxq::setup::StartError::Illegal:
+            mxq::fill_error(err, MXQ_ERR_RULES_ILLEGAL_POSITION, why.c_str());
+            return MXQ_ERR_RULES_ILLEGAL_POSITION;
+        }
+    }
+
     auto game = std::unique_ptr<MxqGame>(new MxqGame());
     game->game_id = core->identity.next_game_id();
     /* One reading of the clock for one committed event: it is both the game's
@@ -1097,10 +1246,45 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     game->written_at_ms = game->started_at_ms;
     game->config = *config;
     game->config.struct_size = static_cast<uint32_t>(sizeof(MxqGameConfig));
+    /* The member is kept canonical, and written rather than echoed: a start
+     * that is the frozen one is the empty string, so a game answers one way
+     * about where it began whether it was just created or resumed from a row
+     * whose document spells every start out — and nothing the caller left past
+     * its terminator comes back out of mxq_game_config. */
+    std::memset(game->config.start_fen, 0, sizeof(game->config.start_fen));
+    if (!named.empty()) {
+        mxq::copy_bounded(game->config.start_fen,
+                          sizeof(game->config.start_fen), named.c_str());
+    }
     game->core = core;
     if (nearby != nullptr) {
         game->has_nearby = true;
         game->nearby = *nearby;
+    }
+
+    /*
+     * The third question: startability, which is creation's and not the
+     * predicate's. A position that already has a result of its own is no game
+     * to play, and it is asked by evaluating the start with no moves — which is
+     * what mxq_rules_evaluate does for a caller composing one.
+     *
+     * Every start reaches it, the frozen ones included, because the answer for
+     * those is free: a game's own opening position is ongoing, so the rung
+     * costs one replay of a position with no plies and refuses nothing that was
+     * ever created before.
+     */
+    {
+        mxq::session::Replayed at_start;
+        rc = mxq::session::replay_prefix(*game, 0, false, at_start, err);
+        if (rc != MXQ_OK) {
+            return rc;
+        }
+        if (mxq::session::terminal(at_start.adj.state)) {
+            mxq::fill_error(err, MXQ_ERR_STATE_GAME_OVER,
+                            "the position already has a result of its own, so "
+                            "it is not a game to begin");
+            return MXQ_ERR_STATE_GAME_OVER;
+        }
     }
 
     const mxq::archive::Record record = mxq::session::record_of(*game);
@@ -1152,15 +1336,44 @@ MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
                         "retracted, claimed and declared nothing");
         return MXQ_ERR_ARG_RANGE;
     }
+    /*
+     * Two things about the configuration this entry judges before create_game
+     * reads it, and both guard on the same condition: a struct at least the
+     * size this build declares, which is what check_in inside create_game will
+     * ask of it anyway. Equality would let a caller that passed a larger struct
+     * skip these two and meet the store's trigger instead of this diagnostic.
+     * The game axis is part of the same condition because reading a start needs
+     * one: a game outside the vocabulary is refused by create_game, which owns
+     * that refusal, rather than judged here.
+     */
+    const bool config_readable =
+        config != nullptr && config->struct_size >= sizeof(MxqGameConfig) &&
+        mxq::notation::known_game(config->game);
+
     /* The mode is not a preference here: this call writes a nearby_session row,
      * and the schema's own trigger refuses one over any other kind of game.
      * Saying so before the transaction makes it a programming error rather than
      * a store failure. */
-    if (config != nullptr && config->struct_size == sizeof(MxqGameConfig) &&
-        config->mode != MXQ_PLAY_MODE_NEARBY) {
+    if (config_readable && config->mode != MXQ_PLAY_MODE_NEARBY) {
         assert(false && "a wire session belongs to a nearby game");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "a wire session belongs to a nearby game");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    /* And the start, refused in the same voice and on the same rung as the
+     * mode. The protocol two devices play over carries no start position, so a
+     * composed one is not a game they could both be in; a frontend that offered
+     * one here would have built a game only this device knows the shape of.
+     *
+     * What is refused is a composed start and not a spelled-out one: the frozen
+     * start written in full is the game's own start everywhere else in this
+     * interface, and a caller that spells it is describing the game nearby play
+     * already plays. */
+    if (config_readable && !mxq::session::named_start(*config).empty()) {
+        assert(false && "a nearby game begins from its game's frozen start");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a nearby game begins from its game's frozen start: "
+                        "the wire protocol carries no other");
         return MXQ_ERR_ARG_RANGE;
     }
     return create_game(core, config, &state, out_game, err);
@@ -1604,7 +1817,7 @@ MxqStatus MXQ_CALL mxq_game_apply_move(MxqGame *game, const char *move,
     mxq::rules::Adjudication adj{};
     size_t first_illegal = 0;
     switch (mxq::rules::replay(game->config.game,
-                               mxq::notation::start_fen(game->config.game),
+                               mxq::notation::start_fen(game->config),
                                texts.data(), texts.size(), fen, in_check, ply,
                                adj, nullptr, first_illegal, detail)) {
     case mxq::rules::ReplayError::None:

@@ -541,6 +541,52 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
     return Error::None;
 }
 
+StartError judge_start(MxqGameKind game, const char *fen,
+                       Violation &out_violation, std::string &detail) {
+    out_violation = Violation{};
+    detail.clear();
+
+    if (fen == nullptr) {
+        detail = "fen was null";
+        return StartError::Structural;
+    }
+
+    /* The frozen start is a start of every game and is asked nothing: it is
+     * already spelled with the counters below and already accepted by the
+     * predicate, and short-circuiting it keeps a build without the engine a
+     * game is played on from being asked about that game's own opening. */
+    if (std::string(fen) == notation::start_fen(game)) {
+        return StartError::None;
+    }
+
+    /* Rung 1, structure. */
+    if (!rules::validate_fen(game, fen, detail)) {
+        return StartError::Structural;
+    }
+
+    /* Rung 1 still: the counters. They are not the composer's to choose, and a
+     * position carrying any others is not a start whatever its pieces say, so
+     * this is asked before the predicate rather than among its clauses. */
+    const std::vector<std::string> fields = fields_of(fen);
+    if (fields.size() != kFenFields || fields[4] != "0" || fields[5] != "1") {
+        detail = "a start position carries halfmove 0 and fullmove 1; this one "
+                 "carries counters a game with plies behind it would";
+        return StartError::Structural;
+    }
+
+    /* Rung 2, the game's own predicate. */
+    switch (evaluate(game, fen, out_violation, detail)) {
+    case Error::None:
+        break;
+    case Error::FenInvalid:
+        return StartError::Structural;
+    case Error::NotInitialised:
+        return StartError::NotInitialised;
+    }
+    return out_violation.rule == MXQ_SETUP_RULE_NONE ? StartError::None
+                                                     : StartError::Illegal;
+}
+
 } /* namespace setup */
 } /* namespace mxq */
 

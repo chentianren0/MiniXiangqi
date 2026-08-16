@@ -301,13 +301,13 @@ std::string content_bytes(const Record &record) {
 
     members.emplace_back("rules_id", json_string(rules_id_text(record.config.game)));
     members.emplace_back("rules_version", std::to_string(MXQ_RULES_VERSION));
-    /* Version 4 defines exactly one initial position per game, so the writer
-     * states that game's frozen one rather than carrying a start position it
-     * would have to validate. Both members read the same field, which is what
-     * makes a document naming one game and opening from another's board
+    /* The position the game began from, spelled out whether or not it is the
+     * frozen one: a document states its own start rather than leaving a reader
+     * to look one up. Both this and rules_id read the same configuration, which
+     * is what makes a document naming one game and opening from another's board
      * unwritable rather than merely refused. */
     members.emplace_back("start_fen",
-                         json_string(notation::start_fen(record.config.game)));
+                         json_string(notation::start_fen(record.config)));
     members.emplace_back("moves", json_moves(record.moves));
     members.emplace_back("mode", json_string(mode_text(record.config.mode)));
 

@@ -1,7 +1,7 @@
 {
   "class": "rules tier: initial position",
   "probe": "MXQ_OK",
-  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "validate": "MXQ_ERR_RULES_ILLEGAL_POSITION",
   "detail_contains": "frozen starting position",
-  "why": "The format defines exactly one initial position per game, and this Mini Xiangqi document opens from another. A structural probe cannot judge an initial position at all, so this is the rules tier's first question."
+  "why": "Which position a document begins from is the game's own, and Mini Xiangqi defines no setup-legality predicate, so its documents carry exactly its frozen start and this one carries another. The refusal is the predicate's — a game with no predicate answers not-frozen-start for every other position — which is why it is the setup question's status and not an archive-domain one. Xiangqi is the single game this file would be accepted under, and that is the whole of the difference version 5 makes."
 }
