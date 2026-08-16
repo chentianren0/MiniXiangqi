@@ -47,6 +47,31 @@ final class CustomScene {
     /// change, which is what makes the page's one reason live.
     private(set) var verdict: Verdict = .incomplete
 
+    /// The refusal the last tap met, until the page has shown it. Absent
+    /// whenever the last tap changed the draft, which is every tap but this
+    /// one.
+    private(set) var refusal: Refusal?
+
+    /// A point that would not take the piece offered to it, and why.
+    ///
+    /// The reason is composed here, from the class the core reported and in the
+    /// same words the standing reason line uses, because it *is* that sentence:
+    /// what the page shows at the moment of the attempt is what it would have
+    /// gone on showing had the piece landed.
+    ///
+    /// The `attempt` is what makes two refusals at the same point two events:
+    /// the state is otherwise identical, and a page that could not tell them
+    /// apart would answer the second tap by doing nothing.
+    struct Refusal: Equatable {
+        var square: Square
+        var piece: Piece
+        var reason: String
+        var attempt: Int
+    }
+
+    /// How many refusals this draft has met. Only its changes are read.
+    private var attempts = 0
+
     /// The three ways a draft is not a game to start, and the one way it is.
     enum Verdict: Equatable {
         /// Legal to set up in and a game to play: 开始对局 is enabled on this
@@ -122,10 +147,21 @@ final class CustomScene {
     /// A tap places and a tap removes: an empty point takes the entry the
     /// player is holding, and a point with a piece on it gives that piece back
     /// to the palette.
+    ///
+    /// **A point the piece may not stand on refuses it instead**, and the draft
+    /// does not change: the piece stays held, and the page is handed the
+    /// refusal to answer with. Which points those are is `refusal(of:at:)`'s
+    /// question, and it is the core's answer.
     func tap(_ square: Square) {
         if pieces[square] != nil {
             pieces[square] = nil
         } else if let held, remaining(held) > 0 {
+            if let refused = refusal(of: held, at: square) {
+                attempts += 1
+                refusal = Refusal(square: square, piece: held,
+                                  reason: refused, attempt: attempts)
+                return
+            }
             pieces[square] = held
             // An entry the last of which has just gone down has nothing left to
             // offer, so it is not left standing as the held one.
@@ -133,8 +169,54 @@ final class CustomScene {
         } else {
             return
         }
+        refusal = nil
         validate()
     }
+
+    /// The page having shown a refusal, so the next one is a new event.
+    func clearRefusal() { refusal = nil }
+
+    /// Why this point would not take this piece, or nil where it would.
+    ///
+    /// **The whole question is the core's, and it is asked before anything is
+    /// committed**: the candidate position — the draft with the piece on the
+    /// point — is offered to the setup-legality predicate, and the refusal
+    /// stands only where the predicate names one of the three classes that are
+    /// about *where a piece may stand* and names this very point as the fault.
+    ///
+    /// Nothing here knows what a palace, an elephant's points or a soldier's
+    /// rank are; it knows only that the core reported that class at that
+    /// square. A refusal keyed on anything else would be a rule re-derived
+    /// above the core.
+    ///
+    /// **The other refusal classes are not refusals here, deliberately.** Two
+    /// generals facing each other and the waiting side left in check are
+    /// properties of the whole position rather than of the point just touched,
+    /// and a composer builds through both of them — so they remain placeable,
+    /// and the standing reason line is what reports them. The count class names
+    /// no point the palette would let this tap reach.
+    ///
+    /// It asks the predicate and nothing else. The session-free evaluation is
+    /// never reached from here: the interface's ordering has setup legality as
+    /// the first question, and a candidate this refuses is a candidate the
+    /// engine is never shown.
+    private func refusal(of piece: Piece, at square: Square) -> String? {
+        var candidate = pieces
+        candidate[square] = piece
+        let fen = Self.fen(of: candidate, sideToMove: sideToMove, game: Self.game)
+        guard case .illegal(let violation) = core.setupVerdict(of: fen, game: Self.game),
+              Self.placementRules.contains(violation.rule),
+              violation.square == square.name
+        else { return nil }
+        return violation.reason
+    }
+
+    /// The classes that are about where one piece may stand. Read off the
+    /// core's own vocabulary — these are its names for them — and never a
+    /// statement of what the rules are.
+    private static let placementRules: [SetupRule] = [
+        .palace, .elephantSide, .soldierRank,
+    ]
 
     /// The draft as a position record: the placement, the side to move, and the
     /// counters a named start carries — halfmove 0 and fullmove 1, which are

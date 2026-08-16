@@ -29,6 +29,10 @@ struct SquarePhases: VectorArithmetic {
     }
 
     subscript(square: Square) -> Double { values[square] ?? 0 }
+    /// The progress this phase carries for a square, or nil where it says
+    /// nothing about it at all — the distinction a default of zero cannot make,
+    /// and the one a phase whose resting value is *one* is read through.
+    func stated(_ square: Square) -> Double? { values[square] }
     /// Every square this phase says anything about.
     var marked: [Square] { values.keys.filter { values[$0] ?? 0 > 0 } }
     /// The largest progress any square carries.
@@ -85,6 +89,15 @@ struct BoardPhases: VectorArithmetic {
     var hint = SquarePhases()
     /// The selection lift, per square.
     var lifts = SquarePhases()
+    /// How far a disc has settled onto its point, per square — the Custom Scene
+    /// editor's placement scaling in and its removal scaling out.
+    ///
+    /// **A point this phase does not mention carries a disc at rest**, which is
+    /// what makes a placement scale in from nothing without a state set twice:
+    /// the point is unmentioned until the piece is put down, so the vector
+    /// interpolates it from zero. Every board that is played hands an empty
+    /// phase and therefore draws every disc at full size.
+    var settled = SquarePhases()
 
     static let zero = BoardPhases()
 
@@ -102,14 +115,14 @@ struct BoardPhases: VectorArithmetic {
         Self(travel: lhs.travel + rhs.travel, fade: lhs.fade + rhs.fade,
              flip: lhs.flip + rhs.flip, check: lhs.check + rhs.check,
              marker: lhs.marker + rhs.marker, hint: lhs.hint + rhs.hint,
-             lifts: lhs.lifts + rhs.lifts)
+             lifts: lhs.lifts + rhs.lifts, settled: lhs.settled + rhs.settled)
     }
 
     static func - (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel - rhs.travel, fade: lhs.fade - rhs.fade,
              flip: lhs.flip - rhs.flip, check: lhs.check - rhs.check,
              marker: lhs.marker - rhs.marker, hint: lhs.hint - rhs.hint,
-             lifts: lhs.lifts - rhs.lifts)
+             lifts: lhs.lifts - rhs.lifts, settled: lhs.settled - rhs.settled)
     }
 
     mutating func scale(by rhs: Double) {
@@ -117,11 +130,13 @@ struct BoardPhases: VectorArithmetic {
         check *= rhs; marker *= rhs
         hint.scale(by: rhs)
         lifts.scale(by: rhs)
+        settled.scale(by: rhs)
     }
 
     var magnitudeSquared: Double {
         travel * travel + fade * fade + flip * flip + check * check
             + marker * marker + hint.magnitudeSquared + lifts.magnitudeSquared
+            + settled.magnitudeSquared
     }
 }
 
@@ -454,11 +469,18 @@ struct BoardCanvas: View, Animatable {
                 guard let piece = placement[square], !inTransit.contains(square) else { continue }
                 let lift = phases.lifts[square]
                 if lift > 0, !policy.reduceMotion { continue }   // drawn above the rings
+                // A disc partway onto or off the board — a piece being composed
+                // into a scene, or taken back out of one. Scale is motion, so
+                // under Reduce Motion the same phase arrives as opacity and the
+                // disc never changes size, exactly as the lift beside it does.
+                let settled = phases.settled.stated(square) ?? 1
                 // Reduce Motion raises a piece by dissolve: the resting
                 // rendering fades here while the raised one fades in above,
                 // and no size ever animates.
                 draw(piece, at: point(square, flip: flip), lift: 0,
-                     opacity: 1 - lift, in: context)
+                     scale: policy.reduceMotion ? 1 : settled,
+                     opacity: (1 - lift) * (policy.reduceMotion ? settled : 1),
+                     in: context)
             }
         }
     }
@@ -556,85 +578,15 @@ struct BoardCanvas: View, Animatable {
 
     // MARK: - Discs
 
-    /// One disc, `lift` of the way from resting to raised: scale and shadow
-    /// rise together, and nothing else changes. The context arrives by value
-    /// — a copy draws into the same canvas — so the disc's opacity composes
-    /// with whatever the caller already set.
+    /// One disc, drawn by the one routine that draws a piece anywhere in this
+    /// app — `PieceDrawing`, which the Custom Scene palette calls too, so a
+    /// palette entry and the piece it puts on the board are the same drawing at
+    /// two pitches rather than two drawings that have to be kept in step.
     private func draw(_ piece: Piece, at centre: CGPoint, lift: Double,
-                      scale externalScale: CGFloat = 1, opacity: Double = 1,
+                      scale: CGFloat = 1, opacity: Double = 1,
                       in context: GraphicsContext) {
-        var context = context
-        context.opacity *= opacity
-
-        let scale = (1 + (geometry.selectionLift - 1) * lift) * externalScale
-        let shadow = style.restingShadow.blended(toward: style.liftShadow, by: lift)
-        // A stone is the same body drawn in the two things that differ: it is
-        // wider for its cell, its face is its side, and it carries no symbol.
-        let stone = piece.isStone
-        let body = stone ? geometry.stoneDiameter : geometry.discDiameter
-        let diameter = body * scale
-        let box = CGRect(x: centre.x - diameter / 2, y: centre.y - diameter / 2,
-                         width: diameter, height: diameter)
-        let edge = (stone ? style.stoneEdgeStroke : style.discEdgeStroke(piece.side)) * p
-        let face = stone ? style.stoneFace(piece.side) : style.discFace
-
-        context.drawLayer { layer in
-            layer.addFilter(.shadow(color: shadow.color,
-                                    radius: shadow.radius * p,
-                                    y: shadow.y * p))
-            layer.fill(Path(ellipseIn: box), with: .color(face))
-        }
-        // The stroke is drawn inside the body's own edge rather than centred on
-        // it, so a heavy edge grows inward instead of past the body it draws.
-        //
-        // **What contains it differs between the two bodies.** A disc is 0.80 p
-        // across, so its edge stays inside the 0.40 p style-decoration limit and
-        // clear of the band markers occupy — the rule that limit exists for. A
-        // stone is 0.88 p and reaches 0.44 p, past it, and that is sound here
-        // rather than an oversight: the limit keeps marker ink off a piece, and
-        // on these boards no marker ever stands on one. The only mark a
-        // placement board draws on an *occupied* point is the last-move bracket,
-        // whose ink sits at ≈0.53 p from the centre, outside the stone; the
-        // selection ring marks the point a stone is not on yet; and every legal
-        // point is empty by the rule that makes it legal. It stays inside its
-        // own cell, which is the containment that applies to a body.
-        context.stroke(circle(at: centre,
-                              radius: geometry.edgeRadius(body: body, stroke: edge) * scale),
-                       with: .color(stone ? style.stoneEdge(piece.side)
-                                          : style.discEdge(piece.side)),
-                       lineWidth: edge)
-
-        drawSymbol(of: piece, at: centre, scale: scale, in: &context)
-    }
-
-    /// What the disc carries: the piece's character, or its icon.
-    ///
-    /// One place, so the two sets are drawn at the same size, on the same
-    /// centre, in the same role ink — and so every disc the board draws gets
-    /// them, the resting one, the held one, and the one in transit alike. An
-    /// icon is never rotated, exactly as a character is never rotated, so both
-    /// stand upright throughout a flip.
-    private func drawSymbol(of piece: Piece, at centre: CGPoint, scale: CGFloat,
-                            in context: inout GraphicsContext) {
-        // A stone carries none, in either set: its colour is what says whose it
-        // is, and a symbol on it would be inventing a distinction the game does
-        // not make.
-        guard let kind = piece.kind else { return }
-        let size = geometry.symbolSize * scale
-        let ink = style.symbol(piece.side)
-        switch symbols {
-        case .hanzi:
-            var symbol = context.resolve(
-                Text(kind.character(for: piece.side))
-                    .font(.system(size: size, weight: .medium))
-                    .foregroundStyle(ink))
-            symbol.shading = .color(ink)
-            context.draw(symbol, at: centre)
-        case .icons:
-            let box = CGRect(x: centre.x - size / 2, y: centre.y - size / 2,
-                             width: size, height: size)
-            context.fill(PieceIcon.path(for: kind, in: box),
-                         with: .color(ink), style: FillStyle(eoFill: true))
-        }
+        PieceDrawing(geometry: geometry, style: style, symbols: symbols)
+            .draw(piece, at: centre, lift: lift, scale: scale, opacity: opacity,
+                  in: context)
     }
 }

@@ -9,6 +9,10 @@
 // choice and 开始对局 beneath it, all of them reachable — and that a scene game
 // opens on the board from there.
 //
+// It is also the one place the page standing alone can be seen: the destination
+// bar is a bar across the bottom only at this width, and 开始对局 being
+// reachable rather than under it is what its going away buys.
+//
 // **The words asserted are the accepted Simplified Chinese**, written out
 // rather than read from the application's own catalog, exactly as the other
 // phone suites do it.
@@ -54,6 +58,29 @@ final class PhoneCustomSceneUITests: XCTestCase {
         point(app, square).tap()
     }
 
+    /// Waits for an element to go away. Something going away is animated, so a
+    /// query taken the instant after the page changes sees the frame it was
+    /// still in.
+    private func waitForAbsence(_ element: XCUIElement,
+                                timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !element.exists { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
+    }
+
+    /// An element, waited for before it is read. A label taken from the
+    /// snapshot the page was still assembling in reads back empty, and an
+    /// assertion made there is a race that passes on a fast run.
+    private func settled(_ element: XCUIElement,
+                         file: StaticString = #filePath,
+                         line: UInt = #line) -> XCUIElement {
+        XCTAssertTrue(element.waitForExistence(timeout: 10), file: file, line: line)
+        return element
+    }
+
     /// The editor's core flow on the stacked layout, reached the way a player
     /// reaches it.
     ///
@@ -68,6 +95,8 @@ final class PhoneCustomSceneUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 30),
                       "the Play home carries the Custom Scene row on a phone too")
         XCTAssertEqual(row.label, "自定排局")
+        XCTAssertTrue(app.tabBars.firstMatch.exists,
+                      "the home carries the destination bar")
         row.tap()
 
         let start = app.buttons["scene-start"]
@@ -77,11 +106,39 @@ final class PhoneCustomSceneUITests: XCTestCase {
         XCTAssertFalse(start.isEnabled, "an empty board is no position to start from")
         XCTAssertEqual(text(of: control(app, "scene-reason")), "先给双方各放一个将帅。")
 
+        // The page stands alone: its own name in the bar, and no destination
+        // bar between 开始对局 and the bottom of the screen.
+        XCTAssertTrue(app.navigationBars.staticTexts["自定排局"].waitForExistence(timeout: 10),
+                      "the page is titled with the mode it is, not with 对局")
+        XCTAssertTrue(waitForAbsence(app.tabBars.firstMatch),
+                      "and the editor puts the destination bar away")
+
+        // The board says whose half is whose, and the first-mover choice says
+        // what choosing does.
+        let top = settled(control(app, "scene-half-black"))
+        let bottom = settled(control(app, "scene-half-red"))
+        XCTAssertEqual(text(of: top), "黑方")
+        XCTAssertEqual(text(of: bottom), "红方")
+        XCTAssertLessThan(top.frame.midY, bottom.frame.midY)
+        XCTAssertEqual(text(of: settled(control(app, "scene-first-mover"))), "先行方")
+        XCTAssertEqual(text(of: settled(control(app, "scene-first-mover-caption"))),
+                       "所选的一方走本局的第一步。")
+
         place(app, "red", "k", at: "e1")
         place(app, "black", "k", at: "d10")
         place(app, "red", "r", at: "a1")
         XCTAssertEqual(point(app, "a1").label, "a1 红 俥", "the piece went where it was put")
         XCTAssertTrue(start.isEnabled, "a legal, playable position is one to start from")
+        XCTAssertTrue(start.isHittable,
+                      "and it stands in the safe area rather than under a bar")
+
+        // A point that will not take the held piece does not take it, and the
+        // entry is still in hand for the point that does.
+        place(app, "red", "a", at: "c1")
+        XCTAssertEqual(point(app, "c1").label, "c1 空", "the palace refused the advisor")
+        XCTAssertEqual(app.buttons["palette-red-a"].value as? String, "2")
+        point(app, "d1").tap()
+        XCTAssertEqual(point(app, "d1").label, "d1 红 仕")
 
         // The side to move is a choice on the page, and Black is what this
         // scene begins with.
