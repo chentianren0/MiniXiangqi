@@ -47,8 +47,8 @@ struct CustomSceneTests {
     private static func red(_ kind: PieceKind) -> Piece { Piece(kind: kind, side: .red) }
     private static func black(_ kind: PieceKind) -> Piece { Piece(kind: kind, side: .black) }
 
-    /// The two generals, which every startable scene needs and which the
-    /// structural refusal stands for until they are there.
+    /// The two generals, which every startable scene needs and which the count
+    /// clause names the side of until they are there.
     private func generals(_ scene: CustomScene) throws {
         try place(scene, [("e1", Self.red(.general)), ("d10", Self.black(.general))])
     }
@@ -175,8 +175,13 @@ struct CustomSceneTests {
 
     // MARK: - The one plain reason
 
+    /// A draft on its way to being a position is not a mistake to report, and
+    /// this is where that is decided. The core answers a board short of a
+    /// general under its count clause, naming the side; what makes it this
+    /// verdict rather than a violation to fix is the draft's own material —
+    /// the piece the count is short of is still in the palette.
     @Test("Until both generals stand, the reason is the generals")
-    func theStructuralRefusalIsTheMissingGeneral() throws {
+    func theMissingGeneralIsTheCountClause() throws {
         let core = try TestCores.fresh()
         let scene = CustomScene(core: core)
         #expect(scene.verdict == .incomplete, "an empty board has neither general")
@@ -241,14 +246,66 @@ struct CustomSceneTests {
                                              square: "e1")),
                 "the side not to move is the one that may not be in check")
 
+        // One class covers the general and the advisor, whose points differ, so
+        // an advisor's refusal is carried by the sentence that is true of every
+        // point it is refused at rather than by the palace's.
         #expect(try refusal(of: Self.red(.advisor), at: "c1")
-                == sentence(.palace, .red, "c1"))
+                == SetupViolation(rule: .palace, side: .red, square: "c1")
+                    .reason(refusing: .advisor))
 
         #expect(try refusal(of: Self.red(.elephant), at: "f1")
                 == sentence(.elephantSide, .red, "f1"))
 
         #expect(try refusal(of: Self.red(.soldier), at: "g1")
                 == sentence(.soldierRank, .red, "g1"))
+    }
+
+    /// The three findings the point clauses' exactness turns into behaviour.
+    ///
+    /// Not a sweep of the board: the clauses themselves are pinned by the
+    /// fixtures, and these are the places where being exact changes what a tap
+    /// does. Each is one refusal against the point that does take the piece.
+    @Test("A point off the piece's own points refuses it, generals or no generals")
+    func theZoneClausesAnswerFromTheFirstPieceDown() throws {
+        let core = try TestCores.fresh()
+
+        // On an empty board, before either general is placed: the classes that
+        // name a point are reported ahead of the one that counts a side, so the
+        // page answers the first piece put down.
+        let empty = CustomScene(core: core)
+        empty.pick(Self.red(.advisor))
+        empty.tap(try square("e3"))
+        let refused = try #require(empty.refusal, "the point answered over an empty board")
+        #expect(refused.reason
+                == SetupViolation(rule: .palace, side: .red, square: "e3")
+                    .reason(refusing: .advisor))
+        #expect(empty.pieces.isEmpty, "and nothing was placed")
+
+        // An advisor steps diagonally, so the palace's four corners and its
+        // centre are the whole of where it can be — e3 is inside the palace and
+        // is none of them.
+        let advisors = CustomScene(core: core)
+        try generals(advisors)
+        advisors.pick(Self.red(.advisor))
+        advisors.tap(try square("e3"))
+        #expect(advisors.pieces[try square("e3")] == nil, "a midpoint is not one of the five")
+        advisors.tap(try square("d1"))
+        #expect(advisors.pieces[try square("d1")] == Self.red(.advisor), "a corner is")
+        advisors.tap(try square("e2"))
+        #expect(advisors.pieces[try square("e2")] == Self.red(.advisor), "and so is the centre")
+
+        // A soldier that has not crossed the river moves only forward, so it
+        // stands on a file its side's soldiers start on; across the river every
+        // file is one it may stand on.
+        let soldiers = CustomScene(core: core)
+        try generals(soldiers)
+        soldiers.pick(Self.red(.soldier))
+        soldiers.tap(try square("b4"))
+        #expect(soldiers.pieces[try square("b4")] == nil,
+                "b is not a file Red's soldiers start on")
+        soldiers.tap(try square("b6"))
+        #expect(soldiers.pieces[try square("b6")] == Self.red(.soldier),
+                "and the same soldier across the river stands on it")
     }
 
     @Test("Every reason the editor can show is a sentence, and the startable one is none")

@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-014",
+  "title": "Setup: a side-to-move field that is neither w nor b is a position of no board",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/9/9/4K4 W - - 0 1",
+  "setup": {
+    "status": "invalid-fen",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "The placement is a legal setup and the second field is not a side: the frozen encoding spells Red as w and Black as b, and W is neither. A reading that took the first letter and called everything else Black would accept this position and judge it for the wrong mover, which is the one thing a side-to-move field decides. The predicate reads its own structure, so the whole field is the field."
+}

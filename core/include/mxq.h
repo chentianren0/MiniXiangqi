@@ -591,12 +591,18 @@ enum {
  *
  *   PIECE_COUNT        a side has more of a piece than the game gives it — or,
  *                      for the general, other than the one it has
- *   PALACE             a general or an advisor stands outside its own palace
+ *   PALACE             a general or an advisor stands off the points its own
+ *                      palace offers it: the nine for a general, which walks
+ *                      them, and the five for an advisor, which steps
+ *                      diagonally and reaches the four corners and the centre.
+ *                      One class, one rule per piece's own reach
  *   ELEPHANT_SIDE      an elephant stands off its own side's seven points,
  *                      which is where "an elephant never crosses the river"
  *                      leaves it
  *   SOLDIER_RANK       a soldier stands behind its own starting soldier rank,
- *                      which it can never move back to
+ *                      which it can never move back to, or — on its own half of
+ *                      the river, where it moves only forward — off the five
+ *                      files it started on
  *   FACING_GENERALS    the two generals face each other on an otherwise empty
  *                      file. It is its own class rather than a case of the one
  *                      below because the relation is symmetric and belongs to
@@ -948,8 +954,10 @@ typedef struct MxqGameStatus {
  * rule is which setup rule broke. side is the side the violation belongs to,
  * and square the point it stands at, where either is meaningful:
  *
- *   PIECE_COUNT        side is the over-supplied side; square is empty, because
- *                      a count is a property of a side and not of a point
+ *   PIECE_COUNT        side is the side whose complement the game does not give
+ *                      — too many of a piece, or short of the one general it
+ *                      must have; square is empty, because a count is a
+ *                      property of a side and not of a point
  *   PALACE             side and square are the offending piece's
  *   ELEPHANT_SIDE      likewise
  *   SOLDIER_RANK       likewise
@@ -1865,10 +1873,17 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out,
 /*
  * Validate a FEN as a position of game. This applies the frozen structural
  * encoding only, returning MXQ_ERR_RULES_INVALID_FEN on failure, and never
- * MXQ_ERR_RULES_ILLEGAL_POSITION: whether a structurally valid position is one
- * the game may be set up in is mxq_rules_validate_setup's question, and this
- * one is its precondition. A FEN of the other game's board fails the encoding
- * here, which is what makes the game a question rather than a hint.
+ * MXQ_ERR_RULES_ILLEGAL_POSITION: whether a position is one the game may be set
+ * up in is mxq_rules_validate_setup's question. A FEN of the other game's board
+ * fails the encoding here, which is what makes the game a question rather than
+ * a hint.
+ *
+ * The two entries genuinely differ, and a board short of a general is where.
+ * This one asks what the engine that plays the game will take, and a game
+ * cannot be played without a general on each side; the other asks what a
+ * position may be set up as, and answers for that board under its count clause.
+ * So a position this entry refuses may still be one the predicate has an
+ * opinion about, and a surface composing a position asks the predicate.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
@@ -1884,11 +1899,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * archive's rules tier ask, which is why they answer with this entry's own
  * MXQ_ERR_RULES_ILLEGAL_POSITION rather than a code of their own.
  *
- * MXQ_OK is a legal setup and MXQ_ERR_RULES_ILLEGAL_POSITION an illegal one.
- * Structural validity is the precondition rather than part of the answer, so a
- * FEN that is not a position of this game's board at all fails as it does from
- * mxq_rules_validate_fen, with MXQ_ERR_RULES_INVALID_FEN and that code's
- * meaning.
+ * MXQ_OK is a legal setup and MXQ_ERR_RULES_ILLEGAL_POSITION an illegal one. A
+ * FEN that is not a position of this game's board at all — not the frozen
+ * encoding of docs/xiangqi-rules.md — is MXQ_ERR_RULES_INVALID_FEN, with the
+ * meaning that code carries from mxq_rules_validate_fen. For Xiangqi that
+ * reading is the predicate's own and is the stricter of the two: it is a
+ * position record that this entry judges, and a spelling no record has is a
+ * position of no board.
  *
  * out_violation is optional and, when supplied, is always written, whichever of
  * the three answers comes back: the rule is the one that broke on an illegal
@@ -1898,12 +1915,15 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  *
  * Which positions a game may be set up in is the game's own, and today exactly
  * one game has more than a single answer. Xiangqi's predicate is the rules of
- * docs/xiangqi-rules.md read as a set-up question — the piece the game gives a
- * side, the palace, the elephant's own seven points, the soldier's own starting
- * rank, the generals not facing, and the side not to move not in check. Every
- * other game accepts its frozen starting position and nothing else, and answers
- * MXQ_SETUP_RULE_NOT_FROZEN_START for anything else, the comparison being
- * against the whole frozen FEN and so against its side to move as well.
+ * docs/xiangqi-rules.md read as a set-up question — where each piece can ever
+ * stand, then the complement the game gives a side, then the generals not
+ * facing and the side not to move not in check — and it is reported in that
+ * order, the first offending point first. It answers for a position still
+ * missing a general: that side's complement is what says so, which is what lets
+ * a surface composing a position be told about the first piece it puts down.
+ * Every other game accepts its frozen starting position and nothing else, and
+ * answers MXQ_SETUP_RULE_NOT_FROZEN_START for anything else, the comparison
+ * being against the whole frozen FEN and so against its side to move as well.
  *
  * Two things this deliberately does NOT answer.
  *

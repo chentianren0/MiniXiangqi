@@ -197,6 +197,57 @@ struct InterchangeTests {
                 "and neither refusal changed the library")
     }
 
+    /// A file the rules refuse is its own answer, and not a save that failed.
+    ///
+    /// The document is readable, its game is this app's, and the position it
+    /// records a game beginning from is one the setup-legality predicate
+    /// refuses — a Red advisor on e3, inside the palace and off the five points
+    /// an advisor reaches. That is the rules domain answering, so what the
+    /// player is told is about the game in the file, and no retry is offered:
+    /// importing the same bytes again would be refused for the same reason.
+    @Test("A file whose recorded start the rules refuse is refused as that, with no retry")
+    func aStartTheRulesRefuseIsItsOwnAnswer() throws {
+        let core = try TestCores.fresh()
+        let bytes = Data(Self.xiangqiIllegalStart.utf8)
+
+        do {
+            _ = try core.history.importGame(bytes)
+            Issue.record("the library took a game it cannot play")
+        } catch let error as CoreError {
+            #expect(error.status == MxqStatus(MXQ_ERR_RULES_ILLEGAL_POSITION),
+                    "the setup question's own refusal, wherever it is asked")
+            #expect(ImportAnswer(refusing: error, retrying: bytes) == .illegalStart)
+        }
+
+        #expect(library(over: core).records.isEmpty, "and nothing was filed")
+    }
+
+    /// A game whose moves are legal and whose start is not: a Red advisor on
+    /// e3. The start is judged before anything is replayed, so it is the one
+    /// thing this document is refused for.
+    private static let xiangqiIllegalStart = #"{"archive_format":"minixiangqi-game","archive_version":5,"content":{"end_reason":"ended-early","ended_at":"2026-01-01T00:00:03.000Z","mode":"free-play","moves":["e1e2","d10d9"],"outcome":"none","rules_id":"xiangqi","rules_version":1,"start_fen":"3k5/9/9/9/9/9/9/4A4/9/4K4 w - - 0 1","started_at":"2026-01-01T00:00:00.000Z"},"game_id":"019b76da-a808-7000-8000-000000000009","origin":{"app_version":"1.0.0","exported_at":"2026-01-01T00:00:03.000Z"}}"#
+
+    /// Which answer each refusal comes to. The classes are the ones the core's
+    /// taxonomy distinguishes, and the mapping is what decides both the words
+    /// the player reads and whether a retry is offered at all — so a status
+    /// arriving at the wrong one would offer an action that cannot work.
+    @Test("Each refusal the core makes reaches its own import answer")
+    func eachRefusalReachesItsOwnAnswer() {
+        func answer(_ status: Int) -> ImportAnswer {
+            ImportAnswer(refusing: CoreError(status: MxqStatus(status), detail: ""),
+                         retrying: Data())
+        }
+        #expect(answer(MXQ_ERR_STORE_IDENTITY_CONFLICT) == .conflict)
+        #expect(answer(MXQ_ERR_ARCHIVE_UNSUPPORTED_VERSION) == .newerVersion)
+        #expect(answer(MXQ_ERR_STORE_CORRUPT) == .damagedRecord)
+        #expect(answer(MXQ_ERR_ARCHIVE_MALFORMED) == .unreadable,
+                "the archive domain means the file")
+        #expect(answer(MXQ_ERR_RULES_ILLEGAL_POSITION) == .illegalStart,
+                "the rules domain means the game recorded in it")
+        #expect(answer(MXQ_ERR_STORE_IO) == .saveFailed(Data()),
+                "and what is left is the write that would have filed it")
+    }
+
     /// The status a refusal carried, or `MXQ_OK` if there was no refusal —
     /// which is itself a failing expectation wherever this is used.
     private func status(of work: () throws -> ImportedGame) -> MxqStatus {

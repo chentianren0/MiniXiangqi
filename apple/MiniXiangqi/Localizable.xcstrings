@@ -455,6 +455,41 @@
         }
       }
     },
+    "alert.importIllegalStart.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file is readable, but the game in it begins from a position these rules don't allow, so it can't be imported. History is unchanged."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件可以读取，但里面的对局从一个规则不允许的局面开始，所以无法导入。历史没有改变。"
+          }
+        }
+      }
+    },
+    "alert.importIllegalStart.title": {
+      "comment": "The one import answer that is about the rules rather than about the file or the library: nothing here means damaged, and nothing about the file is worth retrying.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Game Starts from a Position the Rules Don't Allow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这盘棋的起始局面不合规则"
+          }
+        }
+      }
+    },
     "alert.importNewerVersion.message": {
       "comment": "The one message the data contract requires to be distinct, and never to be presented as corruption: no word here means damaged.",
       "extractionState": "manual",
@@ -2976,6 +3011,24 @@
         }
       }
     },
+    "scene.reason.advisorPoint": {
+      "comment": "The arguments are the side, the point it stands on, and the piece in that side's own words.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@'s %3$@ on %2$@ is off the points an advisor can reach."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@方 %2$@ 上的%3$@不在本方的士位上。"
+          }
+        }
+      }
+    },
     "scene.reason.decided": {
       "extractionState": "manual",
       "localizations": {
@@ -3106,13 +3159,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@'s %3$@ on %2$@ stands behind its own starting rank."
+            "value": "%1$@'s %3$@ on %2$@ is off the points a soldier can reach."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@方 %2$@ 上的%3$@在本方兵线之后。"
+            "value": "%1$@方 %2$@ 上的%3$@不在它能走到的位置上。"
           }
         }
       }

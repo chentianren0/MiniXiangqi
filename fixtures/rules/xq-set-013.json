@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-013",
+  "title": "Setup: a point-anchored violation is named though a general is missing",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/4A4/9/9 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "palace",
+    "side": "red",
+    "square": "e3"
+  },
+  "rationale": "Two clauses are broken here — the advisor stands off its five points and Red has no general — and the one that names a point is the one reported. That is the order the clauses are stated in: what a report is for is telling a composer what to fix next, and a point is what a composer points at. It is also why a position may be judged from its first piece onward, before either general is on the board."
+}

@@ -10,5 +10,5 @@
     "side": "red",
     "square": "e3"
   },
-  "rationale": "A soldier never moves backward, so no Red soldier can ever be behind rank 4. e3 is one rank behind it. The rule is about the rank alone: a soldier on a file it did not start on is a position play cannot reach, but reachability is not what setup legality asks."
+  "rationale": "A soldier never moves backward, so no Red soldier can ever be behind rank 4. e3 is one rank behind it, and that rank is what this fixture pins. The clause has a second aspect this position does not reach: before it crosses the river a soldier moves only forward, so it also stands on one of the five files it started on, and e is one of them."
 }

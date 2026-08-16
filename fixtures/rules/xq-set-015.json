@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-015",
+  "title": "Setup: a soldier that has crossed the river stands on any file",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/1P7/9/9/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "ok",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "b6 is across the river, where a soldier moves sideways as well as forward, so every file is reachable from there and b is one of them — the same soldier that could not stand on b4 stands here. This is the acceptance that bounds the file clause: it holds on a side's own half and nowhere beyond it."
+}
