@@ -216,7 +216,7 @@ final class HistoryLibrary {
 /// to be distinct and never to be presented as corruption, and it is. The one
 /// answer that *is* about corruption is about the library's own record rather
 /// than about the file, and says so.
-enum ImportAnswer {
+enum ImportAnswer: Equatable {
     case duplicate(RecordSummary)
     case conflict
     case newerVersion
@@ -226,6 +226,11 @@ enum ImportAnswer {
     /// hash to what the row recorded for them, so the comparison an import has
     /// to make cannot be made at all.
     case damagedRecord
+    /// The file is readable and the game it records is not one these rules
+    /// play: its start is a position the setup-legality predicate refuses. No
+    /// bytes are held, because nothing about a retry would change the answer —
+    /// the file would have to be a different game.
+    case illegalStart
     /// The file was fine; the library would not take it. The bytes are held so
     /// that 重试 is a retry of the same import.
     case saveFailed(Data)
@@ -246,10 +251,14 @@ enum ImportAnswer {
             self = .damagedRecord
         default:
             // Which side refused decides which sentence is true: the archive
-            // domain means the file, and anything else that reaches here means
-            // the write that would have filed it.
-            self = mxq_status_domain(error.status) == MxqStatus(MXQ_DOMAIN_ARCHIVE)
-                ? .unreadable : .saveFailed(bytes)
+            // domain means the file, the rules domain means the game recorded
+            // in it, and anything else that reaches here means the write that
+            // would have filed it.
+            switch mxq_status_domain(error.status) {
+            case MxqStatus(MXQ_DOMAIN_ARCHIVE): self = .unreadable
+            case MxqStatus(MXQ_DOMAIN_RULES): self = .illegalStart
+            default: self = .saveFailed(bytes)
+            }
         }
     }
 
@@ -260,6 +269,7 @@ enum ImportAnswer {
         case .newerVersion: "alert.importNewerVersion.title"
         case .unreadable: "alert.importUnreadable.title"
         case .damagedRecord: "alert.importDamagedRecord.title"
+        case .illegalStart: "alert.importIllegalStart.title"
         case .saveFailed: "alert.importSaveFailed.title"
         }
     }
@@ -271,6 +281,7 @@ enum ImportAnswer {
         case .newerVersion: "alert.importNewerVersion.message"
         case .unreadable: "alert.importUnreadable.message"
         case .damagedRecord: "alert.importDamagedRecord.message"
+        case .illegalStart: "alert.importIllegalStart.message"
         case .saveFailed: "alert.importSaveFailed.message"
         }
     }

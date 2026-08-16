@@ -430,10 +430,10 @@ nonisolated enum SetupVerdict: Sendable, Equatable {
     case legal
     /// The predicate refused it, and this is the first rule it broke.
     case illegal(SetupViolation)
-    /// The structural precondition refused it: not a position of this game's
-    /// board at all. A composed Xiangqi position reaches it for one reason —
-    /// the engine's own validator wants exactly one general a side, so a board
-    /// still missing one is refused here before any clause is reached.
+    /// Not a position of this game's board at all, so no clause was reached.
+    /// It is about how the position is spelled and never about which pieces
+    /// stand on it: a board still missing a general is a position the predicate
+    /// has an answer for, and answers under its count clause.
     case malformed
 }
 

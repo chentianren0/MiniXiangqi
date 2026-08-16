@@ -349,11 +349,12 @@ struct HistoryScreen: View {
         case .saveFailed(let bytes):
             Button("control.cancel", role: .cancel) { }
             Button("control.tryAgain") { Task { await library.importGame(bytes) } }
-        // A damaged record joins the three that offer only acknowledgement, and
-        // for the same reason each of them does: there is no action the app can
-        // put behind a button that would change the answer. The route out of
-        // this one is in its message, as the conflict's is.
-        case .conflict, .unreadable, .newerVersion, .damagedRecord:
+        // A damaged record and a file whose game the rules refuse join the
+        // three that offer only acknowledgement, and for the same reason each
+        // of them does: there is no action the app can put behind a button that
+        // would change the answer. The route out of one of these is in its
+        // message, as the conflict's is.
+        case .conflict, .unreadable, .newerVersion, .damagedRecord, .illegalStart:
             Button("control.ok", role: .cancel) { }
         }
     }

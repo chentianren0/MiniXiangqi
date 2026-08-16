@@ -79,10 +79,12 @@ final class CustomScene {
         case startable
         /// The predicate refused it, and this is the first rule it broke.
         case violation(SetupViolation)
-        /// The structural refusal, which a position composed here reaches for
-        /// exactly one reason: the engine's own validator wants one general a
-        /// side, so a board still missing one is refused before any clause of
-        /// the predicate is reached.
+        /// A draft still short of a general for one side or both — the state
+        /// every draft passes through, and not a refusal to answer about it.
+        /// The core reports it as the count clause, naming the side whose
+        /// complement the game does not give; what makes it this verdict
+        /// rather than a violation to fix is that the draft has not been given
+        /// its generals yet.
         case incomplete
         /// A legal setup that is not a game: the position already has a result
         /// of its own, so there is nothing to play from it.
@@ -189,6 +191,11 @@ final class CustomScene {
     /// square. A refusal keyed on anything else would be a rule re-derived
     /// above the core.
     ///
+    /// **It answers from the first piece down.** The predicate reports the
+    /// classes that name a point before the one that counts a side, so a point
+    /// refuses a piece over a board that has no generals on it yet — which is
+    /// every board the first few taps compose.
+    ///
     /// **The other refusal classes are not refusals here, deliberately.** Two
     /// generals facing each other and the waiting side left in check are
     /// properties of the whole position rather than of the point just touched,
@@ -208,7 +215,7 @@ final class CustomScene {
               Self.placementRules.contains(violation.rule),
               violation.square == square.name
         else { return nil }
-        return violation.reason
+        return violation.reason(refusing: piece.kind)
     }
 
     /// The classes that are about where one piece may stand. Read off the
@@ -270,9 +277,29 @@ final class CustomScene {
         case .legal:
             verdict = core.isPlayable(fen, game: Self.game) ? .startable : .decided
         case .illegal(let violation):
-            verdict = .violation(violation)
+            // The count clause over a draft that has not been given its
+            // generals yet is the ordinary state of composing, not a mistake to
+            // report: the core says which side's complement is wrong and the
+            // draft's own material says the piece is still in the palette. Both
+            // halves are needed — a count violation with both generals down is
+            // some other piece, and it is a violation like any other.
+            verdict = violation.rule == .pieceCount && !hasBothGenerals
+                ? .incomplete : .violation(violation)
         case .malformed:
+            // Unreachable from here: what this editor spells is the frozen
+            // encoding by construction, whatever stands on the board. A draft
+            // the core will not read is no position to report on, so it says
+            // what a draft that is not finished says.
             verdict = .incomplete
+        }
+    }
+
+    /// Whether both sides have their general down, read off the draft's own
+    /// material. It is not a rule — which position may be set up in is the
+    /// core's — but a fact about what the palette has left to offer.
+    private var hasBothGenerals: Bool {
+        [Side.red, .black].allSatisfy { side in
+            pieces.values.contains(Piece(kind: .general, side: side))
         }
     }
 }
@@ -332,8 +359,25 @@ extension SetupViolation {
         }
     }
 
-    /// The offending piece in the words of the side whose it is. Both classes
-    /// that use it are about one side's own piece and the core names that side,
+    /// The same sentence, for a refusal of one piece the player is offering to
+    /// a point — which is where the kind is known and `reason` alone is not
+    /// enough.
+    ///
+    /// One class covers two kinds whose points differ. The palace holds the
+    /// general on all nine of its points and the advisor on five of them, so
+    /// "outside the palace" is false of the four an advisor is refused inside
+    /// it, while the advisor's own sentence is true of every point it is
+    /// refused at, outside the palace included. A general keeps the palace
+    /// sentence, which is the whole of its rule.
+    func reason(refusing kind: PieceKind?) -> String? {
+        guard rule == .palace, kind == .advisor else { return reason }
+        let sideName = side.map { CustomScene.game.sideName($0) } ?? ""
+        return String(format: String(localized: "scene.reason.advisorPoint"),
+                      sideName, square, pieceName(.advisor))
+    }
+
+    /// The offending piece in the words of the side whose it is. Every class
+    /// that uses it is about one side's own piece and the core names that side,
     /// so the fallback is a shape the interface never reaches.
     private func pieceName(_ kind: PieceKind) -> String {
         kind.name(for: side ?? .red)
