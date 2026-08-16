@@ -33,7 +33,7 @@ The public source and the accepted conformance fixtures are the evidence for thi
 
 ## Starting positions, coordinates, and notation
 
-- The starting position of Mini Xiangqi is FEN `rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1`, and of Xiangqi `rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1`. Each game has exactly one, and it is frozen.
+- The starting position of Mini Xiangqi is FEN `rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1`, and of Xiangqi `rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1`. Each game has exactly one, and it is frozen. Which further positions a game may begin from is the setup-legality section's question below.
 - Files are lettered `a` upward from Red's left and ranks numbered `1` upward from Red's back rank: `a1`–`g7` in Mini Xiangqi and `a1`–`i10` in Xiangqi. A FEN piece-placement field lists the highest rank first and rank 1 last.
 - `w` is Red: uppercase pieces, moves first. `b` is Black: lowercase pieces.
 - A square is a file letter followed by a rank written in decimal with no leading zero — two characters in Mini Xiangqi, and two or three in Xiangqi, where `a10` is a square and `a010` is not. The canonical machine notation for a move is the origin square followed by the destination square, so a move is four characters in Mini Xiangqi and four to six in Xiangqi, of which `a9a10` is the longest. No move suffix exists in either game: there is no promotion, castling, en passant, drop, or gating. A soldier crossing the river changes how it moves, and the player never chooses it, so it is not spelled. Parsing needs no lookahead, because a file letter is never a digit: the digit run after a file ends exactly where the next square begins, and `a1a10` is `a1` then `a10` and can be read no other way.
@@ -71,6 +71,22 @@ Xiangqi only:
 
 The complete result taxonomy, including user-ended games and imported records, is defined jointly with [game-data.md](game-data.md); the fixture result identifiers below seed the rule-derived part of that taxonomy.
 
+## Setup legality
+
+A position a game may be set up in is a question of that game's own rules, and **Xiangqi is the game that answers it**: it defines the predicate below, and a Xiangqi game may begin from any position the predicate accepts. **Mini Xiangqi defines none**, so a Mini Xiangqi game begins from its frozen starting position and from no other.
+
+A Xiangqi position is one to set up in when all of the following hold. They are stated in the order a violation is reported in, so a position breaking more than one of them is refused under the first:
+
+- **Piece counts.** Exactly one general per side, and per side at most two advisors, two elephants, two horses, two chariots, two cannons, and five soldiers.
+- **The palace.** Every general and every advisor stands inside its own palace, `d1`–`f3` for Red and `d8`–`f10` for Black.
+- **The elephants' side.** Every elephant stands on one of the seven points its own side of the river offers it: `a3`, `c1`, `c5`, `e3`, `g1`, `g5` and `i3` for Red, and `a8`, `c6`, `c10`, `e8`, `g6`, `g10` and `i8` for Black.
+- **The soldiers' rank.** No soldier stands behind its own starting soldier rank: a Red soldier on rank 4 or above, a Black soldier on rank 7 or below.
+- **The side not to move is not in check.** The two generals facing each other on an otherwise empty file is such a check, so a position that stands them so is refused by this clause. The side **to** move may stand in check, and answering it is that side's first move.
+
+The predicate reads piece placement and the side to move, which is the whole of what a position record denotes. Whether a position is worth playing is not its question and neither is whether it is already decided: a position offering the side to move no legal move is a legal setup and is not a game to begin, which is [core-interface.md](core-interface.md)'s rule for creating a session rather than this document's.
+
+Setup legality is pinned as every other rule area is, by conformance fixtures of an area of its own under the identifier scheme below — `xq-set-NNN` — each stating a position and either the clause that refuses it or its acceptance.
+
 ## The move-count rule
 
 This is one of the two rules that differ.
@@ -83,7 +99,7 @@ This is one of the two rules that differ.
 Stated once; both games adjudicate identically except for the one chase-target difference marked below.
 
 - The repetition threshold is three occurrences of the same position, counting the first time the position stands on the board. The repeated position need not be the game's initial position.
-- Repetition and violation state derive from the game's complete move history. A bare position carries no prior occurrences.
+- Repetition and violation state derive from the game's complete move history. A bare position carries no prior occurrences, and a position set up to be played from is bare.
 - On the third neutral occurrence, the position becomes eligible to be ruled a draw. In both human-versus-AI play and Free Play, this eligibility does not automatically commit a terminal result: the user may continue or claim the draw.
 - A unilateral perpetual violation becomes terminal automatically when a position first stands on the board for the third time with the violation sustained across its occurrences: the rules facade reports the loss for the violating side as a natural result, presented through the standard result flow. Only neutral repetition is claim-gated.
 - A unilateral perpetual-check violation is a loss for the checking side.
@@ -116,7 +132,7 @@ The shared core's rules facade, defined in [architecture.md](architecture.md), e
 
 ## Conformance fixtures
 
-The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the identifier scheme, and the immutability rules. Identifiers are `mx-<area>-NNN` for Mini Xiangqi and `xq-<area>-NNN` for Xiangqi, and each fixture names its own game in a `variant` member that the runner dispatches on. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, `perpetual-chase`, and `fifty-move-rule`, and they name results by rule outcome — the violating side loses — never by the side to move at detection. The reason identifiers `mutual-perpetual-check` and `mutual-perpetual-chase` belong to the mutual-violation fixtures, which are the `mx-mix-*` ones carrying a `draw` state.
+The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the identifier scheme, and the immutability rules. Identifiers are `mx-<area>-NNN` for Mini Xiangqi and `xq-<area>-NNN` for Xiangqi, and each fixture names its own game in a `variant` member that the runner dispatches on. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. A setup fixture is the one shape outside that: it carries a position and either the clause that refuses it or its acceptance, and no move line. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, `perpetual-chase`, and `fifty-move-rule`, and they name results by rule outcome — the violating side loses — never by the side to move at detection. The reason identifiers `mutual-perpetual-check` and `mutual-perpetual-chase` belong to the mutual-violation fixtures, which are the `mx-mix-*` ones carrying a `draw` state.
 
 The approved set contains **seventy-eight** fixtures: sixty-six for Mini Xiangqi and twelve for Xiangqi.
 
