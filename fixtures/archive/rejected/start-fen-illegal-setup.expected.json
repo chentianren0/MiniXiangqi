@@ -4,5 +4,5 @@
   "validate": "MXQ_ERR_RULES_ILLEGAL_POSITION",
   "detail_contains": "not to move and stands in check",
   "game": "xiangqi",
-  "why": "A Xiangqi document may open from a composed position, so the predicate is what judges one, and this position it refuses: Red is not to move and stands in check, which no position a game could be played from does. The refusal is the setup question's own status wherever that question is asked, not an archive-domain one. It is also why the start is judged before anything is replayed — Black to move with the red general in check is a position offering the capture of a general, and the engine asserts that no capture is one."
+  "why": "A Xiangqi document may open from a composed position, so the predicate is what judges one, and this position it refuses: Red is not to move and stands in check, which no position a game could be played from does. The refusal is the setup question's own status wherever that question is asked, not an archive-domain one. Its one ply is the general's capture that position offers, which is what makes the file pin the ORDER of the tier rather than only its answer: the start is judged before anything is replayed, and a build that replayed first would reach the engine's assertion that no capture is of a general and take the process down instead of refusing the file."
 }

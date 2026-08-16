@@ -127,7 +127,7 @@ json::Limits limits() {
  * The same reader with the two *size* bounds lifted — plies here, the file
  * size at the transport stage — and the three that describe the format's own
  * shape kept. Depth, members per object and string length are properties of a
- * version 4 document rather than of how long a game ran, no document this core
+ * version 5 document rather than of how long a game ran, no document this core
  * writes approaches them, and keeping them means a corrupted row cannot steer
  * the reader into unbounded work.
  */
@@ -232,7 +232,7 @@ bool only_known_members(const json::Value &object, const char *const *known,
         if (!found) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           std::string(where) + " has an unknown member \"" +
-                              name + "\" in archive version 4");
+                              name + "\" in archive version 5");
         }
     }
     return true;
@@ -1016,7 +1016,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
  * import-facing entry point, which applies the accepted file-size and ply
  * bounds, and the store's own path back into a game it wrote, which must
  * not. Everything else about the ladder is identical, because a stored
- * document is a version 4 document like any other. */
+ * document is a version 5 document like any other. */
 bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
             Reject &err) {
     /* Stage 1: transport and size. */
@@ -1363,7 +1363,7 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
      *
      * It comes last, after the accepted validation order has run entire, and
      * not among its stages. It is not one of them: those five decide whether
-     * the bytes are a version 4 archive, and this decides whether that archive
+     * the bytes are a version 5 archive, and this decides whether that archive
      * is a game an import may file. Asking it earlier would mask a rejection
      * class the corpus names — an incomplete document with an illegal move
      * would be reported for the shape rather than for the move — and the answer

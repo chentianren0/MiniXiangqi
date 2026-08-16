@@ -157,6 +157,7 @@ One archive per rejection class of the accepted validation order, each stating t
 | cross-field: time ordering | `time-ordering` | `MALFORMED` | `MALFORMED` |
 | rules tier: initial position | `start-fen-not-frozen` | `MXQ_OK` | `MXQ_ERR_RULES_ILLEGAL_POSITION` |
 | rules tier: initial position | `start-fen-illegal-setup` | `MXQ_OK` | `MXQ_ERR_RULES_ILLEGAL_POSITION` |
+| rules tier: initial position | `start-fen-counters` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: illegal move | `move-illegal` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: terminal pair | `terminal-mismatch-checkmate` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-threefold` | `MXQ_OK` | `TERMINAL_MISMATCH` |
@@ -195,11 +196,12 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 
 ### Which position a document begins from is the game's own
 
-Four fixtures carry the start policy between them, and no two of them get the same answer.
+Five fixtures carry the start policy between them, and between them they cover both its rungs and both its answers.
 
 - `xiangqi-custom-scene` is the golden: a `xiangqi` document whose `start_fen` is a composed position with Black to move. It is the one shape version 5 adds, and it is what a reader comparing `start_fen` against a frozen constant refuses.
 - `start-fen-not-frozen` is a `minixiangqi` document opening from another position of its own board. Mini Xiangqi defines no setup-legality predicate, so it begins from its frozen start and from nowhere else — the file is refused with `MXQ_ERR_RULES_ILLEGAL_POSITION`, which is that predicate's own answer for a game that has none. Xiangqi is the single `rules_id` under which this file would be accepted, and that is the whole of the difference version 5 makes.
-- `start-fen-illegal-setup` is a `xiangqi` document whose composed start the predicate refuses: Red is not to move and stands in check. It also fixes the order of the tier — the start is judged before anything is replayed, because a position offering the capture of a general is one the engine asserts against rather than adjudicates.
+- `start-fen-illegal-setup` is a `xiangqi` document whose composed start the predicate refuses: Red is not to move and stands in check. Its one ply is the general's capture that position offers, which is what makes it pin the **order** of the tier rather than only its answer — a build that replayed before judging the start reaches the engine's assertion that no capture is of a general and takes the process down instead of refusing the file. A document with no moves would be refused under either order and would pin nothing about which came first.
+- `start-fen-counters` is the same composed position the golden opens from, spelled with the counters of a game that has plies behind it. It is refused on the structural rung, in the archive's own voice, because a start has no plies to count and the predicate's clauses — which read the pieces and the side to move — would accept it. It pins the import side of the counters rule, a different mapping from creation's, where the same position is `MXQ_ERR_RULES_INVALID_FEN`.
 - `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array, and it keeps its archive-domain `INCONSISTENT_REPLAY`. A position of no board is not one the predicate has an opinion about, so it is the file disagreeing with itself rather than the setup question being answered — which is why the two rows differ, and why a build that unified them would fail this one.
 
 The corpus pins the frozen-only half of the policy through the Mini Xiangqi file, which is evaluated in every configuration that has the rules facade. The placement games' half is the same rule and has no fixture of its own: one would be evaluated only in a build carrying the second engine, so it would pin nothing where the corpus actually runs.

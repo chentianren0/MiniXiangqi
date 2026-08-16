@@ -77,7 +77,7 @@ Some of what a session promises is not a property of a game but of the interface
 | case | what it pins |
 |---|---|
 | a second active game | `mxq_game_create` with one already active is `MXQ_ERR_STATE_ACTIVE_GAME_EXISTS`, and the existing game is untouched |
-| the start ladder | a composed start is asked three questions in order — structure and counters, setup legality, startability — each answering in its own status and the earlier rung winning; a nearby game refuses one outright; and the scene the ladder exists for is created with its own side moving first |
+| the start ladder | a composed start is asked three questions in order — structure and counters, setup legality, startability — each answering in its own status and the earlier rung winning; only Free Play may carry one, so nearby and human-versus-AI refuse it as the configuration mismatch it is; the frozen start spelled out is created and reads back empty; and the scene the ladder exists for is created with its own side moving first |
 | resuming nothing | no active game is `*out_exists = 0` and `MXQ_OK` — absence is not an error |
 | refused moves | a malformed move, an illegal move and a move after a result leave the game and the store exactly as they were |
 | a failed commit | with the database locked by another connection, `apply_move` and `undo` fail in the store domain and the game stays at its pre-mutation committed state, byte for byte; the same call succeeds once the lock is released |

@@ -669,11 +669,12 @@ void check_positions(Case &c, MxqCore *core, const MxqGameConfig &config,
         }
 
         MxqPosition expected = make_position();
+        MxqGameStatus expected_status = make_status();
         MxqError err = make_error();
         MxqStatus rc = mxq_rules_evaluate(core, kind, start_fen,
                                           texts.empty() ? nullptr : texts.data(),
-                                          texts.size(), &expected, nullptr,
-                                          nullptr, &err);
+                                          texts.size(), &expected,
+                                          &expected_status, nullptr, &err);
         c.check(rc == MXQ_OK, where + ": the facade could not evaluate the "
                                       "prefix of length " +
                                   std::to_string(ply));
@@ -696,6 +697,14 @@ void check_positions(Case &c, MxqCore *core, const MxqGameConfig &config,
                    where + ": ply_count at ply " + std::to_string(ply));
         c.check_eq(got.side_to_move, expected.side_to_move,
                    where + ": side to move at ply " + std::to_string(ply));
+        /* The facade's two output shapes report one side to move. Asked here
+         * rather than in a case of its own because a scenario beginning from a
+         * composed position runs every ply of it with Black to move at the
+         * even ones, and a member nothing writes reads Red. */
+        c.check_eq(expected_status.side_to_move, expected.side_to_move,
+                   where + ": the facade's status and position name one side "
+                           "to move at ply " +
+                       std::to_string(ply));
         c.check_eq(got.in_check, expected.in_check,
                    where + ": in_check at ply " + std::to_string(ply));
 
@@ -1288,6 +1297,55 @@ void case_start_position_ladder() {
         c.check(game == nullptr, "and creates nothing");
     }
 #endif
+
+    /* Human-versus-AI takes none either, and for its own reason:
+     * first_mover_choice is archive content that cannot be reconstructed, and
+     * it says nothing about a game whose start names its own side to move. */
+#if defined(NDEBUG)
+    {
+        MxqGameConfig config =
+            with_start("4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1");
+        config.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+        config.human_side = MXQ_COLOR_RED;
+        config.ai_level = MXQ_AI_LEVEL_FAST;
+        config.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
+        config.ai_movetime_ms = 1000;
+        refused(config, MXQ_ERR_ARG_RANGE,
+                "a composed start in human-versus-AI play");
+    }
+#endif
+
+    /* The frozen start spelled out is the game's own start, everywhere the
+     * empty member is: it is created, and it reads back empty, so one committed
+     * game answers one way about where it began. */
+    {
+        MxqGameConfig explicit_frozen = make_config();
+        explicit_frozen.game = MXQ_GAME_KIND_XIANGQI;
+        char frozen[MXQ_FEN_CAP];
+        size_t frozen_len = 0;
+        mxq_rules_start_fen(MXQ_GAME_KIND_XIANGQI, frozen, sizeof(frozen),
+                            &frozen_len, nullptr);
+        std::memcpy(explicit_frozen.start_fen, frozen, frozen_len + 1);
+
+        MxqGame *plain = nullptr;
+        err = make_error();
+        c.check(mxq_game_create(core, &explicit_frozen, &plain, &err) == MXQ_OK,
+                std::string("the frozen start spelled out is created: ") +
+                    err.detail);
+        if (plain != nullptr) {
+            MxqGameConfig read_back = make_config();
+            c.check(mxq_game_config(plain, &read_back, nullptr) == MXQ_OK,
+                    "the frozen-start game answers");
+            c.check_eq(std::string(read_back.start_fen), std::string(),
+                       "a start that is the frozen one reads back empty");
+            /* Filed rather than released: the library holds one active game,
+             * and the scene below is the next one. */
+            c.check(mxq_store_archive_and_clear(core, plain, nullptr, nullptr) ==
+                        MXQ_OK,
+                    "and is filed, leaving the library free");
+            mxq_game_release(plain);
+        }
+    }
 
     /* And the position the whole ladder exists for is created, from the start
      * the configuration named and with Black making ply 0. */

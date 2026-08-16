@@ -1382,8 +1382,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * MXQ_ERR_STATE_ACTIVE_GAME_EXISTS.
  *
  * A session begins from its game's frozen start unless the configuration names
- * another position. An empty start_fen is that frozen start; a non-empty one is
- * asked three questions in order, and creation refuses at the first that fails:
+ * another position. An empty start_fen is that frozen start, and so is the
+ * frozen start spelled out — the member is canonical, and either reads back
+ * empty from mxq_game_config. A composed start belongs to
+ * MXQ_PLAY_MODE_FREE_PLAY and to no other mode: any other mode carrying one is
+ * MXQ_ERR_ARG_RANGE, a programming error like the configuration shape it is
+ * part of. A composed start is asked three questions in order, and creation
+ * refuses at the first that fails:
  *
  *   structure       MXQ_ERR_RULES_INVALID_FEN. The frozen encoding of this
  *                   game's board, and the counters a start carries — halfmove 0
@@ -1437,9 +1442,10 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  *
  * A nearby game begins from its game's frozen start and from no other: the
  * protocol in docs/boardgame-protocol.md carries no start position, so a
- * composed one is a game the two devices could not be playing. A non-empty
+ * composed one is a game the two devices could not be playing. A composed
  * start_fen is therefore MXQ_ERR_ARG_RANGE here, beside the mode's own refusal
- * and for the same reason — a configuration this entry cannot honour.
+ * and for the same reason — a configuration this entry cannot honour. The
+ * frozen start spelled out is not one, here as everywhere.
  *
  * Thread and blocking: mxq_game_create's.
  */
@@ -1462,11 +1468,14 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
  * single-owner rule refuses, asked of the row rather than of the session.
  *
  * The stored record is decoded, checked against the content hash the library
- * recorded for it, and replayed, all before a session exists, so a row this
- * build can no longer read or no longer reproduce is refused as
- * MXQ_ERR_STORE_CORRUPT rather than as an archive rejection: nothing was
- * imported, and the answer is about the library rather than about a file the
- * user chose. The import size bounds are deliberately not applied here — a
+ * recorded for it, judged for the position it begins from, and replayed, all
+ * before a session exists, so a row this build can no longer read or no longer
+ * reproduce is refused as MXQ_ERR_STORE_CORRUPT rather than as an archive
+ * rejection: nothing was imported, and the answer is about the library rather
+ * than about a file the user chose. The start is judged before the replay
+ * rather than after it because a damaged one can be a position offering the
+ * capture of a general, which the engine asserts against rather than
+ * adjudicates. The import size bounds are deliberately not applied here — a
  * locally produced game longer than they allow must always resume.
  *
  * Thread: any non-UI thread except inside a search callback — except the
