@@ -55,12 +55,19 @@ struct Boundary {
  * set over a position no game could reach would be pinning an answer nothing
  * asks for.
  *
- * `violation` is null exactly when the position is a legal setup, and `side`
- * and `square` are then null too. Which of the two a violated class carries is
- * the class's own, and the fixtures are where that is pinned.
+ * `status` is the answer the entry returns, stated rather than derived: a
+ * position may also be refused before any rule is reached, for not being a
+ * position of the game's board at all, and that refusal is worth pinning
+ * because the predicate reads the frozen encoding more strictly than the
+ * engine's structural validator does.
+ *
+ * `rule` is non-null exactly for `illegal-position`, and `side` and `square`
+ * are null whenever it is. Which of the two a broken rule carries is that
+ * rule's own, and the fixtures are where that is pinned.
  */
 struct SetupExpect {
-    std::optional<std::string> violation;
+    std::string status;                /* ok, illegal-position, invalid-fen */
+    std::optional<std::string> rule;
     std::optional<std::string> side;   /* "red" or "black" */
     std::optional<std::string> square;
 };

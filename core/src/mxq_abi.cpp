@@ -48,8 +48,7 @@ static_assert(sizeof(MxqFirstMoverChoice) == 4,
 static_assert(sizeof(MxqGameState) == 4, "MxqGameState must be 32 bits");
 static_assert(sizeof(MxqOutcome) == 4, "MxqOutcome must be 32 bits");
 static_assert(sizeof(MxqEndReason) == 4, "MxqEndReason must be 32 bits");
-static_assert(sizeof(MxqSetupViolation) == 4,
-              "MxqSetupViolation must be 32 bits");
+static_assert(sizeof(MxqSetupRule) == 4, "MxqSetupRule must be 32 bits");
 static_assert(sizeof(MxqProvenance) == 4, "MxqProvenance must be 32 bits");
 static_assert(sizeof(MxqImportOutcome) == 4, "MxqImportOutcome must be 32 bits");
 static_assert(sizeof(MxqEngineState) == 4, "MxqEngineState must be 32 bits");
@@ -118,11 +117,11 @@ MXQ_ASSERT_AT(MxqGameStatus, resign_available, 22);
 MXQ_ASSERT_AT(MxqGameStatus, search_expected, 23);
 MXQ_ASSERT_SIZE(MxqGameStatus, 24);
 
-MXQ_ASSERT_BLITTABLE(MxqSetupReport);
-MXQ_ASSERT_AT(MxqSetupReport, violation, 4);
-MXQ_ASSERT_AT(MxqSetupReport, side, 8);
-MXQ_ASSERT_AT(MxqSetupReport, square, 12);
-MXQ_ASSERT_SIZE(MxqSetupReport, 12 + MXQ_SQUARE_TEXT_CAP);
+MXQ_ASSERT_BLITTABLE(MxqSetupViolation);
+MXQ_ASSERT_AT(MxqSetupViolation, rule, 4);
+MXQ_ASSERT_AT(MxqSetupViolation, side, 8);
+MXQ_ASSERT_AT(MxqSetupViolation, square, 12);
+MXQ_ASSERT_SIZE(MxqSetupViolation, 12 + MXQ_SQUARE_TEXT_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqGameConfig);
 MXQ_ASSERT_AT(MxqGameConfig, mode, 4);

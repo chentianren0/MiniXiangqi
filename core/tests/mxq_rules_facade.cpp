@@ -39,19 +39,19 @@ std::string reason_identifier(MxqEndReason reason) {
     return "unknown(" + std::to_string(reason) + ")";
 }
 
-std::string violation_identifier(MxqSetupViolation violation) {
-    switch (violation) {
-    case MXQ_SETUP_VIOLATION_NONE: return "";
-    case MXQ_SETUP_VIOLATION_PIECE_COUNT: return "piece-count";
-    case MXQ_SETUP_VIOLATION_PALACE: return "palace";
-    case MXQ_SETUP_VIOLATION_ELEPHANT_SIDE: return "elephant-side";
-    case MXQ_SETUP_VIOLATION_SOLDIER_RANK: return "soldier-rank";
-    case MXQ_SETUP_VIOLATION_FACING_GENERALS: return "facing-generals";
-    case MXQ_SETUP_VIOLATION_OPPONENT_IN_CHECK: return "opponent-in-check";
-    case MXQ_SETUP_VIOLATION_NOT_FROZEN_START: return "not-frozen-start";
+std::string rule_identifier(MxqSetupRule rule) {
+    switch (rule) {
+    case MXQ_SETUP_RULE_NONE: return "";
+    case MXQ_SETUP_RULE_PIECE_COUNT: return "piece-count";
+    case MXQ_SETUP_RULE_PALACE: return "palace";
+    case MXQ_SETUP_RULE_ELEPHANT_SIDE: return "elephant-side";
+    case MXQ_SETUP_RULE_SOLDIER_RANK: return "soldier-rank";
+    case MXQ_SETUP_RULE_FACING_GENERALS: return "facing-generals";
+    case MXQ_SETUP_RULE_OPPONENT_IN_CHECK: return "opponent-in-check";
+    case MXQ_SETUP_RULE_NOT_FROZEN_START: return "not-frozen-start";
     default: break;
     }
-    return "unknown(" + std::to_string(violation) + ")";
+    return "unknown(" + std::to_string(rule) + ")";
 }
 
 std::string color_identifier(MxqColor color) {
@@ -164,11 +164,11 @@ MxqStatus RulesFacade::legal_moves(MxqGameKind game,
 }
 
 MxqStatus RulesFacade::validate_setup(MxqGameKind game, const std::string &fen,
-                                      MxqSetupReport &report, MxqError &err) {
+                                      MxqSetupViolation &violation, MxqError &err) {
     assert(is_open());
-    std::memset(&report, 0, sizeof(report));
-    report.struct_size = static_cast<uint32_t>(sizeof(report));
-    return mxq_rules_validate_setup(core_, game, fen.c_str(), &report, &err);
+    std::memset(&violation, 0, sizeof(violation));
+    violation.struct_size = static_cast<uint32_t>(sizeof(violation));
+    return mxq_rules_validate_setup(core_, game, fen.c_str(), &violation, &err);
 }
 
 #else /* MXQ_TEST_RULES_FACADE */
@@ -221,10 +221,10 @@ MxqStatus RulesFacade::legal_moves(MxqGameKind game,
 }
 
 MxqStatus RulesFacade::validate_setup(MxqGameKind game, const std::string &fen,
-                                      MxqSetupReport &report, MxqError &err) {
+                                      MxqSetupViolation &violation, MxqError &err) {
     (void)game;
     (void)fen;
-    (void)report;
+    (void)violation;
     (void)err;
     assert(false && "the rules facade is not built; open() must gate this");
     return MXQ_ERR_INTERNAL_INVARIANT;

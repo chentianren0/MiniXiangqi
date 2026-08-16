@@ -33,11 +33,12 @@ Beyond those four, a **setup fixture** carries `setup` alone and a **play fixtur
 ### A setup fixture
 
 - `setup` — what the setup-legality predicate must answer for `start_fen`:
-  - `violation` — `null` when the position is a legal setup, and otherwise the class it breaks: `piece-count`, `palace`, `elephant-side`, `soldier-rank`, `facing-generals`, `opponent-in-check`, or `not-frozen-start`.
-  - `side` — the side the violation belongs to, `red` or `black`, or `null` where the class names none. It is `null` whenever `violation` is.
-  - `square` — the point the violation stands at, or `null` where the class names none. It is `null` whenever `violation` is.
+  - `status` — the answer the entry returns: `ok` for a legal setup, `illegal-position` for a position that breaks a setup rule, or `invalid-fen` for one that is not a position of the game's board at all and so reaches no rule. It is stated rather than derived from `rule`, because that third answer has no rule to derive it from.
+  - `rule` — the setup rule that broke: `piece-count`, `palace`, `elephant-side`, `soldier-rank`, `facing-generals`, `opponent-in-check`, or `not-frozen-start`. Non-null exactly when `status` is `illegal-position`.
+  - `side` — the side the violation belongs to, `red` or `black`, or `null` where the rule names none. It is `null` whenever `rule` is.
+  - `square` — the point the violation stands at, or `null` where the rule names none. It is `null` whenever `rule` is.
 
-Which of `side` and `square` a class carries is that class's own and is pinned by the fixtures rather than restated in the loader.
+Which of `side` and `square` a rule carries is that rule's own and is pinned by the fixtures rather than restated in the loader.
 
 ### A play fixture
 
@@ -53,4 +54,4 @@ Which of `side` and `square` a class carries is that class's own and is pinned b
 
 ## Consumption
 
-The shared core's rules facade is gated by these fixtures on every platform, under the ruleset each declares: a play fixture's history must replay with exactly the asserted legality, positions, check states and game states, and a setup fixture's position must be judged with exactly the asserted verdict, violation class, side and square. The core test suite is the consuming harness, and it is the same harness everywhere.
+The shared core's rules facade is gated by these fixtures on every platform, under the ruleset each declares: a play fixture's history must replay with exactly the asserted legality, positions, check states and game states, and a setup fixture's position must be judged with exactly the asserted status, rule, side and square. The core test suite is the consuming harness, and it is the same harness everywhere.

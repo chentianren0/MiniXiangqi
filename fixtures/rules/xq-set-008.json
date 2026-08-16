@@ -5,7 +5,8 @@
   "variant": "xiangqi",
   "start_fen": "3k5/9/9/9/9/4r4/9/9/9/4K4 w - - 0 1",
   "setup": {
-    "violation": null,
+    "status": "ok",
+    "rule": null,
     "side": null,
     "square": null
   },

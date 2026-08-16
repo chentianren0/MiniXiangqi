@@ -36,13 +36,13 @@
 namespace mxq {
 namespace setup {
 
-/* What one violation is: the class, whose it is, and where. side is
- * MXQ_COLOR_NONE and square empty where the class has no such thing, exactly as
- * MxqSetupReport documents. */
+/* What one violation is: which rule broke, whose it is, and where. side is
+ * MXQ_COLOR_NONE and square empty where the rule has no such thing, exactly as
+ * MxqSetupViolation documents. */
 struct Violation {
-    MxqSetupViolation violation = MXQ_SETUP_VIOLATION_NONE;
-    MxqColor          side = MXQ_COLOR_NONE;
-    std::string       square;
+    MxqSetupRule rule = MXQ_SETUP_RULE_NONE;
+    MxqColor     side = MXQ_COLOR_NONE;
+    std::string  square;
 };
 
 /* Why the predicate could not answer at all, as distinct from answering that
@@ -56,10 +56,10 @@ enum class Error {
 /*
  * Judge `fen` as a position `game` may be set up in.
  *
- * On Error::None, out_violation carries MXQ_SETUP_VIOLATION_NONE for a legal
- * setup and the first violation found otherwise. Structural validity is the
- * precondition rather than part of the answer: a FEN that is not a position of
- * this game's board returns Error::FenInvalid, and `detail` says so.
+ * On Error::None, out_violation's rule is MXQ_SETUP_RULE_NONE for a legal setup
+ * and the first rule broken otherwise. Structural validity is the precondition
+ * rather than part of the answer: a FEN that is not a position of this game's
+ * board returns Error::FenInvalid, and `detail` says so.
  *
  * `detail` is filled on a refusal of either kind, as the short English
  * diagnostic MxqError carries.

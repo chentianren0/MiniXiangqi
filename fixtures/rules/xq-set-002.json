@@ -5,7 +5,8 @@
   "variant": "xiangqi",
   "start_fen": "4k4/9/9/9/9/4P4/P1P1P1P1P/9/9/4K4 w - - 0 1",
   "setup": {
-    "violation": "piece-count",
+    "status": "illegal-position",
+    "rule": "piece-count",
     "side": "red",
     "square": null
   },

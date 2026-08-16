@@ -146,7 +146,7 @@ MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, MxqGameKind game,
 
 MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
                                             const char *fen,
-                                            MxqSetupReport *out_report,
+                                            MxqSetupViolation *out_violation,
                                             MxqError *err) {
     MxqStatus rc = mxq::require_core(core, err);
     if (rc != MXQ_OK) {
@@ -160,18 +160,19 @@ MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
         mxq::fill_error(err, MXQ_ERR_ARG_NULL, "fen was null");
         return MXQ_ERR_ARG_NULL;
     }
-    if (out_report != nullptr) {
+    if (out_violation != nullptr) {
         const MxqStatus orc = mxq::begin_out(
-            out_report, out_report->struct_size,
-            static_cast<uint32_t>(sizeof(MxqSetupReport)),
-            static_cast<uint32_t>(sizeof(MxqSetupReport)), err);
+            out_violation, out_violation->struct_size,
+            static_cast<uint32_t>(sizeof(MxqSetupViolation)),
+            static_cast<uint32_t>(sizeof(MxqSetupViolation)), err);
         if (orc != MXQ_OK) {
             return orc;
         }
-        /* begin_out zeroes, and zero is MXQ_SETUP_VIOLATION_NONE and an empty
+        /* begin_out zeroes, and zero is MXQ_SETUP_RULE_NONE and an empty
          * square — but not MXQ_COLOR_NONE, which is -1. Every field the caller
-         * can read is written before any return below. */
-        out_report->side = MXQ_COLOR_NONE;
+         * can read is written before any return below, the structural refusal
+         * included. */
+        out_violation->side = MXQ_COLOR_NONE;
     }
 
     mxq::setup::Violation found;
@@ -180,20 +181,25 @@ MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
     case mxq::setup::Error::None:
         break;
     case mxq::setup::Error::FenInvalid:
+    case mxq::setup::Error::NotInitialised:
+        /* The same pairing replay_into makes of the same two conditions, and
+         * for the same reason: an engine that never came up cannot say what
+         * board a FEN is of, so the honest answer is the one about the FEN. It
+         * is unreachable through this surface — mxq_core_init fails whole when
+         * the engine does not initialise — so what the arm decides is not which
+         * code a caller sees but whether two entries reporting one condition
+         * report it alike. They do. */
         mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
         return MXQ_ERR_RULES_INVALID_FEN;
-    case mxq::setup::Error::NotInitialised:
-        mxq::fill_error(err, MXQ_ERR_RESOURCE_ALLOCATION_FAILED, detail.c_str());
-        return MXQ_ERR_RESOURCE_ALLOCATION_FAILED;
     }
 
-    if (out_report != nullptr) {
-        out_report->violation = found.violation;
-        out_report->side = found.side;
-        mxq::copy_bounded(out_report->square, sizeof(out_report->square),
+    if (out_violation != nullptr) {
+        out_violation->rule = found.rule;
+        out_violation->side = found.side;
+        mxq::copy_bounded(out_violation->square, sizeof(out_violation->square),
                           found.square.c_str());
     }
-    if (found.violation == MXQ_SETUP_VIOLATION_NONE) {
+    if (found.rule == MXQ_SETUP_RULE_NONE) {
         return MXQ_OK;
     }
     mxq::fill_error(err, MXQ_ERR_RULES_ILLEGAL_POSITION, detail.c_str());

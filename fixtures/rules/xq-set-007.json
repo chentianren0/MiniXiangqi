@@ -5,7 +5,8 @@
   "variant": "xiangqi",
   "start_fen": "4k4/9/9/9/9/9/9/9/9/4K4 w - - 0 1",
   "setup": {
-    "violation": "facing-generals",
+    "status": "illegal-position",
+    "rule": "facing-generals",
     "side": null,
     "square": null
   },

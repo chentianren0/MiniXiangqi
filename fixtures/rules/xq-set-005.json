@@ -5,7 +5,8 @@
   "variant": "xiangqi",
   "start_fen": "3k5/9/9/9/9/9/9/4P4/9/4K4 w - - 0 1",
   "setup": {
-    "violation": "soldier-rank",
+    "status": "illegal-position",
+    "rule": "soldier-rank",
     "side": "red",
     "square": "e3"
   },

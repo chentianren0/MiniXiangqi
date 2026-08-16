@@ -24,6 +24,9 @@ namespace {
 constexpr int32_t kFiles = 9;
 constexpr int32_t kRanks = 10;
 
+/* A position record is a 6-field FEN, and every game's is. */
+constexpr size_t kFenFields = 6;
+
 /* An empty point. No piece letter is 0, so the grid needs no second array to
  * say which of its cells are occupied. */
 constexpr char kEmpty = '\0';
@@ -213,75 +216,89 @@ bool parse_board(const std::string &field, Grid &out) {
 /* The rules                                                                  */
 /* ------------------------------------------------------------------------- */
 
-/* Whether one piece stands where its kind may. */
-bool zone_is_legal(Kind kind, MxqColor side, int32_t file, int32_t rank) {
-    const int32_t own = own_rank(side, rank);
-    switch (kind) {
-    case Kind::General:
-    case Kind::Advisor:
-        return file >= kPalaceFirstFile && file <= kPalaceLastFile &&
-               own <= kPalaceLastRank;
-    case Kind::Elephant:
-        for (const Point &point : kElephantPoints) {
-            if (point.file == file && point.rank == own) {
-                return true;
-            }
+/* The three zones, each read in its own side's frame. */
+
+bool in_palace(int32_t file, int32_t own) {
+    return file >= kPalaceFirstFile && file <= kPalaceLastFile &&
+           own <= kPalaceLastRank;
+}
+
+bool on_elephant_point(int32_t file, int32_t own) {
+    for (const Point &point : kElephantPoints) {
+        if (point.file == file && point.rank == own) {
+            return true;
         }
-        return false;
-    case Kind::Soldier:
-        return own >= kSoldierStartRank;
-    case Kind::Horse:
-    case Kind::Chariot:
-    case Kind::Cannon:
-        /* No zone of their own: a chariot, a horse and a cannon reach every
-         * point of the board. */
-        return true;
+    }
+    return false;
+}
+
+bool ahead_of_soldier_start(int32_t file, int32_t own) {
+    (void)file; /* the rule is the rank alone; see kSoldierStartRank */
+    return own >= kSoldierStartRank;
+}
+
+/*
+ * One row per kind: where it may stand, which rule that is, and how to say so.
+ *
+ * The three used to be three switches over the same enum — where, which rule,
+ * which words — and a kind with no zone answered each of them separately. Three
+ * answers to one question disagree the day one of them is edited, and the one
+ * that disagrees silently is the middle one: a kind whose zone test says "legal
+ * everywhere" while its rule says PALACE is a piece refused for standing where
+ * it may. A row cannot come apart that way, and `inside == nullptr` is the whole
+ * of what "this kind has no zone" means — a chariot, a horse and a cannon reach
+ * every point of the board.
+ */
+struct ZoneRow {
+    Kind         kind;
+    bool       (*inside)(int32_t file, int32_t own_rank);
+    MxqSetupRule rule;
+    const char  *detail;
+};
+
+constexpr ZoneRow kZones[] = {
+    {Kind::General, in_palace, MXQ_SETUP_RULE_PALACE,
+     "stands outside its own palace"},
+    {Kind::Advisor, in_palace, MXQ_SETUP_RULE_PALACE,
+     "stands outside its own palace"},
+    {Kind::Elephant, on_elephant_point, MXQ_SETUP_RULE_ELEPHANT_SIDE,
+     "stands off its own side's seven points"},
+    {Kind::Horse, nullptr, MXQ_SETUP_RULE_NONE, nullptr},
+    {Kind::Chariot, nullptr, MXQ_SETUP_RULE_NONE, nullptr},
+    {Kind::Cannon, nullptr, MXQ_SETUP_RULE_NONE, nullptr},
+    {Kind::Soldier, ahead_of_soldier_start, MXQ_SETUP_RULE_SOLDIER_RANK,
+     "stands behind its own starting rank"},
+};
+
+/* Both per-kind tables are indexed by the enumerator, so a lookup is total by
+ * construction and no arm can be missing to fall through. A row out of order —
+ * or a kind added without one — is a compile error rather than a read past the
+ * end or a silently wrong row, which is the same guarantee mxq_notation.cpp
+ * gives its per-game table. */
+template <typename Row, size_t N>
+constexpr bool indexed_by_kind(const Row (&rows)[N]) {
+    for (size_t i = 0; i < N; ++i) {
+        if (static_cast<size_t>(rows[i].kind) != i) {
+            return false;
+        }
     }
     return true;
 }
 
-MxqSetupViolation zone_violation(Kind kind) {
-    switch (kind) {
-    case Kind::General:
-    case Kind::Advisor:
-        return MXQ_SETUP_VIOLATION_PALACE;
-    case Kind::Elephant:
-        return MXQ_SETUP_VIOLATION_ELEPHANT_SIDE;
-    case Kind::Soldier:
-        return MXQ_SETUP_VIOLATION_SOLDIER_RANK;
-    case Kind::Horse:
-    case Kind::Chariot:
-    case Kind::Cannon:
-        break;
-    }
-    return MXQ_SETUP_VIOLATION_NONE;
+static_assert(sizeof(kZones) / sizeof(kZones[0]) == kKindCount,
+              "one zone row per kind, the zoneless kinds included");
+static_assert(indexed_by_kind(kZones), "the kind vocabulary indexes kZones");
+static_assert(indexed_by_kind(kCounts), "the kind vocabulary indexes kCounts");
+
+const ZoneRow &zone_of(Kind kind) {
+    return kZones[static_cast<size_t>(kind)];
 }
 
-const char *zone_detail(Kind kind) {
-    switch (kind) {
-    case Kind::General:
-    case Kind::Advisor:
-        return "stands outside its own palace";
-    case Kind::Elephant:
-        return "stands off its own side's seven points";
-    case Kind::Soldier:
-        return "stands behind its own starting rank";
-    case Kind::Horse:
-    case Kind::Chariot:
-    case Kind::Cannon:
-        break;
-    }
-    return "stands where it may not";
+const CountRow &count_of(Kind kind) {
+    return kCounts[static_cast<size_t>(kind)];
 }
 
-const char *kind_name(Kind kind) {
-    for (const CountRow &row : kCounts) {
-        if (row.kind == kind) {
-            return row.name;
-        }
-    }
-    return "piece";
-}
+const char *kind_name(Kind kind) { return count_of(kind).name; }
 
 /* Where a side's general stands, or false where it has none — which the count
  * rule has already refused by the time anything below asks. */
@@ -354,17 +371,20 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
     /*
      * The precondition has already run, and this reads the position it accepted
      * — but reads it against the frozen encoding rather than against the
-     * engine's structural validator, which is laxer in two places: it checks a
-     * rank's width only where a '/' follows, so never the last one, and it
-     * accepts a FEN whose later fields are simply absent. The stricter reading
-     * is this entry's, because what it is judging is a position that will be
-     * stored and replayed, and neither of those spellings is one the frozen
-     * encoding has. Both answer MXQ_ERR_RULES_INVALID_FEN, which is what a
-     * position of no board is.
+     * engine's structural validator, which is laxer in three places: it checks a
+     * rank's width only where a '/' follows, so never the last one; it accepts
+     * an empty run written with a leading zero; and it accepts a FEN whose later
+     * fields are simply absent, needing only one. The stricter reading is this
+     * entry's, because what it is judging is a position that will be stored and
+     * replayed, and none of those spellings is one the frozen encoding has. All
+     * three answer MXQ_ERR_RULES_INVALID_FEN here, which is what a position of
+     * no board is, and xq-set-009 pins that they do — a parse loosened toward
+     * the validator would otherwise start judging a board the engine is not
+     * playing.
      */
     const std::vector<std::string> fields = fields_of(fen);
     Grid grid{};
-    if (fields.size() < 2 || fields[1].empty() ||
+    if (fields.size() != kFenFields || fields[1].empty() ||
         !parse_board(fields[0], grid)) {
         detail = "the position is not the frozen encoding of this game's board";
         return Error::FenInvalid;
@@ -385,18 +405,14 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
                 if (c == kEmpty || !decode(c, kind, at) || at != side) {
                     continue;
                 }
-                for (size_t i = 0; i < kKindCount; ++i) {
-                    if (kCounts[i].kind == kind) {
-                        ++counted[i];
-                    }
-                }
+                ++counted[static_cast<size_t>(kind)];
             }
         }
         for (size_t i = 0; i < kKindCount; ++i) {
             if (counted[i] >= kCounts[i].least && counted[i] <= kCounts[i].most) {
                 continue;
             }
-            out.violation = MXQ_SETUP_VIOLATION_PIECE_COUNT;
+            out.rule = MXQ_SETUP_RULE_PIECE_COUNT;
             out.side = side;
             out.square.clear();
             detail = std::string(side_name(side)) + " has " +
@@ -414,16 +430,19 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
             const char c = grid.cell[rank][file];
             Kind kind = Kind::General;
             MxqColor side = MXQ_COLOR_NONE;
-            if (c == kEmpty || !decode(c, kind, side) ||
-                zone_is_legal(kind, side, file, rank)) {
+            if (c == kEmpty || !decode(c, kind, side)) {
                 continue;
             }
-            out.violation = zone_violation(kind);
+            const ZoneRow &zone = zone_of(kind);
+            if (zone.inside == nullptr ||
+                zone.inside(file, own_rank(side, rank))) {
+                continue;
+            }
+            out.rule = zone.rule;
             out.side = side;
             out.square = square_of(file, rank);
             detail = "the " + std::string(side_name(side)) + " " +
-                     kind_name(kind) + " at " + out.square + " " +
-                     zone_detail(kind);
+                     kind_name(kind) + " at " + out.square + " " + zone.detail;
             return Error::None;
         }
     }
@@ -432,7 +451,7 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
      *    because the relation is symmetric: whoever is to move, the position
      *    offers a general the capture of a general. */
     if (generals_face(grid)) {
-        out.violation = MXQ_SETUP_VIOLATION_FACING_GENERALS;
+        out.rule = MXQ_SETUP_RULE_FACING_GENERALS;
         out.side = MXQ_COLOR_NONE;
         out.square.clear();
         detail = "the two generals face each other on an otherwise empty file";
@@ -464,7 +483,7 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
     if (in_check) {
         int32_t file = 0;
         int32_t rank = 0;
-        out.violation = MXQ_SETUP_VIOLATION_OPPONENT_IN_CHECK;
+        out.rule = MXQ_SETUP_RULE_OPPONENT_IN_CHECK;
         out.side = waiting;
         out.square = general_square(grid, waiting, file, rank)
                          ? square_of(file, rank)
@@ -474,7 +493,7 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
         return Error::None;
     }
 
-    out.violation = MXQ_SETUP_VIOLATION_NONE;
+    out.rule = MXQ_SETUP_RULE_NONE;
     out.side = MXQ_COLOR_NONE;
     out.square.clear();
     detail.clear();
@@ -517,7 +536,7 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
     if (std::string(fen) == notation::start_fen(game)) {
         return Error::None;
     }
-    out_violation.violation = MXQ_SETUP_VIOLATION_NOT_FROZEN_START;
+    out_violation.rule = MXQ_SETUP_RULE_NOT_FROZEN_START;
     detail = "this game may be set up only in its frozen starting position";
     return Error::None;
 }

@@ -49,11 +49,12 @@ public:
                           const std::vector<std::string> &moves,
                           std::vector<std::string> &out, MxqError &err);
 
-    /* Whether `game` may be set up in `fen`: MXQ_OK, or
-     * MXQ_ERR_RULES_ILLEGAL_POSITION with `report` naming the violation.
-     * `report` is written whichever the answer is. */
+    /* Whether `game` may be set up in `fen`: MXQ_OK,
+     * MXQ_ERR_RULES_ILLEGAL_POSITION with `violation` naming the rule that
+     * broke, or MXQ_ERR_RULES_INVALID_FEN for a position of no board.
+     * `violation` is written whichever the answer is. */
     MxqStatus validate_setup(MxqGameKind game, const std::string &fen,
-                             MxqSetupReport &report, MxqError &err);
+                             MxqSetupViolation &violation, MxqError &err);
 
 private:
     MxqCore *core_ = nullptr;
@@ -73,9 +74,9 @@ bool rules_facade_built();
 std::string state_identifier(MxqGameState state);
 std::string reason_identifier(MxqEndReason reason);
 
-/* The same, for the setup predicate's violation class and for a side. Both
- * answer "" for the absent value, which is what a fixture writes as null. */
-std::string violation_identifier(MxqSetupViolation violation);
+/* The same, for the setup predicate's rule and for a side. Both answer "" for
+ * the absent value, which is what a fixture writes as null. */
+std::string rule_identifier(MxqSetupRule rule);
 std::string color_identifier(MxqColor color);
 
 } /* namespace mxqtest */

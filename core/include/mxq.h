@@ -144,7 +144,7 @@ extern "C" {
  * rank in decimal without a leading zero. Three characters at "a10" and "o15",
  * so 4 carries the NUL and keeps a struct holding one 4-aligned. It is wide
  * enough for any board this core may plausibly carry, a rank of two digits
- * reaching 99. MxqSetupReport is what needs it: a violation the caller can
+ * reaching 99. MxqSetupViolation is what needs it: a violation the caller can
  * point at is a violation at a square. */
 #define MXQ_SQUARE_TEXT_CAP 4
 
@@ -309,7 +309,7 @@ enum {
                                             * game's board, but not one the game
                                             * may be set up in. Returned by
                                             * mxq_rules_validate_setup and by
-                                            * nothing else; MxqSetupReport
+                                            * nothing else; MxqSetupViolation
                                             * carries which rule it breaks */
     MXQ_ERR_RULES_INVALID_HISTORY  = 3005, /* MxqError.detail_index carries the
                                             * first illegal move's index */
@@ -601,19 +601,21 @@ enum {
  *   NOT_FROZEN_START   the game accepts only its frozen starting position, and
  *                      this is another. Every game but Xiangqi is that game
  *
- * MXQ_SETUP_VIOLATION_NONE is the legal setup, and the value the report carries
- * whenever mxq_rules_validate_setup returns MXQ_OK.
+ * MXQ_SETUP_RULE_NONE is the legal setup, and the value MxqSetupViolation
+ * carries whenever mxq_rules_validate_setup does not return
+ * MXQ_ERR_RULES_ILLEGAL_POSITION — on MXQ_OK, and on the structural refusal
+ * that never reaches these rules at all.
  */
-typedef int32_t MxqSetupViolation;
+typedef int32_t MxqSetupRule;
 enum {
-    MXQ_SETUP_VIOLATION_NONE              = 0,
-    MXQ_SETUP_VIOLATION_PIECE_COUNT       = 1, /* fixture "piece-count" */
-    MXQ_SETUP_VIOLATION_PALACE            = 2, /* fixture "palace" */
-    MXQ_SETUP_VIOLATION_ELEPHANT_SIDE     = 3, /* fixture "elephant-side" */
-    MXQ_SETUP_VIOLATION_SOLDIER_RANK      = 4, /* fixture "soldier-rank" */
-    MXQ_SETUP_VIOLATION_FACING_GENERALS   = 5, /* fixture "facing-generals" */
-    MXQ_SETUP_VIOLATION_OPPONENT_IN_CHECK = 6, /* fixture "opponent-in-check" */
-    MXQ_SETUP_VIOLATION_NOT_FROZEN_START  = 7  /* fixture "not-frozen-start" */
+    MXQ_SETUP_RULE_NONE              = 0,
+    MXQ_SETUP_RULE_PIECE_COUNT       = 1, /* fixture "piece-count" */
+    MXQ_SETUP_RULE_PALACE            = 2, /* fixture "palace" */
+    MXQ_SETUP_RULE_ELEPHANT_SIDE     = 3, /* fixture "elephant-side" */
+    MXQ_SETUP_RULE_SOLDIER_RANK      = 4, /* fixture "soldier-rank" */
+    MXQ_SETUP_RULE_FACING_GENERALS   = 5, /* fixture "facing-generals" */
+    MXQ_SETUP_RULE_OPPONENT_IN_CHECK = 6, /* fixture "opponent-in-check" */
+    MXQ_SETUP_RULE_NOT_FROZEN_START  = 7  /* fixture "not-frozen-start" */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */
@@ -925,8 +927,8 @@ typedef struct MxqGameStatus {
  * player fixing the one named will be told about the next; a list would be a
  * second thing to keep in step with the classes for no decision it changes.
  *
- * side is the side the violation belongs to, and square the point it stands at,
- * where either is meaningful:
+ * rule is which setup rule broke. side is the side the violation belongs to,
+ * and square the point it stands at, where either is meaningful:
  *
  *   PIECE_COUNT        side is the over-supplied side; square is empty, because
  *                      a count is a property of a side and not of a point
@@ -943,15 +945,15 @@ typedef struct MxqGameStatus {
  *   NONE               side is MXQ_COLOR_NONE and square is empty
  *
  * square is a NUL-terminated square of the game's own board, or "" where the
- * class has none. Both fields are always written, so a caller reads them
- * without first branching on the class.
+ * class has none. Every field is always written, so a caller reads them without
+ * first branching on the class.
  */
-typedef struct MxqSetupReport {
-    uint32_t          struct_size;
-    MxqSetupViolation violation;
-    MxqColor          side;
-    char              square[MXQ_SQUARE_TEXT_CAP]; /* UTF-8, NUL-terminated */
-} MxqSetupReport;
+typedef struct MxqSetupViolation {
+    uint32_t     struct_size;
+    MxqSetupRule rule;
+    MxqColor     side;
+    char         square[MXQ_SQUARE_TEXT_CAP]; /* UTF-8, NUL-terminated */
+} MxqSetupViolation;
 
 /*
  * A game's frozen configuration. human_side, ai_level, ai_movetime_ms and
@@ -1822,9 +1824,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * Structural validity is the precondition rather than part of the answer, so a
  * FEN that is not a position of this game's board at all fails as it does from
  * mxq_rules_validate_fen, with MXQ_ERR_RULES_INVALID_FEN and that code's
- * meaning. out_report is optional and, when supplied, is always written: the
- * violation is MXQ_SETUP_VIOLATION_NONE on success and the first one found on
- * a refusal.
+ * meaning.
+ *
+ * out_violation is optional and, when supplied, is always written, whichever of
+ * the three answers comes back: the rule is the one that broke on an illegal
+ * position, and MXQ_SETUP_RULE_NONE on MXQ_OK and on the structural refusal
+ * alike — a position of no board breaks no rule of this game, so there is none
+ * to name, and side and square are then MXQ_COLOR_NONE and "".
  *
  * Which positions a game may be set up in is the game's own, and today exactly
  * one game has more than a single answer. Xiangqi's predicate is the rules of
@@ -1832,14 +1838,23 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * side, the palace, the elephant's own seven points, the soldier's own starting
  * rank, the generals not facing, and the side not to move not in check. Every
  * other game accepts its frozen starting position and nothing else, and answers
- * MXQ_SETUP_VIOLATION_NOT_FROZEN_START for anything else, the comparison being
+ * MXQ_SETUP_RULE_NOT_FROZEN_START for anything else, the comparison being
  * against the whole frozen FEN and so against its side to move as well.
  *
- * What this does NOT answer is whether a legal setup is one a game can be
- * begun from. A position that is already decided — a checkmate, a stalemate —
- * breaks no rule of setting up, and refusing it is the creating caller's
- * question rather than this one; docs/core-interface.md keeps validation and
- * startability distinct deliberately, and this entry is the validation half.
+ * Two things this deliberately does NOT answer.
+ *
+ * The first is whether a legal setup is one a game can be begun from. A position
+ * that is already decided — a checkmate, a stalemate — breaks no rule of setting
+ * up, and refusing it is the creating caller's question rather than this one;
+ * docs/core-interface.md keeps validation and startability distinct
+ * deliberately, and this entry is the validation half.
+ *
+ * The second is the two counters. Xiangqi accepts a position whatever its
+ * halfmove clock and fullmove number read, because neither is a rule about where
+ * pieces may stand; that a composed scene carries 0 and 1 is a rule about what
+ * creation writes, and creation is where it is enforced. The frozen-start
+ * comparison above is not an exception to this: it compares the whole FEN
+ * because what it is asking is whether this is that one position.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
@@ -1847,7 +1862,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
 MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core,
                                                     MxqGameKind game,
                                                     const char *fen,
-                                                    MxqSetupReport *out_report,
+                                                    MxqSetupViolation *out_violation,
                                                     MxqError *err);
 
 /*

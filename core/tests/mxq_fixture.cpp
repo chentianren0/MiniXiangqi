@@ -25,11 +25,16 @@ const std::set<std::string> kSetupMembers = {"id",        "title", "area",
                                              "variant",   "start_fen",
                                              "setup",     "rationale"};
 
-const std::set<std::string> kSetupMembersInner = {"violation", "side", "square"};
+const std::set<std::string> kSetupMembersInner = {"status", "rule", "side",
+                                                  "square"};
 
-/* The violation classes a setup fixture may name, one for each the core
- * reports. */
-const std::set<std::string> kViolations = {
+/* The three answers mxq_rules_validate_setup gives, in the fixtures' own
+ * vocabulary. `invalid-fen` is the structural refusal, which reaches no rule. */
+const std::set<std::string> kSetupStatuses = {"ok", "illegal-position",
+                                              "invalid-fen"};
+
+/* The setup rules a fixture may name, one for each the core reports. */
+const std::set<std::string> kSetupRules = {
     "piece-count",     "palace",            "elephant-side",
     "soldier-rank",    "facing-generals",   "opponent-in-check",
     "not-frozen-start"};
@@ -259,17 +264,27 @@ bool fixture_load(const std::string &path, Fixture &out, std::string &error) {
         }
         SetupExpect expect;
 
-        v = load.typed(*s, "violation", JsonValue::Type::String, "fixture.setup",
+        v = load.typed(*s, "status", JsonValue::Type::String, "fixture.setup",
+                       false);
+        if (v == nullptr) {
+            return false;
+        }
+        expect.status = v->string();
+        if (kSetupStatuses.find(expect.status) == kSetupStatuses.end()) {
+            return load.fail("fixture.setup.status: \"" + expect.status +
+                             "\" is not an answer this entry gives");
+        }
+
+        v = load.typed(*s, "rule", JsonValue::Type::String, "fixture.setup",
                        true);
         if (v == nullptr) {
             return false;
         }
         if (!v->is_null()) {
-            expect.violation = v->string();
-            if (kViolations.find(*expect.violation) == kViolations.end()) {
-                return load.fail("fixture.setup.violation: \"" +
-                                 *expect.violation +
-                                 "\" is not an accepted violation class");
+            expect.rule = v->string();
+            if (kSetupRules.find(*expect.rule) == kSetupRules.end()) {
+                return load.fail("fixture.setup.rule: \"" + *expect.rule +
+                                 "\" is not an accepted setup rule");
             }
         }
 
@@ -295,14 +310,19 @@ bool fixture_load(const std::string &path, Fixture &out, std::string &error) {
             expect.square = v->string();
         }
 
-        /* A legal setup has nothing to name. Which of the two an illegal one
-         * names is the violation class's own and is pinned by the fixtures
-         * themselves, not restated here. */
-        if (!expect.violation.has_value() &&
+        /* A rule is named exactly when one broke, and only a broken rule has a
+         * side or a square. Which of those two it has is that rule's own and is
+         * pinned by the fixtures themselves, not restated here. */
+        if (expect.rule.has_value() != (expect.status == "illegal-position")) {
+            return load.fail(
+                "fixture.setup: rule must be non-null exactly when status is "
+                "\"illegal-position\"");
+        }
+        if (!expect.rule.has_value() &&
             (expect.side.has_value() || expect.square.has_value())) {
             return load.fail(
-                "fixture.setup: side and square must be null when the position "
-                "is a legal setup");
+                "fixture.setup: side and square must be null when no rule is "
+                "named");
         }
 
         out.setup = std::move(expect);
