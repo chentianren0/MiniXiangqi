@@ -235,7 +235,7 @@ The board is the primary content during play. Its interaction design must cover:
 
 **The Play destination's root is an independent page for choosing what to play, and there is no board anywhere on it.** What the player is doing on this page is choosing a game and a mode; a preview of a board they have not chosen yet answers no question they are asking.
 
-- **A game is a headed section, and its ways to play are the rows in it.** The sections appear in this order: **Xiangqi**, **Mini Xiangqi**, **Gomoku**, then **Renju**. Each offers **Human versus AI** then **Free Play**, with [nearby play](#nearby-play)'s own row under them where that mode exists. Selecting a row opens the pre-start state for exactly that game and mode.
+- **A game is a headed section, and its ways to play are the rows in it.** The sections appear in this order: **Xiangqi**, **Mini Xiangqi**, **Gomoku**, then **Renju**. Each offers **Human versus AI** then **Free Play**, with [nearby play](#nearby-play)'s own row under them where that mode exists, and [Custom Scene](#custom-scene)'s last of all in the **Xiangqi** section alone. Selecting a row opens the pre-start state for exactly that game and mode.
 - **With an active game the page also carries that game.** A **Current Game** card shows the accepted metadata line described under [Saving the active game before choosing a new mode](#saving-the-active-game-before-choosing-a-new-mode) — the same header, over the same line — and a prominent **Resume Game** that opens the board on the game exactly as it was left. Every fact on the line is read from the game the core is holding and none of it is re-derived.
 - **A game already filed is not an active game**, and the card does not describe one. Its record is immutable History and the active-game reference was cleared by the terminal commit that made it; what stands on the board afterwards is the result where it was reached, which is presentation. Leaving that board for the home lets it go.
 - The mode entries remain interactive whenever a game is active, and selecting one presents the accepted confirmation rather than opening anything. That flow is defined in full below.
@@ -274,6 +274,22 @@ The Free Play pre-start state is also not an active game:
 Settings has a **Human versus AI Defaults** group with **Default First Mover** and **Default AI Level**. Its footer explains that these values initialize future human-versus-AI setup and do not change an active game. A new installation selects **I Move First** and **Standard**.
 
 **Where the concluding actions go.** A finished game's **New Game** — on the play-control cluster and, as **Save and New Game**, on the result notice — files the game and opens **that game's own mode's pre-start state**. It does not deal the next game: with an opponent to choose, the side and the level are chosen for each game rather than inherited from the last one, and a pre-start page is not a confirmation standing between the press and the new game. **Done**, on the recorded notice, returns to the Play home, where what to play is chosen again.
+
+### Custom Scene
+
+**Custom Scene**, 自定排局, is the last row of the **Xiangqi** section on the [Play home](#the-play-home), under that game's ways to play, and it stands on iPhone, iPad and Mac. It is not a fourth way to play: what the row opens is an editor, and what the editor starts is an ordinary Free Play game of Xiangqi from the position composed in it. The row is a game-and-mode entry like every other, so with a game active it presents the accepted [save-and-continue confirmation](#saving-the-active-game-before-choosing-a-new-mode) and the editor opens only once that archive has committed.
+
+The editor is a pre-start page over the home, left by the back control in the toolbar, and it creates nothing until **Start Game**:
+
+- **The board is empty and it is interactive.** It is this document's Xiangqi board, fitted by the rules under [Layout shapes](#layout-shapes), and because every point on it is a target it takes the interactive pitch floor rather than the exemption that section grants a pre-start preview.
+- **The palette holds the standard set** — every piece of both sides — and each entry carries how many of that piece remain to place. The entry the player picks is what the next tap puts down; an entry with none remaining has nothing to offer and is not selectable.
+- **A tap places and a tap removes.** Tapping an empty point puts the selected piece on it, and tapping a piece already on the board takes it off and returns it to the palette.
+- **The side to move is a choice on the page**, Red or Black, and the side chosen is the one whose move the game's first ply is.
+- **Validation is live and says one thing.** Where the position as it stands is not one to set up in, the page carries a plain reason for the first thing wrong with it — a piece count, a piece standing where that piece may not, the side not to move left in check — in the order [xiangqi-rules.md](xiangqi-rules.md) states those clauses. Never a rule identifier, never a diagnostic, and never a second reason beside the first.
+- **Start Game is enabled on a position that is both legal and playable**, and on nothing else: a position the side to move has no legal move in is already decided and is not a scene. Pressing it creates the Free Play game and opens the board on it.
+- **The draft is in memory and nowhere else.** Leaving the editor discards it, and nothing about it is ever written.
+
+In play the board page is the Free Play page and nothing on it is new: the same [play controls](#play-controls) — **Hint**, **Undo**, **Claim Draw**, **Flip Board** — the same [turn status](#turn-status), the same [markers](#game-state-markers), and repeated Undo back to the position the game began from. In [replay](#history-replay) the record opens at that position and steps through the game it became, and its [History](#history-library) row is every other row: what says where a game began is its own start position, and no marker is added for it.
 
 ### Board orientation
 
@@ -750,6 +766,7 @@ Navigation uses one adaptive container, and the container is the platform's own 
 
 ### The move list during play
 
+- **The list pairs and numbers plies from the game's own first mover.** A pair is that side's ply and the answer to it, the first pair is numbered 1, and which side opens is the game's start position's to say: a game whose start has Black to move numbers Black's first ply 1 and Red answers inside that pair. No mover is read off a ply's parity.
 - Where the side-by-side layout applies, the move list is permanently visible in the panel. Its permanence is a property of that shape and not of a platform: a Mac window narrow enough to stack reaches the list the way every stacked screen does, on demand.
 - In the stacked layout during ordinary play it is not shown by default and is reached on demand, so neither the board nor the controls give up space to something consulted occasionally.
 - **What reaches it is a toolbar item, Moves, over a sheet.** The item sits in the same toolbar the page's own back control is in — the platform's place for something about this page that is not on it — and the sheet opens at half height, because the other half is the board the list is being consulted about. It is dismissible by the platform's own means and by a **Done**; it is a transient the player asked for, which is exactly the surface [Platform visual language](#platform-visual-language) already allows to cover the board. The list inside it is the same list the panel carries, and it stays a record rather than becoming a control: during play no move is selectable, as in the panel.

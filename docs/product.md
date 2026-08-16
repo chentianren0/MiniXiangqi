@@ -33,7 +33,8 @@ This document owns the product definition, the target platforms, and the feature
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
-- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because each game's first mover is fixed — Red in the xiangqi games, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
+- **Custom Scene** is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other.
+- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because each game's frozen start has one first mover — Red in the xiangqi games, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
 - The AI offers three difficulty levels that differ only in maximum thinking time: **Fast** at 1 second per move, **Standard** at 3 seconds per move, and **Deep** at 5 seconds per move. **Standard** is the new-install default.
