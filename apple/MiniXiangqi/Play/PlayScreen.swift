@@ -439,7 +439,7 @@ struct PlayScreen: View {
     /// consulting the list about.
     private func moveListSheet(_ game: Game) -> some View {
         NavigationStack {
-            MoveList(notation: game.notation)
+            MoveList(notation: game.notation, firstMover: game.firstMover)
                 .padding(.horizontal, BoardLayout.panelInset)
                 .navigationTitle("nav.moveList")
                 #if !os(macOS)
@@ -593,7 +593,7 @@ struct PlayScreen: View {
 
             Divider()
 
-            MoveList(notation: game.notation)
+            MoveList(notation: game.notation, firstMover: game.firstMover)
                 .padding(.horizontal, BoardLayout.panelInset)
                 .frame(maxHeight: .infinity)
                 // The transient capsule the contract anchors to the turn

@@ -242,6 +242,7 @@ struct ReplayScreen: View {
             // one be selected, so the list is part of the screen rather than
             // something reached from it.
             MoveList(notation: replay.notation,
+                     firstMover: replay.firstMover,
                      currentMove: replay.ply > 0 ? replay.ply - 1 : nil,
                      onSelect: { replay.show(move: $0 + 1) })
                 .padding(.horizontal, BoardLayout.panelInset)

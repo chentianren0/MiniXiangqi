@@ -280,10 +280,22 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     /// library metadata the store holds beside the blob.
     var localSide: Side?
 
-    static func freePlay(game: GameKind) -> GameConfiguration {
+    /// The position the game begins from, where it is not the game's own frozen
+    /// start. `nil` *is* that frozen start, and the core keeps the member
+    /// canonical the same way: a start spelled out that turns out to be the
+    /// frozen one reads back absent, so one committed game answers one way
+    /// about where it began whether it was just created or resumed.
+    ///
+    /// A composed start is Free Play's and no other mode's, and Xiangqi is the
+    /// one game whose rules define which positions it may be — both of which
+    /// are the core's refusals rather than rules kept here.
+    var startFEN: String?
+
+    static func freePlay(game: GameKind, startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .freePlay, humanSide: nil,
                           aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0, localSide: nil)
+                          movetimeMilliseconds: 0, localSide: nil,
+                          startFEN: startFEN)
     }
 
     /// A game played with the other device over the BoardGame protocol. It
@@ -291,7 +303,8 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     static func nearby(game: GameKind, localSide: Side) -> GameConfiguration {
         GameConfiguration(game: game, mode: .nearby, humanSide: nil,
                           aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0, localSide: localSide)
+                          movetimeMilliseconds: 0, localSide: localSide,
+                          startFEN: nil)
     }
 
     /// A human-versus-AI game, with the first-mover choice already resolved to
@@ -302,12 +315,12 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         GameConfiguration(game: game, mode: .humanVersusAI, humanSide: humanSide,
                           aiLevel: level, firstMoverChoice: choice,
                           movetimeMilliseconds: level.movetimeMilliseconds,
-                          localSide: nil)
+                          localSide: nil, startFEN: nil)
     }
 
     private init(game: GameKind, mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
                  firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32,
-                 localSide: Side?) {
+                 localSide: Side?, startFEN: String?) {
         self.game = game
         self.mode = mode
         self.humanSide = humanSide
@@ -315,17 +328,22 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         self.firstMoverChoice = firstMoverChoice
         self.movetimeMilliseconds = movetimeMilliseconds
         self.localSide = localSide
+        self.startFEN = startFEN
     }
 
     init?(_ config: MxqGameConfig) {
         guard let game = GameKind(config.game) else { return nil }
+        // The empty string is the frozen start, and the core has already made
+        // it so for a start that spelled the frozen position out.
+        let start = string(of: config.start_fen, capacity: MXQ_FEN_CAP)
         self.init(game: game,
                   mode: PlayMode(config.mode),
                   humanSide: Side(config.human_side),
                   aiLevel: AiLevel(config.ai_level),
                   firstMoverChoice: FirstMoverChoice(config.first_mover_choice),
                   movetimeMilliseconds: config.ai_movetime_ms,
-                  localSide: Side(config.local_side))
+                  localSide: Side(config.local_side),
+                  startFEN: start.isEmpty ? nil : start)
     }
 
     var raw: MxqGameConfig {
@@ -339,6 +357,19 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         config.ai_movetime_ms = movetimeMilliseconds
         config.game = game.raw
         config.local_side = Self.rawColor(localSide)
+        if let startFEN {
+            let bytes = Array(startFEN.utf8)
+            // The ABI's own capacity, and no position of any board this core
+            // plays comes near it — the widest is 251 characters. A start that
+            // did not fit would be truncated into a different position, so it
+            // is refused here rather than sent.
+            precondition(bytes.count < Int(MXQ_FEN_CAP),
+                         "a start position wider than the interface's FEN capacity")
+            withUnsafeMutableBytes(of: &config.start_fen) { buffer in
+                for (index, byte) in bytes.enumerated() { buffer[index] = byte }
+                buffer[bytes.count] = 0
+            }
+        }
         return config
     }
 
@@ -352,6 +383,58 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         case nil: MxqColor(MXQ_COLOR_NONE)
         }
     }
+}
+
+/// Which setup rule a position breaks, as the core reports it. A closed class
+/// vocabulary and never a sentence: the sentence is the frontend's to localize,
+/// which is exactly why the core does not compose one.
+///
+/// `notFrozenStart` is the answer of a game whose rules define no setup-legality
+/// predicate. It is in the vocabulary because the core's is total; no surface in
+/// this app can reach it, because the one surface that composes a position
+/// composes a Xiangqi one.
+nonisolated enum SetupRule: Sendable, Equatable {
+    case pieceCount, palace, elephantSide, soldierRank
+    case facingGenerals, opponentInCheck, notFrozenStart
+
+    init?(_ rule: MxqSetupRule) {
+        switch rule {
+        case MxqSetupRule(MXQ_SETUP_RULE_PIECE_COUNT): self = .pieceCount
+        case MxqSetupRule(MXQ_SETUP_RULE_PALACE): self = .palace
+        case MxqSetupRule(MXQ_SETUP_RULE_ELEPHANT_SIDE): self = .elephantSide
+        case MxqSetupRule(MXQ_SETUP_RULE_SOLDIER_RANK): self = .soldierRank
+        case MxqSetupRule(MXQ_SETUP_RULE_FACING_GENERALS): self = .facingGenerals
+        case MxqSetupRule(MXQ_SETUP_RULE_OPPONENT_IN_CHECK): self = .opponentInCheck
+        case MxqSetupRule(MXQ_SETUP_RULE_NOT_FROZEN_START): self = .notFrozenStart
+        // MXQ_SETUP_RULE_NONE, and anything a newer core has learned to say.
+        default: return nil
+        }
+    }
+}
+
+/// Why a position is not one to set up in: the first violation the core found,
+/// whose it is, and where. The side and the square are absent exactly where the
+/// class has none, which the core writes rather than leaves to be guessed.
+nonisolated struct SetupViolation: Sendable, Equatable {
+    var rule: SetupRule
+    /// The side the violation belongs to; absent where it belongs to neither.
+    var side: Side?
+    /// The point at fault; empty where the class names none.
+    var square: String
+}
+
+/// What the core says about a position offered as a game's first one.
+nonisolated enum SetupVerdict: Sendable, Equatable {
+    /// A position this game may be set up in. Whether it is one to *play* is
+    /// the separate question `Core.isPlayable` asks.
+    case legal
+    /// The predicate refused it, and this is the first rule it broke.
+    case illegal(SetupViolation)
+    /// The structural precondition refused it: not a position of this game's
+    /// board at all. A composed Xiangqi position reaches it for one reason —
+    /// the engine's own validator wants exactly one general a side, so a board
+    /// still missing one is refused here before any clause is reached.
+    case malformed
 }
 
 /// A position and the game state, exactly as the attached session reports it.
@@ -571,6 +654,65 @@ final class Core {
                       as: UTF8.self)
     }
 
+    // MARK: - The session-free questions a composed position is asked
+
+    /// Whether a position is one this game may be **set up** in — the core's
+    /// setup-legality predicate, asked of the position and of nothing else.
+    ///
+    /// It is the first of the three questions creation asks, and the editor
+    /// asks it for the same reason creation does rather than to anticipate the
+    /// answer: nothing composed here reaches a session or an engine without
+    /// passing it, because a position offering a general capture trips an
+    /// engine assertion. No clause of the predicate is written in Swift.
+    func setupVerdict(of fen: String, game: GameKind) -> SetupVerdict {
+        var violation = MxqSetupViolation()
+        violation.struct_size = UInt32(MemoryLayout<MxqSetupViolation>.size)
+        var err = freshError()
+        let status = fen.withCString {
+            mxq_rules_validate_setup(handle, game.raw, $0, &violation, &err)
+        }
+        switch status {
+        case MxqStatus(MXQ_OK):
+            return .legal
+        case MxqStatus(MXQ_ERR_RULES_ILLEGAL_POSITION):
+            guard let rule = SetupRule(violation.rule) else { return .malformed }
+            return .illegal(SetupViolation(rule: rule,
+                                           side: Side(violation.side),
+                                           square: string(of: violation.square,
+                                                          capacity: MXQ_SQUARE_TEXT_CAP)))
+        // MXQ_ERR_RULES_INVALID_FEN, and any other refusal this build has not
+        // heard of: either way the position is not one the predicate judged.
+        default:
+            return .malformed
+        }
+    }
+
+    /// Whether a position the predicate accepted is one to **play**: a position
+    /// that already has a result of its own is no game to begin.
+    ///
+    /// Startability is creation's own question rather than the predicate's, and
+    /// it is asked the way the interface says to ask it — the session-free
+    /// evaluation over the position and no moves — and only of a position
+    /// `setupVerdict(of:game:)` has already accepted, which is the ordering
+    /// that keeps a position the engine must not be shown away from it.
+    ///
+    /// **Every answer that is not `MXQ_OK` reads as unplayable**, which is
+    /// exhaustive because of that ordering: over a position the predicate has
+    /// accepted, the refusals this entry can still make — a FEN of another
+    /// game's board, a move line it cannot replay — are all positions no game
+    /// begins from either. A caller that asked it of an unvalidated position
+    /// would be reading a refusal as a verdict.
+    func isPlayable(_ fen: String, game: GameKind) -> Bool {
+        var status = MxqGameStatus()
+        status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
+        var err = freshError()
+        let result = fen.withCString {
+            mxq_rules_evaluate(handle, game.raw, $0, nil, 0, nil, &status, nil, &err)
+        }
+        guard result == MXQ_OK else { return false }
+        return !GameState(status.state).isOver
+    }
+
     /// One buffer wide enough for the legal moves of every game this app plays.
     ///
     /// **There is no C constant to read**: docs/core-interface.md, "Capacity
@@ -770,6 +912,19 @@ extension Core: Rules {
         try check(mxq_game_position_at(session, UInt32(ply), &position, &err),
                        err)
         return string(of: position.fen, capacity: MXQ_FEN_CAP)
+    }
+
+    func firstMover() throws -> Side {
+        let session = try attachedSession()
+        var position = MxqPosition()
+        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
+        var err = freshError()
+        try check(mxq_game_position_at(session, 0, &position, &err), err)
+        guard let side = Side(position.side_to_move) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported no side to move")
+        }
+        return side
     }
 }
 
@@ -1154,6 +1309,11 @@ nonisolated struct ActiveGameSummary: Equatable, Sendable {
     /// session's is.
     var state: GameState
     var reason: EndReason
+    /// Whose turn it is, as the core's own status reports it. It is on the
+    /// status rather than worked out here because this summary carries no
+    /// position and no start: a game whose start has Black to move has Black
+    /// making ply 0, so a count of plies would name the wrong side.
+    var sideToMove: Side
 }
 
 extension Core {
@@ -1172,13 +1332,18 @@ extension Core {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
                             detail: "the core reported an unknown game kind")
         }
+        guard let sideToMove = Side(status.side_to_move) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the core reported no side to move")
+        }
         return ActiveGameSummary(game: game,
                                  mode: PlayMode(summary.mode),
                                  humanSide: Side(summary.human_side),
                                  localSide: Side(summary.local_side),
                                  moveCount: Int(summary.move_count),
                                  state: GameState(status.state),
-                                 reason: EndReason(status.reason))
+                                 reason: EndReason(status.reason),
+                                 sideToMove: sideToMove)
     }
 }
 

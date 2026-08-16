@@ -87,6 +87,7 @@ final class ParkedArchive: Rules {
     func moveHistory() throws -> [String] { try real.moveHistory() }
     func legalMoves() throws -> [String] { try real.legalMoves() }
     func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
+    func firstMover() throws -> Side { try real.firstMover() }
 }
 
 /// The catalog's answer in whatever language the host is running, which is the
@@ -159,7 +160,7 @@ struct PlayHomeTests {
                                                  text("metadata.inProgress"),
                                                  text("status.blackToMove"),
                                                  moves(1)),
-                "one ply on the turn has passed, which is the ply count's parity")
+                "one ply on, and the turn has passed to the other side")
     }
 
     @Test("A human-versus-AI game names the side the player is holding")

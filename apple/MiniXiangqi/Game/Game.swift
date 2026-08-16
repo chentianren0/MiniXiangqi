@@ -84,6 +84,11 @@ protocol Rules: AnyObject {
 
     /// The position after the first `ply` plies, for reading the line back.
     func fen(atPly ply: Int) throws -> String
+
+    /// Whose move the game's first ply is — the side its start position has to
+    /// move, asked of the core. A game begun from a composed position may open
+    /// with Black, so no ply's mover is ever taken from its parity.
+    func firstMover() throws -> Side
 }
 
 @Observable
@@ -129,6 +134,11 @@ final class Game {
     /// search result is checked against before its move is applied.
     private(set) var identity: String
 
+    /// Whose move ply 0 is — the start position's own side, read from the core
+    /// once. A game composed in the Custom Scene editor may open with Black, so
+    /// the move list pairs and numbers from this rather than from a parity.
+    let firstMover: Side
+
     /// The last claim or filing the store refused. Separate from `failure`
     /// because the contract routes the two differently: a refused ply is the
     /// transient capsule, a refused terminal commit is the blocking retry.
@@ -173,6 +183,7 @@ final class Game {
             try Self.move(reading: $0, on: configuration.game.board)
         }
         let evaluation = try rules.evaluation()
+        let firstMover = try rules.firstMover()
         self.rules = rules
         self.moves = moves
         self.notation = notation
@@ -180,6 +191,7 @@ final class Game {
         self.evaluation = evaluation
         self.configuration = configuration
         self.identity = identity
+        self.firstMover = firstMover
         self.placement = Placement(fen: evaluation.fen, game: configuration.game)
         // The accepted orientation rule, applied once: in human-versus-AI play
         // the human's own side is at the bottom, and Red at the bottom is the
@@ -700,5 +712,6 @@ final class RefusingRules: Rules {
     func moveHistory() throws -> [String] { try real.moveHistory() }
     func legalMoves() throws -> [String] { try real.legalMoves() }
     func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
+    func firstMover() throws -> Side { try real.firstMover() }
 }
 #endif

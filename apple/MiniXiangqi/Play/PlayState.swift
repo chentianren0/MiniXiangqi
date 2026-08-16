@@ -115,9 +115,9 @@ final class PlayState {
     /// will not produce on request.
     private let engine: AIEngine
 
-    /// Which of the destination's three pages is showing. The home is the root
-    /// and the other two are pushed over it, so this is also the navigation
-    /// path: everything that changes it is a navigation.
+    /// Which of the destination's pages is showing. The home is the root and
+    /// the rest are pushed over it, so this is also the navigation path:
+    /// everything that changes it is a navigation.
     ///
     /// **The initial value is the launch rule.** docs/interaction-design.md,
     /// "Navigation": a fresh launch opens at the home in every mode, and the
@@ -134,6 +134,10 @@ final class PlayState {
         /// That game and mode's pre-start state, over its noninteractive
         /// starting-position preview.
         case setup(PlaySelection)
+        /// The Custom Scene editor: a pre-start state of its own, over an empty
+        /// interactive board. What it starts is an ordinary Free Play game of
+        /// Xiangqi from the position composed in it.
+        case customScene
         /// The board.
         case board
     }
@@ -164,6 +168,11 @@ final class PlayState {
     /// The pre-start controls' draft. Meaningful only while `page` is
     /// `.setup`, and replaced afresh on every entry.
     var draft = SetupDraft.fromDefaults()
+
+    /// The Custom Scene editor's draft, while that page is up. **In memory and
+    /// nowhere else**: it is made when the editor opens and dropped when it is
+    /// left, which is the whole of discarding it.
+    private(set) var scene: CustomScene?
 
     /// Why the last **开始对局** created nothing. The page and the draft stay,
     /// and the control is enabled again.
@@ -202,10 +211,11 @@ final class PlayState {
 
     private(set) var modeSwitch: ModeSwitch?
 
-    /// What the room being made is for, where a nearby surface asked for it.
-    /// It lives inside the flow exactly as the remembered destination does, and
-    /// is discarded with it.
-    private var pendingNearby: (@MainActor () -> Void)?
+    /// The surface the room is being made for, where one asked for it rather
+    /// than a mode row: a nearby proposal, or the Custom Scene editor. It lives
+    /// inside the flow exactly as the remembered destination does, and is
+    /// discarded with it.
+    private var pendingOpening: (@MainActor () -> Void)?
 
     /// Whatever holds the active game while it is a nearby one. Set by the
     /// destination that assembles both; absent on macOS and in the tests that
@@ -283,6 +293,25 @@ final class PlayState {
         openSetup(selection)
     }
 
+    /// **Custom Scene** was chosen on the home.
+    ///
+    /// docs/interaction-design.md, "Custom Scene": the row is a game-and-mode
+    /// entry like every other, so with a game active it presents the same
+    /// confirmation and the editor opens only once that archive has committed.
+    /// What it will create is a Free Play game of Xiangqi, which is what the
+    /// confirmation's remembered destination says — and the editor is what
+    /// opens over it rather than that mode's own pre-start page.
+    func chooseCustomScene() {
+        guard page == .home, modeSwitch == nil else { return }
+        guard activeSummary != nil else {
+            openCustomScene()
+            return
+        }
+        pendingOpening = { [weak self] in self?.openCustomScene() }
+        modeSwitch = .confirming(PlaySelection(game: CustomScene.game,
+                                               mode: .freePlay))
+    }
+
     /// 取消 on the confirmation, and the dismissal that follows every answer to
     /// it. The remembered destination goes with the flow that held it, and the
     /// active game is untouched — it can be resumed and taken back or claimed on
@@ -294,7 +323,7 @@ final class PlayState {
     func dismissConfirmation() {
         if case .confirming = modeSwitch {
             modeSwitch = nil
-            pendingNearby = nil
+            pendingOpening = nil
         }
     }
 
@@ -311,7 +340,7 @@ final class PlayState {
     func dismissArchiveFailure() {
         if case .failed = modeSwitch {
             modeSwitch = nil
-            pendingNearby = nil
+            pendingOpening = nil
         }
     }
 
@@ -347,8 +376,8 @@ final class PlayState {
             switch result {
             case .success:
                 modeSwitch = nil
-                if let opening = pendingNearby {
-                    pendingNearby = nil
+                if let opening = pendingOpening {
+                    pendingOpening = nil
                     opening()
                 } else {
                     openSetup(selection)
@@ -397,6 +426,13 @@ final class PlayState {
         page = .setup(selection)
     }
 
+    /// The editor, over an empty board and a draft nothing has been written of.
+    private func openCustomScene() {
+        creationFailure = nil
+        scene = CustomScene(core: core)
+        page = .customScene
+    }
+
     /// The player navigated back to the home from whichever page was over it.
     ///
     /// From a pre-start page that is leaving it, with everything leaving it
@@ -407,7 +443,7 @@ final class PlayState {
     func leaveTopPage() {
         switch page {
         case .home: break
-        case .setup: leavePage()
+        case .setup, .customScene: leavePage()
         case .board:
             leaveBoard()
             page = .home
@@ -524,15 +560,24 @@ final class PlayState {
         }
     }
 
-    /// The player left the pre-start page — by going back to the home, or by
+    /// The player left a pre-start page — by going back to the home, or by
     /// leaving the destination altogether. The draft is discarded, an attempt in
     /// flight is invalidated, and no game is created: a completion arriving
     /// afterwards commits nothing.
+    ///
+    /// The Custom Scene editor is a pre-start page and leaves the same way: its
+    /// composed position and side to move were only ever this object's, so
+    /// dropping the draft is the whole of discarding it and nothing was written
+    /// to undo.
     func leavePage() {
-        guard case .setup = page else { return }
+        switch page {
+        case .setup, .customScene: break
+        case .home, .board: return
+        }
         attempt += 1
         creating = false
         creationFailure = nil
+        scene = nil
         page = .home
     }
 
@@ -591,6 +636,31 @@ final class PlayState {
         }
     }
 
+    /// **开始对局** in the Custom Scene editor.
+    ///
+    /// The scene game *is* a Free Play game of Xiangqi that began elsewhere, so
+    /// this is the Free Play creation with the composed position as its start
+    /// and nothing else added: no engine is prepared, because Free Play owes no
+    /// search, and the composed FEN is what the core is asked to begin from.
+    ///
+    /// It asks the draft first, as the control does: a position the core would
+    /// refuse is one 开始对局 is disabled on, and the guard is what makes the
+    /// disabling the rule rather than the appearance of one — a call that got
+    /// past it would meet `MXQ_ERR_STATE_GAME_OVER` and report it as a game
+    /// that could not be saved, which is not what happened.
+    ///
+    /// Creation can still refuse past it — the store can decline to persist —
+    /// and then it creates nothing, keeps the page and the draft, and presents
+    /// the same notice the other pre-start pages present.
+    func startScene(policy: MotionPolicy) {
+        guard page == .customScene, let scene, scene.canStart, !creating else { return }
+        creating = true
+        creationFailure = nil
+        attempt += 1
+        create(.freePlay(game: CustomScene.game, startFEN: scene.fen),
+               policy: policy, token: attempt)
+    }
+
     /// A preparation refusal, as the page presents it.
     ///
     /// By **code**, not by domain. Insufficient memory and a failed Hash
@@ -612,6 +682,10 @@ final class PlayState {
             try rules.create(configuration)
             adopt(try Game(rules: rules), policy: policy)
             creating = false
+            // A draft that has become a game is no longer a draft, and the
+            // editor is not a page to come back to from the board: the way back
+            // is the home, exactly as it is from every other pre-start page.
+            scene = nil
             page = .board
             opponent?.begin()
         } catch {
@@ -991,7 +1065,7 @@ extension PlayState: NearbyRoom {
             opening()
             return
         }
-        pendingNearby = opening
+        pendingOpening = opening
         modeSwitch = .confirming(PlaySelection(game: game, mode: .nearby))
     }
 }

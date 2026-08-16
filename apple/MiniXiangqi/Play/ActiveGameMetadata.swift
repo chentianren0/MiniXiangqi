@@ -20,9 +20,10 @@
 // **It is read without a session.** `Core.activeGameSummary` is
 // `mxq_store_active_summary`, which the C interface built for this surface and
 // the save-and-continue confirmation — the live game belongs to the board, and
-// the home has no business holding one to describe it. The one segment the
-// summary does not carry is whose turn it is, and that is arithmetic on the ply
-// count it does carry; see `sideToMove` below.
+// the home has no business holding one to describe it. Whose turn it is comes
+// with it, on the status the same call reports: a game begun from a composed
+// position may have Black making ply 0, so a side worked out from the ply
+// count would name the wrong one.
 
 import Foundation
 
@@ -126,21 +127,6 @@ extension ActiveGameSummary {
         case .nearby: String(localized: "mode.nearby")
         }
     }
-
-    /// Whose turn it is, from the ply count the store returned.
-    ///
-    /// **Presentation arithmetic, not a rules decision.** It rests on two
-    /// frozen contract facts and on nothing else: Red moves first — the FEN
-    /// side field of docs/xiangqi-rules.md, and the same for both games — and
-    /// plies strictly alternate, neither ruleset having a pass, which is why
-    /// docs/boardgame-protocol.md decides whose turn each ply is from index
-    /// parity too. So an even count is Red to move and an odd one is Black's.
-    /// Nothing here judges legality, adjudication or an affordance; the state
-    /// beside it is the core's own answer.
-    ///
-    /// A game that ever gained a pass would break this, which is why the two
-    /// facts are named rather than assumed.
-    var sideToMove: Side { moveCount.isMultiple(of: 2) ? .red : .black }
 
     /// What is true of the game right now, in the three classes the accepted
     /// examples give.
