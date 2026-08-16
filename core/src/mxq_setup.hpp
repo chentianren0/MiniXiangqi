@@ -50,16 +50,23 @@ struct Violation {
 enum class Error {
     None,
     NotInitialised,  /* the engine that plays this game was never brought up */
-    FenInvalid,      /* not a position of this game's board: the precondition */
+    FenInvalid,      /* not a position of this game's board at all */
 };
 
 /*
  * Judge `fen` as a position `game` may be set up in.
  *
  * On Error::None, out_violation's rule is MXQ_SETUP_RULE_NONE for a legal setup
- * and the first rule broken otherwise. Structural validity is the precondition
- * rather than part of the answer: a FEN that is not a position of this game's
- * board returns Error::FenInvalid, and `detail` says so.
+ * and the first rule broken otherwise. A FEN that is not a position of this
+ * game's board at all returns Error::FenInvalid, and `detail` says so.
+ *
+ * For Xiangqi that reading is this module's own, taken against the frozen
+ * encoding rather than against the engine's structural validator. The validator
+ * wants a general a side, and a board short of one is exactly what a composer
+ * has in front of them before the second tap: this predicate answers for it,
+ * under the count clause, rather than declining to. Every other game keeps the
+ * validator as its precondition, having one position to compare against and no
+ * clauses to reach.
  *
  * `detail` is filled on a refusal of either kind, as the short English
  * diagnostic MxqError carries.
@@ -71,9 +78,9 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
 /* The per-game start policy                                                  */
 /* ------------------------------------------------------------------------- */
 
-/* What judge_start found. The three refusals are three rungs, reported in this
- * order, because a position that fails two must be refused by the earlier one
- * however it was reached. */
+/* What judge_start found. The three refusals are ordered as they are declared,
+ * because a position that fails two must be refused by the earlier one however
+ * it was reached. */
 enum class StartError {
     None,
     NotInitialised, /* the engine that plays this game was never brought up */
@@ -89,13 +96,15 @@ enum class StartError {
  * resuming a stored row — and each spells the answer in its own domain's codes,
  * which is why this reports a class and not a status. The rungs:
  *
- *   1. structure, the frozen encoding of this game's board;
- *   2. the counters, halfmove 0 and fullmove 1, on the same rung because they
- *      are part of a start's spelling: a game beginning from a position has no
- *      plies behind it to count, so no other value is a start at all;
- *   3. `evaluate` above — the game's own setup-legality predicate, which is
+ *   1. the counters, halfmove 0 and fullmove 1, and the six fields that having
+ *      a fifth and a sixth to read means: a game beginning from a position has
+ *      no plies behind it to count, so no other value is a start at all. They
+ *      are a start's spelling rather than a position's, which is why they are
+ *      asked here and not among the predicate's clauses;
+ *   2. `evaluate` above — the game's own setup-legality predicate, which is
  *      total over every game and answers NOT_FROZEN_START for the three whose
- *      rules define none.
+ *      rules define none. The rest of the structure is read there, and a FEN it
+ *      cannot read at all is Structural here.
  *
  * out_violation carries the predicate's answer, and is the empty violation for
  * every other outcome. `detail` is filled on every refusal.

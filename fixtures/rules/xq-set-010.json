@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-010",
+  "title": "Setup: an advisor on a palace edge midpoint, inside the palace and still refused",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/4A4/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "palace",
+    "side": "red",
+    "square": "e3"
+  },
+  "rationale": "e3 is inside Red's palace and no advisor can ever stand there. An advisor starts on d1 or f1 and steps one point diagonally, which reaches the palace's four corners and its centre and nothing else — five points of the nine. The palace is the general's own reach; the advisor's is this shorter list, and a rule read as \"inside its own palace\" would accept this position."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-011",
+  "title": "Setup: a soldier on its own half, off the files a soldier starts on",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/1P7/9/9/4K4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "soldier-rank",
+    "side": "red",
+    "square": "b4"
+  },
+  "rationale": "b4 is on the soldiers' own rank and still no soldier can be there. Before it crosses the river a soldier moves only forward, so it stands on the file it started on, and Red's five soldiers start on a, c, e, g and i. The clause holds on a side's own half alone: it ends where the sideways step begins."
+}

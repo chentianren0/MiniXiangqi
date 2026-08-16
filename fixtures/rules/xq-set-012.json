@@ -1,0 +1,14 @@
+{
+  "id": "xq-set-012",
+  "title": "Setup: a side with no general is the count clause's answer",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/9/9/4C4 w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "piece-count",
+    "side": "red",
+    "square": null
+  },
+  "rationale": "Red has a cannon and no general, and the game gives each side exactly one. The count clause carries a floor as well as a ceiling, so this is an answer about the position rather than a refusal to answer about it: the predicate names the side whose complement is wrong and no square, exactly as it does for a side that has too many of a piece. A composing surface reads it as the piece that is still missing."
+}
