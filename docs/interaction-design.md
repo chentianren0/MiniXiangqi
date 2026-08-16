@@ -51,7 +51,7 @@ Each platform uses its own current native visual system rather than an imitation
 
 **The AI-thinking indicator carries no material at all.** It is present for a large share of every human-versus-AI game, and a persistent glass surface beside the board would be exactly the "gratuitous" application the guidance warns against.
 
-**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **Resume Game** on the Play home while a game is going, **Start Game** in either pre-start state, **Save** on the result notice before confirmation, the concluding action the play-control cluster carries once a finished game's notice is closed, **Done** after it — and at most one tinted element is ever visible. The mode entries are not among them: they are a list of things to choose between, and neither of them is the answer. A system alert's own default action is tinted by the platform and stands above the page, so the at-most-one rule is counted in the app's own layer and never through a modal. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
+**No tinted glass appears during play.** Saturated colour on the play screen then means one thing: which side a piece belongs to. Tint is reserved for a moment with a single obvious next action — **Resume Game** on the Play home while a game is going, **Start Game** in any pre-start state, **Save** on the result notice before confirmation, the concluding action the play-control cluster carries once a finished game's notice is closed, **Done** after it — and at most one tinted element is ever visible. The mode entries are not among them: they are a list of things to choose between, and neither of them is the answer. A system alert's own default action is tinted by the platform and stands above the page, so the at-most-one rule is counted in the app's own layer and never through a modal. Destructive actions use the system's destructive role rather than a red tint, so red keeps one meaning.
 
 | Setting | System surfaces | Custom glass surfaces |
 |---|---|---|
@@ -277,7 +277,7 @@ Settings has a **Human versus AI Defaults** group with **Default First Mover** a
 
 ### Custom Scene
 
-**Custom Scene**, 自定排局, is the last row of the **Xiangqi** section on the [Play home](#the-play-home), under that game's ways to play, and it stands on iPhone, iPad and Mac. It is not a fourth way to play: what the row opens is an editor, and what the editor starts is an ordinary Free Play game of Xiangqi from the position composed in it. The row is a game-and-mode entry like every other, so with a game active it presents the accepted [save-and-continue confirmation](#saving-the-active-game-before-choosing-a-new-mode) and the editor opens only once that archive has committed.
+**Custom Scene** is the last row of the **Xiangqi** section on the [Play home](#the-play-home), under that game's ways to play, and it stands on iPhone, iPad and Mac. It is not a fourth way to play: what the row opens is an editor, and what the editor starts is an ordinary Free Play game of Xiangqi from the position composed in it. The row is a game-and-mode entry like every other, so with a game active it presents the accepted [save-and-continue confirmation](#saving-the-active-game-before-choosing-a-new-mode) and the editor opens only once that archive has committed.
 
 The editor is a pre-start page over the home, left by the back control in the toolbar, and it creates nothing until **Start Game**:
 
@@ -285,7 +285,7 @@ The editor is a pre-start page over the home, left by the back control in the to
 - **The palette holds the standard set** — every piece of both sides — and each entry carries how many of that piece remain to place. The entry the player picks is what the next tap puts down; an entry with none remaining has nothing to offer and is not selectable.
 - **A tap places and a tap removes.** Tapping an empty point puts the selected piece on it, and tapping a piece already on the board takes it off and returns it to the palette.
 - **The side to move is a choice on the page**, Red or Black, and the side chosen is the one whose move the game's first ply is.
-- **Validation is live and says one thing.** Where the position as it stands is not one to set up in, the page carries a plain reason for the first thing wrong with it — a piece count, a piece standing where that piece may not, the side not to move left in check — in the order [xiangqi-rules.md](xiangqi-rules.md) states those clauses. Never a rule identifier, never a diagnostic, and never a second reason beside the first.
+- **Validation is live and says one thing.** Where the position as it stands is not one to set up in, the page carries a plain reason for the violation the core reports, in the order [xiangqi-rules.md](xiangqi-rules.md) states those clauses. Never a rule identifier, never a diagnostic, and never a second reason beside the first.
 - **Start Game is enabled on a position that is both legal and playable**, and on nothing else: a position the side to move has no legal move in is already decided and is not a scene. Pressing it creates the Free Play game and opens the board on it.
 - **The draft is in memory and nowhere else.** Leaving the editor discards it, and nothing about it is ever written.
 
@@ -756,7 +756,7 @@ When space is short the surrounding chrome tightens before the board does. That 
 
 **The panel's sections begin on one edge**, 16 points in from the panel's own, and its material runs to the top of the window rather than stopping below the title bar: the title bar draws its own treatment over whatever lies beneath it, and beneath it lies the panel rather than bare window.
 
-One exception: a pre-start board is a noninteractive preview with no touch targets, so it carries no size floor and yields space to the setup controls whenever they need it. The floor exists to protect interaction, and a preview has none to protect.
+One exception: a pre-start preview is noninteractive and has no touch targets, so it carries no size floor and yields space to the setup controls whenever they need it. The floor exists to protect interaction, and a preview has none to protect.
 
 **On Windows the preview takes the floor anyway**, and the divergence is recorded rather than silent: the exemption exists so a preview can yield to the setup controls, and that frontend's setup controls are a fixed-width panel that never asks for more, so there is nothing to yield to. Sharing the floor there costs the preview nothing and buys one behaviour instead of two, including the says-so state below.
 

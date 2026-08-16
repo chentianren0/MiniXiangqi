@@ -33,7 +33,7 @@ This document owns the product definition, the target platforms, and the feature
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
-- **Custom Scene** is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other.
+- **Custom Scene**, and **自定排局** in Chinese, is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other.
 - Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because each game's frozen start has one first mover — Red in the xiangqi games, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
@@ -56,7 +56,7 @@ This document owns the product definition, the target platforms, and the feature
 - An ordinary ongoing game is saved as ended early without a competitive result. This includes a neutral threefold repetition that is merely claimable and has not been claimed.
 - An unconfirmed natural terminal result is saved with its actual result and termination reason rather than being reclassified as ended early.
 - Every pre-start page visibly identifies the selected game. Human versus AI shows its per-game choices. Free Play shows that one person controls both sides and that Red moves first, without adding configurable setup fields.
-- Only **Start Game** creates the selected game. Leaving either pre-start state creates no game and does not restore an old game that the user already saved to History.
+- Only **Start Game** creates the selected game. Leaving a pre-start state creates no game and does not restore an old game that the user already saved to History.
 - Ending an unfinished active game to start another records it in History as ended early without a competitive result; it is not treated as resignation.
 - A natural terminal result remains active and undoable until the user confirms it or chooses **Save and Continue**; after either operation, it becomes immutable History with its factual result and termination reason.
 - In both human-versus-AI play and Free Play, a neutral threefold repetition makes a draw available but does not automatically end the active game. The user may continue playing or end the game as a draw.
