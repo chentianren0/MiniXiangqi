@@ -1187,10 +1187,10 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  * Stage 5, the rules tier, in one place because two entry points run it.
  *
  * The initial position must be exactly the frozen starting FEN of the game
- * rules_id names — version 4 defines no other for any of the four, and the
- * setup-legality predicate a later version would need does not exist — then
- * every move must be legal in sequence, then the recorded terminal pair must
- * agree with the replayed adjudication.
+ * rules_id names — version 4 defines no other for any of the four, whatever
+ * mxq_rules_validate_setup would accept of one — then every move must be legal
+ * in sequence, then the recorded terminal pair must agree with the replayed
+ * adjudication.
  *
  * An archive that records no end has no terminal pair to agree with: an
  * unconfirmed natural terminal position remains the active game, so it is as

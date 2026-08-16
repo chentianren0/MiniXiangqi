@@ -189,8 +189,71 @@ void check_game_state(const mxqtest::Fixture &fx, const MxqGameStatus &status,
     }
 }
 
+/*
+ * A setup fixture: one position, and whether its game may begin there.
+ *
+ * It is checked whole rather than only by its verdict. The status alone would
+ * pass a core that refused every illegal position for the wrong reason, and the
+ * reason is what the editor above this interface turns into the sentence the
+ * player reads — so the class, the side and the square are each an expectation
+ * of their own.
+ */
+void evaluate_setup_fixture(mxqtest::RulesFacade &facade,
+                            const mxqtest::Fixture &fx,
+                            FixtureResult &result) {
+    std::vector<std::string> &msgs = result.messages;
+    const mxqtest::SetupExpect &want = *fx.setup;
+    const bool want_legal = !want.violation.has_value();
+
+    MxqSetupReport report;
+    std::memset(&report, 0, sizeof(report));
+    MxqError err = make_error();
+    const MxqStatus rc =
+        facade.validate_setup(fx.game, fx.start_fen, report, err);
+
+    const MxqStatus expected_rc =
+        want_legal ? MXQ_OK : MXQ_ERR_RULES_ILLEGAL_POSITION;
+    if (rc != expected_rc) {
+        msgs.push_back(std::string("mxq_rules_validate_setup expected ") +
+                       mxq_status_name(expected_rc) + ", core returned " +
+                       error_text(err, rc));
+    }
+
+    const std::string violation =
+        mxqtest::violation_identifier(report.violation);
+    const std::string want_violation =
+        want_legal ? std::string() : *want.violation;
+    if (violation != want_violation) {
+        msgs.push_back("setup.violation expected \"" + want_violation +
+                       "\", core reported \"" + violation + "\"");
+    }
+
+    const std::string side = mxqtest::color_identifier(report.side);
+    const std::string want_side =
+        want.side.has_value() ? *want.side : std::string();
+    if (side != want_side) {
+        msgs.push_back("setup.side expected \"" + want_side +
+                       "\", core reported \"" + side + "\"");
+    }
+
+    const std::string square = report.square;
+    const std::string want_square =
+        want.square.has_value() ? *want.square : std::string();
+    if (square != want_square) {
+        msgs.push_back("setup.square expected \"" + want_square +
+                       "\", core reported \"" + square + "\"");
+    }
+
+    result.verdict = msgs.empty() ? Verdict::Pass : Verdict::Fail;
+}
+
 void evaluate_fixture(mxqtest::RulesFacade &facade, const mxqtest::Fixture &fx,
                       FixtureResult &result) {
+    if (fx.setup.has_value()) {
+        evaluate_setup_fixture(facade, fx, result);
+        return;
+    }
+
     std::vector<std::string> &msgs = result.messages;
 
     MxqPosition position;

@@ -45,6 +45,26 @@ struct Boundary {
     std::string expect;
 };
 
+/*
+ * What the setup-legality predicate must answer for `start_fen`.
+ *
+ * A setup fixture asks a different question from every other one here — not
+ * what may be played over a position but whether its game may begin there — so
+ * it carries this instead of `moves`, `assertions` and `boundary` rather than
+ * alongside them. A history has no meaning for it, and asserting a legal-move
+ * set over a position no game could reach would be pinning an answer nothing
+ * asks for.
+ *
+ * `violation` is null exactly when the position is a legal setup, and `side`
+ * and `square` are then null too. Which of the two a violated class carries is
+ * the class's own, and the fixtures are where that is pinned.
+ */
+struct SetupExpect {
+    std::optional<std::string> violation;
+    std::optional<std::string> side;   /* "red" or "black" */
+    std::optional<std::string> square;
+};
+
 struct Fixture {
     std::string id;
     std::string title;
@@ -66,6 +86,11 @@ struct Fixture {
     GameStateExpect game_state;
 
     std::optional<Boundary> boundary;
+
+    /* Present exactly for a setup fixture, and then every member above from
+     * `moves` down is absent from the file and unread here. */
+    std::optional<SetupExpect> setup;
+
     std::string rationale;
 
     /* How many normative expectations this fixture carries, for the report. */

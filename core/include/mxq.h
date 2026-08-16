@@ -8,7 +8,7 @@
  * not blittable.
  *
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
- * 61 functions, three opaque handles.
+ * 63 functions, three opaque handles.
  *
  * The core plays four games — Mini Xiangqi, Xiangqi, Gomoku and Renju — and
  * MxqGameKind is the axis that names which. Every rules question is asked of one
@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 1
+#define MXQ_API_VERSION_MINOR 2
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -139,6 +139,14 @@ extern "C" {
  * three digits.
  */
 #define MXQ_FEN_CAP 512
+
+/* One square of a game's board, NUL-terminated: a file letter followed by a
+ * rank in decimal without a leading zero. Three characters at "a10" and "o15",
+ * so 4 carries the NUL and keeps a struct holding one 4-aligned. It is wide
+ * enough for any board this core may plausibly carry, a rank of two digits
+ * reaching 99. MxqSetupReport is what needs it: a violation the caller can
+ * point at is a violation at a square. */
+#define MXQ_SQUARE_TEXT_CAP 4
 
 /* MxqError.detail: a short English diagnostic. Final, and measured: the longest
  * fixed diagnostic in the core is 112 bytes, so every path-free diagnostic fits
@@ -297,9 +305,12 @@ enum {
     MXQ_ERR_RULES_INVALID_FEN      = 3003, /* fails the frozen structural
                                             * encoding of the game it was asked
                                             * about */
-    MXQ_ERR_RULES_ILLEGAL_POSITION = 3004, /* reserved: no setup-legality
-                                            * predicate is defined, so this code
-                                            * is never returned */
+    MXQ_ERR_RULES_ILLEGAL_POSITION = 3004, /* structurally a position of this
+                                            * game's board, but not one the game
+                                            * may be set up in. Returned by
+                                            * mxq_rules_validate_setup and by
+                                            * nothing else; MxqSetupReport
+                                            * carries which rule it breaks */
     MXQ_ERR_RULES_INVALID_HISTORY  = 3005, /* MxqError.detail_index carries the
                                             * first illegal move's index */
 
@@ -556,6 +567,53 @@ enum {
                                                  * five was made. Automatic, like
                                                  * every rule reason but the
                                                  * neutral repetition */
+};
+
+/*
+ * Which setup rule a position breaks, as mxq_rules_validate_setup reports it.
+ *
+ * It is a closed vocabulary of classes rather than a sentence, because the
+ * frontend that shows the player why a set-up position is refused must localise
+ * that sentence: a core that composed one would be composing display copy, and
+ * MxqError.detail is deliberately never that. One class plus a side and, where
+ * there is one, a square is everything such a sentence is built from.
+ *
+ * The classes are the rules of docs/xiangqi-rules.md read as a set-up
+ * predicate, one class per rule that a position can break on its own:
+ *
+ *   PIECE_COUNT        a side has more of a piece than the game gives it — or,
+ *                      for the general, other than the one it has
+ *   PALACE             a general or an advisor stands outside its own palace
+ *   ELEPHANT_SIDE      an elephant stands off its own side's seven points,
+ *                      which is where "an elephant never crosses the river"
+ *                      leaves it
+ *   SOLDIER_RANK       a soldier stands behind its own starting soldier rank,
+ *                      which it can never move back to
+ *   FACING_GENERALS    the two generals face each other on an otherwise empty
+ *                      file. It is its own class rather than a case of the one
+ *                      below because the relation is symmetric and belongs to
+ *                      neither side, and because it is the one refusal a player
+ *                      reads as a rule about generals rather than about check
+ *   OPPONENT_IN_CHECK  the side that is NOT to move stands in check, which no
+ *                      position a game could be played from ever does. The side
+ *                      that IS to move may stand in check: it answers as its
+ *                      first move
+ *   NOT_FROZEN_START   the game accepts only its frozen starting position, and
+ *                      this is another. Every game but Xiangqi is that game
+ *
+ * MXQ_SETUP_VIOLATION_NONE is the legal setup, and the value the report carries
+ * whenever mxq_rules_validate_setup returns MXQ_OK.
+ */
+typedef int32_t MxqSetupViolation;
+enum {
+    MXQ_SETUP_VIOLATION_NONE              = 0,
+    MXQ_SETUP_VIOLATION_PIECE_COUNT       = 1, /* fixture "piece-count" */
+    MXQ_SETUP_VIOLATION_PALACE            = 2, /* fixture "palace" */
+    MXQ_SETUP_VIOLATION_ELEPHANT_SIDE     = 3, /* fixture "elephant-side" */
+    MXQ_SETUP_VIOLATION_SOLDIER_RANK      = 4, /* fixture "soldier-rank" */
+    MXQ_SETUP_VIOLATION_FACING_GENERALS   = 5, /* fixture "facing-generals" */
+    MXQ_SETUP_VIOLATION_OPPONENT_IN_CHECK = 6, /* fixture "opponent-in-check" */
+    MXQ_SETUP_VIOLATION_NOT_FROZEN_START  = 7  /* fixture "not-frozen-start" */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */
@@ -859,6 +917,41 @@ typedef struct MxqGameStatus {
     uint8_t      resign_available;
     uint8_t      search_expected;
 } MxqGameStatus;
+
+/*
+ * What mxq_rules_validate_setup found: the first violation, or none.
+ *
+ * The first is enough. A position with two faults is refused either way, and a
+ * player fixing the one named will be told about the next; a list would be a
+ * second thing to keep in step with the classes for no decision it changes.
+ *
+ * side is the side the violation belongs to, and square the point it stands at,
+ * where either is meaningful:
+ *
+ *   PIECE_COUNT        side is the over-supplied side; square is empty, because
+ *                      a count is a property of a side and not of a point
+ *   PALACE             side and square are the offending piece's
+ *   ELEPHANT_SIDE      likewise
+ *   SOLDIER_RANK       likewise
+ *   FACING_GENERALS    side is MXQ_COLOR_NONE and square is empty: the relation
+ *                      is between the two generals and belongs to neither side,
+ *                      and the frontend knows where both stand
+ *   OPPONENT_IN_CHECK  side is the checked side, which is the side not to move;
+ *                      square is its general's
+ *   NOT_FROZEN_START   side is MXQ_COLOR_NONE and square is empty: what is
+ *                      refused is the whole position
+ *   NONE               side is MXQ_COLOR_NONE and square is empty
+ *
+ * square is a NUL-terminated square of the game's own board, or "" where the
+ * class has none. Both fields are always written, so a caller reads them
+ * without first branching on the class.
+ */
+typedef struct MxqSetupReport {
+    uint32_t          struct_size;
+    MxqSetupViolation violation;
+    MxqColor          side;
+    char              square[MXQ_SQUARE_TEXT_CAP]; /* UTF-8, NUL-terminated */
+} MxqSetupReport;
 
 /*
  * A game's frozen configuration. human_side, ai_level, ai_movetime_ms and
@@ -1707,10 +1800,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out,
 
 /*
  * Validate a FEN as a position of game. This applies the frozen structural
- * encoding only, returning MXQ_ERR_RULES_INVALID_FEN on failure;
- * MXQ_ERR_RULES_ILLEGAL_POSITION is reserved for a future setup-legality
- * predicate and is never returned. A FEN of the other game's board fails the
- * encoding here, which is what makes the game a question rather than a hint.
+ * encoding only, returning MXQ_ERR_RULES_INVALID_FEN on failure, and never
+ * MXQ_ERR_RULES_ILLEGAL_POSITION: whether a structurally valid position is one
+ * the game may be set up in is mxq_rules_validate_setup's question, and this
+ * one is its precondition. A FEN of the other game's board fails the encoding
+ * here, which is what makes the game a question rather than a hint.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.
@@ -1719,6 +1813,42 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
                                                   MxqGameKind game,
                                                   const char *fen,
                                                   MxqError *err);
+
+/*
+ * Whether game may be set up in the position fen states: the setup-legality
+ * predicate, and the one entry that returns MXQ_ERR_RULES_ILLEGAL_POSITION.
+ *
+ * MXQ_OK is a legal setup and MXQ_ERR_RULES_ILLEGAL_POSITION an illegal one.
+ * Structural validity is the precondition rather than part of the answer, so a
+ * FEN that is not a position of this game's board at all fails as it does from
+ * mxq_rules_validate_fen, with MXQ_ERR_RULES_INVALID_FEN and that code's
+ * meaning. out_report is optional and, when supplied, is always written: the
+ * violation is MXQ_SETUP_VIOLATION_NONE on success and the first one found on
+ * a refusal.
+ *
+ * Which positions a game may be set up in is the game's own, and today exactly
+ * one game has more than a single answer. Xiangqi's predicate is the rules of
+ * docs/xiangqi-rules.md read as a set-up question — the piece the game gives a
+ * side, the palace, the elephant's own seven points, the soldier's own starting
+ * rank, the generals not facing, and the side not to move not in check. Every
+ * other game accepts its frozen starting position and nothing else, and answers
+ * MXQ_SETUP_VIOLATION_NOT_FROZEN_START for anything else, the comparison being
+ * against the whole frozen FEN and so against its side to move as well.
+ *
+ * What this does NOT answer is whether a legal setup is one a game can be
+ * begun from. A position that is already decided — a checkmate, a stalemate —
+ * breaks no rule of setting up, and refusing it is the creating caller's
+ * question rather than this one; docs/core-interface.md keeps validation and
+ * startability distinct deliberately, and this entry is the validation half.
+ *
+ * Thread: any thread except inside a search callback.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core,
+                                                    MxqGameKind game,
+                                                    const char *fen,
+                                                    MxqSetupReport *out_report,
+                                                    MxqError *err);
 
 /*
  * Replay moves from start_fen under game's rules and report the resulting
@@ -1733,16 +1863,17 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core,
  * out_position and out_status are then unspecified. out_position, out_status
  * and out_first_illegal_index are each optional.
  *
- * Which start_fen a game may be begun from is the game's, and the two classes
+ * Which start_fen this entry replays from is the game's, and the two classes
  * differ. A movement game takes any position mxq_rules_validate_fen accepts,
- * which is what lets a fixture state a position and replay from it. A placement
+ * which is what lets a fixture state a position and replay from it — including
+ * positions mxq_rules_validate_setup refuses, because a fixture pins the rules
+ * of play over a position and never proposes to begin a game there. A placement
  * game takes its own frozen starting position and no other, returning
  * MXQ_ERR_RULES_INVALID_FEN for anything else: those games have exactly one
- * position that is not reached by play, and beginning from a board with stones
- * on it would be a start-from-position feature offered in two games without the
- * setup-legality predicate every such feature owes. So a placement position that
- * validates is not necessarily one this entry will start from, and the two
- * questions stay distinct on purpose.
+ * position that is not reached by play, and every other is reached by a line
+ * this entry is being handed instead of. So a placement position that validates
+ * is not necessarily one this entry will replay from, and the two questions
+ * stay distinct on purpose.
  *
  * Thread: any thread except inside a search callback.
  * Blocking: no.

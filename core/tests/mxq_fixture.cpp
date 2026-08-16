@@ -12,9 +12,29 @@ namespace mxqtest {
 
 namespace {
 
-const std::set<std::string> kTopLevelMembers = {
+/* A fixture is one of two shapes, and `setup` is what tells them apart: a play
+ * fixture states a history and what holds at its end, and a setup fixture states
+ * a position and whether its game may begin there. Each is checked against its
+ * own member set, so a file that mixes them is a load error rather than a
+ * fixture half of whose members were quietly ignored. */
+const std::set<std::string> kPlayMembers = {
     "id", "title", "area", "variant", "start_fen",
     "moves", "assertions", "boundary", "rationale"};
+
+const std::set<std::string> kSetupMembers = {"id",        "title", "area",
+                                             "variant",   "start_fen",
+                                             "setup",     "rationale"};
+
+const std::set<std::string> kSetupMembersInner = {"violation", "side", "square"};
+
+/* The violation classes a setup fixture may name, one for each the core
+ * reports. */
+const std::set<std::string> kViolations = {
+    "piece-count",     "palace",            "elephant-side",
+    "soldier-rank",    "facing-generals",   "opponent-in-check",
+    "not-frozen-start"};
+
+const std::set<std::string> kSides = {"red", "black"};
 
 const std::set<std::string> kAssertionMembers = {
     "in_check", "result_fen", "legal_moves",
@@ -138,6 +158,11 @@ private:
 } /* namespace */
 
 int Fixture::check_count() const {
+    /* A setup fixture asserts the verdict and the three members of the report
+     * the core fills, whichever way the verdict went. */
+    if (setup.has_value()) {
+        return 4;
+    }
     /* in_check, result_fen and game_state are always asserted. */
     int n = 3;
     if (legal_moves.has_value()) {
@@ -178,7 +203,9 @@ bool fixture_load(const std::string &path, Fixture &out, std::string &error) {
     if (!root.is_object()) {
         return load.fail("the document is not an object");
     }
-    if (!load.require_members(root, kTopLevelMembers, "fixture")) {
+    const bool is_setup = root.member("setup") != nullptr;
+    if (!load.require_members(root, is_setup ? kSetupMembers : kPlayMembers,
+                              "fixture")) {
         return false;
     }
 
@@ -221,6 +248,65 @@ bool fixture_load(const std::string &path, Fixture &out, std::string &error) {
                              " fixture's id begins with \"" +
                              row->id_prefix + "\"");
         }
+    }
+
+    if (is_setup) {
+        const JsonValue *s = load.typed(root, "setup", JsonValue::Type::Object,
+                                        "fixture", false);
+        if (s == nullptr ||
+            !load.require_members(*s, kSetupMembersInner, "fixture.setup")) {
+            return false;
+        }
+        SetupExpect expect;
+
+        v = load.typed(*s, "violation", JsonValue::Type::String, "fixture.setup",
+                       true);
+        if (v == nullptr) {
+            return false;
+        }
+        if (!v->is_null()) {
+            expect.violation = v->string();
+            if (kViolations.find(*expect.violation) == kViolations.end()) {
+                return load.fail("fixture.setup.violation: \"" +
+                                 *expect.violation +
+                                 "\" is not an accepted violation class");
+            }
+        }
+
+        v = load.typed(*s, "side", JsonValue::Type::String, "fixture.setup",
+                       true);
+        if (v == nullptr) {
+            return false;
+        }
+        if (!v->is_null()) {
+            expect.side = v->string();
+            if (kSides.find(*expect.side) == kSides.end()) {
+                return load.fail("fixture.setup.side: \"" + *expect.side +
+                                 "\" is not a side");
+            }
+        }
+
+        v = load.typed(*s, "square", JsonValue::Type::String, "fixture.setup",
+                       true);
+        if (v == nullptr) {
+            return false;
+        }
+        if (!v->is_null()) {
+            expect.square = v->string();
+        }
+
+        /* A legal setup has nothing to name. Which of the two an illegal one
+         * names is the violation class's own and is pinned by the fixtures
+         * themselves, not restated here. */
+        if (!expect.violation.has_value() &&
+            (expect.side.has_value() || expect.square.has_value())) {
+            return load.fail(
+                "fixture.setup: side and square must be null when the position "
+                "is a legal setup");
+        }
+
+        out.setup = std::move(expect);
+        return true;
     }
 
     v = load.typed(root, "moves", JsonValue::Type::Array, "fixture", false);

@@ -1,0 +1,13 @@
+{
+  "id": "mx-set-002",
+  "title": "Setup: Mini Xiangqi refuses its own start with Black to move",
+  "area": "set",
+  "variant": "minixiangqi",
+  "start_fen": "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR b - - 0 1",
+  "setup": {
+    "violation": "not-frozen-start",
+    "side": null,
+    "square": null
+  },
+  "rationale": "This is the frozen placement with the other side to move, and it is refused: the comparison is against the whole frozen FEN, so a game whose first mover is frozen has no second setup that differs only there. It is the nearest miss a setup a player could compose has, and the pin that keeps the per-game policy from widening to a game that has not defined a predicate."
+}

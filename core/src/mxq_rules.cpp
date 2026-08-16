@@ -14,6 +14,7 @@
 #include "mxq_core_state.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_rules.hpp"
+#include "mxq_setup.hpp"
 
 #if defined(MXQ_ENABLE_GOMOKU_FACADE)
 #include "mxq_rapfi_bridge.hpp"
@@ -141,6 +142,62 @@ MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, MxqGameKind game,
         return MXQ_ERR_RULES_INVALID_FEN;
     }
     return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
+                                            const char *fen,
+                                            MxqSetupReport *out_report,
+                                            MxqError *err) {
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::require_game(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    if (fen == nullptr) {
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "fen was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    if (out_report != nullptr) {
+        const MxqStatus orc = mxq::begin_out(
+            out_report, out_report->struct_size,
+            static_cast<uint32_t>(sizeof(MxqSetupReport)),
+            static_cast<uint32_t>(sizeof(MxqSetupReport)), err);
+        if (orc != MXQ_OK) {
+            return orc;
+        }
+        /* begin_out zeroes, and zero is MXQ_SETUP_VIOLATION_NONE and an empty
+         * square — but not MXQ_COLOR_NONE, which is -1. Every field the caller
+         * can read is written before any return below. */
+        out_report->side = MXQ_COLOR_NONE;
+    }
+
+    mxq::setup::Violation found;
+    std::string detail;
+    switch (mxq::setup::evaluate(game, fen, found, detail)) {
+    case mxq::setup::Error::None:
+        break;
+    case mxq::setup::Error::FenInvalid:
+        mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
+        return MXQ_ERR_RULES_INVALID_FEN;
+    case mxq::setup::Error::NotInitialised:
+        mxq::fill_error(err, MXQ_ERR_RESOURCE_ALLOCATION_FAILED, detail.c_str());
+        return MXQ_ERR_RESOURCE_ALLOCATION_FAILED;
+    }
+
+    if (out_report != nullptr) {
+        out_report->violation = found.violation;
+        out_report->side = found.side;
+        mxq::copy_bounded(out_report->square, sizeof(out_report->square),
+                          found.square.c_str());
+    }
+    if (found.violation == MXQ_SETUP_VIOLATION_NONE) {
+        return MXQ_OK;
+    }
+    mxq::fill_error(err, MXQ_ERR_RULES_ILLEGAL_POSITION, detail.c_str());
+    return MXQ_ERR_RULES_ILLEGAL_POSITION;
 }
 
 namespace {

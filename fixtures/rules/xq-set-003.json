@@ -1,0 +1,13 @@
+{
+  "id": "xq-set-003",
+  "title": "Setup: an advisor outside its palace",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "3k5/9/9/9/9/9/9/9/9/2A1K4 w - - 0 1",
+  "setup": {
+    "violation": "palace",
+    "side": "red",
+    "square": "c1"
+  },
+  "rationale": "An advisor never leaves its palace, so no advisor can ever stand on c1 — the file is outside it, however low the rank. The violation names the piece's own square, which is what a scene editor points at."
+}

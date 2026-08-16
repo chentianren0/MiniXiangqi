@@ -1,0 +1,13 @@
+{
+  "id": "xq-set-002",
+  "title": "Setup: a sixth soldier is one more than the game gives",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "4k4/9/9/9/9/4P4/P1P1P1P1P/9/9/4K4 w - - 0 1",
+  "setup": {
+    "violation": "piece-count",
+    "side": "red",
+    "square": null
+  },
+  "rationale": "Red has six soldiers where the game gives five. The count is a property of a side rather than of any one point, so the violation names Red and no square: no single soldier here is the wrong one. The structural encoding has nothing to say about it — it counts only generals — so this is the predicate's own refusal."
+}

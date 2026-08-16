@@ -160,9 +160,9 @@ enum class ReplayError {
  * start_fen must be the position this game begins from. These games have exactly
  * one, and it is the empty board: the facade's whole contract is a starting
  * position plus a complete history, and a board with stones on it is a position
- * reached by play rather than one to begin from. Accepting one would be offering
- * a start-from-position feature in two games and not the others, without the
- * setup-legality predicate docs/game-data.md requires of any such feature.
+ * reached by play rather than one to begin from. It is the same answer
+ * mxq_rules_validate_setup gives for these games — the frozen start and no
+ * other — said here because a replay is handed the line instead.
  *
  * out_legal_moves, when asked for, is every point a legal placement may go on,
  * in a fixed order: rank 1 upward, file a rightward. A finished game has none,

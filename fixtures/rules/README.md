@@ -15,16 +15,32 @@ Fixture IDs are stable and lowercase, `<game>-<area>-NNN`. The game prefix is `m
 - `*-chk-*` — perpetual check.
 - `*-chs-*` — perpetual chase, protection, and chase-target exclusion.
 - `*-mix-*` — cross-class and both-sides outcomes: mutual violations, check-over-chase precedence, and mixed-class sequences.
+- `*-set-*` — setup legality: whether a game may begin in a stated position at all, which is the only area that asks a question about a position rather than about play over one.
 
 An accepted fixture's `id`, position, moves, and assertions are immutable in meaning; a corrected interpretation is a new fixture (or an explicitly reviewed amendment), not a silent edit.
 
 ## Schema
 
-Every fixture has:
+A fixture is one of two shapes. Both carry:
 
 - `id`, `title`, `area` — identity as above.
 - `variant` — the ruleset identity the position is defined against: `minixiangqi` or `xiangqi`. This is what the runner replays the fixture under, and it is load-bearing rather than a label: a fixture is never dispatched on the board its FEN implies, because the ruleset is not a property of the board. It names a ruleset of the rules contract, not an engine variant to select: the engine configuration that must satisfy these fixtures, including its chase adjudication, is defined in [docs/engine-integration.md](../../docs/engine-integration.md), and the built-in engine variant named `minixiangqi` does not satisfy every Mini Xiangqi fixture.
 - `start_fen` — a 6-field FEN of that ruleset's board, per the frozen encoding in the rules contract.
+- `rationale` — the rule the fixture pins, in one or two sentences.
+
+Beyond those four, a **setup fixture** carries `setup` alone and a **play fixture** carries `moves`, `assertions` and `boundary`. That member is what the loader dispatches on, and a file mixing the two shapes is a load error rather than a fixture half of whose members are ignored: a history has no meaning for a position being judged as a starting point, and a legal-move set over a position no game could reach would pin an answer nothing asks for.
+
+### A setup fixture
+
+- `setup` — what the setup-legality predicate must answer for `start_fen`:
+  - `violation` — `null` when the position is a legal setup, and otherwise the class it breaks: `piece-count`, `palace`, `elephant-side`, `soldier-rank`, `facing-generals`, `opponent-in-check`, or `not-frozen-start`.
+  - `side` — the side the violation belongs to, `red` or `black`, or `null` where the class names none. It is `null` whenever `violation` is.
+  - `square` — the point the violation stands at, or `null` where the class names none. It is `null` whenever `violation` is.
+
+Which of `side` and `square` a class carries is that class's own and is pinned by the fixtures rather than restated in the loader.
+
+### A play fixture
+
 - `moves` — the complete move history from `start_fen`, in canonical coordinate notation (`<from><to>`, e.g. `b1b4`, or `a9a10` on the larger board); possibly empty. Every move must be legal at its turn.
 - `assertions` — the normative expectations at the position reached after `moves`:
   - `in_check` — whether the side to move is in check.
@@ -34,8 +50,7 @@ Every fixture has:
   - `applied` — when non-null, a list of single-move probes, each with `move`, `result_fen`, and `in_check`: applying the move must produce exactly that FEN and check state.
   - `game_state` — the normative state from `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, or `draw`. For `ongoing`, `reason` is `null`; otherwise `reason` is one of `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, `perpetual-chase`, or `fifty-move-rule`, with `at_occurrence` for repetition-based outcomes and `0` for the ones that are not. The reasons `mutual-perpetual-check` and `mutual-perpetual-chase` belong to the mutual-violation fixtures, the `mx-mix-*` ones carrying a `draw` state. Results are named by rule outcome, never by the side to move at detection.
 - `boundary` — when non-null, a `prefix_len` one repetition cycle earlier at which the outcome must not yet exist, pinning that the outcome attaches exactly at the asserted occurrence, plus a human-readable `expect` note stating what holds at that prefix.
-- `rationale` — the rule the fixture pins, in one or two sentences.
 
 ## Consumption
 
-The shared core's rules facade is gated by these fixtures on every platform: each fixture's history must replay, under the ruleset it declares, with exactly the asserted legality, positions, check states, and game states. The core test suite is the consuming harness once it exists; until then, the fixtures are validated against reference engines as workspace-only research evidence, which never substitutes for the normative expectations.
+The shared core's rules facade is gated by these fixtures on every platform, under the ruleset each declares: a play fixture's history must replay with exactly the asserted legality, positions, check states and game states, and a setup fixture's position must be judged with exactly the asserted verdict, violation class, side and square. The core test suite is the consuming harness, and it is the same harness everywhere.

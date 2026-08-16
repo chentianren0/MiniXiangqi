@@ -1,0 +1,13 @@
+{
+  "id": "xq-set-001",
+  "title": "Setup: a composed endgame scene, Black to move",
+  "area": "set",
+  "variant": "xiangqi",
+  "start_fen": "2bakab2/9/9/9/9/3N5/2R6/9/9/3K5 b - - 0 1",
+  "setup": {
+    "violation": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "Chariot and horse against the full defensive set is an ordinary book position, and every setup rule holds in it: the complement is inside what the game gives each side, the generals and advisors are in their palaces, the elephants stand on two of their own seven points, there is no soldier to be behind its rank, the generals are on different files, and Red, which is not to move, is not in check. Black moves first, which a scene may say and a frozen start never can."
+}

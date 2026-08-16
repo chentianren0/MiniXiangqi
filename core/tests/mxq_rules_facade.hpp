@@ -49,6 +49,12 @@ public:
                           const std::vector<std::string> &moves,
                           std::vector<std::string> &out, MxqError &err);
 
+    /* Whether `game` may be set up in `fen`: MXQ_OK, or
+     * MXQ_ERR_RULES_ILLEGAL_POSITION with `report` naming the violation.
+     * `report` is written whichever the answer is. */
+    MxqStatus validate_setup(MxqGameKind game, const std::string &fen,
+                             MxqSetupReport &report, MxqError &err);
+
 private:
     MxqCore *core_ = nullptr;
 };
@@ -66,6 +72,11 @@ bool rules_facade_built();
  * the contract requires callers to tolerate. */
 std::string state_identifier(MxqGameState state);
 std::string reason_identifier(MxqEndReason reason);
+
+/* The same, for the setup predicate's violation class and for a side. Both
+ * answer "" for the absent value, which is what a fixture writes as null. */
+std::string violation_identifier(MxqSetupViolation violation);
+std::string color_identifier(MxqColor color);
 
 } /* namespace mxqtest */
 

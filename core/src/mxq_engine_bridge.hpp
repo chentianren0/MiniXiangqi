@@ -151,6 +151,38 @@ ReplayError replay(Variant variant, const char *start_fen,
  * encoding fixes. */
 bool validate_fen(Variant variant, const char *fen, std::string &detail);
 
+/* Why the check probe below could not answer. */
+enum class ProbeError {
+    None,
+    NotInitialised,
+    FenInvalid,      /* not a position of this variant's board */
+};
+
+/*
+ * Whether the side to move in `fen` stands in check.
+ *
+ * It exists so that the setup predicate can ask the question of the side that
+ * is NOT to move without ever constructing a move: the caller flips the side to
+ * move and asks this. That is not a stylistic preference. A position offering a
+ * general capture is exactly what the predicate refuses, and the engine's
+ * do_move asserts that no capture is of a KING — so any route to the answer
+ * that applied a move would abort the process on the very input this exists to
+ * judge. Nothing here applies one: the position is set and its checkers read,
+ * which is state the engine computes at set() time. No move is generated and
+ * none is made.
+ *
+ * The answer is the engine's ordinary attack relation and does NOT include the
+ * flying-general one: the engine keeps that in legal() rather than in the
+ * checkers it computes for a position, so two generals facing on an empty file
+ * are not checkers of each other here. The caller owns that rule, which is
+ * board arithmetic and needs no engine at all.
+ *
+ * Takes the same g_mutex a replay does, and for the same reason: it reads the
+ * variant object and the tables a configuration builds.
+ */
+ProbeError side_to_move_in_check(Variant variant, const char *fen,
+                                 bool &out_in_check, std::string &detail);
+
 /* ------------------------------------------------------------------------- */
 /* The search side of the bridge                                             */
 /* ------------------------------------------------------------------------- */
