@@ -1,7 +1,7 @@
 /* The library store behind mxq_store_ and the attached-session commits.
  *
  * One embedded SQLite database, opened at mxq_core_init and closed at
- * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 4.
+ * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 5.
  * This header is internal: nothing SQLite-shaped is visible through mxq.h, per
  * docs/architecture.md, and core/CMakeLists.txt links the vendored library
  * PRIVATE for the same reason.
@@ -44,7 +44,7 @@ namespace store {
 
 /* The store's one database file, under the frontend-supplied store directory.
  * The name is part of the accepted contract: docs/game-data.md, "Library store
- * schema, version 4". Write-ahead logging keeps its journal beside it as
+ * schema, version 5". Write-ahead logging keeps its journal beside it as
  * library.sqlite3-wal and library.sqlite3-shm. */
 constexpr const char *kDatabaseFileName = "library.sqlite3";
 
@@ -403,12 +403,12 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *
  *   - the required pragmas are applied and then read back and verified:
  *     journal_mode=WAL, synchronous=FULL, foreign_keys=ON;
- *   - a fresh database receives the complete schema version 4 in one
+ *   - a fresh database receives the complete schema version 5 in one
  *     transaction, and its user_version pragma is set to 4;
  *   - an existing database is verified: the three tables must exist and be
  *     STRICT, and the single library row must be present;
  *   - a database recording any other schema version is refused, and never
- *     migrated: version 4 is the only schema this build defines. A newer one
+ *     migrated: version 5 is the only schema this build defines. A newer one
  *     is MXQ_ERR_STORE_SCHEMA_TOO_NEW, which the contract requires to be said
  *     distinctly; anything else is MXQ_ERR_STORE_MIGRATION_FAILED.
  *

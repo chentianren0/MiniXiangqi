@@ -1,6 +1,6 @@
 # Game Archive Fixtures
 
-This directory holds the approved, executable fixtures for the version 4 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
+This directory holds the approved, executable fixtures for the version 5 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
 
 Normative stance: every expected value comes from the accepted archive format, its serialized vocabularies, its cross-field rules, and its validation order — never from what the codec currently happens to do. A file here that the codec disagrees with is a codec defect until the contract says otherwise.
 
@@ -35,6 +35,8 @@ Two configurations, deliberately different, exactly as `rules_fixtures` differs:
 
 `validate` replays the move line through the rules facade, so without the engine it is not in the library at all — absent rather than stubbed, because the accepted error taxonomy has no not-implemented code. The probe half of every fixture still runs there, which is most of the structural corpus.
 
+Three different things skip in this runner and only one of them is that absence: a fixture of a placement game is passed over in a build without the second engine, and the argument-contract case is passed over in a debug build, where the assertions it asks about are compiled in. The closing NOT IMPLEMENTED banner speaks for the rules facade alone, so a run that skipped only the other two does not claim `validate` was missing from a build that had it.
+
 ## The golden corpus
 
 Every golden asserts three things:
@@ -54,6 +56,7 @@ Every golden asserts three things:
 | `human-vs-ai-active` | human versus AI, active, Random resolved to Black | none |
 | `xiangqi-free-play-active` | Xiangqi, Free Play, active | none |
 | `xiangqi-free-play-ended-early` | Xiangqi, Free Play, complete | `none` / `ended-early` |
+| `xiangqi-custom-scene` | Xiangqi, Free Play, active, from a composed start with Black to move | none |
 | `nearby-active` | nearby, active | none |
 | `nearby-resignation` | nearby, complete | `red-wins` / `resignation` |
 | `nearby-agreed-draw` | nearby, complete | `draw` / `agreed-draw` |
@@ -61,11 +64,11 @@ Every golden asserts three things:
 | `renju-free-play-active` | Renju, Free Play, active | none |
 | `gomoku-15-five-in-a-row` | Gomoku, Free Play, complete | `red-wins` / `five-in-a-row` |
 
-Between them they cover every game the format records, all four `outcome` values, the terminal pairs a version 4 file can carry, all three modes, both human sides, all three AI levels, and both halves of the omission rule: Free Play and nearby play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
+Between them they cover every game the format records, all four `outcome` values, the terminal pairs a version 5 file can carry, all three modes, both human sides, all three AI levels, both halves of the per-game start policy, and both halves of the omission rule: Free Play and nearby play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface.
 
 The four nearby goldens also carry the portability law: none of them names a peer device, a pairing, or which side this device's player took. `nearby-resignation` is a resignation with no `human_side` to check its winner against — the outcome names the winner and the side that resigned is its opposite — and the two draws are the ends only two players can reach.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 4 document and not an incomplete one.
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 5 document and not an incomplete one.
 
 The two placement goldens are what the second board looks like in this format: a frozen empty 15×15 start, single-square plies, and — in `gomoku-15-five-in-a-row` — an end only a placement game's rules reach. A codec carrying a movement game's start position, move grammar or end-reason set passes every xiangqi golden unchanged and fails these two.
 
@@ -76,7 +79,7 @@ The two placement goldens are what the second board looks like in this format: a
   "title": "…",
   "why": "…",
   "info": {
-    "archive_version": 4,
+    "archive_version": 5,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
@@ -152,7 +155,8 @@ One archive per rejection class of the accepted validation order, each stating t
 | cross-field: resignation | `cross-field-resignation-winner` | `MALFORMED` | `MALFORMED` |
 | cross-field: agreed ending | `cross-field-agreed-draw-mode` | `MALFORMED` | `MALFORMED` |
 | cross-field: time ordering | `time-ordering` | `MALFORMED` | `MALFORMED` |
-| rules tier: initial position | `start-fen-not-frozen` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
+| rules tier: initial position | `start-fen-not-frozen` | `MXQ_OK` | `MXQ_ERR_RULES_ILLEGAL_POSITION` |
+| rules tier: initial position | `start-fen-illegal-setup` | `MXQ_OK` | `MXQ_ERR_RULES_ILLEGAL_POSITION` |
 | rules tier: illegal move | `move-illegal` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: terminal pair | `terminal-mismatch-checkmate` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-threefold` | `MXQ_OK` | `TERMINAL_MISMATCH` |
@@ -160,7 +164,7 @@ One archive per rejection class of the accepted validation order, each stating t
 | rules tier: terminal pair | `terminal-mismatch-agreed-draw` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 | rules tier: terminal pair | `terminal-mismatch-outcome` | `MXQ_OK` | `TERMINAL_MISMATCH` |
 
-Statuses are written without their `MXQ_ERR_ARCHIVE_` prefix here; the sidecars spell the constant in full.
+Statuses are written without their `MXQ_ERR_ARCHIVE_` prefix here; the sidecars spell the constant in full. Two rows carry a status with no such prefix, and that is the point of them: see the start policy below.
 
 Two limits are size limits, and a fixture file for either would be a megabyte or seventy kilobytes of noise in the repository. They are built by the runner instead, on **both** sides of each boundary — exactly 1 MiB and exactly 10 000 plies must be accepted, one byte and one ply more must not — which pins them as boundaries rather than approximations. That is why those two rows say *synthesised*.
 
@@ -187,7 +191,18 @@ Two limits are size limits, and a fixture file for either would be a megabyte or
 
 ### The game axis is read before the rest of `content`
 
-`rules_id` decides how three other members are judged, which is why four rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `move-notation-placement` is a `renju` document whose ply is spelled as a movement — two squares of its own board, and no ply of a game where a stone arrives and nothing moves, which is why how many squares a move is comes from the game rather than from the text's length. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must. And `cross-field-placement-reason` and `cross-field-movement-reason` are the two directions of one rule — a rule reason belongs to the kind of game whose rules produce it — because a partition checked on one side only refuses half of what it knows, with `cross-field-fifty-move-game` for the narrowing inside it, the move-count rule that is Xiangqi's and not Mini Xiangqi's.
+`rules_id` decides how three other members are judged, which is why four rejection fixtures exist for it beyond the vocabulary one. `move-notation-other-board` is a `minixiangqi` document whose move is `a1a10`: a move of the larger board and no move at all of the smaller one, which a reader carrying a single grammar would accept. `move-notation-placement` is a `renju` document whose ply is spelled as a movement — two squares of its own board, and no ply of a game where a stone arrives and nothing moves, which is why how many squares a move is comes from the game rather than from the text's length. `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array: a real position of a real game, the wrong one, so nothing structural can catch it and the rules tier must — see the start policy below for the company it keeps. And `cross-field-placement-reason` and `cross-field-movement-reason` are the two directions of one rule — a rule reason belongs to the kind of game whose rules produce it — because a partition checked on one side only refuses half of what it knows, with `cross-field-fifty-move-game` for the narrowing inside it, the move-count rule that is Xiangqi's and not Mini Xiangqi's.
+
+### Which position a document begins from is the game's own
+
+Four fixtures carry the start policy between them, and no two of them get the same answer.
+
+- `xiangqi-custom-scene` is the golden: a `xiangqi` document whose `start_fen` is a composed position with Black to move. It is the one shape version 5 adds, and it is what a reader comparing `start_fen` against a frozen constant refuses.
+- `start-fen-not-frozen` is a `minixiangqi` document opening from another position of its own board. Mini Xiangqi defines no setup-legality predicate, so it begins from its frozen start and from nowhere else — the file is refused with `MXQ_ERR_RULES_ILLEGAL_POSITION`, which is that predicate's own answer for a game that has none. Xiangqi is the single `rules_id` under which this file would be accepted, and that is the whole of the difference version 5 makes.
+- `start-fen-illegal-setup` is a `xiangqi` document whose composed start the predicate refuses: Red is not to move and stands in check. It also fixes the order of the tier — the start is judged before anything is replayed, because a position offering the capture of a general is one the engine asserts against rather than adjudicates.
+- `start-fen-other-game` is a `xiangqi` document opening from the Mini Xiangqi array, and it keeps its archive-domain `INCONSISTENT_REPLAY`. A position of no board is not one the predicate has an opinion about, so it is the file disagreeing with itself rather than the setup question being answered — which is why the two rows differ, and why a build that unified them would fail this one.
+
+The corpus pins the frozen-only half of the policy through the Mini Xiangqi file, which is evaluated in every configuration that has the rules facade. The placement games' half is the same rule and has no fixture of its own: one would be evaluated only in a build carrying the second engine, so it would pin nothing where the corpus actually runs.
 
 ## What the read path does not enforce
 
@@ -199,7 +214,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The active shapes are its one deliberate divergence: they are valid version 4 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The active shapes are its one deliberate divergence: they are valid version 5 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

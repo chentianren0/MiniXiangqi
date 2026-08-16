@@ -134,7 +134,7 @@ The shared core's rules facade, defined in [architecture.md](architecture.md), e
 
 The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the identifier scheme, and the immutability rules. Identifiers are `mx-<area>-NNN` for Mini Xiangqi and `xq-<area>-NNN` for Xiangqi, and each fixture names its own game in a `variant` member that the runner dispatches on. Every fixture carries a stable identifier, an initial position, a complete move history, the expected resulting position and check state, the expected game state, and a concise rule rationale; movement and ending fixtures additionally assert exact legal-move sets, rejected moves, or applied single-move probes. A setup fixture is the one shape outside that: it carries a position and either the clause that refuses it or its acceptance, and no move line. Fixture game states use the state identifiers `ongoing`, `claimable-draw`, `red-wins`, `black-wins`, and `draw` with the reason identifiers `checkmate`, `stalemate`, `threefold-repetition`, `perpetual-check`, `perpetual-chase`, and `fifty-move-rule`, and they name results by rule outcome — the violating side loses — never by the side to move at detection. The reason identifiers `mutual-perpetual-check` and `mutual-perpetual-chase` belong to the mutual-violation fixtures, which are the `mx-mix-*` ones carrying a `draw` state.
 
-The approved set contains **seventy-eight** fixtures: sixty-six for Mini Xiangqi and twelve for Xiangqi.
+The approved set contains **eighty-nine** fixtures: sixty-eight for Mini Xiangqi and twenty-one for Xiangqi.
 
 For Mini Xiangqi, these pin the rules above in their simplest forms, position identity, and the third-occurrence adjudication point:
 
@@ -157,7 +157,7 @@ The remainder extend the same areas: chariot range and obstruction in `mx-move-*
 
 **A mutual perpetual-check draw and check-over-chase precedence are both constructible on the 7-by-7 board, and both are pinned.** `mx-mix-001` is the mutual perpetual check, six pieces with the side to move in check at every ply of the cycle and each side's move both an evasion and a check. `mx-mix-004` and `mx-mix-007` are the precedence, in five pieces each: the first has the checked side chasing, the second has the checking side chasing with the same move, and both lose for the checking side. Each carries a deletion control identical but for the piece that supplies the check — `mx-chs-027` and `mx-chs-037` — which is a perpetual chase in its own right and is what proves the chase component real.
 
-For Xiangqi, the twelve pin what the 9-by-10 board adds and what it changes:
+For Xiangqi, twelve pin what the 9-by-10 board adds and what it changes:
 
 - `xq-move-001` — the horse's blocking square, on a board where the same horse has eight destinations;
 - `xq-move-002` — the elephant's blocked eye and its confinement to its own side of the river, as two separate rules;
@@ -170,5 +170,7 @@ For Xiangqi, the twelve pin what the 9-by-10 board adds and what it changes:
 - `xq-chs-002` — a soldier that has crossed the river **is** a chase target, which is the difference from `mx-chs-003`;
 - `xq-rep-001` — neutral repetition claimable exactly at the third occurrence;
 - `xq-cnt-001` — the move-count draw, at the ply it lands and not two plies earlier.
+
+The remaining nine are `xq-set-*`, the setup-legality area: one refusal per clause of the predicate above, a composed scene and a side-to-move-in-check position it accepts, and one position of no board at all, which the structural precondition refuses before any clause is reached. `mx-set-001` and `mx-set-002` are the pair that says Mini Xiangqi defines no predicate — its frozen start accepted, and any other position refused as not that start.
 
 Fixtures and this document must be reviewed together. A fixture is not accepted merely because PyChess or Fairy-Stockfish produces the same result. Engine conformance to the approved fixtures, including the accepted limits of AXF chase configuration, is owned by [engine-integration.md](engine-integration.md); engine observations never alter the fixtures' authority.

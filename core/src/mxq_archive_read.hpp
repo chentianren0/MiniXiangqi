@@ -41,18 +41,19 @@
 namespace mxq {
 namespace archive {
 
-/* One version 4 document, decoded whole — a row's or a file's. The terminal
+/* One version 5 document, decoded whole — a row's or a file's. The terminal
  * trio is meaningful exactly when completed is true. written_at_ms is
  * origin.exported_at, which a resumed session carries forward so that
  * re-encoding it reproduces the bytes the store holds, and which an imported
  * record keeps as the export event the file describes. archive_version is
- * carried because duplicate detection compares it (docs/game-data.md). */
+ * carried because duplicate detection compares it (docs/game-data.md). The
+ * document's start_fen is in config, where a session's start lives, rather than
+ * beside it: one fact, one home. */
 struct Stored {
     uint32_t                 archive_version = 0;
     std::string              game_id;
     MxqGameConfig            config{};
     std::vector<std::string> moves;
-    std::string              start_fen;
     int64_t                  started_at_ms = 0;
     int64_t                  written_at_ms = 0;
     bool                     completed = false;

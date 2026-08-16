@@ -45,6 +45,7 @@
 #include "mxq_engine_bridge.hpp"
 #include "mxq_rules.hpp"
 #include "mxq_session.hpp"
+#include "mxq_setup.hpp"
 #endif
 
 #include <cassert>
@@ -66,17 +67,17 @@ constexpr size_t kMaxDepth        = 4u;
 constexpr size_t kMaxMembers      = 32u;
 
 /*
- * The string bound is version 4's own number, decided rather than inherited.
+ * The string bound is version 5's own number, decided rather than inherited.
  *
  * 256 bytes is what every string this format carries fits inside with room to
- * spare: the widest is start_fen, whose domain is the four frozen starting
- * positions and whose widest member is Xiangqi's at 69 bytes; the timestamps
- * are 24, game_id is 36, a ply is at most 6, and the serialised identifiers are
- * shorter than any of them. It also admits the widest position any game this
- * build carries can reach — a full 15x15 placement board is 251 characters —
- * so a version that ever permits an initial position other than a frozen start
- * meets a bound already wide enough for one, and revisits it together with the
- * setup-legality predicate such a version owes.
+ * spare: the widest is start_fen, and its domain is no longer the four frozen
+ * starts — a xiangqi document may carry any position that game's setup-legality
+ * predicate accepts, which no arrangement of pieces spells in more than 109.
+ * The timestamps are 24, game_id is 36, a ply is at most 6, and the serialised
+ * identifiers are shorter than any of them. The number is chosen against the
+ * widest position any game this specification carries can reach — a full 15x15
+ * placement board is 251 characters — rather than against the widest one a
+ * document may open from, so it already admits every start of every game.
  *
  * It is one bound for every string, start_fen included, and the parser applies
  * it at stage 2 rather than any field re-stating it at stage 4: the accepted
@@ -1078,8 +1079,16 @@ void fill_stored(const Decoded &decoded, Stored &out) {
      * reads the store column beside the blob — sets it afterwards; a caller
      * that has none, such as an import preview, is right to leave it. */
     out.config.local_side = MXQ_COLOR_NONE;
+    /* The document spells every start out; the configuration keeps the frozen
+     * one as the empty string, which is the convention MxqGameConfig.start_fen
+     * states. Normalising here is what makes a stored game's configuration read
+     * the same before and after a resume — and re-encoding writes the start
+     * back in full either way, so the bytes are unchanged by it. */
+    if (decoded.start_fen != notation::start_fen(decoded.game)) {
+        copy_bounded(out.config.start_fen, sizeof(out.config.start_fen),
+                     decoded.start_fen.c_str());
+    }
     out.moves = decoded.moves;
-    out.start_fen = decoded.start_fen;
     out.started_at_ms = decoded.started_at_ms;
     out.written_at_ms = decoded.origin_written_at_ms;
     out.completed = decoded.completed;
@@ -1186,11 +1195,26 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
 /*
  * Stage 5, the rules tier, in one place because two entry points run it.
  *
- * The initial position must be exactly the frozen starting FEN of the game
- * rules_id names — version 4 defines no other for any of the four, whatever
- * mxq_rules_validate_setup would accept of one — then every move must be legal
- * in sequence, then the recorded terminal pair must agree with the replayed
- * adjudication.
+ * The initial position must be one the game rules_id names begins from — the
+ * per-game start policy, which is the setup-legality predicate asked through
+ * mxq::setup::judge_start and is total over the four games: a xiangqi document
+ * may carry any position that predicate accepts, and every other game's carries
+ * exactly its frozen start, because a game whose rules define no predicate has
+ * no other position to begin from. Then every move must be legal in sequence,
+ * then the recorded terminal pair must agree with the replayed adjudication.
+ *
+ * The start is judged before anything is replayed, and that order is
+ * load-bearing rather than tidy: an illegal setup can be a position offering
+ * the capture of a general, and the engine asserts that no capture is one, so a
+ * file reaching the replay first could take a build down instead of being
+ * refused.
+ *
+ * Two rungs, two domains. A start that is not a position of this game's board
+ * at all, or that carries counters a start cannot, is the file disagreeing with
+ * itself — MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY, this stage's own voice. A start
+ * that is a position of the board but not one the game may be set up in is the
+ * setup question's answer wherever it is asked, so it carries that question's
+ * own MXQ_ERR_RULES_ILLEGAL_POSITION.
  *
  * An archive that records no end has no terminal pair to agree with: an
  * unconfirmed natural terminal position remains the active game, so it is as
@@ -1199,11 +1223,29 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  * an import creates rather than about what the rules say.
  */
 MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
-    if (decoded.start_fen != notation::start_fen(decoded.game)) {
-        fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
-                   "\"start_fen\" is not this game's frozen starting position, "
-                   "which is the only initial position version 4 defines");
-        return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+    {
+        setup::Violation violation;
+        std::string why;
+        switch (setup::judge_start(decoded.game, decoded.start_fen.c_str(),
+                                   violation, why)) {
+        case setup::StartError::None:
+            break;
+        case setup::StartError::Structural:
+        case setup::StartError::NotInitialised:
+            fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
+                       ("\"start_fen\" is not a position this game begins "
+                        "from: " +
+                        why)
+                           .c_str());
+            return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
+        case setup::StartError::Illegal:
+            fill_error(err, MXQ_ERR_RULES_ILLEGAL_POSITION,
+                       ("\"start_fen\" is not a position this game may be set "
+                        "up in: " +
+                        why)
+                           .c_str());
+            return MXQ_ERR_RULES_ILLEGAL_POSITION;
+        }
     }
 
     std::vector<const char *> moves;

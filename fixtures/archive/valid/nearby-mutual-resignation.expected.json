@@ -2,7 +2,7 @@
   "title": "Nearby, both players resigned",
   "why": "Two resignations that crossed are a draw rather than two losses, and that is a different fact from a draw the players agreed to, so it is a reason of its own rather than the same one spelled twice.",
   "info": {
-    "archive_version": 4,
+    "archive_version": 5,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "nearby",

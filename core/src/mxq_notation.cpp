@@ -186,6 +186,11 @@ MoveClass move_class_of(MxqGameKind game) { return row_of(game).move_class; }
 
 const char *start_fen(MxqGameKind game) { return row_of(game).start_fen; }
 
+const char *start_fen(const MxqGameConfig &config) {
+    return config.start_fen[0] != '\0' ? config.start_fen
+                                       : start_fen(config.game);
+}
+
 size_t square_length(MxqGameKind game, const char *text, size_t len) {
     if (text == nullptr || len == 0) {
         return 0;

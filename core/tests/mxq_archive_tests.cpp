@@ -58,8 +58,21 @@ namespace {
 int g_failed = 0;      /* fixtures with at least one unmet expectation */
 int g_errored = 0;     /* fixtures that could not be read at all */
 int g_passed = 0;
-int g_skipped = 0;     /* expectations that need a facade this build lacks */
+int g_skipped = 0;     /* fixtures with at least one expectation skipped */
 int g_checks = 0;      /* expectations actually evaluated */
+
+/*
+ * The one skip the closing banner speaks for, matched by value rather than
+ * counted with the rest.
+ *
+ * Three things skip here and they are three different absences: this one, the
+ * placement games' second engine, and the argument assertions a debug build
+ * compiles in. A banner that fired on the total announced that validate was
+ * missing from a build that had it, every time a placement fixture was passed
+ * over — which is a report about the build that is not true of it.
+ */
+const char *const kNoFacade = "validate needs the rules facade";
+int g_skipped_no_facade = 0;
 
 std::string assets_dir() {
     if (const char *env = std::getenv("MXQ_ASSETS_DIR")) {
@@ -131,6 +144,9 @@ void report(const Case &c) {
     }
     if (!c.skip_reason.empty()) {
         ++g_skipped;
+        if (c.skip_reason == kNoFacade) {
+            ++g_skipped_no_facade;
+        }
         std::cout << "  PART SKIP " << c.name << "  (" << c.skip_reason
                   << ")\n";
         return;
@@ -557,7 +573,7 @@ void run_golden(MxqCore *core, const fs::path &file, const fs::path &sidecar) {
                 "validate is documented as everything probe does");
     }
 #else
-    c.skip("validate needs the rules facade");
+    c.skip(kNoFacade);
 #endif
 
     report(c);
@@ -635,7 +651,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
      * reaches. */
     (void)detail_index;
     (void)want_validate;
-    c.skip("validate needs the rules facade");
+    c.skip(kNoFacade);
 #endif
 
     report(c);
@@ -653,7 +669,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
  */
 std::string document_with_plies(size_t count) {
     std::string doc =
-        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":4,"
+        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":5,"
         "\"content\":{\"mode\":\"free-play\",\"moves\":[";
     for (size_t i = 0; i < count; ++i) {
         if (i != 0) {
@@ -779,10 +795,10 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     rc = mxq_archive_supported_versions(&min_readable, &current, &err);
     c.check(rc == MXQ_OK, "mxq_archive_supported_versions failed");
     /* One version is defined, so the window is one version wide: the corpus
-     * above is entirely version 4, and a build that quietly kept reading an
+     * above is entirely version 5, and a build that quietly kept reading an
      * earlier shape would widen this pair rather than fail a fixture. */
-    c.check_eq(static_cast<int64_t>(min_readable), 4, "minimum readable");
-    c.check_eq(static_cast<int64_t>(current), 4, "current");
+    c.check_eq(static_cast<int64_t>(min_readable), 5, "minimum readable");
+    c.check_eq(static_cast<int64_t>(current), 5, "current");
 
     report(c);
 }
@@ -907,7 +923,7 @@ int main(int argc, char **argv) {
               << g_failed << " failed, " << g_errored << " errored, "
               << g_skipped << " partly skipped\n"
               << g_checks << " expectations evaluated\n";
-    if (g_skipped > 0) {
+    if (g_skipped_no_facade > 0) {
         std::cout << "\nNOT IMPLEMENTED: mxq_archive_validate is not in this "
                      "build, so every validate expectation was skipped. Build "
                      "with -DMXQ_ENABLE_RULES_FACADE=ON to evaluate them.\n";

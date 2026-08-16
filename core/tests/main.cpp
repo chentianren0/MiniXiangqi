@@ -643,6 +643,14 @@ int main(int argc, char **argv) {
     std::string unavailable;
     const fs::path scratch =
         fs::temp_directory_path(ec) / "minixiangqi-core-tests";
+    /* Scratch, and cleared as such. The path is fixed so that a run leaves
+     * nothing to name afterwards, which also means a library left by an earlier
+     * run is what the next one opens — and a store recording another schema
+     * version is refused, exactly as the contract requires of a real library.
+     * That refusal is right about a user's games and wrong about scaffolding
+     * this corpus never reads: it would fail the whole corpus on a developer's
+     * machine for a file no fixture touches. */
+    fs::remove_all(scratch, ec);
     const bool available =
         facade.open(scratch.string(), assets_dir(), unavailable);
     if (available) {

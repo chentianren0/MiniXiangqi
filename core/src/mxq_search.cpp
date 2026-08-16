@@ -813,7 +813,7 @@ MxqStatus start(MxqCore *core, const MxqGame *game, Purpose purpose,
     auto task = std::make_shared<Task>();
     task->kind = Task::Kind::Search;
     task->game = game->config.game;
-    task->start_fen = notation::start_fen(game->config.game);
+    task->start_fen = notation::start_fen(game->config);
     task->moves = game->moves;
     task->game_id = game->game_id;
     task->position_revision =

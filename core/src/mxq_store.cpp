@@ -1,6 +1,6 @@
 /* Opening, creating and closing the library store.
  *
- * The schema created here is the one docs/game-data.md accepts as version 4,
+ * The schema created here is the one docs/game-data.md accepts as version 5,
  * transcribed constraint for constraint; the connection regime — write-ahead
  * logging, full synchronous durability, foreign keys on — is the same
  * contract's, applied and then read back rather than assumed. Everything that
@@ -25,8 +25,8 @@ namespace store {
 namespace {
 
 /*
- * Schema version 4, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 4"). Four STRICT tables; the single library row with the
+ * Schema version 5, exactly as accepted in docs/game-data.md ("Library store
+ * schema, version 5"). Four STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship, the local-perspective rule and time
  * ordering as check constraints;
@@ -40,7 +40,7 @@ namespace {
  * holds records of every game the app carries, and which game a row is of is a
  * column with a CHECK rather than something to decode a blob for.
  */
-const char *const kSchemaV4 = R"SQL(
+const char *const kSchema = R"SQL(
 CREATE TABLE meta (
   key   TEXT NOT NULL PRIMARY KEY,
   value TEXT NOT NULL
@@ -295,7 +295,7 @@ END;
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
 -- Non-authoritative bookkeeping; nothing reads this table to decide anything.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '4');
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '5');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh
@@ -401,7 +401,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
 }
 
 /* The structural verification run on every successful open: the four tables
- * of schema version 4 exist and are STRICT, and the single library row is
+ * of schema version 5 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
 MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
@@ -421,7 +421,7 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (value != "4") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                     "the store does not hold the four STRICT tables of schema "
-                    "version 4 (found " + value + ")");
+                    "version 5 (found " + value + ")");
     }
 
     if (!query_first_column(db, "SELECT count(*) FROM library;", value, rc,
@@ -442,16 +442,16 @@ MxqStatus create_schema(sqlite3 *db, MxqError *err) {
     if (!exec(db, "BEGIN IMMEDIATE;", rc, detail)) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
-    if (!exec(db, kSchemaV4, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 4;", rc, detail)) {
+    if (!exec(db, kSchema, rc, detail) ||
+        !exec(db, "PRAGMA user_version = 5;", rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 4: " + cause);
+        return fail_sqlite(err, rc, "cannot create schema version 5: " + cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 4: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version 5: " + detail);
     }
     return MXQ_OK;
 }

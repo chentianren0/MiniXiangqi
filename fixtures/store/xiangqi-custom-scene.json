@@ -1,0 +1,22 @@
+{
+  "title": "Xiangqi, Free Play, a composed scene: the round trip from a start that is not frozen",
+  "why": "The start axis, end to end. The session is created from a composed position with Black to move, so its replay, its commits, its resume and the document it encodes all run from a start the core cannot look up — a build that substituted the frozen array anywhere would replay a different board and fail the first move. Black moving first is the second half of it: ply 0 is Black's, and the undo arithmetic must count back from the start's own side rather than from the ply's parity.",
+  "config": {
+    "game": "xiangqi",
+    "mode": "free-play",
+    "start_fen": "4k4/9/7c1/1r7/9/3pP4/6R2/9/9/4K4 b - - 0 1"
+  },
+  "moves": ["b7b1", "e1e2"],
+  "archive": "xiangqi-custom-scene.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": true,
+    "undo_plies": 1,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": [1, 1]
+}

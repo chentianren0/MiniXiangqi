@@ -63,6 +63,14 @@ int g_failed = 0;
 int g_skipped = 0;
 int g_checks = 0;
 
+/* The one skip the closing banner speaks for, matched by value. Two things skip
+ * here and they are two different absences: this one, and a scenario of a game
+ * only a build with the second engine carries. A banner that fired on the total
+ * announced that endings were missing from a build that had them, which is a
+ * report about the build that is not true of it. */
+const char *const kNoFacade = "ending a game needs the rules facade";
+int g_skipped_no_facade = 0;
+
 /* ---------------------------------------------------------------------- */
 /* One case's verdict                                                      */
 /* ---------------------------------------------------------------------- */
@@ -111,6 +119,9 @@ struct Case {
         }
         if (!skip_reason.empty()) {
             ++g_skipped;
+            if (skip_reason == kNoFacade) {
+                ++g_skipped_no_facade;
+            }
             std::cout << "  SKIP      " << name << "  (" << skip_reason << ")\n";
             return;
         }
@@ -1064,6 +1075,14 @@ void case_a_failed_ending_is_retryable(const std::vector<fs::path> &paths) {
             continue;
         }
         const std::string what = path.stem().string();
+#if !MXQ_TEST_GOMOKU_FACADE
+        /* The same skip run_scenario makes, and for the same reason: a game
+         * this build does not carry has no session to fail an ending on, so
+         * driving one here would report the absent engine as a broken retry. */
+        if (scenario.needs_gomoku) {
+            continue;
+        }
+#endif
         const fs::path store = scratch_dir("retry-" + what);
 
         MxqCore *core = nullptr;
@@ -2429,7 +2448,7 @@ int main(int argc, char **argv) {
     fs::remove_all(scratch_root(), cleanup);
 #else
     Case skipped("the terminal commits and the History surface");
-    skipped.skip("ending a game needs the rules facade");
+    skipped.skip(kNoFacade);
     skipped.report();
 #endif
 
@@ -2438,7 +2457,7 @@ int main(int argc, char **argv) {
               << total << " cases: " << g_passed << " passed, " << g_failed
               << " failed, " << g_skipped << " skipped\n"
               << g_checks << " expectations evaluated\n";
-    if (g_skipped > 0) {
+    if (g_skipped_no_facade > 0) {
         std::cout << "\nNOT IMPLEMENTED: the endings and the sessions they "
                      "produce are not in this build. Build with "
                      "-DMXQ_ENABLE_RULES_FACADE=ON to evaluate them.\n";
