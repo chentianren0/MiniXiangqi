@@ -219,23 +219,27 @@ extension CustomScene.Verdict {
 
 extension SetupViolation {
     /// The violation as one plain sentence, in the class's own terms and with
-    /// whatever the class names in it: the side where it belongs to one, and
-    /// the point where it stands at one. The sides are the board's own words,
-    /// so the sentence and a screen reader name a side the same way.
+    /// whatever the class names in it: the side where it belongs to one, the
+    /// point where it stands at one, and the piece where the class is about one
+    /// kind. The sides and the pieces are the board's own words, so a sentence
+    /// and a screen reader name both the same way — which for a piece means the
+    /// side's own character in Chinese, 相 against 象 and 兵 against 卒.
     var reason: String? {
         let sideName = side.map { CustomScene.game.sideName($0) } ?? ""
         switch rule {
         case .pieceCount:
             return String(format: String(localized: "scene.reason.pieceCount"), sideName)
         case .palace:
+            // The class covers a general or an advisor, and the core names
+            // neither, so the sentence names the point rather than the piece.
             return String(format: String(localized: "scene.reason.palace"),
                           sideName, square)
         case .elephantSide:
             return String(format: String(localized: "scene.reason.elephantSide"),
-                          sideName, square)
+                          sideName, square, pieceName(.elephant))
         case .soldierRank:
             return String(format: String(localized: "scene.reason.soldierRank"),
-                          sideName, square)
+                          sideName, square, pieceName(.soldier))
         case .facingGenerals:
             return String(localized: "scene.reason.facingGenerals")
         case .opponentInCheck:
@@ -244,5 +248,12 @@ extension SetupViolation {
         case .notFrozenStart:
             return nil
         }
+    }
+
+    /// The offending piece in the words of the side whose it is. Both classes
+    /// that use it are about one side's own piece and the core names that side,
+    /// so the fallback is a shape the interface never reaches.
+    private func pieceName(_ kind: PieceKind) -> String {
+        kind.name(for: side ?? .red)
     }
 }

@@ -2975,19 +2975,19 @@
       }
     },
     "scene.reason.elephantSide": {
-      "comment": "The arguments are the side and the point it stands on.",
+      "comment": "The arguments are the side, the point it stands on, and the piece in that side's own words.",
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@'s elephant on %2$@ is off its own side's points."
+            "value": "%1$@'s %3$@ on %2$@ is off its own side's points."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@方 %2$@ 上的象不在本方的象位上。"
+            "value": "%1$@方 %2$@ 上的%3$@不在本方的象位上。"
           }
         }
       }
@@ -3081,19 +3081,19 @@
       }
     },
     "scene.reason.soldierRank": {
-      "comment": "The arguments are the side and the point it stands on.",
+      "comment": "The arguments are the side, the point it stands on, and the piece in that side's own words.",
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@'s soldier on %2$@ stands behind its own starting rank."
+            "value": "%1$@'s %3$@ on %2$@ stands behind its own starting rank."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@方 %2$@ 上的兵在本方兵线之后。"
+            "value": "%1$@方 %2$@ 上的%3$@在本方兵线之后。"
           }
         }
       }

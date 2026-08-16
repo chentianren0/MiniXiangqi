@@ -160,7 +160,7 @@ struct PlayHomeTests {
                                                  text("metadata.inProgress"),
                                                  text("status.blackToMove"),
                                                  moves(1)),
-                "one ply on the turn has passed, which is the ply count's parity")
+                "one ply on, and the turn has passed to the other side")
     }
 
     @Test("A human-versus-AI game names the side the player is holding")

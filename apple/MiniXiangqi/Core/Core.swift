@@ -695,6 +695,13 @@ final class Core {
     /// evaluation over the position and no moves — and only of a position
     /// `setupVerdict(of:game:)` has already accepted, which is the ordering
     /// that keeps a position the engine must not be shown away from it.
+    ///
+    /// **Every answer that is not `MXQ_OK` reads as unplayable**, which is
+    /// exhaustive because of that ordering: over a position the predicate has
+    /// accepted, the refusals this entry can still make — a FEN of another
+    /// game's board, a move line it cannot replay — are all positions no game
+    /// begins from either. A caller that asked it of an unvalidated position
+    /// would be reading a refusal as a verdict.
     func isPlayable(_ fen: String, game: GameKind) -> Bool {
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)

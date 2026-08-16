@@ -293,13 +293,13 @@ struct CustomSceneTests {
         #expect(state.scene != nil)
     }
 
-    /// The refusal creation can still make, driven through the real core rather
-    /// than around it: a position already decided is one the predicate accepts
-    /// and creation refuses, so it is the one refusal a draft can actually
-    /// carry into 开始对局. What it proves is that the answer is the accepted
-    /// notice over a page and a draft that are still there — never a crash.
-    @Test("A creation the core refuses keeps the editor and its draft")
-    func aRefusedCreationKeepsTheDraft() throws {
+    /// The one draft the editor can carry to a control that would be refused:
+    /// a position the predicate accepts and creation does not. 开始对局 is
+    /// disabled on it, and the flow refuses it for the same reason rather than
+    /// reaching creation and reporting the refusal as a game that could not be
+    /// saved.
+    @Test("A draft that is not startable never reaches creation")
+    func anUnstartableDraftNeverReachesCreation() throws {
         let core = try TestCores.fresh()
         let state = PlayState(core: core)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
@@ -317,9 +317,15 @@ struct CustomSceneTests {
         #expect(state.game == nil, "no game was created")
         #expect(try !core.activeGameExists())
         #expect(!state.creating, "and 开始对局 is on offer again")
-        if case .notSaved = state.creationFailure {} else {
-            Issue.record("the accepted creation-failure notice: \(String(describing: state.creationFailure))")
-        }
+        #expect(state.creationFailure == nil,
+                "nothing failed: the position was never offered to the core")
+
+        // And the same flow starts the moment the draft becomes one to play:
+        // taking the checking chariot off leaves Black a move to make.
+        scene.tap(try square("d1"))
+        #expect(scene.canStart)
+        state.startScene(policy: MotionPolicy(reduceMotion: true))
+        #expect(state.page == .board)
     }
 }
 
@@ -428,7 +434,10 @@ struct FirstMoverTests {
         let pairing = MovePairing(plies: game.notation.count, firstMover: game.firstMover)
         #expect(pairing.rows == [MovePairing.Row(number: 1, red: nil, black: 0),
                                  MovePairing.Row(number: 2, red: 1, black: nil)],
-                "Black's opening ply answered inside the first pair")
+                """
+                Black's opening ply numbered 1 beside an empty Red cell, and \
+                Red's answer opening the next row
+                """)
     }
 
     @Test("A game from the frozen start still opens with Red")

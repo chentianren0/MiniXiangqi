@@ -18,11 +18,12 @@
 // move can be selected to jump to it. During play neither applies — the list
 // is a record of what has happened, and the last row is always the position.
 //
-// **A pair is the first mover's ply and the answer to it**, and which side
-// opens is the game's start position's to say. A game composed in the Custom
-// Scene editor may open with Black, and its first row then carries an empty Red
-// cell; the numbering starts at 1 on the game's own first ply either way. No
-// mover is read off a ply's parity.
+// **A row is Red's cell then Black's, in the order the two were played**, and
+// which side opened is the game's start position's to say. A game composed in
+// the Custom Scene editor may open with Black: its first row is numbered 1 and
+// carries Black's opening ply beside an empty Red cell, and Red's answer opens
+// the next row. Left to right is always forward in time, which is what a score
+// sheet reads as. No mover is read off a ply's parity.
 
 import SwiftUI
 
@@ -31,7 +32,11 @@ struct MoveList: View {
 
     /// Whose ply index 0 is. It comes from the game or the record — which asked
     /// the core — and never from anything worked out here.
-    var firstMover: Side = .red
+    ///
+    /// Required rather than defaulted: a default would be Red, and a call site
+    /// that forgot it would silently pair a Black-first game the old wrong way
+    /// instead of failing to compile.
+    var firstMover: Side
 
     /// The move the board is showing, as an index into `notation`. `nil` during
     /// play, and at replay's initial position, where no move has produced what
@@ -146,11 +151,11 @@ struct MoveList: View {
 /// How a line of plies falls into numbered pairs, given who opened it.
 ///
 /// It is a value rather than a computation inside the view because the answer
-/// is the contract's own — a pair is the first mover's ply and the answer to
-/// it, the first pair is numbered 1, and which side opens is the start
-/// position's to say — and because the words in the cells are the only thing
-/// about the list that a notation preference changes. A Red-first game is the
-/// identity case: slot and ply index are the same number.
+/// is the contract's own — a row is Red's cell then Black's in the order the
+/// two were played, the first row is numbered 1, and which side opened is the
+/// start position's to say — and because the words in the cells are the only
+/// thing about the list that a notation preference changes. A Red-first game is
+/// the identity case: slot and ply index are the same number.
 nonisolated struct MovePairing: Equatable {
     /// One printed row: its number, and the ply in each side's cell where the
     /// line has one.

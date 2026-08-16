@@ -643,12 +643,17 @@ final class PlayState {
     /// and nothing else added: no engine is prepared, because Free Play owes no
     /// search, and the composed FEN is what the core is asked to begin from.
     ///
-    /// Creation can still refuse — a position already decided is
-    /// `MXQ_ERR_STATE_GAME_OVER`, and the store can decline to persist — and
-    /// either way it creates nothing, keeps the page and the draft, and
-    /// presents the same notice the other pre-start pages present.
+    /// It asks the draft first, as the control does: a position the core would
+    /// refuse is one 开始对局 is disabled on, and the guard is what makes the
+    /// disabling the rule rather than the appearance of one — a call that got
+    /// past it would meet `MXQ_ERR_STATE_GAME_OVER` and report it as a game
+    /// that could not be saved, which is not what happened.
+    ///
+    /// Creation can still refuse past it — the store can decline to persist —
+    /// and then it creates nothing, keeps the page and the draft, and presents
+    /// the same notice the other pre-start pages present.
     func startScene(policy: MotionPolicy) {
-        guard page == .customScene, let scene, !creating else { return }
+        guard page == .customScene, let scene, scene.canStart, !creating else { return }
         creating = true
         creationFailure = nil
         attempt += 1

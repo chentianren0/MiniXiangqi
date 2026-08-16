@@ -149,12 +149,53 @@ final class CustomSceneUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cluster-flip"].exists)
         attach(app, named: "72-the-scene-game")
 
+        // Two plies, Black's first: the game is played from here like any other
+        // Free Play game.
+        point(app, "d10").click()
+        point(app, "d9").click()
+        XCTAssertTrue(app.staticTexts["轮到红方"].waitForExistence(timeout: 10),
+                      "Black made ply 0, so the turn passed to Red")
+        point(app, "a1").click()
+        point(app, "a2").click()
+        XCTAssertTrue(app.staticTexts["轮到黑方"].waitForExistence(timeout: 10))
+
         // The game is the library's active game, and the home describes it with
         // the side the core reports rather than one counted off the plies.
         app.buttons["play-back"].click()
         XCTAssertTrue(app.staticTexts["home-current-game"].waitForExistence(timeout: 10))
         XCTAssertEqual(reading(app, "home-current-game"),
-                       "象棋 · 自由对弈 · 进行中 · 轮到黑方 · 0 步")
+                       "象棋 · 自由对弈 · 进行中 · 轮到黑方 · 2 步")
+
+        // Filed by the accepted save-and-continue, so the record's replay is
+        // reachable — and there the move list pairs from the record's own start
+        // side too: Black's opening ply stands in the second column of the
+        // first row, with the Red cell beside it empty, and Red's answer opens
+        // the row beneath it.
+        app.buttons["mode-xiangqi-free-play"].click()
+        XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 5))
+        app.sheets.firstMatch.buttons["保存并继续"].click()
+        XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 10))
+
+        destination(app, 1).click()
+        XCTAssertTrue(historyRow(app, 0).waitForExistence(timeout: 10))
+        historyRow(app, 0).click()
+
+        let black = app.buttons["move-0"]
+        let red = app.buttons["move-1"]
+        XCTAssertTrue(black.waitForExistence(timeout: 10), "the record opens for replay")
+        XCTAssertGreaterThan(black.frame.minX, red.frame.minX,
+                             "the opening ply is Black's, so it sits in the Black column")
+        XCTAssertLessThan(black.frame.minY, red.frame.minY,
+                          "and Red's answer opens the next row rather than sharing that one")
+        attach(app, named: "73-the-scene-record-replayed")
+    }
+
+    private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.windows.firstMatch.outlines.element(boundBy: 0).cells.element(boundBy: index)
+    }
+
+    private func historyRow(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.windows.firstMatch.buttons["history-row-\(index)"]
     }
 }
 
