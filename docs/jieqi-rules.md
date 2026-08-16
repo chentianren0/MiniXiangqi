@@ -16,7 +16,7 @@ Jieqi's board, palaces, river, piece set and start squares are Xiangqi's exactly
 
 ## Normative sources
 
-Three public statements of the game's rules are the evidence for the rules below, and the game's de-facto machine conventions are taken from its de-facto engine and the interface built around it. A dated copy of each is retained outside this repository as workspace-only research evidence. None is a runtime dependency, and none is expected to exist in a standalone clone.
+Three public statements of the game's rules are the evidence for the rules below, and the game's de-facto engine is cited for the one machine fact this contract takes from it. A dated copy of each is retained outside this repository as workspace-only research evidence. None is a runtime dependency, and none is expected to exist in a standalone clone.
 
 The **Chinese Wikipedia article 揭棋**, in its wikitext form, is the source for the deal, for hidden movement by the square's role, for the mandatory flip, for the freed revealed advisor and elephant, for the concealment of a captured hidden piece, and for the result taxonomy:
 
@@ -46,14 +46,7 @@ The **Pikafish `jieqi` branch** is the game's de-facto engine and the source for
 - Workspace file: `/Users/tianren/coding/minixiangqi/discussion-drafts/evidence/pikafish-jieqi-src-position-cpp-2026-08-16.txt`
 - SHA-256: `461978fc73548847efaaa7a763935e407e5f335733c476ffe1804e09b765282f`
 
-**JieqiBox**, the interface built around that engine, is the source for the reveal-carrying move token and the case rule that reads it. The file is `src/composables/useChessGame.ts` at commit `3958989feda0164ec09e34d13c0e090c053fa5d9`:
-
-- Origin: `https://github.com/Velithia/JieqiBox.git`
-- Retrieved: `2026-08-16T17:55:30Z`
-- Workspace file: `/Users/tianren/coding/minixiangqi/discussion-drafts/evidence/pa-jieqibox-use-chess-game-2026-08-16.ts`
-- SHA-256: `9f5e8ca63300c95ff523ab822c6d41fc018223bd484d2cec8005396b0204f286`
-
-The geometry, the piece set, the palace, the river and the start squares are the standard game's and are not in dispute; they are stated in this document directly, and no dated snapshot is retained for them. The public sources and the accepted conformance fixtures are this contract's evidence. No engine's output is: neither a search score nor an engine-specific optional result silently changes user-visible rules, and the de-facto engine is cited above for the conventions it defines and never as the authority for a rule.
+The geometry, the piece set, the palace, the river and the start squares are the standard game's and are not in dispute; they are stated in this document directly, and no dated snapshot is retained for them. The public statements of the rules and the accepted conformance fixtures are this contract's evidence. The de-facto engine is cited for one thing only — how the no-capture rule is counted and what resets it, which the public statements leave unsaid — and for nothing else: neither a search score nor an engine-specific optional result silently changes a user-visible rule.
 
 ## The dealt start
 
@@ -69,7 +62,7 @@ A jieqi game begins from a dealt start and from no other position. Jieqi therefo
 
 - Files are lettered `a` upward from Red's left and ranks numbered `1` upward from Red's back rank, `a1`–`i10`. A square is a file letter followed by a rank written in decimal with no leading zero, so `a10` is a square and `a010` is not. A FEN piece-placement field lists the highest rank first and rank 1 last. `w` is Red: uppercase pieces, moves first. `b` is Black: lowercase pieces.
 - The canonical coordinate form of a move is the origin square followed by the destination square, four to six characters, of which `a9a10` is the longest. Parsing needs no lookahead, because a file letter is never a digit.
-- **The canonical machine form of a move carries what the move revealed.** After the coordinates come up to two piece letters: first the identity the moving piece flipped up as, if it was hidden, and then the identity of a hidden piece it captured, if it captured one. A letter is written in its owner's case — uppercase for Red, lowercase for Black — so a single trailing letter names whose it is without reference to the position. This is the game's de-facto engine convention, and it is what makes a move state its own reveal.
+- **This coordinate notation is canonical for fixtures, game archives, and the shared core interface.** It carries no reveal and needs none: the deal recorded beside a game's moves makes every reveal derivable, so the coordinates and the deal together are a game's complete record. The notation shown to a human reader is a separate presentation decision and never changes what is stored or exchanged.
 - Beside the board moves, the canonical move-text grammar holds one turn action: `claim`, the word alone. It is a turn action of the side to move, lawful exactly when the claimable neutral repetition stands, and it ends the game as that claimed draw with reason `threefold-repetition`. It moves no piece and exists for game exchange between implementations.
 - A position record is a 6-field FEN. The third and fourth fields are always `-`. The sixth field is the fullmove number, starting at 1 and incrementing after each Black move. The fifth field counts plies since the last capture and drives the no-capture rule below.
 - **A face-down piece is written as its identity letter followed by `~`.** That is the whole of the difference from a xiangqi position record: the letter says what the piece is and the mark says the players do not know it. Red's back rank in one deal reads `P~N~P~R~KC~P~A~B~` — a face-down soldier standing on a chariot's start square, a face-down chariot on an advisor's, and the general face up between them.
@@ -84,32 +77,33 @@ A jieqi game begins from a dealt start and from no other position. Jieqi therefo
 - **On completing that move it flips face up, always** — whether or not it captured, and with no choice in the matter. From then on it is a revealed piece and moves as itself.
 - A hidden piece on an advisor's start square is palace-bound like the advisor whose square it is, so its one legal destination is the palace centre, `e2` for Red and `e9` for Black.
 - A hidden piece on an elephant's start square needs no rule about the river: an elephant's step from its own start square lands on its own side of the board, so the first move cannot cross.
-- A hidden piece on a soldier's start square moves one point forward and no other way, because that is what a soldier on its own side of the river may do.
+- A hidden piece on a soldier's start square moves one square forward and no other way, because that is what a soldier on its own side of the river may do.
 - A hidden piece that is captured never flips. It leaves the board face down.
 
 ### A revealed piece
 
 A revealed piece moves as xiangqi's piece of that kind, with the advisor and the elephant freed:
 
-- A general moves one point orthogonally inside its palace, and the two generals may not face each other on an otherwise empty file; they attack each other through that file. The generals are unchanged from xiangqi in every respect.
-- An advisor moves one point diagonally, anywhere on the board. It is not confined to the palace.
-- An elephant moves exactly two points diagonally and is blocked when the point between is occupied. It may cross the river. The blocking eye is kept; only the confinement is lifted.
-- A horse moves one point orthogonally and then one diagonally outward, and is blocked when that first orthogonal point is occupied, by any piece. What blocks it is the intervening point, never the destination.
-- A chariot moves any number of unobstructed points orthogonally.
+- A general moves one square orthogonally inside its palace, and the two generals may not face each other on an otherwise empty file; they attack each other through that file. The generals are unchanged from xiangqi in every respect.
+- An advisor moves one square diagonally, anywhere on the board. It is not confined to the palace.
+- An elephant moves exactly two squares diagonally and is blocked when the square between is occupied. It may cross the river. The blocking eye is kept; only the confinement is lifted.
+- A horse moves one square orthogonally and then one diagonally outward, and is blocked when that first orthogonal square is occupied, by any piece. What blocks it is the intervening square, never the destination.
+- A chariot moves any number of unobstructed squares orthogonally.
 - A cannon moves like a chariot when not capturing, and a cannon capture requires exactly one intervening screen.
-- **A soldier moves by the side of the river it stands on**, not by any history of crossing: one point forward on its own side, and one point forward or sideways past the river. It never moves backward. A soldier may legitimately stand where no xiangqi soldier could — behind its own soldier rank, or off the five files soldiers start on — because a hidden piece is revealed wherever its first move ends, and from such a point it moves forward like any other soldier on its own side.
+- **A soldier moves by the side of the river it stands on**, not by any history of crossing: one square forward on its own side, and one square forward or sideways past the river. It never moves backward. A soldier may legitimately stand where no xiangqi soldier could — behind its own soldier rank, or off the five files soldiers start on — because a hidden piece is revealed wherever its first move ends, and from such a square it moves forward like any other soldier on its own side.
 
 ### Every fact that decides play is public
 
-How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So exactly two facts are private — the identities still face down, and the identity of a hidden piece that has been captured — and neither of them decides a legal move, a check, or a result.
+How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So what the position conceals is exactly two things — the identities still face down, and the identity of a hidden piece that has been captured — and neither of them decides a legal move, a check, or a result. Concealment is a property of the position and never of what a player remembers.
 
-**A move's legality never depends on what the moving piece flips up as.** The piece occupies its destination whatever it turns out to be, and occupancy is the whole of what blocking, screening and the flying-general rule read. Both players therefore hold the same legal-move set, the same check state and the same adjudication at every moment of the game, and jieqi's uncertainty is entirely about what the next reveal turns up.
+**A move's legality never depends on what the moving piece flips up as.** The piece occupies its destination whatever it turns out to be, and occupancy is the whole of what blocking, screening and the flying-general rule read. Both players therefore hold the same legal-move set, the same check state and the same adjudication at every moment of the game, and jieqi's uncertainty is uncertainty about the identities the position still conceals.
 
 ## Capture and disclosure
 
 - **Capturing a hidden piece discloses its identity to the capturer alone.** Its owner learns only that a hidden piece was lost.
 - A captured revealed piece is public to both players, as it was on the board.
 - **When the game ends, every hidden identity is disclosed to both players** — by any ending, a resignation and an agreed draw included.
+- **An accepted retraction returns the position's concealment, not the players' knowledge.** A piece the retracted moves revealed stands face down again and moves again by its square's role, and an identity a capture disclosed stays disclosed. That is the price of the courtesy: what a player has been shown cannot be un-shown. Whether a retraction is offered at all is the application's; what one does to concealment is this document's.
 
 This section states who is entitled to know what, which is a rule of the game. How a build shows it is presentation, and belongs to [interaction-design.md](interaction-design.md).
 
@@ -125,9 +119,16 @@ Adopting those clauses by reference is deliberate, and it binds in both directio
 Two things follow from jieqi's own positions, and they are how those clauses are read here:
 
 - **Every clause that names a piece type reads a hidden piece as the type its square gives it.** One mechanism answers the whole family: a hidden piece on a soldier's start square is a soldier for the chase rule's purposes, one on a chariot's start square is a chariot, and so on. Where a clause is phrased for a piece that has crossed the river, jieqi reads it by the side of the river the piece stands on, which is the same fact in Xiangqi and the available one here.
-- **No repeating cycle can contain a reveal.** A hidden piece stands only on its own start square, flips the moment it moves, and is never hidden again, so the set of face-down points only ever shrinks. Two positions with equal placement therefore have equal face-down sets, and no reveal and no capture of a hidden piece lies between them. Every repetition, and so every perpetual violation, lies wholly inside one stretch of play between two reveals.
+- **No repeating cycle can contain a reveal.** A hidden piece stands only on its own start square and flips the moment it moves, so along a game's move history — which is what repetition is judged over — the set of face-down squares only ever shrinks. Two positions with equal placement therefore have equal face-down sets, and no reveal and no capture of a hidden piece lies between them. Every repetition, and so every perpetual violation, lies wholly inside one stretch of play between two reveals.
 
 Resignation, draw offers, and the surfaces through which a claimable draw is taken are the application's. This document decides only what the rules make available.
+
+## Accepted interpretations
+
+Two questions the retained sources do not settle. Each is recorded as an interpretation rather than as a reading of a source, so that an authoritative text on either reopens it as a contract amendment rather than arriving as a discovery.
+
+- **A soldier's sideways step is read by the side of the river it stands on, not by whether it crossed.** The two readings never differ in Xiangqi, where a soldier reaches the far side only by crossing, and jieqi is the one place they come apart: a soldier revealed past the river has never crossed it. The sources state the rule in the crossing's language because their own game gives them no other case. The side-of-the-river reading is adopted because it is the reason the rule carries — a soldier steps sideways where stepping sideways is what the position asks of it — and because a soldier's own history is not something the position records, so the alternative would decide a legal move on a fact no position holds.
+- **Capturing a hidden piece discloses its identity to the capturer.** The sources state the other half: the owner of a captured hidden piece may not turn it over, and it is the capturer who sets it down face down. None of them says what the capturer may see. Disclosure to the capturer is adopted as this document's rule, because the capturer takes the piece off the board — a rule concealing it from the hand that holds it would be a rule about presentation and not about the game — and the asymmetry that follows is the knowledge the capture buys.
 
 ## Rules interpretation version
 

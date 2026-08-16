@@ -18,9 +18,9 @@ Two peers carrying one `rules_id` therefore agree, without saying so, on the fac
 
 | `rules_id` | board | move text on the wire | deal |
 |---|---|---|---|
-| `jieqi` | 9 files × 10 ranks | one square of `a1`–`i10` followed by another | two permutations of fifteen, derived below |
+| `jieqi` | 9 files × 10 ranks | one square of `a1`–`i10` followed by another, or the turn action `claim` | two permutations of fifteen, derived below |
 
-What a move revealed is **not** on the wire: a `move` carries coordinates and nothing else, and each end derives the reveal from the deal it holds. The reveal-carrying form of a jieqi move, in which the revealed identity and any captured hidden identity follow the coordinates, is the form a device stores and shows its player. It never travels.
+**No identity travels.** A `move`'s text is the game's own move text and never names a hidden identity, in `jieqi` as in every other game; what a move revealed is not on the wire, and each end derives it from the deal it holds.
 
 ## The model
 
@@ -30,7 +30,7 @@ What the protocol asks of a transport is only this: whole messages, rather than 
 
 **The shared deal.** A hidden-information game's start is dealt, and from the session's first ply both devices hold the entire deal. Each shows its player only what the game's rules allow that player to know. The deal is never sent: it is derived on both ends from the handshake's two contributions, and no message at any point of a session names a hidden identity. Every reveal is therefore a derivation rather than a disclosure over the wire, and the game's result stays a function of the move sequence and the deal.
 
-**What that buys, and what it does not.** The handshake makes the deal unbiasable — neither peer can choose it — and it makes a finished record verifiable by anyone holding the commitment, the nonce and the seed. It does not hide the deal from a device that holds it. A modified client can show its player every hidden identity from the first ply, and nothing here prevents it; the protocol has no cryptography of its own beyond the commitment, and a friendly game between two people in one room is not the place for more.
+**What that buys, and what it does not.** Within a completed handshake neither peer can choose or steer the deal: the commitment binds the dealer before the nonce arrives, and the derivation is fixed. A finished record is verifiable by anyone holding the commitment, the nonce and the seed. What the handshake does not do is oblige a peer to complete it — a handshake abandoned before the seed travels lets a modified dealer resample by reproposing — and it does not hide the deal from a device that holds it: a modified client can show its player every hidden identity from the first ply. The protocol's guarantees are about completed exchanges rather than about a peer's obedience; it has no cryptography of its own beyond the commitment, and a friendly game between two people in one room is not the place for more.
 
 Every message is one JSON object with exactly one member: the message's name, whose value is an object holding its fields —
 
@@ -38,15 +38,15 @@ Every message is one JSON object with exactly one member: the message's name, wh
 {"move": {"session": "0b34…", "index": 7, "move": "b1b3"}}
 ```
 
-`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes, most significant first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal` are the only two that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
+`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal_digest` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes, most significant first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal_digest` are the only two that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
 
 ## Session states
 
-Between one pair of peers at most one session is proposed, dealing or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** beside the pair's dealings. Every message's validity is decided by its receiver at arrival from the state it holds:
+Between one pair of peers at most one session is proposed, dealing or active at a time — save the crossing instant named under Proposing — and one finished session may linger in **ended** alongside it. Every message's validity is decided by its receiver at arrival from the state it holds:
 
 - **proposed** — a `propose` is unanswered. A proposal is scoped to the connection it travelled on: `accept` and `decline` are effective only there, and an unanswered proposal dies with its connection.
 - **dealing** — a hidden-information game's proposal was accepted and its deal handshake is in flight. No ply exists, none may be sent, and the only messages with a lawful meaning are the handshake's own. A **dealing** session is bound to the connection its `propose` travelled on and dies with it: it holds nothing worth reconciling, it is never resumed, and the pair simply proposes again and deals again.
-- **active** — the proposal was accepted and, for a hidden-information game, the handshake completed; play is on, and the session is bound to the connection its `propose` travelled on.
+- **active** — the proposal was accepted and, for a hidden-information game, this end has completed the deal handshake: the dealer by sending `deal_seed`, the other end by verifying it. Play is on, and the session is bound to the connection its `propose` travelled on.
 - **ended** — the game has a result. An ended session still answers `resume`; it applies an arriving valid in-sequence `move` and merges arriving terminals by the precedence rule; every other message arriving for it is discarded, never a violation. A new proposal retires it.
 - **void** — the session was destroyed without a result. A device forgets a void session.
 
@@ -67,7 +67,7 @@ Between one pair of peers at most one session is proposed, dealing or active at 
 | `request_undo` | `session`, `at`, `keep` | Ask to retract every ply beyond the first `keep`. |
 | `accept_undo` | `session` | The retraction happens. |
 | `resign` | `session` | The sender loses. |
-| `resume` | `session`, `undos`, `count`, `keep`, `end`, `deal` | Continue an interrupted session. |
+| `resume` | `session`, `undos`, `count`, `keep`, `end`, `deal_digest` | Continue an interrupted session. |
 
 `reason` is one of `declined`, `unknown_game`, `rules_mismatch`, `busy`, `unknown_session`, `deal_mismatch`. A version-2 peer treats any other message name as a violation.
 
@@ -89,9 +89,9 @@ On `accept`, a perfect-information game's session becomes **active** and play be
 2. The other peer draws a `nonce` of thirty-two bytes from a cryptographically secure random source and sends `deal_nonce`.
 3. The dealer sends `deal_seed` with the seed itself. The receiver hashes it and compares with the `commit` it holds; **a mismatch is a protocol violation**, which is the one thing the commitment exists to catch.
 
-Neither side can choose the deal, because each fixes its contribution before it can know the other's: the dealer commits without having seen the nonce, and the nonce is drawn against a hash that discloses nothing. One honest, well-drawn contribution is enough to make the deal uniform, so neither peer depends on the other's good behaviour for that.
+Within a completed handshake neither side can choose or steer the deal, because each fixes its contribution before it can know the other's: the dealer commits without having seen the nonce, and the nonce is drawn against a hash that discloses nothing. One honest, well-drawn contribution then makes the deal uniform. A handshake abandoned before the seed travels is the other case — the dealer holds both contributions by then and can decline to complete it and propose again, which is a resample — and it stands with the modified-client caveat above rather than against it: what is guaranteed here is the completed exchange, never a peer's obedience.
 
-The session becomes **active** on each end as soon as that end holds all three parts, and the first ply may follow immediately. Until then no `move` exists and none is sent.
+The dealer's session becomes **active** when it has sent `deal_seed`; the other end's when `deal_seed` arrives and verifies. The first ply may follow immediately. Until then no `move` exists and none is sent.
 
 Every departure is a protocol violation: a handshake message for a perfect-information game's session, a `deal_commit` or `deal_seed` from the peer that is not the dealer, a `deal_nonce` from the dealer, any of the three arriving out of the stated order or a second time, a malformed value, and any other message arriving for a session in **dealing**.
 
@@ -111,6 +111,8 @@ Both ends compute the deal from the seed and the nonce alone, and must compute t
 - Black: `a7`, `c7`, `e7`, `g7`, `i7`, `b8`, `h8`, `a10`, `b10`, `c10`, `d10`, `f10`, `g10`, `h10`, `i10`
 
 The two generals are not dealt. Deriving a deal is protocol rather than rules because both ends must compute one identical deal from what crossed the wire; what the deal then means for play is the game's.
+
+**The deal digest** is `SHA-256` over the deal itself: for each permutation the game drew, in the order it drew them, the item number standing at index 0, then the one at index 1, and so on, one byte each. For `jieqi` that is thirty bytes, Red's fifteen then Black's fifteen. No permutation this version derives runs past 256 items, so one byte an item is the whole encoding. The digest is what a resumed session compares, because it binds everything a deal comes from — the seed, the nonce, and the derivation itself — where the commitment binds the seed alone.
 
 Kept beside a finished record, the commitment, the nonce and the seed make the whole game checkable by anyone: hash the seed against the commitment, derive the deal, replay the moves.
 
@@ -138,11 +140,11 @@ A hidden-information game's end needs no disclosure message either. Each device 
 
 A peer recognises its opponent on a fresh connection. It initiates `resume`, after `hello`, for a session that is **active**, or **ended** and unsettled — an unsettled peer may also open the exchange on the session's live connection. The exchange completes — and the session re-binds — on the connection the *proposer's* `resume` travelled on, which the proposer sends on exactly one connection of its choosing; every other `resume` either peer sent is void once it does, and a peer whose `resume` travelled any other connection re-sends it on the completing one. Neither peer sends a `move` for the session until it holds the other's `resume` on that connection.
 
-`resume` states the session as the sender holds it: `undos` and `count`; `keep` — the surviving count of the last accepted retraction, meaningful when `undos` is above zero, otherwise echoed as the sender's `count`; `end` — the terminal the sender has sent for this session, `resign` or `accept_draw`, absent when it has sent none; and `deal` — the session's `commit`, present for a hidden-information session and absent for every other. If one peer's `undos` is higher, the other truncates its plies to that peer's `keep`. Then the peer holding more plies resends the missing ones as ordinary `move` messages. Each peer merges the other's `end` by the precedence rule as if the terminal itself had arrived. A peer's exchange is complete — and the session settled — when it holds the other's `resume` on the completing connection and has received every ply reconciliation owes it from that `resume`.
+`resume` states the session as the sender holds it: `undos` and `count`; `keep` — the surviving count of the last accepted retraction, meaningful when `undos` is above zero, otherwise echoed as the sender's `count`; `end` — the terminal the sender has sent for this session, `resign` or `accept_draw`, absent when it has sent none; and `deal_digest` — the digest of the deal this session derived, present for a hidden-information session and absent for every other. If one peer's `undos` is higher, the other truncates its plies to that peer's `keep`. Then the peer holding more plies resends the missing ones as ordinary `move` messages. Each peer merges the other's `end` by the precedence rule as if the terminal itself had arrived. A peer's exchange is complete — and the session settled — when it holds the other's `resume` on the completing connection and has received every ply reconciliation owes it from that `resume`.
 
-**What a hidden-information session's ends persist is the handshake, not the deal.** Each end keeps the `commit`, the `nonce` and the `seed` beside everything it keeps for any session, and derives the deal from them again whenever it needs it. Before using that deal it re-verifies it locally: it hashes the persisted seed and compares with the persisted commitment, and a mismatch means what it holds is no longer the session, which it answers as a peer that does not know the session. Nothing about the deal re-travels — not the seed, not the nonce, and least of all the deal.
+**What a hidden-information session's ends persist is the handshake, not the deal.** Each end keeps the `commit`, the `nonce`, the `seed` and the `deal_digest` it computed when the handshake completed, beside everything it keeps for any session, and derives the deal from the seed and the nonce again whenever it needs it. Before using that deal it re-verifies it locally, and against everything the deal comes from: it hashes the persisted seed and compares with the persisted commitment, and it re-derives the deal and compares its digest with the persisted one. A failure of either check means what it holds is no longer the session, which it answers as a peer that does not know the session — a persisted nonce that has rotted passes the commitment check and fails the digest, which is why the digest is the one that travels. Nothing about the deal re-travels — not the seed, not the nonce, and least of all the deal.
 
-A `resume` whose `deal` differs from the receiver's own commitment is two devices holding different games under one identifier: the receiver answers `decline` with `deal_mismatch`, and the session is void on both sides. A peer that genuinely does not know the session — it holds nothing for it, it retired it, it holds only a proposal that died with its connection, or its own deal failed re-verification — answers `decline` with `unknown_session`, and the session is void on both sides.
+A `resume` whose `deal_digest` differs from the receiver's own is two devices holding different games under one identifier: the receiver answers `decline` with `deal_mismatch`, and the session is void on both sides. A peer that genuinely does not know the session — it holds nothing for it, it retired it, it holds only a proposal that died with its connection, or its own deal failed re-verification — answers `decline` with `unknown_session`, and the session is void on both sides.
 
 ## Violations
 
