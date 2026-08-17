@@ -124,18 +124,20 @@ struct MoveReading: Hashable {
     /// placement is a walk from the start; a game's own length is the measure
     /// of what reading it is worth.
     ///
-    /// Each ply is read from the position before it and the position after it,
-    /// which is the position before the next one — so the walk asks for one
-    /// more position than there are plies, and the last of them is where the
-    /// game stands.
-    static func line(for moves: [String], on board: BoardDefinition,
+    /// A ply of a game that conceals is read from the position before it **and
+    /// the position after it**, which is the position before the next one — so
+    /// that walk asks for one more position than there are plies, and the last
+    /// of them is where the game stands. **Every other game asks for neither**:
+    /// it has nothing to disclose, and a resumed long game would otherwise pay
+    /// twice for positions the reading never looks at.
+    static func line(for moves: [String], on game: GameKind,
                      placementAt: (Int) throws -> Placement) throws -> [MoveReading] {
         try moves.enumerated().map { ply, text in
-            guard let move = Move(text: text, on: board) else {
+            guard let move = Move(text: text, on: game.board) else {
                 throw UnreadableStoredMove(ply: ply)
             }
             return MoveReading(of: move, in: try placementAt(ply),
-                               after: try placementAt(ply + 1))
+                               after: game.conceals ? try placementAt(ply + 1) : nil)
         }
     }
 

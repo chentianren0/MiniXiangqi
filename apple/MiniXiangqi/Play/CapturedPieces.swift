@@ -120,12 +120,19 @@ struct CapturedPieces: Equatable {
     /// positions the core replays, so a resumed game and a replayed record
     /// answer with the same surface. It is asked only of a game that conceals —
     /// every other game displays nothing, and the walk is what that costs.
+    ///
+    /// A stored move this app cannot read fails the walk, exactly as it fails
+    /// the reading beside it: a line the core validated before any session over
+    /// it existed cannot legitimately hold one, and a surface that skipped it
+    /// would quietly show a game missing whatever that ply took.
     static func line(for moves: [String], on game: GameKind,
-                     placementAt: (Int) throws -> Placement) rethrows -> CapturedPieces {
+                     placementAt: (Int) throws -> Placement) throws -> CapturedPieces {
         var captured = CapturedPieces()
         guard game.conceals else { return captured }
         for (ply, text) in moves.enumerated() {
-            guard let move = Move(text: text, on: game.board) else { continue }
+            guard let move = Move(text: text, on: game.board) else {
+                throw MoveReading.UnreadableStoredMove(ply: ply)
+            }
             if let capture = try capture(atPly: ply, by: move,
                                          in: placementAt(ply)) {
                 captured.taken.append(capture)

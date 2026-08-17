@@ -76,6 +76,11 @@ struct BoardView: View {
     /// How far the arriving face has come up on the travelling disc — a Jieqi
     /// reveal. Zero on every board that turns nothing up.
     var transitReveal: Double = 0
+    /// How far the whole deal has come up — the end of a Jieqi game, which
+    /// discloses to both players every identity the position still conceals.
+    /// Zero on every board that conceals nothing, and on one whose game is
+    /// still going.
+    var disclosure: Double = 0
     var checkEmphasis: Double = 0
     var markerEmphasis: Double = 0
     /// How strongly the suggested destination is drawn — the hint's own
@@ -247,6 +252,7 @@ struct BoardView: View {
                     phases: BoardPhases(travel: transit == nil ? 0 : 1,
                                         fade: transitFade,
                                         reveal: transitReveal,
+                                        disclosure: disclosure,
                                         flip: flipped ? 1 : 0,
                                         check: checkEmphasis,
                                         marker: markerEmphasis,
@@ -344,7 +350,15 @@ struct BoardView: View {
             // not by the role its square gives it either, which is a fact about
             // how it moves rather than about what stands there. So the reading
             // order is unchanged and the vocabulary gains one word.
-            if piece.isFaceDown {
+            //
+            // **The ending takes that word away**, because it takes the
+            // concealment away: a game that has ended has disclosed every
+            // identity to both players, and what the disc shows is what the
+            // point is described as.
+            if piece.isFaceDown, disclosure > 0,
+               let identity = placement.concealedIdentity(at: square) {
+                parts.append(identity.name(for: piece.side))
+            } else if piece.isFaceDown {
                 parts.append(String(localized: "board.a11y.faceDown"))
             } else if let kind = piece.kind {
                 // A stone has no kind and therefore no name of its own: what it

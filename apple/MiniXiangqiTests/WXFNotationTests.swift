@@ -434,7 +434,7 @@ struct WXFNotationTests {
             "r1nkncr/pcppp1p/7/7/3C3/P1PPP1P/R1NKNCR b - - 3 2",
         ]
         let line = try MoveReading.line(for: ["b1b3", "b7b6", "b3d3"],
-                                        on: GameKind.miniXiangqi.board) {
+                                        on: .miniXiangqi) {
             Placement(fen: placements[$0], game: .miniXiangqi)
         }
         #expect(line.map(\.wxf) == ["C6+2", "C2+1", "C6=4"])

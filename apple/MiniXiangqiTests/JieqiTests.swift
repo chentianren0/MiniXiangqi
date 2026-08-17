@@ -31,6 +31,23 @@ struct JieqiTests {
         Square(name, on: board)!
     }
 
+    /// The two plies that take a face-down piece: the piece on Red's cannon
+    /// square steps up, and the piece on Black's takes Red's b1 over the screen
+    /// that step left standing. Both are the roles their squares give them, so
+    /// both are legal whatever the deal turns out to be.
+    static let capturingLine = ["b3b4", "b8b1"]
+
+    /// The same two plies, and then a claimable repetition.
+    ///
+    /// The generals are the only pieces on this board whose identity is known
+    /// before they move, so they are what a repetition can be written out of:
+    /// each steps into its own palace centre and back, taking nothing and
+    /// revealing nothing, so the position after the capture stands again at the
+    /// end of every cycle. Three cycles put it well past the third occurrence,
+    /// and a game the app can file is what a record needs.
+    static let claimableLine = capturingLine
+        + (0..<3).flatMap { _ in ["e1e2", "e10e9", "e2e1", "e9e10"] }
+
     /// A Free Play game, created the way the Play destination creates one: the
     /// app draws the entropy, the core derives the deal, and the dealt start is
     /// what the game is created from.
@@ -332,6 +349,41 @@ struct JieqiTests {
         #expect(state.hint == nil,
                 "a game no engine plays offers no hint: the capability is not there")
         #expect(!game.searchExpected, "and no search is ever owed")
+    }
+
+    // MARK: - The ending
+
+    @Test("The end of the game discloses the deal, and nothing before it does")
+    func theEndingDisclosesTheDeal() throws {
+        let core = try TestCores.fresh()
+        let game = try dealtGame(on: core)
+        // What the board is still concealing when the game ends, kept from
+        // before it does: the disclosure shows these and invents nothing.
+        let hidden = Self.square("a1")
+        let identity = try #require(game.placement.concealedIdentity(at: hidden))
+
+        try game.replay(Self.claimableLine)
+        #expect(!game.disclosesTheDeal,
+                "a game still being played conceals what it conceals")
+        #expect(game.placement[hidden]?.isFaceDown == true)
+
+        try #require(game.evaluation.claimAvailable,
+                     "the generals' cycle stands the position up three times")
+        game.claimDraw()
+
+        #expect(game.isFinished)
+        #expect(game.disclosesTheDeal,
+                "every hidden identity is disclosed to both players by any ending")
+        // The position is the position — the record still holds the deal the
+        // way it always did, and what changed is what a player may be shown.
+        #expect(game.placement[hidden]?.isFaceDown == true)
+        #expect(game.placement.concealedIdentity(at: hidden) == identity)
+        // And the surface beside it resolves its count into the piece it was
+        // counting, for the player who lost it.
+        let owner = game.captured.panel(of: .red, throughPly: game.moves.count,
+                                        seenBy: .red, disclosed: game.disclosesTheDeal)
+        #expect(owner.hidden == 0)
+        #expect(owner.pieces.count == 1)
     }
 
     @Test("Two deals are two games")

@@ -116,7 +116,7 @@ final class Replay {
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
         self.moves = try session.moves()
-        self.notation = try MoveReading.line(for: moves, on: record.game.board) {
+        self.notation = try MoveReading.line(for: moves, on: record.game) {
             Placement(fen: try session.position(atPly: $0).fen, game: record.game)
         }
         self.captured = try CapturedPieces.line(for: moves, on: record.game) {
@@ -171,6 +171,22 @@ final class Replay {
     /// early stopped without a result, so its last ply is a landing like any
     /// other.
     var isFinalPosition: Bool { isAtEnd && record.outcome != .none }
+
+    /// Whether the deal this record conceals is disclosed at the position on
+    /// screen.
+    ///
+    /// **The ending is what discloses, so the ending is where it shows.** A
+    /// record's last position is the one the game ended in, and there every
+    /// identity is disclosed to both players; every earlier position is the game
+    /// as it was played, and a walk back through it is a walk back into what the
+    /// players knew then — which is the same concealment the record itself holds
+    /// at that ply. A game that stopped without a result never ended, so its
+    /// last ply discloses nothing either.
+    ///
+    /// The captured surface beside the board is not asked this: a record is a
+    /// game already over whichever ply it is showing, so what it took is shown
+    /// disclosed throughout.
+    var disclosesTheDeal: Bool { record.game.conceals && isFinalPosition }
 
     // MARK: - The transport
 

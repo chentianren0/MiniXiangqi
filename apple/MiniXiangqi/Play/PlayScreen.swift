@@ -517,7 +517,15 @@ struct PlayScreen: View {
     private func boardBlock(_ game: Game, _ motion: PlayMotion,
                             _ geometry: BoardGeometry,
                             bleed: CGFloat = 0) -> some View {
-        ZStack {
+        // **The ending discloses the deal, and the board shows it at the moment
+        // the finished scene arrives** — after the landing, which is the same
+        // beat the result notice and the control cluster wait for: the ply that
+        // ended the game has to finish being shown before anything answers it.
+        // It arrives by opacity, one settle for the whole board, so Reduce
+        // Motion draws it exactly as full motion does.
+        let disclosure: Double = game.disclosesTheDeal
+            && showsFinishedScene(game, motion) ? 1 : 0
+        return ZStack {
             BoardView(geometry: geometry,
                       placement: game.placement,
                       flipped: game.flipped,
@@ -533,6 +541,7 @@ struct PlayScreen: View {
                       companion: motion.transitCompanion,
                       transitFade: motion.transitFade,
                       transitReveal: motion.transitReveal,
+                      disclosure: disclosure,
                       checkEmphasis: motion.checkEmphasis,
                       markerEmphasis: motion.markerEmphasis,
                       hintEmphasis: motion.hintEmphasis,
@@ -565,6 +574,10 @@ struct PlayScreen: View {
                     .transition(.opacity)
             }
         }
+        // One settle for the disclosure, and for nothing else: the board's own
+        // phases are driven by the transitions that schedule them, and this
+        // animates the one value those transitions do not.
+        .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
     private func retryFiling(_ game: Game, _ motion: PlayMotion) {

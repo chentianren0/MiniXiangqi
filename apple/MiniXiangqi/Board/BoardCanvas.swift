@@ -78,6 +78,11 @@ struct BoardPhases: VectorArithmetic {
     /// the arrival rather than spread over the journey — the identity comes up
     /// as the piece lands, which is what makes a reveal one event.
     var reveal: Double = 0
+    /// How far the whole deal has come up: the end of a Jieqi game, which
+    /// discloses every identity the position still conceals. It is one phase for
+    /// the board rather than one per disc, because what it draws is one event —
+    /// the game ending — and every disc it touches arrives together.
+    var disclosure: Double = 0
     /// Orientation: 0 is Red at the bottom, 1 is flipped.
     var flip: Double = 0
     /// The check rings' one-time swell.
@@ -120,6 +125,7 @@ struct BoardPhases: VectorArithmetic {
     static func + (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel + rhs.travel, fade: lhs.fade + rhs.fade,
              reveal: lhs.reveal + rhs.reveal,
+             disclosure: lhs.disclosure + rhs.disclosure,
              flip: lhs.flip + rhs.flip, check: lhs.check + rhs.check,
              marker: lhs.marker + rhs.marker, hint: lhs.hint + rhs.hint,
              lifts: lhs.lifts + rhs.lifts, settled: lhs.settled + rhs.settled)
@@ -128,13 +134,14 @@ struct BoardPhases: VectorArithmetic {
     static func - (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel - rhs.travel, fade: lhs.fade - rhs.fade,
              reveal: lhs.reveal - rhs.reveal,
+             disclosure: lhs.disclosure - rhs.disclosure,
              flip: lhs.flip - rhs.flip, check: lhs.check - rhs.check,
              marker: lhs.marker - rhs.marker, hint: lhs.hint - rhs.hint,
              lifts: lhs.lifts - rhs.lifts, settled: lhs.settled - rhs.settled)
     }
 
     mutating func scale(by rhs: Double) {
-        travel *= rhs; fade *= rhs; reveal *= rhs; flip *= rhs
+        travel *= rhs; fade *= rhs; reveal *= rhs; disclosure *= rhs; flip *= rhs
         check *= rhs; marker *= rhs
         hint.scale(by: rhs)
         lifts.scale(by: rhs)
@@ -143,7 +150,7 @@ struct BoardPhases: VectorArithmetic {
 
     var magnitudeSquared: Double {
         travel * travel + fade * fade + reveal * reveal
-            + flip * flip + check * check
+            + disclosure * disclosure + flip * flip + check * check
             + marker * marker + hint.magnitudeSquared + lifts.magnitudeSquared
             + settled.magnitudeSquared
     }
@@ -486,12 +493,38 @@ struct BoardCanvas: View, Animatable {
                 // Reduce Motion raises a piece by dissolve: the resting
                 // rendering fades here while the raised one fades in above,
                 // and no size ever animates.
-                draw(piece, at: point(square, flip: flip), lift: 0,
+                //
+                // **A piece the ending has disclosed comes up in its place**:
+                // the game is over, every identity is disclosed to both players,
+                // and the disc that was face down carries the piece it was all
+                // along. It is the reveal's own drawing at rest — one body, one
+                // ring, and the symbol arriving by opacity — so nothing moves
+                // and Reduce Motion changes nothing about it.
+                let face = disclosed(piece, at: square)
+                draw(face.piece, at: point(square, flip: flip), lift: 0,
                      scale: policy.reduceMotion ? 1 : settled,
                      opacity: (1 - lift) * (policy.reduceMotion ? settled : 1),
+                     symbolOpacity: face.symbol,
                      in: context)
             }
         }
+    }
+
+    /// One resting piece as the end of the game leaves it: itself, or — where
+    /// the ending has disclosed the deal and this disc was face down — the
+    /// piece the record held under it, with its symbol coming up on the phase.
+    ///
+    /// The concealed identity is read here and nowhere else on this board, and
+    /// only while the disclosure stands: a game that has ended discloses every
+    /// hidden identity to both players, which is the one moment the position's
+    /// concealment is over.
+    private func disclosed(_ piece: Piece,
+                           at square: Square) -> (piece: Piece, symbol: Double) {
+        guard piece.isFaceDown, phases.disclosure > 0,
+              let identity = placement.concealedIdentity(at: square)
+        else { return (piece, 1) }
+        return (Piece(kind: identity, side: piece.side),
+                min(max(phases.disclosure, 0), 1))
     }
 
     /// The disc in transit and the disc giving way to it — or, for an Undo,

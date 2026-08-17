@@ -211,7 +211,12 @@ struct ReplayScreen: View {
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry,
                        bleed: CGFloat = 0) -> some View {
-        BoardView(geometry: geometry,
+        // The ending discloses the deal, so the position the game ended in
+        // shows every identity it was still concealing — and a walk back out of
+        // it shows the game as it was played, which is what the record holds at
+        // that ply. One settle, by opacity, as on the board that played it.
+        let disclosure: Double = replay.disclosesTheDeal ? 1 : 0
+        return BoardView(geometry: geometry,
                   placement: replay.placement,
                   flipped: replay.flipped,
                   lastMove: replay.lastMove,
@@ -219,11 +224,13 @@ struct ReplayScreen: View {
                   transit: replay.transit,
                   transitFade: replay.transitFade,
                   transitReveal: replay.transitReveal,
+                  disclosure: disclosure,
                   policy: policy,
                   surfaceBleed: bleed,
                   onTravelArrival: { replay.travelArrived() },
                   onFadeArrival: { replay.fadeArrived() })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
     /// The panel, beside the board or beneath it. `edge` is the window edge its

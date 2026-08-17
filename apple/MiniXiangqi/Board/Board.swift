@@ -307,7 +307,12 @@ struct Placement {
                 // already standing and never advances the file.
                 if character == "~" {
                     let square = Square(file: file - 1, rank: rank)
-                    guard game.conceals, let identity = parsed[square]?.kind,
+                    // One mark to a letter: a second would read the role it
+                    // already wrote as an identity and bury the one the record
+                    // spelled, so a doubled mark is a malformed field like any
+                    // other.
+                    guard game.conceals, parsed[square]?.isFaceDown == false,
+                          let identity = parsed[square]?.kind,
                           let role = Self.role(of: square, on: board)
                     else { return }
                     parsed[square]?.kind = role

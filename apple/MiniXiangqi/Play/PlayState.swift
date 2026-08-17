@@ -1107,7 +1107,7 @@ final class PlayState {
     private struct InvalidLaunchLine: Error, CustomStringConvertible {
         var argument: String
         var description: String {
-            "debug replay line must name one of the four games: \(argument)"
+            "debug replay line must name a game this app carries: \(argument)"
         }
     }
     #endif

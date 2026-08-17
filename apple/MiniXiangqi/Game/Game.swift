@@ -223,7 +223,7 @@ final class Game {
     private static func notation(reading moves: [String], game: GameKind,
                                  from rules: Rules) throws -> [MoveReading] {
         do {
-            return try MoveReading.line(for: moves, on: game.board) {
+            return try MoveReading.line(for: moves, on: game) {
                 Placement(fen: try rules.fen(atPly: $0), game: game)
             }
         } catch {
@@ -335,6 +335,20 @@ final class Game {
     /// out: a natural result stays undoable while its presentation is
     /// unconfirmed, and a claimed draw — an archived session — offers nothing.
     var canUndo: Bool { evaluation.undoAvailable }
+
+    /// Whether the deal this game conceals is disclosed now.
+    ///
+    /// docs/jieqi-rules.md: **when the game ends, every hidden identity is
+    /// disclosed to both players** — by any ending, a resignation and an agreed
+    /// draw included. So the position's concealment ends with the game: the
+    /// board shows every piece it was still hiding, and the captured surface
+    /// resolves its counts into the pieces they were counting. Nothing but a
+    /// game that conceals has anything to disclose.
+    ///
+    /// It says *whether*, not *when*: the board waits for the ply that ended the
+    /// game to finish being shown, exactly as the result notice does, and that
+    /// is the screen's own beat rather than a fact about the game.
+    var disclosesTheDeal: Bool { kind.conceals && isFinished }
 
     // MARK: - The opponent, where there is one
 
@@ -478,14 +492,13 @@ final class Game {
         opponentFailure = nil
         guard canUndo else { return }
         do {
-            let removed = try rules.undo()
+            _ = try rules.undo()
             moves = try rules.moveHistory()
-            // Bounded by what is there. The line and its reading are appended
-            // together and the core is what shortens both, so the two agree —
-            // except after a refused read, which leaves a ply committed with no
-            // reading beside it, and taking that ply back must not be a crash on
-            // top of a failure already on screen.
-            notation.removeLast(min(removed, notation.count))
+            // Cut to the line rather than shortened by the count, so a reading
+            // that has fallen behind is repaired instead of compounded: the
+            // core's line is what a game's readings are of, and after a refused
+            // read there can be a ply committed with no reading beside it.
+            notation = Array(notation.prefix(moves.count))
             // A retraction returns whatever those plies took, exactly as it
             // returns the position they produced.
             captured.removePlies(from: moves.count)
