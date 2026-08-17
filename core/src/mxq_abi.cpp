@@ -53,6 +53,10 @@ static_assert(sizeof(MxqProvenance) == 4, "MxqProvenance must be 32 bits");
 static_assert(sizeof(MxqImportOutcome) == 4, "MxqImportOutcome must be 32 bits");
 static_assert(sizeof(MxqEngineState) == 4, "MxqEngineState must be 32 bits");
 static_assert(sizeof(MxqSearchOutcome) == 4, "MxqSearchOutcome must be 32 bits");
+static_assert(sizeof(MxqNearbyProposer) == 4,
+              "MxqNearbyProposer must be 32 bits");
+static_assert(sizeof(MxqNearbyTerminal) == 4,
+              "MxqNearbyTerminal must be 32 bits");
 static_assert(std::is_signed<MxqStatus>::value, "MxqStatus must be signed");
 
 MXQ_ASSERT_BLITTABLE(MxqError);
@@ -129,10 +133,35 @@ MXQ_ASSERT_AT(MxqDeal, start_fen, 4);
 MXQ_ASSERT_AT(MxqDeal, commit, 4 + MXQ_FEN_CAP);
 MXQ_ASSERT_AT(MxqDeal, digest, 4 + MXQ_FEN_CAP + MXQ_DEAL_HEX_CAP);
 MXQ_ASSERT_AT(MxqDeal, reserved0, 4 + MXQ_FEN_CAP + 2 * MXQ_DEAL_HEX_CAP);
-/* The trailing pair is what keeps this struct free of implicit padding: three
- * text capacities summing to an odd length would otherwise leave the struct's
- * own four-byte alignment to be met by tail padding no assertion here names. */
+/* The trailing pair is what keeps this struct free of implicit padding: the
+ * three text capacities sum to two bytes past a multiple of four, so without it
+ * the struct's own four-byte alignment would be met by tail padding no
+ * assertion here names. */
 MXQ_ASSERT_SIZE(MxqDeal, 6 + MXQ_FEN_CAP + 2 * MXQ_DEAL_HEX_CAP);
+
+MXQ_ASSERT_BLITTABLE(MxqNearbySession);
+MXQ_ASSERT_AT(MxqNearbySession, proposer, 4);
+MXQ_ASSERT_AT(MxqNearbySession, undos, 8);
+MXQ_ASSERT_AT(MxqNearbySession, keep, 12);
+MXQ_ASSERT_AT(MxqNearbySession, sent_end, 16);
+MXQ_ASSERT_AT(MxqNearbySession, claimed, 20);
+MXQ_ASSERT_AT(MxqNearbySession, reserved0, 21);
+MXQ_ASSERT_AT(MxqNearbySession, session_id, 24);
+MXQ_ASSERT_AT(MxqNearbySession, peer_id, 24 + MXQ_NEARBY_SESSION_ID_CAP);
+MXQ_ASSERT_AT(MxqNearbySession, deal_commit,
+              24 + MXQ_NEARBY_SESSION_ID_CAP + MXQ_NEARBY_PEER_ID_CAP);
+MXQ_ASSERT_AT(MxqNearbySession, deal_nonce,
+              24 + MXQ_NEARBY_SESSION_ID_CAP + MXQ_NEARBY_PEER_ID_CAP +
+                  MXQ_DEAL_HEX_CAP);
+MXQ_ASSERT_AT(MxqNearbySession, deal_seed,
+              24 + MXQ_NEARBY_SESSION_ID_CAP + MXQ_NEARBY_PEER_ID_CAP +
+                  2 * MXQ_DEAL_HEX_CAP);
+MXQ_ASSERT_AT(MxqNearbySession, deal_digest,
+              24 + MXQ_NEARBY_SESSION_ID_CAP + MXQ_NEARBY_PEER_ID_CAP +
+                  3 * MXQ_DEAL_HEX_CAP);
+MXQ_ASSERT_SIZE(MxqNearbySession, 24 + MXQ_NEARBY_SESSION_ID_CAP +
+                                      MXQ_NEARBY_PEER_ID_CAP +
+                                      4 * MXQ_DEAL_HEX_CAP);
 
 MXQ_ASSERT_BLITTABLE(MxqGameConfig);
 MXQ_ASSERT_AT(MxqGameConfig, mode, 4);
