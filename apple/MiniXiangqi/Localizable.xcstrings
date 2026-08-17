@@ -1028,7 +1028,7 @@
       }
     },
     "captured.hidden": {
-      "comment": "How many of a side's losses this reader may not see: pieces taken while face down, whose identities were disclosed to the player who took them. The count leads in both languages, as every other count in this catalog does; the English noun does not inflect.",
+      "comment": "How many of a side's losses this reader may not see: pieces taken while face down, whose identities were disclosed to the player who took them. Spoken only — the surface draws the count as face-down discs, and this is the row label's word for them. The count leads in both languages; the English noun does not inflect.",
       "extractionState": "manual",
       "localizations": {
         "en": {

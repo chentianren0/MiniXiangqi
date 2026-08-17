@@ -810,7 +810,7 @@ Navigation uses one adaptive container, and the container is the platform's own 
 
 On one player's surface only one of the two hidden classes is ever a count — their own hidden losses, which they may not know. The opponent's hidden losses are the pieces this player took, and those they have already seen.
 
-It is a resident surface of the board page and takes the resident rule with it: it never intersects the board block, and the board keeps its pitch floor before this surface is given room. Where the rows and the counts stand, how large their discs are, and how a disclosure arrives are settled against the rendered board, as every other visual specific here is.
+It is a resident surface of the board page and takes the resident rule with it: it never intersects the board block, and the board keeps its pitch floor before this surface is given room. Where the rows stand, how large their discs are, and how a disclosure arrives are settled against the rendered board, as every other visual specific here is.
 
 **Where the board keeps its floor there is no room to be resident in, and there it is reached instead** — the same answer [the move list](#the-move-list-during-play) gives to the same question, on the same surface. Beside the board it is a section of the panel, resident and always readable. In the stacked shape it is a toolbar item over a sheet, because a surface granted whatever height is left over after the board's floor would defeat the reason it exists: a row of discs nobody can read says less than a row a reader asks for and gets whole.
 
