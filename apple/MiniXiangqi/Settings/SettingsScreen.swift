@@ -6,23 +6,25 @@
 // control either — the operating system owns the language, and a control of ours
 // would be a second source of truth for it.
 //
-// Issue #64's Stage 5 design fixes the shape, and Stage 4's opponent added to
-// it: a grouped Form of preference groups, with 关于 under them. The board's two
-// choices sit together under 棋盘 because both are about what the board shows
-// and because they are independent of each other — a learner may want 图标 discs
-// beside the 中文 list they are learning to read. 人机对弈默认设置 is next, headed
-// and footed, because its two values need saying what they are for: they
-// initialize the next game's setup and never reach the game already on the
-// board. The two feedback switches are their own group with no header, of equal
-// standing and neither nested under the other. 落子前确认 and 删除前确认 are each a
-// group of their own so that each footer is unmistakably about the switch above
-// it: one changes how a stone is placed, the other makes a deletion immediate,
-// and a deletion cannot be undone. Those are the only footers on the screen — a
-// footer under every group is a screen nobody reads.
-// 关于 is last and is not a preference at all: it is the way to what the
-// application is and what it is licensed under, which is a page rather than a
+// The shape is a grouped Form, ordered by what a preference reaches, nearest
+// first: what the board shows (棋盘), what a move gives back (the two feedback
+// switches), how an action commits (落子前确认, 删除前确认), what the next game
+// opens with (人机对弈默认设置), and last the way to what the application is
+// (关于). The board's two choices sit together because both are about what the
+// board shows and they are independent of each other — a learner may want 图标
+// discs beside the 中文 list they are learning to read — and their footer says
+// how far the pair reaches, jieqi's own move reading being the one surprise
+// worth a sentence. The two feedback switches are their own group with no
+// header, of equal standing and neither nested under the other. 落子前确认 and
+// 删除前确认 are each a group of their own so that each footer is unmistakably
+// about the switch above it: one changes how a stone is placed, the other
+// makes a deletion immediate, and a deletion cannot be undone. 人机对弈默认设置
+// is headed and footed because its two values need saying what they are for:
+// they initialize the next game's setup and never reach the game already on
+// the board. 关于 is not a preference at all: it is a page rather than a
 // control, so it takes a group of its own at the foot where nothing above it
-// has to make room.
+// has to make room. A footer stands only where reach or consequence needs
+// saying — a footer under every group is a screen nobody reads.
 //
 // **Settings is silent.** Sound is an event of the board, per
 // docs/interaction-design.md § Sound and haptics, and a screen that clicked back
@@ -59,10 +61,10 @@ struct SettingsScreen: View {
         NavigationStack {
             Form {
                 board
-                humanVersusAIDefaults
                 feedback
                 placement
                 deletion
+                humanVersusAIDefaults
                 about
             }
             // The macOS-native presentation of a preference list, and the one
@@ -96,7 +98,7 @@ struct SettingsScreen: View {
     /// between would be one this screen invented for a choice whose consumer
     /// already has its own.
     private var board: some View {
-        Section("settings.section.board") {
+        Section {
             Picker("settings.symbols.label", selection: $symbols) {
                 Text("settings.symbols.hanzi").tag("hanzi")
                 Text("settings.symbols.icons").tag("icons")
@@ -108,6 +110,15 @@ struct SettingsScreen: View {
                 Text("settings.notation.wxf").tag("wxf")
             }
             .accessibilityIdentifier("settings-notation")
+        } header: {
+            Text("settings.section.board")
+        } footer: {
+            // The scope note: the stone games have no symbols to swap, and the
+            // one genuine surprise — flipping the notation preference in a
+            // jieqi game and seeing its move list unmoved — is what the
+            // sentence answers.
+            Text("settings.board.footer")
+                .accessibilityIdentifier("settings-board-footer")
         }
     }
 

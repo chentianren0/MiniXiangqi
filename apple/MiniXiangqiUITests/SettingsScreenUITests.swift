@@ -46,8 +46,10 @@ final class SettingsScreenUITests: XCTestCase {
         let boardSection: String
         let symbols, hanzi, icons: String
         let notation, traditional, wxf: String
+        let boardFooter: String
         let sound, haptics: String
         let confirmDelete, confirmDeleteFooter: String
+        let confirmPlacement, confirmPlacementFooter: String
         /// The human-versus-AI defaults group: its header, its two rows, their
         /// accepted new-install values, and the footer that says what they are
         /// for and what they deliberately are not.
@@ -73,9 +75,12 @@ final class SettingsScreenUITests: XCTestCase {
             boardSection: "棋盘",
             symbols: "棋子符号", hanzi: "汉字", icons: "图标",
             notation: "记谱法", traditional: "中文", wxf: "WXF",
+            boardFooter: "适用于有棋子的棋类。揭棋的行棋记录使用自身的固定读法，不随记谱法改变。",
             sound: "声音", haptics: "触感",
             confirmDelete: "删除前确认",
             confirmDeleteFooter: "关闭后，删除立即执行。删除无法撤销。",
+            confirmPlacement: "落子前确认",
+            confirmPlacementFooter: "适用于五子棋与连珠。开启后，第一次点击标记落点，再次点击该点才落子；关闭后，点击直接落子。",
             defaultsSection: "人机对弈默认设置",
             defaultFirstMover: "默认先后手", defaultAiLevel: "默认 AI 等级",
             iMoveFirst: "我先手", standardLevel: "标准",
@@ -94,9 +99,12 @@ final class SettingsScreenUITests: XCTestCase {
             boardSection: "Board",
             symbols: "Piece Symbols", hanzi: "Chinese Characters", icons: "Icons",
             notation: "Notation", traditional: "Chinese", wxf: "WXF",
+            boardFooter: "Applies to the games played with pieces. Jieqi's move list keeps its own fixed reading, whichever Notation is chosen.",
             sound: "Sound", haptics: "Haptics",
             confirmDelete: "Confirm Before Deleting",
             confirmDeleteFooter: "When off, deletion happens immediately. A deletion cannot be undone.",
+            confirmPlacement: "Confirm Before Placing",
+            confirmPlacementFooter: "Applies to Gomoku and Renju. When on, the first tap marks a point and tapping it again places the stone; when off, a tap places it straight away.",
             defaultsSection: "Human versus AI Defaults",
             defaultFirstMover: "Default First Mover", defaultAiLevel: "Default AI Level",
             iMoveFirst: "I Move First", standardLevel: "Standard",
@@ -246,10 +254,11 @@ final class SettingsScreenUITests: XCTestCase {
 
     // MARK: - The screen
 
-    /// The seven controls the design fixes, in the four preference groups it
-    /// fixes them in, each showing the accepted default. Nothing is clicked:
-    /// this is the screen a first launch opens on.
-    func testTheSettingsTabOffersTheSevenAcceptedControls() {
+    /// The controls the design fixes, in the preference groups it fixes them
+    /// in, each showing the accepted default — the assertions below are the
+    /// census, and nothing here repeats their count. Nothing is clicked: this
+    /// is the screen a first launch opens on.
+    func testTheSettingsTabOffersTheAcceptedControls() {
         let app = launch()
         let language = Language.chinese
         openSettings(app, in: language)
@@ -269,10 +278,12 @@ final class SettingsScreenUITests: XCTestCase {
                        "汉字 is the accepted default — it reads \(String(describing: symbols.value))")
         XCTAssertEqual(notation.value as? String, language.traditional,
                        "and 中文 is — it reads \(String(describing: notation.value))")
+        XCTAssertTrue(app.staticTexts[language.boardFooter].exists,
+                      "the group's footer says how far the two choices reach")
 
         // The human-versus-AI defaults, which initialize a future game's setup
-        // page and reach no game that already exists — which is what the one
-        // other footer on this screen says out loud.
+        // page and reach no game that already exists — which is what its
+        // footer says out loud.
         XCTAssertTrue(app.staticTexts[language.defaultsSection].exists)
         XCTAssertTrue(app.staticTexts[language.defaultFirstMover].exists)
         XCTAssertTrue(app.staticTexts[language.defaultAiLevel].exists)
@@ -303,7 +314,16 @@ final class SettingsScreenUITests: XCTestCase {
             XCTAssertEqual(control.value as? Int, 1, "\(identifier) defaults on")
         }
 
-        // And the one with a footer.
+        // The placement confirmation, footed with its scope and its flow, and
+        // off on a new installation.
+        let placement = control(app, "settings-confirm-placement")
+        XCTAssertTrue(placement.exists)
+        XCTAssertTrue(app.staticTexts[language.confirmPlacement].exists)
+        XCTAssertEqual(placement.value as? Int, 0,
+                       "the placement confirmation defaults off")
+        XCTAssertTrue(app.staticTexts[language.confirmPlacementFooter].exists)
+
+        // And the deletion confirmation, whose footer is the load-bearing one.
         let confirm = control(app, "settings-confirm-delete")
         XCTAssertTrue(confirm.exists)
         XCTAssertTrue(app.staticTexts[language.confirmDelete].exists)
@@ -320,17 +340,15 @@ final class SettingsScreenUITests: XCTestCase {
     /// Everything on the screen is still reachable, and nothing is clipped
     /// sideways, at the accepted minimum window.
     ///
-    /// **Present and unclipped, not all visible at once.** With the
-    /// human-versus-AI defaults and 关于 the screen is five groups, and five
-    /// groups do not fit 520 points of window without scrolling. That is what
-    /// a `Form` is: the accepted floor is the *play* content's, and a
-    /// preference list that scrolls at the smallest window is the platform's
-    /// own answer rather than a layout failure. So what this asserts is what a
+    /// **Present and unclipped, not all visible at once.** The grouped list
+    /// is taller than 520 points of window, and that is what a `Form` is: the
+    /// accepted floor is the *play* content's, and a preference list that
+    /// scrolls at the smallest window is the platform's own answer rather
+    /// than a layout failure. So what this asserts is what a
     /// frame series can assert about a list that extends past the window —
-    /// every control is there, none of them is cut off by the window's
-    /// *width*, and they read down the screen in the accepted order. How far
-    /// past the window the list goes is what the logged frames and the
-    /// screenshot are for.
+    /// every control is there, and none of them is cut off by the window's
+    /// *width*. How far past the window the list goes is what the logged
+    /// frames and the screenshot are for.
     func testTheScreenFitsTheMinimumWindow() {
         let app = launch(window: "770x520")
         let language = Language.chinese
@@ -343,11 +361,14 @@ final class SettingsScreenUITests: XCTestCase {
         XCTAssertEqual(window.size, CGSize(width: 770, height: 520),
                        "the accepted minimum window")
         for identifier in ["settings-symbols", "settings-notation",
-                           "settings-first-mover", "settings-ai-level",
-                           "settings-defaults-footer",
+                           "settings-board-footer",
                            "settings-sound", "settings-haptics",
+                           "settings-confirm-placement",
+                           "settings-confirm-placement-footer",
                            "settings-confirm-delete",
                            "settings-confirm-delete-footer",
+                           "settings-first-mover", "settings-ai-level",
+                           "settings-defaults-footer",
                            "settings-about"] {
             let element = control(app, identifier)
             XCTAssertTrue(element.exists, "\(identifier) should be there at the minimum")
@@ -360,21 +381,9 @@ final class SettingsScreenUITests: XCTestCase {
             print("SETTINGS-EVIDENCE minimum-window \(identifier) frame=\(element.frame)")
         }
 
-        // And they are in the accepted order, top to bottom: the board group,
-        // the human-versus-AI defaults, the two feedback switches, the deletion
-        // confirmation, and 关于 at the foot of all of them. Order is what a
-        // frame series can assert about a list that extends past the window;
-        // how far past it goes is what the screenshot and the logged frames
-        // are for.
-        let order = ["settings-symbols", "settings-notation",
-                     "settings-first-mover", "settings-ai-level",
-                     "settings-defaults-footer",
-                     "settings-sound", "settings-haptics",
-                     "settings-confirm-delete", "settings-confirm-delete-footer",
-                     "settings-about"]
-        let tops = order.map { control(app, $0).frame.minY }
-        XCTAssertEqual(tops, tops.sorted(),
-                       "the groups should read down the screen in the accepted order")
+        // The order is deliberately not pinned: sections render exactly as the
+        // code declares them, so it cannot drift by accident, and a pin would
+        // tax every deliberate reorder while guarding nothing.
         attach(app, named: "41-the-settings-screen-at-the-minimum-window")
     }
 

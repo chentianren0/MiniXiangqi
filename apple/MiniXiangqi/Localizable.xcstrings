@@ -3349,8 +3349,26 @@
         }
       }
     },
+    "settings.board.footer": {
+      "comment": "The board group's scope note: which games its two choices reach. The stone games have no piece symbols and no xiangqi notation; jieqi follows both choices on its board, but its move list deliberately keeps one fixed reading, and that is the surprise this footer answers.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to the games played with pieces. Jieqi's move list keeps its own fixed reading, whichever Notation is chosen."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "适用于有棋子的棋类。揭棋的行棋记录使用自身的固定读法，不随记谱法改变。"
+          }
+        }
+      }
+    },
     "settings.confirmDelete.footer": {
-      "comment": "The one footer in Settings. It says what turning the switch off costs, and that the cost cannot be undone; the second sentence is the permanence the product contract fixes, not a warning added here.",
+      "comment": "The deletion group's footer, the load-bearing one. It says what turning the switch off costs, and that the cost cannot be undone; the second sentence is the permanence the product contract fixes, not a warning added here.",
       "extractionState": "manual",
       "localizations": {
         "en": {
