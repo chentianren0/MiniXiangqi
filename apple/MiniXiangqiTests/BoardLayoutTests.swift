@@ -439,9 +439,9 @@ struct BoardLayoutTests {
 
     @Test("The chrome yields where the board's floor needs the height, and the board fits")
     func theStackedChromeYieldsToTheBoardsFloor() {
-        // 616 by 535 is the narrowest ordinary Mac window that takes the
-        // stacked shape, and replay's panel is a fixed 260-point block of
-        // chrome. Taken whole it would leave the board 275 points to draw a
+        // 616 by 535 — under the product's own window floor, which the shape
+        // function does not know — takes the stacked shape, and replay's
+        // panel is a fixed 260-point block of chrome. Taken whole it would leave the board 275 points to draw a
         // block that cannot go below 340 — 65 points of board over the panel
         // and off the bottom of the window.
         let window = CGSize(width: 616, height: 535)

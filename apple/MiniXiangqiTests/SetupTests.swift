@@ -344,9 +344,9 @@ struct SetupTests {
     /// both: whichever probe the platform compiled in is the one this exercises.
     ///
     /// The available figure carries no invariant here at all, and the
-    /// platforms are what say so: the increased-memory-limit entitlement lets
-    /// a real device answer above the memory that exists — the M2 iPad Air
-    /// answers 8.40 GB against 7.99 GB physical — and a Simulator process has
+    /// platforms are what say so: a real device answers above the memory that
+    /// exists — the M2 iPad Air, 8.40 GB against 7.99 GB physical, with the
+    /// increased-memory-limit entitlement enabled — and a Simulator process has
     /// no per-process limit and answers zero, which is the contract's own
     /// below-minimum case. What the policy asks of the number, the plan tests
     /// above ask; this asks only that the probe answers.
