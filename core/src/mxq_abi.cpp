@@ -124,6 +124,16 @@ MXQ_ASSERT_AT(MxqSetupViolation, side, 8);
 MXQ_ASSERT_AT(MxqSetupViolation, square, 12);
 MXQ_ASSERT_SIZE(MxqSetupViolation, 12 + MXQ_SQUARE_TEXT_CAP);
 
+MXQ_ASSERT_BLITTABLE(MxqDeal);
+MXQ_ASSERT_AT(MxqDeal, start_fen, 4);
+MXQ_ASSERT_AT(MxqDeal, commit, 4 + MXQ_FEN_CAP);
+MXQ_ASSERT_AT(MxqDeal, digest, 4 + MXQ_FEN_CAP + MXQ_DEAL_HEX_CAP);
+MXQ_ASSERT_AT(MxqDeal, reserved0, 4 + MXQ_FEN_CAP + 2 * MXQ_DEAL_HEX_CAP);
+/* The trailing pair is what keeps this struct free of implicit padding: three
+ * text capacities summing to an odd length would otherwise leave the struct's
+ * own four-byte alignment to be met by tail padding no assertion here names. */
+MXQ_ASSERT_SIZE(MxqDeal, 6 + MXQ_FEN_CAP + 2 * MXQ_DEAL_HEX_CAP);
+
 MXQ_ASSERT_BLITTABLE(MxqGameConfig);
 MXQ_ASSERT_AT(MxqGameConfig, mode, 4);
 MXQ_ASSERT_AT(MxqGameConfig, human_side, 8);

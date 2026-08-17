@@ -17,6 +17,7 @@
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_core_state.hpp"
+#include "mxq_deal.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_jieqi_bridge.hpp"
 #include "mxq_rules.hpp"
@@ -419,6 +420,72 @@ MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
         out[i].struct_size = static_cast<uint32_t>(sizeof(MxqMove));
         mxq::copy_bounded(out[i].text, sizeof(out[i].text), legal[i].c_str());
     }
+    return MXQ_OK;
+}
+
+MxqStatus MXQ_CALL mxq_rules_deal(MxqCore *core, MxqGameKind game,
+                                  const char *seed, const char *nonce,
+                                  MxqDeal *out, MxqError *err) {
+    MxqStatus rc = mxq::require_core(core, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    rc = mxq::require_game(game, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+    /* One game is dealt. Asking any other for a deal is a programming error by
+     * the same reachability rule mxq_rules_start_fen's absent frozen start
+     * meets: the caller owns the game axis and mxq.h states which game this
+     * is. */
+    if (game != MXQ_GAME_KIND_JIEQI) {
+        assert(false && "this game has no deal");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "this game is not dealt; it begins from a position no "
+                        "seed and nonce derive");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    if (seed == nullptr) {
+        assert(false && "required seed pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "seed was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+    if (nonce == nullptr) {
+        assert(false && "required nonce pointer was null");
+        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "nonce was null");
+        return MXQ_ERR_ARG_NULL;
+    }
+
+    rc = mxq::begin_out(out, out != nullptr ? out->struct_size : 0u,
+                        static_cast<uint32_t>(sizeof(MxqDeal)),
+                        static_cast<uint32_t>(sizeof(MxqDeal)), err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
+
+    /* The shape both values are written in is checked where it is defined,
+     * which is inside the derivation: one spelling, one test, and the detail
+     * naming which of the two was not it. */
+    mxq::deal::Deal derived;
+    std::string detail;
+    if (!mxq::deal::derive(seed, nonce, derived, detail)) {
+        assert(false && "a handshake value is sixty-four lowercase hexadecimal "
+                        "digits");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE, detail.c_str());
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    /* The commitment cannot refuse a seed the derivation just accepted: both
+     * ask the one question about it. */
+    std::string commit;
+    const bool bound = mxq::deal::commitment_of(seed, commit);
+    assert(bound && "the seed the derivation read is the seed this binds");
+    (void)bound;
+
+    mxq::copy_bounded(out->start_fen, sizeof(out->start_fen),
+                      mxq::deal::start_of(derived).c_str());
+    mxq::copy_bounded(out->commit, sizeof(out->commit), commit.c_str());
+    mxq::copy_bounded(out->digest, sizeof(out->digest), derived.digest.c_str());
     return MXQ_OK;
 }
 

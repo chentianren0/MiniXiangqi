@@ -98,6 +98,20 @@ bool commitment_of(const std::string &hex32, std::string &out);
 #if defined(MXQ_ENABLE_RULES_FACADE)
 
 /*
+ * The position record this deal spells: the thirty dealt pieces face down on
+ * the squares square_of lays them out on, the two generals face up on their
+ * own, Red to move, halfmove 0 and fullmove 1.
+ *
+ * It is the inverse of what verify below compares, and it is deliberately one
+ * function away from it: the deal a start spells and the start a deal spells
+ * must be the same relation read in two directions, and two hand-kept copies of
+ * it would agree until one of them was changed. The record is written by the
+ * bridge's own writer for the same reason verify reads it through the bridge's
+ * own reader — there is no second speller of this form.
+ */
+std::string start_of(const Deal &deal);
+
+/*
  * The whole of what a dealt game's evidence is checked against, in the order
  * docs/game-data.md's validation clause states it: the seed must hash to the
  * commitment, and the deal the seed and the nonce derive must be the one
