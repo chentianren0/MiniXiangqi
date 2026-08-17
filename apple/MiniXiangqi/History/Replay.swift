@@ -32,6 +32,16 @@ final class Replay {
     let moves: [String]
     let notation: [MoveReading]
 
+    /// What the recorded game took off the board, read back from the record's
+    /// own positions exactly as a resumed game's is.
+    ///
+    /// **A record is a game already over, so its surface is the disclosed one
+    /// throughout** — docs/interaction-design.md, "Captured pieces". What the
+    /// walk shows at a ply is what had been taken by then; what it shows of each
+    /// piece is everything, because the ending disclosed every hidden identity
+    /// to both players.
+    let captured: CapturedPieces
+
     /// How many plies are shown: 0 is the initial position, `moves.count` the
     /// final one.
     private(set) var ply = 0
@@ -106,7 +116,10 @@ final class Replay {
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
         self.moves = try session.moves()
-        self.notation = try MoveReading.line(for: moves, on: record.game.board) {
+        self.notation = try MoveReading.line(for: moves, on: record.game) {
+            Placement(fen: try session.position(atPly: $0).fen, game: record.game)
+        }
+        self.captured = try CapturedPieces.line(for: moves, on: record.game) {
             Placement(fen: try session.position(atPly: $0).fen, game: record.game)
         }
         let start = try session.position(atPly: 0)
@@ -143,6 +156,10 @@ final class Replay {
     /// the disc fading beside it.
     var transit: Transit? { transits.transit }
     var transitFade: Double { transits.fade }
+    /// How far a revealed identity has come up on the travelling disc — the
+    /// same reveal play draws, drawn here for the same reason a replayed move
+    /// travels at all.
+    var transitReveal: Double { transits.reveal }
 
     var isAtStart: Bool { ply == 0 }
     var isAtEnd: Bool { ply == moves.count }
@@ -154,6 +171,22 @@ final class Replay {
     /// early stopped without a result, so its last ply is a landing like any
     /// other.
     var isFinalPosition: Bool { isAtEnd && record.outcome != .none }
+
+    /// Whether the deal this record conceals is disclosed at the position on
+    /// screen.
+    ///
+    /// **The ending is what discloses, so the ending is where it shows.** A
+    /// record's last position is the one the game ended in, and there every
+    /// identity is disclosed to both players; every earlier position is the game
+    /// as it was played, and a walk back through it is a walk back into what the
+    /// players knew then — which is the same concealment the record itself holds
+    /// at that ply. A game that stopped without a result never ended, so its
+    /// last ply discloses nothing either.
+    ///
+    /// The captured surface beside the board is not asked this: a record is a
+    /// game already over whichever ply it is showing, so what it took is shown
+    /// disclosed throughout.
+    var disclosesTheDeal: Bool { record.game.conceals && isFinalPosition }
 
     // MARK: - The transport
 
@@ -262,24 +295,44 @@ final class Replay {
             return 0
         }
 
-        let captured = forward ? placement[played.to] : nil
+        // The piece this step takes, where it takes one. Named for what it is
+        // rather than for the act, because the surface beside the board is
+        // called `captured` and a step's own victim is not that list.
+        let victim = forward ? placement[played.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: played),
                                    on: record.game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel)),
-                     drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
+                     drawingRemoval: victim != nil && !policy.reduceMotion) { [self] in
             // A ply the session will not answer for leaves the board exactly
             // where it was, with nothing travelling.
             guard walk(to: target) else { return nil }
+            // The face the disc arrives with, where the step turns a piece up
+            // or turns one back over — read off the position the step walked
+            // to, exactly as play reads it off the position a ply produced.
+            // Stepping back through a reveal puts the piece back face down,
+            // which is the concealment the record itself holds at that ply.
+            let landing = placement[forward ? played.to : origin]
+            let arrived = landing.flatMap {
+                $0.isFaceDown == mover.isFaceDown ? nil : $0
+            }
             return forward
                 ? Transit(kind: .move, move: played, piece: mover,
-                          fading: captured.map { ($0, played.to) })
+                          fading: victim.map { ($0, played.to) },
+                          revealed: arrived)
                 // A step back is the move read in reverse, which is what an
                 // Undo draws during play: the mover returns the way it came,
                 // and whatever it took reappears where it stood.
                 : Transit(kind: .undo,
                           move: Move(from: played.to, to: origin),
                           piece: mover,
-                          fading: placement[played.to].map { ($0, played.to) })
+                          fading: placement[played.to].map { ($0, played.to) },
+                          revealed: arrived)
+        }
+        // The identity arrives, or goes, with the disc — on the same schedule
+        // play draws it on, and by opacity under Reduce Motion, where the
+        // canvas takes it from the dissolve's own progress.
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         if transits.drawsRemoval {
             // The captured disc gives way under the arriving mover, leading

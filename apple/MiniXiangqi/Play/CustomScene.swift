@@ -116,7 +116,11 @@ final class CustomScene {
 
     /// How many of each piece the standard set holds.
     private static let standardSet: [Piece: Int] = {
-        let start = Placement(fen: Core.startFEN(for: game), game: game)
+        // The editor's game is Xiangqi, whose rules freeze a start, so the
+        // fallback is unreachable rather than a default: what it would produce
+        // is an empty palette, which is the honest answer to a set nobody could
+        // count.
+        let start = Placement(fen: Core.frozenStartFEN(for: game) ?? "", game: game)
         let board = game.board
         var counted: [Piece: Int] = [:]
         for rank in 0..<board.rankCount {

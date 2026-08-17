@@ -84,11 +84,18 @@ struct GameSessionTests {
                 == ["human-first", "ai-first", "random"])
     }
 
-    @Test("Both game values survive Swift configuration and core readback",
+    @Test("Every game value survives Swift configuration and core readback",
           arguments: GameKind.allCases)
     func gameKindSurvivesConfiguration(_ kind: GameKind) throws {
+        let core = try TestCores.fresh()
+        // A game whose start is dealt has no configuration without one: it
+        // begins from a dealt start and from no other position, so the Free
+        // Play configuration it survives the boundary as is the one that names
+        // the deal it will be played from.
+        let start = try Core.frozenStartFEN(for: kind) == nil
+            ? core.deal(kind).startFEN : nil
         let configurations = [
-            GameConfiguration.freePlay(game: kind),
+            GameConfiguration.freePlay(game: kind, startFEN: start),
             GameConfiguration.humanVersusAI(game: kind, humanSide: .black,
                                             level: .standard, choice: .random),
         ]
@@ -98,7 +105,6 @@ struct GameSessionTests {
             #expect(decoded == configuration, "the Swift/C boundary retains the game axis")
         }
 
-        let core = try TestCores.fresh()
         try core.create(configurations[0])
         #expect(try core.configuration() == configurations[0],
                 "the attached session reports the game it was created for")
@@ -125,9 +131,11 @@ struct GameSessionTests {
     @Test("An unknown core game value has no Swift fallback")
     func unknownGameKindIsRejected() {
         var raw = GameConfiguration.freePlay(game: .miniXiangqi).raw
-        // Past the four the core carries, so it is a value no build of this app
-        // has heard of — which is the state this test is about.
-        raw.game = MxqGameKind(4)
+        // Past the five the core carries, so it is a value no build of this app
+        // has heard of — which is the state this test is about. The vocabulary
+        // grows by appending, so the number moves with it and the state it
+        // stands for does not.
+        raw.game = MxqGameKind(5)
 
         #expect(GameConfiguration(raw) == nil,
                 "an expanded core vocabulary must not silently become Mini Xiangqi")

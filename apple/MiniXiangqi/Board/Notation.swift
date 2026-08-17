@@ -76,7 +76,8 @@ struct MoveReading: Hashable {
 
     /// The move as the player reads it, given the placement *before* it — which
     /// is what both readings are of, so they are taken together and from the one
-    /// placement.
+    /// placement — and the placement it produced, which only a game that
+    /// conceals has anything to read from.
     ///
     /// **A placement move reads as its coordinate, in both.** The 记谱法
     /// preference selects between two ways of writing a xiangqi move, and these
@@ -84,10 +85,22 @@ struct MoveReading: Hashable {
     /// spelled exactly as the board's own edges spell it. So the preference is
     /// inert here rather than being consulted and ignored — both readings are
     /// the same string, and whichever the list is drawn in, it draws that.
-    init(of move: Move, in placement: Placement) {
+    ///
+    /// **A Jieqi move reads in its own designed rendering, in both**, for the
+    /// same reason in the other direction: docs/interaction-design.md's notation
+    /// section says that game's move list does not follow the preference, the
+    /// two readings it selects between being conventions this game has none of.
+    /// `JieqiNotation` is the reading and carries its own reasons.
+    init(of move: Move, in placement: Placement, after: Placement? = nil) {
         guard move.from != nil else {
             traditional = move.to.name
             wxf = move.to.name
+            return
+        }
+        guard !placement.game.conceals else {
+            let text = JieqiNotation.text(for: move, in: placement, after: after)
+            traditional = text
+            wxf = text
             return
         }
         traditional = MoveNotation.text(for: move, in: placement)
@@ -110,13 +123,21 @@ struct MoveReading: Hashable {
     /// the sitting itself did. Quadratic in the line's length, because each
     /// placement is a walk from the start; a game's own length is the measure
     /// of what reading it is worth.
-    static func line(for moves: [String], on board: BoardDefinition,
-                     placementBefore: (Int) throws -> Placement) throws -> [MoveReading] {
+    ///
+    /// A ply of a game that conceals is read from the position before it **and
+    /// the position after it**, which is the position before the next one — so
+    /// that walk asks for one more position than there are plies, and the last
+    /// of them is where the game stands. **Every other game asks for neither**:
+    /// it has nothing to disclose, and a resumed long game would otherwise pay
+    /// twice for positions the reading never looks at.
+    static func line(for moves: [String], on game: GameKind,
+                     placementAt: (Int) throws -> Placement) throws -> [MoveReading] {
         try moves.enumerated().map { ply, text in
-            guard let move = Move(text: text, on: board) else {
+            guard let move = Move(text: text, on: game.board) else {
                 throw UnreadableStoredMove(ply: ply)
             }
-            return MoveReading(of: move, in: try placementBefore(ply))
+            return MoveReading(of: move, in: try placementAt(ply),
+                               after: game.conceals ? try placementAt(ply + 1) : nil)
         }
     }
 

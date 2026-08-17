@@ -78,7 +78,12 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         var moves = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
         var count = 0
 
-        let start = Core.startFEN(for: game)
+        // A game whose start is dealt rather than frozen has no position for a
+        // ply list alone to be replayed from, and this peer proposes none —
+        // `CoreBoardGameRules.version(of:)` answers for such a game exactly as
+        // it answers for one it does not know. Nil here is the same answer this
+        // returns for a line the core would not replay: the board does not open.
+        guard let start = Core.frozenStartFEN(for: game) else { return nil }
         let answered: Bool = start.withCString { startFEN in
             withMoveArray(played) { texts, given in
                 guard mxq_rules_evaluate(core, game.raw, startFEN, texts, given,

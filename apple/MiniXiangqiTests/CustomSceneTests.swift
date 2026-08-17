@@ -100,7 +100,7 @@ struct CustomSceneTests {
     func thePaletteIsTheStandardSet() throws {
         let core = try TestCores.fresh()
         let scene = CustomScene(core: core)
-        let start = Placement(fen: Core.startFEN(for: CustomScene.game),
+        let start = Placement(fen: frozenStart(CustomScene.game),
                               game: CustomScene.game)
         var counted: [Piece: Int] = [:]
         for rank in 0..<Self.board.rankCount {
@@ -482,7 +482,7 @@ struct GameStartConfigurationTests {
         // that answer rather than reporting the position back.
         let other = try TestCores.fresh()
         try other.create(.freePlay(game: .xiangqi,
-                                   startFEN: Core.startFEN(for: .xiangqi)))
+                                   startFEN: frozenStart(.xiangqi)))
         #expect(try other.configuration().startFEN == nil)
 
         let plain = try TestCores.fresh()

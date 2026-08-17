@@ -73,6 +73,9 @@ struct PlayScreen: View {
     /// Whether the stacked shape's on-demand move list is up.
     @State private var moveListShown = false
 
+    /// Whether the stacked shape's on-demand captured-pieces surface is up.
+    @State private var capturedShown = false
+
     /// What the stacked shape's chrome actually came to, measured rather than
     /// assumed: the status above the board at an accessibility text size, where
     /// the bar cannot hold it and it is taller than the allowance the shape rule
@@ -288,6 +291,47 @@ struct PlayScreen: View {
         // find it up again, in a shape whose toolbar has nothing to raise it
         // and nothing to say it should be there.
         .sheet(isPresented: $moveListShown) { moveListSheet(game) }
+        // And the captured-pieces surface beside it, on the same surface for
+        // the same reason: in the stacked shape it is reached rather than
+        // resident, because the board's own pitch floor comes before it.
+        .sheet(isPresented: $capturedShown) { capturedSheet(game) }
+    }
+
+    /// The captured-pieces surface, as this game draws it.
+    ///
+    /// **Whose eyes it is drawn for is the game's own configuration**: nil where
+    /// one person holds both hands, which is Free Play and the one place both
+    /// panels are one person's, and the local player's side where two people are
+    /// playing. Everything discloses when the game ends, which is the same
+    /// question the board already asks.
+    private func captured(_ game: Game) -> some View {
+        CapturedPiecesView(captured: game.captured,
+                           game: game.kind,
+                           throughPly: game.moves.count,
+                           viewer: game.configuration.localSide,
+                           disclosed: game.isFinished)
+    }
+
+    /// The same surface on the phone's own transient, alongside the move list's.
+    private func capturedSheet(_ game: Game) -> some View {
+        NavigationStack {
+            ScrollView {
+                captured(game)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
+            .navigationTitle("captured.title")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("control.done") { capturedShown = false }
+                        .accessibilityIdentifier("captured-done")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - The two shapes
@@ -387,6 +431,18 @@ struct PlayScreen: View {
                 }
                 .accessibilityIdentifier("play-move-list")
             }
+            // The captured-pieces surface, in the game that has one, reached
+            // the same way and for the same reason.
+            if game.kind.conceals {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        capturedShown = true
+                    } label: {
+                        Label("captured.title", systemImage: "tray.full")
+                    }
+                    .accessibilityIdentifier("play-captured")
+                }
+            }
         }
     }
 
@@ -461,7 +517,15 @@ struct PlayScreen: View {
     private func boardBlock(_ game: Game, _ motion: PlayMotion,
                             _ geometry: BoardGeometry,
                             bleed: CGFloat = 0) -> some View {
-        ZStack {
+        // **The ending discloses the deal, and the board shows it at the moment
+        // the finished scene arrives** — after the landing, which is the same
+        // beat the result notice and the control cluster wait for: the ply that
+        // ended the game has to finish being shown before anything answers it.
+        // It arrives by opacity, one settle for the whole board, so Reduce
+        // Motion draws it exactly as full motion does.
+        let disclosure: Double = game.disclosesTheDeal
+            && showsFinishedScene(game, motion) ? 1 : 0
+        return ZStack {
             BoardView(geometry: geometry,
                       placement: game.placement,
                       flipped: game.flipped,
@@ -476,6 +540,8 @@ struct PlayScreen: View {
                       transit: motion.transit,
                       companion: motion.transitCompanion,
                       transitFade: motion.transitFade,
+                      transitReveal: motion.transitReveal,
+                      disclosure: disclosure,
                       checkEmphasis: motion.checkEmphasis,
                       markerEmphasis: motion.markerEmphasis,
                       hintEmphasis: motion.hintEmphasis,
@@ -508,6 +574,10 @@ struct PlayScreen: View {
                     .transition(.opacity)
             }
         }
+        // One settle for the disclosure, and for nothing else: the board's own
+        // phases are driven by the transitions that schedule them, and this
+        // animates the one value those transitions do not.
+        .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
     private func retryFiling(_ game: Game, _ motion: PlayMotion) {
@@ -590,6 +660,18 @@ struct PlayScreen: View {
             turnStatus(game, motion, placement: .block)
                 .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
+
+            // The resident captured-pieces surface, in the game that has one.
+            // It stands beside the board rather than over it, which is the
+            // resident rule: it never intersects the board block, and the board
+            // keeps its pitch floor before this surface is given room.
+            if game.kind.conceals {
+                Divider()
+
+                captured(game)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
 
             Divider()
 
@@ -728,7 +810,12 @@ struct PlayScreen: View {
                           worded: Bool, carriesFlip: Bool) -> some View {
         let finished = showsFinishedScene(game, motion)
         return HStack(spacing: 8) {
-            if !finished {
+            // **A game no engine plays carries no 提示 at all** — the contract's
+            // absence, which says a capability is not there, rather than a
+            // greyed promise that it will be. There being no `Hint` object is
+            // the whole of the answer: the state builds one exactly where a
+            // suggestion can exist.
+            if !finished, play.hint != nil {
                 hintControl(motion, worded: worded)
                     .transition(.opacity)
             }

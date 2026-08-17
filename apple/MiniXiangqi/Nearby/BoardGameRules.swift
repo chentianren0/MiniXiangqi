@@ -84,6 +84,7 @@ nonisolated extension GameKind {
         case .xiangqi: "xiangqi"
         case .gomoku15: "gomoku-15"
         case .renju: "renju"
+        case .jieqi: "jieqi"
         }
     }
 
@@ -121,12 +122,19 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     static let interpretationVersion = "1"
 
     func version(of rulesID: String) -> String? {
-        // Every game the app carries, it carries over the wire too: the whole
-        // of what a game module is here is this file's answers, and they are the
-        // core's for all four. A `rules_id` outside the table is a game this
-        // peer does not know, which is what nil says and what the wire's
-        // `unknown_game` refusal answers with.
-        guard GameKind(rulesID: rulesID) != nil else { return nil }
+        // A `rules_id` outside the table is a game this peer does not know,
+        // which is what nil says and what the wire's `unknown_game` refusal
+        // answers with.
+        //
+        // **A game whose start is dealt is one of those, for now.** Every other
+        // game the app carries it carries over the wire too — the whole of what
+        // a game module is here is this file's answers, and they are the core's
+        // — but a dealt game's two ends derive one deal from a handshake this
+        // peer does not speak yet, so there is no position for the replay below
+        // to begin from. Answering a version for it would be promising a game
+        // this build cannot play; the handshake and this answer land together.
+        guard let game = GameKind(rulesID: rulesID),
+              Self.startFEN(of: game) != nil else { return nil }
         return Self.interpretationVersion
     }
 
@@ -170,7 +178,8 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
 
-        let result = Self.startFEN(of: game).withCString { start in
+        guard let start = Self.startFEN(of: game) else { return nil }
+        let result = start.withCString { start in
             withMoveArray(moves) { texts, count in
                 mxq_rules_evaluate(core, game.raw, start, texts, count,
                                    nil, &status, nil, nil)
@@ -195,13 +204,12 @@ nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
         }
     }
 
-    private static func startFEN(of game: GameKind) -> String {
-        var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
-        var length = 0
-        let status = mxq_rules_start_fen(game.raw, &buffer, buffer.count, &length, nil)
-        precondition(status == MXQ_OK, "the starting FEN does not fit MXQ_FEN_CAP")
-        return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
-                      as: UTF8.self)
+    /// The position a game of this ruleset begins from, where its rules freeze
+    /// one. Nil for a game whose start is dealt rather than frozen — asked here
+    /// rather than assumed, because the entry answers a refusal for such a game
+    /// and a `precondition` over it would trap a release build.
+    private static func startFEN(of game: GameKind) -> String? {
+        Core.frozenStartFEN(for: game)
     }
 
     /// The move list as the C array of NUL-terminated strings the facade takes.

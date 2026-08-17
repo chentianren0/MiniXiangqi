@@ -305,6 +305,7 @@ extension EndReason {
         case .mutualPerpetualCheck: String(localized: "reason.mutualPerpetualCheck")
         case .mutualPerpetualChase: String(localized: "reason.mutualPerpetualChase")
         case .fiftyMoveRule: String(localized: "reason.fiftyMoveRule")
+        case .fortyMoveRule: String(localized: "reason.fortyMoveRule")
         case .resignation: String(localized: "reason.resignation")
         case .endedEarly: String(localized: "reason.endedEarly")
         case .agreedDraw: String(localized: "reason.agreedDraw")

@@ -202,22 +202,35 @@ struct ReplayScreen: View {
     /// granted its room before the board is fitted — so the full-width pitches
     /// the play board reaches are not this screen's. Beside the
     /// board there is no such contest and the panel is the width it always was.
-    private var panelHeight: CGFloat { 200 }
+    /// Plus the captured surface's own grant where the record's game carries
+    /// one, so the board is sized around the chrome that is really there rather
+    /// than around the chrome every other game has.
+    private var panelHeight: CGFloat {
+        record.game.conceals ? 200 + BoardLayout.capturedSurfaceHeight : 200
+    }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry,
                        bleed: CGFloat = 0) -> some View {
-        BoardView(geometry: geometry,
+        // The ending discloses the deal, so the position the game ended in
+        // shows every identity it was still concealing — and a walk back out of
+        // it shows the game as it was played, which is what the record holds at
+        // that ply. One settle, by opacity, as on the board that played it.
+        let disclosure: Double = replay.disclosesTheDeal ? 1 : 0
+        return BoardView(geometry: geometry,
                   placement: replay.placement,
                   flipped: replay.flipped,
                   lastMove: replay.lastMove,
                   checkedGeneral: replay.checkedGeneral,
                   transit: replay.transit,
                   transitFade: replay.transitFade,
+                  transitReveal: replay.transitReveal,
+                  disclosure: disclosure,
                   policy: policy,
                   surfaceBleed: bleed,
                   onTravelArrival: { replay.travelArrived() },
                   onFadeArrival: { replay.fadeArrived() })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
     /// The panel, beside the board or beneath it. `edge` is the window edge its
@@ -233,6 +246,29 @@ struct ReplayScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
                 headerBlock(replay, airBelow: 20)
+
+                Divider()
+            }
+
+            // The captured-pieces surface, in the game that has one. **A record
+            // is a game already over**, so what it shows is the disclosed
+            // surface both players read the same — and it follows the walk, so
+            // it shows what had been taken by the position on screen.
+            if replay.record.game.conceals {
+                // Inside its own grant, and scrolling there: beneath the board
+                // this panel is a fixed height shared with the list and the
+                // transport, and a side that has lost a whole complement must
+                // not take the room the list is standing in.
+                ScrollView {
+                    CapturedPiecesView(captured: replay.captured,
+                                       game: replay.record.game,
+                                       throughPly: replay.ply,
+                                       viewer: nil,
+                                       disclosed: true)
+                        .padding(.horizontal, BoardLayout.panelInset)
+                        .padding(.vertical, 8)
+                }
+                .frame(maxHeight: BoardLayout.capturedSurfaceHeight)
 
                 Divider()
             }

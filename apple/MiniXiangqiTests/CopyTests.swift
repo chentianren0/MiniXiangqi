@@ -63,8 +63,9 @@ struct CopyTests {
             "board.a11y.empty",
             "board.a11y.selected", "board.a11y.legalMove", "board.a11y.capture",
             "board.a11y.inCheck", "board.a11y.suggested",
-            "board.a11y.pending", "board.a11y.forbidden",
+            "board.a11y.pending", "board.a11y.forbidden", "board.a11y.faceDown",
             "board.a11y.hint.announcement", "board.a11y.hint.point",
+            "captured.title", "captured.empty", "captured.hidden",
             "control.undo", "control.claimDraw", "control.offerDraw",
             "control.flipBoard", "control.hint",
             "control.newGame", "control.save", "control.saveAndNewGame",
@@ -84,6 +85,7 @@ struct CopyTests {
             "metadata.imported",
             "metadata.inProgress",
             "game.miniXiangqi", "game.xiangqi", "game.gomoku", "game.renju",
+            "game.jieqi",
             "mode.humanVersusAI", "mode.freePlay", "mode.nearby",
             "mode.customScene",
             "scene.firstMover", "scene.firstMover.caption",
@@ -125,7 +127,7 @@ struct CopyTests {
             "reason.checkmate", "reason.stalemate", "reason.threefoldRepetition",
             "reason.perpetualCheck", "reason.perpetualChase",
             "reason.mutualPerpetualCheck", "reason.mutualPerpetualChase",
-            "reason.fiftyMoveRule",
+            "reason.fiftyMoveRule", "reason.fortyMoveRule",
             "reason.resignation", "reason.endedEarly",
             "reason.agreedDraw", "reason.mutualResignation",
             "reason.fiveInARow", "reason.boardFull",
@@ -170,7 +172,7 @@ struct CopyTests {
                 == "Used to find and connect to the other player's device for Nearby Play.")
     }
 
-    @Test("The four game names are complete and distinct in both languages")
+    @Test("The five game names are complete and distinct in both languages")
     func gameNamesAreAcceptedCopy() throws {
         #expect(try value("game.xiangqi", in: "zh-Hans") == "象棋")
         #expect(try value("game.xiangqi", in: "en") == "Xiangqi")
@@ -180,7 +182,9 @@ struct CopyTests {
         #expect(try value("game.gomoku", in: "en") == "Gomoku")
         #expect(try value("game.renju", in: "zh-Hans") == "连珠")
         #expect(try value("game.renju", in: "en") == "Renju")
-        // Four names, four distinct words in each language: a section heading
+        #expect(try value("game.jieqi", in: "zh-Hans") == "揭棋")
+        #expect(try value("game.jieqi", in: "en") == "Jieqi")
+        // Five names, five distinct words in each language: a section heading
         // that repeated another game's name would send a player to the wrong
         // board.
         let names = GameKind.allCases.map(\.localizedName)

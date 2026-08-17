@@ -42,9 +42,28 @@ struct Transit {
 
     var kind: Kind
     var move: Move
+    /// The face the mover leaves with. In every game but Jieqi it is also the
+    /// face it arrives with.
     var piece: Piece
     /// The piece fading while the mover travels, and where it fades.
     var fading: (piece: Piece, at: Square)?
+    /// The face the mover **arrives** with, where the move turns it up.
+    ///
+    /// docs/interaction-design.md, "The Jieqi board": a reveal is the piece
+    /// turning up where it lands — one event and not two, so the disc that
+    /// travels is the disc that arrives and the identity comes up on it rather
+    /// than snapping on at the end. Nil wherever a move reveals nothing, which
+    /// is every move of every other game.
+    var revealed: Piece?
+
+    init(kind: Kind, move: Move, piece: Piece,
+         fading: (piece: Piece, at: Square)? = nil, revealed: Piece? = nil) {
+        self.kind = kind
+        self.move = move
+        self.piece = piece
+        self.fading = fading
+        self.revealed = revealed
+    }
 }
 
 @Observable
@@ -63,6 +82,13 @@ final class TransitMotion {
     /// The fading disc's progress, 0 to 1 — scheduled against the mover's
     /// arrival for a capture, from its departure for a restoration.
     private(set) var fade: Double = 0
+
+    /// How far the arriving face has come up, 0 to 1 — a Jieqi reveal, and
+    /// nothing else. It is a second thing drawn inside one transition, exactly
+    /// as a capture's removal is, and it is scheduled the same way; what it is
+    /// not is a second event, so nothing waits for it and no landing is
+    /// reported when it finishes.
+    private(set) var reveal: Double = 0
 
     /// Whether a transition is running. Raised at the departure, *before* the
     /// body that may yet abandon it, so a caller holding a gate over this
@@ -152,6 +178,16 @@ final class TransitMotion {
         }
     }
 
+    /// Brings the arriving face up. Does nothing where the transition turns
+    /// nothing up, and nothing waits for it: the identity coming up is part of
+    /// the move landing rather than an event of its own.
+    func raiseReveal(_ animation: Animation) {
+        guard isRunning, transit?.revealed != nil else { return }
+        animator.run(animation) { [self] in
+            reveal = 1
+        } completion: { }
+    }
+
     /// Abandons whatever is running and draws nothing — the presentational
     /// cut. Nothing arrived, so nothing lands and nothing sounds; the
     /// completions the abandoned transition still has parked answer to
@@ -204,5 +240,6 @@ final class TransitMotion {
         transit = nil
         companion = nil
         fade = 0
+        reveal = 0
     }
 }

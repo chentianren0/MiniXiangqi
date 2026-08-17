@@ -1206,7 +1206,7 @@ private final class FakeReach: NearbyReach {
 private nonisolated struct FakePositions: NearbyPositions {
     func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
         NearbyStanding(
-            evaluation: Evaluation(fen: Core.startFEN(for: game),
+            evaluation: Evaluation(fen: frozenStart(game),
                                    sideToMove: Mover.atPly(plies.count) == .first
                                        ? .red : .black,
                                    inCheck: false,

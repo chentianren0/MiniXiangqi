@@ -128,6 +128,21 @@ struct PlayHome: View {
             Text(GameKind.miniXiangqi.localizedName)
         }
 
+        // **Two rows, not three**, because the game has no AI to offer:
+        // docs/interaction-design.md, "The Play home". Free Play is here now.
+        // **Nearby Play lands with the stage that gives it a wire**: the two
+        // devices settle that game's deal between accepting and the first move,
+        // and until this peer speaks that handshake a row leading to it would be
+        // a promise the build cannot keep — `CoreBoardGameRules.version(of:)`
+        // answers for the game exactly as it answers for one it does not know,
+        // so a proposal would be refused where the row said it would be taken.
+        Section {
+            entry(PlaySelection(game: .jieqi, mode: .freePlay),
+                  "mode.freePlay", "mode-jieqi-free-play")
+        } header: {
+            Text(GameKind.jieqi.localizedName)
+        }
+
         // The placement games, in the accepted order: Gomoku, then Renju as its
         // stricter sibling.
         Section {

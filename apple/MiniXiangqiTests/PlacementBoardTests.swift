@@ -111,7 +111,7 @@ struct PlacementBoardTests {
     /// the board draws empty however many stones are on it.
     @Test("The placement FEN's letter is a stone and its case is the side")
     func stonesParseFromTheFEN() throws {
-        let start = Core.startFEN(for: .gomoku15)
+        let start = frozenStart(.gomoku15)
         let empty = Placement(fen: start, game: .gomoku15)
         #expect(start.split(separator: " ").first?.contains("15") == true,
                 "the empty board is written as fifteen two-digit runs")
@@ -158,7 +158,7 @@ struct PlacementBoardTests {
 
         // The reading is the coordinate in both notations, so the 记谱法
         // preference selects between two identical strings and is inert.
-        let reading = MoveReading(of: move, in: Placement(fen: Core.startFEN(for: .renju),
+        let reading = MoveReading(of: move, in: Placement(fen: frozenStart(.renju),
                                                           game: .renju))
         #expect(reading.traditional == "h8")
         #expect(reading.wxf == "h8")

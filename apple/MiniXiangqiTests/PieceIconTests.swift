@@ -38,7 +38,7 @@ struct PieceIconTests {
     @Test("The starting position with icons, at the accepted floor")
     func startingPositionWithIcons() throws {
         let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.miniFloorPitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+        let size = try render(board(frozenStart(.miniXiangqi), .miniXiangqi,
                                     geometry, symbols: .icons),
                               named: "icons-start-at-the-floor")
         #expect(size == geometry.coreSize)
@@ -47,7 +47,7 @@ struct PieceIconTests {
     @Test("The starting position with characters, for comparison")
     func startingPositionWithCharacters() throws {
         let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.miniFloorPitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+        let size = try render(board(frozenStart(.miniXiangqi), .miniXiangqi,
                                     geometry, symbols: .hanzi),
                               named: "hanzi-start-at-the-floor")
         #expect(size == geometry.coreSize)
@@ -56,7 +56,7 @@ struct PieceIconTests {
     @Test("The starting position with icons, large")
     func startingPositionLarge() throws {
         let geometry = BoardGeometry(board: Self.miniBoard, pitch: Self.largePitch)
-        let size = try render(board(Core.startFEN(for: .miniXiangqi), .miniXiangqi,
+        let size = try render(board(frozenStart(.miniXiangqi), .miniXiangqi,
                                     geometry, symbols: .icons),
                               named: "icons-start-large")
         #expect(size == geometry.coreSize)
@@ -65,7 +65,7 @@ struct PieceIconTests {
     @Test("The Xiangqi starting position survives its smaller pitch")
     func xiangqiStartingPosition() throws {
         let geometry = BoardGeometry(board: Self.xiangqiBoard, pitch: Self.xiangqiFloorPitch)
-        let fen = Core.startFEN(for: .xiangqi)
+        let fen = frozenStart(.xiangqi)
         let sheet = HStack(spacing: 0) {
             board(fen, .xiangqi, geometry, symbols: .icons)
             board(fen, .xiangqi, geometry, symbols: .hanzi)
@@ -234,7 +234,7 @@ struct PieceIconTests {
         let canvas = BoardCanvas(
                                  geometry: BoardGeometry(board: Self.miniBoard,
                                                          pitch: Self.miniFloorPitch),
-                                 placement: Placement(fen: Core.startFEN(for: .miniXiangqi),
+                                 placement: Placement(fen: frozenStart(.miniXiangqi),
                                                       game: .miniXiangqi),
                                  style: .traditional,
                                  policy: MotionPolicy(reduceMotion: false),

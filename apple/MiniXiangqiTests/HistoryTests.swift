@@ -260,14 +260,19 @@ struct ReplayTests {
     /// Files the line and opens its record for replay through the same call the
     /// screen makes, with the seams a test drives: the animator whose
     /// completions the test fires, and the feedback it listens to.
+    /// The configuration arrives as a closure over the core rather than as a
+    /// value, because a game whose start is dealt has none until a core has
+    /// dealt it: the deal is derived below the C interface, and the position it
+    /// produces is what such a game is created from.
     private func replay(of line: [String],
-                        configuration: GameConfiguration = .freePlay(game: .miniXiangqi),
+                        configuration: (Core) throws -> GameConfiguration
+                            = { _ in .freePlay(game: .miniXiangqi) },
                         reduceMotion: Bool = false,
                         soundEnabled: Bool? = true) throws
         -> (replay: Replay, animator: ManualAnimator, heard: FeedbackRecorder,
             notation: [MoveReading], fens: [String]) {
         let core = try TestCores.fresh()
-        try core.create(configuration)
+        try core.create(try configuration(core))
         let played = try Game(rules: core)
         try played.replay(line)
         let notation = played.notation
@@ -335,8 +340,10 @@ struct ReplayTests {
     func placementReplayCarriesNoFlip() throws {
         let (replay, _, _, _, _) = try replay(
             of: Self.fiveInARowLine,
-            configuration: .humanVersusAI(game: .gomoku15, humanSide: .black,
-                                          level: .fast, choice: .aiFirst))
+            configuration: { _ in
+                .humanVersusAI(game: .gomoku15, humanSide: .black,
+                               level: .fast, choice: .aiFirst)
+            })
         defer { replay.close() }
 
         #expect(replay.record.humanSide == .black,
@@ -346,6 +353,72 @@ struct ReplayTests {
                 "and a board with no orientation opens as it is drawn")
         #expect(replay.moves == Self.fiveInARowLine,
                 "and it is the placement record it says it is")
+    }
+
+    /// A dealt record, walked: the reveals step both ways, what the game took is
+    /// read back off the record, and the ending discloses.
+    ///
+    /// **A walk back into a game is a walk back into what the players knew.** A
+    /// ply that turned a piece up is stepped back by turning it down again, and
+    /// the transit carries that face, so the disc that returns is the disc that
+    /// left rather than one that snaps at either end. Only the final position
+    /// discloses, because only there has the game ended.
+    ///
+    /// It is also the one place either walk is read over a line that contains a
+    /// **hidden capture**: a resumed game and a replayed record build their
+    /// captured surface the same way, over positions the core replays, and a
+    /// line with nothing taken in it exercises neither.
+    @Test("A dealt record replays: its reveals step both ways, and its ending discloses")
+    func aDealtRecordReplaysItsRevealsAndItsEnding() throws {
+        let (replay, animator, _, _, fens) = try replay(
+            of: JieqiTests.claimableLine,
+            configuration: { try .freePlay(game: .jieqi,
+                                           startFEN: $0.deal(.jieqi).startFEN) })
+        defer { replay.close() }
+        let board = GameKind.jieqi.board
+        let square = { (name: String) in Square(name, on: board)! }
+        // What the record held under the disc the capture took, read from the
+        // record's own first position.
+        let start = Placement(fen: fens[0], game: .jieqi)
+        let taken = try #require(start.concealedIdentity(at: square("b1")))
+
+        #expect(replay.captured.taken.count == 1, "one piece was taken in this game")
+        let capture = try #require(replay.captured.taken.first)
+        #expect(capture.side == .red)
+        #expect(capture.wasFaceDown)
+        #expect(capture.kind == taken, "and the record says what it was")
+        #expect(!replay.disclosesTheDeal, "the initial position is where the game began")
+
+        // Forward across a reveal: the disc leaves face down and arrives face
+        // up, and the position it walked to says so.
+        replay.stepForward()
+        let forward = try #require(replay.transit)
+        #expect(forward.piece.isFaceDown)
+        #expect(forward.revealed?.isFaceDown == false, "it arrives face up")
+        animator.completeAll()
+        #expect(replay.placement[square("b4")]?.isFaceDown == false)
+        #expect(replay.placement[square("b3")] == nil)
+
+        // And back across it: the retraction returns the concealment, which is
+        // what the record itself holds at that ply.
+        replay.stepBack()
+        let backward = try #require(replay.transit)
+        #expect(!backward.piece.isFaceDown, "it leaves the face it turned up")
+        #expect(backward.revealed?.isFaceDown == true, "and returns face down")
+        animator.completeAll()
+        #expect(replay.placement[square("b3")]?.isFaceDown == true)
+        #expect(replay.position.fen == fens[0])
+
+        // The ending discloses, and only the ending: the position the game
+        // ended in shows everything it was still concealing.
+        replay.goToEnd()
+        #expect(replay.isFinalPosition)
+        #expect(replay.disclosesTheDeal)
+        #expect(replay.placement[square("a1")]?.isFaceDown == true,
+                "the position is the position: what changed is what may be shown")
+        replay.stepBack()
+        #expect(!replay.disclosesTheDeal,
+                "and a walk out of it is a walk back into the game as it was played")
     }
 
     @Test("The walk is the core's: every ply is the position the game stood in")

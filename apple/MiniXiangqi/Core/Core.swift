@@ -14,6 +14,7 @@
 
 import Foundation
 import MiniXiangqiCore
+import Security
 
 /// A failed core call. `status` is the contract; `detail` is a short English
 /// diagnostic for the log, never user-facing copy.
@@ -127,7 +128,7 @@ nonisolated enum PlayMode: Sendable {
 /// The case names are the archive's own `rules_id`s, so the enum, the C
 /// enumerator and the serialized name are one vocabulary read three ways.
 nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
-    case miniXiangqi, xiangqi, gomoku15, renju
+    case miniXiangqi, xiangqi, gomoku15, renju, jieqi
 
     init?(_ game: MxqGameKind) {
         switch game {
@@ -135,6 +136,7 @@ nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
         case MxqGameKind(MXQ_GAME_KIND_XIANGQI): self = .xiangqi
         case MxqGameKind(MXQ_GAME_KIND_GOMOKU_15): self = .gomoku15
         case MxqGameKind(MXQ_GAME_KIND_RENJU): self = .renju
+        case MxqGameKind(MXQ_GAME_KIND_JIEQI): self = .jieqi
         default: return nil
         }
     }
@@ -145,8 +147,19 @@ nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
         case .xiangqi: MxqGameKind(MXQ_GAME_KIND_XIANGQI)
         case .gomoku15: MxqGameKind(MXQ_GAME_KIND_GOMOKU_15)
         case .renju: MxqGameKind(MXQ_GAME_KIND_RENJU)
+        case .jieqi: MxqGameKind(MXQ_GAME_KIND_JIEQI)
         }
     }
+
+    /// Whether a game of this ruleset conceals identities — the one game whose
+    /// position holds facts a player is not entitled to, and therefore the one
+    /// the surfaces ask about before they draw or name what stands on a point.
+    ///
+    /// Asked as a question about the game rather than about a position, exactly
+    /// as `isPlacement` is: a Jieqi position with nothing left face down is
+    /// spelled exactly as the Xiangqi position it is not, so nothing above this
+    /// interface may read the ruleset off a board.
+    var conceals: Bool { self == .jieqi }
 }
 
 nonisolated enum EndReason: Sendable {
@@ -154,6 +167,10 @@ nonisolated enum EndReason: Sendable {
     case perpetualCheck, perpetualChase
     case mutualPerpetualCheck, mutualPerpetualChase
     case fiftyMoveRule, resignation, endedEarly
+    /// The dealt game's own no-capture draw. Forty is Jieqi's own number and is
+    /// adopted deliberately; that Xiangqi keeps fifty is a fact about Xiangqi,
+    /// so this is a reason of its own rather than that one under another name.
+    case fortyMoveRule
     /// The two ends two players declare to each other, and nearby play's alone.
     case agreedDraw, mutualResignation
     /// The placement games' two, and theirs alone: they have no check to be
@@ -170,6 +187,7 @@ nonisolated enum EndReason: Sendable {
         case MxqEndReason(MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK): self = .mutualPerpetualCheck
         case MxqEndReason(MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE): self = .mutualPerpetualChase
         case MxqEndReason(MXQ_END_REASON_FIFTY_MOVE_RULE): self = .fiftyMoveRule
+        case MxqEndReason(MXQ_END_REASON_FORTY_MOVE_RULE): self = .fortyMoveRule
         case MxqEndReason(MXQ_END_REASON_RESIGNATION): self = .resignation
         case MxqEndReason(MXQ_END_REASON_ENDED_EARLY): self = .endedEarly
         case MxqEndReason(MXQ_END_REASON_AGREED_DRAW): self = .agreedDraw
@@ -639,19 +657,97 @@ final class Core {
 
     // MARK: - The ruleset's constants
 
-    /// One game's frozen starting FEN. A constant of its ruleset, so it is read
-    /// from the core rather than written a second time here.
+    /// One game's frozen starting FEN, where its rules freeze one. A constant of
+    /// its ruleset, so it is read from the core rather than written a second
+    /// time here.
+    ///
+    /// **`nil` is a game whose rules freeze no start**, and the answer is the
+    /// core's rather than a list kept here: Jieqi begins from a dealt start and
+    /// from no other position, so there is one start for every deal and none to
+    /// report, and the entry says so with `MXQ_ERR_ARG_RANGE`. Every caller
+    /// therefore asks the game for its start and falls back to this constant
+    /// only where there is one — a `precondition` over the refusal would trap a
+    /// release build the first time a surface previewed that game.
+    ///
+    /// The precondition that remains is for the one failure that would be a bug
+    /// here: a frozen start too wide for the interface's own FEN capacity.
     ///
     /// `nonisolated` because it is: `mxq_rules_start_fen` takes no core instance
     /// and is callable from any thread, including inside a search callback, so
     /// the nearby layer's own nonisolated values may ask it.
-    nonisolated static func startFEN(for game: GameKind) -> String {
+    nonisolated static func frozenStartFEN(for game: GameKind) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
         var length = 0
         let status = mxq_rules_start_fen(game.raw, &buffer, buffer.count, &length, nil)
+        guard status != MxqStatus(MXQ_ERR_ARG_RANGE) else { return nil }
         precondition(status == MXQ_OK, "the starting FEN does not fit MXQ_FEN_CAP")
         return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
                       as: UTF8.self)
+    }
+
+    // MARK: - The deal
+
+    /// One deal, as the core derives it from the entropy this app drew: the
+    /// dealt start a game of it begins from, the commitment the seed binds to,
+    /// and the deal's own digest.
+    ///
+    /// The last two are the values a nearby game records beside its deal. A
+    /// Free Play deal keeps neither — nothing verifies a local game against
+    /// itself, and the dealt start in the record *is* the deal — so the two are
+    /// carried here rather than dropped only because the deriving entry answers
+    /// them and a caller that needs them should not have to derive them twice.
+    nonisolated struct Deal: Sendable, Hashable {
+        var startFEN: String
+        var commit: String
+        var digest: String
+    }
+
+    /// Deals one game of Jieqi, from entropy this app draws itself.
+    ///
+    /// docs/core-interface.md, "the deal": the derivation is the core's and the
+    /// entropy is the caller's, "from the platform's cryptographic source for a
+    /// game it deals itself". So the seed and the nonce are thirty-two bytes
+    /// each from `SecRandomCopyBytes`, spelled as the sixty-four lowercase
+    /// hexadecimal digits every handshake value is spelled in, and the core
+    /// turns them into the position. **Nothing here deals anything**: the
+    /// uniformity the rules make a rule of the game is a property of the
+    /// derivation, which is why it lives below this interface.
+    ///
+    /// Throws exactly what the core answers, plus the one failure the platform
+    /// can produce: a cryptographic source that would not fill the buffer. A
+    /// deal that cannot be drawn is a game that is not created, never a deal
+    /// made from something weaker.
+    func deal(_ game: GameKind) throws -> Deal {
+        var deal = MxqDeal()
+        deal.struct_size = UInt32(MemoryLayout<MxqDeal>.size)
+        var err = freshError()
+        let seed = try Self.entropy()
+        let nonce = try Self.entropy()
+        try check(seed.withCString { seed in
+            nonce.withCString { nonce in
+                mxq_rules_deal(handle, game.raw, seed, nonce, &deal, &err)
+            }
+        }, err)
+        return Deal(startFEN: string(of: deal.start_fen, capacity: MXQ_FEN_CAP),
+                    commit: string(of: deal.commit, capacity: MXQ_DEAL_HEX_CAP),
+                    digest: string(of: deal.digest, capacity: MXQ_DEAL_HEX_CAP))
+    }
+
+    /// Thirty-two bytes from the platform's cryptographic source, as the
+    /// sixty-four lowercase hexadecimal digits the interface takes.
+    ///
+    /// `SecRandomCopyBytes` and not `SystemRandomNumberGenerator`: what the
+    /// contract asks for is the platform's *cryptographic* source, and the deal
+    /// a nearby game commits to is a value the other device is entitled to
+    /// assume nobody chose.
+    private nonisolated static func entropy() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
+                            detail: "the cryptographic source refused \(status)")
+        }
+        return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - The session-free questions a composed position is asked
