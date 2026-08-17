@@ -1,0 +1,8 @@
+{
+  "class": "content: the deal's presence",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "whose deal came from no handshake",
+  "game": "jieqi",
+  "why": "The other direction of the same rule, on the mode axis: Free Play deals its own start locally, so there is no handshake behind it and nothing for a commitment to bind. A reader that only checked the members were present where they belong would accept this file and record provenance for a deal that had none."
+}

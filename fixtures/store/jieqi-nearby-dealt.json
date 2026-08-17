@@ -1,0 +1,29 @@
+{
+  "title": "Jieqi, nearby: the dealt start and the evidence it was dealt, across a relaunch",
+  "why": "The one game with no frozen start, so its configuration always names one — and the position it names is a deal rather than anything a person composed. The round trip proves the two things a dealt game adds. Its start survives a close and a reopen spelled out, because there is no constant for it to fold into; and the four values its handshake left behind survive it too, three of them through the document and all four through the wire session's own row, which the resume re-verifies against before the session exists: the seed hashes to the commitment, the deal it derives carries the digest, and that deal is the one the start spells. Its bytes are the archive corpus's jieqi-nearby-active golden. Undo is refused as in every nearby game.",
+  "config": {
+    "game": "jieqi",
+    "mode": "nearby",
+    "local_side": "red",
+    "start_fen": "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1"
+  },
+  "deal": {
+    "commit": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+    "nonce": "a144410000000000000000000000000000000000000000000000000000000000",
+    "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+    "digest": "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa"
+  },
+  "moves": ["b1c3", "b8e8"],
+  "archive": "jieqi-nearby-active.mxq",
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": false,
+    "undo_plies": 0,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": []
+}

@@ -1,8 +1,8 @@
 {
   "title": "Xiangqi, Free Play, a composed scene with Black to move",
-  "why": "The one shape version 5 adds: a document whose start_fen is not its game's frozen one. The position is a legal Xiangqi setup and Black has the move, so index 0 of moves is Black's ply and the fullmove number advances on it. A reader that checked start_fen against the frozen constant, or that paired plies by their parity, passes every other golden here and fails this one.",
+  "why": "The composed shape of the start policy: a document whose start_fen is not its game's frozen one. The position is a legal Xiangqi setup and Black has the move, so index 0 of moves is Black's ply and the fullmove number advances on it. A reader that checked start_fen against the frozen constant, or that paired plies by their parity, passes every other golden here and fails this one.",
   "info": {
-    "archive_version": 5,
+    "archive_version": 6,
     "game": "xiangqi",
     "move_count": 2,
     "mode": "free-play",

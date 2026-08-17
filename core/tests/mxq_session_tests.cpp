@@ -43,6 +43,7 @@
 #endif
 
 #include "mxq_notation.hpp"
+#include "mxq_deal.hpp"
 #include "mxq_sha256.hpp"
 
 #include <algorithm>
@@ -177,6 +178,127 @@ void case_sha256_vectors() {
     c.report();
 }
 
+/* ---------------------------------------------------------------------- */
+/* The deal derivation, which needs no engine either                       */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * The cross-implementation anchor for docs/boardgame-protocol-v2.md's
+ * derivation.
+ *
+ * Two devices playing one dealt game never send the deal: each derives it from
+ * the seed and the nonce, and if they derive different deals they are playing
+ * different games under one identifier. So this case is not a test of the C++
+ * below it — it is the vector a second implementation is checked against, and
+ * the Swift side that plays a nearby dealt game must reproduce every value
+ * stated here byte for byte.
+ *
+ * Both vectors take the same seed, thirty-two zero bytes, because a vector
+ * anyone can transcribe into any language is worth more here than a
+ * plausible-looking one; nothing about the derivation is weaker for it, and a
+ * seed is not a secret once the record is finished anyway.
+ *
+ * The first vector is the plain path, hand-executed:
+ *
+ *   seed   = 00 x32,  nonce = ff x32
+ *   key    = SHA-256(seed ‖ nonce)
+ *          = bba91ca85dc914b2ec3efb9e16e7267bf9193b14350d20fba8a8b406730ae30a
+ *   block0 = SHA-256(key ‖ 0000000000000000)
+ *          = 5d463d7be9f352db48287f649f880e85be31ccab6d461bc82de2539fe9da558d
+ *   block1 = SHA-256(key ‖ 0000000000000001)
+ *          = 9c84f01455bd9136c7224a5347a6fd9c8a888cbe9768b996aa357e4de2367c4b
+ *
+ * Red's permutation reads the stream from the front, four bytes a draw, for i
+ * from 14 down to 1 with a value below i + 1 each time: 0x5d463d7b mod 15 = 2,
+ * 0xe9f352db mod 14 = 13, 0x48287f64 mod 13 = 5, and so on through
+ * 0x9768b996 mod 2 = 0, which is the fourteenth draw and the last. Black's
+ * follows immediately, from the same stream and never rewound, so its first
+ * draw is 0xaa357e4d mod 15 = 6 — the twenty-second four-byte group, which lies
+ * inside block1. The two permutations that come out are
+ *
+ *   red   = [10, 8, 11, 4, 9, 14, 0, 12, 3, 6, 7, 1, 5, 13, 2]
+ *   black = [11, 14, 1, 2, 8, 13, 12, 7, 0, 3, 10, 5, 4, 9, 6]
+ *
+ * and the pieces those item numbers name, laid onto each side's fifteen squares
+ * in the protocol's order, are what the expectations below spell.
+ *
+ * The second vector exists for one branch the first cannot reach: rejection
+ * sampling. With nonce a1444100…, the key is
+ * 8bcc8f8794ce803a4c4193be621e2066a54e04460a59f914a9f3263dab2c0821 and Red's
+ * seventh draw — a value below nine — takes 0xfffffffd, which is at or above
+ * the largest multiple of nine that is at most 2^32 (4294967292) and must be
+ * discarded. The next four bytes, 0x95ad55d8, give 8. An implementation that
+ * took v mod n and skipped the discard derives a different deal from this pair
+ * and fails here; the odds of a random pair reaching that branch are about two
+ * in a hundred million, which is why the vector was searched for rather than
+ * stumbled on.
+ */
+void case_deal_derivation() {
+    Case c("the deal derivation, against its cross-implementation vectors");
+
+    const std::string seed(64, '0');
+
+    /* The commitment is SHA-256 of the seed's own bytes, which for this seed is
+     * a value published in more than one place. */
+    std::string commit;
+    c.check(mxq::deal::commitment_of(seed, commit),
+            "the commitment of thirty-two zero bytes");
+    c.check_eq(commit,
+               "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+               "commit = SHA-256(seed)");
+
+    struct Vector {
+        std::string nonce;
+        std::string red;
+        std::string black;
+        std::string digest;
+        std::string what;
+    };
+    const std::vector<Vector> vectors = {
+        {std::string(64, 'f'), "PCPBCPRPNAARBPN", "pprncpparnpbbca",
+         "ed1c9fb490c3d2f0e011e283c229b1408174109b7e632f8a0c01ac4541acb766",
+         "the plain path"},
+        {"a144410000000000000000000000000000000000000000000000000000000000",
+         "CAPNAPRNPBPPCBR", "cpppaparrcbpnnb",
+         "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa",
+         "a rejected draw"},
+    };
+
+    for (const Vector &v : vectors) {
+        mxq::deal::Deal deal;
+        std::string why;
+        const bool derived = mxq::deal::derive(seed, v.nonce, deal, why);
+        c.check(derived,
+                v.what + ": the derivation refused its input: " + why);
+        if (!derived) {
+            continue;
+        }
+        std::string red(deal.red, deal.red + mxq::deal::kDealtPieces);
+        std::string black(deal.black, deal.black + mxq::deal::kDealtPieces);
+        c.check_eq(red, v.red, v.what + ": Red's fifteen, square by square");
+        c.check_eq(black, v.black, v.what + ": Black's fifteen");
+        c.check_eq(deal.digest, v.digest, v.what + ": the deal digest");
+    }
+
+    /* The squares those fifteen are laid onto, at both ends of both lists: the
+     * order is the protocol's and a deal laid out in another one is another
+     * game. */
+    c.check_eq(std::string(mxq::deal::square_of(MXQ_COLOR_RED, 0)), "a1",
+               "Red's first dealt square");
+    c.check_eq(std::string(mxq::deal::square_of(MXQ_COLOR_RED, 14)), "i4",
+               "Red's last dealt square");
+    c.check_eq(std::string(mxq::deal::square_of(MXQ_COLOR_BLACK, 0)), "a7",
+               "Black's first dealt square");
+    c.check_eq(std::string(mxq::deal::square_of(MXQ_COLOR_BLACK, 14)), "i10",
+               "Black's last dealt square");
+
+    /* And the one spelling all four handshake values have. */
+    c.check(mxq::deal::is_hex32(seed), "sixty-four lowercase hexadecimal");
+    c.check(!mxq::deal::is_hex32(std::string(63, '0')), "sixty-three is not");
+    c.check(!mxq::deal::is_hex32(std::string(64, 'F')), "uppercase is not");
+    c.report();
+}
+
 #if MXQ_TEST_RULES_FACADE
 
 /* ---------------------------------------------------------------------- */
@@ -283,6 +405,15 @@ struct Scenario {
     MxqGameConfig            config = make_config();
     std::vector<std::string> moves;
     std::string              archive; /* a golden in fixtures/archive/valid */
+    /* The wire session's deal, where the scenario's game has one. It is the
+     * first member of this schema that belongs to a game rather than to a mode:
+     * only the dealt game has a deal, and a scenario of it is created through
+     * mxq_game_create_nearby, which is the entry the four values arrive in.
+     * Empty means the scenario creates its game the ordinary way. */
+    std::string              deal_commit;
+    std::string              deal_nonce;
+    std::string              deal_seed;
+    std::string              deal_digest;
     /* Whether the scenario's game is one only a build with the second engine
      * carries. Which games a build carries is the build's, per mxq.h, so a
      * scenario of a game this one has not got is reported as not evaluated
@@ -438,8 +569,31 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         } else if (game->string() == "renju") {
             out.config.game = MXQ_GAME_KIND_RENJU;
             out.needs_gomoku = true;
+        } else if (game->string() == "jieqi") {
+            out.config.game = MXQ_GAME_KIND_JIEQI;
         } else {
             error = "\"config.game\" is not one of the accepted games";
+            return false;
+        }
+    }
+
+    /* The deal the scenario's game was dealt, where it has one: the four
+     * values the protocol's handshake left behind, each sixty-four lowercase
+     * hexadecimal digits. A scenario that states them is created over a wire
+     * session carrying them, which is the only way a dealt game reaches the
+     * store with the evidence its record must hold. */
+    if (const mxqtest::JsonValue *deal = root.member("deal")) {
+        const auto value = [&](const char *name) {
+            const mxqtest::JsonValue *v = deal->member(name);
+            return v != nullptr && v->is_string() ? v->string() : std::string();
+        };
+        out.deal_commit = value("commit");
+        out.deal_nonce = value("nonce");
+        out.deal_seed = value("seed");
+        out.deal_digest = value("digest");
+        if (out.deal_commit.size() != 64 || out.deal_nonce.size() != 64 ||
+            out.deal_seed.size() != 64 || out.deal_digest.size() != 64) {
+            error = "a scenario's \"deal\" states four 64-digit values";
             return false;
         }
     }
@@ -650,7 +804,11 @@ void check_positions(Case &c, MxqCore *core, const MxqGameConfig &config,
                      const std::vector<std::string> &moves,
                      const std::string &where) {
     const MxqGameKind kind = config.game;
+    /* Emptied first, because a game with no frozen start writes nothing here
+     * and answers MXQ_ERR_ARG_RANGE: its configuration always names a start,
+     * which is what the copy below reads. */
     char start_fen[MXQ_FEN_CAP];
+    start_fen[0] = '\0';
     size_t fen_len = 0;
     mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
     /* The scenario's own start where it composed one. The empty member means
@@ -741,6 +899,7 @@ void check_legal_moves(Case &c, MxqCore *core, const MxqGameConfig &config,
                        const std::string &where) {
     const MxqGameKind kind = config.game;
     char start_fen[MXQ_FEN_CAP];
+    start_fen[0] = '\0';
     size_t fen_len = 0;
     mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
     if (config.start_fen[0] != '\0') {
@@ -837,6 +996,53 @@ void check_legal_moves(Case &c, MxqCore *core, const MxqGameConfig &config,
     }
 }
 
+/* The wire session a dealt scenario is created over: a session at its birth,
+ * carrying the deal the scenario states and nothing else that matters. */
+MxqNearbySession nearby_session_of(const Scenario &scenario,
+                                   const char *session_id,
+                                   const char *peer_id) {
+    MxqNearbySession wire;
+    std::memset(&wire, 0, sizeof(wire));
+    wire.struct_size = static_cast<uint32_t>(sizeof(wire));
+    wire.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    wire.sent_end = MXQ_NEARBY_TERMINAL_NONE;
+    std::memcpy(wire.session_id, session_id, std::strlen(session_id) + 1);
+    std::memcpy(wire.peer_id, peer_id, std::strlen(peer_id) + 1);
+    std::memcpy(wire.deal_commit, scenario.deal_commit.c_str(), 65);
+    std::memcpy(wire.deal_nonce, scenario.deal_nonce.c_str(), 65);
+    std::memcpy(wire.deal_seed, scenario.deal_seed.c_str(), 65);
+    std::memcpy(wire.deal_digest, scenario.deal_digest.c_str(), 65);
+    return wire;
+}
+
+/* The deal a session reports, compared against the one the scenario dealt it.
+ * Asked after the resume above all: the four values are the store's own row and
+ * not the document's, and a resumed session re-verifies its deal against all of
+ * them before it exists at all. */
+void check_deal(Case &c, const MxqGame *game, const Scenario &scenario,
+                const std::string &where) {
+    MxqNearbySession wire;
+    std::memset(&wire, 0, sizeof(wire));
+    wire.struct_size = static_cast<uint32_t>(sizeof(wire));
+    uint8_t exists = 0;
+    MxqError err = make_error();
+    const MxqStatus rc = mxq_game_nearby_session(game, &wire, &exists, &err);
+    c.check(rc == MXQ_OK, where + ": mxq_game_nearby_session failed: " +
+                              std::string(mxq_status_name(rc)));
+    c.check(exists == 1, where + ": the dealt game carries its wire session");
+    if (rc != MXQ_OK || exists == 0) {
+        return;
+    }
+    c.check_eq(std::string(wire.deal_commit), scenario.deal_commit,
+               where + ": deal_commit");
+    c.check_eq(std::string(wire.deal_nonce), scenario.deal_nonce,
+               where + ": deal_nonce");
+    c.check_eq(std::string(wire.deal_seed), scenario.deal_seed,
+               where + ": deal_seed");
+    c.check_eq(std::string(wire.deal_digest), scenario.deal_digest,
+               where + ": deal_digest");
+}
+
 /* ---------------------------------------------------------------------- */
 /* The deterministic identity sequence                                     */
 /* ---------------------------------------------------------------------- */
@@ -923,9 +1129,23 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
 
     MxqGame *game = nullptr;
     err = make_error();
-    rc = mxq_game_create(core, &scenario.config, &game, &err);
-    c.check(rc == MXQ_OK, std::string("mxq_game_create failed: ") +
-                              mxq_status_name(rc) + ": " + err.detail);
+    if (scenario.deal_commit.empty()) {
+        rc = mxq_game_create(core, &scenario.config, &game, &err);
+        c.check(rc == MXQ_OK, std::string("mxq_game_create failed: ") +
+                                  mxq_status_name(rc) + ": " + err.detail);
+    } else {
+        /* A dealt game is created over the wire session its deal arrived in:
+         * three of those four values are its record's own evidence, and this
+         * entry is where they reach the document. The two identifiers are the
+         * runner's, because nothing about them is compared — they are device
+         * bookkeeping the archive deliberately never carries. */
+        const MxqNearbySession wire =
+            nearby_session_of(scenario, "session-of-the-dealt-scenario",
+                              "peer-of-the-dealt-scenario");
+        rc = mxq_game_create_nearby(core, &scenario.config, &wire, &game, &err);
+        c.check(rc == MXQ_OK, std::string("mxq_game_create_nearby failed: ") +
+                                  mxq_status_name(rc) + ": " + err.detail);
+    }
     if (rc != MXQ_OK) {
         mxq_core_shutdown(core, nullptr);
         c.report();
@@ -960,6 +1180,9 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
 
     const std::string id_before = game_id_of(game, c, "before the close");
     check_config(c, game, scenario, "before the close");
+    if (!scenario.deal_commit.empty()) {
+        check_deal(c, game, scenario, "before the close");
+    }
     check_status(c, game, scenario, "before the close");
     check_positions(c, core, scenario.config, game, scenario.moves, "before the close");
     check_legal_moves(c, core, scenario.config, game, scenario.moves, "before the close");
@@ -1034,6 +1257,9 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
     c.check_eq(game_id_of(game, c, "after the resume"), id_before,
                "the identity survives the round trip");
     check_config(c, game, scenario, "after the resume");
+    if (!scenario.deal_commit.empty()) {
+        check_deal(c, game, scenario, "after the resume");
+    }
     check_status(c, game, scenario, "after the resume");
     check_positions(c, core, scenario.config, game, scenario.moves, "after the resume");
     const std::vector<std::string> history_after =
@@ -1369,6 +1595,171 @@ void case_start_position_ladder() {
         c.check_eq(status.side_to_move, MXQ_COLOR_BLACK,
                    "the status names the side to move");
         c.check_eq(status.state, MXQ_GAME_ONGOING, "the scene is a game");
+        mxq_game_release(game);
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/*
+ * The same ladder asked of the one game that has no frozen start.
+ *
+ * Its configuration always names a start, so the three questions are asked of
+ * every session it has rather than only of a composed one — and the second of
+ * them is the dealt-start question, which is the whole of what this game's rules
+ * say about a position it may be set up in. The third never refuses one: a dealt
+ * start is a full board with a move for the side to move, so there is nothing
+ * for a startability case to catch and none is written.
+ *
+ * Two refusals here are not rungs at all but configuration shapes, and both
+ * assert, so both are stated where the assertions are compiled out: an empty
+ * start for a game that has no start to mean, and the mode this game does not
+ * play. The third of that kind is the nearby door — a dealt game played over the
+ * wire records the deal its handshake produced, so it is created through the
+ * entry that carries one.
+ */
+void case_dealt_start_ladder() {
+    Case c("the questions a dealt start is asked, and the shapes it refuses");
+    const fs::path store = scratch_dir("dealt-ladder");
+
+    /* One deal, the corpus's own: the vector fixtures/archive/valid's jieqi
+     * golden is built on, so the position here and the position there are one
+     * position rather than two transcriptions. */
+    const char *const kDealt =
+        "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/"
+        "P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1";
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const auto with_start = [](const char *fen) {
+        MxqGameConfig config = make_config();
+        config.game = MXQ_GAME_KIND_JIEQI;
+        std::memcpy(config.start_fen, fen, std::strlen(fen) + 1);
+        return config;
+    };
+    const auto refused = [&](const MxqGameConfig &config, MxqStatus want,
+                             const std::string &what) {
+        MxqGame *game = reinterpret_cast<MxqGame *>(0x1);
+        MxqError e = make_error();
+        const MxqStatus rc = mxq_game_create(core, &config, &game, &e);
+        c.check(rc == want, what + ": expected " +
+                                std::string(mxq_status_name(want)) + ", got " +
+                                std::string(mxq_status_name(rc)) + " (" +
+                                e.detail + ")");
+        c.check(game == nullptr, what + ": no session was produced");
+    };
+
+    /* Rung one: how the position is spelled. A face-down piece stands on its own
+     * start square and nowhere else — it flips the moment it moves — so a record
+     * standing one elsewhere spells a position the game cannot reach; and the
+     * counters a start carries are halfmove 0 and fullmove 1 whatever the
+     * position. */
+    refused(with_start("4k4/9/9/9/9/9/9/9/R~8/4K4 w - - 0 1"),
+            MXQ_ERR_RULES_INVALID_FEN, "a face-down piece off its own square");
+    refused(with_start("r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/"
+                       "P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 3 7"),
+            MXQ_ERR_RULES_INVALID_FEN, "counters no start carries");
+
+    /* Rung two: the membership question, which for this game is the dealt start
+     * and nothing else. The standard array face up is a position of this board
+     * and of this game, and it is not a deal. */
+    refused(with_start("rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/"
+                       "RNBAKABNR w - - 0 1"),
+            MXQ_ERR_RULES_ILLEGAL_POSITION, "a position that is not a deal");
+
+    /* And the same question asked of the predicate directly, which is where the
+     * rule the refusal carries is readable: the answer names neither a side nor
+     * a point, because a deal is dealt whole. */
+    {
+        MxqSetupViolation violation;
+        std::memset(&violation, 0, sizeof(violation));
+        violation.struct_size = static_cast<uint32_t>(sizeof(violation));
+        err = make_error();
+        const MxqStatus rc = mxq_rules_validate_setup(
+            core, MXQ_GAME_KIND_JIEQI,
+            "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+            &violation, &err);
+        c.check(rc == MXQ_ERR_RULES_ILLEGAL_POSITION,
+                std::string("the predicate refuses a position that is not a "
+                            "deal, got ") +
+                    mxq_status_name(rc));
+        c.check_eq(violation.rule, MXQ_SETUP_RULE_NOT_DEALT_START,
+                   "the rule the refusal carries");
+        c.check_eq(violation.side, MXQ_COLOR_NONE, "and names no side");
+        c.check_eq(std::string(violation.square), std::string(),
+                   "and no square");
+    }
+
+#if defined(NDEBUG)
+    /* A configuration of a shape this game does not have: there is no one
+     * position for an empty member to mean, so the member is not optional
+     * here. */
+    {
+        MxqGameConfig config = make_config();
+        config.game = MXQ_GAME_KIND_JIEQI;
+        refused(config, MXQ_ERR_ARG_RANGE, "an empty start for a dealt game");
+    }
+
+    /* And the mode it does not play: no search, no network, nothing to
+     * prepare. */
+    {
+        MxqGameConfig config = with_start(kDealt);
+        config.mode = MXQ_PLAY_MODE_HUMAN_VS_AI;
+        config.human_side = MXQ_COLOR_RED;
+        config.ai_level = MXQ_AI_LEVEL_FAST;
+        config.first_mover_choice = MXQ_FIRST_MOVER_HUMAN_FIRST;
+        config.ai_movetime_ms = 1000;
+        refused(config, MXQ_ERR_ARG_RANGE, "a dealt game against an AI");
+    }
+
+    /* And the door: a nearby game of it carries the evidence its deal was dealt,
+     * and this entry takes no wire session to carry it. */
+    {
+        MxqGameConfig config = with_start(kDealt);
+        config.mode = MXQ_PLAY_MODE_NEARBY;
+        config.local_side = MXQ_COLOR_RED;
+        refused(config, MXQ_ERR_ARG_RANGE,
+                "a nearby dealt game without its wire session");
+    }
+#endif
+
+    /* And the deal itself is a game to begin: Free Play deals its own, so it
+     * carries no handshake evidence, its start reads back spelled out — there
+     * being no frozen start for the member to fold into — and Red moves first,
+     * as every deal is dealt. */
+    MxqGameConfig dealt = with_start(kDealt);
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check(mxq_game_create(core, &dealt, &game, &err) == MXQ_OK,
+            std::string("the dealt start is created: ") + err.detail);
+    if (game != nullptr) {
+        MxqGameConfig read_back = make_config();
+        c.check(mxq_game_config(game, &read_back, nullptr) == MXQ_OK,
+                "the dealt game answers");
+        c.check_eq(std::string(read_back.start_fen), std::string(kDealt),
+                   "a dealt start always reads back spelled out");
+        MxqPosition position = make_position();
+        c.check(mxq_game_position(game, &position, nullptr) == MXQ_OK,
+                "the dealt game has a position");
+        c.check_eq(std::string(position.fen), std::string(kDealt),
+                   "the session begins from the deal it was created with");
+        c.check_eq(position.side_to_move, MXQ_COLOR_RED,
+                   "a deal is dealt with Red to move");
+        MxqGameStatus status = make_status();
+        c.check(mxq_game_status(game, &status, nullptr) == MXQ_OK,
+                "the dealt game has a status");
+        c.check_eq(status.state, MXQ_GAME_ONGOING,
+                   "and a dealt start never has a result of its own");
+        c.check_eq(status.search_expected, 0,
+                   "nothing searches this game, at any ply");
         mxq_game_release(game);
     }
 
@@ -1910,6 +2301,7 @@ int main(int argc, char **argv) {
               << "\n\n";
 
     case_sha256_vectors();
+    case_deal_derivation();
 
 #if MXQ_TEST_RULES_FACADE
     std::vector<fs::path> scenarios;
@@ -1933,6 +2325,7 @@ int main(int argc, char **argv) {
     case_notation_grammar();
     case_second_active_game();
     case_start_position_ladder();
+    case_dealt_start_ladder();
     case_resume_without_a_game();
     case_refused_moves_change_nothing();
     case_failed_commit_leaves_the_game_unchanged();

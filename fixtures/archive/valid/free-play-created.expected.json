@@ -2,7 +2,7 @@
   "title": "Free Play, created and not yet played: an empty move line",
   "why": "This is the row a creation writes before any move exists. An empty moves array is a complete version 4 document, not an incomplete one: the game replays to the frozen starting position, records no end, and — being Free Play — omits the four configuration members as well.",
   "info": {
-    "archive_version": 5,
+    "archive_version": 6,
     "game": "minixiangqi",
     "move_count": 0,
     "mode": "free-play",
