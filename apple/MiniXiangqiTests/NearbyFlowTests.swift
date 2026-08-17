@@ -769,6 +769,64 @@ struct NearbyFlowTests {
         #expect(play.reasonText == String(localized: "reason.agreedDraw"))
     }
 
+    // MARK: - What the captures took
+
+    /// docs/interaction-design.md § Captured pieces: **Jieqi displays them**,
+    /// and what a nearby board adds is whose eyes they are drawn for. Each
+    /// device draws its own player's surface — their own face-down losses as a
+    /// count, their own captures whole — so the two devices' surfaces are not
+    /// the same surface, and both are right.
+    ///
+    /// The line is a capture each way over the deal the corpus pins: Black takes
+    /// Red's `b1` over the screen Red's own first ply left standing, and Red
+    /// answers by taking Black's `h10` the same way. What a position *is*
+    /// remains the core's; what this board is drawn over is a real dealt
+    /// position, so what a capture took can be read off it.
+    @Test("What a nearby game has taken is followed, and drawn for this device's player")
+    func theCapturedSurfaceIsThisDevicesOwn() throws {
+        let play = try #require(board(dealt(plies: ["b3b4", "b8b1"]),
+                                      positions: dealtBoard))
+        #expect(play.localSide == .red, "this device proposed, taking the first mover")
+
+        // The line the board opened on, read back: the other player's ply took a
+        // face-down piece of this player's.
+        #expect(play.captured.taken == [CapturedPiece(ply: 1, side: .red, kind: .advisor,
+                                                      wasFaceDown: true)])
+        #expect(mine(play).hidden == 1, "a hidden loss is a count to its owner")
+        #expect(mine(play).pieces.isEmpty, "and never which piece it was")
+        #expect(theirs(play).pieces.isEmpty)
+
+        // And the ply this device answers with takes a face-down piece of the
+        // other player's, which the capture disclosed to this player alone.
+        play.sync(with: dealt(plies: ["b3b4", "b8b1", "h3h10"]))
+        #expect(theirs(play).pieces == [Piece(kind: .horse, side: .black)],
+                "a hidden capture is shown whole to its capturer")
+        #expect(theirs(play).hidden == 0)
+        #expect(mine(play).hidden == 1, "and the count on this player's own row stands")
+
+        // A line that got shorter gives back what the plies it lost took.
+        play.sync(with: dealt(plies: ["b3b4"]))
+        #expect(play.captured.isEmpty)
+    }
+
+    /// The board's own positions over that deal.
+    private var dealtBoard: any NearbyPositions {
+        FakePositions(fen: BoardGameRulesTests.dealtStart)
+    }
+
+    /// This player's own losses, as this device's player is shown them.
+    private func mine(_ play: NearbyPlay) -> CapturedPieces.Panel {
+        play.captured.panel(of: play.localSide, throughPly: play.shown.count,
+                            seenBy: play.localSide, disclosed: play.disclosesTheDeal)
+    }
+
+    /// And the other player's, on the same surface.
+    private func theirs(_ play: NearbyPlay) -> CapturedPieces.Panel {
+        play.captured.panel(of: play.localSide == .red ? .black : .red,
+                            throughPly: play.shown.count,
+                            seenBy: play.localSide, disclosed: play.disclosesTheDeal)
+    }
+
     // MARK: - A game that goes away
 
     @Test("A session the peer no longer holds is why the board says the game ended")
@@ -823,7 +881,30 @@ struct NearbyFlowTests {
         #expect(flow.boardVoid?.messageKey == "nearby.ended.disagreement")
         // Distinct sentences, because a reason a reader cannot tell from another
         // reason is a code with extra steps.
-        #expect(Set([NearbyVoid.lostByPeer, .disagreement, .retired].map(\.messageKey)).count == 3)
+        #expect(Set([NearbyVoid.lostByPeer, .disagreement, .retired, .dealDied]
+            .map(\.messageKey)).count == 4)
+    }
+
+    @Test("A dealing session that dies with its connection is not a disagreement")
+    func aDealingSessionThatDiesSaysSo() {
+        let driver = FakeDriver()
+        // The board the acceptor's own consent opened: a dealt game's session is
+        // dealing from the acceptance until the handshake completes, and the
+        // board opens on it there.
+        driver.sessions = [dealing()]
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
+        flow.openBoard("S")
+
+        // The handshake's connection went away, which is the whole of what
+        // happens to a dealing session: it is bound to the connection its
+        // propose travelled on, it holds nothing worth reconciling, and the pair
+        // simply proposes again and deals again.
+        driver.sessions = []
+        flow.sessionsChanged()
+
+        #expect(flow.boardVoid == .dealDied,
+                "the protocol calls this routine, and routine is not a disagreement")
+        #expect(flow.boardVoid != .disagreement)
     }
 
     @Test("A game that ended and was retired in one update is still the result")
@@ -1021,6 +1102,27 @@ struct NearbyFlowTests {
         return session
     }
 
+    /// A dealt game's session, over the deal the corpus pins: its start is what
+    /// the handshake derived, and it is what this session's board is drawn from.
+    private func dealt(plies: [String]) -> BoardGameSession {
+        var dealt = session(proposer: .local, accepted: true, rulesID: "jieqi")
+        dealt.handshake = .dealt(BoardGameDeal(commit: BoardGameRulesTests.commit,
+                                               nonce: BoardGameRulesTests.nonce,
+                                               seed: BoardGameRulesTests.seed,
+                                               digest: BoardGameRulesTests.digest,
+                                               start: BoardGameRulesTests.dealtStart))
+        dealt.plies = plies
+        return dealt
+    }
+
+    /// A dealt game's session with its handshake still in flight, which is what
+    /// the acceptor holds from the moment it consents until the seed arrives.
+    private func dealing() -> BoardGameSession {
+        var dealing = session(proposer: .peer, accepted: true, rulesID: "jieqi")
+        dealing.handshake = .awaitingCommit
+        return dealing
+    }
+
     /// A finished, settled session — the one the pair's dealings may linger with.
     private func ended() -> BoardGameSession {
         var finished = session(proposer: .local, accepted: true)
@@ -1082,10 +1184,15 @@ private final class FakeReach: NearbyReach {
 /// Positions enough to hold a board up. What a position actually is comes from
 /// the core, and the oracle's own suite is where that is asked.
 private nonisolated struct FakePositions: NearbyPositions {
+    /// The position to answer with, where a case wants one of its own. A dealt
+    /// game has no frozen start to fall back on — its start is the deal — so a
+    /// board over one is drawn from the position the case names.
+    var fen: String?
+
     func standing(of game: GameKind, from start: String?,
                   after plies: [String]) -> NearbyStanding? {
         NearbyStanding(
-            evaluation: Evaluation(fen: frozenStart(game),
+            evaluation: Evaluation(fen: fen ?? frozenStart(game),
                                    sideToMove: Mover.atPly(plies.count) == .first
                                        ? .red : .black,
                                    inCheck: false,

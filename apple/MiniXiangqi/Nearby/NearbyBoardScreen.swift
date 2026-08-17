@@ -40,6 +40,9 @@ struct NearbyBoardScreen: View {
     @State private var resignPresented = false
     @State private var claimPresented = false
 
+    /// Whether the stacked shape's on-demand captured-pieces surface is up.
+    @State private var capturedShown = false
+
     /// What the stacked shape's chrome came to, exactly as the play screen
     /// takes it: the status above the board measured, and the cluster below it
     /// reserved at its tallest arrangement out of one measured row.
@@ -64,8 +67,14 @@ struct NearbyBoardScreen: View {
             if let play {
                 layout(play)
             } else {
-                // Nothing reaches this screen without a session, so this is the
-                // honest nothing rather than a state to design.
+                // **The deal handshake, waiting.** A dealt game's board opens
+                // the moment the proposal is accepted — its session is dealing
+                // then, and until the handshake completes there is no start
+                // position and so no board to draw. It builds itself the moment
+                // the deal arrives, which is what the player sees: a board
+                // arriving a moment later than another game's would, with
+                // nothing to answer and nothing to read. Every other game
+                // reaches this screen with a position and never stands here.
                 ProgressView()
             }
         }
@@ -163,6 +172,49 @@ struct NearbyBoardScreen: View {
         } message: {
             Text("alert.claimDraw.message")
         }
+        // The captured-pieces surface, on the same surface the alerts are on and
+        // for the play screen's own reason: `capturedShown` is this screen's
+        // state, so a sheet declared inside the stacked branch alone is one that
+        // is re-presented every time the layout comes back to that branch.
+        .sheet(isPresented: $capturedShown) { capturedSheet(play) }
+    }
+
+    // MARK: - What the captures took
+
+    /// The captured-pieces surface, as this game draws it.
+    ///
+    /// **Whose eyes it is drawn for is this device's player.** A nearby game has
+    /// two people at it and each device shows its own player's surface: their
+    /// own face-down losses as a count, their own captures whole, and every
+    /// revealed loss as the discs both players saw go. Everything discloses when
+    /// the game ends, which is the question the board itself already asks.
+    private func captured(_ play: NearbyPlay) -> some View {
+        CapturedPiecesView(captured: play.captured,
+                           game: play.game,
+                           throughPly: play.shown.count,
+                           viewer: play.localSide,
+                           disclosed: play.disclosesTheDeal)
+    }
+
+    /// The same surface on the phone's own transient, exactly as the play screen
+    /// raises it.
+    private func capturedSheet(_ play: NearbyPlay) -> some View {
+        NavigationStack {
+            ScrollView {
+                captured(play)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
+            .navigationTitle("captured.title")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("control.done") { capturedShown = false }
+                        .accessibilityIdentifier("captured-done")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - The two shapes
@@ -183,6 +235,20 @@ struct NearbyBoardScreen: View {
                     .padding(.vertical, 8)
 
                 Divider()
+
+                // The resident captured-pieces surface, in the game that has
+                // one. It stands beside the board rather than over it, which is
+                // the resident rule: it never intersects the board block, and
+                // the board keeps its pitch floor before this surface is given
+                // room.
+                if play.game.conceals {
+                    captured(play)
+                        .padding(.horizontal, BoardLayout.panelInset)
+                        .padding(.vertical, 8)
+
+                    Divider()
+                }
+
                 Spacer(minLength: 0)
                 Divider()
 
@@ -263,6 +329,20 @@ struct NearbyBoardScreen: View {
             if statusStandsInBar {
                 ToolbarItem(placement: .principal) {
                     turnStatus(play, placement: .bar)
+                }
+            }
+            // Where the board keeps its floor there is no room to be resident
+            // in, so the captured surface is reached instead — from the same
+            // toolbar the page's own back control is in, which is the move
+            // list's answer to the same question on the same surface.
+            if play.game.conceals {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        capturedShown = true
+                    } label: {
+                        Label("captured.title", systemImage: "tray.full")
+                    }
+                    .accessibilityIdentifier("play-captured")
                 }
             }
         }

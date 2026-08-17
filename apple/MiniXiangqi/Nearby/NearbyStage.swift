@@ -37,11 +37,18 @@ enum NearbyStage: String, CaseIterable {
     /// whose forbidden point is Black's to see, so the crosses are on the board
     /// while the cluster is at its own side of the turn.
     case placementOnTurn = "placement-on-turn"
+    /// A dealt board with a capture each way: this player has lost a face-down
+    /// piece and taken one, which is the pair of readings the captured surface
+    /// exists for — their own loss a count, their own capture whole.
+    case jieqi
 
     /// `-mxq-nearby-board <stage>`, where one was named.
     static var named: Self? {
         DebugLaunch.argument(after: "-mxq-nearby-board").flatMap(Self.init(rawValue:))
     }
+
+    /// The one session a staged board is, by identifier.
+    static let sessionID = "staged-session"
 
     /// The start position a third time, which is where the claim stands. The
     /// same line the oracle's own suite verifies against the core.
@@ -55,12 +62,31 @@ enum NearbyStage: String, CaseIterable {
     private static let doubleThree = ["g8", "a1", "i8", "a15",
                                       "h7", "o1", "h9", "o15"]
 
+    /// A capture each way on a dealt board, and legal whatever the deal is: a
+    /// hidden piece moves as the piece whose square it stands on, so `b3b4` is a
+    /// cannon's step, `b8b1` is a cannon's shot over the screen that step left
+    /// standing, and `h3h10` is the same shot the other way over the cannon
+    /// square Black has not moved. Whatever turns up on `b1` reaches no general
+    /// behind the two pieces still standing in front of it, so the third ply is
+    /// this device's to make however the second one flipped.
+    private static let dealtCaptures = ["b3b4", "b8b1", "h3h10"]
+
+    /// The two contributions the staged handshake is dealt from. Pinned rather
+    /// than drawn, so a staged board is the same board every launch — a moment
+    /// that dealt itself differently each time would be a different moment to
+    /// look at. A real handshake draws these from the platform's cryptographic
+    /// source, once per handshake, and this is not one.
+    private static let seed = String(repeating: "0", count: 64)
+    private static let nonce =
+        "a144410000000000000000000000000000000000000000000000000000000000"
+
     /// The game the moment is played in.
     var game: GameKind {
         switch self {
         case .offTurn, .onTurn, .offered, .undoAsked, .claimable: .miniXiangqi
         case .placementOffTurn: .gomoku15
         case .placementOnTurn: .renju
+        case .jieqi: .jieqi
         }
     }
 
@@ -69,16 +95,25 @@ enum NearbyStage: String, CaseIterable {
     /// Whose turn it is is the ply count's own parity against the mover this
     /// device holds, exactly as it is in a real session — this device takes the
     /// first mover throughout, so an even line is its turn and an odd one is
-    /// not. Every line here is one a suite plays against the core, so the board
-    /// behind these has a real position to draw.
-    var session: BoardGameSession {
-        var session = BoardGameSession(id: "staged-session",
+    /// not. Every line here is one a suite plays against the core, or one that
+    /// is legal in its game whatever was dealt, so the board behind these has a
+    /// real position to draw.
+    ///
+    /// **A dealt game's session is dealt**, from the rules that derive every
+    /// deal: its start is the deal rather than a frozen position, and a session
+    /// carrying no completed handshake would have no board at all.
+    func session(dealtBy rules: any BoardGameRules) -> BoardGameSession {
+        var session = BoardGameSession(id: Self.sessionID,
                                        peer: PeerDeviceID("staged-peer"),
                                        rulesID: game.rulesID,
                                        rulesVersion: "1",
                                        proposerMoves: .first, proposer: .local)
         session.accepted = true
         session.connection = ConnectionID("staged-connection")
+        if rules.dealsItsStart(game.rulesID) {
+            session.handshake = rules.deal(seed: Self.seed, nonce: Self.nonce,
+                                           of: game.rulesID).map { .dealt($0) }
+        }
         switch self {
         case .offTurn:
             // One ply, this device's own — which is both what makes it the
@@ -97,6 +132,8 @@ enum NearbyStage: String, CaseIterable {
             session.plies = ["h8"]
         case .placementOnTurn:
             session.plies = Self.doubleThree
+        case .jieqi:
+            session.plies = Self.dealtCaptures
         }
         switch self {
         case .offered:
@@ -134,9 +171,9 @@ final class NearbyStagedDriver: NearbyDriving {
 
     private let stage: NearbyStage
 
-    init(_ stage: NearbyStage) {
+    init(_ stage: NearbyStage, dealtBy rules: any BoardGameRules) {
         self.stage = stage
-        self.sessions = [stage.session]
+        self.sessions = [stage.session(dealtBy: rules)]
     }
 
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
@@ -180,10 +217,12 @@ final class NearbyStagedReach: NearbyReach {
 extension NearbyFlow {
     /// The flow a staged launch gets: the real one, over a driver that holds
     /// the named moment and a transport that reaches nobody.
-    static func staged(_ stage: NearbyStage, positions: any NearbyPositions) -> NearbyFlow {
-        let flow = NearbyFlow(driver: NearbyStagedDriver(stage), reach: NearbyStagedReach(),
+    static func staged(_ stage: NearbyStage, positions: any NearbyPositions,
+                       rules: any BoardGameRules) -> NearbyFlow {
+        let flow = NearbyFlow(driver: NearbyStagedDriver(stage, dealtBy: rules),
+                              reach: NearbyStagedReach(),
                               positions: positions, isAvailable: true)
-        flow.openBoard(stage.session.id)
+        flow.openBoard(NearbyStage.sessionID)
         return flow
     }
 }

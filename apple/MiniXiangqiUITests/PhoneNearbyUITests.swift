@@ -59,6 +59,16 @@ final class PhoneNearbyUITests: XCTestCase {
             .firstMatch
     }
 
+    /// An element's label, waited for before it is read: a label taken from the
+    /// snapshot a page was still assembling in reads back empty, and an
+    /// assertion made there is a race that passes on a fast run.
+    private func label(_ app: XCUIApplication, _ identifier: String,
+                       file: StaticString = #filePath, line: UInt = #line) -> String {
+        let element = app.descendants(matching: .any)[identifier]
+        XCTAssertTrue(element.waitForExistence(timeout: 10), file: file, line: line)
+        return element.label
+    }
+
     private func attach(_ app: XCUIApplication, named name: String) {
         Thread.sleep(forTimeInterval: 0.6)
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -215,6 +225,8 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cluster-resign"].exists)
         XCTAssertTrue(app.buttons["cluster-flip"].exists)
         XCTAssertFalse(app.staticTexts["nearby-asking"].exists)
+        XCTAssertFalse(app.buttons["play-captured"].exists,
+                       "a game whose position is wholly public displays no captures")
         attach(app, named: "phone-nearby-04-off-turn")
     }
 
@@ -337,6 +349,49 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertEqual(asking.label, "对方请求悔棋")
         XCTAssertEqual(app.buttons["cluster-accept"].label, "接受")
         attach(app, named: "phone-nearby-08-a-take-back-asked")
+    }
+
+    // MARK: - The dealt board, and what its captures took
+    //
+    // docs/interaction-design.md § Captured pieces: **Jieqi displays them,
+    // because there the reasoning does not hold — what a capture takes off the
+    // board is knowledge, and knowledge is that game's material.** Nearby play
+    // is where that surface has two readers: each device draws its own player's
+    // knowledge, so the two players' surfaces are not the same surface.
+    //
+    // The staged session is a dealt board with a capture each way, which is what
+    // makes the two rows say the two different things at once.
+
+    /// The surface is reached from the board's own toolbar — the move list's
+    /// answer to the same question, on the same surface and for the same reason
+    /// — and what stands in it is drawn for this device's player.
+    func testTheNearbyJieqiBoardReachesWhatItsCapturesTook() {
+        let app = launch(board: "jieqi")
+
+        // The dealt board itself, drawn from the deal its session holds: a
+        // face-down disc says whose piece it is and no more.
+        XCTAssertTrue(point(app, "a1").waitForExistence(timeout: 30))
+        XCTAssertEqual(label(app, "point-a1"), "a1 红 暗子")
+
+        let opener = app.buttons["play-captured"]
+        XCTAssertTrue(opener.exists,
+                      "the board keeps its pitch floor, so the surface is reached "
+                      + "rather than resident")
+        opener.tap()
+
+        // This device's player is Red, and their own face-down loss is a count
+        // and nothing more: losing a hidden piece tells its owner that a piece
+        // is gone and never which.
+        XCTAssertEqual(label(app, "captured-red"), "红 1 暗子")
+
+        // The piece they took is whole, because the capture disclosed it to them
+        // alone — the horse the staged deal had standing on h10.
+        XCTAssertEqual(label(app, "captured-black"), "黑 马")
+        attach(app, named: "phone-nearby-14-what-the-captures-took")
+
+        app.buttons["captured-done"].tap()
+        XCTAssertTrue(point(app, "a1").waitForExistence(timeout: 10),
+                      "and the board is where it was")
     }
 
     // MARK: - A board stones are placed on

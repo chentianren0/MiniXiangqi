@@ -190,7 +190,8 @@ private struct Destinations: View {
         // only way a test sees this screen at all — and what it sees is the
         // real flow, board and positions, over a driver that speaks to nobody.
         if let stage = NearbyStage.named {
-            return .staged(stage, positions: core.nearbyPositions)
+            return .staged(stage, positions: core.nearbyPositions,
+                           rules: core.boardGameRules)
         }
         #endif
         let log = NearbyLog()
