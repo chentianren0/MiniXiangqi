@@ -174,12 +174,20 @@ final class NearbyDriver {
             return nil
         }
         guard let stored else { return nil }
-        // A session the engine will not take up is one whose deal no longer
-        // verifies against everything it came from. There is no game to play
-        // over it and nothing to resume: the store's session is let go of, and
-        // the game stays the library's active one for the player to file from
-        // the home, exactly as a game whose filing was refused does.
-        guard engine.adopt(stored) else {
+        // **The engine's two non-refusals are both a session to come back to.**
+        // Coming back to a game the engine is *already* holding is the ordinary
+        // way in — the player left the board and pressed 继续对局, and the
+        // record has been following that session all along — and it is the one
+        // answer this must not read as a refusal: letting go of the store's
+        // session there would detach the record from a game still being played,
+        // after which no ply of it would ever be written down again.
+        //
+        // A refusal is the other thing entirely: a deal that no longer verifies
+        // against everything it came from. There is no game to play over it and
+        // nothing to resume, so the store's session is let go of and the game
+        // stays the library's active one for the player to file from the home,
+        // exactly as a game whose filing was refused does.
+        guard engine.adopt(stored).isHeld else {
             log.note("\(Self.short(stored.id)) is not a session this device can "
                      + "take up again.")
             record.release()

@@ -68,6 +68,29 @@ nonisolated struct Violation: Sendable, Equatable {
     }
 }
 
+/// What became of a session handed to `adopt`.
+///
+/// Three answers rather than two, because the two that are not refusals are not
+/// the same answer either — and because a caller reading "already held" as a
+/// refusal would let go of the very game it is playing.
+nonisolated enum BoardGameAdoption: Sendable, Equatable {
+    /// Taken up: this peer holds it now and did not before.
+    case tookUp
+    /// This peer was already holding it, so nothing changed and nothing is
+    /// wrong: the engine is the authority on a live session, and a stored copy
+    /// of one it is playing is behind by definition.
+    case alreadyHeld
+    /// Not a session this peer can play: a hidden-information session whose
+    /// deal no longer verifies against everything it comes from, or one whose
+    /// deal and whose game disagree about whether there should be one. This
+    /// peer holds nothing for it afterwards, which is how it answers a `resume`
+    /// naming it.
+    case refused
+
+    /// Whether this peer holds the session now, however it came to.
+    var isHeld: Bool { self != .refused }
+}
+
 /// Why the engine refused something this peer's own player asked for. These are
 /// this device's own state, never the other peer's conduct.
 nonisolated enum BoardGameRefusal: Error, Equatable {
@@ -161,21 +184,23 @@ nonisolated final class BoardGameEngine {
     /// after which every `resume` for it meets the `unknown_session` answer any
     /// session this peer holds nothing for meets.
     ///
-    /// Answers whether the session was taken up.
+    /// Answers what became of it, which the caller must tell apart: **a
+    /// session already held and a session refused are opposite answers**, and a
+    /// caller that read them as one would let go of a game it is playing.
     @discardableResult
-    func adopt(_ session: BoardGameSession) -> Bool {
-        guard sessionsByID[session.key] == nil else { return false }
+    func adopt(_ session: BoardGameSession) -> BoardGameAdoption {
+        guard sessionsByID[session.key] == nil else { return .alreadyHeld }
         var restored = session
         // A dealt game's session without a deal, or an undealt game's with one,
         // is not a session of the game it names.
         guard rules.dealsItsStart(restored.rulesID) == (restored.deal != nil) else {
-            return false
+            return .refused
         }
         if let held = restored.deal {
             guard let verified = BoardGameDeal.verified(
                 commit: held.commit, nonce: held.nonce, seed: held.seed,
                 digest: held.digest, of: restored.rulesID, by: rules)
-            else { return false }
+            else { return .refused }
             restored.handshake = .dealt(verified)
         }
         restored.connection = nil
@@ -185,7 +210,7 @@ nonisolated final class BoardGameEngine {
                                            from: restored.dealtStart,
                                            of: restored.rulesID).decision
         store(restored)
-        return true
+        return .tookUp
     }
 
     /// A session this device is giving up on, without a message.

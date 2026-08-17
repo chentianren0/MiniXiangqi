@@ -1550,26 +1550,34 @@ struct BoardGameEngineTests {
         let whole = BoardGameDeal(commit: Self.commit, nonce: Self.nonce, seed: Self.seed,
                                   digest: Self.digest, start: Self.dealtStart)
 
-        #expect(engine.adopt(stored("S-good", dealt: whole)), "it verifies against all four")
+        #expect(engine.adopt(stored("S-good", dealt: whole)) == .tookUp,
+                "it verifies against all four")
         #expect(engine.session("S-good")?.dealtStart == Self.dealtStart)
+
+        // **A session already held is not a session refused.** Handing back one
+        // this peer is playing changes nothing and is wrong about nothing: the
+        // engine is the authority on a live session, and the stored copy is
+        // behind it by definition.
+        #expect(engine.adopt(stored("S-good", dealt: whole)) == .alreadyHeld)
+        #expect(engine.session("S-good") != nil, "and it still holds it")
 
         // The seed no longer hashes to the commitment.
         var wrongCommit = whole
         wrongCommit.commit = String(repeating: "f", count: 64)
-        #expect(!engine.adopt(stored("S-commit", dealt: wrongCommit)))
+        #expect(engine.adopt(stored("S-commit", dealt: wrongCommit)) == .refused)
         #expect(engine.session("S-commit") == nil)
 
         // The nonce has rotted: it passes the commitment check and fails the
         // digest, which is why the digest is the one that travels.
         var wrongDigest = whole
         wrongDigest.nonce = String(repeating: "0", count: 64)
-        #expect(!engine.adopt(stored("S-digest", dealt: wrongDigest)))
+        #expect(engine.adopt(stored("S-digest", dealt: wrongDigest)) == .refused)
         #expect(engine.session("S-digest") == nil)
 
         // A dealt game's session with no deal at all, and an undealt game's
         // carrying one, are neither of them sessions of the game they name.
-        #expect(!engine.adopt(stored("S-none", dealt: nil)))
-        #expect(!engine.adopt(stored("S-plain", game: "minixiangqi", dealt: whole)))
+        #expect(engine.adopt(stored("S-none", dealt: nil)) == .refused)
+        #expect(engine.adopt(stored("S-plain", game: "minixiangqi", dealt: whole)) == .refused)
     }
 
     @Test("A resume for a session whose deal failed re-verification is answered unknown_session")
@@ -1578,7 +1586,7 @@ struct BoardGameEngineTests {
         var rotted = BoardGameDeal(commit: Self.commit, nonce: Self.nonce, seed: Self.seed,
                                    digest: Self.digest, start: Self.dealtStart)
         rotted.digest = String(repeating: "f", count: 64)
-        #expect(!engine.adopt(stored("S-rotted", dealt: rotted)))
+        #expect(engine.adopt(stored("S-rotted", dealt: rotted)) == .refused)
 
         let effects = engine.receive(.resume(.init(session: "S-rotted", undos: 0, count: 0,
                                                    keep: 0, end: nil, dealDigest: Self.digest)),
