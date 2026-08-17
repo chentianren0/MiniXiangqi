@@ -1,6 +1,6 @@
 # Placement Engine Integration
 
-This document defines how the shared core packages, calls, constrains, and validates the embedded Rapfi engine — the engine the placement games are played on — and the app-visible policies built on it. It does not define Rapfi internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Rapfi fork repository. The movement games' engine is [engine-integration.md](engine-integration.md)'s subject, and the two documents are counterparts: what the two engines share is stated once, there, and bound here by reference.
+This document defines how the shared core packages, calls, constrains, and validates the embedded Rapfi engine — the engine the placement games are played on — and the app-visible policies built on it. It does not define Rapfi internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Rapfi fork repository. Mini Xiangqi's and Xiangqi's engine is [engine-integration.md](engine-integration.md)'s subject, and the two documents are counterparts: what the two engines share is stated once, there, and bound here by reference.
 
 > **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md), which is one surface over both engines.
 

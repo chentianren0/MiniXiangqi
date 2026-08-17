@@ -138,7 +138,7 @@ The accepted rules interpretation carries an integer version, `rules_version`, a
 
 The shared core's rules facade executes the authoritative offline adjudication on every platform: legal moves, check state, results, repetition, claim eligibility, perpetual violations, and what each reveal turns up. Every one of its questions is asked of a named game; none is answered from a position alone. The facade holds the objective position, every hidden identity included, and nothing above the core's C interface re-derives legality or decides an affordance; what a surface may show its player is the disclosure section above and not a judgement the surface makes.
 
-The facade is deterministic over game, position and history, and the fixtures below — not any engine's agreement — are its authority. Which engine library implements it is owned by [engine-integration.md](engine-integration.md). Search scores and search-only results never commit a user-visible outcome.
+The facade is deterministic over game, position and history, and the fixtures below — not any engine's agreement — are its authority. Which engine library implements it is owned by [jieqi-engine-integration.md](jieqi-engine-integration.md). Search scores and search-only results never commit a user-visible outcome.
 
 ## Conformance fixtures
 
