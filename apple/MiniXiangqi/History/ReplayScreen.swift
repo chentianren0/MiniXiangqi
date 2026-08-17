@@ -37,6 +37,10 @@ struct ReplayScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
+    /// The captured sheet's own width, measured as the play screen measures
+    /// its own: a GeometryReader at a sheet's root has no ideal size, and on
+    /// macOS the sheet takes exactly its content's ideal.
+    @State private var capturedWidth: CGFloat = 0
 
     /// What the header above the board actually came to, measured rather than
     /// assumed — the same thing the play screen does with its turn status, and
@@ -277,19 +281,13 @@ struct ReplayScreen: View {
             // players read the same — and it follows the walk, so it shows
             // what had been taken by the position on screen.
             if beside && replay.record.game.conceals {
-                // Inside its own grant, and scrolling there: a side that has
-                // lost a whole complement must not take the room the list is
-                // standing in.
-                ScrollView {
-                    CapturedPiecesView(captured: replay.captured,
-                                       game: replay.record.game,
-                                       throughPly: replay.ply,
-                                       viewer: nil,
-                                       disclosed: true)
-                        .padding(.horizontal, BoardLayout.panelInset)
-                        .padding(.vertical, 8)
-                }
-                .frame(maxHeight: BoardLayout.capturedSurfaceHeight)
+                // The section extends with its rows rather than scrolling in a
+                // grant: the list below keeps its own scroll, and a section
+                // sized by its content is what the panel's other residents
+                // already are (owner device pass, 2026-08-17).
+                captured(replay)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
 
                 Divider()
             }
@@ -329,19 +327,34 @@ struct ReplayScreen: View {
         }
     }
 
+    /// The disclosed surface, as replay draws it wherever it stands — a record
+    /// is a game already over, and it follows the walk.
+    private func captured(_ replay: Replay,
+                          pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
+        CapturedPiecesView(captured: replay.captured,
+                           game: replay.record.game,
+                           throughPly: replay.ply,
+                           viewer: nil,
+                           disclosed: true,
+                           pitch: pitch)
+    }
+
     /// The same disclosed surface on the phone's own transient, presented as
     /// the play screen presents it in this shape — and following the walk, as
     /// the resident section does.
     private func capturedSheet(_ replay: Replay) -> some View {
         NavigationStack {
+            // Board-sized discs: the pitch a board of the sheet's own width
+            // would carry.
             ScrollView {
-                CapturedPiecesView(captured: replay.captured,
-                                   game: replay.record.game,
-                                   throughPly: replay.ply,
-                                   viewer: nil,
-                                   disclosed: true)
+                captured(replay,
+                         pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
+                                                               game: replay.record.game))
                     .padding(.horizontal, BoardLayout.panelInset)
                     .padding(.vertical, 8)
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) {
+                capturedWidth = $0
             }
             .navigationTitle("captured.title")
             #if !os(macOS)

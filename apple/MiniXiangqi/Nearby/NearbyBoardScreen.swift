@@ -42,6 +42,10 @@ struct NearbyBoardScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
+    /// The captured sheet's own width, measured as the play screen measures
+    /// its own — one shape for the three sheets, though this file never
+    /// builds for macOS, where the measurement is what keeps a sheet sized.
+    @State private var capturedWidth: CGFloat = 0
 
     /// What the stacked shape's chrome came to, exactly as the play screen
     /// takes it: the status above the board measured, and the cluster below it
@@ -188,22 +192,29 @@ struct NearbyBoardScreen: View {
     /// own face-down losses as a count, their own captures whole, and every
     /// revealed loss as the discs both players saw go. Everything discloses when
     /// the game ends, which is the question the board itself already asks.
-    private func captured(_ play: NearbyPlay) -> some View {
+    private func captured(_ play: NearbyPlay,
+                          pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: play.captured,
                            game: play.game,
                            throughPly: play.shown.count,
                            viewer: play.localSide,
-                           disclosed: play.disclosesTheDeal)
+                           disclosed: play.disclosesTheDeal,
+                           pitch: pitch)
     }
 
     /// The same surface on the phone's own transient, exactly as the play screen
-    /// raises it.
+    /// raises it — board-sized discs at the sheet's own width-fitted pitch.
     private func capturedSheet(_ play: NearbyPlay) -> some View {
         NavigationStack {
             ScrollView {
-                captured(play)
+                captured(play,
+                         pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
+                                                               game: play.game))
                     .padding(.horizontal, BoardLayout.panelInset)
                     .padding(.vertical, 8)
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) {
+                capturedWidth = $0
             }
             .navigationTitle("captured.title")
             .navigationBarTitleDisplayMode(.inline)

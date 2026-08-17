@@ -75,6 +75,11 @@ struct PlayScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
+    /// The captured sheet's own width, measured rather than read through a
+    /// GeometryReader at the sheet's root: a reader there has no ideal size,
+    /// and on macOS the sheet takes exactly its content's ideal. Zero until
+    /// the first measurement, which the pitch fallback answers with the floor.
+    @State private var capturedWidth: CGFloat = 0
 
     /// What the stacked shape's chrome actually came to, measured rather than
     /// assumed: the status above the board at an accessibility text size, where
@@ -304,21 +309,30 @@ struct PlayScreen: View {
     /// panels are one person's, and the local player's side where two people are
     /// playing. Everything discloses when the game ends, which is the same
     /// question the board already asks.
-    private func captured(_ game: Game) -> some View {
+    private func captured(_ game: Game,
+                          pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: game.captured,
                            game: game.kind,
                            throughPly: game.moves.count,
                            viewer: game.configuration.localSide,
-                           disclosed: game.isFinished)
+                           disclosed: game.isFinished,
+                           pitch: pitch)
     }
 
     /// The same surface on the phone's own transient, alongside the move list's.
+    /// Its discs are board-sized: the pitch a board of the sheet's own width
+    /// would carry, which on the phone is the board behind it.
     private func capturedSheet(_ game: Game) -> some View {
         NavigationStack {
             ScrollView {
-                captured(game)
+                captured(game,
+                         pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
+                                                               game: game.kind))
                     .padding(.horizontal, BoardLayout.panelInset)
                     .padding(.vertical, 8)
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) {
+                capturedWidth = $0
             }
             .navigationTitle("captured.title")
             #if !os(macOS)

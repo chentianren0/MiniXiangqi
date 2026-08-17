@@ -2,8 +2,10 @@
 //
 // docs/interaction-design.md, "Captured pieces". The rows are the losses of one
 // side each, drawn as the board draws those pieces — the same `PieceDrawing` the
-// board and the Custom Scene palette call, at whatever pitch this surface can
-// spare, so a disc here and the disc it was on the board are one drawing. The
+// board and the Custom Scene palette call, at the pitch the surface passes:
+// the concealing board's floor where the surface is resident, the sheet's own
+// board-width fit where it is reached — so a disc here and the disc it was on
+// the board are one drawing, and in a sheet one size. The
 // losses a reader may not see — their own hidden ones, which tell them a piece
 // is gone and never which — are that many face-down discs at the row's end,
 // after the revealed pieces: the face-down disc is already the surface's word
@@ -33,6 +35,9 @@ struct CapturedPiecesView: View {
     /// Whether the game has ended, which discloses everything to both players.
     var disclosed: Bool
     var style: BoardStyle = .traditional
+    /// The cell each disc occupies: the resident default, or the board's own
+    /// width-fitted pitch where a sheet passes it — BoardLayout owns both.
+    var pitch: CGFloat = BoardLayout.capturedDiscPitch
 
     /// The 棋子符号 preference, read here for the reason the board reads it:
     /// these are the board's own discs, and flipping the preference has to
@@ -76,7 +81,7 @@ struct CapturedPiecesView: View {
             // A wrapping grid rather than one row: fifteen discs never fit a
             // panel's width, and a surface that scrolled sideways would hide
             // exactly the material it exists to show.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: BoardLayout.capturedDiscPitch),
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: pitch),
                                          spacing: 0, alignment: .leading)],
                       alignment: .leading, spacing: 0) {
                 let discs: [(piece: Piece, arrival: Double)] = panel.pieces.map {
@@ -86,7 +91,7 @@ struct CapturedPiecesView: View {
                                             isFaceDown: true), 1),
                           count: panel.hidden)
                 ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
-                    PieceDisc(piece: disc.piece, pitch: BoardLayout.capturedDiscPitch,
+                    PieceDisc(piece: disc.piece, pitch: pitch,
                               board: game.board, style: style,
                               symbols: PieceSymbols.named(storedSymbols),
                               symbolOpacity: disc.arrival)
