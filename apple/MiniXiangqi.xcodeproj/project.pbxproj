@@ -525,6 +525,10 @@
 		CE259AAC301668730051B648 /* Debug configuration for PBXNativeTarget "MiniXiangqiTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				"ARCHS[sdk=macosx*]" = (
 					arm64,
 					arm64e,
@@ -554,6 +558,10 @@
 		CE259AAD301668730051B648 /* Release configuration for PBXNativeTarget "MiniXiangqiTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				"ARCHS[sdk=macosx*]" = (
 					arm64,
 					arm64e,
@@ -583,6 +591,10 @@
 		CE259AAF301668730051B648 /* Debug configuration for PBXNativeTarget "MiniXiangqiUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				"ARCHS[sdk=macosx*]" = (
 					arm64,
 					arm64e,
@@ -611,6 +623,10 @@
 		CE259AB0301668730051B648 /* Release configuration for PBXNativeTarget "MiniXiangqiUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=iphoneos*]" = (
+					arm64,
+					arm64e,
+				);
 				"ARCHS[sdk=macosx*]" = (
 					arm64,
 					arm64e,
