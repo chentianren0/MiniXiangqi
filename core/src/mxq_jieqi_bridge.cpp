@@ -268,14 +268,25 @@ bool read_board(const std::string &field, Record &out, std::string &detail) {
     return true;
 }
 
-/* The board field of the record, without its five suffix fields. */
-std::string write_board(const Record &record) {
+/*
+ * The walk both placement fields are written by: ten ranks highest first, nine
+ * points each, empty points counted into a run and every occupied one handed to
+ * `emit`.
+ *
+ * There are two placement fields — the record's, which spells identities, and
+ * the engine dialect's, which spells face-down pieces `X` and `x` and keeps
+ * the identities in a pool beside the board — and they must lay the same pieces
+ * on the same squares in the same order or the position the engine is handed is
+ * not the position the caller was answered about. One walk is what makes that
+ * true by construction rather than by two loops agreeing.
+ */
+template <typename Emit>
+std::string write_placement(const Record &record, Emit emit) {
     std::string out;
     for (int32_t rank = kRanks - 1; rank >= 0; --rank) {
         int32_t run = 0;
         for (int32_t file = 0; file < kFiles; ++file) {
-            const char c = record.letter[rank][file];
-            if (c == kEmpty) {
+            if (record.letter[rank][file] == kEmpty) {
                 ++run;
                 continue;
             }
@@ -283,10 +294,7 @@ std::string write_board(const Record &record) {
                 out += std::to_string(run);
                 run = 0;
             }
-            out.push_back(c);
-            if (record.down[rank][file]) {
-                out.push_back('~');
-            }
+            emit(out, rank, file);
         }
         if (run > 0) {
             out += std::to_string(run);
@@ -296,6 +304,19 @@ std::string write_board(const Record &record) {
         }
     }
     return out;
+}
+
+/* The board field of the record, without its five suffix fields: a face-down
+ * piece is its identity letter followed by the mark that says the players do
+ * not know it. */
+std::string write_board(const Record &record) {
+    return write_placement(
+        record, [&record](std::string &out, int32_t rank, int32_t file) {
+            out.push_back(record.letter[rank][file]);
+            if (record.down[rank][file]) {
+                out.push_back('~');
+            }
+        });
 }
 
 /* Placement — including which pieces are face down — and side to move, which is
@@ -337,35 +358,22 @@ size_t occurrences_of(const std::vector<std::string> &identities,
  * already bounded each at what a side can hold, so every count is spellable.
  */
 std::string dialect_of(const Record &record) {
-    std::string out;
-    int32_t     pool[kLetterCount][2] = {{0, 0}};
+    int32_t pool[kLetterCount][2] = {{0, 0}};
 
-    for (int32_t rank = kRanks - 1; rank >= 0; --rank) {
-        int32_t run = 0;
-        for (int32_t file = 0; file < kFiles; ++file) {
+    /* The same walk write_board takes, emitting the dialect's own two marks and
+     * tallying the pool as it goes: what the placement stops saying is exactly
+     * what the pool has to say instead. */
+    std::string out = write_placement(
+        record, [&record, &pool](std::string &out_field, int32_t rank,
+                                 int32_t file) {
             const char c = record.letter[rank][file];
-            if (c == kEmpty) {
-                ++run;
-                continue;
+            if (!record.down[rank][file]) {
+                out_field.push_back(c);
+                return;
             }
-            if (run > 0) {
-                out += std::to_string(run);
-                run = 0;
-            }
-            if (record.down[rank][file]) {
-                out.push_back(is_red_letter(c) ? 'X' : 'x');
-                pool[letter_index(c)][is_red_letter(c) ? 0 : 1] += 1;
-            } else {
-                out.push_back(c);
-            }
-        }
-        if (run > 0) {
-            out += std::to_string(run);
-        }
-        if (rank > 0) {
-            out.push_back('/');
-        }
-    }
+            out_field.push_back(is_red_letter(c) ? 'X' : 'x');
+            pool[letter_index(c)][is_red_letter(c) ? 0 : 1] += 1;
+        });
 
     out += (record.side_to_move == MXQ_COLOR_RED ? " w " : " b ");
     for (int32_t side = 0; side < 2; ++side) {

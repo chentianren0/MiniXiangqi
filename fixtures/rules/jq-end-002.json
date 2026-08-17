@@ -1,0 +1,21 @@
+{
+  "id": "jq-end-002",
+  "title": "Stalemate is a loss for the side that cannot move, hidden piece and all",
+  "area": "end",
+  "variant": "jieqi",
+  "start_fen": "R2a~1k3/9/3N5/9/9/9/9/9/9/4K4 b - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "R2a~1k3/9/3N5/9/9/9/9/9/9/4K4 b - - 0 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "stalemate"
+    }
+  },
+  "boundary": null,
+  "rationale": "Black has two pieces and neither can move. The general on f10 may step to e10 or f9 and the horse on d8 covers both, while nothing attacks f10 itself, so the general is not in check. The other piece is face down on d10, an advisor's square, so it moves as an advisor and its one destination is the palace centre e9 — and that move is what the chariot on a10 forbids: the face-down piece is the only thing standing between that chariot and the general, so stepping off the tenth rank would expose it. A hidden piece is pinned by where it stands like any other, its square deciding what it may do and its own identity deciding nothing. No legal move and no check is a loss for the player to move, not a draw."
+}
