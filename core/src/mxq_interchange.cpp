@@ -57,6 +57,9 @@ archive::Record record_of(const archive::Stored &stored) {
     record.game_id = stored.game_id;
     record.config = stored.config;
     record.moves = stored.moves;
+    record.deal_commit = stored.deal_commit;
+    record.deal_nonce = stored.deal_nonce;
+    record.deal_seed = stored.deal_seed;
     record.started_at_ms = stored.started_at_ms;
     record.written_at_ms = stored.written_at_ms;
     record.completed = stored.completed;
