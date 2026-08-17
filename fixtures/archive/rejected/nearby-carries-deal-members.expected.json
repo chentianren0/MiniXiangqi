@@ -2,6 +2,6 @@
   "class": "content: the deal's presence",
   "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
   "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
-  "detail_contains": "whose deal came from no handshake",
-  "why": "And the game axis of it: no game but the dealt one has a deal at all, so a nearby record of another game carrying a commitment records provenance for something that never happened. The rule is checked on both axes because a rule checked on one refuses half of what it knows."
+  "detail_contains": "is dealt no start and so has no deal at all",
+  "why": "And the game axis of it: no game but the dealt one has a deal at all, so a nearby record of another game carrying a commitment records provenance for something that never happened. The rule is checked on both axes because a rule checked on one refuses half of what it knows, and each axis states its own refusal: this file's game has no deal to be evidence of, while the mode-axis file has a deal and no handshake behind it, and a detail that could not tell the two apart would name neither."
 }

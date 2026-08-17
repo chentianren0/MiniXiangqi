@@ -489,19 +489,27 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
 MxqStatus create_schema(sqlite3 *db, MxqError *err) {
     int rc = SQLITE_OK;
     std::string detail;
+    /* The version this build writes is the version this build opens: the open
+     * path compares MXQ_STORE_SCHEMA_VERSION, so the pragma is composed from it
+     * rather than spelled, and the two cannot drift apart. */
+    const std::string version = std::to_string(MXQ_STORE_SCHEMA_VERSION);
+    const std::string set_version = "PRAGMA user_version = " + version + ";";
     if (!exec(db, "BEGIN IMMEDIATE;", rc, detail)) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
     if (!exec(db, kSchema, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 6;", rc, detail)) {
+        !exec(db, set_version.c_str(), rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 6: " + cause);
+        return fail_sqlite(err, rc,
+                           "cannot create schema version " + version + ": " +
+                               cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 6: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version " + version +
+                                        ": " + detail);
     }
     return MXQ_OK;
 }

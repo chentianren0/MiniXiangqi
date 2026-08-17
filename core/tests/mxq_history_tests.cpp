@@ -1824,6 +1824,226 @@ void case_the_wire_session_lives_with_its_game() {
     c.report();
 }
 
+/*
+ * The deal a wire session carries, refused where its game has none.
+ *
+ * The presence rule is two questions rather than one: a value is empty exactly
+ * where the game has no deal, and sixty-four lowercase hexadecimal digits
+ * exactly where it has one. Asked as a single comparison against the hex test
+ * the two collapse for the game with no deal — junk is not hexadecimal and
+ * neither is the empty string that game owes — so malformed text reads as
+ * absence, is dropped in silence, and tells the caller nothing about what it
+ * passed. That is the half pinned here, because it is the half that had no
+ * diagnostic at all.
+ */
+void case_a_deal_is_refused_where_its_game_has_none() {
+    Case c("a wire session's deal is refused where its game has none");
+    const fs::path store = scratch_dir("deal-presence");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, 0, &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    config.mode = MXQ_PLAY_MODE_NEARBY;
+    config.local_side = MXQ_COLOR_RED;
+
+    MxqNearbySession birth;
+    std::memset(&birth, 0, sizeof(birth));
+    birth.struct_size = static_cast<uint32_t>(sizeof(birth));
+    birth.proposer = MXQ_NEARBY_PROPOSER_PEER;
+    std::snprintf(birth.session_id, sizeof(birth.session_id),
+                  "0a3c7e51-8b26-7d40-9f11-2c4d6e8a0b13");
+    std::snprintf(birth.peer_id, sizeof(birth.peer_id),
+                  "wifi-aware-device-3C90A17F");
+
+#if defined(NDEBUG)
+    /* A game whose start nobody deals, over a session claiming a deal. It is a
+     * programming error the contract has assert in a debug build, so the
+     * returned status is a promise only where that assertion is compiled
+     * out. */
+    {
+        MxqNearbySession junk = birth;
+        std::snprintf(junk.deal_commit, sizeof(junk.deal_commit),
+                      "not a commitment");
+        MxqGame *refused = nullptr;
+        err = make_error();
+        c.check_status(
+            mxq_game_create_nearby(core, &config, &junk, &refused, &err),
+            MXQ_ERR_ARG_RANGE,
+            "junk deal text on a game that is dealt no start");
+        uint8_t exists = 1;
+        err = make_error();
+        c.check_status(mxq_store_active_exists(core, &exists, &err), MXQ_OK,
+                       "the library answers afterwards");
+        c.check_eq(exists, 0,
+                   "and the refusal left no game behind it: a value read as "
+                   "absence would have been dropped and the game created");
+    }
+#endif
+
+    /* The accepting half, which every build runs: the same game over the same
+     * session with its four deal values empty, which is the shape a game with
+     * no deal has. */
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &game, &err),
+                   MXQ_OK, "a nearby game of a game with no deal is created");
+    mxq_game_release(game);
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/*
+ * What a negotiated retraction may not rewrite.
+ *
+ * mxq_game_retract_nearby writes the whole of the wire session beside the
+ * shortened line — the four columns the deal stands in among them — so the
+ * freeze mxq_game_set_nearby_session applies is this entry's too, and for the
+ * same reasons. A session's identity is not something a later call revises; and
+ * three of the four deal values are already in the document the row stands
+ * beside, so a retraction carrying a different well-formed deal would leave the
+ * store holding a session whose evidence contradicts its own game. The next
+ * resume answers that MXQ_ERR_STORE_CORRUPT, which is an active game nothing
+ * can open until the row is repaired by hand.
+ *
+ * The deal is the corpus's own — the vector fixtures/store/jieqi-nearby-dealt
+ * is built on — so the start here and the start there are one position rather
+ * than two transcriptions.
+ */
+void case_a_retraction_may_not_rewrite_the_wire_session() {
+    Case c("a retraction carrying another deal or another identity is refused");
+    const fs::path store = scratch_dir("retraction-freeze");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const char *const kDealt =
+        "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/"
+        "P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1";
+
+    MxqGameConfig config = make_config();
+    config.game = MXQ_GAME_KIND_JIEQI;
+    config.mode = MXQ_PLAY_MODE_NEARBY;
+    config.local_side = MXQ_COLOR_RED;
+    std::memcpy(config.start_fen, kDealt, std::strlen(kDealt) + 1);
+
+    MxqNearbySession birth;
+    std::memset(&birth, 0, sizeof(birth));
+    birth.struct_size = static_cast<uint32_t>(sizeof(birth));
+    birth.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    std::snprintf(birth.session_id, sizeof(birth.session_id),
+                  "d41f6b08-5e73-7a92-bc10-4f5e6a7b8c9d");
+    std::snprintf(birth.peer_id, sizeof(birth.peer_id),
+                  "wifi-aware-device-91B4D07E");
+    std::snprintf(birth.deal_commit, sizeof(birth.deal_commit), "%s",
+                  "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5"
+                  "f2925");
+    std::snprintf(birth.deal_nonce, sizeof(birth.deal_nonce), "%s",
+                  "a14441000000000000000000000000000000000000000000000000000000"
+                  "0000");
+    std::snprintf(birth.deal_seed, sizeof(birth.deal_seed), "%s",
+                  "00000000000000000000000000000000000000000000000000000000000"
+                  "00000");
+    std::snprintf(birth.deal_digest, sizeof(birth.deal_digest), "%s",
+                  "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea00"
+                  "1baa");
+
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &game, &err),
+                   MXQ_OK, "the dealt nearby game and its wire session exist");
+    if (game == nullptr) {
+        mxq_core_shutdown(core, nullptr);
+        c.report();
+        return;
+    }
+    for (const char *move : {"b1c3", "b8e8"}) {
+        err = make_error();
+        c.check_status(mxq_game_apply_move(game, move, nullptr, nullptr, &err),
+                       MXQ_OK, std::string("the ply ") + move + " lands");
+    }
+
+    sqlite3 *reader = open_second_connection(store);
+    c.check(reader != nullptr, "a second connection reads the store");
+    const auto row_count = [&](const char *what) {
+        return reader == nullptr
+                   ? std::string("?")
+                   : query_text(reader, std::string("SELECT ") + what +
+                                            " FROM nearby_session;");
+    };
+    const auto line_length = [&] {
+        size_t count = 0;
+        mxq_game_move_history(game, nullptr, 0, &count, nullptr);
+        return static_cast<int64_t>(count);
+    };
+
+    /* A retraction the two players could have negotiated in every respect but
+     * the one it revises. Both shapes are programming errors that assert in a
+     * debug build, so the status is a promise only where that is compiled
+     * out. */
+    MxqNearbySession retracted = birth;
+    retracted.undos = 1;
+    retracted.keep = 1;
+#if defined(NDEBUG)
+    {
+        MxqNearbySession other_deal = retracted;
+        std::snprintf(other_deal.deal_digest, sizeof(other_deal.deal_digest),
+                      "%s",
+                      "0000000000000000000000000000000000000000000000000000000"
+                      "000000000");
+        err = make_error();
+        c.check_status(mxq_game_retract_nearby(game, 1, &other_deal, &err),
+                       MXQ_ERR_ARG_RANGE,
+                       "a retraction carrying a deal this game was not dealt");
+        c.check_eq(row_count("undos"), "0", "which retracted nothing");
+        c.check_eq(row_count("deal_digest"), std::string(birth.deal_digest),
+                   "and left the deal the game was dealt");
+        c.check_eq(line_length(), 2, "and left the line where it was");
+
+        MxqNearbySession stranger = retracted;
+        std::snprintf(stranger.session_id, sizeof(stranger.session_id),
+                      "00000000-0000-7000-8000-000000000000");
+        err = make_error();
+        c.check_status(mxq_game_retract_nearby(game, 1, &stranger, &err),
+                       MXQ_ERR_ARG_RANGE,
+                       "a retraction carrying another session's identifier");
+        c.check_eq(row_count("undos"), "0", "which retracted nothing either");
+        c.check_eq(row_count("session_id"), std::string(birth.session_id),
+                   "and left the identity the session was created with");
+        c.check_eq(line_length(), 2, "and left the line where it was");
+    }
+#endif
+
+    /* And the honest retraction, which every build runs: the same call with the
+     * session this game is actually being played over. */
+    err = make_error();
+    c.check_status(mxq_game_retract_nearby(game, 1, &retracted, &err), MXQ_OK,
+                   "the two players' retraction");
+    c.check_eq(line_length(), 1, "one ply survives");
+    c.check_eq(row_count("undos"), "1", "and the retraction was counted");
+    c.check_eq(row_count("deal_digest"), std::string(birth.deal_digest),
+               "over the deal the game was dealt, unchanged");
+    if (reader != nullptr) {
+        sqlite3_close(reader);
+    }
+    mxq_game_release(game);
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_history_ordering() {
     Case c("History is ordered pinned first, newest first, by record id");
     const fs::path store = scratch_dir("ordering");
@@ -2504,6 +2724,8 @@ int main(int argc, char **argv) {
     case_archive_and_clear_without_a_game();
     case_endings_refuse_where_they_do_not_apply();
     case_the_wire_session_lives_with_its_game();
+    case_a_deal_is_refused_where_its_game_has_none();
+    case_a_retraction_may_not_rewrite_the_wire_session();
     case_history_ordering();
     case_ordering_tie_is_broken_by_record_id();
     case_pagination_boundaries();

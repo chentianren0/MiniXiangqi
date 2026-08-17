@@ -369,9 +369,20 @@ enum {
                                                   * or string length. The file
                                                   * may be well formed; it is
                                                   * refused for its size */
-    MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY  = 5004, /* the initial position is not
-                                                  * the frozen one, or a move is
-                                                  * not legal at its turn and
+    MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY  = 5004, /* the file disagrees with
+                                                  * itself, in one of three
+                                                  * ways: the initial position
+                                                  * is not one the game it names
+                                                  * begins from — which is that
+                                                  * game's own start policy, a
+                                                  * composed xiangqi position
+                                                  * and a jieqi dealt start
+                                                  * among the positions it
+                                                  * admits; the deal evidence
+                                                  * the file records does not
+                                                  * derive the start it stands
+                                                  * beside; or a move is not
+                                                  * legal at its turn and
                                                   * MxqError.detail_index
                                                   * carries its index */
     MXQ_ERR_ARCHIVE_TERMINAL_MISMATCH    = 5005, /* the recorded terminal pair
@@ -1801,6 +1812,16 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
  * a retraction — and is otherwise MXQ_ERR_ARG_RANGE. A store-domain failure
  * leaves the game exactly at its pre-mutation committed state.
  *
+ * The session that arrives is this game's own. The session identifier, the peer
+ * identifier and the four deal values are frozen exactly as they are for
+ * mxq_game_set_nearby_session: a value differing from the one the game was
+ * created with is MXQ_ERR_ARG_RANGE, and neither the line nor the row is
+ * written. This entry rewrites every column that one does, the deal's four
+ * among them, so a retraction carrying a different well-formed deal would leave
+ * the store holding a session whose evidence contradicts its own game — which
+ * the next mxq_game_resume_active answers MXQ_ERR_STORE_CORRUPT rather than
+ * opens.
+ *
  * Thread: the session's owner; never inside a search callback. Off the UI
  * thread, except for the store-attached active game, whose own calls
  * docs/core-interface.md's threading contract documents as the one
@@ -1929,9 +1950,12 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game,
  *
  * Legal only on a MXQ_PLAY_MODE_NEARBY session; otherwise
  * MXQ_ERR_STATE_RESIGN_UNAVAILABLE, the same refusal the other nearby-only
- * ending makes. The session identifier and the peer identifier are frozen: a
- * value differing from the one the game was created with is MXQ_ERR_ARG_RANGE,
- * because a session's identity is not something a later call revises.
+ * ending makes. The session identifier, the peer identifier and the four deal
+ * values are frozen: a value differing from the one the game was created with
+ * is MXQ_ERR_ARG_RANGE and nothing is written, because a session's identity is
+ * not something a later call revises and its deal is what the game is being
+ * played over. mxq_game_retract_nearby is held to the same freeze, the two
+ * calls rewriting one row.
  *
  * Thread: the session's owner; never inside a search callback. Off the UI
  * thread, except for the store-attached active game, whose own calls
@@ -2388,9 +2412,19 @@ MXQ_API MxqStatus MXQ_CALL mxq_archive_probe(MxqCore *core,
 /*
  * Full validation: everything mxq_archive_probe does — and on success it fills
  * out identically — then rules replay through the rules facade: the initial
- * position must be exactly the frozen starting FEN of the game the file names,
- * every move must be legal in sequence, and the recorded terminal pair must
- * agree with the replayed adjudication. Touches no persistent state.
+ * position must be one the game the file names begins from, the deal evidence
+ * the file records — where it records any — must derive that position, every
+ * move must be legal in sequence, and the recorded terminal pair must agree
+ * with the replayed adjudication. Touches no persistent state.
+ *
+ * Which positions a game begins from is that game's own start policy and not
+ * one rule for all five: a xiangqi document may carry any position the
+ * setup-legality predicate accepts, so a composed start is one of them; a jieqi
+ * document carries a dealt start, of which there is one per deal; and every
+ * other game's carries exactly its frozen start. A start that is not a position
+ * record of the file's board at all is MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
+ * while one that is a position and is refused for the pieces on it is the setup
+ * question being answered and carries MXQ_ERR_RULES_ILLEGAL_POSITION.
  *
  * An archive that records no end has no terminal pair to agree with: an
  * unconfirmed natural terminal position remains the active game, so it is as
