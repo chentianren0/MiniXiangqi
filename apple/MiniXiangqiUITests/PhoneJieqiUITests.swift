@@ -7,8 +7,10 @@
 // where the captured surface is a section of it. What is only true here is that
 // the board fits the phone's width with thirty face-down discs on it, and that
 // the surface holding what a capture disclosed is reached from the board's own
-// toolbar — the move list's precedent, for the move list's reason: the board
-// keeps its pitch floor before anything else is given room.
+// toolbar — in play and in the record's replay both — the move list's
+// precedent, for the move list's reason: the board keeps its pitch floor
+// before anything else is given room, and in replay the resident list does
+// too.
 //
 // **The two openings are legal whatever the deal is**: a hidden piece moves as
 // the piece whose square it stands on, so `b3b4` is a cannon's step and `b8b1`
@@ -128,6 +130,46 @@ final class PhoneJieqiUITests: XCTestCase {
         settled(app.buttons["captured-done"]).tap()
         XCTAssertTrue(point(app, "b1").waitForExistence(timeout: 10),
                       "and the board is where it was")
+
+        // **The record's replay reaches them the same way** (owner device
+        // pass, 2026-08-17): the move list is what replay keeps resident in
+        // this shape, and the captured surface is a toolbar item over a sheet
+        // here too. Filing first: choosing another way to play with a game
+        // active presents the accepted confirmation, which archives this one.
+        settled(app.buttons["play-back"]).tap()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10),
+                      "leaving the board brings the destination bar back")
+        settled(app.buttons["mode-xiangqi-free-play"]).tap()
+        settled(app.buttons["保存并继续"]).tap()
+        XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 10),
+                      "the chosen mode's pre-start page opens, with the game filed")
+
+        app.tabBars.firstMatch.buttons.element(boundBy: 1).tap()
+        let record = control(app, "history-row-0")
+        XCTAssertTrue(record.waitForExistence(timeout: 20), "the filed game is in History")
+        XCTAssertTrue(record.label.contains("揭棋"),
+                      "and it is the jieqi game — it reads \(record.label)")
+        record.tap()
+
+        XCTAssertTrue(control(app, "replay-progress").waitForExistence(timeout: 20),
+                      "the row opens the record's replay")
+        XCTAssertTrue(control(app, "move-0").exists,
+                      "the move list is resident in replay, per its exception")
+        XCTAssertFalse(control(app, "captured-empty").exists,
+                       "and the captured surface is reached rather than resident")
+
+        // Walk onto the capture, then read what it disclosed — a record is a
+        // game already over, so the surface it shows is the disclosed one.
+        settled(app.buttons["replay-last"]).tap()
+        settled(app.buttons["replay-captured"]).tap()
+        let disclosed = reading(control(app, "captured-red"))
+        XCTAssertTrue(disclosed.hasPrefix("红 "),
+                      "whose piece it was, then what it was — it reads \(disclosed)")
+        XCTAssertNotEqual(disclosed, "红",
+                          "disclosed whole: a record is a game already over")
+        settled(app.buttons["captured-done"]).tap()
+        XCTAssertTrue(control(app, "replay-progress").waitForExistence(timeout: 10),
+                      "and the replay is where it was")
     }
 }
 

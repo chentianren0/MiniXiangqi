@@ -35,6 +35,9 @@ struct ReplayScreen: View {
     @State private var replay: Replay?
     @State private var failure: CoreError?
 
+    /// Whether the stacked shape's on-demand captured-pieces surface is up.
+    @State private var capturedShown = false
+
     /// What the header above the board actually came to, measured rather than
     /// assumed — the same thing the play screen does with its turn status, and
     /// for the same reason: at an accessibility text size it is taller than any
@@ -120,13 +123,17 @@ struct ReplayScreen: View {
                 HStack(spacing: 0) {
                     board(replay, BoardLayout.geometry(in: proxy.size,
                                                        game: record.game))
-                    panel(replay, showsHeader: true, edge: .top)
+                    panel(replay, beside: true, edge: .top)
                         .frame(width: BoardLayout.panelWidth)
                 }
             case .stacked:
                 stacked(replay, in: proxy.size)
             }
         }
+        // The sheet is the screen's rather than the stacked branch's, for the
+        // play screen's reason: a sheet declared inside one branch alone is a
+        // sheet re-presented every time the layout comes back to that branch.
+        .sheet(isPresented: $capturedShown) { capturedSheet(replay) }
         #if os(macOS)
         .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
         #endif
@@ -179,8 +186,25 @@ struct ReplayScreen: View {
             board(replay, geometry,
                   bleed: BoardLayout.surfaceBleed(in: size.width, board: geometry))
 
-            panel(replay, showsHeader: false, edge: .bottom)
+            panel(replay, beside: false, edge: .bottom)
                 .frame(height: max(0, chrome - headerHeight))
+        }
+        .toolbar {
+            // The captured-pieces surface, in the game that has one, reached
+            // rather than resident in this shape — the contract's own stacked
+            // answer, applied here on the owner's device pass (2026-08-17):
+            // the list is what replay keeps on screen, and the board's floor
+            // and the list's room both come before a third resident block.
+            if record.game.conceals {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        capturedShown = true
+                    } label: {
+                        Label("captured.title", systemImage: "tray.full")
+                    }
+                    .accessibilityIdentifier("replay-captured")
+                }
+            }
         }
     }
 
@@ -202,12 +226,7 @@ struct ReplayScreen: View {
     /// granted its room before the board is fitted — so the full-width pitches
     /// the play board reaches are not this screen's. Beside the
     /// board there is no such contest and the panel is the width it always was.
-    /// Plus the captured surface's own grant where the record's game carries
-    /// one, so the board is sized around the chrome that is really there rather
-    /// than around the chrome every other game has.
-    private var panelHeight: CGFloat {
-        record.game.conceals ? 200 + BoardLayout.capturedSurfaceHeight : 200
-    }
+    private var panelHeight: CGFloat { 200 }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry,
                        bleed: CGFloat = 0) -> some View {
@@ -238,27 +257,29 @@ struct ReplayScreen: View {
     /// over it, and the bottom beneath the board, which is the edge this shape
     /// puts it on.
     ///
-    /// `showsHeader` is what the two shapes disagree about, and only that:
-    /// beside the board the panel's own top *is* the top of the page, so the
-    /// header is in it; beneath the board the header is above the board
-    /// instead, and the panel begins at the list.
-    private func panel(_ replay: Replay, showsHeader: Bool, edge: Edge.Set) -> some View {
+    /// `beside` is what the two shapes disagree about: beside the board the
+    /// panel's own top *is* the top of the page, so the header is in it, and
+    /// the captured surface is a resident section under it. Beneath the board
+    /// the header is above the board instead, the captured surface is reached
+    /// from the toolbar as the play screen reaches it, and the panel begins at
+    /// the list.
+    private func panel(_ replay: Replay, beside: Bool, edge: Edge.Set) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showsHeader {
+            if beside {
                 headerBlock(replay, airBelow: 20)
 
                 Divider()
             }
 
-            // The captured-pieces surface, in the game that has one. **A record
-            // is a game already over**, so what it shows is the disclosed
-            // surface both players read the same — and it follows the walk, so
-            // it shows what had been taken by the position on screen.
-            if replay.record.game.conceals {
-                // Inside its own grant, and scrolling there: beneath the board
-                // this panel is a fixed height shared with the list and the
-                // transport, and a side that has lost a whole complement must
-                // not take the room the list is standing in.
+            // The captured-pieces surface, in the game that has one, resident
+            // where the panel stands beside the board. **A record is a game
+            // already over**, so what it shows is the disclosed surface both
+            // players read the same — and it follows the walk, so it shows
+            // what had been taken by the position on screen.
+            if beside && replay.record.game.conceals {
+                // Inside its own grant, and scrolling there: a side that has
+                // lost a whole complement must not take the room the list is
+                // standing in.
                 ScrollView {
                     CapturedPiecesView(captured: replay.captured,
                                        game: replay.record.game,
@@ -306,6 +327,34 @@ struct ReplayScreen: View {
                 .fill(.regularMaterial)
                 .ignoresSafeArea(.container, edges: edge)
         }
+    }
+
+    /// The same disclosed surface on the phone's own transient, presented as
+    /// the play screen presents it in this shape — and following the walk, as
+    /// the resident section does.
+    private func capturedSheet(_ replay: Replay) -> some View {
+        NavigationStack {
+            ScrollView {
+                CapturedPiecesView(captured: replay.captured,
+                                   game: replay.record.game,
+                                   throughPly: replay.ply,
+                                   viewer: nil,
+                                   disclosed: true)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
+            .navigationTitle("captured.title")
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("control.done") { capturedShown = false }
+                        .accessibilityIdentifier("captured-done")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     /// The header with the air around it: the one leading edge both shapes use,
