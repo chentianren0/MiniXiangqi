@@ -45,7 +45,9 @@ option(MXQ_ENABLE_RULES_FACADE
 build the fixture runner against a rules facade that exists. Off by default: \
 the engine is a multi-minute build, and nothing else in the core needs it. \
 While it is off, third_party/fairy-stockfish is not added at all and every \
-fixture reports NOT IMPLEMENTED rather than passing."
+fixture reports NOT IMPLEMENTED rather than passing. The vendored Pikafish \
+jieqi rules slice shares this switch; see the third_party section below for \
+why it does not have one of its own."
        OFF)
 
 option(MXQ_ENABLE_GOMOKU_FACADE
@@ -353,16 +355,52 @@ endforeach()
 # mxq_core privately, which is what keeps it invisible through mxq.h, as
 # docs/architecture.md requires. See core/third_party/README.md.
 #
-# All three inputs are vendored. Each engine is gated on its own option, so the
-# default configuration compiles neither: each is a multi-minute build and
-# nothing else in the core needs it, and leaving one out must not depend on the
-# other. SQLite is not gated: the store is part of the core on every
-# configuration, and the amalgamation compiles in seconds.
+# All four inputs are vendored, and the default configuration compiles none of
+# the three engines: each is a multi-minute build, nothing else in the core
+# needs it, and leaving one out must not depend on another. SQLite is not
+# gated: the store is part of the core on every configuration, and the
+# amalgamation compiles in seconds.
+#
+# THE JIEQI SLICE SHARES THE FIRST ENGINE'S GATE rather than taking a third
+# option, and that is a departure from the precedent Rapfi set in the source
+# list above — "gated on its own engine rather than on the first: the two are
+# independent components and either can be left out of a build without the
+# other noticing."
+# The difference is what the two second engines are. Rapfi plays other games on
+# another board and answers to its own facade, so a build with one engine and
+# not the other is a build that makes sense. The jieqi slice is a second rules
+# authority for the SAME family this facade already serves, its bridge will be
+# this facade's, and the only thing that references it before that bridge lands
+# is a smoke test whose whole claim is that the two Stockfish-family engines
+# coexist. A configuration carrying jieqi without Fairy-Stockfish could not make
+# that claim, so a switch permitting it would be a switch nothing wants.
+#
+# The link is written with $<LINK_ONLY:> for the jieqi slice alone, and that is
+# load-bearing rather than tidy. Its target carries -DStockfish=PikafishJieqi as
+# a PUBLIC usage requirement, because a consumer of its headers must agree with
+# it about which engine it is calling. Linking it the ordinary way would apply
+# that define to every mxq_core translation unit, mxq_engine_bridge.cpp among
+# them — and that file speaks Stockfish:: to the OTHER engine. $<LINK_ONLY:>
+# carries the archive and drops the usage requirements, which is exactly the
+# relationship the core has with this library today: it holds it, and no core
+# source names it. The runner that does name it links the target normally.
+#
+# Nothing references the jieqi slice yet, and it is linked in all the same, so
+# that it travels into MiniXiangqiCore.xcframework and is compiled for every
+# platform the framework carries at the stage that vendors it. A static
+# archive's members are pulled in only to resolve a reference, so an engine
+# nothing references adds nothing to the app.
 
 set(MXQ_DEP_GATE_fairy-stockfish MXQ_ENABLE_RULES_FACADE)
 set(MXQ_DEP_GATE_rapfi MXQ_ENABLE_GOMOKU_FACADE)
-foreach(mxq_dep IN ITEMS fairy-stockfish rapfi sqlite)
+set(MXQ_DEP_GATE_pikafish MXQ_ENABLE_RULES_FACADE)
+set(MXQ_DEP_LINK_pikafish "$<LINK_ONLY:mxq::pikafish>")
+foreach(mxq_dep IN ITEMS fairy-stockfish rapfi pikafish sqlite)
   set(mxq_dep_gate "${MXQ_DEP_GATE_${mxq_dep}}")
+  set(mxq_dep_link "${MXQ_DEP_LINK_${mxq_dep}}")
+  if(mxq_dep_link STREQUAL "")
+    set(mxq_dep_link "mxq::${mxq_dep}")
+  endif()
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/${mxq_dep}/CMakeLists.txt")
     message(STATUS "Mini Xiangqi core: ${mxq_dep} not vendored")
   elseif(mxq_dep_gate AND NOT ${mxq_dep_gate})
@@ -371,7 +409,7 @@ foreach(mxq_dep IN ITEMS fairy-stockfish rapfi sqlite)
   else()
     add_subdirectory("third_party/${mxq_dep}")
     foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
-      target_link_libraries(${mxq_target} PRIVATE "mxq::${mxq_dep}")
+      target_link_libraries(${mxq_target} PRIVATE "${mxq_dep_link}")
     endforeach()
     message(STATUS "Mini Xiangqi core: vendored ${mxq_dep}")
   endif()
@@ -390,7 +428,8 @@ endforeach()
 # sqlite3_ surface alongside mxq.h's own functions; with it, mxq.h's own and
 # nothing else.
 if(MXQ_BUILD_SHARED_LIBRARY)
-  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_rapfi mxq_rapfi_lz4 mxq_sqlite)
+  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_rapfi mxq_rapfi_lz4
+                                mxq_pikafish mxq_sqlite)
     if(TARGET ${mxq_vendored})
       set_target_properties(${mxq_vendored} PROPERTIES
         C_VISIBILITY_PRESET hidden

@@ -369,3 +369,48 @@ add_test(NAME gomoku_rules COMMAND mxq_gomoku_tests)
 set_tests_properties(gomoku_rules PROPERTIES
   LABELS "rules;gomoku"
 )
+
+# The jieqi engine's smoke runner: the vendored Pikafish rules slice brought up
+# beside the Fairy-Stockfish-backed core, in one process.
+#
+# It links the vendored slice directly, which is the same reason the two runners
+# above link their engines directly and one reason more. The claim it makes is
+# about the two engines' own symbols — that the namespace rename keeps
+# Bitboards::init and Position::init distinct where two Stockfish derivatives
+# would otherwise define one of each — and no facade can be asked to report on
+# that. There is also nothing else to drive: no bridge reaches this engine yet,
+# so this runner is its one consumer and its C++ API is the only door.
+#
+# It does NOT link mxq::fairy-stockfish, and that omission is deliberate. The
+# two engines' headers share their file names — position.h, movegen.h,
+# bitboard.h, types.h — so a target carrying both include directories would
+# resolve those spellings by search order. The first engine is reached through
+# mxq.h instead, which needs no engine header at all, and mxq::core carries its
+# objects into the link regardless.
+#
+# It needs the first engine's asset directory because mxq_core_init loads the
+# bundled variant configuration before anything else. The jieqi slice needs no
+# asset of any kind: it has no network, no configuration file and nothing to
+# verify, which is what makes this the one engine in the tree with no staging
+# step above it.
+#
+# Without the facade neither engine is in the build and the runner reports NOT
+# IMPLEMENTED, exactly as its neighbours do.
+
+add_executable(mxq_pikafish_tests
+  mxq_pikafish_tests.cpp
+)
+target_link_libraries(mxq_pikafish_tests PRIVATE mxq::core mxq_warnings)
+if(MXQ_ENABLE_RULES_FACADE)
+  target_link_libraries(mxq_pikafish_tests PRIVATE mxq::pikafish)
+endif()
+
+target_compile_definitions(mxq_pikafish_tests PRIVATE
+  MXQ_TEST_RULES_FACADE=$<IF:$<AND:$<BOOL:${MXQ_ENABLE_RULES_FACADE}>,$<BOOL:${MXQ_RULES_FACADE_IMPLEMENTED}>>,1,0>
+  MXQ_ASSETS_DIR_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../assets"
+)
+
+add_test(NAME jieqi_engine COMMAND mxq_pikafish_tests)
+set_tests_properties(jieqi_engine PROPERTIES
+  LABELS "engine;jieqi"
+)

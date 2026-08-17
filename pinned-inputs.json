@@ -295,6 +295,132 @@
       }
     }
   },
+  "jieqi_fork": {
+    "_about": "The third engine: the pinned chentianren0/Pikafish fork's jieqi branch, from which the core vendors a rules slice rather than an engine. Jieqi is xiangqi played with the pieces face down, and neither of the other two engines can decide its rules: Fairy-Stockfish has no hidden-piece concept and Rapfi is a placement engine. What is vendored is three translation units and their header closure — the position, the move generator and the attack tables — and no search, evaluation or NNUE, so this fork pins no network and no configuration file. It sits beside 'fork' and 'gomoku_fork' because the three are separate engines with separate revisions and separate patch lists; nothing about one describes another.",
+    "repository": "https://github.com/chentianren0/Pikafish",
+    "branch": "jieqi-mxq",
+    "revision": "b0595bb2d6b14cad000278af1f5bbaba524a5870",
+    "revision_committed_at": "2026-08-16T12:40:09-07:00",
+    "upstream_repository": "https://github.com/official-pikafish/Pikafish",
+    "upstream_branch": "jieqi",
+    "upstream_base_revision": "9b963f727983a1d9308e0dca48b39c802b8e75a2",
+    "license": "GPL-3.0-or-later",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. The one entry touches src/position.cpp, src/position.h and src/types.h, all three of which are in the vendored slice, so the bytes the core compiles are the patched ones.",
+    "patches": [
+      {
+        "id": "report-the-rule",
+        "summary": "Adds an optional out-parameter to Position::rule_judge naming which rule produced its value. rule_judge reports a side-to-move-relative value only, and that value collapses a draw repetition, a mutual perpetual check and a mutual perpetual chase onto VALUE_DRAW, so a caller that has to name an ending cannot tell them apart without reimplementing detect_chases. The parameter reports and never judges: it is written from the same locals the value is computed from, and every call site that does not ask for it passes nullptr and is unchanged.",
+        "required_by": [
+          "https://github.com/chentianren0/MiniXiangqi/issues/217"
+        ],
+        "merge_revision": null,
+        "commits": [
+          "b0595bb"
+        ]
+      }
+    ],
+    "_merge_revision_about": "merge_revision is null because the change lives on the fork's jieqi-mxq branch, which is what this manifest pins and what the core compiles. The field is filled if and when the change lands somewhere with a merge to name.",
+    "static_library": {
+      "established": false,
+      "_note": "The fork exposes no static-library target and none is asked of it. The other two engines' contracts require one because the core embeds whole engines there; here the core embeds three files, and a library built from the fork's full source list would be the wrong artifact — it would carry the search, the NNUE and the bundled zstd this vendoring exists to leave behind. core/third_party/pikafish/CMakeLists.txt is a core-owned build of the snapshot instead."
+    },
+    "vendored": {
+      "_about": "How the pinned revision reaches the core: as a copied source snapshot compiled by a core-owned CMakeLists.txt. The copied-snapshot choice is justified against a submodule and a subtree once, for every engine, in core/third_party/fairy-stockfish/README.md; core/third_party/pikafish/README.md records the re-cut recipe, the closure, and the three definitions the slice references and does not carry.",
+      "established": true,
+      "method": "copied-source-slice",
+      "path": "core/third_party/pikafish/upstream",
+      "_source_paths_about": "Not a directory list: the three translation units the slice compiles, followed by the header closure the compiler computes for them, followed by the fork's attribution files. Regenerate the closure with 'c++ -std=c++17 -MM position.cpp movegen.cpp bitboard.cpp' from the snapshot's src directory.",
+      "source_paths": [
+        "AUTHORS",
+        "Copying.txt",
+        "README.md",
+        "Top CPU Contributors.txt",
+        "src/bitboard.cpp",
+        "src/bitboard.h",
+        "src/engine.h",
+        "src/history.h",
+        "src/magics.h",
+        "src/memory.h",
+        "src/misc.h",
+        "src/movegen.cpp",
+        "src/movegen.h",
+        "src/numa.h",
+        "src/position.cpp",
+        "src/position.h",
+        "src/score.h",
+        "src/search.h",
+        "src/thread.h",
+        "src/thread_win32_osx.h",
+        "src/timeman.h",
+        "src/tt.h",
+        "src/tune.h",
+        "src/types.h",
+        "src/uci.h",
+        "src/ucioption.h",
+        "src/nnue/network.h",
+        "src/nnue/nnue_accumulator.h",
+        "src/nnue/nnue_architecture.h",
+        "src/nnue/nnue_common.h",
+        "src/nnue/nnue_feature_transformer.h",
+        "src/nnue/nnue_misc.h",
+        "src/nnue/simd.h",
+        "src/nnue/features/half_ka_v2_hm.h",
+        "src/nnue/layers/affine_transform.h",
+        "src/nnue/layers/affine_transform_sparse_input.h",
+        "src/nnue/layers/clipped_relu.h",
+        "src/nnue/layers/sqr_clipped_relu.h"
+      ],
+      "_excluded_about": "Everything outside source_paths, which is most of the fork: the search and evaluation half, every nnue/*.cpp, the UCI protocol and option table, main(), misc.cpp and memory.cpp, the whole of src/external (the bundled zstd, reached only from misc.cpp:37), the fork's Makefile, and its scripts, tests and CI.",
+      "file_manifest": "core/third_party/pikafish/SOURCES.sha256",
+      "file_manifest_sha256": "321a680c4b6b0e5f969ca3c28b8962997637ca6973f888492967c3490bbd74c0",
+      "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
+    },
+    "core_build": {
+      "_about": "What the core's own CMake build of this slice applies. Each define is cited back to a line of the fork's src/Makefile at the pinned revision in core/third_party/pikafish/CMakeLists.txt, which is where the reasoning also lives. It is recorded here rather than in build_flags.platforms.*, for the reason that entry already gives: those fields describe a packaging build.",
+      "established": true,
+      "namespace_rename": {
+        "define": "Stockfish=PikafishJieqi",
+        "_note": "Mandatory, and the reason this engine can share a binary with Fairy-Stockfish at all. Both are Stockfish derivatives, both declare the namespace Stockfish, and both define Position::init, Bitboards::init and their neighbours as strong symbols with identical signatures. Two static archives holding the same strong symbol link without complaint and link order decides which body runs, so the failure without the rename is silent wrong-engine binding rather than a link error. Applied PUBLIC so no consumer can disagree with the library about which engine it is calling. Measured: each object compiled with and without the define has the same section sizes and the same __text bytes, so the rename moves symbol names and no instruction."
+      },
+      "shared_defines": [
+        "NO_PREFETCH"
+      ],
+      "_shared_defines_about": "NO_PREFETCH is the fork's own portable profile and it is chosen rather than inherited: the slice does not take misc.cpp, so the prefetch body is the core's own one-line no-op, which is exactly the body that profile defines. It also keeps types.h from reaching for <xmmintrin.h> under MSVC, an x86-only header and a hard stop on Windows ARM64. The fork's SIMD defines are deliberately absent: USE_NEON and its relatives select instruction sets for NNUE evaluation, and no NNUE translation unit is in the slice.",
+      "profiles": {
+        "arm64": {
+          "established": true,
+          "defines": [
+            "IS_64BIT",
+            "USE_POPCNT"
+          ],
+          "flags": [],
+          "_note": "The fork's ARCH=apple-silicon profile less the NNUE SIMD it also sets. Popcount is on the hot path of move generation and Bitboard is a 128-bit integer here, so USE_POPCNT is worth having; on arm64 it needs no flag, only the define."
+        },
+        "arm64e": {
+          "established": true,
+          "defines": [
+            "IS_64BIT",
+            "USE_POPCNT"
+          ],
+          "flags": [],
+          "_note": "Identical to arm64, and the absence of -march is what keeps it correct: arm64e requires an armv8.3-a baseline, which the fork's own -march=armv8.2-a+dotprod would silently lower. That flag belongs to the dotprod NNUE profile, which this slice does not compile."
+        },
+        "x86_64": {
+          "established": false,
+          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 Simulator. The branch exists for a host that configures the core natively on x86_64 and for the Windows build, which sets MXQ_ENABLE_RULES_FACADE and therefore reaches this engine.",
+          "defines": [
+            "IS_64BIT",
+            "USE_POPCNT"
+          ],
+          "flags": [
+            "-msse3",
+            "-mpopcnt"
+          ],
+          "_note": "Makefile:690 for a non-arm popcnt target. IS_64BIT is not passed under MSVC, where types.h defines it itself for _WIN64 and would report a macro redefinition."
+        }
+      }
+    }
+  },
   "build_flags": {
     "_about": "The build flags and defines the app build uses for each supported platform. A packaging build exists on Windows and on no Apple platform, and it established the deployment settings and the frontend toolchain rather than any flag set, so no flag set is established anywhere. The toolchain, packaging and architecture entries are established — by docs/testing.md on the Apple platforms, and on Windows by the builds recorded under windows.toolchain_core, windows.toolchain and windows.packaging_flags — and are recorded so that the unestablished parts are visibly the compile flags alone.",
     "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set, on macOS/arm64 and on Windows for both x64 and arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt — which is also where the places the platforms differ are written down: IS_64BIT reaches the compiler from the command line under Clang and from types.h under MSVC, so it is defined exactly once on each; and MSVC on arm64 takes the fork's portable general-64 profile rather than its apple-silicon one, because USE_POPCNT and prefetch select x86 headers under _MSC_VER and the fork's NEON code uses GCC and Clang vector-extension syntax MSVC does not have. None of it is copied here: these fields describe the packaging build, and the Windows packaging build that now exists publishes a frontend over a prebuilt core and chooses none of the core's compile flags, so recording a developer build's flags under them would still make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
