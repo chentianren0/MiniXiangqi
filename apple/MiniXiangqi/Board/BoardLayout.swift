@@ -59,12 +59,11 @@ enum BoardLayout {
     /// value that stands until the board says otherwise.
     static let capturedDiscPitch: CGFloat = 26
 
-    /// What the captured-pieces surface is granted where it stands inside a
-    /// panel of fixed height — replay's, beneath the board. Two rows of discs
-    /// with their labels; a side that has lost more than one row's worth scrolls
-    /// inside the grant rather than taking the room the move list is standing
-    /// in. Beside the board the panel has height to spare and the surface simply
-    /// takes what it needs.
+    /// What the captured-pieces surface is granted where it is a resident
+    /// section of a panel the move list shares — replay's, beside the board.
+    /// Two rows of discs with their labels; a side that has lost more than one
+    /// row's worth scrolls inside the grant rather than taking the room the
+    /// list is standing in.
     static let capturedSurfaceHeight: CGFloat = 96
 
     /// What the stacked shape's chrome asks for: the turn status above the
