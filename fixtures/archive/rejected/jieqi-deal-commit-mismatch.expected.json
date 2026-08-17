@@ -1,0 +1,8 @@
+{
+  "class": "rules tier: the recorded deal",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "does not hash to the commitment",
+  "game": "jieqi",
+  "why": "The commitment is what binds the dealer's contribution before the other one can be known, and hashing the seed against it is the one thing it exists to catch. Nothing structural can: the value is a well-formed commitment of some seed, just not of this one, so the probe accepts the file and the rules tier is where the file is caught disagreeing with itself."
+}

@@ -1,0 +1,7 @@
+{
+  "class": "cross-field: the rule reason and the game",
+  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
+  "detail_contains": "Jieqi's end reason",
+  "why": "The narrowing inside the movement-reason partition, and the mirror of the fifty-move one: two of the three movement games count captureless play and they count it to different numbers, so each reason belongs to exactly one game. A reader that only knew the reason was a movement game's would accept a Xiangqi record of a draw Xiangqi does not reach."
+}

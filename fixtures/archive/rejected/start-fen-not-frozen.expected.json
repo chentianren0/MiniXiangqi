@@ -3,5 +3,5 @@
   "probe": "MXQ_OK",
   "validate": "MXQ_ERR_RULES_ILLEGAL_POSITION",
   "detail_contains": "frozen starting position",
-  "why": "Which position a document begins from is the game's own, and Mini Xiangqi defines no setup-legality predicate, so its documents carry exactly its frozen start and this one carries another. The refusal is the predicate's — a game with no predicate answers not-frozen-start for every other position — which is why it is the setup question's status and not an archive-domain one. Xiangqi is the single game this file would be accepted under, and that is the whole of the difference version 5 makes."
+  "why": "Which position a document begins from is the game's own, and Mini Xiangqi defines no setup-legality predicate, so its documents carry exactly its frozen start and this one carries another. The refusal is the predicate's — a game with no predicate answers not-frozen-start for every other position — which is why it is the setup question's status and not an archive-domain one. Xiangqi is the single game this file would be accepted under, and that is the whole of what the per-game start policy makes of it."
 }

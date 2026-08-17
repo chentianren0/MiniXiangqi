@@ -1,0 +1,8 @@
+{
+  "class": "rules tier: the recorded deal",
+  "probe": "MXQ_OK",
+  "validate": "MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY",
+  "detail_contains": "than the start spells",
+  "game": "jieqi",
+  "why": "Evidence that is internally consistent and still not this game's: the seed hashes to the commitment, so the commitment check passes, and the nonce is another peer's contribution, so the deal the two derive is a different one from the deal start_fen holds. Only deriving the deal catches it, which is why the derivation is part of validation rather than a convenience for whoever wants to check a record by hand."
+}

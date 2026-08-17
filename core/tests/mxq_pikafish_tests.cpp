@@ -412,18 +412,21 @@ void case_a_position_past_the_old_move_capacity() {
 }
 
 void case_the_game_axis_refuses_what_this_game_has_none_of() {
-    Case c("jieqi is prepared for nothing, searched never, and stored not yet");
+    Case c("jieqi is prepared for nothing and searched never, session or not");
 
     /*
-     * Four refusals, and they are not one rule. Three of them are permanent and
-     * are docs/core-interface.md's: this game's rules authority performs no
-     * search and carries no network, so there is nothing to prepare, nothing to
-     * name it by, and no variant and network for a profile to report; and it has
-     * no frozen start to report, beginning from a dealt start and from no other
-     * position. The fourth is this build's rather than the game's — the archive
-     * version that spells this game is not the one this build writes, and a
-     * session is store-attached — and it is the one that does not assert, which
-     * is why it is the only one evaluated in both configurations.
+     * Four refusals, and they are one rule read four ways: this game's rules
+     * authority performs no search and carries no network, so there is nothing
+     * to prepare, nothing to name it by, and no variant and network for a
+     * profile to report; and it has no frozen start to report, beginning from a
+     * dealt start and from no other position. Three of the four are programming
+     * errors and assert, so they are stated where the assertion is compiled out.
+     *
+     * The fourth is not, and it is the one this stage made reachable: a session
+     * of this game exists now, so the search facade's refusal can be asked of a
+     * real one rather than inferred from the absence of one. It is ordinary
+     * control flow — the engine is not ready for this game and never will be —
+     * so it is the one evaluated in both configurations.
      */
     MxqGameConfig config;
     std::memset(&config, 0, sizeof(config));
@@ -438,10 +441,32 @@ void case_the_game_axis_refuses_what_this_game_has_none_of() {
 
     MxqGame  *game = nullptr;
     MxqError  err = make_error();
-    c.check_status(mxq_game_create(g_core, &config, &game, &err),
-                   MXQ_ERR_ARG_RANGE,
-                   "no session is created for a game the archive cannot hold");
-    c.check(game == nullptr, "and no handle comes back");
+    c.check_status(mxq_game_create(g_core, &config, &game, &err), MXQ_OK,
+                   "a session of this game is created from its dealt start");
+    if (game != nullptr) {
+        MxqGameStatus status;
+        std::memset(&status, 0, sizeof(status));
+        status.struct_size = static_cast<uint32_t>(sizeof(status));
+        err = make_error();
+        c.check_status(mxq_game_status(game, &status, &err), MXQ_OK,
+                       "and answers for its status");
+        c.check(status.search_expected == 0, "which never owes a search");
+
+        /* A hint is the one search entry a Free Play session may ask for, and
+         * this game's answer to it is the engine axis's permanent one rather
+         * than a state some preparation would clear. */
+        uint64_t ticket = 0;
+        err = make_error();
+        c.check_status(mxq_search_start_hint(g_core, game, MXQ_MOVETIME_FAST_MS,
+                                             nullptr, nullptr, &ticket, &err),
+                       MXQ_ERR_STATE_ENGINE_NOT_READY,
+                       "and no engine is ready to hint at it");
+
+        /* Filed rather than released: the library holds one active game, and
+         * leaving one behind would be a state no later case asked for. */
+        mxq_store_archive_and_clear(g_core, game, nullptr, nullptr);
+        mxq_game_release(game);
+    }
 
 #if defined(NDEBUG)
     /* The three programming errors, observable only where the assertion that

@@ -495,10 +495,47 @@ struct Scenario {
     MxqGameConfig            config = make_config();
     std::vector<std::string> moves;
     Ending                   end;
+    /* The deal the scenario's game was dealt, where it has one. It belongs to a
+     * game rather than to a mode — only the dealt game has one — and a scenario
+     * that states it is created over the wire session those four values arrive
+     * in; see the session runner, whose schema this shares. */
+    std::string              deal_commit;
+    std::string              deal_nonce;
+    std::string              deal_seed;
+    std::string              deal_digest;
     /* Whether the scenario's game is one only a build with the second engine
      * carries; see the session runner's own note. */
     bool                     needs_gomoku = false;
 };
+
+/* The wire session a dealt scenario is created over: a session at its birth,
+ * carrying the deal and the two identifiers nothing compares. */
+MxqNearbySession nearby_session_of(const Scenario &scenario) {
+    MxqNearbySession wire;
+    std::memset(&wire, 0, sizeof(wire));
+    wire.struct_size = static_cast<uint32_t>(sizeof(wire));
+    wire.proposer = MXQ_NEARBY_PROPOSER_LOCAL;
+    wire.sent_end = MXQ_NEARBY_TERMINAL_NONE;
+    const char *const session_id = "session-of-the-dealt-ending";
+    const char *const peer_id = "peer-of-the-dealt-ending";
+    std::memcpy(wire.session_id, session_id, std::strlen(session_id) + 1);
+    std::memcpy(wire.peer_id, peer_id, std::strlen(peer_id) + 1);
+    std::memcpy(wire.deal_commit, scenario.deal_commit.c_str(), 65);
+    std::memcpy(wire.deal_nonce, scenario.deal_nonce.c_str(), 65);
+    std::memcpy(wire.deal_seed, scenario.deal_seed.c_str(), 65);
+    std::memcpy(wire.deal_digest, scenario.deal_digest.c_str(), 65);
+    return wire;
+}
+
+/* Creation, through whichever door the scenario's game needs. */
+MxqStatus create_scenario_game(MxqCore *core, const Scenario &scenario,
+                               MxqGame **out_game, MxqError *err) {
+    if (scenario.deal_commit.empty()) {
+        return mxq_game_create(core, &scenario.config, out_game, err);
+    }
+    const MxqNearbySession wire = nearby_session_of(scenario);
+    return mxq_game_create_nearby(core, &scenario.config, &wire, out_game, err);
+}
 
 bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
     std::string text;
@@ -573,6 +610,20 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
     /* The game the scenario is of. Required rather than defaulted: a scenario
      * that did not say would be played under whichever game the runner
      * happened to pick, which is the one thing a two-game corpus must not do. */
+    /* The position the game begins from, where the scenario names one. Absent
+     * is the game's frozen start, exactly as the empty member is on the other
+     * side of the interface — and a game that has no frozen start always names
+     * one, because there is a start of it for every deal. */
+    if (const mxqtest::JsonValue *start = config->member("start_fen")) {
+        if (!start->is_string() ||
+            start->string().size() >= sizeof(out.config.start_fen)) {
+            error = "\"config.start_fen\" is not a start this interface carries";
+            return false;
+        }
+        std::memcpy(out.config.start_fen, start->string().c_str(),
+                    start->string().size() + 1);
+    }
+
     {
         const mxqtest::JsonValue *game = config->member("game");
         if (game == nullptr || !game->is_string()) {
@@ -589,8 +640,26 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         } else if (game->string() == "renju") {
             out.config.game = MXQ_GAME_KIND_RENJU;
             out.needs_gomoku = true;
+        } else if (game->string() == "jieqi") {
+            out.config.game = MXQ_GAME_KIND_JIEQI;
         } else {
             error = "\"config.game\" is not one of the accepted games";
+            return false;
+        }
+    }
+
+    if (const mxqtest::JsonValue *deal = root.member("deal")) {
+        const auto value = [&](const char *name) {
+            const mxqtest::JsonValue *v = deal->member(name);
+            return v != nullptr && v->is_string() ? v->string() : std::string();
+        };
+        out.deal_commit = value("commit");
+        out.deal_nonce = value("nonce");
+        out.deal_seed = value("seed");
+        out.deal_digest = value("digest");
+        if (out.deal_commit.size() != 64 || out.deal_nonce.size() != 64 ||
+            out.deal_seed.size() != 64 || out.deal_digest.size() != 64) {
+            error = "a scenario's \"deal\" states four 64-digit values";
             return false;
         }
     }
@@ -832,7 +901,7 @@ void run_scenario(const fs::path &path, const fs::path &archives) {
     /* ---- play the line ---- */
     MxqGame *game = nullptr;
     err = make_error();
-    rc = mxq_game_create(core, &scenario.config, &game, &err);
+    rc = create_scenario_game(core, scenario, &game, &err);
     c.check(rc == MXQ_OK, std::string("mxq_game_create failed: ") +
                               mxq_status_name(rc) + ": " + err.detail);
     if (rc != MXQ_OK) {
@@ -1094,7 +1163,7 @@ void case_a_failed_ending_is_retryable(const std::vector<fs::path> &paths) {
         }
         MxqGame *game = nullptr;
         err = make_error();
-        if (mxq_game_create(core, &scenario.config, &game, &err) != MXQ_OK) {
+        if (create_scenario_game(core, scenario, &game, &err) != MXQ_OK) {
             c.check(false, what + ": mxq_game_create failed");
             mxq_core_shutdown(core, nullptr);
             continue;

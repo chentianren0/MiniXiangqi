@@ -39,6 +39,7 @@
 #include "mxq_archive_read.hpp"
 #include "mxq_archive_write.hpp"
 #include "mxq_core_state.hpp"
+#include "mxq_deal.hpp"
 #include "mxq_notation.hpp"
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
@@ -67,13 +68,15 @@ constexpr size_t kMaxDepth        = 4u;
 constexpr size_t kMaxMembers      = 32u;
 
 /*
- * The string bound is version 5's own number, decided rather than inherited.
+ * The string bound is the format's own number, decided rather than inherited.
  *
  * 256 bytes is what every string this format carries fits inside with room to
  * spare: the widest is start_fen, and its domain is no longer the four frozen
  * starts — a xiangqi document may carry any position that game's setup-legality
- * predicate accepts, which no arrangement of pieces spells in more than 109.
- * The timestamps are 24, game_id is 36, a ply is at most 6, and the serialised
+ * predicate accepts, which no arrangement of pieces spells in more than 109,
+ * and a jieqi document carries a dealt start, which every deal spells in
+ * exactly 99. The timestamps are 24, game_id is 36, the three deal members are
+ * 64 apiece, a ply is at most 6, and the serialised
  * identifiers are shorter than any of them. The number is chosen against the
  * widest position any game this specification carries can reach — a full 15x15
  * placement board is 251 characters — rather than against the widest one a
@@ -127,7 +130,7 @@ json::Limits limits() {
  * The same reader with the two *size* bounds lifted — plies here, the file
  * size at the transport stage — and the three that describe the format's own
  * shape kept. Depth, members per object and string length are properties of a
- * version 5 document rather than of how long a game ran, no document this core
+ * version 6 document rather than of how long a game ran, no document this core
  * writes approaches them, and keeping them means a corrupted row cannot steer
  * the reader into unbounded work.
  */
@@ -157,6 +160,14 @@ struct Decoded {
     int64_t             rules_version = 0;
     std::string         start_fen;
     std::vector<std::string> moves;
+    /* The deal's provenance, present exactly for a jieqi document whose mode is
+     * nearby. Empty is absent, and the presence rule is enforced at stage 4
+     * with the rest of the cross-field rules; what the values mean is checked
+     * at the rules tier, where the deal they derive is compared with the start
+     * they stand beside. */
+    std::string         deal_commit;
+    std::string         deal_nonce;
+    std::string         deal_seed;
     MxqPlayMode         mode = MXQ_PLAY_MODE_FREE_PLAY;
     MxqColor            human_side = MXQ_COLOR_NONE;
     MxqAiLevel          ai_level = MXQ_AI_LEVEL_NONE;
@@ -232,7 +243,8 @@ bool only_known_members(const json::Value &object, const char *const *known,
         if (!found) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           std::string(where) + " has an unknown member \"" +
-                              name + "\" in archive version 5");
+                              name + "\" in archive version " +
+                              std::to_string(MXQ_ARCHIVE_VERSION_CURRENT));
         }
     }
     return true;
@@ -360,12 +372,10 @@ bool parse_timestamp(const std::string &text, int64_t &out_ms) {
  * carry that game, and here that is not a preference but a necessity — the
  * board, the move grammar and the frozen start of a game this build does not
  * carry are not in it, so there is nothing to read the rest of the document
- * against. A game the format version does not carry is the same refusal from
- * the other side, and rules_id_text answering null is where that is said: this
- * build plays Jieqi and writes an archive version that has no spelling for it,
- * so a document naming it is refused exactly as any other unreadable rules_id
- * is. Both are the closed-vocabulary refusal the header's rule states
- * everywhere else.
+ * against. A game the format version does not spell would be the same refusal
+ * from the other side, arriving as a null from rules_id_text; version 6 spells
+ * every game this core plays, so that arm answers for nothing today and is kept
+ * because the two sides of the pairing are one rule.
  */
 bool read_rules_id(const std::string &text, MxqGameKind &out) {
     for (const MxqGameKind game : {MXQ_GAME_KIND_MINI_XIANGQI,
@@ -504,6 +514,10 @@ bool read_end_reason(const std::string &text, MxqEndReason &out) {
         out = MXQ_END_REASON_FIFTY_MOVE_RULE;
         return true;
     }
+    if (text == "forty-move-rule") {
+        out = MXQ_END_REASON_FORTY_MOVE_RULE;
+        return true;
+    }
     if (text == "agreed-draw") {
         out = MXQ_END_REASON_AGREED_DRAW;
         return true;
@@ -528,6 +542,7 @@ bool is_draw_reason(MxqEndReason reason) {
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
            reason == MXQ_END_REASON_FIFTY_MOVE_RULE ||
+           reason == MXQ_END_REASON_FORTY_MOVE_RULE ||
            reason == MXQ_END_REASON_AGREED_DRAW ||
            reason == MXQ_END_REASON_MUTUAL_RESIGNATION ||
            reason == MXQ_END_REASON_BOARD_FULL;
@@ -538,7 +553,7 @@ bool is_draw_reason(MxqEndReason reason) {
  * or a pair of players declare.
  *
  * The rule reasons partition by what kind of game reaches them, and the
- * partition is total: eight belong to the movement games — a placement game has
+ * partition is total: nine belong to the movement games — a placement game has
  * no king to mate, no side to leave without a move, and no position that occurs
  * twice, since every ply adds a stone and none is ever removed — and two belong
  * to the placement games, which are the only ones with a line of five to make
@@ -558,7 +573,8 @@ bool is_movement_rule_reason(MxqEndReason reason) {
            reason == MXQ_END_REASON_PERPETUAL_CHASE ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHECK ||
            reason == MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE ||
-           reason == MXQ_END_REASON_FIFTY_MOVE_RULE;
+           reason == MXQ_END_REASON_FIFTY_MOVE_RULE ||
+           reason == MXQ_END_REASON_FORTY_MOVE_RULE;
 }
 
 bool is_placement_rule_reason(MxqEndReason reason) {
@@ -692,11 +708,12 @@ bool read_envelope(const json::Value &document, const json::Value *&out_content,
 
 bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     static const char *const kKnown[] = {
-        "ai_level",   "ai_movetime_ms", "end_reason", "ended_at",
+        "ai_level",   "ai_movetime_ms", "deal_commit", "deal_nonce",
+        "deal_seed",  "end_reason",     "ended_at",
         "first_mover_choice", "human_side", "mode", "moves",
         "outcome",    "rules_id",       "rules_version", "start_fen",
         "started_at"};
-    if (!only_known_members(content, kKnown, 13, "\"content\"", err)) {
+    if (!only_known_members(content, kKnown, 16, "\"content\"", err)) {
         return false;
     }
 
@@ -817,6 +834,16 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
         }
     }
 
+    /* And the one game that plays no mode at all: jieqi has no AI, so a
+     * document recording a game of it against a machine records a game this app
+     * cannot have played. The four configuration members are refused with the
+     * mode rather than one at a time, because it is the mode they belong to. */
+    if (human_vs_ai && out.game == MXQ_GAME_KIND_JIEQI) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "\"jieqi\" has no AI, so no document of it records a game "
+                      "played against one");
+    }
+
     if (human_vs_ai) {
         const json::Value *human_side =
             typed_member(content, "human_side", json::Value::Type::String,
@@ -872,6 +899,60 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           "\"first_mover_choice\" is not one of "
                           "\"human-first\", \"ai-first\", \"random\"");
+        }
+    }
+
+    /*
+     * The deal's provenance: present exactly when the game is jieqi and the
+     * mode is nearby, and absent otherwise, because a locally dealt game has no
+     * handshake behind it to record and no other game has a deal at all. Both
+     * halves are checked, and on both axes: a free-play jieqi document carrying
+     * them and a nearby minixiangqi document carrying them are the same
+     * mistake, and a rule checked on one side only refuses half of what it
+     * knows.
+     *
+     * The shape is the format's — thirty-two bytes as sixty-four lowercase
+     * hexadecimal digits, which is how all four handshake values are written
+     * everywhere — and it is field validity rather than a rules question, so it
+     * is answered here. Whether the values are the deal's is the rules tier's,
+     * where the deal they derive is compared with the start they stand beside.
+     */
+    {
+        static const char *const kDealMembers[] = {"deal_commit", "deal_nonce",
+                                                   "deal_seed"};
+        const bool dealt = out.game == MXQ_GAME_KIND_JIEQI &&
+                           out.mode == MXQ_PLAY_MODE_NEARBY;
+        for (const char *name : kDealMembers) {
+            const bool present = content.has_member(name);
+            if (present != dealt) {
+                return reject(
+                    err, MXQ_ERR_ARCHIVE_MALFORMED,
+                    present
+                        ? std::string("\"") + name +
+                              "\" is present in a game whose deal came from no "
+                              "handshake, which omits it"
+                        : std::string("\"content\" has no \"") + name +
+                              "\" member in a nearby jieqi game");
+            }
+        }
+        if (dealt) {
+            std::string *const fields[] = {&out.deal_commit, &out.deal_nonce,
+                                           &out.deal_seed};
+            for (size_t i = 0; i < 3; ++i) {
+                const json::Value *value =
+                    typed_member(content, kDealMembers[i],
+                                 json::Value::Type::String, "\"content\"", err);
+                if (value == nullptr) {
+                    return false;
+                }
+                if (!deal::is_hex32(value->string())) {
+                    return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                                  std::string("\"") + kDealMembers[i] +
+                                      "\" is not thirty-two bytes in lowercase "
+                                      "hexadecimal");
+                }
+                *fields[i] = value->string();
+            }
         }
     }
 
@@ -1000,12 +1081,19 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
                       "that end reason is one only a movement game's rules "
                       "reach");
     }
-    /* Narrower than the partition above, and older: the move-count rule is
-     * Xiangqi's alone, and Mini Xiangqi has none. */
+    /* Narrower than the partition above: two of the three movement games count
+     * captureless play, and they count it to different numbers. Mini Xiangqi
+     * counts nothing at all, so both refusals name the one game that reaches
+     * their reason. */
     if (out.end_reason == MXQ_END_REASON_FIFTY_MOVE_RULE &&
         out.game != MXQ_GAME_KIND_XIANGQI) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"fifty-move-rule\" is Xiangqi's end reason");
+    }
+    if (out.end_reason == MXQ_END_REASON_FORTY_MOVE_RULE &&
+        out.game != MXQ_GAME_KIND_JIEQI) {
+        return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                      "\"forty-move-rule\" is Jieqi's end reason");
     }
     if (out.ended_at_ms < out.started_at_ms) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
@@ -1022,7 +1110,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
  * import-facing entry point, which applies the accepted file-size and ply
  * bounds, and the store's own path back into a game it wrote, which must
  * not. Everything else about the ladder is identical, because a stored
- * document is a version 5 document like any other. */
+ * document is a version 6 document like any other. */
 bool decode(const uint8_t *bytes, size_t len, bool import_bounds, Decoded &out,
             Reject &err) {
     /* Stage 1: transport and size. */
@@ -1096,6 +1184,9 @@ void fill_stored(const Decoded &decoded, Stored &out) {
                      decoded.start_fen.c_str());
     }
     out.moves = decoded.moves;
+    out.deal_commit = decoded.deal_commit;
+    out.deal_nonce = decoded.deal_nonce;
+    out.deal_seed = decoded.deal_seed;
     out.started_at_ms = decoded.started_at_ms;
     out.written_at_ms = decoded.origin_written_at_ms;
     out.completed = decoded.completed;
@@ -1204,11 +1295,14 @@ MxqStatus check_terminal_pair(const Decoded &decoded,
  *
  * The initial position must be one the game rules_id names begins from — the
  * per-game start policy, which is the setup-legality predicate asked through
- * mxq::setup::judge_start and is total over the four games: a xiangqi document
- * may carry any position that predicate accepts, and every other game's carries
- * exactly its frozen start, because a game whose rules define no predicate has
- * no other position to begin from. Then every move must be legal in sequence,
- * then the recorded terminal pair must agree with the replayed adjudication.
+ * mxq::setup::judge_start and is total over the five games: a xiangqi document
+ * may carry any position that predicate accepts, a jieqi document carries a
+ * dealt start, and every other game's carries exactly its frozen start, because
+ * a game whose rules define neither a predicate nor a deal has no other
+ * position to begin from. Then, where the document carries the evidence of a
+ * deal, that evidence must be this game's; then every move must be legal in
+ * sequence, then the recorded terminal pair must agree with the replayed
+ * adjudication.
  *
  * The start is judged before anything is replayed, and that order is
  * load-bearing rather than tidy: an illegal setup can be a position offering
@@ -1252,6 +1346,29 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
                         why)
                            .c_str());
             return MXQ_ERR_RULES_ILLEGAL_POSITION;
+        }
+    }
+
+    /*
+     * Then the deal, where the document carries the evidence of one: the seed
+     * must hash to the commitment and the deal the seed and the nonce derive
+     * must be the one start_fen spells. A file whose own evidence contradicts
+     * its start is no record of the game it claims, which is the file
+     * disagreeing with itself rather than the setup question being answered —
+     * so it lands on this stage's own voice and not on the predicate's.
+     *
+     * It is asked after the start has been judged, because the comparison reads
+     * the identities a dealt start spells and a position that is not a dealt
+     * start has none to read.
+     */
+    if (!decoded.deal_commit.empty()) {
+        std::string why;
+        if (!deal::verify(decoded.deal_commit, decoded.deal_nonce,
+                          decoded.deal_seed, decoded.start_fen.c_str(),
+                          /*expected_digest=*/nullptr, why)) {
+            fill_error(err, MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY,
+                       ("the recorded deal is not this game's: " + why).c_str());
+            return MXQ_ERR_ARCHIVE_INCONSISTENT_REPLAY;
         }
     }
 
@@ -1370,7 +1487,7 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
      *
      * It comes last, after the accepted validation order has run entire, and
      * not among its stages. It is not one of them: those five decide whether
-     * the bytes are a version 5 archive, and this decides whether that archive
+     * the bytes are a version 6 archive, and this decides whether that archive
      * is a game an import may file. Asking it earlier would mask a rejection
      * class the corpus names — an incomplete document with an illegal move
      * would be reported for the shape rather than for the move — and the answer

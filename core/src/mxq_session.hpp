@@ -91,6 +91,23 @@ struct MxqGame {
     /* The retained main line, index 0 first. */
     std::vector<std::string> moves;
 
+    /*
+     * The evidence a dealt game's start was dealt rather than chosen: the
+     * commitment, the nonce and the seed the protocol's handshake left behind,
+     * frozen at creation and recovered unchanged by resume. Present exactly for
+     * a nearby jieqi game and empty for everything else.
+     *
+     * They are on the session rather than only on the wire session beside it
+     * because they are archive content: a filed game keeps them and its wire
+     * session is deleted with it, so a replay of a History record must be able
+     * to encode them back without one. The fourth value the handshake left —
+     * the digest — is not here, because it is not archive content: it is
+     * derivable from the deal, and it stays where the re-verification needs it.
+     */
+    std::string deal_commit;
+    std::string deal_nonce;
+    std::string deal_seed;
+
     /* Bumped by every accepted mutation; the staleness authority a search
      * result is compared against. Per session, restarting at zero — which is
      * exactly why delivery resolves the session by instance_id above: two

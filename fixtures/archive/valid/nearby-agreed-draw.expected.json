@@ -2,7 +2,7 @@
   "title": "Nearby, a draw by agreement",
   "why": "The two players agreed to end the game as a draw. agreed-draw is a draw reason and belongs to nearby alone, and its final position must be non-terminal, because an end the rules decided outranks one the players declared.",
   "info": {
-    "archive_version": 5,
+    "archive_version": 6,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "nearby",

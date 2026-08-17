@@ -1,0 +1,27 @@
+{
+  "title": "Jieqi, nearby, ended early: a dealt game filed as it stood",
+  "why": "Filing a dealt game is filing its deal: the three members that make the record checkable stay in the document, and the wire session that held the fourth is deleted with the game, because a row naming a peer's device has no purpose past the game it belonged to. The replay the History record opens as re-verifies the deal against the start it spells with nothing but the document to do it from. Its bytes are the corpus's jieqi-nearby-ended-early golden.",
+  "config": {
+    "game": "jieqi",
+    "mode": "nearby",
+    "local_side": "red",
+    "start_fen": "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1"
+  },
+  "deal": {
+    "commit": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+    "nonce": "a144410000000000000000000000000000000000000000000000000000000000",
+    "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+    "digest": "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa"
+  },
+  "moves": [
+    "b1c3",
+    "b8e8"
+  ],
+  "end": {
+    "action": "archive_and_clear",
+    "archive": "jieqi-nearby-ended-early.mxq",
+    "outcome": "none",
+    "end_reason": "ended-early",
+    "state": "ongoing"
+  }
+}

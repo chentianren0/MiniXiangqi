@@ -10,6 +10,11 @@
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
 
+/* Outside the guard, because mxq_rules_start_fen is: a game with no frozen
+ * start is a programming error to ask, and that assertion is compiled in every
+ * configuration this file has. */
+#include <cassert>
+
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_core_state.hpp"
 #include "mxq_engine_bridge.hpp"
@@ -21,7 +26,6 @@
 #include "mxq_rapfi_bridge.hpp"
 #endif
 
-#include <cassert>
 #include <string>
 #include <vector>
 

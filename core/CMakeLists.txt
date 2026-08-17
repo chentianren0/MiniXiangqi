@@ -261,6 +261,10 @@ set(MXQ_CORE_SOURCES
   src/mxq_archive_write.cpp
   src/mxq_blob.cpp
   src/mxq_core.cpp
+  # The deal derivation. Not gated on the facade: everything but the comparison
+  # against a position record is hashing and arithmetic, and the archive reader
+  # needs the shape of a handshake value in every build.
+  src/mxq_deal.cpp
   src/mxq_engine.cpp
   src/mxq_identity.cpp
   src/mxq_interchange.cpp
