@@ -330,3 +330,14 @@ func renderPNG(_ view: some View, scale: CGFloat) -> (image: PlatformImage, png:
     #endif
     return (image, png)
 }
+
+/// One game's frozen starting position, for the suites that draw a board from
+/// it.
+///
+/// Force-unwrapped deliberately: every game named through this freezes a start,
+/// and a game whose start is dealt has one for every deal and none to ask for —
+/// a suite reaching for it here would be asking a question that has no answer,
+/// which is a failure worth having at the line that asked.
+nonisolated func frozenStart(_ game: GameKind) -> String {
+    Core.frozenStartFEN(for: game)!
+}

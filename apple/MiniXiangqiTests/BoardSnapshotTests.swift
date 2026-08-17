@@ -48,7 +48,7 @@ struct BoardSnapshotTests {
     @Test("The starting position renders at the accepted floor")
     func startingPosition() throws {
         let view = BoardView(geometry: geometry,
-                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi), game: .miniXiangqi))
+                             placement: Placement(fen: frozenStart(.miniXiangqi), game: .miniXiangqi))
         let size = try render(view, named: "start")
         #expect(size == geometry.blockSize)
     }
@@ -60,7 +60,7 @@ struct BoardSnapshotTests {
             pitch: BoardGeometry.minimumPitch(for: GameKind.xiangqi.board))
         let view = BoardView(
             geometry: geometry,
-            placement: Placement(fen: Core.startFEN(for: .xiangqi), game: .xiangqi))
+            placement: Placement(fen: frozenStart(.xiangqi), game: .xiangqi))
         let size = try render(view, named: "xiangqi-start")
         #expect(size == geometry.blockSize)
     }
@@ -106,7 +106,7 @@ struct BoardSnapshotTests {
     @Test("The board renders flipped, with the numeral strips following it")
     func flipped() throws {
         let view = BoardView(geometry: geometry,
-                             placement: Placement(fen: Core.startFEN(for: .miniXiangqi), game: .miniXiangqi),
+                             placement: Placement(fen: frozenStart(.miniXiangqi), game: .miniXiangqi),
                              flipped: true)
         let size = try render(view, named: "flipped")
         #expect(size == geometry.blockSize)

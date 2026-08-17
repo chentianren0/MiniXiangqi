@@ -226,7 +226,7 @@ struct MotionTests {
         func view(suggested: Square?, reduceMotion: Bool = false) -> BoardView {
             BoardView(geometry: BoardGeometry(board: board,
                                               pitch: BoardGeometry.minimumPitch(for: board)),
-                      placement: Placement(fen: Core.startFEN(for: .miniXiangqi),
+                      placement: Placement(fen: frozenStart(.miniXiangqi),
                                            game: .miniXiangqi),
                       destinations: [capture, empty],
                       captures: [capture],

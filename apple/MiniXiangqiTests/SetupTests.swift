@@ -251,20 +251,37 @@ struct SetupTests {
     /// first engine's — so a frontend that went back to assembling one would
     /// answer here with two games sharing a string, which is the readiness check
     /// silently passing for a board the engine is not prepared for.
-    @Test("Every game's readiness profile reaches Swift, and each is its own")
+    ///
+    /// **Exhaustive over the games an engine plays, which is not every game.**
+    /// docs/core-interface.md: Jieqi "is prepared for nothing and searched
+    /// never", so `mxq_engine_profile_id` answers `MXQ_ERR_ARG_RANGE` for it —
+    /// there is nothing to configure and no move for an identifier to attribute
+    /// — and that refusal is permanent rather than a state some preparation
+    /// would clear. So the expectation is stated in two halves: every game an
+    /// engine plays has its own identifier, and the game none plays has none at
+    /// any moment of its life.
+    @Test("Every played game's readiness profile reaches Swift, and each is its own")
     func everyGamesProfileIsItsOwn() throws {
         let core = try TestCores.fresh()
         let query = try core.engineQuery()
-        let profiles = try GameKind.allCases.map { try core.engineProfileID(for: $0) }
+        let played = GameKind.allCases.filter { Core.isPlayedByAnEngine($0) }
+        let profiles = try played.map { try core.engineProfileID(for: $0) }
 
         #expect(query.state == .uninitialized)
         #expect(profiles.allSatisfy { !$0.isEmpty })
         #expect(Set(profiles).count == profiles.count,
                 "no two games may collapse to one readiness profile")
-        #expect(query.profileID == profiles[GameKind.allCases.firstIndex(of: .miniXiangqi)!],
+        #expect(query.profileID == profiles[played.firstIndex(of: .miniXiangqi)!],
                 "the core's initial rules posture is Mini Xiangqi")
         #expect(!core.engineIsReady(for: .miniXiangqi),
                 "a matching profile is still not ready before preparation")
+
+        // The other half: the game no engine plays names no profile, is never
+        // ready, and says so before anything has been prepared and after.
+        #expect(played == [.miniXiangqi, .xiangqi, .gomoku15, .renju],
+                "Jieqi is the one game no engine here plays")
+        #expect(throws: CoreError.self) { try core.engineProfileID(for: .jieqi) }
+        #expect(!core.engineIsReady(for: .jieqi))
     }
 
     // MARK: - The budget the first gate is computed from
