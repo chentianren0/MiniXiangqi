@@ -420,7 +420,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "MiniXiangqi/MiniXiangqi-iOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "MiniXiangqi/MiniXiangqi-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 7P9PPXP2SF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_ENHANCED_SECURITY = YES;
@@ -476,7 +476,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "MiniXiangqi/MiniXiangqi-iOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "MiniXiangqi/MiniXiangqi-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 7P9PPXP2SF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_ENHANCED_SECURITY = YES;
