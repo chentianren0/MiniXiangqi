@@ -149,6 +149,9 @@ nonisolated enum NearbyRefusal: Equatable, Sendable {
         case .declined(.unknownGame): "nearby.refusal.unknownGame"
         case .declined(.rulesMismatch): "nearby.refusal.rulesMismatch"
         case .declined(.unknownSession): "nearby.refusal.unknownSession"
+        // The two devices held one identifier and two deals. It is a resume's
+        // answer like the one above, and the game is over on both devices.
+        case .declined(.dealMismatch): "nearby.refusal.dealMismatch"
         // One nearby game at a time per peer is the engine's law, and these two
         // are the two ways it says so: a live session, and a proposal already
         // outstanding.
@@ -172,7 +175,7 @@ nonisolated enum NearbyRefusal: Equatable, Sendable {
     /// game that did not start.
     var titleKey: String {
         switch self {
-        case .declined(.unknownSession): "nearby.ended.title"
+        case .declined(.unknownSession), .declined(.dealMismatch): "nearby.ended.title"
         default: "alert.nearbyDeclined.title"
         }
     }
@@ -188,6 +191,10 @@ nonisolated enum NearbyVoid: Equatable, Sendable {
     /// The other device answered this device's resume by saying it holds no
     /// such game — it was relaunched, or lost the session some other way.
     case lostByPeer
+    /// The two devices' resumes named one game and two deals, so neither is
+    /// playing the game the other is. It voids the session on both sides
+    /// exactly as the answer above does, and it is a different fact.
+    case dealMismatch
     /// A connection closed on a violation, and the session it carried is void.
     case disagreement
     /// The other player's fresh proposal retired it.
@@ -202,6 +209,7 @@ nonisolated enum NearbyVoid: Equatable, Sendable {
     var messageKey: String {
         switch self {
         case .lostByPeer: "nearby.refusal.unknownSession"
+        case .dealMismatch: "nearby.refusal.dealMismatch"
         case .disagreement: "nearby.ended.disagreement"
         case .retired: "nearby.ended.newGame"
         }
@@ -613,15 +621,19 @@ final class NearbyFlow {
         boardVoid = reasonItWent(boardSessionID, with: peer)
     }
 
-    /// Which of the three it was, read off what the driver holds now.
+    /// Which of the four it was, read off what the driver holds now.
     ///
-    /// A decline naming an active session is the other device saying it has no
-    /// such game — nothing else the protocol declines can reach one — and a
-    /// proposal standing with the same device is that device having started
-    /// afresh. What is left is a connection closed on a violation, which is the
-    /// only other thing that takes a session away from the peer it belongs to.
+    /// A decline naming an active session is one of the two answers that void a
+    /// session on both sides — the other device saying it has no such game, or
+    /// saying the two devices no longer hold one deal — and nothing else the
+    /// protocol declines can reach one. A proposal standing with the same
+    /// device is that device having started afresh. What is left is a connection
+    /// closed on a violation, which is the only other thing that takes a session
+    /// away from the peer it belongs to.
     private func reasonItWent(_ session: String, with peer: PeerDeviceID) -> NearbyVoid {
-        if driver.declines.contains(where: { $0.session == session }) { return .lostByPeer }
+        if let decline = driver.declines.first(where: { $0.session == session }) {
+            return decline.reason == .dealMismatch ? .dealMismatch : .lostByPeer
+        }
         if driver.sessions.contains(where: {
             $0.peer == peer && $0.state == .proposed && $0.proposer == .peer
         }) {

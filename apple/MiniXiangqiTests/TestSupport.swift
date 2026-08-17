@@ -28,6 +28,7 @@
 
 import Foundation
 import MiniXiangqiCore
+import Observation
 import Testing
 @testable import MiniXiangqi
 
@@ -340,4 +341,139 @@ func renderPNG(_ view: some View, scale: CGFloat) -> (image: PlatformImage, png:
 /// which is a failure worth having at the line that asked.
 nonisolated func frozenStart(_ game: GameKind) -> String {
     Core.frozenStartFEN(for: game)!
+}
+
+// MARK: - The nearby driver, faked
+
+/// A driver that records instead of speaking, and refuses when the test says so.
+///
+/// Observable like the real one, because *when* it publishes is part of what is
+/// under test: the flow holds the board's session at every publication rather
+/// than at every redraw, and a fake that published silently could not tell the
+/// two apart.
+///
+/// Shared, because two suites ask different questions of one seam — what the
+/// flow does with a refusal, and what a dealt board draws over a real deal — and
+/// a second copy of it would be a second thing to keep in step with the
+/// protocol.
+@MainActor
+@Observable
+final class FakeDriver: NearbyDriving {
+    struct Proposal: Equatable {
+        var peer: PeerDeviceID
+        var connection: ConnectionID
+        var rulesID: String
+        var proposerMoves: Mover
+    }
+
+    struct Answer: Equatable {
+        var session: String
+        var accepting: Bool
+    }
+
+    /// One negotiation intent, as the driver received it.
+    enum Intent: Equatable {
+        case claim
+        case offerDraw
+        case acceptDraw
+        case requestUndo(keep: Int)
+        case acceptUndo
+    }
+
+    var sessions: [BoardGameSession] = []
+    var declines: [NearbyDecline] = []
+    var ownMoveRefusals = 0
+    /// What every intent answers with, where the test wants a refusal.
+    var refuses: BoardGameRefusal?
+    /// The identifier the engine would mint for the next proposal.
+    var mints = "S"
+    /// What the engine's own oracle would say about the claim.
+    var claimStandsAnswer = false
+
+    private(set) var proposals: [Proposal] = []
+    private(set) var answers: [Answer] = []
+    private(set) var played: [String] = []
+    private(set) var resigned: [String] = []
+    private(set) var intents: [Intent] = []
+    /// The sessions `claimStands` was asked about, which is what proves the
+    /// affordance is the engine's answer rather than the position's.
+    private(set) var claimsAsked: [String] = []
+
+    func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
+                 proposerMoves: Mover) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        proposals.append(Proposal(peer: peer, connection: connection, rulesID: rulesID,
+                                  proposerMoves: proposerMoves))
+        // The engine mints the identifier and holds the proposal it made, which
+        // is what the flow reads back to learn which session it is waiting on.
+        var proposed = BoardGameSession(id: mints, peer: peer, rulesID: rulesID,
+                                        rulesVersion: "1", proposerMoves: proposerMoves,
+                                        proposer: .local)
+        proposed.connection = connection
+        sessions.append(proposed)
+    }
+
+    func answer(_ session: String, accepting: Bool) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        answers.append(Answer(session: session, accepting: accepting))
+    }
+
+    func play(_ text: String, in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        played.append(text)
+    }
+
+    func resign(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        resigned.append(session)
+    }
+
+    func claim(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.claim)
+    }
+
+    func offerDraw(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.offerDraw)
+    }
+
+    func acceptDraw(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.acceptDraw)
+    }
+
+    func requestUndo(keeping keep: Int, in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.requestUndo(keep: keep))
+    }
+
+    func acceptUndo(in session: String) throws(BoardGameRefusal) {
+        if let refuses { throw refuses }
+        intents.append(.acceptUndo)
+    }
+
+    func claimStands(in session: BoardGameSession) -> Bool {
+        claimsAsked.append(session.id)
+        return claimStandsAnswer
+    }
+
+    /// The interrupted game the library would give back, where a case has set
+    /// one up, and what it was asked.
+    var stored: BoardGameSession?
+    private(set) var resumedStored = 0
+    private(set) var abandoned = 0
+
+    func resumeStoredGame() -> String? {
+        resumedStored += 1
+        guard let stored else { return nil }
+        sessions.append(stored)
+        return stored.id
+    }
+
+    func abandonStoredGame() {
+        abandoned += 1
+        sessions.removeAll { $0.state != .proposed }
+        stored = nil
+    }
 }

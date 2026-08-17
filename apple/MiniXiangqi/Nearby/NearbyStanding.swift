@@ -32,10 +32,15 @@ nonisolated struct NearbyStanding: Sendable {
 /// of the board's own behaviour is not a test of the rules, and the core is a
 /// singleton a unit suite must not hold while another suite is running.
 nonisolated protocol NearbyPositions: Sendable {
-    /// The standing after those plies, or nil where the core refused the line —
-    /// which is a bug above it, since the engine holds only plies its own oracle
-    /// accepted.
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding?
+    /// The standing after those plies, played from `start` — the deal a
+    /// hidden-information session derived, and nil for a game whose rules
+    /// freeze a start of their own.
+    ///
+    /// Nil where the core refused the line — which is a bug above it, since the
+    /// engine holds only plies its own oracle accepted — and where a dealt game
+    /// was asked without its deal.
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding?
 }
 
 /// The core's answers, over the session-free rules facade.
@@ -50,7 +55,8 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         self.core = core
     }
 
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding? {
         // A claim moves no piece, so there is nothing for the core to replay:
         // the board it decides is the board before it, and the end it produces
         // is the session's rather than the position's. It can only be the last
@@ -79,11 +85,11 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         var count = 0
 
         // A game whose start is dealt rather than frozen has no position for a
-        // ply list alone to be replayed from, and this peer proposes none —
-        // `CoreBoardGameRules.version(of:)` answers for such a game exactly as
-        // it answers for one it does not know. Nil here is the same answer this
-        // returns for a line the core would not replay: the board does not open.
-        guard let start = Core.frozenStartFEN(for: game) else { return nil }
+        // ply list alone to be replayed from: its session's own deal is the
+        // start, and it is passed in. Nil where a dealt game arrives without
+        // one, which is the same answer this returns for a line the core would
+        // not replay — the board does not open.
+        guard let start = start ?? Core.frozenStartFEN(for: game) else { return nil }
         let answered: Bool = start.withCString { startFEN in
             withMoveArray(played) { texts, given in
                 guard mxq_rules_evaluate(core, game.raw, startFEN, texts, given,

@@ -113,10 +113,21 @@ final class NearbyRecord: NearbyRecording {
             attached = false
             return nil
         }
-        let session = Self.session(over: wire, game: summary.game,
-                                   localSide: localSide,
-                                   moves: try library.moveHistory(),
-                                   rules: rules)
+        guard let session = Self.session(over: wire, game: summary.game,
+                                         localSide: localSide,
+                                         moves: try library.moveHistory(),
+                                         rules: rules)
+        else {
+            // A dealt game whose stored handshake no longer derives the deal it
+            // says it does. There is no position to play the line over, so
+            // there is no session to give back; the game stays the library's
+            // active one for the player to file.
+            log.note("The library's nearby game does not verify against its "
+                     + "own deal.")
+            library.endSession()
+            attached = false
+            return nil
+        }
         held = session
         written = wire
         log.note("Rebuilt \(NearbyDriver.short(session.id)) from the library: "
@@ -139,9 +150,25 @@ final class NearbyRecord: NearbyRecording {
     /// it, and a relaunch is at least that; the connection and the exchange are
     /// per-connection by construction. The session comes back interrupted,
     /// which is what it is.
+    ///
+    /// **What a dealt session persists is the handshake, not the deal**, so the
+    /// deal is derived from the stored seed and nonce again here — and verified
+    /// against everything it comes from before anything is played over it. Nil
+    /// where that fails, and where the row's deal and the game's disagree about
+    /// whether there should be one.
     private static func session(over wire: NearbyWireSession, game: GameKind,
                                 localSide: Side, moves: [String],
-                                rules: any BoardGameRules) -> BoardGameSession {
+                                rules: any BoardGameRules) -> BoardGameSession? {
+        let deals = rules.dealsItsStart(game.rulesID)
+        guard deals == (wire.deal != nil) else { return nil }
+        var handshake: DealHandshake?
+        if let stored = wire.deal {
+            guard let deal = BoardGameDeal.verified(
+                commit: stored.commit, nonce: stored.nonce, seed: stored.seed,
+                digest: stored.digest, of: game.rulesID, by: rules)
+            else { return nil }
+            handshake = .dealt(deal)
+        }
         let localMover: Mover = localSide == .red ? .first : .second
         let proposerMoves = wire.proposedLocally ? localMover : localMover.opponent
         var session = BoardGameSession(
@@ -151,6 +178,7 @@ final class NearbyRecord: NearbyRecording {
             proposerMoves: proposerMoves,
             proposer: wire.proposedLocally ? .local : .peer)
         session.accepted = true
+        session.handshake = handshake
         session.plies = wire.claimed ? moves + [TurnAction.claim] : moves
         session.undos = wire.undos
         session.retractedTo = wire.undos > 0 ? wire.keep : nil
@@ -164,6 +192,7 @@ final class NearbyRecord: NearbyRecording {
         // property of the plies, and a second copy of it in the store would be
         // a second place for it to be wrong.
         session.rulesEnd = rules.standing(after: session.plies,
+                                          from: session.dealtStart,
                                           of: session.rulesID).decision
         // Settledness, by the contract's own rule and by both of its halves: a
         // peer that sent a terminal, **or whose own ply decided the end**,
@@ -254,11 +283,18 @@ final class NearbyRecord: NearbyRecording {
             return
         }
         let localSide: Side = session.localMover == .first ? .red : .black
+        // A dealt game's start is the deal, and the three values it came from
+        // stand beside it: they are facts about the game rather than about
+        // either device, and what makes the finished record checkable by
+        // anybody. The digest is not among the archive's three and is here for
+        // the session's own re-verification.
         let birth = NearbyWireSession(sessionID: session.id,
                                       peerID: session.peer.rawValue,
-                                      proposedLocally: session.proposer == .local)
+                                      proposedLocally: session.proposer == .local,
+                                      deal: Self.deal(of: session))
         do {
-            try library.createNearby(.nearby(game: game, localSide: localSide),
+            try library.createNearby(.nearby(game: game, localSide: localSide,
+                                             startFEN: session.dealtStart),
                                      wire: birth)
         } catch {
             log.note("The library refused \(NearbyDriver.short(session.id)): "
@@ -314,7 +350,20 @@ final class NearbyRecord: NearbyRecording {
                           // for a value the restore then ignores.
                           keep: session.retractedTo ?? 0,
                           sentEnd: Self.terminal(session.localTerminal),
-                          claimed: session.plies.last == TurnAction.claim)
+                          claimed: session.plies.last == TurnAction.claim,
+                          // Frozen with the identity, and for the same reason:
+                          // "a session's identity is not something a later call
+                          // revises, and its deal is what the game is being
+                          // played over".
+                          deal: written?.deal ?? Self.deal(of: session))
+    }
+
+    /// The four values the row keeps of a dealt session's handshake. Nil for
+    /// every game whose start is frozen, which is the row's own pairing.
+    private static func deal(of session: BoardGameSession) -> NearbyWireSession.Deal? {
+        session.deal.map {
+            .init(commit: $0.commit, nonce: $0.nonce, seed: $0.seed, digest: $0.digest)
+        }
     }
 
     private static func terminal(_ terminal: Terminal?) -> WireTerminal? {

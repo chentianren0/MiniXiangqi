@@ -158,15 +158,19 @@ final class TransitMotion {
         }
     }
 
-    /// Raises the fading disc. Whether the transition waits for it was settled
-    /// at the departure: a removal's tail holds the transition open past the
-    /// arrival it answers, while a restoration finishes inside the travel and
-    /// nothing waits for it. Does nothing where there is no disc to fade.
+    /// Gives the running transition its second disc. One transition means one
+    /// travel and one arrival, so the pair is drawn together: taking back a
+    /// decision cycle is one action, and both discs — with whatever either of
+    /// them turns over — belong to it.
     func pair(with second: Transit) {
         guard isRunning, transit != nil else { return }
         companion = second
     }
 
+    /// Raises the fading disc. Whether the transition waits for it was settled
+    /// at the departure: a removal's tail holds the transition open past the
+    /// arrival it answers, while a restoration finishes inside the travel and
+    /// nothing waits for it. Does nothing where there is no disc to fade.
     func raiseFade(_ animation: Animation) {
         guard isRunning, transit?.fading != nil || companion?.fading != nil else { return }
         let token = generation
@@ -181,8 +185,14 @@ final class TransitMotion {
     /// Brings the arriving face up. Does nothing where the transition turns
     /// nothing up, and nothing waits for it: the identity coming up is part of
     /// the move landing rather than an event of its own.
+    ///
+    /// Either disc counts, as it does for the fade: one phase drives both, and
+    /// a paired transition where only the *first* ply turned a piece over — the
+    /// human move that revealed, answered by an already-revealed reply — is
+    /// exactly the case a transit-only test would leave undrawn.
     func raiseReveal(_ animation: Animation) {
-        guard isRunning, transit?.revealed != nil else { return }
+        guard isRunning, transit?.revealed != nil || companion?.revealed != nil
+        else { return }
         animator.run(animation) { [self] in
             reveal = 1
         } completion: { }

@@ -55,6 +55,24 @@ struct NearbyRecordTests {
         return session
     }
 
+    /// A dealt session this device proposed, over the corpus's own deal — the
+    /// one vector the store fixtures and the protocol suites all read.
+    private func dealtSession(plies: [String] = []) -> BoardGameSession {
+        var session = BoardGameSession(id: Self.identifier, peer: Self.peer,
+                                       rulesID: GameKind.jieqi.rulesID,
+                                       rulesVersion: "1", proposerMoves: .first,
+                                       proposer: .local)
+        session.accepted = true
+        session.handshake = .dealt(
+            BoardGameDeal(commit: BoardGameRulesTests.commit,
+                          nonce: BoardGameRulesTests.nonce,
+                          seed: BoardGameRulesTests.seed,
+                          digest: BoardGameRulesTests.digest,
+                          start: BoardGameRulesTests.dealtStart))
+        session.plies = plies
+        return session
+    }
+
     /// The mating line: three plies, and the third — index 2, an even index —
     /// is the first mover's.
     private static let mate = ["b1b3", "a6a5", "b3d3"]
@@ -87,6 +105,51 @@ struct NearbyRecordTests {
         #expect(wire.undos == 0)
         #expect(wire.sentEnd == nil)
         #expect(!wire.claimed)
+    }
+
+    @Test("A dealt game reaches the library as its deal, with the evidence it was dealt")
+    func aDealtGameCarriesItsDeal() throws {
+        let core = try TestCores.fresh()
+        let record = memory(over: core)
+
+        record.follow([dealtSession()])
+        record.follow([dealtSession(plies: ["b1c3"])])
+
+        let summary = try #require(try core.activeGameSummary())
+        #expect(summary.game == .jieqi)
+        #expect(summary.mode == .nearby)
+        #expect(try core.moveHistory() == ["b1c3"])
+
+        let wire = try #require(try core.nearbyWireSession())
+        let deal = try #require(wire.deal)
+        #expect(deal.commit == BoardGameRulesTests.commit)
+        #expect(deal.nonce == BoardGameRulesTests.nonce)
+        #expect(deal.seed == BoardGameRulesTests.seed)
+        #expect(deal.digest == BoardGameRulesTests.digest,
+                "the fourth is the session's own, and never reaches the archive")
+    }
+
+    @Test("A dealt game comes back over the deal it was played on, re-verified")
+    func aDealtGameComesBack() throws {
+        let directory = TestCores.scratchDirectory()
+        do {
+            let core = try TestCores.open(at: directory)
+            let record = memory(over: core)
+            record.follow([dealtSession()])
+            record.follow([dealtSession(plies: ["b1c3", "b8e8"])])
+            record.release()
+        }
+
+        let relaunched = try TestCores.open(at: directory)
+        let record = memory(over: relaunched)
+        let restored = try #require(try record.standing())
+
+        #expect(restored.plies == ["b1c3", "b8e8"])
+        #expect(restored.state == .active, "a completed handshake comes back active")
+        #expect(restored.deal?.digest == BoardGameRulesTests.digest)
+        #expect(restored.deal?.seed == BoardGameRulesTests.seed)
+        #expect(restored.dealtStart == BoardGameRulesTests.dealtStart,
+                "the deal is derived from the seed and the nonce again, not stored")
     }
 
     @Test("Plies from either side reach the store as they land")

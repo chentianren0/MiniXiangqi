@@ -38,13 +38,13 @@ struct NearbyDriverTests {
         try driver.play("b1b2", in: "S-mine")
 
         await settle { link.sent.count == 3 }
-        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(link.sent == [.hello(.init()),
                               .propose(.init(session: "S-mine", rulesID: Stub.game,
                                              rulesVersion: Stub.version, proposerMoves: .first)),
                               .move(.init(session: "S-mine", index: 0, move: "b1b2"))])
         // The crossed connection to the other device carries its own hello and
         // nothing of this session.
-        #expect(other.sent == [.hello(.init(protocolVersion: 1))])
+        #expect(other.sent == [.hello(.init())])
     }
 
     @Test("A connection that is gone is not sent to")
@@ -62,7 +62,7 @@ struct NearbyDriverTests {
             try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
         }
         await settle()
-        #expect(link.sent == [.hello(.init(protocolVersion: 1))])
+        #expect(link.sent == [.hello(.init())])
     }
 
     // MARK: - Unreadable
@@ -131,7 +131,7 @@ struct NearbyDriverTests {
         let fresh = FakeLink(.second)
         driver.connectionReady(fresh, with: .peer)
         await settle { fresh.sent.count == 1 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1))])
+        #expect(fresh.sent == [.hello(.init())])
     }
 
     // MARK: - Resume
@@ -152,7 +152,7 @@ struct NearbyDriverTests {
 
         await settle { fresh.sent.count == 2 }
         // hello first, then the resume the contract says follows it.
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(fresh.sent == [.hello(.init()),
                                .resume(.init(session: "S-mine", undos: 0, count: 1,
                                              keep: 1, end: nil))])
     }
@@ -176,7 +176,7 @@ struct NearbyDriverTests {
         driver.connectionDied(.first)
 
         await settle { crossed.sent.count == 2 }
-        #expect(crossed.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(crossed.sent == [.hello(.init()),
                                  .resume(.init(session: "S-mine", undos: 0, count: 1,
                                                keep: 1, end: nil))])
     }
@@ -212,12 +212,12 @@ struct NearbyDriverTests {
         driver.connectionDied(bound.id)
 
         await settle { overNetwork.sent.count == 2 }
-        #expect(overNetwork.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(overNetwork.sent == [.hello(.init()),
                                      .resume(.init(session: "S-mine", undos: 0, count: 1,
                                                    keep: 1, end: nil))],
                 "the first name the transport minted is where the exchange goes")
         await settle()
-        #expect(crossedRadio.sent == [.hello(.init(protocolVersion: 1))],
+        #expect(crossedRadio.sent == [.hello(.init())],
                 "and the other crossed connection carries nothing of the exchange")
     }
 
@@ -249,7 +249,7 @@ struct NearbyDriverTests {
         driver.connectionReady(fresh, with: .peer)
 
         await settle { fresh.sent.count == 2 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(fresh.sent == [.hello(.init()),
                                .resume(.init(session: "S-mine", undos: 0, count: 2,
                                              keep: 2, end: nil))])
         // Until the exchange completes the session is gated — the contract's
@@ -276,11 +276,11 @@ struct NearbyDriverTests {
         // its resume on exactly one connection, so the old one carried none.
         try driver.play("b1b3", in: "S-mine")
         await settle { fresh.sent.count == 3 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(fresh.sent == [.hello(.init()),
                                .resume(.init(session: "S-mine", undos: 0, count: 2,
                                              keep: 2, end: nil)),
                                .move(.init(session: "S-mine", index: 2, move: "b1b3"))])
-        #expect(bound.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(bound.sent == [.hello(.init()),
                                .propose(.init(session: "S-mine", rulesID: Stub.game,
                                               rulesVersion: Stub.version, proposerMoves: .first)),
                                .move(.init(session: "S-mine", index: 0, move: "b1b2"))])
@@ -301,7 +301,7 @@ struct NearbyDriverTests {
         driver.connectionReady(fresh, with: .peer)
 
         await settle { fresh.sent.count == 2 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(fresh.sent == [.hello(.init()),
                                .resume(.init(session: "S-mine", undos: 0, count: 0,
                                              keep: 0, end: .resign))])
     }
@@ -325,7 +325,7 @@ struct NearbyDriverTests {
         // The ending ply, and behind it the exchange that settles it —
         // unprompted, on the connection the game was being played on.
         await settle { link.sent.count == 4 }
-        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(link.sent == [.hello(.init()),
                               .propose(.init(session: "S-mine", rulesID: Stub.game,
                                              rulesVersion: Stub.version, proposerMoves: .first)),
                               .move(.init(session: "S-mine", index: 0, move: "b1b2")),
@@ -354,7 +354,7 @@ struct NearbyDriverTests {
         try driver.resign(in: "S-mine")
 
         await settle { link.sent.count == 4 }
-        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(link.sent == [.hello(.init()),
                               .propose(.init(session: "S-mine", rulesID: Stub.game,
                                              rulesVersion: Stub.version, proposerMoves: .first)),
                               .resign(.init(session: "S-mine")),
@@ -380,7 +380,7 @@ struct NearbyDriverTests {
         try driver.acceptDraw(in: "S-mine")
 
         await settle { link.sent.count == 4 }
-        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(link.sent == [.hello(.init()),
                               .propose(.init(session: "S-mine", rulesID: Stub.game,
                                              rulesVersion: Stub.version, proposerMoves: .first)),
                               .acceptDraw(.init(session: "S-mine")),
@@ -410,7 +410,7 @@ struct NearbyDriverTests {
         try driver.resign(in: "S-mine")
 
         await settle()
-        #expect(link.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(link.sent == [.hello(.init()),
                               .propose(.init(session: "S-mine", rulesID: Stub.game,
                                              rulesVersion: Stub.version, proposerMoves: .first))])
         let waiting = try #require(driver.sessions.first)
@@ -439,7 +439,7 @@ struct NearbyDriverTests {
         // not one to open again, so nothing goes out for it here.
         try driver.resign(in: "S-mine")
         await settle { fresh.sent.count == 2 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1)),
+        #expect(fresh.sent == [.hello(.init()),
                                .resume(.init(session: "S-mine", undos: 0, count: 0,
                                              keep: 0, end: nil))])
 
@@ -478,7 +478,7 @@ struct NearbyDriverTests {
         driver.connectionReady(fresh, with: .peer)
 
         await settle { fresh.sent.count == 1 }
-        #expect(fresh.sent == [.hello(.init(protocolVersion: 1))])
+        #expect(fresh.sent == [.hello(.init())])
     }
 
     // MARK: - The launch arguments
@@ -523,10 +523,67 @@ struct NearbyDriverTests {
     }
     #endif
 
+    // MARK: - Coming back to the game the library holds
+
+    @Test("继续对局 on a game the engine is still holding opens it, and keeps the record")
+    func comingBackToALiveSessionKeepsTheRecord() async throws {
+        let link = FakeLink(.first)
+        let record = FakeRecord()
+        let driver = driver(minting: "S-mine", record: record)
+
+        // A game under way, with the record following it exactly as the driver's
+        // own publication makes it.
+        driver.connectionReady(link, with: .peer)
+        driver.received(.hello(.init()), on: .first)
+        try driver.propose(to: .peer, on: .first, rulesID: Stub.game, proposerMoves: .first)
+        driver.received(.accept(.init(session: "S-mine")), on: .first)
+        try driver.play("b1b2", in: "S-mine")
+        let followed = record.followed.count
+        #expect(record.held?.id == "S-mine", "the record is following the live session")
+
+        // The player left the board and pressed 继续对局. The record hands back
+        // the live session it is already following — which the engine is
+        // already holding — and that is the ordinary way back in, not a refusal.
+        #expect(driver.resumeStoredGame() == "S-mine", "the board opens on it")
+        #expect(!record.wasReleased,
+                "letting go here would detach the record from a game still being played")
+        #expect(driver.sessions.contains { $0.id == "S-mine" })
+
+        // And the record is still being told what the engine holds, so the
+        // plies that follow are still written down. The next one is the other
+        // player's, which is whose turn it is.
+        driver.received(.move(.init(session: "S-mine", index: 1, move: "b8b7")), on: .first)
+        #expect(record.followed.count > followed)
+        #expect(record.followed.last?.first?.plies == ["b1b2", "b8b7"])
+        await settle { link.sent.count == 3 }
+    }
+
+    @Test("A stored session this device cannot play is let go of rather than opened")
+    func aSessionTheEngineRefusesIsLetGoOf() throws {
+        let record = FakeRecord()
+        // A deal on a game whose start this peer's rules freeze: the row and the
+        // game disagree about whether there should be one, so it is no session
+        // of the game it names.
+        var stored = BoardGameSession(id: "S-rotted", peer: .peer, rulesID: Stub.game,
+                                      rulesVersion: Stub.version, proposerMoves: .first,
+                                      proposer: .local)
+        stored.accepted = true
+        stored.handshake = .dealt(BoardGameDeal(commit: "", nonce: "", seed: "",
+                                                digest: "", start: ""))
+        record.held = stored
+
+        let driver = driver(minting: "S-unused", record: record)
+        #expect(driver.resumeStoredGame() == nil)
+        #expect(record.wasReleased, "the game stays the library's for the player to file")
+        #expect(driver.sessions.isEmpty)
+    }
+
     // MARK: - The suite's own parts
 
-    private func driver(minting session: String, rules: Stub = Stub()) -> NearbyDriver {
-        NearbyDriver(rules: rules, log: NearbyLog(), sessionIDs: { session })
+    private func driver(minting session: String, rules: Stub = Stub(),
+                        record: (any NearbyRecording)? = nil) -> NearbyDriver {
+        NearbyDriver(rules: rules, log: NearbyLog(), record: record,
+                     sessionIDs: { session })
     }
 
     /// Lets the driver's per-connection send tasks run. They are main-actor
@@ -538,6 +595,38 @@ struct NearbyDriverTests {
             if reached() { return }
             await Task.yield()
         }
+    }
+}
+
+/// The store's memory of the game, with no store behind it: it answers with
+/// whatever the case put there, and says whether it was let go of.
+///
+/// Its `standing()` is the real record's shape in the one respect this suite is
+/// about — a record that is following a live session hands that session back,
+/// which is what makes 继续对局 ask the engine to adopt something it already
+/// holds.
+@MainActor
+private final class FakeRecord: NearbyRecording {
+    /// The session it is the memory of, which is what `standing()` hands back.
+    /// Set by the case, or taken from what the driver last published — which is
+    /// what the real record does.
+    var held: BoardGameSession?
+    private(set) var followed: [[BoardGameSession]] = []
+    private(set) var wasReleased = false
+    var ownMoveRefusals = 0
+
+    func standing() throws -> BoardGameSession? { held }
+
+    func follow(_ sessions: [BoardGameSession]) {
+        followed.append(sessions)
+        // The real record holds the session it is the memory of, and gives that
+        // copy back rather than reading the store again.
+        if let live = sessions.first(where: { $0.state != .proposed }) { held = live }
+    }
+
+    func release() {
+        wasReleased = true
+        held = nil
     }
 }
 
@@ -573,20 +662,28 @@ private nonisolated struct Stub: BoardGameRules {
         rulesID == Self.game ? Self.version : nil
     }
 
-    func standing(after plies: [String], of rulesID: String) -> RulesStanding {
+    /// The one game this stub carries freezes its start, so no session over it
+    /// ever opens with the deal handshake.
+    func dealsItsStart(_ rulesID: String) -> Bool { false }
+
+    func deal(seed: String, nonce: String, of rulesID: String) -> BoardGameDeal? { nil }
+
+    func standing(after plies: [String], from start: String?,
+                  of rulesID: String) -> RulesStanding {
         guard let decidingAfter, !plies.isEmpty, plies.count >= decidingAfter else {
             return .ongoing
         }
         return .decided(.moverWins(Mover.atPly(plies.count - 1)), .checkmate)
     }
 
-    func verdict(for text: String, after plies: [String], of rulesID: String) -> PlyVerdict {
+    func verdict(for text: String, after plies: [String], from start: String?,
+                 of rulesID: String) -> PlyVerdict {
         // A ply after the game is decided is unlawful, as the core's oracle
         // answers it, so no test can lean on play the engine would never see.
-        guard case .ongoing = standing(after: plies, of: rulesID) else {
+        guard case .ongoing = standing(after: plies, from: start, of: rulesID) else {
             return .unlawful
         }
-        return .lawful(standing(after: plies + [text], of: rulesID))
+        return .lawful(standing(after: plies + [text], from: start, of: rulesID))
     }
 }
 

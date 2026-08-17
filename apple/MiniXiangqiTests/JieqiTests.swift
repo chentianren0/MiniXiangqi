@@ -326,6 +326,106 @@ struct JieqiTests {
         ScratchDefaults.clear()
     }
 
+    // MARK: - What the nearby board draws over the same deal
+
+    @Test("A ply arriving from the other device travels as one disc carrying both faces")
+    func aRemoteRevealRidesTheOneDisc() throws {
+        let core = try TestCores.fresh()
+        let play = try #require(nearbyBoard(on: core, plies: []))
+
+        // The other device's ply, arriving through the engine's publication —
+        // which is the whole of what a nearby move is here. Nothing about the
+        // identity came with it: the deal this device already holds is where
+        // the arriving face is read from.
+        play.sync(with: dealtSession(plies: ["b3b4"]))
+
+        let transit = try #require(play.transit)
+        #expect(transit.piece.isFaceDown, "it left the board face down")
+        #expect(transit.piece.kind == .cannon, "moving as the piece whose square it is")
+        let revealed = try #require(transit.revealed)
+        #expect(!revealed.isFaceDown, "and arrives face up")
+        #expect(revealed.side == .red)
+        #expect(play.transitReveal > 0, "and the face comes up as it travels")
+    }
+
+    @Test("An agreed retraction on a nearby board returns the concealment it drew")
+    func aNearbyRetractionReturnsConcealment() throws {
+        let core = try TestCores.fresh()
+        let play = try #require(nearbyBoard(on: core, plies: ["b3b4"]))
+
+        // The two players agreed to take it back, which reaches this board as a
+        // session one ply shorter.
+        play.sync(with: dealtSession(plies: []))
+
+        let transit = try #require(play.transit)
+        #expect(transit.kind == .undo)
+        #expect(!transit.piece.isFaceDown, "it leaves the destination face up")
+        let returned = try #require(transit.revealed)
+        #expect(returned.isFaceDown,
+                "and stands face down again where it came from")
+        #expect(play.transitReveal > 0)
+    }
+
+    @Test("An ordinary nearby ply of an undealt game carries no second face")
+    func nothingElseRevealsOnANearbyBoard() throws {
+        let core = try TestCores.fresh()
+        var session = BoardGameSession(id: "S", peer: PeerDeviceID("peer"),
+                                       rulesID: GameKind.miniXiangqi.rulesID,
+                                       rulesVersion: "1", proposerMoves: .first,
+                                       proposer: .local)
+        session.accepted = true
+        let play = try #require(NearbyPlay(session: session, driver: FakeDriver(),
+                                           positions: core.nearbyPositions,
+                                           animator: ManualAnimator().animator,
+                                           feedback: Feedback(perform: { _ in },
+                                                              play: { _ in })))
+        session.plies = ["b1b2"]
+        play.sync(with: session)
+        #expect(play.transit?.revealed == nil)
+        #expect(play.transitReveal == 0)
+    }
+
+    @Test("A nearby dealt game discloses its deal at its ending and not before")
+    func theNearbyEndingDiscloses() throws {
+        let core = try TestCores.fresh()
+        let play = try #require(nearbyBoard(on: core, plies: []))
+        #expect(!play.disclosesTheDeal, "an ongoing game discloses nothing")
+
+        var ended = dealtSession(plies: [])
+        ended.peerTerminal = .resign
+        play.sync(with: ended)
+        #expect(play.disclosesTheDeal,
+                "every hidden identity is disclosed by any ending, a resignation included")
+    }
+
+    /// The corpus's own dealt session, as the engine publishes one: the deal it
+    /// derived and the plies it holds.
+    private func dealtSession(plies: [String]) -> BoardGameSession {
+        var session = BoardGameSession(id: "S", peer: PeerDeviceID("peer"),
+                                       rulesID: GameKind.jieqi.rulesID,
+                                       rulesVersion: "1", proposerMoves: .first,
+                                       proposer: .local)
+        session.accepted = true
+        session.handshake = .dealt(
+            BoardGameDeal(commit: BoardGameRulesTests.commit,
+                          nonce: BoardGameRulesTests.nonce,
+                          seed: BoardGameRulesTests.seed,
+                          digest: BoardGameRulesTests.digest,
+                          start: BoardGameRulesTests.dealtStart))
+        session.plies = plies
+        return session
+    }
+
+    /// The nearby board over that session, drawing the core's own positions.
+    /// The animator runs bodies at once and parks the completions, so the
+    /// transition a case looks at is still standing when it looks.
+    private func nearbyBoard(on core: Core, plies: [String]) -> NearbyPlay? {
+        NearbyPlay(session: dealtSession(plies: plies), driver: FakeDriver(),
+                   positions: core.nearbyPositions,
+                   animator: ManualAnimator().animator,
+                   feedback: Feedback(perform: { _ in }, play: { _ in }))
+    }
+
     // MARK: - What the game does not carry
 
     @Test("No engine plays it, so there is no hint to offer and no AI to play")

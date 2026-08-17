@@ -318,16 +318,23 @@ final class PlayMotion {
                            fading: restored.map { ($0, last.to) },
                            revealed: returned)
         }
-        // The identity goes as the disc returns home, on the same schedule a
-        // reveal arrives on.
-        if !policy.reduceMotion {
-            transits.raiseReveal(Motion.revealAnimation(travel: travel))
-        }
+        // The cycle's first ply is the second disc, and it returns whatever it
+        // turned over just as the second does: a decision cycle whose *human*
+        // move revealed a piece and whose reply did not is the ordinary case,
+        // and the retraction puts that piece back face down.
         if let first, let firstOrigin = first.from, let firstMover {
             transits.pair(with: Transit(kind: .undo,
                                         move: Move(from: first.to, to: firstOrigin),
                                         piece: firstMover,
-                                        fading: game.placement[first.to].map { ($0, first.to) }))
+                                        fading: game.placement[first.to].map { ($0, first.to) },
+                                        revealed: game.placement[firstOrigin]
+                                            .flatMap { $0.isFaceDown ? $0 : nil }))
+        }
+        // The identity goes as the disc returns home, on the same schedule a
+        // reveal arrives on. Raised after the pairing, because either disc's
+        // returning face is one this has to draw.
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         // The restored pieces return as the movers depart — the capture read
         // backwards — inside the travel, so one ply stays within its 250 ms.

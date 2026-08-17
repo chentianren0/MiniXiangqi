@@ -129,16 +129,14 @@ struct PlayHome: View {
         }
 
         // **Two rows, not three**, because the game has no AI to offer:
-        // docs/interaction-design.md, "The Play home". Free Play is here now.
-        // **Nearby Play lands with the stage that gives it a wire**: the two
-        // devices settle that game's deal between accepting and the first move,
-        // and until this peer speaks that handshake a row leading to it would be
-        // a promise the build cannot keep — `CoreBoardGameRules.version(of:)`
-        // answers for the game exactly as it answers for one it does not know,
-        // so a proposal would be refused where the row said it would be taken.
+        // docs/interaction-design.md, "The Play home". The two it has are Free
+        // Play and Nearby Play — the second because this peer now speaks the
+        // handshake that settles the deal between accepting and the first move,
+        // so a proposal of it is taken exactly where the row says it will be.
         Section {
             entry(PlaySelection(game: .jieqi, mode: .freePlay),
                   "mode.freePlay", "mode-jieqi-free-play")
+            nearbyEntry(.jieqi, "mode-jieqi-nearby")
         } header: {
             Text(GameKind.jieqi.localizedName)
         }
