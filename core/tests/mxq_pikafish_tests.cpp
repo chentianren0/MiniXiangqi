@@ -353,6 +353,64 @@ void case_the_core_answers_for_jieqi_through_the_c_surface() {
     c.report();
 }
 
+/*
+ * The regression pin for the engine's raised move capacity.
+ *
+ * MoveList holds ExtMove[MAX_MOVES], and MAX_MOVES was 128 — above Xiangqi's
+ * derived maximum of 119 and below Jieqi's of 175. The gap is not a margin: a
+ * position offering more legal moves than the bound wrote past the array's own
+ * storage, inside a frame this core creates, on a call mxq.h invites, from a
+ * record the core's own structural reading accepts. The fork raised the bound to
+ * 256 at the pinned revision; this is what says so from the outside.
+ *
+ * The position below is ordinary play rather than a construction the game
+ * cannot reach. Red was dealt soldiers onto its two chariot and its two cannon
+ * home squares and has never moved them, so they stand face down and move as
+ * the chariots and cannons whose squares they are; Red's real chariots and
+ * cannons were dealt elsewhere, were revealed by their first moves, and now
+ * stand in the open; Black is down to a bare general. That is exactly the trade
+ * the derivation in docs/core-interface.md describes — a hidden piece is worth
+ * its square, and four soldiers hidden on the two chariot and two cannon squares
+ * is where the trade stops paying.
+ *
+ * Both bounds are the contract's rather than a measurement's. Strictly above 128
+ * is what makes this a position the old capacity could not hold, and at most 175
+ * is that document's derived maximum for this game, which no position may
+ * exceed. The buffer is the shared figure of 512, for the same reason every
+ * other caller that wants one array uses it.
+ */
+void case_a_position_past_the_old_move_capacity() {
+    Case c("a legal position offers more moves than the old MAX_MOVES held");
+
+    const char *const kHighMobility =
+        "3k5/9/3C5/6R2/5C3/2R6/9/1P~5P~1/4K4/P~7P~ w - - 0 1";
+
+    MxqError err = make_error();
+    c.check_status(mxq_rules_validate_fen(g_core, MXQ_GAME_KIND_JIEQI,
+                                          kHighMobility, &err),
+                   MXQ_OK, "the position is one this core accepts");
+
+    std::vector<MxqMove> moves(512);
+    for (MxqMove &move : moves) {
+        move.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
+    }
+    std::size_t count = 0;
+    err = make_error();
+    c.check_status(mxq_rules_legal_moves(g_core, MXQ_GAME_KIND_JIEQI,
+                                         kHighMobility, nullptr, 0, moves.data(),
+                                         moves.size(), &count, &err),
+                   MXQ_OK,
+                   "the facade answers (" + std::string(err.detail) + ")");
+    c.check(count > 128,
+            "the position offers more than the old capacity of 128 moves (got " +
+                std::to_string(count) + ")");
+    c.check(count <= 175,
+            "and no more than this game's derived maximum of 175 (got " +
+                std::to_string(count) + ")");
+
+    c.report();
+}
+
 void case_the_game_axis_refuses_what_this_game_has_none_of() {
     Case c("jieqi is prepared for nothing, searched never, and stored not yet");
 
@@ -448,6 +506,7 @@ int main() {
     case_the_jieqi_slice_generates_the_starting_move_set();
     case_a_face_down_piece_moves_as_the_piece_that_starts_there();
     case_the_core_answers_for_jieqi_through_the_c_surface();
+    case_a_position_past_the_old_move_capacity();
     case_the_game_axis_refuses_what_this_game_has_none_of();
 
     mxq_core_shutdown(g_core, nullptr);

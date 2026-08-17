@@ -299,13 +299,13 @@
     "_about": "The third engine: the pinned chentianren0/Pikafish fork's jieqi branch, from which the core vendors a rules slice rather than an engine. Jieqi is xiangqi played with the pieces face down, and neither of the other two engines can decide its rules: Fairy-Stockfish has no hidden-piece concept and Rapfi is a placement engine. What is vendored is three translation units and their header closure — the position, the move generator and the attack tables — and no search, evaluation or NNUE, so this fork pins no network and no configuration file. It sits beside 'fork' and 'gomoku_fork' because the three are separate engines with separate revisions and separate patch lists; nothing about one describes another.",
     "repository": "https://github.com/chentianren0/Pikafish",
     "branch": "jieqi-mxq",
-    "revision": "b0595bb2d6b14cad000278af1f5bbaba524a5870",
-    "revision_committed_at": "2026-08-16T12:40:09-07:00",
+    "revision": "0401526394857ec9b31a878dbae8de81861db330",
+    "revision_committed_at": "2026-08-16T19:12:27-07:00",
     "upstream_repository": "https://github.com/official-pikafish/Pikafish",
     "upstream_branch": "jieqi",
     "upstream_base_revision": "9b963f727983a1d9308e0dca48b39c802b8e75a2",
     "license": "GPL-3.0-or-later",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. The one entry touches src/position.cpp, src/position.h and src/types.h, all three of which are in the vendored slice, so the bytes the core compiles are the patched ones.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. Both entries touch files the vendored slice carries — src/position.cpp, src/position.h and src/types.h — so the bytes the core compiles are the patched ones.",
     "patches": [
       {
         "id": "report-the-rule",
@@ -316,6 +316,18 @@
         "merge_revision": null,
         "commits": [
           "b0595bb"
+        ]
+      },
+      {
+        "id": "raise-max-moves",
+        "summary": "Raises MAX_MOVES from 128 to 256 in src/types.h, one line. 128 is xiangqi's bound, above its derived maximum of 119, and jieqi breaks the assumption behind it: a face-down piece moves as the piece whose square it stands on while the identity it was dealt may stand revealed and moving elsewhere, so one deal puts a chariot's moves and a chariot on the board at once and both count. The derived maximum is 175. MoveList holds ExtMove[MAX_MOVES], so a position past the bound wrote beyond its own storage, and ordinary play reaches such positions — a 148-move one is in the fork's commit message, and the overrun was reachable through this core's public C surface from a record its own validator accepts. Verified under ASAN at the fork: the old bound overflows on that position through ordinary generation, the new build is clean, and adjudication is byte-identical.",
+        "required_by": [
+          "https://github.com/chentianren0/MiniXiangqi/issues/217",
+          "https://github.com/chentianren0/MiniXiangqi/pull/222"
+        ],
+        "merge_revision": null,
+        "commits": [
+          "0401526"
         ]
       }
     ],

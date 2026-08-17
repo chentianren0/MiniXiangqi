@@ -12,8 +12,8 @@ authority for Mini Xiangqi and Xiangqi, and
 |---|---|
 | Repository | `https://github.com/chentianren0/Pikafish` |
 | Branch | `jieqi-mxq` |
-| Revision | `b0595bb2d6b14cad000278af1f5bbaba524a5870` |
-| Committed | 2026-08-16T12:40:09-07:00 |
+| Revision | `0401526394857ec9b31a878dbae8de81861db330` |
+| Committed | 2026-08-16T19:12:27-07:00 |
 | Upstream base | `9b963f727983a1d9308e0dca48b39c802b8e75a2` (`official-pikafish/Pikafish`, branch `jieqi`) |
 | License | GPLv3 — [`upstream/Copying.txt`](upstream/Copying.txt) |
 
@@ -23,11 +23,22 @@ the single source of truth; the table above repeats it for a reader who is
 already in this directory.
 
 **The vendored sources are the patched ones.** The pinned revision is the
-upstream jieqi branch plus one fork change, `report-the-rule`, which adds an
-optional out-parameter to `Position::rule_judge` naming which rule produced its
-value. It touches `src/position.cpp`, `src/position.h` and `src/types.h`, all
-three of which are in this snapshot, so what the core compiles is the patched
-engine and not the upstream one.
+upstream jieqi branch plus two fork changes, and both touch files this snapshot
+carries — `src/position.cpp`, `src/position.h` and `src/types.h` — so what the
+core compiles is the patched engine and not the upstream one.
+
+- `report-the-rule` adds an optional out-parameter to `Position::rule_judge`
+  naming which rule produced its value.
+- `raise-max-moves` raises `MAX_MOVES` from 128 to 256, one line of
+  `src/types.h`. 128 is xiangqi's bound and jieqi's derived maximum is 175: a
+  face-down piece moves as the piece whose square it stands on while the
+  identity it was dealt may stand revealed and moving elsewhere, so one deal
+  puts a chariot's moves and a chariot on the board at once. `MoveList` holds
+  `ExtMove[MAX_MOVES]`, so a position past the bound wrote beyond its own
+  storage — an overrun ordinary play reaches, and one the core's public C
+  surface reached from a record its own validator accepts.
+  `core/tests/mxq_pikafish_tests.cpp` pins a position past 128 through that
+  surface, so the bound cannot quietly fall back.
 
 ## Layout
 
@@ -142,7 +153,7 @@ header closure. Re-cutting it from a fork checkout must produce byte-identical
 output:
 
 ```sh
-git archive --format=tar b0595bb2d6b14cad000278af1f5bbaba524a5870 \
+git archive --format=tar 0401526394857ec9b31a878dbae8de81861db330 \
     AUTHORS Copying.txt README.md 'Top CPU Contributors.txt' \
     src/bitboard.cpp src/bitboard.h src/engine.h src/history.h src/magics.h \
     src/memory.h src/misc.h src/movegen.cpp src/movegen.h src/numa.h \
