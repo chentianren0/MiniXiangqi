@@ -343,11 +343,6 @@ struct SetupTests {
     /// the answer is the same either way, and because the bundle now runs on
     /// both: whichever probe the platform compiled in is the one this exercises.
     ///
-    /// What it cannot do is stand in for the on-device re-measurement the phase
-    /// still owes. A Simulator's process limit is the host Mac's memory, not a
-    /// phone's, so this says the probe answers plausibly rather than that it
-    /// answers the right number on an 8 GB device.
-    ///
     /// The available figure carries no invariant here at all, and the
     /// platforms are what say so: the increased-memory-limit entitlement lets
     /// a real device answer above the memory that exists — the M2 iPad Air
