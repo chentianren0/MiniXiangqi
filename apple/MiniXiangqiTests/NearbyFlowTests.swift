@@ -799,8 +799,9 @@ struct NearbyFlowTests {
         // And the ply this device answers with takes a face-down piece of the
         // other player's, which the capture disclosed to this player alone.
         play.sync(with: dealt(plies: ["b3b4", "b8b1", "h3h10"]))
-        #expect(theirs(play).pieces == [Piece(kind: .horse, side: .black)],
-                "a hidden capture is shown whole to its capturer")
+        #expect(theirs(play).pieces == [.init(kind: .horse, side: .black,
+                                              wasFaceDown: true)],
+                "a hidden capture is shown whole to its capturer, and tells that it left face down")
         #expect(theirs(play).hidden == 0)
         #expect(mine(play).hidden == 1, "and the count on this player's own row stands")
 

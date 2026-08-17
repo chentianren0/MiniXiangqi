@@ -221,7 +221,7 @@ struct JieqiTests {
         // and nothing is ever a count.
         let free = game.captured.panel(of: .red, throughPly: ply, seenBy: nil,
                                        disclosed: false)
-        #expect(free.pieces == [Piece(kind: identity, side: .red)])
+        #expect(free.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)])
         #expect(free.hidden == 0)
 
         // Its owner learns only that a piece is gone.
@@ -234,14 +234,15 @@ struct JieqiTests {
         // them alone.
         let capturer = game.captured.panel(of: .red, throughPly: ply, seenBy: .black,
                                            disclosed: false)
-        #expect(capturer.pieces == [Piece(kind: identity, side: .red)])
+        #expect(capturer.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)])
         #expect(capturer.hidden == 0)
 
         // The end of the game discloses everything to both players, so the
         // count resolves into the piece it was counting.
         let ended = game.captured.panel(of: .red, throughPly: ply, seenBy: .red,
                                         disclosed: true)
-        #expect(ended.pieces == [Piece(kind: identity, side: .red)])
+        #expect(ended.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)],
+                "and the resolved loss still says it left face down")
         #expect(ended.hidden == 0)
 
         // And the surface follows the walk: before the ply that took it, it
@@ -252,6 +253,23 @@ struct JieqiTests {
         #expect(game.captured.panel(of: .black, throughPly: ply, seenBy: nil,
                                     disclosed: false) ==
                 CapturedPieces.Panel(side: .black, pieces: [], hidden: 0))
+    }
+
+    @Test("The panel keeps which shown losses left face down, and open ones say not")
+    func thePanelTellsOpenCapturesFromHiddenOnes() {
+        // Two of the same piece, one taken in the open and one taken face
+        // down: the surface that draws them apart needs the panel to keep
+        // exactly that bit, and their order of taking.
+        var captured = CapturedPieces()
+        captured.taken = [CapturedPiece(ply: 4, side: .red, kind: .horse,
+                                        wasFaceDown: false),
+                          CapturedPiece(ply: 6, side: .red, kind: .horse,
+                                        wasFaceDown: true)]
+        let capturer = captured.panel(of: .red, throughPly: 7, seenBy: .black,
+                                      disclosed: false)
+        #expect(capturer.pieces == [.init(kind: .horse, side: .red, wasFaceDown: false),
+                                    .init(kind: .horse, side: .red, wasFaceDown: true)])
+        #expect(capturer.hidden == 0)
     }
 
     @Test("A retraction returns the concealment, and takes back what the ply took")
@@ -484,6 +502,8 @@ struct JieqiTests {
                                         seenBy: .red, disclosed: game.disclosesTheDeal)
         #expect(owner.hidden == 0)
         #expect(owner.pieces.count == 1)
+        #expect(owner.pieces.first?.wasFaceDown == true,
+                "the resolved piece keeps the telling that it left face down")
     }
 
     @Test("Two deals are two games")

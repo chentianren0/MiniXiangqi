@@ -133,6 +133,8 @@ final class PhoneJieqiUITests: XCTestCase {
         XCTAssertNotEqual(red, "红",
                           "a hidden capture is shown whole to its capturer, and in "
                           + "Free Play one person holds both hands")
+        XCTAssertTrue(red.contains("暗"),
+                      "and a loss that left face down says so — it reads \(red)")
         settled(app.buttons["captured-done"]).tap()
         XCTAssertTrue(point(app, "b1").waitForExistence(timeout: 10),
                       "and the board is where it was")
@@ -173,6 +175,9 @@ final class PhoneJieqiUITests: XCTestCase {
                       "whose piece it was, then what it was — it reads \(disclosed)")
         XCTAssertNotEqual(disclosed, "红",
                           "the disclosed row carries more than the side word")
+        XCTAssertTrue(disclosed.contains("暗"),
+                      "and the record keeps which losses left face down — it "
+                      + "reads \(disclosed)")
         settled(app.buttons["captured-done"]).tap()
         XCTAssertTrue(control(app, "replay-progress").waitForExistence(timeout: 10),
                       "and the replay is where it was")

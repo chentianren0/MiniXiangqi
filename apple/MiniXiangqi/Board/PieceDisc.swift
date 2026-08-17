@@ -150,13 +150,17 @@ struct PieceDisc: View {
     var board: BoardDefinition
     var style: BoardStyle = .traditional
     var symbols: PieceSymbols = .hanzi
+    /// How far the disc's face has arrived — the same axis a reveal moves
+    /// along, which the captured surface holds midway to say a piece left
+    /// the board face down.
+    var symbolOpacity: Double = 1
 
     var body: some View {
         Canvas { context, size in
             PieceDrawing(geometry: BoardGeometry(board: board, pitch: pitch),
                          style: style, symbols: symbols)
                 .draw(piece, at: CGPoint(x: size.width / 2, y: size.height / 2),
-                      lift: 0, in: context)
+                      lift: 0, symbolOpacity: symbolOpacity, in: context)
         }
         .frame(width: pitch, height: pitch)
         .accessibilityHidden(true)

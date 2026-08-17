@@ -59,6 +59,13 @@ enum BoardLayout {
     /// value that stands until the board says otherwise.
     static let capturedDiscPitch: CGFloat = 26
 
+    /// How far a was-hidden capture's symbol has arrived. A piece that left
+    /// the board face down is drawn with its face partway up — the reveal's
+    /// own axis, held — so an open capture and a disclosed one never read as
+    /// the same disc. A visual specific settled against the rendered board,
+    /// like the pitch above it.
+    static let capturedWasHiddenArrival: Double = 0.55
+
     /// What the captured-pieces surface is granted where it is a resident
     /// section of a panel the move list shares — replay's, beside the board.
     /// Two rows of discs with their labels; a side that has lost more than one

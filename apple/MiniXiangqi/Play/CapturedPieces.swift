@@ -57,10 +57,19 @@ struct CapturedPieces: Equatable {
 
     /// One side's losses, as one reader is entitled to see them.
     struct Panel: Equatable {
+        /// One loss this reader sees whole: what it was, and whether it left
+        /// the board face down — the fact the surface tells apart from an
+        /// open capture, however it draws the telling.
+        struct Shown: Hashable {
+            var kind: PieceKind
+            var side: Side
+            var wasFaceDown: Bool
+        }
+
         /// Whose losses these are.
         var side: Side
         /// The discs to draw, in the order they were taken.
-        var pieces: [Piece]
+        var pieces: [Shown]
         /// How many of that side's losses this reader may not see. Zero
         /// wherever the reader is the capturer, and zero everywhere once the
         /// game has disclosed.
@@ -79,7 +88,7 @@ struct CapturedPieces: Equatable {
     ///     both players.
     func panel(of side: Side, throughPly ply: Int, seenBy viewer: Side?,
                disclosed: Bool) -> Panel {
-        var pieces: [Piece] = []
+        var pieces: [Panel.Shown] = []
         var hidden = 0
         for capture in taken where capture.side == side && capture.ply < ply {
             // A hidden loss is shown to whoever took it, to both players once
@@ -87,7 +96,8 @@ struct CapturedPieces: Equatable {
             // that a piece is gone.
             let shown = !capture.wasFaceDown || disclosed || viewer != side
             if shown {
-                pieces.append(Piece(kind: capture.kind, side: capture.side))
+                pieces.append(Panel.Shown(kind: capture.kind, side: capture.side,
+                                          wasFaceDown: capture.wasFaceDown))
             } else {
                 hidden += 1
             }

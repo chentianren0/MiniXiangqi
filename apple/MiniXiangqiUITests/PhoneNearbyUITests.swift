@@ -385,8 +385,9 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertEqual(label(app, "captured-red"), "红 1 暗子")
 
         // The piece they took is whole, because the capture disclosed it to them
-        // alone — the horse the staged deal had standing on h10.
-        XCTAssertEqual(label(app, "captured-black"), "黑 马")
+        // alone — the horse the staged deal had standing on h10 — and it says
+        // it left face down, the hidden word joined to its name.
+        XCTAssertEqual(label(app, "captured-black"), "黑 暗马")
         attach(app, named: "phone-nearby-14-what-the-captures-took")
 
         app.buttons["captured-done"].tap()

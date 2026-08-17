@@ -159,6 +159,8 @@ final class JieqiUITests: XCTestCase {
         XCTAssertNotEqual(red, "红",
                           "a hidden capture is shown whole to its capturer, and in "
                           + "Free Play one person holds both hands")
+        XCTAssertTrue(red.contains("暗"),
+                      "and a loss that left face down says so — it reads \(red)")
         XCTAssertFalse(element(app, "captured-empty").exists)
         attach(app, named: "81-a-jieqi-capture")
 

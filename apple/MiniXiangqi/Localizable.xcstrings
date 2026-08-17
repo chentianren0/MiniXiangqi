@@ -1063,6 +1063,24 @@
         }
       }
     },
+    "captured.wasHidden": {
+      "comment": "Spoken form of one shown loss that left the board face down — the discs say it by drawing the symbol partway arrived, and this joins the hidden word to the piece's name for a reader who hears the row. %@ is the piece's name; the word family is captured.hidden's.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "face-down %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗%@"
+          }
+        }
+      }
+    },
     "control.accept": {
       "extractionState": "manual",
       "localizations": {

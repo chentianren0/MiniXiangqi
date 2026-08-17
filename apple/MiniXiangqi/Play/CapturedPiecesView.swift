@@ -8,7 +8,9 @@
 // is gone and never which — are that many face-down discs at the row's end,
 // after the revealed pieces: the face-down disc is already the surface's word
 // for a piece its reader cannot name, and an anonymous tail carries no order
-// worth keeping.
+// worth keeping. A piece that left the board face down is drawn with its
+// symbol partway arrived — the reveal's own axis, held — wherever this reader
+// sees it whole, so an open capture and a disclosed one never read the same.
 //
 // **Where the rows stand, how large their discs are, and how a disclosure
 // arrives are settled against the rendered board**, as every other visual
@@ -77,14 +79,17 @@ struct CapturedPiecesView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: BoardLayout.capturedDiscPitch),
                                          spacing: 0, alignment: .leading)],
                       alignment: .leading, spacing: 0) {
-                let discs = panel.pieces + Array(repeating: Piece(kind: nil,
-                                                                  side: panel.side,
-                                                                  isFaceDown: true),
-                                                 count: panel.hidden)
-                ForEach(Array(discs.enumerated()), id: \.offset) { _, piece in
-                    PieceDisc(piece: piece, pitch: BoardLayout.capturedDiscPitch,
+                let discs: [(piece: Piece, arrival: Double)] = panel.pieces.map {
+                    (Piece(kind: $0.kind, side: $0.side),
+                     $0.wasFaceDown ? BoardLayout.capturedWasHiddenArrival : 1)
+                } + Array(repeating: (Piece(kind: nil, side: panel.side,
+                                            isFaceDown: true), 1),
+                          count: panel.hidden)
+                ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
+                    PieceDisc(piece: disc.piece, pitch: BoardLayout.capturedDiscPitch,
                               board: game.board, style: style,
-                              symbols: PieceSymbols.named(storedSymbols))
+                              symbols: PieceSymbols.named(storedSymbols),
+                              symbolOpacity: disc.arrival)
                 }
             }
         }
@@ -99,8 +104,13 @@ struct CapturedPiecesView: View {
 
     private func describe(_ panel: CapturedPieces.Panel) -> String {
         var parts = [game.sideName(panel.side)]
-        parts += panel.pieces.compactMap { piece in
-            piece.kind.map { $0.name(for: piece.side) }
+        parts += panel.pieces.map { shown in
+            // The telling reaches a reader who hears the row too: the hidden
+            // word joined to the name, where the discs say it by arrival.
+            let name = shown.kind.name(for: shown.side)
+            return shown.wasFaceDown
+                ? String(format: String(localized: "captured.wasHidden"), name)
+                : name
         }
         if panel.hidden > 0 {
             parts.append(String(format: String(localized: "captured.hidden"),
