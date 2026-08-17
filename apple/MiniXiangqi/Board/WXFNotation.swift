@@ -41,20 +41,29 @@ enum WXFNotation {
         // W1's first two slots. The piece slot carries the type's letter unless
         // an index has replaced it; the origin slot carries the file unless a
         // marker has replaced it. Only one of the two is ever substituted.
+        //
+        // **A face-down piece carries `~` after its letter**, which is the mark
+        // the position record itself uses for one — docs/jieqi-rules.md writes a
+        // face-down piece as its identity letter followed by `~`. The letter is
+        // then the role the square gives it rather than an identity anybody
+        // knows, which is exactly what the mark says. See JieqiNotation for the
+        // reading this belongs to; it never appears in a game that conceals
+        // nothing.
+        let mark = piece.isFaceDown ? "~" : ""
         let opening: String
         switch origin(of: piece, at: source, in: placement) {
         case .file:
-            opening = letter(kind) + number(file: source.file, for: piece.side,
-                                                  on: board)
+            opening = letter(kind) + mark + number(file: source.file, for: piece.side,
+                                                   on: board)
         case .marker(let marker):
             // W3: the marker stands in the file's own slot, after the letter —
             // R+=3, not +R=3 — and the file itself goes.
-            opening = letter(kind) + marker
+            opening = letter(kind) + mark + marker
         case .index(let index):
             // W4 and W5: the index stands in the letter's slot instead, and the
             // file stays where it was.
-            opening = String(index) + number(file: source.file, for: piece.side,
-                                             on: board)
+            opening = String(index) + mark + number(file: source.file, for: piece.side,
+                                                    on: board)
         }
 
         // `+` is toward the opponent, which is up the board for Red and down for
@@ -101,6 +110,14 @@ enum WXFNotation {
     /// Ordered from the opponent's end towards the mover's own, so front means
     /// nearer the opponent and index 1 is the frontmost, and the sense is
     /// unaffected by which way the board is facing.
+    ///
+    /// **A face-down piece is only ever compared with face-down pieces**, `Piece`
+    /// equality carrying that state, and it never reaches either substituted
+    /// form: a face-down piece stands on its own start square and no two start
+    /// squares on one file carry the same role, so the mover's file never holds
+    /// a second face-down piece of the same role. A revealed piece is likewise
+    /// compared only with revealed ones, which is the behaviour every game
+    /// without a face-down piece already had.
     private static func origin(of piece: Piece, at square: Square,
                                in placement: Placement) -> Origin {
         let onFile = (0..<placement.board.rankCount)
@@ -143,7 +160,7 @@ enum WXFNotation {
     /// document, and G means Guard in the computer ecosystem's own letter set,
     /// so either substitution would break with every WXF-conformant reader and
     /// tool.
-    private static func letter(_ kind: PieceKind) -> String {
+    static func letter(_ kind: PieceKind) -> String {
         switch kind {
         case .general: "K"
         case .advisor: "A"

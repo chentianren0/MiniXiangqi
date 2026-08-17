@@ -50,6 +50,23 @@ enum BoardLayout {
     /// far in from the panel's own.
     static let panelInset: CGFloat = 16
 
+    /// The cell one captured disc occupies. A pitch, like every other dimension
+    /// a disc is drawn from, so the same routine that draws a board's piece
+    /// draws this one at the size this surface can spare — small enough that a
+    /// side's whole complement wraps into a panel's width, large enough that the
+    /// character on it is read rather than guessed at. It is a visual specific
+    /// docs/interaction-design.md leaves to a rendered board, and this is the
+    /// value that stands until the board says otherwise.
+    static let capturedDiscPitch: CGFloat = 26
+
+    /// What the captured-pieces surface is granted where it stands inside a
+    /// panel of fixed height — replay's, beneath the board. Two rows of discs
+    /// with their labels; a side that has lost more than one row's worth scrolls
+    /// inside the grant rather than taking the room the move list is standing
+    /// in. Beside the board the panel has height to spare and the surface simply
+    /// takes what it needs.
+    static let capturedSurfaceHeight: CGFloat = 96
+
     /// What the stacked shape's chrome asks for: the turn status above the
     /// board and the play controls below it, together.
     ///

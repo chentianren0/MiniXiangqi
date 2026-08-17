@@ -67,7 +67,12 @@ extension GameKind {
                             riverAfterRank: nil,
                             starPoints: [],
                             play: .movement)
-        case .xiangqi:
+        // Jieqi's board, palaces, river and start squares are Xiangqi's exactly,
+        // per docs/jieqi-rules.md — so the definition is Xiangqi's, written out
+        // rather than shared through a fallthrough, because what makes the two
+        // agree is that statement about the games and not a line of code either
+        // of them could move.
+        case .xiangqi, .jieqi:
             BoardDefinition(fileCount: 9, rankCount: 10,
                             palaces: [
                                 .init(files: 3...5, ranks: 0...2),
@@ -192,10 +197,23 @@ enum PieceKind: Character, CaseIterable {
 /// gaining a fourteenth-and-a-half member: a stone is not one of the piece
 /// characters, and every place that draws or names a kind has to answer for the
 /// stone anyway.
+///
+/// **A face-down piece is the third body, and it is honest state rather than an
+/// absent kind.** docs/interaction-design.md, "The Jieqi board": the style's
+/// disc with its side ring and nothing on its face, saying whose piece it is
+/// and no more. Its `kind` is therefore **the role its square gives it** — the
+/// piece that starts on the square it stands on, which is public, both players
+/// seeing the square — and never the identity the position holds under it.
+/// **This app never holds that identity in a `Piece` at all**, so no surface
+/// that draws or names one can leak it; where a capture discloses an identity,
+/// `Placement.concealedIdentity(at:)` is the one place it is read from.
 struct Piece: Hashable {
-    /// `nil` on a stone, which has no kind to carry.
+    /// `nil` on a stone, which has no kind to carry. On a face-down piece it is
+    /// the square's role and not the concealed identity.
     var kind: PieceKind?
     var side: Side
+    /// Whether the piece stands face down — Jieqi's, and no other game's.
+    var isFaceDown = false
 
     static func stone(_ side: Side) -> Piece { Piece(kind: nil, side: side) }
 
@@ -207,10 +225,27 @@ struct Piece: Hashable {
 struct Placement {
     let game: GameKind
     private var pieces: [Square: Piece] = [:]
+    /// What the record holds under each face-down disc.
+    ///
+    /// **It is not drawn and not named anywhere.** A position record is the
+    /// objective position and holds every hidden identity, and it is never what
+    /// a player is shown; this is that half of the record, kept out of `Piece`
+    /// so that nothing which draws a board or composes a label can reach it.
+    /// Exactly one surface reads it, through `concealedIdentity(at:)`: the
+    /// captured-pieces surface, for a piece whose capture disclosed it.
+    private var concealed: [Square: PieceKind] = [:]
 
     var board: BoardDefinition { game.board }
 
     subscript(square: Square) -> Piece? { pieces[square] }
+
+    /// The identity the record holds under the face-down piece on `square`, or
+    /// nil where nothing face down stands there.
+    ///
+    /// The caller is answering for a piece a capture has taken off the board and
+    /// disclosed to whoever took it — docs/jieqi-rules.md's disclosure section —
+    /// and nothing on the board is ever described from this.
+    func concealedIdentity(at square: Square) -> PieceKind? { concealed[square] }
 
     /// Where a side's general stands. Not a rule and not an adjudication — the
     /// core says whether a side is in check, and this only says which disc to
@@ -230,6 +265,13 @@ struct Placement {
     /// where the letter is the stone's kind and its case is its side, and
     /// deliberately not `b`/`w`, which would contradict the side-to-move field
     /// beside it.
+    ///
+    /// **One letter is one point in every game but Jieqi**, whose record writes
+    /// a face-down piece as its identity letter followed by `~` —
+    /// docs/jieqi-rules.md, "Positions, coordinates, and notation". So the
+    /// letter is read first and the mark after it, and the two together are one
+    /// point: the identity goes to `concealed`, where nothing draws it, and what
+    /// stands on the board is a face-down piece of the role its square gives it.
     init(fen: String, game: GameKind) {
         self.game = game
         guard let placement = fen.split(separator: " ").first else { return }
@@ -237,6 +279,7 @@ struct Placement {
         guard lines.count == board.rankCount else { return }
 
         var parsed: [Square: Piece] = [:]
+        var hidden: [Square: PieceKind] = [:]
         for (row, line) in lines.enumerated() {
             let rank = board.rankCount - 1 - row
             var file = 0
@@ -259,6 +302,19 @@ struct Placement {
                     run = (run ?? 0) * 10 + digit
                     continue
                 }
+                // The face-down mark belongs to the letter before it rather
+                // than to a point of its own, so it is applied to the piece
+                // already standing and never advances the file.
+                if character == "~" {
+                    let square = Square(file: file - 1, rank: rank)
+                    guard game.conceals, let identity = parsed[square]?.kind,
+                          let role = Self.role(of: square, on: board)
+                    else { return }
+                    parsed[square]?.kind = role
+                    parsed[square]?.isFaceDown = true
+                    hidden[square] = identity
+                    continue
+                }
                 guard closeRun() else { return }
                 let side: Side = character.isUppercase ? .red : .black
                 guard let piece = Self.piece(letter: Character(character.lowercased()),
@@ -270,6 +326,39 @@ struct Placement {
             guard closeRun(), file == board.fileCount else { return }
         }
         pieces = parsed
+        concealed = hidden
+    }
+
+    /// The role a square gives whatever stands face down on it: the piece that
+    /// starts there.
+    ///
+    /// docs/jieqi-rules.md: a hidden piece moves and captures exactly as the
+    /// xiangqi piece that starts on the square it stands on, it has never moved,
+    /// so that square is always its own start square — and both players see the
+    /// square, which is why the role is public where the identity is not.
+    ///
+    /// **The table is read from the core rather than written here**, out of the
+    /// one ruleset that states these squares: Jieqi's start squares are
+    /// Xiangqi's exactly, so Xiangqi's frozen start says which piece each of
+    /// them belongs to. Nothing about legality is derived from it — the legal
+    /// moves are the core's answer, and this only decides which piece a move
+    /// list names.
+    private static let squareRoles: [Square: PieceKind] = {
+        guard let start = Core.frozenStartFEN(for: .xiangqi) else { return [:] }
+        var roles: [Square: PieceKind] = [:]
+        let placement = Placement(fen: start, game: .xiangqi)
+        for rank in 0..<GameKind.xiangqi.board.rankCount {
+            for file in 0..<GameKind.xiangqi.board.fileCount {
+                let square = Square(file: file, rank: rank)
+                roles[square] = placement[square]?.kind
+            }
+        }
+        return roles
+    }()
+
+    private static func role(of square: Square, on board: BoardDefinition) -> PieceKind? {
+        guard board == GameKind.xiangqi.board else { return nil }
+        return squareRoles[square]
     }
 
     /// What one lowercased FEN letter denotes on this board.

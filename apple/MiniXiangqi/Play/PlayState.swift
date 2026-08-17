@@ -169,6 +169,14 @@ final class PlayState {
     /// `.setup`, and replaced afresh on every entry.
     var draft = SetupDraft.fromDefaults()
 
+    /// The position the pre-start page previews. Meaningful only while `page` is
+    /// `.setup`, and made afresh on every entry, exactly as the draft is.
+    ///
+    /// It is here rather than in the page because a game whose start is dealt
+    /// has no constant to read: there is one start for every deal. See
+    /// `previewStart(of:)`.
+    private(set) var preview: String = ""
+
     /// The Custom Scene editor's draft, while that page is up. **In memory and
     /// nowhere else**: it is made when the editor opens and dropped when it is
     /// left, which is the whole of discarding it.
@@ -423,7 +431,28 @@ final class PlayState {
     private func openSetup(_ selection: PlaySelection) {
         draft = SetupDraft.fromDefaults()
         creationFailure = nil
+        preview = previewStart(of: selection.game)
         page = .setup(selection)
+    }
+
+    /// What the pre-start page shows a game beginning from.
+    ///
+    /// A game whose rules freeze a start previews that constant, which is also
+    /// the position it will be created from. **A game whose start is dealt
+    /// previews a deal of its own**, and it is a different deal from the one the
+    /// game will be played from — which shows nothing and hides nothing, because
+    /// every deal looks the same from outside: the two generals face up on their
+    /// own points and thirty discs face down on theirs, which is the whole of
+    /// what either player will see when the board opens. Nobody is being shown a
+    /// position they will play; they are being shown what this game looks like.
+    ///
+    /// A deal the core will not make previews an empty board, which is what a
+    /// malformed position draws anywhere in this app. Nothing follows from it:
+    /// the game is dealt again when it is created, and a refusal there is the
+    /// creation failure that page already presents.
+    private func previewStart(of game: GameKind) -> String {
+        if let frozen = Core.frozenStartFEN(for: game) { return frozen }
+        return (try? core.deal(game).startFEN) ?? ""
     }
 
     /// The editor, over an empty board and a draft nothing has been written of.
@@ -603,7 +632,7 @@ final class PlayState {
         let token = attempt
 
         guard selection.mode == .humanVersusAI else {
-            create(.freePlay(game: selection.game), policy: policy, token: token)
+            createFreePlay(selection.game, policy: policy, token: token)
             return
         }
 
@@ -633,6 +662,37 @@ final class PlayState {
             create(.humanVersusAI(game: selection.game, humanSide: human,
                                   level: draft.level, choice: draft.firstMover),
                    policy: policy, token: token)
+        }
+    }
+
+    /// **开始对局** in Free Play. Nothing is prepared and nothing is searched —
+    /// Free Play owes no search — so the game is created and that is the whole
+    /// of it.
+    ///
+    /// **A game whose start is dealt is dealt here**, at the moment it is
+    /// created and not before: the deal *is* the game, so it is drawn in the act
+    /// that commits one and never left standing beside a page nobody pressed
+    /// 开始对局 on. The entropy is this app's, from the platform's cryptographic
+    /// source, and the derivation is the core's; nothing here is kept, because
+    /// nothing verifies a local game against itself and the dealt start in the
+    /// record is the deal.
+    ///
+    /// A deal the core will not make creates nothing and presents the same
+    /// notice a creation the store refused presents: no game exists either way,
+    /// the page and the draft stand, and what a reader does about it is press
+    /// 重试.
+    private func createFreePlay(_ game: GameKind, policy: MotionPolicy, token: Int) {
+        guard Core.frozenStartFEN(for: game) == nil else {
+            create(.freePlay(game: game), policy: policy, token: token)
+            return
+        }
+        do {
+            let deal = try core.deal(game)
+            create(.freePlay(game: game, startFEN: deal.startFEN),
+                   policy: policy, token: token)
+        } catch {
+            creating = false
+            creationFailure = .notSaved(CoreError(wrapping: error))
         }
     }
 
@@ -904,7 +964,14 @@ final class PlayState {
         self.motion = motion
         let opponent = Opponent(engine: engine, game: game, motion: motion)
         self.opponent = opponent
-        let hint = Hint(engine: engine, game: game, motion: motion)
+        // **A game no engine plays has no hint to offer**, and the absence is a
+        // capability that is not there rather than an act momentarily
+        // impossible: docs/interaction-design.md, "Play controls" — nothing in
+        // the app plays it, so there is nobody to ask what they would play. The
+        // object is not built, which is what takes the control off the cluster;
+        // the answer is the core's, per `Core.isPlayedByAnEngine`.
+        let hint = Core.isPlayedByAnEngine(game.kind)
+            ? Hint(engine: engine, game: game, motion: motion) : nil
         self.hint = hint
         // The search starts at the commit and the reply departs after the
         // landing, so the opponent listens at both.
@@ -1012,6 +1079,12 @@ final class PlayState {
     /// One explicit debug fixture line. Its game names are the data contract's
     /// own spellings, so a fixture and the record it produces use one
     /// vocabulary.
+    ///
+    /// **A game whose start is dealt names none of them**, and a line asking for
+    /// one is refused rather than dealt a start of its own: a fixture exists so
+    /// a run can begin at a *stated* position, and a line whose position was
+    /// drawn from the platform's randomness states nothing. Such a fixture would
+    /// have to carry the deal it was played from, and none does.
     private struct LaunchLine {
         var game: GameKind
         var moves: [String]

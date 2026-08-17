@@ -62,10 +62,12 @@ struct SetupScreen: View {
         }
     }
 
+    /// The board this page previews, which is the position the state made when
+    /// the page was entered: a game's frozen start, or — for a game whose start
+    /// is dealt — a deal of its own, every deal looking the same from outside.
     private func preview(_ geometry: BoardGeometry) -> some View {
         BoardView(geometry: geometry,
-                  placement: Placement(fen: Core.startFEN(for: selection.game),
-                                       game: selection.game),
+                  placement: Placement(fen: play.preview, game: selection.game),
                   flipped: previewsFlipped,
                   showsNumerals: true,
                   selected: nil,

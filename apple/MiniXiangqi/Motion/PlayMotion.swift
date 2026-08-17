@@ -67,6 +67,8 @@ final class PlayMotion {
     /// The fading disc's progress, 0 to 1 — scheduled against the mover's
     /// arrival for a capture, from its departure for an Undo.
     var transitFade: Double { transits.fade }
+    /// How far a revealed identity has come up on the travelling disc.
+    var transitReveal: Double { transits.reveal }
 
     /// The check rings' one-time swell as they appear. Never raised under
     /// Reduce Motion: the pulse is removed, not converted.
@@ -302,10 +304,24 @@ final class PlayMotion {
             let restored = plies == 2
                 ? (first?.to == last.to ? nil : between?[last.to])
                 : game.placement[last.to]
+            // A retraction returns the position's concealment, so a ply that
+            // revealed a piece puts it back face down where it came from. The
+            // face it arrives with is read off the position the Undo produced,
+            // exactly as a reveal's is, and it is nil wherever nothing was
+            // turned back over.
+            let returned = game.placement[lastOrigin].flatMap {
+                $0.isFaceDown ? $0 : nil
+            }
             return Transit(kind: .undo,
                            move: Move(from: last.to, to: lastOrigin),
                            piece: mover,
-                           fading: restored.map { ($0, last.to) })
+                           fading: restored.map { ($0, last.to) },
+                           revealed: returned)
+        }
+        // The identity goes as the disc returns home, on the same schedule a
+        // reveal arrives on.
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         if let first, let firstOrigin = first.from, let firstMover {
             transits.pair(with: Transit(kind: .undo,
@@ -497,8 +513,21 @@ final class PlayMotion {
             guard game.lastMove == move, game.failure == nil,
                   game.opponentFailure == nil else { return nil }
             committed?()
+            // What the move turned up, read off the position it produced: the
+            // piece standing at the destination is face up there whatever it
+            // set out as, so this asks the committed position rather than
+            // deriving a reveal from the one it left.
+            let arrived = piece.isFaceDown ? game.placement[move.to] : nil
             return Transit(kind: .move, move: move, piece: piece,
-                           fading: captured.map { ($0, move.to) })
+                           fading: captured.map { ($0, move.to) },
+                           revealed: arrived)
+        }
+        // The identity comes up over the last stretch of the journey and is
+        // there as the disc lands. Under Reduce Motion it rides the dissolve
+        // the travel becomes, which the canvas draws from the travel's own
+        // progress, so nothing is scheduled for it here.
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         guard transits.drawsRemoval else { return }
         // The captured disc gives way under the arriving mover: its removal is

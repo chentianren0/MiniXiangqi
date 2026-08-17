@@ -37,6 +37,7 @@ extension GameKind {
         case .xiangqi: String(localized: "game.xiangqi")
         case .gomoku15: String(localized: "game.gomoku")
         case .renju: String(localized: "game.renju")
+        case .jieqi: String(localized: "game.jieqi")
         }
     }
 

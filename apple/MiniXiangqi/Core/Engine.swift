@@ -355,6 +355,25 @@ extension Core: AIEngine {
                       as: UTF8.self)
     }
 
+    /// Whether any engine in this build plays this game at all.
+    ///
+    /// **Asked of the core rather than written here.** A game an engine plays
+    /// has a profile identifier to name and the entry states it; a game none
+    /// plays has nothing to name, and its refusal is permanent rather than a
+    /// state some preparation would clear — docs/core-interface.md: Jieqi "is
+    /// prepared for nothing and searched never", and the whole search facade
+    /// answers for it the same way at every moment of its life.
+    ///
+    /// It is a build fact and needs no core instance, which is why it is static:
+    /// the surfaces that ask are deciding whether a capability exists at all,
+    /// and one of them asks before any game has been created.
+    nonisolated static func isPlayedByAnEngine(_ game: GameKind) -> Bool {
+        var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
+        var length = 0
+        return mxq_engine_profile_id(game.raw, &buffer, buffer.count, &length, nil)
+            == MXQ_OK
+    }
+
     func prepareEngine(for game: GameKind, _ budget: EngineBudget,
                        completion: @escaping @MainActor (Result<EnginePlan, CoreError>) -> Void) {
         EngineFacade(handle: handle).prepare(for: game, budget) { result in

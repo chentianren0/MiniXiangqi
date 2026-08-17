@@ -815,6 +815,24 @@
         }
       }
     },
+    "board.a11y.faceDown": {
+      "comment": "What a screen reader says about a piece standing face down: its side, then this. The identity the position holds under it is never read out.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face Down"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗子"
+          }
+        }
+      }
+    },
     "board.a11y.forbidden": {
       "comment": "The state token on a point the side to move may not play — Renju's forbidden points during Black's turn.",
       "extractionState": "manual",
@@ -987,6 +1005,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "白"
+          }
+        }
+      }
+    },
+    "captured.empty": {
+      "comment": "The captured-pieces surface before anything has been taken.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing captured yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有棋子被吃。"
+          }
+        }
+      }
+    },
+    "captured.hidden": {
+      "comment": "How many of a side's losses this reader may not see: pieces taken while face down, whose identities were disclosed to the player who took them. A plural pattern in English and a literal in Chinese, as every other count in this catalog is.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld face-down"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld face-down"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暗子 %lld"
+          }
+        }
+      }
+    },
+    "captured.title": {
+      "comment": "The captured-pieces surface's name — the panel section beside the board, and the sheet reached from the board's toolbar where the surface is not resident.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Captured"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "被吃棋子"
           }
         }
       }
@@ -1521,6 +1605,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "五子棋"
+          }
+        }
+      }
+    },
+    "game.jieqi": {
+      "comment": "The game name used in the Play-home section, pre-start setup and game metadata. The hidden-identity xiangqi, played on the xiangqi board from a dealt start.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jieqi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揭棋"
           }
         }
       }
@@ -2610,6 +2712,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "五子连珠"
+          }
+        }
+      }
+    },
+    "reason.fortyMoveRule": {
+      "comment": "The dealt game's own no-capture draw, beside reason.fiftyMoveRule. Forty is that game's own number rather than the other's under another name.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forty-Move Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "四十回合规则"
           }
         }
       }

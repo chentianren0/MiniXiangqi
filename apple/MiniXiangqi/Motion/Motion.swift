@@ -98,6 +98,20 @@ enum Motion {
         .easeIn(duration: captureFade).delay(travel - captureFadeLead)
     }
 
+    // MARK: - The reveal
+
+    /// A Jieqi reveal: the identity comes up on the travelling disc over the
+    /// last stretch of the journey and is fully there as it lands.
+    ///
+    /// docs/interaction-design.md, "The Jieqi board": the piece travels its move
+    /// in the ordinary language and arrives face up — one event and not two, so
+    /// nothing is scheduled after the arrival and no second beat is drawn. It
+    /// takes the crossfade's own duration, because that is what it is: the
+    /// board's shortest state change, ending exactly where the travel ends.
+    static func revealAnimation(travel: TimeInterval) -> Animation {
+        .easeInOut(duration: crossfade).delay(max(travel - crossfade, 0))
+    }
+
     // MARK: - Undo
 
     /// Undo reverses the move visually with the same distance mapping, so one

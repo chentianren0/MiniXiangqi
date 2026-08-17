@@ -72,6 +72,12 @@ struct BoardPhases: VectorArithmetic {
     /// The fading disc's progress — a capture giving way, a restored piece
     /// returning.
     var fade: Double = 0
+    /// How far the arriving face has come up on the travelling disc: a Jieqi
+    /// reveal, and nothing else. It is a channel of its own beside the travel
+    /// rather than a reading of it, because what it draws is scheduled against
+    /// the arrival rather than spread over the journey — the identity comes up
+    /// as the piece lands, which is what makes a reveal one event.
+    var reveal: Double = 0
     /// Orientation: 0 is Red at the bottom, 1 is flipped.
     var flip: Double = 0
     /// The check rings' one-time swell.
@@ -113,6 +119,7 @@ struct BoardPhases: VectorArithmetic {
 
     static func + (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel + rhs.travel, fade: lhs.fade + rhs.fade,
+             reveal: lhs.reveal + rhs.reveal,
              flip: lhs.flip + rhs.flip, check: lhs.check + rhs.check,
              marker: lhs.marker + rhs.marker, hint: lhs.hint + rhs.hint,
              lifts: lhs.lifts + rhs.lifts, settled: lhs.settled + rhs.settled)
@@ -120,13 +127,14 @@ struct BoardPhases: VectorArithmetic {
 
     static func - (lhs: Self, rhs: Self) -> Self {
         Self(travel: lhs.travel - rhs.travel, fade: lhs.fade - rhs.fade,
+             reveal: lhs.reveal - rhs.reveal,
              flip: lhs.flip - rhs.flip, check: lhs.check - rhs.check,
              marker: lhs.marker - rhs.marker, hint: lhs.hint - rhs.hint,
              lifts: lhs.lifts - rhs.lifts, settled: lhs.settled - rhs.settled)
     }
 
     mutating func scale(by rhs: Double) {
-        travel *= rhs; fade *= rhs; flip *= rhs
+        travel *= rhs; fade *= rhs; reveal *= rhs; flip *= rhs
         check *= rhs; marker *= rhs
         hint.scale(by: rhs)
         lifts.scale(by: rhs)
@@ -134,7 +142,8 @@ struct BoardPhases: VectorArithmetic {
     }
 
     var magnitudeSquared: Double {
-        travel * travel + fade * fade + flip * flip + check * check
+        travel * travel + fade * fade + reveal * reveal
+            + flip * flip + check * check
             + marker * marker + hint.magnitudeSquared + lifts.magnitudeSquared
             + settled.magnitudeSquared
     }
@@ -516,15 +525,45 @@ struct BoardCanvas: View, Animatable {
             }
         }
 
+        // **A reveal is drawn on the one disc that travels.** The face-down body
+        // and the piece it turns up as are the same disc in the same ring — they
+        // differ by the symbol alone — so one disc is drawn throughout and its
+        // symbol is what arrives, and at no point are there two. Under Reduce
+        // Motion the identity rides the dissolve's own progress, which is that
+        // rule unchanged: opacity is not motion.
+        //
+        // A move that puts a piece *back* face down — an Undo of a reveal, which
+        // returns the position's concealment — is the same drawing read
+        // backwards: the face that has a symbol is the one that left, and the
+        // symbol goes as the disc returns.
+        let progressed = policy.reduceMotion ? progress : phases.reveal
+        let face: Piece
+        let symbol: Double
+        switch transit.revealed {
+        case nil:
+            face = transit.piece
+            symbol = 1
+        case let arriving? where arriving.isFaceDown:
+            face = transit.piece
+            symbol = 1 - progressed
+        case let arriving?:
+            face = arriving
+            symbol = progressed
+        }
+
         let from = point(origin, flip: flip)
         let to = point(transit.move.to, flip: flip)
         if policy.reduceMotion {
-            // The travel without motion: a dissolve between the two ends.
+            // The travel without motion: a dissolve between the two ends. The
+            // face it leaves with stands at the origin and the face it arrives
+            // with stands at the destination, which is the reveal drawn in the
+            // one language this mode has.
             if progress < 1 {
                 draw(transit.piece, at: from, lift: 0, opacity: 1 - progress, in: context)
             }
             if progress > 0 {
-                draw(transit.piece, at: to, lift: 0, opacity: progress, in: context)
+                draw(face, at: to, lift: 0, opacity: progress,
+                     symbolOpacity: symbol, in: context)
             }
         } else {
             // A move departs raised — it was already held — and settles onto
@@ -534,7 +573,7 @@ struct BoardCanvas: View, Animatable {
             let centre = CGPoint(x: from.x + (to.x - from.x) * progress,
                                  y: from.y + (to.y - from.y) * progress)
             let lift = Motion.transitLift(progress, rising: transit.kind == .undo)
-            draw(transit.piece, at: centre, lift: lift, in: context)
+            draw(face, at: centre, lift: lift, symbolOpacity: symbol, in: context)
         }
     }
 
@@ -584,9 +623,10 @@ struct BoardCanvas: View, Animatable {
     /// two pitches rather than two drawings that have to be kept in step.
     private func draw(_ piece: Piece, at centre: CGPoint, lift: Double,
                       scale: CGFloat = 1, opacity: Double = 1,
+                      symbolOpacity: Double = 1,
                       in context: GraphicsContext) {
         PieceDrawing(geometry: geometry, style: style, symbols: symbols)
             .draw(piece, at: centre, lift: lift, scale: scale, opacity: opacity,
-                  in: context)
+                  symbolOpacity: symbolOpacity, in: context)
     }
 }

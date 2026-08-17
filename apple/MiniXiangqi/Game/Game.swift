@@ -112,6 +112,16 @@ final class Game {
     /// change re-renders the game on screen rather than recomputing it.
     private(set) var notation: [MoveReading] = []
 
+    /// What the game has taken off the board, for the one game that displays it.
+    ///
+    /// Kept exactly as the notation is — appended as a ply lands, shortened by
+    /// the core's own count when one is taken back, and read back the same way
+    /// when a stored game resumes — because it is the same kind of fact: a
+    /// property of the line, recomputed from the positions the core replays and
+    /// never maintained as a second truth. Empty in every game whose position is
+    /// wholly public, which is every game but Jieqi.
+    private(set) var captured = CapturedPieces()
+
     /// The last attempt's failed core call, recorded rather than swallowed. A
     /// refused ply is the accepted save-failure state: the move or Undo did
     /// not happen, the position is unchanged, and a new attempt starts clean —
@@ -182,11 +192,14 @@ final class Game {
         let lastMove = try moves.last.map {
             try Self.move(reading: $0, on: configuration.game.board)
         }
+        let captured = try Self.captured(reading: moves, game: configuration.game,
+                                         from: rules)
         let evaluation = try rules.evaluation()
         let firstMover = try rules.firstMover()
         self.rules = rules
         self.moves = moves
         self.notation = notation
+        self.captured = captured
         self.lastMove = lastMove
         self.evaluation = evaluation
         self.configuration = configuration
@@ -211,6 +224,21 @@ final class Game {
                                  from rules: Rules) throws -> [MoveReading] {
         do {
             return try MoveReading.line(for: moves, on: game.board) {
+                Placement(fen: try rules.fen(atPly: $0), game: game)
+            }
+        } catch {
+            throw CoreError(wrapping: error)
+        }
+    }
+
+    /// What the stored line took off the board — the same walk the reading
+    /// above makes, over the same positions, so a resumed game's surface and a
+    /// replayed record's are one answer. Nothing at all for a game that
+    /// displays no captured pieces, which is every game but Jieqi.
+    private static func captured(reading moves: [String], game: GameKind,
+                                 from rules: Rules) throws -> CapturedPieces {
+        do {
+            return try CapturedPieces.line(for: moves, on: game) {
                 Placement(fen: try rules.fen(atPly: $0), game: game)
             }
         } catch {
@@ -452,7 +480,15 @@ final class Game {
         do {
             let removed = try rules.undo()
             moves = try rules.moveHistory()
-            notation.removeLast(removed)
+            // Bounded by what is there. The line and its reading are appended
+            // together and the core is what shortens both, so the two agree —
+            // except after a refused read, which leaves a ply committed with no
+            // reading beside it, and taking that ply back must not be a crash on
+            // top of a failure already on screen.
+            notation.removeLast(min(removed, notation.count))
+            // A retraction returns whatever those plies took, exactly as it
+            // returns the position they produced.
+            captured.removePlies(from: moves.count)
             try refresh()
             // The brackets always mark the move that produced the position on
             // screen, so an Undo moves them to the move that is now last, and
@@ -559,12 +595,24 @@ final class Game {
 
     private func play(_ move: Move, byOpponent: Bool = false) {
         if byOpponent { opponentFailure = nil } else { failure = nil }
-        let read = MoveReading(of: move, in: placement)
+        // The position the ply is leaving, kept because the reading is of it —
+        // and read only once the ply has been committed and the position it
+        // produced is in hand, since what a Jieqi ply turned up is a fact about
+        // the position afterwards.
+        let before = placement
+        let ply = moves.count
         do {
             try rules.apply(move.text)
             moves = try rules.moveHistory()
-            notation.append(read)
             try refresh()
+            notation.append(MoveReading(of: move, in: before, after: placement))
+            // What the ply took, read off the position it was played into —
+            // where a face-down victim's identity still stands in the record,
+            // which is what the capture disclosed to whoever made it.
+            if kind.conceals,
+               let capture = CapturedPieces.capture(atPly: ply, by: move, in: before) {
+                captured.taken.append(capture)
+            }
             lastMove = move
             selected = nil
             refreshLegalMoves()

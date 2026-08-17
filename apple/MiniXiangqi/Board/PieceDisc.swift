@@ -29,8 +29,15 @@ struct PieceDrawing {
     /// rise together, and nothing else changes. The context arrives by value
     /// — a copy draws into the same canvas — so the disc's opacity composes
     /// with whatever the caller already set.
+    /// - Parameter symbolOpacity: how far the disc's own face has arrived,
+    ///   which is the whole of a Jieqi reveal: a face-down piece and the piece
+    ///   it turns up as are the same body, the same ring and the same face, and
+    ///   they differ by the symbol alone. So a reveal is drawn as the arriving
+    ///   piece with its symbol coming up rather than as two discs dissolving
+    ///   into each other, and at 0 it is exactly the face-down body.
     func draw(_ piece: Piece, at centre: CGPoint, lift: Double,
               scale externalScale: CGFloat = 1, opacity: Double = 1,
+              symbolOpacity: Double = 1,
               in context: GraphicsContext) {
         var context = context
         context.opacity *= opacity
@@ -73,6 +80,8 @@ struct PieceDrawing {
                                           : style.discEdge(piece.side)),
                        lineWidth: edge)
 
+        guard symbolOpacity > 0 else { return }
+        context.opacity *= symbolOpacity
         drawSymbol(of: piece, at: centre, scale: scale, in: &context)
     }
 
@@ -85,6 +94,18 @@ struct PieceDrawing {
     /// stand upright throughout a flip.
     private func drawSymbol(of piece: Piece, at centre: CGPoint, scale: CGFloat,
                             in context: inout GraphicsContext) {
+        // **A face-down piece carries none either**, and that is the whole of
+        // what makes it the third body: docs/interaction-design.md, "The Jieqi
+        // board" — the style's disc with its side ring and nothing on its face,
+        // saying whose piece it is and no more, which is the whole of what
+        // either player knows about it. The body above it is the ordinary disc,
+        // so the side is carried by the ring alone — the style's own non-hue
+        // channel, which each style already answers for the symbols, there
+        // being no symbol here to help carry it.
+        //
+        // Its face is settled against a rendered board, as every other visual
+        // specific in that document is.
+        guard !piece.isFaceDown else { return }
         // A stone carries none, in either set: its colour is what says whose it
         // is, and a symbol on it would be inventing a distinction the game does
         // not make.
