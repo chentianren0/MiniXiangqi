@@ -30,6 +30,12 @@ namespace mxq {
  * with len 0. */
 std::string sha256_hex(const uint8_t *bytes, size_t len);
 
+/* The same digest as its thirty-two bytes. The deal derivation in mxq_deal.cpp
+ * is what needs them: docs/boardgame-protocol-v2.md's key and counter stream are
+ * hashes fed back into hashes, so a hexadecimal spelling in the middle of that
+ * would be a conversion round trip on every block. */
+void sha256(const uint8_t *bytes, size_t len, uint8_t out[32]);
+
 /* The same, over a byte string. */
 std::string sha256_hex(const std::string &bytes);
 

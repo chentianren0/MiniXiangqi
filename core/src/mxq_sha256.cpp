@@ -103,7 +103,7 @@ void compress(uint32_t h[8], const uint8_t block[64]) {
 
 } /* namespace */
 
-std::string sha256_hex(const uint8_t *bytes, size_t len) {
+void sha256(const uint8_t *bytes, size_t len, uint8_t out[32]) {
     uint32_t h[8];
     std::memcpy(h, kInitial, sizeof(h));
 
@@ -134,13 +134,23 @@ std::string sha256_hex(const uint8_t *bytes, size_t len) {
         compress(h, tail + 64);
     }
 
+    for (unsigned i = 0; i < 8; ++i) {
+        out[i * 4 + 0] = static_cast<uint8_t>((h[i] >> 24) & 0xffu);
+        out[i * 4 + 1] = static_cast<uint8_t>((h[i] >> 16) & 0xffu);
+        out[i * 4 + 2] = static_cast<uint8_t>((h[i] >> 8) & 0xffu);
+        out[i * 4 + 3] = static_cast<uint8_t>(h[i] & 0xffu);
+    }
+}
+
+std::string sha256_hex(const uint8_t *bytes, size_t len) {
+    uint8_t digest[32];
+    sha256(bytes, len, digest);
     static const char kHex[] = "0123456789abcdef";
     std::string out;
     out.reserve(64);
-    for (unsigned i = 0; i < 8; ++i) {
-        for (int shift = 28; shift >= 0; shift -= 4) {
-            out.push_back(kHex[(h[i] >> shift) & 0xfu]);
-        }
+    for (unsigned i = 0; i < 32; ++i) {
+        out.push_back(kHex[digest[i] >> 4]);
+        out.push_back(kHex[digest[i] & 0x0fu]);
     }
     return out;
 }
