@@ -9,42 +9,70 @@ namespace mxq {
 namespace notation {
 namespace {
 
-/* One row per game: the board, what a move of it is made of, and the position it
- * starts from. All three are constants of the ruleset rather than of any core
- * instance, which is why they live beside the grammar that reads them rather
- * than in the engine bridge that plays them. */
+/* One row per game: the board, what a move of it is made of, the position it
+ * starts from, and whether this build carries the game at all. The first three
+ * are constants of the ruleset rather than of any core instance, which is why
+ * they live beside the grammar that reads them rather than in the engine bridge
+ * that plays them; the fourth is the build's, and it is a column rather than a
+ * count of rows because the vocabulary is not contiguous — the games a build can
+ * leave out do not sit at the end of it.
+ *
+ * start_fen is null for a game with no frozen start. Jieqi is that game and the
+ * only one: it begins from a dealt start and from no other position, and there
+ * is one of those per deal, so there is nothing for a constant to hold.
+ * has_frozen_start below is what a caller asks before reading it. */
 struct GameRow {
     Board       board;
     MoveClass   move_class;
     const char *start_fen;
+    bool        carried;
+    bool        searched; /* the engine axis, not the ruleset: see searched() */
 };
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 /* The empty 15x15 board, which is where both placement games begin and the only
  * position either of them has that is not reached by play. */
 constexpr const char *kPlacementStart =
     "15/15/15/15/15/15/15/15/15/15/15/15/15/15/15 w - - 0 1";
+
+/* Whether this build carries the placement games: they are played on the second
+ * engine, and a core compiled without it cannot answer a single question about
+ * them. It is a value rather than a preprocessor fence around their rows,
+ * because the rows must stay where the enumerators put them — Jieqi is the game
+ * after them, and a table that dropped two rows would answer for Jieqi out of
+ * Gomoku's. */
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+constexpr bool kPlacementCarried = true;
+#else
+constexpr bool kPlacementCarried = false;
 #endif
 
 constexpr GameRow kGames[] = {
     /* MXQ_GAME_KIND_MINI_XIANGQI */
     {{'g', 7}, MoveClass::Movement,
-     "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"},
+     "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1", true, true},
     /* MXQ_GAME_KIND_XIANGQI */
     {{'i', 10}, MoveClass::Movement,
-     "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"},
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
+     "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+     true, true},
     /* MXQ_GAME_KIND_GOMOKU_15. Fifteen files spelled a..o with no letter
      * skipped, which is what the renju world writes and what these two games
      * therefore share. Whether a rendered board skips 'i' on its edge strip is a
      * question about a drawing, and this is the spelling everything the core
      * hands out uses. */
-    {{'o', 15}, MoveClass::Placement, kPlacementStart},
+    {{'o', 15}, MoveClass::Placement, kPlacementStart, kPlacementCarried, true},
     /* MXQ_GAME_KIND_RENJU. The same board and the same notation as Gomoku, and a
      * different game: what Black may play and what wins differ, and neither is
      * anything a position or a move text shows. */
-    {{'o', 15}, MoveClass::Placement, kPlacementStart},
-#endif
+    {{'o', 15}, MoveClass::Placement, kPlacementStart, kPlacementCarried, true},
+    /* MXQ_GAME_KIND_JIEQI. Xiangqi's board and Xiangqi's move class exactly —
+     * one piece leaves a square and arrives at another, and the coordinate pair
+     * carries no reveal, the deal beside a game's moves being what makes every
+     * reveal derivable. What it has no row value for is a frozen start: the game
+     * begins from a dealt start and from no other position, so start_fen is
+     * null and mxq_rules_start_fen answers MXQ_ERR_ARG_RANGE. Nothing searches
+     * it either: its rules authority performs no search and carries no network,
+     * so the whole search facade refuses it permanently. */
+    {{'i', 10}, MoveClass::Movement, nullptr, true, false},
 };
 
 constexpr size_t kGameCount = sizeof(kGames) / sizeof(kGames[0]);
@@ -53,18 +81,14 @@ constexpr size_t kGameCount = sizeof(kGames) / sizeof(kGames[0]);
  * trusted: a game added to the vocabulary without a row here would otherwise
  * read one row past the table.
  *
- * The count is stated per configuration because which games a build carries is
- * the build's. The placement games are played on the second engine, and a core
- * compiled without it cannot answer a single question about them — so it does
- * not offer them, and known_game below is where that is said once. */
+ * The count is one number for every configuration, because every game the
+ * vocabulary has now has a row: which of them a build carries is the `carried`
+ * column, and known_game below is where that is read once. */
 static_assert(MXQ_GAME_KIND_MINI_XIANGQI == 0 && MXQ_GAME_KIND_XIANGQI == 1 &&
-                  MXQ_GAME_KIND_GOMOKU_15 == 2 && MXQ_GAME_KIND_RENJU == 3,
+                  MXQ_GAME_KIND_GOMOKU_15 == 2 && MXQ_GAME_KIND_RENJU == 3 &&
+                  MXQ_GAME_KIND_JIEQI == 4,
               "the game vocabulary indexes this table");
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
-static_assert(kGameCount == 4, "one row per MxqGameKind, placement games and all");
-#else
-static_assert(kGameCount == 2, "one row per MxqGameKind this build carries");
-#endif
+static_assert(kGameCount == 5, "one row per MxqGameKind, whatever a build runs");
 
 const GameRow &row_of(MxqGameKind game) {
     assert(known_game(game) && "a game outside the closed vocabulary");
@@ -177,14 +201,30 @@ bool split_fields(const char *fen, std::string out[6]) {
 } /* namespace */
 
 bool known_game(MxqGameKind game) {
-    return game >= 0 && static_cast<size_t>(game) < kGameCount;
+    return game >= 0 && static_cast<size_t>(game) < kGameCount &&
+           kGames[static_cast<size_t>(game)].carried;
 }
 
 Board board_of(MxqGameKind game) { return row_of(game).board; }
 
 MoveClass move_class_of(MxqGameKind game) { return row_of(game).move_class; }
 
-const char *start_fen(MxqGameKind game) { return row_of(game).start_fen; }
+bool has_frozen_start(MxqGameKind game) {
+    return row_of(game).start_fen != nullptr;
+}
+
+bool searched(MxqGameKind game) { return row_of(game).searched; }
+
+const char *start_fen(MxqGameKind game) {
+    /* Asked of a game that has one. A caller that cannot know asks
+     * has_frozen_start first, and the empty string here is what keeps a caller
+     * that did not from dereferencing null: no position record is empty, so
+     * every comparison against it is false, which is the answer a game with no
+     * frozen start owes a "is this it?" question. */
+    const char *frozen = row_of(game).start_fen;
+    assert(frozen != nullptr && "this game has no frozen start to report");
+    return frozen != nullptr ? frozen : "";
+}
 
 const char *start_fen(const MxqGameConfig &config) {
     return config.start_fen[0] != '\0' ? config.start_fen

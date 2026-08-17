@@ -9,6 +9,11 @@
 # non-C++ frontend can load. The Windows frontend is C# and consumes the core
 # through P/Invoke, which needs a DLL rather than an archive.
 #
+# Beside those and the vendored inputs there is one more, and it is a library
+# only because a compile definition has to be confined to one translation unit:
+# `mxq_jieqi_bridge`, held by `mxq_core` and named by nothing outside it. The
+# reason is written where it is defined.
+#
 # Configure and build from the repository root:
 #
 #   cmake -S core -B core/.build -G Ninja
@@ -382,14 +387,9 @@ endforeach()
 # that define to every mxq_core translation unit, mxq_engine_bridge.cpp among
 # them — and that file speaks Stockfish:: to the OTHER engine. $<LINK_ONLY:>
 # carries the archive and drops the usage requirements, which is exactly the
-# relationship the core has with this library today: it holds it, and no core
-# source names it. The runner that does name it links the target normally.
-#
-# Nothing references the jieqi slice yet, and it is linked in all the same, so
-# that it travels into MiniXiangqiCore.xcframework and is compiled for every
-# platform the framework carries at the stage that vendors it. A static
-# archive's members are pulled in only to resolve a reference, so an engine
-# nothing references adds nothing to the app.
+# relationship the core has with this library: it holds it, and no core source
+# names its types. What does name them is mxq_jieqi_bridge below, which links
+# the slice the ordinary way and is itself held here the same guarded way.
 
 set(MXQ_DEP_GATE_fairy-stockfish MXQ_ENABLE_RULES_FACADE)
 set(MXQ_DEP_GATE_rapfi MXQ_ENABLE_GOMOKU_FACADE)
@@ -414,6 +414,48 @@ foreach(mxq_dep IN ITEMS fairy-stockfish rapfi pikafish sqlite)
     message(STATUS "Mini Xiangqi core: vendored ${mxq_dep}")
   endif()
 endforeach()
+
+# --------------------------------------------------------------------------
+# The jieqi bridge
+# --------------------------------------------------------------------------
+#
+# Ours, and a library of its own rather than another source of mxq_core, for one
+# reason: mxq::pikafish carries -DStockfish=PikafishJieqi as a PUBLIC usage
+# requirement, and a consumer of its headers must agree with it about which
+# engine it is calling. Compiling every mxq_core translation unit under that
+# define would put the rename on mxq_engine_bridge.cpp, which speaks Stockfish::
+# to the OTHER engine — so the define is confined to the one translation unit
+# that needs it by making that translation unit a target.
+#
+# The shape is therefore: this target links mxq::pikafish the ordinary way and
+# is itself held by mxq_core behind $<LINK_ONLY:>, exactly as mxq_core holds the
+# slice today. $<LINK_ONLY:> carries the archive and drops the usage
+# requirements, which is the whole of what is wanted in both places: mxq_core
+# calls into this bridge through a header of plain mxq_ types, and no engine
+# type and no rename reaches it.
+#
+# It compiles under the core's own warning set, unlike the vendored slice
+# beneath it: this file's subject is ours to hold to our own standard.
+
+if(MXQ_ENABLE_RULES_FACADE AND TARGET mxq_pikafish)
+  add_library(mxq_jieqi_bridge STATIC src/mxq_jieqi_bridge.cpp)
+  add_library(mxq::jieqi_bridge ALIAS mxq_jieqi_bridge)
+  target_include_directories(mxq_jieqi_bridge
+    PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src"
+      "${MXQ_GENERATED_DIR}"
+  )
+  target_link_libraries(mxq_jieqi_bridge PRIVATE mxq_warnings mxq::pikafish)
+  set_target_properties(mxq_jieqi_bridge PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    OUTPUT_NAME mxqjieqibridge
+  )
+  foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
+    target_link_libraries(${mxq_target} PRIVATE "$<LINK_ONLY:mxq::jieqi_bridge>")
+  endforeach()
+endif()
 
 # A shared library exports what its objects say is exportable, and the vendored
 # components are compiled as their own targets: hiding mxq_core_shared's own

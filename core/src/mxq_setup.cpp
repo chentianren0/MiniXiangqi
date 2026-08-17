@@ -6,6 +6,7 @@
 #if defined(MXQ_ENABLE_RULES_FACADE)
 
 #include "mxq_engine_bridge.hpp"
+#include "mxq_jieqi_bridge.hpp"
 #include "mxq_notation.hpp"
 #include "mxq_rules.hpp"
 
@@ -579,6 +580,114 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
     return Error::None;
 }
 
+/* ------------------------------------------------------------------------- */
+/* The jieqi membership question: is this a dealt start?                      */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Jieqi defines no setup-legality predicate, because there is no composed
+ * position for one to judge: the only shape a game of it begins in is the one
+ * the deal produces. What it has instead is a membership question, and this is
+ * it — the same shape as the frozen-start comparison every other game but
+ * Xiangqi answers, asked of a family of positions rather than of one, because
+ * there is a start for every deal.
+ *
+ * It is board arithmetic and asks no engine. The record has already been read
+ * structurally by the caller, so what is left is the deal's own shape: the
+ * thirty-two start squares occupied and no other point, the two generals face
+ * up on their own, the other thirty face down, and each side's fifteen hidden
+ * identities a permutation of that side's fifteen non-general pieces. Red
+ * moves first.
+ *
+ * The whole answer is one rule, MXQ_SETUP_RULE_NOT_DEALT_START, and it names
+ * neither a side nor a point. That is not a shortcut: a deal is dealt whole, so
+ * a position that is not one is not one at a square — there is no composer here
+ * to be told what to fix next, the way Xiangqi's clauses tell one.
+ */
+Error evaluate_jieqi(const jieqi::Record &record, Violation &out,
+                     std::string &detail) {
+    const auto refuse = [&out, &detail](const char *why) {
+        out.rule = MXQ_SETUP_RULE_NOT_DEALT_START;
+        out.side = MXQ_COLOR_NONE;
+        out.square.clear();
+        detail = std::string("this game begins from a dealt start and from no "
+                             "other position; ") +
+                 why;
+        return Error::None;
+    };
+
+    if (record.side_to_move != MXQ_COLOR_RED) {
+        return refuse("a deal is dealt with Red to move");
+    }
+
+    /* The complement each side is dealt, indexed as the letters below are. */
+    constexpr char kDealtLetters[] = {'r', 'n', 'b', 'a', 'c', 'p'};
+    constexpr int32_t kDealtEach[] = {2, 2, 2, 2, 2, 5};
+    constexpr size_t kDealtKinds = sizeof(kDealtLetters) / sizeof(kDealtLetters[0]);
+    static_assert(sizeof(kDealtEach) / sizeof(kDealtEach[0]) == kDealtKinds,
+                  "one count per dealt piece letter");
+
+    int32_t dealt[kDealtKinds][2] = {{0, 0}};
+    for (int32_t rank = 0; rank < jieqi::kRanks; ++rank) {
+        for (int32_t file = 0; file < jieqi::kFiles; ++file) {
+            const char here = record.letter[rank][file];
+            const char home = jieqi::home_letter(file, rank);
+            if (home == jieqi::kEmpty) {
+                if (here != jieqi::kEmpty) {
+                    return refuse("a piece stands off the thirty-two squares a "
+                                  "deal fills");
+                }
+                continue;
+            }
+            if (here == jieqi::kEmpty) {
+                return refuse("a square a deal fills is empty");
+            }
+
+            const bool general = (here == 'K' || here == 'k');
+            const bool general_square = (home == 'K' || home == 'k');
+            if (general_square) {
+                /* The two generals are the only pieces that ever start face up,
+                 * and each stands on its own point. */
+                if (!general || here != home || record.down[rank][file]) {
+                    return refuse("a general's point does not hold that "
+                                  "general, face up");
+                }
+                continue;
+            }
+            if (!record.down[rank][file]) {
+                return refuse("a piece a deal deals face down stands face up");
+            }
+            /* read_record has already refused a face-down piece of the other
+             * side's colour and a face-down general, so what is left to count is
+             * which piece each side was dealt. */
+            for (size_t i = 0; i < kDealtKinds; ++i) {
+                const bool red = (here >= 'A' && here <= 'Z');
+                const char lower = red ? static_cast<char>(here - 'A' + 'a')
+                                       : here;
+                if (lower == kDealtLetters[i]) {
+                    ++dealt[i][red ? 0 : 1];
+                    break;
+                }
+            }
+        }
+    }
+
+    for (size_t i = 0; i < kDealtKinds; ++i) {
+        for (int32_t side = 0; side < 2; ++side) {
+            if (dealt[i][side] != kDealtEach[i]) {
+                return refuse("a side's fifteen hidden identities are not its "
+                              "own fifteen non-general pieces");
+            }
+        }
+    }
+
+    out.rule = MXQ_SETUP_RULE_NONE;
+    out.side = MXQ_COLOR_NONE;
+    out.square.clear();
+    detail.clear();
+    return Error::None;
+}
+
 } /* namespace */
 
 Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
@@ -601,6 +710,22 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
         return evaluate_xiangqi(std::string(fen), out_violation, detail);
     }
 
+    /*
+     * Jieqi reads its own record, and that one reading is both halves of what
+     * every other game needs two for: it is the precondition
+     * mxq_rules_validate_fen applies — the same function that entry calls for
+     * this game — and it is the form the membership arithmetic below reads the
+     * position in. Its membership question is the dealt start, that being the
+     * only shape a game of it begins in.
+     */
+    if (game == MXQ_GAME_KIND_JIEQI) {
+        jieqi::Record record{};
+        if (!jieqi::read_record(fen, record, detail)) {
+            return Error::FenInvalid;
+        }
+        return evaluate_jieqi(record, out_violation, detail);
+    }
+
     /* For every other game the precondition stands, and it is the same one
      * mxq_rules_validate_fen applies: a FEN that is not a position of this
      * game's board is not a position this predicate has an opinion about. */
@@ -618,7 +743,8 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
      * the whole frozen FEN, so it is against its side to move as well: a game
      * whose first mover is frozen has no second setup that differs only there.
      */
-    if (std::string(fen) == notation::start_fen(game)) {
+    if (notation::has_frozen_start(game) &&
+        std::string(fen) == notation::start_fen(game)) {
         return Error::None;
     }
     out_violation.rule = MXQ_SETUP_RULE_NOT_FROZEN_START;
@@ -636,11 +762,14 @@ StartError judge_start(MxqGameKind game, const char *fen,
         return StartError::Structural;
     }
 
-    /* The frozen start is a start of every game and is asked nothing: it is
-     * already spelled with the counters below and already accepted by the
-     * predicate, and short-circuiting it keeps a build without the engine a
-     * game is played on from being asked about that game's own opening. */
-    if (std::string(fen) == notation::start_fen(game)) {
+    /* The frozen start is a start of every game that has one and is asked
+     * nothing: it is already spelled with the counters below and already
+     * accepted by the predicate, and short-circuiting it keeps a build without
+     * the engine a game is played on from being asked about that game's own
+     * opening. A game with no frozen start has no such position to recognise,
+     * and every start it is given goes down the rungs. */
+    if (notation::has_frozen_start(game) &&
+        std::string(fen) == notation::start_fen(game)) {
         return StartError::None;
     }
 

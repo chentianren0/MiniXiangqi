@@ -211,8 +211,12 @@ const std::string &profile_id_of(MxqGameKind game) {
 #endif
     };
     const size_t count = sizeof(composed) / sizeof(composed[0]);
-    assert(notation::known_game(game) && static_cast<size_t>(game) < count &&
-           "a game outside the closed vocabulary");
+    /* One entry per searched game, so a game nothing searches has none: the
+     * three entries that would ask for one refuse it first, and this is where
+     * that is asserted rather than assumed. */
+    assert(notation::known_game(game) && notation::searched(game) &&
+           static_cast<size_t>(game) < count &&
+           "a game no engine searches has no profile identifier");
     return composed[static_cast<size_t>(game) < count
                         ? static_cast<size_t>(game)
                         : 0u];
@@ -973,6 +977,17 @@ MxqStatus MXQ_CALL mxq_engine_prepare(MxqCore *core, MxqGameKind game,
     if (rc != MXQ_OK) {
         return rc;
     }
+    /* A game nothing searches has nothing to prepare, and asking is a
+     * programming error by the reachability rule: the caller owns the game axis
+     * and mxq.h states the absence. It is refused before the budget is read, so
+     * nothing is computed and nothing is initialised. */
+    if (!mxq::notation::searched(game)) {
+        assert(false && "no engine searches this game");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "no engine searches this game, so there is nothing to "
+                        "prepare for it");
+        return MXQ_ERR_ARG_RANGE;
+    }
     /* The same plan mxq_engine_plan computes, recomputed from the caller's
      * fresh probe: a later game never silently reuses an earlier game's
      * memory decision. */
@@ -1061,6 +1076,17 @@ MxqStatus MXQ_CALL mxq_engine_profile_id(MxqGameKind game, char *out,
     const MxqStatus rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
+    }
+    /* The identifier a named game would be prepared under, so a game that is
+     * never prepared has none: there is no engine revision, no rule and no
+     * network for it to name, and no move for it to attribute. Refused exactly
+     * as the preparation it stands to is. */
+    if (!mxq::notation::searched(game)) {
+        assert(false && "no engine searches this game");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "no engine searches this game, so there is no profile "
+                        "identifier to name it by");
+        return MXQ_ERR_ARG_RANGE;
     }
     return mxq::write_string(mxq::search::profile_id_of(game).c_str(), out, cap,
                              out_len, err);

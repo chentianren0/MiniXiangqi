@@ -121,11 +121,12 @@ consumer's body wins — so a different body belongs in
 [`mxq_pikafish_link_closure.cpp`](mxq_pikafish_link_closure.cpp) or nowhere.
 And a consumer that speaks this engine's types needs the renamed namespace and
 this directory's include path, which `mxq_core` deliberately withholds through
-`$<LINK_ONLY:...>` so that the Fairy-Stockfish bridge can never bind here: the
-shape for a jieqi bridge is a small library of its own that links
-`mxq::pikafish` normally and is itself held by `mxq_core` behind `LINK_ONLY` —
-never the removal of `LINK_ONLY`, which would put this engine's rename on
-translation units that speak to the other one.
+`$<LINK_ONLY:...>` so that the Fairy-Stockfish bridge can never bind here. The
+shape that follows is the one the core's jieqi bridge takes: a small library of
+its own, `mxq_jieqi_bridge`, that links `mxq::pikafish` normally and is itself
+held by `mxq_core` behind `LINK_ONLY` — never the removal of `LINK_ONLY`, which
+would put this engine's rename on translation units that speak to the other
+one.
 
 The price of them is stated plainly, because it is the price of leaving
 `upstream/` verbatim. A three-line patch to `position.cpp` would remove all
@@ -218,12 +219,10 @@ a departure from the second engine's precedent and is argued at that switch's
 declaration in [`../../CMakeLists.txt`](../../CMakeLists.txt).
 
 `mxq_core` links this library, so it travels into
-`MiniXiangqiCore.xcframework`. **Nothing calls it yet**: the bridge that will
-belongs to a later stage, and until it lands the only code that references these
-symbols is the jieqi smoke-test runner. Carrying the archive before the bridge
-exists is what puts the slice through the framework build — the iOS SDK, the
-Simulator, and both device architectures — at the stage that vendors it rather
-than at the stage that would otherwise be the first to find a platform it does
-not compile on. It costs the app nothing: a static archive's members are pulled
-in only to resolve a reference, so an engine nothing references reaches no
-shipped binary.
+`MiniXiangqiCore.xcframework`. What calls it is `core/src/mxq_jieqi_bridge.cpp`,
+the core's one translation unit that speaks this engine's types: it composes the
+engine's own position dialect from the record `docs/jieqi-rules.md` freezes,
+applies each ply as a move and a flip, and translates the legal moves, the check
+state and the adjudication back. Everything above it speaks `mxq_` types and
+never learns which engine answered. The smoke-test runner beside it drives both
+embedded engines in one process and is the standing proof of the rename.

@@ -8,18 +8,26 @@
  * choice, and a choice made in four places is made differently in four places
  * the day a third game arrives. This is where it is made.
  *
- * The choice follows from the game and from nothing else: notation::move_class_of
- * says what kind of game it is, and a movement game is the first engine's while a
- * placement game is the second's. It is deliberately not a property of the
- * position, the board size or the move text — the header's own rule about
- * MxqGameKind, applied to the one decision that would otherwise be tempted to
- * guess.
+ * The choice follows from the game and from nothing else, and it is one axis
+ * rather than a property of the position, the board size or the move text — the
+ * header's own rule about MxqGameKind, applied to the one decision that would
+ * otherwise be tempted to guess.
+ *
+ * Three engines answer here, and the axis is no longer the move class alone.
+ * Jieqi is a movement game whose rules authority is neither of the other two:
+ * it is played on Xiangqi's board with the pieces face down, which
+ * Fairy-Stockfish's xiangqi variant knows nothing about, so the vendored
+ * Pikafish slice answers for it and for nothing else. The dispatch is therefore
+ * a game-to-authority answer with the move class behind it: Jieqi's own, then
+ * the placement games' by move class, then the movement engine for the rest.
  *
  * Compiled only when MXQ_ENABLE_RULES_FACADE is ON, with the placement arm
  * compiled only when MXQ_ENABLE_GOMOKU_FACADE is too. A build without the second
  * engine does not carry the placement games at all — notation::known_game is
  * where that is said, and every entry point taking a game passes through it —
- * so the arm's absence is unreachable rather than merely unlikely.
+ * so the arm's absence is unreachable rather than merely unlikely. The jieqi
+ * slice shares the first engine's switch, so its arm is present whenever this
+ * file is.
  */
 
 #ifndef MXQ_RULES_HPP

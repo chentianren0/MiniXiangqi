@@ -13,6 +13,7 @@
 #if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_core_state.hpp"
 #include "mxq_engine_bridge.hpp"
+#include "mxq_jieqi_bridge.hpp"
 #include "mxq_rules.hpp"
 #include "mxq_setup.hpp"
 
@@ -31,9 +32,9 @@
 namespace mxq {
 namespace rules {
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 namespace {
 
+#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 /* The second bridge's replay refusals, in the shared vocabulary. */
 ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     switch (rc) {
@@ -48,9 +49,27 @@ ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     }
     return ReplayError::Faulted;
 }
+#endif
+
+/* The third bridge's, in the same vocabulary. It has no NotInitialised: the
+ * jieqi slice's whole bootstrap is two calls that cannot fail and that the
+ * bridge makes for itself, so there is no configuration for a caller to have
+ * skipped and no asset for one to be missing. */
+ReplayError from_jieqi(mxq::jieqi::ReplayError rc) {
+    switch (rc) {
+    case mxq::jieqi::ReplayError::None:
+        return ReplayError::None;
+    case mxq::jieqi::ReplayError::StartFenInvalid:
+        return ReplayError::StartFenInvalid;
+    case mxq::jieqi::ReplayError::IllegalMove:
+        return ReplayError::IllegalMove;
+    case mxq::jieqi::ReplayError::Faulted:
+        return ReplayError::Faulted;
+    }
+    return ReplayError::Faulted;
+}
 
 } /* namespace */
-#endif
 
 ReplayError replay(MxqGameKind game, const char *start_fen,
                    const char *const *moves, size_t move_count,
@@ -59,6 +78,21 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
                    std::vector<std::string> *out_legal_moves,
                    size_t &first_illegal, std::string &detail) {
     assert(notation::known_game(game) && "a game outside the closed vocabulary");
+    if (game == MXQ_GAME_KIND_JIEQI) {
+        /* The one movement game the first engine does not play. It is asked by
+         * name rather than by any property of the position, because a jieqi
+         * position with nothing left face down is spelled exactly as the
+         * xiangqi position it is not. */
+        mxq::jieqi::Adjudication hidden{MXQ_GAME_ONGOING, MXQ_END_REASON_NONE,
+                                        0};
+        const ReplayError rc = from_jieqi(mxq::jieqi::replay(
+            start_fen, moves, move_count, out_fen, out_in_check, out_ply, hidden,
+            out_legal_moves, first_illegal, detail));
+        out_adj.state = hidden.state;
+        out_adj.reason = hidden.reason;
+        out_adj.at_occurrence = hidden.at_occurrence;
+        return rc;
+    }
 #if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
         /* No check exists in these games, so the caller is told so rather than
@@ -92,6 +126,16 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
 
 bool validate_fen(MxqGameKind game, const char *fen, std::string &detail) {
     assert(notation::known_game(game) && "a game outside the closed vocabulary");
+    if (game == MXQ_GAME_KIND_JIEQI) {
+        /* No engine is asked, and here that is a rule rather than a
+         * convenience: the engine this game is played on validates nothing at
+         * all — a malformed record is accepted and silently mangled, and a
+         * face-down piece spelled off its own start square is an out-of-bounds
+         * write — so the structural reading is the core's own and runs before
+         * anything reaches it. */
+        mxq::jieqi::Record record{};
+        return mxq::jieqi::read_record(fen, record, detail);
+    }
 #if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
         /* No engine is asked. The placement games' encoding is the core's own —
@@ -115,6 +159,18 @@ MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
     const MxqStatus rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
+    }
+    /* A game with no frozen start has nothing to report, and asking is a
+     * programming error by the same reachability rule a game outside the
+     * vocabulary meets: the caller owns the game axis and mxq.h states the
+     * absence. Jieqi is that game — it begins from a dealt start and from no
+     * other position, and whatever dealt the game holds the position. */
+    if (!mxq::notation::has_frozen_start(game)) {
+        assert(false && "this game has no frozen start to report");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "this game has no frozen starting position; it begins "
+                        "from a dealt start and from no other");
+        return MXQ_ERR_ARG_RANGE;
     }
     return mxq::write_string(mxq::notation::start_fen(game), out, cap, out_len,
                              err);

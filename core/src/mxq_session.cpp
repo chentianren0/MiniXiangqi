@@ -231,7 +231,11 @@ std::string named_start(const MxqGameConfig &config) {
                                   config.start_fen)
             : sizeof(config.start_fen);
     std::string named(config.start_fen, length);
-    if (named == notation::start_fen(config.game)) {
+    /* The canonicalisation is against a frozen start, so a game that has none
+     * keeps whatever it named: a Jieqi session's start always reads back spelled
+     * out, there being no constant for the empty member to have meant. */
+    if (notation::has_frozen_start(config.game) &&
+        named == notation::start_fen(config.game)) {
         named.clear();
     }
     return named;
@@ -1140,6 +1144,20 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     rc = mxq::require_game(config->game, err);
     if (rc != MXQ_OK) {
         return rc;
+    }
+    /*
+     * A session is store-attached and every stored row carries the document its
+     * game encodes to, so a game the archive format does not spell cannot have
+     * one. It is MXQ_ERR_ARG_RANGE and it does not assert, which is mxq.h's own
+     * rule for it: it reports two parts of this core at different stages of one
+     * widening rather than a caller outside a vocabulary it owns. The rules
+     * facade answers for such a game in full; only persistence refuses it.
+     */
+    if (mxq::archive::rules_id_text(config->game) == nullptr) {
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "the archive format this build writes has no spelling "
+                        "for this game, so no session can be stored for it");
+        return MXQ_ERR_ARG_RANGE;
     }
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
     const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;

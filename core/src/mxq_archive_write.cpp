@@ -212,6 +212,15 @@ const char *rules_id_text(MxqGameKind game) {
     case MXQ_GAME_KIND_XIANGQI:      return "xiangqi";
     case MXQ_GAME_KIND_GOMOKU_15:    return "gomoku-15";
     case MXQ_GAME_KIND_RENJU:        return "renju";
+    case MXQ_GAME_KIND_JIEQI:
+        /* No spelling, deliberately, and not an omission: the archive version
+         * that carries this game carries a deal beside its start and a
+         * forty-move reason among its ends, and this build writes the version
+         * before it. A null here is what the two readers below and the session
+         * surface read as "the archive does not carry this game", which is a
+         * refusal rather than a document naming a rules_id no version defines.
+         * It is one line to delete at the version that adds it. */
+        return nullptr;
     default: break;
     }
     assert(false && "a game outside the closed vocabulary reached the writer");
@@ -286,6 +295,11 @@ const char *end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_RESIGNATION:     return "mutual-resignation";
     case MXQ_END_REASON_FIVE_IN_A_ROW:          return "five-in-a-row";
     case MXQ_END_REASON_BOARD_FULL:             return "board-full";
+    /* The forty-move rule is one game's alone, and this format version has no
+     * spelling for that game — rules_id_text says so first, and a session of it
+     * is refused before a reason can be reached. The arm is written out rather
+     * than left to the default so that the two absences are one decision. */
+    case MXQ_END_REASON_FORTY_MOVE_RULE:        return nullptr;
     default: break;
     }
     return nullptr; /* MXQ_END_REASON_NONE: no end is recorded */
