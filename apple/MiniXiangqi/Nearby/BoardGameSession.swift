@@ -60,7 +60,12 @@ nonisolated enum Party: Sendable, Equatable {
 }
 
 nonisolated enum BoardGameSessionState: Sendable, Equatable {
-    case proposed, active, ended
+    case proposed
+    /// A hidden-information game's proposal was accepted and its deal handshake
+    /// is in flight. No ply exists, none may be sent, and the only messages
+    /// with a lawful meaning are the handshake's own.
+    case dealing
+    case active, ended
 }
 
 /// The one offer or request that may stand at a time.
@@ -109,6 +114,12 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
 
     /// A proposal answered with `accept`. Until then the session is proposed.
     var accepted = false
+    /// The deal handshake, carried by a hidden-information game's session and
+    /// by no other. An accepted session whose handshake has not completed is
+    /// **dealing**; one that never had a handshake to complete is active from
+    /// the acceptance, "and plays exactly as it would with the handshake
+    /// absent".
+    var handshake: DealHandshake?
     /// The connection this session is bound to: the one its `propose` — or,
     /// resumed, its proposer's `resume` — travelled on. Nil while interrupted.
     var connection: ConnectionID?
@@ -225,9 +236,23 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
         return nil
     }
 
+    /// The deal this session is played over, once its handshake has completed.
+    /// Nil for every game whose start is frozen, and for a hidden-information
+    /// session still dealing.
+    var deal: BoardGameDeal? { handshake?.deal }
+
+    /// The position this session's game begins from, where its start is dealt.
+    /// **It holds every hidden identity and never leaves this device.**
+    var dealtStart: String? { deal?.start }
+
     var state: BoardGameSessionState {
         if end != nil { return .ended }
-        return accepted ? .active : .proposed
+        guard accepted else { return .proposed }
+        // A hidden-information game's session becomes active where this end has
+        // completed the handshake — the dealer by sending `deal_seed`, the
+        // other end by verifying it — and is dealing until then.
+        guard let handshake else { return .active }
+        return handshake.deal == nil ? .dealing : .active
     }
 
     /// Bound, exchanged, and free to play.
@@ -269,9 +294,11 @@ nonisolated struct BoardGameSession: Sendable, Equatable {
         peerTerminal = terminal
     }
 
-    /// The session as `resume` states it.
+    /// The session as `resume` states it — the deal's digest included, which is
+    /// present for a hidden-information session and absent for every other.
     var resumeMessage: BoardGameMessage.Resume {
         BoardGameMessage.Resume(session: id, undos: undos, count: count,
-                                keep: reportedKeep, end: localTerminal)
+                                keep: reportedKeep, end: localTerminal,
+                                dealDigest: deal?.digest)
     }
 }

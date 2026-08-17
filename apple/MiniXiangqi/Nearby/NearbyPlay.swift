@@ -70,6 +70,10 @@ nonisolated struct NearbyEnd: Equatable, Sendable {
 final class NearbyPlay {
     let sessionID: String
     let game: GameKind
+    /// The position this session's game begins from, where its start is dealt
+    /// rather than frozen. It is fixed for the session's whole life — a deal is
+    /// what the game is being played over — and it never leaves this device.
+    private let dealtStart: String?
 
     private let driver: any NearbyDriving
     private let positions: any NearbyPositions
@@ -126,11 +130,13 @@ final class NearbyPlay {
           animator: MotionAnimator = .live,
           feedback: Feedback = .live) {
         guard let game = GameKind(rulesID: session.rulesID),
-              let standing = positions.standing(of: game, after: session.plies)
+              let standing = positions.standing(of: game, from: session.dealtStart,
+                                                after: session.plies)
         else { return nil }
 
         self.sessionID = session.id
         self.game = game
+        self.dealtStart = session.dealtStart
         self.session = session
         self.driver = driver
         self.positions = positions
@@ -166,7 +172,15 @@ final class NearbyPlay {
 
     var transit: Transit? { transits.transit }
     var transitFade: Double { transits.fade }
+    /// How far a revealed identity has come up on the travelling disc.
+    var transitReveal: Double { transits.reveal }
     var isCommitting: Bool { transits.isRunning }
+
+    /// Whether every hidden identity is now this player's to see. "When the game
+    /// ends, every hidden identity is disclosed to both players — by any
+    /// ending, a resignation and an agreed draw included", and a session that
+    /// went away without a result is an ending for this board too.
+    var disclosesTheDeal: Bool { game.conceals && isOver }
 
     var destinations: Set<Square> {
         guard let selected else { return [] }
@@ -388,7 +402,8 @@ final class NearbyPlay {
 
         guard session.plies != shown else { return }
         guard !transits.isRunning,
-              let standing = positions.standing(of: game, after: session.plies)
+              let standing = positions.standing(of: game, from: dealtStart,
+                                                after: session.plies)
         else {
             cut(to: session.plies)
             return
@@ -426,12 +441,26 @@ final class NearbyPlay {
     private func advance(_ move: Move, _ piece: Piece, to plies: [String],
                          _ standing: NearbyStanding) {
         let captured = placement[move.to]
+        // What the ply turned up, read off the position it produced — which is
+        // the deal this device already holds, derived rather than disclosed:
+        // nothing about the identity travelled with the move. It is the same
+        // sentence the local board makes, and deliberately, because a reveal
+        // arriving from the other device is the same event as one made here.
+        let arrived = piece.isFaceDown
+            ? Placement(fen: standing.evaluation.fen, game: game)[move.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
             land(plies, standing, lastMove: move)
             return Transit(kind: .move, move: move, piece: piece,
-                           fading: captured.map { ($0, move.to) })
+                           fading: captured.map { ($0, move.to) },
+                           revealed: arrived)
+        }
+        // The identity comes up over the last stretch of the journey and is
+        // there as the disc lands. Under Reduce Motion it rides the dissolve the
+        // travel becomes, which the canvas draws from the travel's own progress.
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         guard transits.drawsRemoval else { return }
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
@@ -444,19 +473,30 @@ final class NearbyPlay {
     private func reverse(_ move: Move, _ mover: Piece, to plies: [String],
                          _ standing: NearbyStanding) {
         guard let origin = move.from else { return }
-        // What the ply took is read off the position it is going back to, which
-        // is the core's answer rather than a placement worked out here.
-        let restored = Placement(fen: standing.evaluation.fen, game: game)[move.to]
+        // What the ply took, and what it had turned up, are both read off the
+        // position it is going back to — the core's answer rather than a
+        // placement worked out here.
+        let before = Placement(fen: standing.evaluation.fen, game: game)
+        let restored = before[move.to]
+        // **A retraction returns the position's concealment**, so a ply that
+        // revealed a piece puts it back face down where it came from. The face
+        // the disc arrives home with is the one standing at the origin again,
+        // and it is nil wherever nothing was turned back over.
+        let returned = before[origin].flatMap { $0.isFaceDown ? $0 : nil }
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
             land(plies, standing,
                  lastMove: plies.last.flatMap { Move(text: $0, on: game.board) })
             return Transit(kind: .undo, move: Move(from: move.to, to: origin),
-                           piece: mover, fading: restored.map { ($0, move.to) })
+                           piece: mover, fading: restored.map { ($0, move.to) },
+                           revealed: returned)
         }
         // The restored piece returns as the mover departs, inside the travel, so
         // the reversal stays within one ply's time.
         guard !policy.reduceMotion else { return }
+        // The identity goes as the disc returns home, on the same schedule a
+        // reveal arrives on.
+        transits.raiseReveal(Motion.revealAnimation(travel: travel))
         transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
@@ -485,7 +525,8 @@ final class NearbyPlay {
     /// nothing sounds: a board catching up with a line it was away from is not a
     /// move being made.
     private func cut(to plies: [String]) {
-        guard let standing = positions.standing(of: game, after: plies) else { return }
+        guard let standing = positions.standing(of: game, from: dealtStart, after: plies)
+        else { return }
         transits.cut()
         animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
             land(plies, standing,
@@ -547,7 +588,8 @@ final class NearbyPlay {
     /// says so, quietly, which is the whole of what this stage's presentation
     /// owes an idle radio.
     private func commit(_ move: Move) {
-        guard let standing = positions.standing(of: game, after: shown + [move.text])
+        guard let standing = positions.standing(of: game, from: dealtStart,
+                                                after: shown + [move.text])
         else { return }
         // **Whether this is a stone is one question, asked the one way**: a ply
         // with no origin, which is what the parser answers for a placement board
@@ -566,6 +608,11 @@ final class NearbyPlay {
         // and it is not a stone either.
         guard let piece = placement[origin] else { return }
         let captured = placement[move.to]
+        // This device's own ply turns a face up on this device exactly as the
+        // other device's does, and from the same source: the position the ply
+        // produced, which the deal already held.
+        let arrived = piece.isFaceDown
+            ? Placement(fen: standing.evaluation.fen, game: game)[move.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         markerEmphasis = 0
         transits.run(policy.movement(Motion.travelAnimation(travel)),
@@ -573,7 +620,11 @@ final class NearbyPlay {
             guard (try? driver.play(move.text, in: sessionID)) != nil else { return nil }
             land(shown + [move.text], standing, lastMove: move)
             return Transit(kind: .move, move: move, piece: piece,
-                           fading: captured.map { ($0, move.to) })
+                           fading: captured.map { ($0, move.to) },
+                           revealed: arrived)
+        }
+        if !policy.reduceMotion {
+            transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         guard transits.drawsRemoval else { return }
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))

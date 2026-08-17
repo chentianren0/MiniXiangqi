@@ -1,4 +1,4 @@
-// The session engine against docs/boardgame-protocol.md, clause by clause.
+// The session engine against docs/boardgame-protocol-v2.md, clause by clause.
 //
 // The engine is driven the way the transport will drive it: a connection comes
 // up, messages arrive on it, this peer's own player asks for things, and every
@@ -22,13 +22,22 @@ struct BoardGameEngineTests {
     static let mateLine = BoardGameRulesTests.mateLine
     static let shuffleLine = BoardGameRulesTests.shuffleLine
 
+    /// The corpus's dealt-start vector, which is the deal every handshake here
+    /// is driven to. It is the store fixture's own — one derivation, read by
+    /// the core suite and by this one — rather than a second set of numbers.
+    static let seed = BoardGameRulesTests.seed
+    static let nonce = BoardGameRulesTests.nonce
+    static let commit = BoardGameRulesTests.commit
+    static let digest = BoardGameRulesTests.digest
+    static let dealtStart = BoardGameRulesTests.dealtStart
+
     // MARK: - hello
 
     @Test("A connection opens with hello, before anything else")
     func openingSendsHello() throws {
         let engine = try engine()
         #expect(sent(engine.connectionOpened(.first, with: .peer))
-                == [.hello(.init(protocolVersion: 1))])
+                == [.hello(.init(protocolVersion: 2))])
     }
 
     @Test("A message before the other peer's hello closes the connection")
@@ -43,12 +52,18 @@ struct BoardGameEngineTests {
         #expect(engine.session("S") == nil)
     }
 
-    @Test("A version this peer will not speak closes the connection")
+    @Test("A version this peer will not speak closes the connection, version 1 included")
     func anotherVersionClosesTheConnection() throws {
         let engine = try engine()
         _ = engine.connectionOpened(.first, with: .peer)
-        let effects = engine.receive(.hello(.init(protocolVersion: 2)), on: .first)
-        #expect(effects == [.close(.first, .unsupportedVersion(2))])
+        // "A version-2 peer does not play with a version-1 peer": there is no
+        // degradation and no negotiation, so the older version is refused
+        // exactly as a version nobody has written yet would be.
+        #expect(engine.receive(.hello(.init(protocolVersion: 1)), on: .first)
+                == [.close(.first, .unsupportedVersion(1))])
+        _ = engine.connectionOpened(.second, with: .peer)
+        #expect(engine.receive(.hello(.init(protocolVersion: 3)), on: .second)
+                == [.close(.second, .unsupportedVersion(3))])
     }
 
     @Test("A negative protocol version reads as the integer it is, and the engine refuses it")
@@ -1195,19 +1210,501 @@ struct BoardGameEngineTests {
         #expect(closed(effects) == [.first])
     }
 
+    // MARK: - The deal handshake
+
+    @Test("The dealer commits at once on the acceptance, and its session is dealing")
+    func theDealerCommitsOnTheAcceptance() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        _ = try engine.propose(to: .peer, on: .first, rulesID: "jieqi", proposerMoves: .first)
+
+        let effects = engine.receive(.accept(.init(session: "S-1")), on: .first)
+        #expect(sent(effects) == [.dealCommit(.init(session: "S-1", commit: Self.commit))],
+                "the commitment is the SHA-256 of the seed's own thirty-two bytes")
+        let session = try #require(engine.session("S-1"))
+        #expect(session.state == .dealing)
+        #expect(session.deal == nil, "no deal until both contributions are in")
+    }
+
+    @Test("The dealer's session is active on sending deal_seed, and may move at once")
+    func theDealerIsActiveOnSending() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        _ = try engine.propose(to: .peer, on: .first, rulesID: "jieqi", proposerMoves: .first)
+        _ = engine.receive(.accept(.init(session: "S-1")), on: .first)
+
+        let effects = engine.receive(.dealNonce(.init(session: "S-1", nonce: Self.nonce)),
+                                     on: .first)
+        #expect(sent(effects) == [.dealSeed(.init(session: "S-1", seed: Self.seed))])
+        let session = try #require(engine.session("S-1"))
+        #expect(session.state == .active, "active on sending, not on any answer to it")
+        #expect(session.deal?.digest == Self.digest)
+        #expect(session.dealtStart == Self.dealtStart)
+
+        // "The first ply may follow immediately."
+        #expect(sent(try engine.play("b1c3", in: "S-1"))
+                == [.move(.init(session: "S-1", index: 0, move: "b1c3"))])
+    }
+
+    @Test("The other end contributes its nonce and is active once the seed verifies")
+    func theOtherEndVerifiesTheSeed() throws {
+        let engine = try connected(drawing: [Self.nonce])
+        _ = peerProposes(engine, "S-peer", game: "jieqi")
+
+        #expect(sent(try engine.answer("S-peer", accepting: true))
+                == [.accept(.init(session: "S-peer"))],
+                "the acceptance alone; the dealer opens the handshake")
+        #expect(engine.session("S-peer")?.state == .dealing)
+
+        let toCommit = engine.receive(.dealCommit(.init(session: "S-peer", commit: Self.commit)),
+                                      on: .first)
+        #expect(sent(toCommit) == [.dealNonce(.init(session: "S-peer", nonce: Self.nonce))])
+        #expect(engine.session("S-peer")?.state == .dealing, "still dealing until the seed")
+
+        #expect(engine.receive(.dealSeed(.init(session: "S-peer", seed: Self.seed)),
+                               on: .first).isEmpty)
+        let session = try #require(engine.session("S-peer"))
+        #expect(session.state == .active)
+        #expect(session.deal?.digest == Self.digest)
+        #expect(session.dealtStart == Self.dealtStart)
+    }
+
+    @Test("Both ends derive one deal, and it is the corpus's own")
+    func bothEndsDeriveOneDeal() throws {
+        let core = try TestCores.fresh()
+        let dealer = try connected(minting: ["S-1"], drawing: [Self.seed], over: core)
+        let other = try connected(drawing: [Self.nonce], over: core)
+        let here = try dealtSessionFromHere(dealer)
+        let there = try dealtSessionFromPeer(other)
+
+        expect(engine: dealer, here, hasTheSameDealAs: other, there)
+    }
+
+    @Test("A seed that does not open the commitment is a violation")
+    func aSeedThatDoesNotOpenTheCommitment() throws {
+        let engine = try connected(drawing: [Self.nonce])
+        _ = peerProposes(engine, "S-peer", game: "jieqi")
+        _ = try engine.answer("S-peer", accepting: true)
+        _ = engine.receive(.dealCommit(.init(session: "S-peer", commit: Self.commit)), on: .first)
+
+        // Well-formed, and thirty-two bytes that are not the ones committed to.
+        let effects = engine.receive(.dealSeed(.init(session: "S-peer", seed: Self.nonce)),
+                                     on: .first)
+        #expect(violations(effects) == [.noLawfulMeaning])
+        #expect(closed(effects) == [.first])
+        #expect(engine.session("S-peer") == nil)
+    }
+
+    @Test("A handshake message from the wrong party is a violation, both ways round")
+    func theWrongPartyIsAViolation() throws {
+        // The dealer never receives a commitment or a seed: they are its own.
+        let dealer = try connected(minting: ["S-1"], drawing: [Self.seed])
+        _ = try dealer.propose(to: .peer, on: .first, rulesID: "jieqi", proposerMoves: .first)
+        _ = dealer.receive(.accept(.init(session: "S-1")), on: .first)
+        #expect(violations(dealer.receive(.dealCommit(.init(session: "S-1",
+                                                            commit: Self.commit)), on: .first))
+                == [.noLawfulMeaning])
+        #expect(dealer.session("S-1") == nil)
+
+        // And the other end never receives a nonce: that half is its own.
+        let other = try connected(drawing: [Self.nonce])
+        _ = peerProposes(other, "S-peer", game: "jieqi")
+        _ = try other.answer("S-peer", accepting: true)
+        #expect(violations(other.receive(.dealNonce(.init(session: "S-peer",
+                                                          nonce: Self.nonce)), on: .first))
+                == [.noLawfulMeaning])
+        #expect(other.session("S-peer") == nil)
+    }
+
+    @Test("The three arrive in that order and once, or the connection closes")
+    func theOrderIsTheWholeHandshake() throws {
+        // The seed before the commitment it would open.
+        let early = try connected(drawing: [Self.nonce])
+        _ = peerProposes(early, "S-peer", game: "jieqi")
+        _ = try early.answer("S-peer", accepting: true)
+        #expect(violations(early.receive(.dealSeed(.init(session: "S-peer", seed: Self.seed)),
+                                         on: .first))
+                == [.noLawfulMeaning])
+
+        // A second commitment, after the first was answered.
+        let twice = try connected(drawing: [Self.nonce])
+        _ = peerProposes(twice, "S-peer", game: "jieqi")
+        _ = try twice.answer("S-peer", accepting: true)
+        _ = twice.receive(.dealCommit(.init(session: "S-peer", commit: Self.commit)), on: .first)
+        #expect(violations(twice.receive(.dealCommit(.init(session: "S-peer",
+                                                           commit: Self.commit)), on: .first))
+                == [.noLawfulMeaning])
+
+        // And a handshake message for a session that has finished dealing.
+        let done = try connected(drawing: [Self.nonce])
+        let id = try dealtSessionFromPeer(done)
+        #expect(violations(done.receive(.dealSeed(.init(session: id, seed: Self.seed)), on: .first))
+                == [.noLawfulMeaning])
+    }
+
+    @Test("A handshake message for a perfect-information game's session is a violation")
+    func aHandshakeMessageForAnUndealtGame() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine)
+        let effects = engine.receive(.dealCommit(.init(session: id, commit: Self.commit)),
+                                     on: .first)
+        #expect(violations(effects) == [.noLawfulMeaning])
+        #expect(engine.session(id) == nil)
+    }
+
+    @Test("Any other message arriving while dealing is a violation")
+    func nothingElseHasAMeaningWhileDealing() throws {
+        for message in [BoardGameMessage.move(.init(session: "S-peer", index: 0, move: "b1c3")),
+                        .offerDraw(.init(session: "S-peer", at: 0)),
+                        .resign(.init(session: "S-peer")),
+                        .resume(.init(session: "S-peer", undos: 0, count: 0, keep: 0,
+                                      end: nil, dealDigest: Self.digest))] {
+            let engine = try connected(drawing: [Self.nonce])
+            _ = peerProposes(engine, "S-peer", game: "jieqi")
+            _ = try engine.answer("S-peer", accepting: true)
+            #expect(violations(engine.receive(message, on: .first)) == [.noLawfulMeaning],
+                    "\(message) while dealing")
+            #expect(engine.session("S-peer") == nil)
+        }
+    }
+
+    @Test("A dealing session dies with its connection and is never resumed")
+    func dealingDiesWithItsConnection() throws {
+        let engine = try connected(drawing: [Self.nonce])
+        _ = peerProposes(engine, "S-peer", game: "jieqi")
+        _ = try engine.answer("S-peer", accepting: true)
+        _ = engine.receive(.dealCommit(.init(session: "S-peer", commit: Self.commit)), on: .first)
+        #expect(engine.session("S-peer")?.state == .dealing)
+
+        engine.connectionDied(.first)
+        #expect(engine.session("S-peer") == nil, "it holds nothing worth reconciling")
+
+        // And a resume for it on a fresh connection meets the answer of a peer
+        // that does not know the session.
+        _ = connect(engine, .second)
+        let effects = engine.receive(.resume(.init(session: "S-peer", undos: 0, count: 0,
+                                                   keep: 0, end: nil, dealDigest: Self.digest)),
+                                     on: .second)
+        #expect(sent(effects) == [.decline(.init(session: "S-peer", reason: .unknownSession))])
+    }
+
+    @Test("busy answers a proposal that arrives while a session is dealing")
+    func busyAnswersAProposalWhileDealing() throws {
+        let engine = try connected(drawing: [Self.nonce])
+        _ = peerProposes(engine, "S-peer", game: "jieqi")
+        _ = try engine.answer("S-peer", accepting: true)
+
+        // The other peer's own next proposal, on a second connection, so the
+        // arrival is not the crossing case.
+        _ = connect(engine, .second)
+        let effects = peerProposes(engine, "S-second", on: .second)
+        #expect(sent(effects) == [.decline(.init(session: "S-second", reason: .busy))])
+        #expect(engine.session("S-peer")?.state == .dealing)
+
+        // And this device's own is refused for the same reason.
+        #expect(throws: BoardGameRefusal.peerIsBusy) {
+            try engine.propose(to: .peer, on: .second, rulesID: "minixiangqi",
+                               proposerMoves: .first)
+        }
+    }
+
+    @Test("Every handshake draws afresh: a contribution serves exactly one of them")
+    func contributionsAreDrawnPerHandshake() throws {
+        let second = "b2" + String(repeating: "0", count: 62)
+        let engine = try connected(drawing: [Self.nonce, second])
+        _ = peerProposes(engine, "S-first", game: "jieqi")
+        _ = try engine.answer("S-first", accepting: true)
+        #expect(sent(engine.receive(.dealCommit(.init(session: "S-first", commit: Self.commit)),
+                                    on: .first))
+                == [.dealNonce(.init(session: "S-first", nonce: Self.nonce))])
+
+        // The handshake is abandoned with its connection, and the pair deals
+        // again — on a fresh contribution, because a reused one is one the
+        // other side can already know.
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+        _ = peerProposes(engine, "S-again", game: "jieqi", on: .second)
+        _ = try engine.answer("S-again", accepting: true)
+        #expect(sent(engine.receive(.dealCommit(.init(session: "S-again", commit: Self.commit)),
+                                    on: .second))
+                == [.dealNonce(.init(session: "S-again", nonce: second))])
+    }
+
+    // MARK: - The deal across a resume
+
+    @Test("resume carries the digest for a dealt session and nothing for any other")
+    func resumeStatesTheDigest() throws {
+        let core = try TestCores.fresh()
+        let dealt = try connected(minting: ["S-1"], drawing: [Self.seed], over: core)
+        let id = try dealtSessionFromHere(dealt)
+        dealt.connectionDied(.first)
+        _ = connect(dealt, .second)
+        #expect(sent(try dealt.resume(id, on: .second))
+                == [.resume(.init(session: id, undos: 0, count: 0, keep: 0,
+                                  end: nil, dealDigest: Self.digest))])
+
+        let plain = try connected(minting: ["S-plain"], over: core)
+        let other = try activeSessionFromHere(plain, "S-plain")
+        plain.connectionDied(.first)
+        _ = connect(plain, .second)
+        #expect(sent(try plain.resume(other, on: .second))
+                == [.resume(.init(session: other, undos: 0, count: 0, keep: 0,
+                                  end: nil, dealDigest: nil))])
+    }
+
+    @Test("A resume stating another deal is declined with deal_mismatch, and voids the session")
+    func aDifferingDigestVoidsBothSides() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        let id = try dealtSessionFromHere(engine)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        let theirs = String(repeating: "f", count: 64)
+        let effects = engine.receive(.resume(.init(session: id, undos: 0, count: 0, keep: 0,
+                                                   end: nil, dealDigest: theirs)),
+                                     on: .second)
+        #expect(sent(effects) == [.decline(.init(session: id, reason: .dealMismatch))])
+        #expect(closed(effects).isEmpty, "two devices disagreeing is not a violation")
+        #expect(engine.session(id) == nil, "void on both sides")
+    }
+
+    @Test("A resume whose digest presence disagrees with the session's game is malformed")
+    func theDigestIsPresentExactlyForADealtSession() throws {
+        let core = try TestCores.fresh()
+        let dealt = try connected(minting: ["S-1"], drawing: [Self.seed], over: core)
+        let id = try dealtSessionFromHere(dealt)
+        dealt.connectionDied(.first)
+        _ = connect(dealt, .second)
+        #expect(violations(dealt.receive(.resume(.init(session: id, undos: 0, count: 0,
+                                                       keep: 0, end: nil, dealDigest: nil)),
+                                         on: .second))
+                == [.malformed])
+
+        let plain = try connected(minting: ["S-plain"], over: core)
+        let other = try activeSessionFromHere(plain, "S-plain")
+        plain.connectionDied(.first)
+        _ = connect(plain, .second)
+        #expect(violations(plain.receive(.resume(.init(session: other, undos: 0, count: 0,
+                                                       keep: 0, end: nil,
+                                                       dealDigest: Self.digest)),
+                                         on: .second))
+                == [.malformed])
+    }
+
+    @Test("A voiding decline for a session this peer does not hold is discarded")
+    func aVoidingDeclineCanCrossTheExchangeThatProvokedIt() throws {
+        let engine = try connected()
+        for reason in [DeclineReason.unknownSession, .dealMismatch] {
+            #expect(engine.receive(.decline(.init(session: "S-gone", reason: reason)),
+                                   on: .first).isEmpty,
+                    "both peers already agree the session is gone")
+        }
+        // And no other reason is: a decline answering nothing is a violation.
+        #expect(violations(engine.receive(.decline(.init(session: "S-gone", reason: .busy)),
+                                          on: .first))
+                == [.noLawfulMeaning])
+    }
+
+    @Test("Two mandated resumes cross, each draws a voiding decline, and both are absorbed")
+    func crossedResumesAndTheirVoidingDeclines() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        let id = try dealtSessionFromHere(engine)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+
+        // This peer's own resume goes out, and the other's crosses it stating
+        // another deal: this peer answers by voiding and declining.
+        _ = try engine.resume(id, on: .second)
+        let theirs = String(repeating: "f", count: 64)
+        #expect(sent(engine.receive(.resume(.init(session: id, undos: 0, count: 0, keep: 0,
+                                                  end: nil, dealDigest: theirs)),
+                                    on: .second))
+                == [.decline(.init(session: id, reason: .dealMismatch))])
+        #expect(engine.session(id) == nil)
+
+        // Their own decline, provoked by this peer's resume, then arrives for a
+        // session this peer has already voided.
+        #expect(engine.receive(.decline(.init(session: id, reason: .dealMismatch)),
+                               on: .second).isEmpty)
+        #expect(closed(engine.receive(.decline(.init(session: id, reason: .unknownSession)),
+                                      on: .second)).isEmpty)
+    }
+
+    @Test("A decline of deal_mismatch answering this peer's own resume voids the session")
+    func aDealMismatchAnsweringAResume() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        let id = try dealtSessionFromHere(engine)
+        engine.connectionDied(.first)
+        _ = connect(engine, .second)
+        _ = try engine.resume(id, on: .second)
+
+        #expect(engine.receive(.decline(.init(session: id, reason: .dealMismatch)), on: .second)
+                == [.declined(session: id, peer: .peer, reason: .dealMismatch)])
+        #expect(engine.session(id) == nil)
+    }
+
+    // MARK: - A persisted deal, taken up again
+
+    @Test("A persisted deal is re-verified before it is used, and a failure holds nothing")
+    func aPersistedDealIsReVerified() throws {
+        let core = try TestCores.fresh()
+        let engine = try connected(over: core)
+        let whole = BoardGameDeal(commit: Self.commit, nonce: Self.nonce, seed: Self.seed,
+                                  digest: Self.digest, start: Self.dealtStart)
+
+        #expect(engine.adopt(stored("S-good", dealt: whole)), "it verifies against all four")
+        #expect(engine.session("S-good")?.dealtStart == Self.dealtStart)
+
+        // The seed no longer hashes to the commitment.
+        var wrongCommit = whole
+        wrongCommit.commit = String(repeating: "f", count: 64)
+        #expect(!engine.adopt(stored("S-commit", dealt: wrongCommit)))
+        #expect(engine.session("S-commit") == nil)
+
+        // The nonce has rotted: it passes the commitment check and fails the
+        // digest, which is why the digest is the one that travels.
+        var wrongDigest = whole
+        wrongDigest.nonce = String(repeating: "0", count: 64)
+        #expect(!engine.adopt(stored("S-digest", dealt: wrongDigest)))
+        #expect(engine.session("S-digest") == nil)
+
+        // A dealt game's session with no deal at all, and an undealt game's
+        // carrying one, are neither of them sessions of the game they name.
+        #expect(!engine.adopt(stored("S-none", dealt: nil)))
+        #expect(!engine.adopt(stored("S-plain", game: "minixiangqi", dealt: whole)))
+    }
+
+    @Test("A resume for a session whose deal failed re-verification is answered unknown_session")
+    func aRottedDealAnswersAsAnUnknownSession() throws {
+        let engine = try connected()
+        var rotted = BoardGameDeal(commit: Self.commit, nonce: Self.nonce, seed: Self.seed,
+                                   digest: Self.digest, start: Self.dealtStart)
+        rotted.digest = String(repeating: "f", count: 64)
+        #expect(!engine.adopt(stored("S-rotted", dealt: rotted)))
+
+        let effects = engine.receive(.resume(.init(session: "S-rotted", undos: 0, count: 0,
+                                                   keep: 0, end: nil, dealDigest: Self.digest)),
+                                     on: .first)
+        #expect(sent(effects) == [.decline(.init(session: "S-rotted", reason: .unknownSession))])
+    }
+
+    // MARK: - Playing a dealt game
+
+    @Test("No message of a dealt game names a hidden identity")
+    func nothingAboutTheDealTravels() throws {
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed])
+        var traffic: [BoardGameMessage] = []
+        traffic += sent(try engine.propose(to: .peer, on: .first, rulesID: "jieqi",
+                                           proposerMoves: .first))
+        traffic += sent(engine.receive(.accept(.init(session: "S-1")), on: .first))
+        traffic += sent(engine.receive(.dealNonce(.init(session: "S-1", nonce: Self.nonce)),
+                                       on: .first))
+        traffic += sent(try engine.play("b1c3", in: "S-1"))
+
+        let encoder = JSONEncoder()
+        for message in traffic {
+            let json = String(decoding: try encoder.encode(message), as: UTF8.self)
+            #expect(!json.contains("~"), "a face-down mark is a position's, never a message's")
+            #expect(!json.contains(Self.dealtStart))
+        }
+    }
+
+    @Test("A retraction returns the position's concealment")
+    func aRetractionReturnsConcealment() throws {
+        let core = try TestCores.fresh()
+        let engine = try connected(minting: ["S-1"], drawing: [Self.seed], over: core)
+        let id = try dealtSessionFromHere(engine)
+        _ = try engine.play("b1c3", in: id)
+
+        let revealed = try #require(position(core, engine.session(id)))
+        #expect(revealed != Self.dealtStart, "the ply that moved it turned it up")
+
+        // The two players agree to take it back, and each end recomputes the
+        // position from the deal and the surviving plies.
+        _ = try engine.requestUndo(keeping: 0, in: id)
+        _ = engine.receive(.acceptUndo(.init(session: id)), on: .first)
+
+        let session = try #require(engine.session(id))
+        #expect(session.count == 0)
+        #expect(session.undos == 1)
+        #expect(position(core, session) == Self.dealtStart,
+                "a piece the retracted ply revealed stands hidden again")
+    }
+
+    /// A session as the store gives one back: accepted, unconnected, and
+    /// carrying whatever handshake it persisted.
+    private func stored(_ id: String, game: String = "jieqi",
+                        dealt deal: BoardGameDeal?) -> BoardGameSession {
+        var session = BoardGameSession(id: id, peer: .peer, rulesID: game,
+                                       rulesVersion: "1", proposerMoves: .first,
+                                       proposer: .local)
+        session.accepted = true
+        session.handshake = deal.map { .dealt($0) }
+        return session
+    }
+
+    /// The position a session's plies produce, over the deal it holds.
+    private func position(_ core: Core, _ session: BoardGameSession?) -> String? {
+        guard let session, let game = GameKind(rulesID: session.rulesID) else { return nil }
+        return core.nearbyPositions.standing(of: game, from: session.dealtStart,
+                                             after: session.plies)?.evaluation.fen
+    }
+
+    /// Two ends of one handshake holding one deal — which is the whole point of
+    /// deriving it rather than sending it.
+    private func expect(engine dealer: BoardGameEngine, _ here: String,
+                        hasTheSameDealAs other: BoardGameEngine, _ there: String) {
+        let ours = dealer.session(here)?.deal
+        let theirs = other.session(there)?.deal
+        #expect(ours == theirs)
+        #expect(ours?.digest == Self.digest)
+        #expect(ours?.start == Self.dealtStart)
+    }
+
     // MARK: - Driving the engine
 
-    private func engine(minting identifiers: [String] = []) throws -> BoardGameEngine {
-        let core = try TestCores.fresh()
+    private func engine(minting identifiers: [String] = [],
+                        drawing contributions: [String] = [],
+                        over held: Core? = nil) throws -> BoardGameEngine {
+        let core = try held ?? TestCores.fresh()
         let pending = Identifiers(identifiers)
-        return BoardGameEngine(rules: core.boardGameRules, sessionIDs: { pending.next() })
+        let drawn = Contributions(contributions)
+        return BoardGameEngine(rules: core.boardGameRules,
+                               sessionIDs: { pending.next() },
+                               contributions: { drawn.next() })
     }
 
     /// An engine with one connection up and the other peer's hello in hand.
-    private func connected(minting identifiers: [String] = []) throws -> BoardGameEngine {
-        let engine = try engine(minting: identifiers)
+    private func connected(minting identifiers: [String] = [],
+                           drawing contributions: [String] = [],
+                           over held: Core? = nil) throws -> BoardGameEngine {
+        let engine = try engine(minting: identifiers, drawing: contributions, over: held)
         _ = connect(engine, .first)
         return engine
+    }
+
+    /// A dealt session this peer proposed — so this peer is the dealer — with
+    /// its handshake complete and the corpus's own deal behind it.
+    @discardableResult
+    private func dealtSessionFromHere(_ engine: BoardGameEngine, _ id: String = "S-1",
+                                      moves: Mover = .first,
+                                      on connection: ConnectionID = .first) throws -> String {
+        _ = try engine.propose(to: .peer, on: connection, rulesID: "jieqi",
+                               proposerMoves: moves)
+        _ = engine.receive(.accept(.init(session: id)), on: connection)
+        _ = engine.receive(.dealNonce(.init(session: id, nonce: Self.nonce)), on: connection)
+        return id
+    }
+
+    /// A dealt session the other peer proposed — so the other peer is the
+    /// dealer — with its handshake complete.
+    @discardableResult
+    private func dealtSessionFromPeer(_ engine: BoardGameEngine, _ id: String = "S-peer",
+                                      peerMoves: Mover = .first,
+                                      on connection: ConnectionID = .first) throws -> String {
+        peerProposes(engine, id, moves: peerMoves, game: "jieqi", on: connection)
+        _ = try engine.answer(id, accepting: true)
+        _ = engine.receive(.dealCommit(.init(session: id, commit: Self.commit)), on: connection)
+        _ = engine.receive(.dealSeed(.init(session: id, seed: Self.seed)), on: connection)
+        return id
     }
 
     @discardableResult
@@ -1299,6 +1796,19 @@ extension ConnectionID {
 
 extension PeerDeviceID {
     fileprivate static let peer = PeerDeviceID("peer-device")
+}
+
+/// The handshake contributions a test pins, in the order the engine draws them.
+/// Past the pinned ones it draws for real, which is what a case that only wants
+/// two handshakes to differ needs.
+private final class Contributions: @unchecked Sendable {
+    private var pending: [String]
+
+    init(_ pending: [String]) { self.pending = pending }
+
+    func next() -> String? {
+        pending.isEmpty ? DealHex.contribution() : pending.removeFirst()
+    }
 }
 
 /// The session identifiers a test pins. `@unchecked Sendable` because the suite

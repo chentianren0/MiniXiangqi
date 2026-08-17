@@ -91,9 +91,11 @@ final class PhoneNearbyUITests: XCTestCase {
         }
         attach(app, named: "phone-nearby-01-the-home-with-no-radio")
 
-        // Every game the app carries, it carries with somebody: the placement
-        // games' sections end in the same third row, further down the list.
-        for identifier in ["mode-gomoku-nearby", "mode-renju-nearby"] {
+        // Every game the app carries, it carries with somebody: the dealt game
+        // and the placement games' sections end in the same nearby row, further
+        // down the list. Jieqi's is its second row rather than its third — that
+        // game has no AI to offer — and it is a nearby row like any other.
+        for identifier in ["mode-jieqi-nearby", "mode-gomoku-nearby", "mode-renju-nearby"] {
             XCTAssertTrue(scrollTo(app, identifier),
                           "\(identifier) completes that game's section")
         }

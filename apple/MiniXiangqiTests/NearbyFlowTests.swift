@@ -234,7 +234,8 @@ struct NearbyFlowTests {
                          "nearby.refusal.unknownGame",
                          "nearby.refusal.rulesMismatch",
                          "nearby.refusal.busy",
-                         "nearby.refusal.unknownSession"])
+                         "nearby.refusal.unknownSession",
+                         "nearby.refusal.dealMismatch"])
         // Distinct, because a reason a reader cannot tell from another reason is
         // a code with extra steps.
         #expect(Set(keys).count == DeclineReason.allCases.count)
@@ -879,8 +880,13 @@ struct NearbyFlowTests {
 
     @Test("A refusal answering a resume is not titled as a game that did not start")
     func aResumeRefusalIsTitledForAGameThatWasUnderWay() {
-        #expect(NearbyRefusal.declined(.unknownSession).titleKey == "nearby.ended.title")
-        for reason in DeclineReason.allCases where reason != .unknownSession {
+        // The two answers a **resume** draws are the two that void a session on
+        // both sides, and each refuses a game that was already under way.
+        let ofAResume: Set<DeclineReason> = [.unknownSession, .dealMismatch]
+        for reason in ofAResume {
+            #expect(NearbyRefusal.declined(reason).titleKey == "nearby.ended.title")
+        }
+        for reason in DeclineReason.allCases where !ofAResume.contains(reason) {
             #expect(NearbyRefusal.declined(reason).titleKey == "alert.nearbyDeclined.title")
         }
         #expect(NearbyRefusal.refused(.peerIsBusy).titleKey == "alert.nearbyDeclined.title")
@@ -1032,134 +1038,6 @@ struct NearbyFlowTests {
 
 // MARK: - The seams
 
-/// A driver that records instead of speaking, and refuses when the test says so.
-///
-/// Observable like the real one, because *when* it publishes is part of what is
-/// under test: the flow holds the board's session at every publication rather
-/// than at every redraw, and a fake that published silently could not tell the
-/// two apart.
-@MainActor
-@Observable
-private final class FakeDriver: NearbyDriving {
-    struct Proposal: Equatable {
-        var peer: PeerDeviceID
-        var connection: ConnectionID
-        var rulesID: String
-        var proposerMoves: Mover
-    }
-
-    struct Answer: Equatable {
-        var session: String
-        var accepting: Bool
-    }
-
-    /// One negotiation intent, as the driver received it.
-    enum Intent: Equatable {
-        case claim
-        case offerDraw
-        case acceptDraw
-        case requestUndo(keep: Int)
-        case acceptUndo
-    }
-
-    var sessions: [BoardGameSession] = []
-    var declines: [NearbyDecline] = []
-    var ownMoveRefusals = 0
-    /// What every intent answers with, where the test wants a refusal.
-    var refuses: BoardGameRefusal?
-    /// The identifier the engine would mint for the next proposal.
-    var mints = "S"
-    /// What the engine's own oracle would say about the claim.
-    var claimStandsAnswer = false
-
-    private(set) var proposals: [Proposal] = []
-    private(set) var answers: [Answer] = []
-    private(set) var played: [String] = []
-    private(set) var resigned: [String] = []
-    private(set) var intents: [Intent] = []
-    /// The sessions `claimStands` was asked about, which is what proves the
-    /// affordance is the engine's answer rather than the position's.
-    private(set) var claimsAsked: [String] = []
-
-    func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
-                 proposerMoves: Mover) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        proposals.append(Proposal(peer: peer, connection: connection, rulesID: rulesID,
-                                  proposerMoves: proposerMoves))
-        // The engine mints the identifier and holds the proposal it made, which
-        // is what the flow reads back to learn which session it is waiting on.
-        var proposed = BoardGameSession(id: mints, peer: peer, rulesID: rulesID,
-                                        rulesVersion: "1", proposerMoves: proposerMoves,
-                                        proposer: .local)
-        proposed.connection = connection
-        sessions.append(proposed)
-    }
-
-    func answer(_ session: String, accepting: Bool) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        answers.append(Answer(session: session, accepting: accepting))
-    }
-
-    func play(_ text: String, in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        played.append(text)
-    }
-
-    func resign(in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        resigned.append(session)
-    }
-
-    func claim(in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        intents.append(.claim)
-    }
-
-    func offerDraw(in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        intents.append(.offerDraw)
-    }
-
-    func acceptDraw(in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        intents.append(.acceptDraw)
-    }
-
-    func requestUndo(keeping keep: Int, in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        intents.append(.requestUndo(keep: keep))
-    }
-
-    func acceptUndo(in session: String) throws(BoardGameRefusal) {
-        if let refuses { throw refuses }
-        intents.append(.acceptUndo)
-    }
-
-    func claimStands(in session: BoardGameSession) -> Bool {
-        claimsAsked.append(session.id)
-        return claimStandsAnswer
-    }
-
-    /// The interrupted game the library would give back, where a case has set
-    /// one up, and what it was asked.
-    var stored: BoardGameSession?
-    private(set) var resumedStored = 0
-    private(set) var abandoned = 0
-
-    func resumeStoredGame() -> String? {
-        resumedStored += 1
-        guard let stored else { return nil }
-        sessions.append(stored)
-        return stored.id
-    }
-
-    func abandonStoredGame() {
-        abandoned += 1
-        sessions.removeAll { $0.state != .proposed }
-        stored = nil
-    }
-}
-
 /// The library's one active game, as the flow asks about it: what it is holding,
 /// and the making of room that is somebody else's flow.
 @MainActor
@@ -1204,7 +1082,8 @@ private final class FakeReach: NearbyReach {
 /// Positions enough to hold a board up. What a position actually is comes from
 /// the core, and the oracle's own suite is where that is asked.
 private nonisolated struct FakePositions: NearbyPositions {
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding? {
         NearbyStanding(
             evaluation: Evaluation(fen: frozenStart(game),
                                    sideToMove: Mover.atPly(plies.count) == .first
@@ -1228,8 +1107,9 @@ private nonisolated struct FakePositions: NearbyPositions {
 /// the core's answer; what this shows is a board where it is, so that what the
 /// status line does with the engine's separate answer can be asked.
 private nonisolated struct ClaimablePositions: NearbyPositions {
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
-        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, from: start, after: plies) else { return nil }
         standing.evaluation.state = .claimableDraw
         standing.evaluation.claimAvailable = true
         return standing
@@ -1247,8 +1127,9 @@ private nonisolated struct PlacementPositions: NearbyPositions {
     /// legal moves at all.
     var over = false
 
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
-        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, from: start, after: plies) else { return nil }
         guard !over else {
             standing.evaluation.state = .redWins
             standing.evaluation.reason = .fiveInARow
@@ -1268,8 +1149,9 @@ private nonisolated struct PlacementPositions: NearbyPositions {
 /// home, and it reads that piece off the ply's destination, which in the start
 /// position is an empty point.
 private nonisolated struct AdvancedPositions: NearbyPositions {
-    func standing(of game: GameKind, after plies: [String]) -> NearbyStanding? {
-        guard var standing = FakePositions().standing(of: game, after: plies) else { return nil }
+    func standing(of game: GameKind, from start: String?,
+                  after plies: [String]) -> NearbyStanding? {
+        guard var standing = FakePositions().standing(of: game, from: start, after: plies) else { return nil }
         standing.evaluation.fen = "rcnkncr/p1ppp1p/7/7/7/PCPPP1P/R1NKNCR w - - 0 1"
         return standing
     }

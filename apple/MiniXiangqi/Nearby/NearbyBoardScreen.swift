@@ -78,7 +78,15 @@ struct NearbyBoardScreen: View {
             // is: the position is still worth looking at, and the notice in
             // front of it says what became of the game.
             guard let session else { return }
-            play?.sync(with: session)
+            // A board opened on a session there was nothing to draw for yet —
+            // a dealt game whose handshake was still in flight — builds the
+            // moment there is. The deal is where its position comes from, and
+            // it arrives in its own message rather than with the acceptance.
+            guard let play else {
+                open()
+                return
+            }
+            play.sync(with: session)
         }
         .onChange(of: flow.boardVoid) { _, _ in wentAway() }
         // The library refusing a move of the player's own. The count only
@@ -118,8 +126,16 @@ struct NearbyBoardScreen: View {
     /// sentence speaks only for a game that genuinely ended without a result.
     private func wentAway() {
         guard let void = flow.boardVoid else { return }
-        if let held = flow.boardHeld { play?.sync(with: held) }
-        play?.wentAway(void)
+        guard let play else {
+            // A board that never had a position to draw — a dealt game whose
+            // handshake died with its connection — has nothing to stand the
+            // notice in front of, and a spinner over nothing is not a state to
+            // leave anybody in. The room it was proposed from is where it goes.
+            flow.leaveBoard()
+            return
+        }
+        if let held = flow.boardHeld { play.sync(with: held) }
+        play.wentAway(void)
     }
 
     private func layout(_ play: NearbyPlay) -> some View {
@@ -337,7 +353,14 @@ struct NearbyBoardScreen: View {
 
     private func boardBlock(_ play: NearbyPlay, _ geometry: BoardGeometry,
                             bleed: CGFloat = 0) -> some View {
-        ZStack {
+        // **The ending discloses the deal, and the board shows it at the moment
+        // the finished game arrives** — after the landing, which is the same
+        // beat the result notice waits for: the ply that ended the game has to
+        // finish being shown before anything answers it. It arrives by opacity,
+        // one settle for the whole board, so Reduce Motion draws it exactly as
+        // full motion does.
+        let disclosure: Double = play.disclosesTheDeal && !play.isCommitting ? 1 : 0
+        return ZStack {
             BoardView(geometry: geometry,
                       placement: play.placement,
                       flipped: play.flipped,
@@ -349,6 +372,8 @@ struct NearbyBoardScreen: View {
                       checkedGeneral: play.checkedGeneral,
                       transit: play.transit,
                       transitFade: play.transitFade,
+                      transitReveal: play.transitReveal,
+                      disclosure: disclosure,
                       checkEmphasis: play.checkEmphasis,
                       markerEmphasis: play.markerEmphasis,
                       policy: play.policy,
@@ -379,6 +404,10 @@ struct NearbyBoardScreen: View {
                     .transition(.opacity)
             }
         }
+        // One settle for the disclosure, and for nothing else: the board's own
+        // phases are driven by the transitions that schedule them, and this
+        // animates the one value those transitions do not.
+        .animation(play.policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
     /// The fuller wording the notice has room for, which is the same vocabulary

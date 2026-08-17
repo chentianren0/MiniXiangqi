@@ -1,10 +1,15 @@
 // The BoardGame Protocol as one state machine.
 //
-// docs/boardgame-protocol.md is binding, and this is the whole of it: hello,
-// proposing, playing, offers and requests, ending, interruption and resume,
-// settlement, and the violations that close a connection. Nothing here is a
-// rule of either game — every question about a move or a result is asked of
+// docs/boardgame-protocol-v2.md is binding, and this is the whole of it: hello,
+// proposing, the deal handshake, playing, offers and requests, ending,
+// interruption and resume, settlement, and the violations that close a
+// connection. Nothing here is a rule of any game — every question about a move,
+// a result, or whether a game's session opens with the handshake is asked of
 // `BoardGameRules`.
+//
+// **No hidden identity is anywhere in this file.** A dealt game's deal is
+// derived on both ends and never sent; what a move revealed is not on the wire,
+// and no diagnostic below names an identity or the position that holds them.
 //
 // It is deterministic and synchronous. It holds no clock and no timer:
 // reconnection timing, retries and back-off are transport policy and live
@@ -95,6 +100,7 @@ nonisolated enum BoardGameRefusal: Error, Equatable {
 nonisolated final class BoardGameEngine {
     private let rules: any BoardGameRules
     private let mintSessionID: @Sendable () -> String
+    private let drawContribution: @Sendable () -> String?
 
     private var connections: [ConnectionID: Connection] = [:]
     /// Keyed by the identifier's bytes, so two identifiers this contract calls
@@ -104,10 +110,17 @@ nonisolated final class BoardGameEngine {
     /// - Parameter sessionIDs: mints the identifier a proposal carries. The
     ///   contract wants a UUID; injecting it is what lets a test pin the
     ///   crossing rule's byte-wise sort.
+    /// - Parameter contributions: draws one handshake contribution — the
+    ///   dealer's seed, or the other end's nonce. Called once per handshake per
+    ///   end and never cached, because "a contribution serves exactly one
+    ///   handshake"; injecting it is what lets a test see that a second
+    ///   handshake drew afresh.
     init(rules: any BoardGameRules,
-         sessionIDs: @escaping @Sendable () -> String = { UUID().uuidString }) {
+         sessionIDs: @escaping @Sendable () -> String = { UUID().uuidString },
+         contributions: @escaping @Sendable () -> String? = { DealHex.contribution() }) {
         self.rules = rules
         self.mintSessionID = sessionIDs
+        self.drawContribution = contributions
     }
 
     private struct Connection {
@@ -139,15 +152,40 @@ nonisolated final class BoardGameEngine {
     /// A session this peer already holds is not replaced. The engine is the
     /// authority on a live session, and a stored copy of one it is playing is
     /// behind by definition.
-    func adopt(_ session: BoardGameSession) {
-        guard sessionsByID[session.key] == nil else { return }
+    ///
+    /// **A hidden-information session's deal is re-verified here**, which is
+    /// the one door a persisted one comes through. "Before using that deal it
+    /// re-verifies it locally, and against everything the deal comes from",
+    /// and a failure "means what it holds is no longer the session, which it
+    /// answers as a peer that does not know the session" — by not taking it up,
+    /// after which every `resume` for it meets the `unknown_session` answer any
+    /// session this peer holds nothing for meets.
+    ///
+    /// Answers whether the session was taken up.
+    @discardableResult
+    func adopt(_ session: BoardGameSession) -> Bool {
+        guard sessionsByID[session.key] == nil else { return false }
         var restored = session
+        // A dealt game's session without a deal, or an undealt game's with one,
+        // is not a session of the game it names.
+        guard rules.dealsItsStart(restored.rulesID) == (restored.deal != nil) else {
+            return false
+        }
+        if let held = restored.deal {
+            guard let verified = BoardGameDeal.verified(
+                commit: held.commit, nonce: held.nonce, seed: held.seed,
+                digest: held.digest, of: restored.rulesID, by: rules)
+            else { return false }
+            restored.handshake = .dealt(verified)
+        }
         restored.connection = nil
         restored.exchange = nil
         restored.item = nil
         restored.rulesEnd = rules.standing(after: restored.plies,
+                                           from: restored.dealtStart,
                                            of: restored.rulesID).decision
         store(restored)
+        return true
     }
 
     /// A session this device is giving up on, without a message.
@@ -181,14 +219,19 @@ nonisolated final class BoardGameEngine {
         return [.send(.hello(BoardGameMessage.Hello()), on: connection)]
     }
 
-    /// A connection went away. An unanswered proposal dies with it, a pending
-    /// offer or request is void with it, and a session it carried is
-    /// interrupted rather than lost.
+    /// A connection went away. An unanswered proposal dies with it, a deal
+    /// handshake in flight dies with it, a pending offer or request is void
+    /// with it, and a session it carried is interrupted rather than lost.
     func connectionDied(_ connection: ConnectionID) {
         connections[connection] = nil
         for held in sessionsByID.values {
             var session = held
-            if session.state == .proposed, session.connection == connection {
+            // "A **dealing** session is bound to the connection its `propose`
+            // travelled on and dies with it: it holds nothing worth
+            // reconciling, it is never resumed, and the pair simply proposes
+            // again and deals again."
+            if session.state == .proposed || session.state == .dealing,
+               session.connection == connection {
                 forget(session)
                 continue
             }
@@ -257,11 +300,14 @@ nonisolated final class BoardGameEngine {
             switch message {
             case .resume:
                 // Genuinely unknown: this peer holds nothing for it, retired
-                // it, or held only a proposal that died with its connection.
+                // it, held only a proposal or a handshake that died with its
+                // connection, or its own deal failed re-verification.
                 return [.send(.decline(.init(session: id, reason: .unknownSession)),
                               on: connection)]
-            case .decline(let decline) where decline.reason == .unknownSession:
-                // Both peers agree the session does not exist.
+            case .decline(let decline) where decline.reason.voidsTheSession:
+                // Both peers agree the session does not exist. `unknown_session`
+                // and `deal_mismatch` both void it on both sides, so either can
+                // cross the very exchange that provoked it.
                 return []
             default:
                 return close(connection,
@@ -279,6 +325,13 @@ nonisolated final class BoardGameEngine {
         // connection — and the reconciliation allowance must not swallow it.
         if case .decline(let decline) = message {
             return receive(decline, into: &session, on: connection)
+        }
+
+        // A session in **dealing** has exactly three messages with a lawful
+        // meaning, and "any other message arriving for a session in dealing" is
+        // a violation.
+        if session.state == .dealing {
+            return receiveWhileDealing(message, into: &session, on: connection)
         }
 
         if session.state == .ended {
@@ -299,6 +352,15 @@ nonisolated final class BoardGameEngine {
         case .hello, .propose, .resume, .decline:
             preconditionFailure("handled above")
 
+        case .dealCommit, .dealNonce, .dealSeed:
+            // Every handshake message for a session that is not dealing is a
+            // departure: one for a perfect-information game's session, one
+            // before the proposal was answered, and one for a session whose
+            // handshake has already completed.
+            return close(connection,
+                         .violation(.meaningless("a handshake message outside a dealing session")),
+                         voiding: id)
+
         case .accept:
             guard session.state == .proposed, session.proposer == .local else {
                 return close(connection,
@@ -306,8 +368,27 @@ nonisolated final class BoardGameEngine {
                              voiding: id)
             }
             session.accepted = true
+            // "On `accept`, a perfect-information game's session becomes
+            // **active** and play begins. A hidden-information game's becomes
+            // **dealing**, and the proposer sends `deal_commit` at once."
+            guard rules.dealsItsStart(session.rulesID) else {
+                store(session)
+                return []
+            }
+            guard let seed = drawContribution(),
+                  let commit = DealHex.commitment(for: seed)
+            else {
+                // A cryptographic source that refused. There is no deal to make
+                // from something weaker and no vocabulary for saying so, so the
+                // handshake stops where it stands: this end forgets the session
+                // and the other end's dies with the connection, which is what
+                // the contract already does with an abandoned handshake.
+                forget(session)
+                return []
+            }
+            session.handshake = .awaitingNonce(commit: commit, seed: seed)
             store(session)
-            return []
+            return [.send(.dealCommit(.init(session: id, commit: commit)), on: connection)]
 
         case .move(let move):
             return receive(move, into: &session, on: connection)
@@ -395,7 +476,11 @@ nonisolated final class BoardGameEngine {
         }
 
         if let live = session(with: peer) {
-            guard live.state == .active else {
+            // "`busy` answers a `propose` that arrives while a **dealing** or
+            // **active** session exists with that peer." A proposal arriving
+            // while one is merely unanswered is the crossing case above, and
+            // anything left here is a second proposal, which is a violation.
+            guard live.state == .active || live.state == .dealing else {
                 return close(connection,
                              .violation(.meaningless("a second proposal while one is unanswered")),
                              voiding: live.id)
@@ -424,6 +509,94 @@ nonisolated final class BoardGameEngine {
         return []
     }
 
+    // MARK: - The deal handshake
+
+    /// The three messages a **dealing** session has a lawful meaning for, "in
+    /// this order and no other".
+    ///
+    /// **The handshake's own state is the whole test.** Only the dealer ever
+    /// stands at `awaitingNonce` and only the other end at `awaitingCommit` or
+    /// `awaitingSeed`, so matching the message against it is at once the order
+    /// check and the party check: a `deal_commit` or a `deal_seed` from the peer
+    /// that is not the dealer, a `deal_nonce` from the dealer, any of the three
+    /// out of order or a second time, and any other message at all fall through
+    /// to one violation. A malformed value never arrives here — the codec
+    /// refuses a handshake value that is not sixty-four lowercase hexadecimal
+    /// digits, and the transport reports that as the malformed message it is.
+    private func receiveWhileDealing(_ message: BoardGameMessage,
+                                     into session: inout BoardGameSession,
+                                     on connection: ConnectionID) -> [BoardGameEffect] {
+        // The handshake's three messages travel "on the session's own
+        // connection", which for a dealing session is the one its `propose`
+        // travelled on and the only one it will ever have.
+        guard session.carries(connection) else {
+            return close(connection,
+                         .violation(.meaningless("a handshake message on a connection this session is not bound to")),
+                         voiding: session.id)
+        }
+        let id = session.id
+
+        switch (message, session.handshake) {
+        case (.dealCommit(let arriving), .awaitingCommit):
+            guard let nonce = drawContribution() else { return abandon(&session) }
+            session.handshake = .awaitingSeed(commit: arriving.commit, nonce: nonce)
+            store(session)
+            return [.send(.dealNonce(.init(session: id, nonce: nonce)), on: connection)]
+
+        case (.dealNonce(let arriving), .awaitingNonce(_, let seed)):
+            // The dealer holds both contributions now. **Its session becomes
+            // active when it has sent `deal_seed`**, and the first ply may
+            // follow immediately.
+            guard let deal = rules.deal(seed: seed, nonce: arriving.nonce,
+                                        of: session.rulesID)
+            else {
+                return close(connection,
+                             .violation(.malformed("no deal derives from that contribution")),
+                             voiding: id)
+            }
+            session.handshake = .dealt(deal)
+            store(session)
+            return [.send(.dealSeed(.init(session: id, seed: seed)), on: connection)]
+
+        case (.dealSeed(let arriving), .awaitingSeed(let commit, let nonce)):
+            // "The receiver hashes it and compares with the `commit` it holds;
+            // a mismatch is a protocol violation", which is the one thing the
+            // commitment exists to catch. The comparison is against the
+            // commitment the deriving entry reports for that seed, so one
+            // implementation answers it on both ends.
+            guard let deal = rules.deal(seed: arriving.seed, nonce: nonce,
+                                        of: session.rulesID)
+            else {
+                return close(connection,
+                             .violation(.malformed("no deal derives from that seed")),
+                             voiding: id)
+            }
+            guard deal.commit == commit else {
+                return close(connection,
+                             .violation(.meaningless("the seed does not open the commitment")),
+                             voiding: id)
+            }
+            session.handshake = .dealt(deal)
+            store(session)
+            return []
+
+        default:
+            return close(connection,
+                         .violation(.meaningless("a message with no lawful meaning while dealing")),
+                         voiding: id)
+        }
+    }
+
+    /// A handshake this device cannot carry on with, because its cryptographic
+    /// source refused. Nothing is sent: there is no vocabulary for saying so,
+    /// and a dealing session that stops is exactly the abandoned handshake the
+    /// contract already describes — the other end's dies with the connection,
+    /// and the pair proposes again and deals again.
+    private func abandon(_ session: inout BoardGameSession) -> [BoardGameEffect] {
+        forget(session)
+        return []
+    }
+
     /// A ply arriving for a proposed or active session.
     private func receive(_ move: BoardGameMessage.Move, into session: inout BoardGameSession,
                          on connection: ConnectionID) -> [BoardGameEffect] {
@@ -445,6 +618,7 @@ nonisolated final class BoardGameEngine {
                          voiding: session.id)
         }
         guard case .lawful(let standing) = rules.verdict(for: move.move, after: session.plies,
+                                                         from: session.dealtStart,
                                                          of: session.rulesID)
         else {
             return close(connection, .violation(.illegalMove("the move is not lawful here")),
@@ -488,10 +662,11 @@ nonisolated final class BoardGameEngine {
                          into session: inout BoardGameSession,
                          on connection: ConnectionID) -> [BoardGameEffect] {
         if session.awaitsAnswer(on: connection) {
-            // A proposal is refused for any of its reasons; a resume only by
-            // the answer that says the session is not there, which voids it on
-            // both sides.
-            if session.state == .proposed || decline.reason == .unknownSession {
+            // A proposal is refused for any of its reasons; a resume only by an
+            // answer that voids the session on both sides — the peer that does
+            // not know it, and the peer holding a different deal under one
+            // identifier.
+            if session.state == .proposed || decline.reason.voidsTheSession {
                 forget(session)
                 return [.declined(session: session.id, peer: session.peer,
                                   reason: decline.reason)]
@@ -515,6 +690,7 @@ nonisolated final class BoardGameEngine {
             guard session.carries(connection), move.index == session.count,
                   Mover.atPly(move.index) == session.peerMover,
                   case .lawful(let standing) = rules.verdict(for: move.move, after: session.plies,
+                                                             from: session.dealtStart,
                                                              of: session.rulesID)
             else { return [] }
             effects = land(move.move, deciding: standing.decision, in: &session, on: connection)
@@ -537,10 +713,43 @@ nonisolated final class BoardGameEngine {
 
     private func receive(_ resume: BoardGameMessage.Resume, into session: inout BoardGameSession,
                          on connection: ConnectionID) -> [BoardGameEffect] {
-        guard session.state != .proposed else {
+        switch session.state {
+        case .proposed:
             return close(connection, .violation(.meaningless("a resume for a proposal")),
                          voiding: session.id)
+        case .dealing:
+            // A dealing session "is never resumed": it holds nothing worth
+            // reconciling, and a resume naming one is a message with no lawful
+            // meaning in that state.
+            return close(connection,
+                         .violation(.meaningless("a resume for a session whose handshake is in flight")),
+                         voiding: session.id)
+        case .active, .ended:
+            break
         }
+
+        switch (session.deal?.digest, resume.dealDigest) {
+        case (nil, nil):
+            break
+        case (let ours?, let theirs?) where ours == theirs:
+            break
+        case (_?, _?):
+            // "A `resume` whose `deal_digest` differs from the receiver's own is
+            // two devices holding different games under one identifier": the
+            // session is void on both sides, and the answer says which of the
+            // two voiding reasons it is.
+            forget(session)
+            return [.send(.decline(.init(session: session.id, reason: .dealMismatch)),
+                          on: connection)]
+        default:
+            // Present for a hidden-information session and absent for every
+            // other; a `resume` whose presence disagrees with the session it
+            // names is missing a member or carrying an extra one.
+            return close(connection,
+                         .violation(.malformed("a resume whose deal_digest does not match the session's game")),
+                         voiding: session.id)
+        }
+
         var exchange = session.exchange ?? .init()
 
         if session.proposer == .peer {
@@ -606,7 +815,8 @@ nonisolated final class BoardGameEngine {
             session.plies = Array(session.plies.prefix(ourEffectiveCount))
             session.undos = theirs.undos
             session.retractedTo = theirs.keep
-            session.rulesEnd = rules.standing(after: session.plies, of: session.rulesID).decision
+            session.rulesEnd = rules.standing(after: session.plies, from: session.dealtStart,
+                                              of: session.rulesID).decision
         } else if session.undos > theirs.undos {
             theirEffectiveCount = min(theirs.count, ourKeep)
         }
@@ -664,7 +874,10 @@ nonisolated final class BoardGameEngine {
         }
         guard let version = rules.version(of: rulesID) else { throw .unknownGame }
         if let live = session(with: peer) {
-            throw live.state == .active ? .peerIsBusy : .proposalOutstanding
+            // A session dealing is a session under way, exactly as an active
+            // one is: the pair is busy until its handshake has finished or its
+            // connection has taken it.
+            throw live.state == .proposed ? .proposalOutstanding : .peerIsBusy
         }
         if let lingering = lingeringSession(with: peer) {
             // A peer proposes only when its own copy of the pair's lingering
@@ -697,6 +910,12 @@ nonisolated final class BoardGameEngine {
             return [.send(.decline(.init(session: id, reason: .declined)), on: connection)]
         }
         session.accepted = true
+        // The acceptor of a hidden-information game's proposal enters
+        // **dealing** and waits: the proposer is the dealer, and `deal_commit`
+        // is the first thing that travels.
+        if rules.dealsItsStart(session.rulesID) {
+            session.handshake = .awaitingCommit
+        }
         store(session)
         return [.send(.accept(.init(session: id)), on: connection)]
     }
@@ -708,6 +927,7 @@ nonisolated final class BoardGameEngine {
         guard session.isInPlay, let connection = session.connection else { throw .notInPlay }
         guard session.isLocalTurn else { throw .notYourTurn }
         guard case .lawful(let standing) = rules.verdict(for: text, after: session.plies,
+                                                         from: session.dealtStart,
                                                          of: session.rulesID)
         else { throw .unlawfulMove }
 
@@ -808,6 +1028,11 @@ nonisolated final class BoardGameEngine {
         switch session.state {
         case .proposed:
             throw .nothingToResume
+        case .dealing:
+            // A dealing session "is never resumed": it holds nothing worth
+            // reconciling, and it dies with the connection its proposal
+            // travelled on rather than being carried to another.
+            throw .nothingToResume
         case .active:
             guard session.connection != connection || session.exchange != nil else {
                 throw .nothingToResume
@@ -862,7 +1087,8 @@ nonisolated final class BoardGameEngine {
         session.undos += 1
         session.retractedTo = keep
         session.item = nil
-        session.rulesEnd = rules.standing(after: session.plies, of: session.rulesID).decision
+        session.rulesEnd = rules.standing(after: session.plies, from: session.dealtStart,
+                                              of: session.rulesID).decision
     }
 
     private func store(_ session: BoardGameSession) {

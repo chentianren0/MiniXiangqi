@@ -2268,6 +2268,23 @@
         }
       }
     },
+    "nearby.refusal.dealMismatch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The two devices no longer have the same game."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两台设备上的对局已经不是同一局了。"
+          }
+        }
+      }
+    },
     "nearby.refusal.declined": {
       "extractionState": "manual",
       "localizations": {

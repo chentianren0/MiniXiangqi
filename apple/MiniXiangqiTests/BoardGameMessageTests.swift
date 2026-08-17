@@ -1,9 +1,10 @@
 // The wire format, read strictly.
 //
-// Every expectation here is docs/boardgame-protocol.md's own: one object with
-// exactly one member, whose value holds exactly the named fields, `end` alone
-// omissible. The malformed cases are the ones a lenient decoder would wave
-// through, so each is written as the bytes a peer would actually send.
+// Every expectation here is docs/boardgame-protocol-v2.md's own: one object
+// with exactly one member, whose value holds exactly the named fields, `end`
+// and `deal_digest` the only omissible two. The malformed cases are the ones a
+// lenient decoder would wave through, so each is written as the bytes a peer
+// would actually send.
 
 import Foundation
 import Testing
@@ -32,11 +33,22 @@ struct BoardGameMessageTests {
         #expect(try encoded(message) == (try object(json)))
     }
 
-    // MARK: - The eleven
+    /// The corpus's dealt-start vector, which is where every handshake value
+    /// written out below comes from: one seed, one nonce, and the commitment
+    /// and digest the core derives from them.
+    private static let seed = String(repeating: "0", count: 64)
+    private static let nonce =
+        "a144410000000000000000000000000000000000000000000000000000000000"
+    private static let commit =
+        "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    private static let digest =
+        "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa"
+
+    // MARK: - The fourteen
 
     @Test("hello carries the protocol version")
     func helloRoundTrips() throws {
-        try roundTrip(.hello(.init()), #"{"hello":{"protocol":1}}"#)
+        try roundTrip(.hello(.init()), #"{"hello":{"protocol":2}}"#)
     }
 
     @Test("propose carries the session, the game, its version, and which mover the proposer takes")
@@ -51,7 +63,7 @@ struct BoardGameMessageTests {
         try roundTrip(.accept(.init(session: "0b34")), #"{"accept":{"session":"0b34"}}"#)
     }
 
-    @Test("decline carries one of the five reasons")
+    @Test("decline carries one of the six reasons")
     func declineRoundTrips() throws {
         try roundTrip(.decline(.init(session: "0b34", reason: .unknownGame)),
                       #"{"decline":{"session":"0b34","reason":"unknown_game"}}"#)
@@ -63,6 +75,18 @@ struct BoardGameMessageTests {
                       #"{"decline":{"session":"0b34","reason":"busy"}}"#)
         try roundTrip(.decline(.init(session: "0b34", reason: .declined)),
                       #"{"decline":{"session":"0b34","reason":"declined"}}"#)
+        try roundTrip(.decline(.init(session: "0b34", reason: .dealMismatch)),
+                      #"{"decline":{"session":"0b34","reason":"deal_mismatch"}}"#)
+    }
+
+    @Test("the handshake's three carry the session and one value each")
+    func theHandshakeRoundTrips() throws {
+        try roundTrip(.dealCommit(.init(session: "0b34", commit: Self.commit)),
+                      #"{"deal_commit":{"session":"0b34","commit":"\#(Self.commit)"}}"#)
+        try roundTrip(.dealNonce(.init(session: "0b34", nonce: Self.nonce)),
+                      #"{"deal_nonce":{"session":"0b34","nonce":"\#(Self.nonce)"}}"#)
+        try roundTrip(.dealSeed(.init(session: "0b34", seed: Self.seed)),
+                      #"{"deal_seed":{"session":"0b34","seed":"\#(Self.seed)"}}"#)
     }
 
     @Test("move carries the ply's index and its text")
@@ -106,6 +130,16 @@ struct BoardGameMessageTests {
                       #"{"resume":{"session":"0b34","undos":2,"count":9,"keep":6,"end":"resign"}}"#)
         try roundTrip(.resume(.init(session: "0b34", undos: 1, count: 4, keep: 4, end: .acceptDraw)),
                       #"{"resume":{"session":"0b34","undos":1,"count":4,"keep":4,"end":"accept_draw"}}"#)
+    }
+
+    @Test("resume carries deal_digest for a hidden-information session and not otherwise")
+    func resumeCarriesTheDigest() throws {
+        try roundTrip(.resume(.init(session: "0b34", undos: 0, count: 3, keep: 3,
+                                    end: nil, dealDigest: Self.digest)),
+                      #"{"resume":{"session":"0b34","undos":0,"count":3,"keep":3,"deal_digest":"\#(Self.digest)"}}"#)
+        try roundTrip(.resume(.init(session: "0b34", undos: 0, count: 3, keep: 3,
+                                    end: .resign, dealDigest: Self.digest)),
+                      #"{"resume":{"session":"0b34","undos":0,"count":3,"keep":3,"end":"resign","deal_digest":"\#(Self.digest)"}}"#)
     }
 
     // MARK: - Malformed
@@ -191,8 +225,30 @@ struct BoardGameMessageTests {
         }
     }
 
+    @Test("a handshake value that is not sixty-four lowercase hexadecimal digits is malformed")
+    func aMalformedHandshakeValueIsRefused() throws {
+        // The same thirty-two bytes in capitals. It is another string, and the
+        // spelling is part of the value rather than a way of writing it.
+        let shouted = Self.commit.uppercased()
+        #expect(throws: DecodingError.self) {
+            try decode(#"{"deal_commit":{"session":"0b34","commit":"\#(shouted)"}}"#)
+        }
+        #expect(throws: DecodingError.self) {
+            try decode(#"{"deal_nonce":{"session":"0b34","nonce":"\#(Self.nonce.dropLast())"}}"#)
+        }
+        #expect(throws: DecodingError.self) {
+            try decode(#"{"deal_seed":{"session":"0b34","seed":"\#(Self.seed)0"}}"#)
+        }
+        #expect(throws: DecodingError.self) {
+            try decode(#"{"deal_seed":{"session":"0b34","seed":"\#(Self.seed.dropLast())g"}}"#)
+        }
+        #expect(throws: DecodingError.self) {
+            try decode(#"{"resume":{"session":"0b34","undos":0,"count":3,"keep":3,"deal_digest":"\#(shouted)"}}"#)
+        }
+    }
+
     @Test("hello reads a version this peer does not speak, so the engine can refuse it")
     func helloReadsAnyVersion() throws {
-        #expect(try decode(#"{"hello":{"protocol":2}}"#) == .hello(.init(protocolVersion: 2)))
+        #expect(try decode(#"{"hello":{"protocol":1}}"#) == .hello(.init(protocolVersion: 1)))
     }
 }

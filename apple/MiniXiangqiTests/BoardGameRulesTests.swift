@@ -30,6 +30,25 @@ struct BoardGameRulesTests {
         try TestCores.fresh().boardGameRules
     }
 
+    /// The dealt-start vector `fixtures/store/jieqi-nearby-dealt.json` pins:
+    /// one seed, one nonce, and the commitment, digest and start the core
+    /// derives from them. Bound to rather than restated — the derivation is one
+    /// implementation, and two devices playing one dealt game depend on it
+    /// answering the same bytes everywhere.
+    static let seed = String(repeating: "0", count: 64)
+    static let nonce =
+        "a144410000000000000000000000000000000000000000000000000000000000"
+    static let commit =
+        "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    static let digest =
+        "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa"
+    static let dealtStart =
+        "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/"
+        + "P~1P~1C~1B~1R~/1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1"
+
+    /// The corpus's own two plies over that deal.
+    static let dealtLine = ["b1c3", "b8e8"]
+
     /// Black's five along the eighth rank, White answering down the a-file and
     /// reaching nothing. Nine plies, so the ply that decides it is the first
     /// mover's — which is what makes the mapping below testable at all.
@@ -51,7 +70,70 @@ struct BoardGameRulesTests {
         #expect(rules.version(of: "xiangqi") == "1")
         #expect(rules.version(of: "gomoku-15") == "1")
         #expect(rules.version(of: "renju") == "1")
+        #expect(rules.version(of: "jieqi") == "1",
+                "the dealt game is played over the wire like any other")
     }
+
+    @Test("Jieqi is the game whose session opens with the deal handshake, and the only one")
+    func onlyTheDealtGameOpensWithTheHandshake() throws {
+        let rules = try rules()
+        #expect(rules.dealsItsStart("jieqi"))
+        for game in ["minixiangqi", "xiangqi", "gomoku-15", "renju"] {
+            #expect(!rules.dealsItsStart(game), "\(game) freezes a start of its own")
+        }
+        #expect(!rules.dealsItsStart("go-19"), "and a game this peer does not know deals nothing")
+    }
+
+    // MARK: - The deal
+
+    @Test("One seed and one nonce derive the corpus's own deal")
+    func theDealIsTheCorpusVector() throws {
+        let rules = try rules()
+        let deal = try #require(rules.deal(seed: Self.seed, nonce: Self.nonce, of: "jieqi"))
+        #expect(deal.commit == Self.commit)
+        #expect(deal.digest == Self.digest)
+        #expect(deal.start == Self.dealtStart)
+        #expect(deal.seed == Self.seed)
+        #expect(deal.nonce == Self.nonce)
+    }
+
+    @Test("The commitment this peer computes is the one the deriving entry reports")
+    func theCommitmentIsOneValue() throws {
+        // The dealer needs it before any nonce exists, so it is computed from
+        // the seed alone — and it has to be the same value the core answers
+        // with once there is a deal to derive, or no seed would ever open a
+        // commitment.
+        #expect(DealHex.commitment(for: Self.seed) == Self.commit)
+        let rules = try rules()
+        #expect(rules.deal(seed: Self.seed, nonce: Self.nonce, of: "jieqi")?.commit
+                == DealHex.commitment(for: Self.seed))
+    }
+
+    @Test("No other game has a deal, and no value of another shape derives one")
+    func nothingElseDerivesADeal() throws {
+        let rules = try rules()
+        for game in ["minixiangqi", "xiangqi", "gomoku-15", "renju", "go-19"] {
+            #expect(rules.deal(seed: Self.seed, nonce: Self.nonce, of: game) == nil)
+        }
+        #expect(rules.deal(seed: Self.commit.uppercased(), nonce: Self.nonce, of: "jieqi") == nil,
+                "the spelling is part of the value")
+        #expect(rules.deal(seed: String(Self.seed.dropLast()), nonce: Self.nonce,
+                           of: "jieqi") == nil)
+        #expect(rules.deal(seed: Self.seed, nonce: "", of: "jieqi") == nil)
+    }
+
+    @Test("A dealt game's plies are judged over the deal its session holds")
+    func theDealtGamePlaysFromItsOwnStart() throws {
+        let rules = try rules()
+        #expect(rules.standing(after: [], from: Self.dealtStart, of: "jieqi") == .ongoing)
+        #expect(rules.verdict(for: "b1c3", after: [], from: Self.dealtStart, of: "jieqi")
+                == .lawful(.ongoing), "a hidden piece moves as the square's own role")
+        #expect(rules.verdict(for: "b1b3", after: [], from: Self.dealtStart, of: "jieqi")
+                == .unlawful, "and by no other role")
+        #expect(rules.standing(after: Self.dealtLine, from: Self.dealtStart, of: "jieqi")
+                == .ongoing)
+    }
+
 
     @Test("Any other rules_id is a game this peer does not know")
     func everyOtherGameIsUnknown() throws {
@@ -68,16 +150,16 @@ struct BoardGameRulesTests {
     @Test("A game with no plies is ongoing, in every game")
     func theStartIsOngoing() throws {
         let rules = try rules()
-        #expect(rules.standing(after: [], of: "minixiangqi") == .ongoing)
-        #expect(rules.standing(after: [], of: "xiangqi") == .ongoing)
-        #expect(rules.standing(after: [], of: "gomoku-15") == .ongoing)
-        #expect(rules.standing(after: [], of: "renju") == .ongoing)
+        #expect(rules.standing(after: [], from: nil, of: "minixiangqi") == .ongoing)
+        #expect(rules.standing(after: [], from: nil, of: "xiangqi") == .ongoing)
+        #expect(rules.standing(after: [], from: nil, of: "gomoku-15") == .ongoing)
+        #expect(rules.standing(after: [], from: nil, of: "renju") == .ongoing)
     }
 
     @Test("A mate is a rules-decided end for the mover that delivered it")
     func aMateIsDecided() throws {
         let rules = try rules()
-        #expect(rules.standing(after: Self.mateLine, of: "minixiangqi")
+        #expect(rules.standing(after: Self.mateLine, from: nil, of: "minixiangqi")
                 == .decided(.moverWins(.first), .checkmate))
     }
 
@@ -86,9 +168,9 @@ struct BoardGameRulesTests {
         let rules = try rules()
         // Every earlier position along the line is still an ordinary game, so
         // the claim is lawful exactly where the third occurrence lands.
-        #expect(rules.standing(after: Array(Self.shuffleLine.prefix(7)), of: "minixiangqi")
+        #expect(rules.standing(after: Array(Self.shuffleLine.prefix(7)), from: nil, of: "minixiangqi")
                 == .ongoing)
-        #expect(rules.standing(after: Self.shuffleLine, of: "minixiangqi") == .claimable)
+        #expect(rules.standing(after: Self.shuffleLine, from: nil, of: "minixiangqi") == .claimable)
     }
 
     // MARK: - One ply
@@ -96,38 +178,39 @@ struct BoardGameRulesTests {
     @Test("A legal opening ply is lawful in both games")
     func alawfulPly() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: "b1b2", after: [], of: "minixiangqi") == .lawful(.ongoing))
-        #expect(rules.verdict(for: "a4a5", after: [], of: "xiangqi") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "b1b2", after: [], from: nil, of: "minixiangqi") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "a4a5", after: [], from: nil, of: "xiangqi") == .lawful(.ongoing))
     }
 
     @Test("A move that is not legal at its turn, and text of no shape at all, are both unlawful")
     func unlawfulPlies() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: "b1b7", after: [], of: "minixiangqi") == .unlawful,
+        #expect(rules.verdict(for: "b1b7", after: [], from: nil, of: "minixiangqi") == .unlawful,
                 "a cannon capture wants exactly one screen, and the file is empty")
-        #expect(rules.verdict(for: "a1a3", after: [], of: "minixiangqi") == .unlawful,
+        #expect(rules.verdict(for: "a1a3", after: [], from: nil, of: "minixiangqi") == .unlawful,
                 "the chariot's own soldier blocks the file")
-        #expect(rules.verdict(for: "b7b6", after: [], of: "minixiangqi") == .unlawful,
+        #expect(rules.verdict(for: "b7b6", after: [], from: nil, of: "minixiangqi") == .unlawful,
                 "the other mover's ply, out of turn")
-        #expect(rules.verdict(for: "a1a9", after: [], of: "minixiangqi") == .unlawful,
+        #expect(rules.verdict(for: "a1a9", after: [], from: nil, of: "minixiangqi") == .unlawful,
                 "no such square on this board")
-        #expect(rules.verdict(for: "hello", after: [], of: "minixiangqi") == .unlawful)
-        #expect(rules.verdict(for: "", after: [], of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: "hello", after: [], from: nil, of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: "", after: [], from: nil, of: "minixiangqi") == .unlawful)
     }
 
     @Test("The mating ply is lawful and carries the end it decides")
     func theMatingPlyDecides() throws {
         let rules = try rules()
         let before = Array(Self.mateLine.dropLast())
-        #expect(rules.verdict(for: "b3d3", after: before, of: "minixiangqi")
+        #expect(rules.verdict(for: "b3d3", after: before, from: nil, of: "minixiangqi")
                 == .lawful(.decided(.moverWins(.first), .checkmate)))
     }
 
     @Test("Nothing is in sequence once the plies have decided the game")
     func nothingFollowsADecidedGame() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: "a6a5", after: Self.mateLine, of: "minixiangqi") == .unlawful)
-        #expect(rules.verdict(for: TurnAction.claim, after: Self.mateLine, of: "minixiangqi")
+        #expect(rules.verdict(for: "a6a5", after: Self.mateLine, from: nil,
+                              of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: TurnAction.claim, after: Self.mateLine, from: nil, of: "minixiangqi")
                 == .unlawful)
     }
 
@@ -136,11 +219,14 @@ struct BoardGameRulesTests {
     @Test("The claim is lawful exactly where the claimable repetition stands")
     func theClaimIsLawfulWhereItStands() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: TurnAction.claim, after: Self.shuffleLine, of: "minixiangqi")
+        #expect(rules.verdict(for: TurnAction.claim, after: Self.shuffleLine,
+                              from: nil, of: "minixiangqi")
                 == .lawful(.decided(.draw, .threefoldRepetition)))
-        #expect(rules.verdict(for: TurnAction.claim, after: [], of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: TurnAction.claim, after: [], from: nil,
+                              of: "minixiangqi") == .unlawful)
         #expect(rules.verdict(for: TurnAction.claim,
-                              after: Array(Self.shuffleLine.prefix(7)), of: "minixiangqi")
+                              after: Array(Self.shuffleLine.prefix(7)),
+                              from: nil, of: "minixiangqi")
                 == .unlawful,
                 "one occurrence short is not claimable")
     }
@@ -148,14 +234,14 @@ struct BoardGameRulesTests {
     @Test("The claim is lawful on the 9×10 board too, and ends that game as the draw it claims")
     func theClaimOnTheLargerBoard() throws {
         let rules = try rules()
-        #expect(rules.standing(after: Array(Self.xiangqiShuffleLine.prefix(7)), of: "xiangqi")
+        #expect(rules.standing(after: Array(Self.xiangqiShuffleLine.prefix(7)), from: nil, of: "xiangqi")
                 == .ongoing)
-        #expect(rules.standing(after: Self.xiangqiShuffleLine, of: "xiangqi") == .claimable)
+        #expect(rules.standing(after: Self.xiangqiShuffleLine, from: nil, of: "xiangqi") == .claimable)
         #expect(rules.verdict(for: TurnAction.claim, after: Self.xiangqiShuffleLine,
-                              of: "xiangqi")
+                              from: nil, of: "xiangqi")
                 == .lawful(.decided(.draw, .threefoldRepetition)))
         #expect(rules.standing(after: Self.xiangqiShuffleLine + [TurnAction.claim],
-                               of: "xiangqi")
+                               from: nil, of: "xiangqi")
                 == .decided(.draw, .threefoldRepetition))
     }
 
@@ -163,10 +249,11 @@ struct BoardGameRulesTests {
     func aClaimEndsTheGame() throws {
         let rules = try rules()
         let claimed = Self.shuffleLine + [TurnAction.claim]
-        #expect(rules.standing(after: claimed, of: "minixiangqi")
+        #expect(rules.standing(after: claimed, from: nil, of: "minixiangqi")
                 == .decided(.draw, .threefoldRepetition))
-        #expect(rules.verdict(for: "b1b2", after: claimed, of: "minixiangqi") == .unlawful)
-        #expect(rules.verdict(for: TurnAction.claim, after: claimed, of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: "b1b2", after: claimed, from: nil, of: "minixiangqi") == .unlawful)
+        #expect(rules.verdict(for: TurnAction.claim, after: claimed, from: nil,
+                              of: "minixiangqi") == .unlawful)
     }
 
     // MARK: - The games stones are placed in
@@ -179,14 +266,14 @@ struct BoardGameRulesTests {
     @Test("A placement ply is one point, and two points are not a ply")
     func aPlacementPlyIsOnePoint() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: "h8", after: [], of: "gomoku-15") == .lawful(.ongoing))
-        #expect(rules.verdict(for: "h8", after: [], of: "renju") == .lawful(.ongoing))
-        #expect(rules.verdict(for: "h8h9", after: [], of: "gomoku-15") == .unlawful)
-        #expect(rules.verdict(for: "p8", after: [], of: "gomoku-15") == .unlawful,
+        #expect(rules.verdict(for: "h8", after: [], from: nil, of: "gomoku-15") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "h8", after: [], from: nil, of: "renju") == .lawful(.ongoing))
+        #expect(rules.verdict(for: "h8h9", after: [], from: nil, of: "gomoku-15") == .unlawful)
+        #expect(rules.verdict(for: "p8", after: [], from: nil, of: "gomoku-15") == .unlawful,
                 "the board stops at o")
-        #expect(rules.verdict(for: "h8", after: ["h8"], of: "gomoku-15") == .unlawful,
+        #expect(rules.verdict(for: "h8", after: ["h8"], from: nil, of: "gomoku-15") == .unlawful,
                 "a point with a stone on it is not empty")
-        #expect(rules.verdict(for: "", after: [], of: "renju") == .unlawful)
+        #expect(rules.verdict(for: "", after: [], from: nil, of: "renju") == .unlawful)
     }
 
     /// **The wire's first mover is the black stone, and nothing had to be told
@@ -200,14 +287,14 @@ struct BoardGameRulesTests {
     @Test("Five in a row is a rules-decided win for the mover that placed it")
     func fiveInARowIsDecidedForTheFirstMover() throws {
         let rules = try rules()
-        #expect(rules.standing(after: Array(Self.fiveLine.dropLast()), of: "gomoku-15")
+        #expect(rules.standing(after: Array(Self.fiveLine.dropLast()), from: nil, of: "gomoku-15")
                 == .ongoing)
         #expect(rules.verdict(for: "h8", after: Array(Self.fiveLine.dropLast()),
-                              of: "gomoku-15")
+                              from: nil, of: "gomoku-15")
                 == .lawful(.decided(.moverWins(.first), .fiveInARow)))
-        #expect(rules.standing(after: Self.fiveLine, of: "gomoku-15")
+        #expect(rules.standing(after: Self.fiveLine, from: nil, of: "gomoku-15")
                 == .decided(.moverWins(.first), .fiveInARow))
-        #expect(rules.verdict(for: "b2", after: Self.fiveLine, of: "gomoku-15") == .unlawful,
+        #expect(rules.verdict(for: "b2", after: Self.fiveLine, from: nil, of: "gomoku-15") == .unlawful,
                 "nothing is in sequence once the plies have decided the game")
     }
 
@@ -221,12 +308,13 @@ struct BoardGameRulesTests {
     @Test("A point Renju forbids is not a lawful ply, and Gomoku forbids none")
     func aForbiddenPointIsNotALawfulPly() throws {
         let rules = try rules()
-        #expect(rules.standing(after: Self.doubleThreeLine, of: "renju") == .ongoing)
-        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, of: "renju") == .unlawful)
-        #expect(rules.verdict(for: "b2", after: Self.doubleThreeLine, of: "renju")
+        #expect(rules.standing(after: Self.doubleThreeLine, from: nil, of: "renju") == .ongoing)
+        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, from: nil,
+                              of: "renju") == .unlawful)
+        #expect(rules.verdict(for: "b2", after: Self.doubleThreeLine, from: nil, of: "renju")
                 == .lawful(.ongoing),
                 "and an ordinary point is still a ply")
-        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, of: "gomoku-15")
+        #expect(rules.verdict(for: "h8", after: Self.doubleThreeLine, from: nil, of: "gomoku-15")
                 == .lawful(.ongoing),
                 "the restriction is Renju's own")
     }
@@ -239,8 +327,8 @@ struct BoardGameRulesTests {
     @Test("The claim is not a ply of a placement game")
     func theClaimIsNotAPlacementPly() throws {
         let rules = try rules()
-        #expect(rules.verdict(for: TurnAction.claim, after: [], of: "gomoku-15") == .unlawful)
-        #expect(rules.verdict(for: TurnAction.claim, after: Self.doubleThreeLine, of: "renju")
+        #expect(rules.verdict(for: TurnAction.claim, after: [], from: nil, of: "gomoku-15") == .unlawful)
+        #expect(rules.verdict(for: TurnAction.claim, after: Self.doubleThreeLine, from: nil, of: "renju")
                 == .unlawful)
     }
 }

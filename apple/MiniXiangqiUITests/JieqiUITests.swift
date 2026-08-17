@@ -100,8 +100,8 @@ final class JieqiUITests: XCTestCase {
     func testAJieqiGameIsDealtPlayedAndFiled() {
         let app = launch()
 
-        // Two rows, not three: the game has no AI to offer, and its nearby row
-        // lands with the wire that carries it.
+        // Two rows, not three: the game has no AI to offer, and the two it has
+        // are Free Play and Nearby Play.
         XCTAssertTrue(app.staticTexts["揭棋"].waitForExistence(timeout: 20))
         XCTAssertFalse(app.buttons["mode-jieqi-human-versus-ai"].exists,
                        "nothing in the app plays this game")

@@ -318,11 +318,18 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
 
     /// A game played with the other device over the BoardGame protocol. It
     /// freezes no AI configuration and one local perspective.
-    static func nearby(game: GameKind, localSide: Side) -> GameConfiguration {
+    ///
+    /// - Parameter startFEN: the dealt start, for the one game whose start is
+    ///   dealt. It is no composed position — nobody composed it and neither
+    ///   player chose it — and the two devices arrive at the same one by
+    ///   deriving it from the handshake rather than by either naming it to the
+    ///   other. Nil for every game whose rules freeze a start.
+    static func nearby(game: GameKind, localSide: Side,
+                       startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .nearby, humanSide: nil,
                           aiLevel: nil, firstMoverChoice: nil,
                           movetimeMilliseconds: 0, localSide: localSide,
-                          startFEN: nil)
+                          startFEN: startFEN)
     }
 
     /// A human-versus-AI game, with the first-mover choice already resolved to
@@ -736,18 +743,16 @@ final class Core {
     /// Thirty-two bytes from the platform's cryptographic source, as the
     /// sixty-four lowercase hexadecimal digits the interface takes.
     ///
-    /// `SecRandomCopyBytes` and not `SystemRandomNumberGenerator`: what the
-    /// contract asks for is the platform's *cryptographic* source, and the deal
-    /// a nearby game commits to is a value the other device is entitled to
-    /// assume nobody chose.
+    /// Drawn where the wire handshake draws its own contributions, because it
+    /// is the same draw: what the contract asks for is the platform's
+    /// *cryptographic* source, and a deal — dealt here or dealt between two
+    /// devices — is a value nobody may be able to choose.
     private nonisolated static func entropy() throws -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard status == errSecSuccess else {
+        guard let value = DealHex.contribution() else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the cryptographic source refused \(status)")
+                            detail: "the cryptographic source refused")
         }
-        return bytes.map { String(format: "%02x", $0) }.joined()
+        return value
     }
 
     // MARK: - The session-free questions a composed position is asked
@@ -1197,10 +1202,25 @@ nonisolated struct NearbyWireSession: Equatable, Sendable {
     /// of its opponent would be sent that ply back on a turn that is not the
     /// sender's.
     var claimed: Bool
+    /// The four values a dealt session's handshake produced, "present exactly
+    /// for a `jieqi` session and absent for every other".
+    var deal: Deal?
+
+    /// What a hidden-information session persists of its handshake — the deal
+    /// itself is derived from the seed and the nonce again whenever it is
+    /// needed, and where it is recorded is the game's own `start_fen`.
+    nonisolated struct Deal: Equatable, Sendable {
+        var commit: String
+        var nonce: String
+        var seed: String
+        /// The one of the four a `resume` carries, and the one that is not
+        /// archive content, being derivable from the deal it names.
+        var digest: String
+    }
 
     init(sessionID: String, peerID: String, proposedLocally: Bool,
          undos: Int = 0, keep: Int = 0, sentEnd: WireTerminal? = nil,
-         claimed: Bool = false) {
+         claimed: Bool = false, deal: Deal? = nil) {
         self.sessionID = sessionID
         self.peerID = peerID
         self.proposedLocally = proposedLocally
@@ -1208,6 +1228,7 @@ nonisolated struct NearbyWireSession: Equatable, Sendable {
         self.keep = keep
         self.sentEnd = sentEnd
         self.claimed = claimed
+        self.deal = deal
     }
 
     init?(_ raw: MxqNearbySession) {
@@ -1221,13 +1242,21 @@ nonisolated struct NearbyWireSession: Equatable, Sendable {
         // whose settledness cannot be read is not one to resume.
         default: return nil
         }
+        // All four or none: the row carries a deal exactly for a session of the
+        // one game that has one, and the core refuses any other shape.
+        let commit = string(of: raw.deal_commit, capacity: MXQ_DEAL_HEX_CAP)
+        let nonce = string(of: raw.deal_nonce, capacity: MXQ_DEAL_HEX_CAP)
+        let seed = string(of: raw.deal_seed, capacity: MXQ_DEAL_HEX_CAP)
+        let digest = string(of: raw.deal_digest, capacity: MXQ_DEAL_HEX_CAP)
+        let deal = commit.isEmpty ? nil : Deal(commit: commit, nonce: nonce,
+                                               seed: seed, digest: digest)
         self.init(sessionID: string(of: raw.session_id,
                                     capacity: MXQ_NEARBY_SESSION_ID_CAP),
                   peerID: string(of: raw.peer_id, capacity: MXQ_NEARBY_PEER_ID_CAP),
                   proposedLocally: raw.proposer
                       == MxqNearbyProposer(MXQ_NEARBY_PROPOSER_LOCAL),
                   undos: Int(raw.undos), keep: Int(raw.keep), sentEnd: sentEnd,
-                  claimed: raw.claimed != 0)
+                  claimed: raw.claimed != 0, deal: deal)
     }
 
     /// The C struct, with the two identifiers copied into their capacities.
@@ -1251,6 +1280,19 @@ nonisolated struct NearbyWireSession: Equatable, Sendable {
               write(peerID, into: &state.peer_id,
                     capacity: Int(MXQ_NEARBY_PEER_ID_CAP))
         else { return nil }
+        // Absent is the zeroed capacity the struct already carries, which is
+        // what a session of every other game states.
+        if let deal {
+            guard write(deal.commit, into: &state.deal_commit,
+                        capacity: Int(MXQ_DEAL_HEX_CAP)),
+                  write(deal.nonce, into: &state.deal_nonce,
+                        capacity: Int(MXQ_DEAL_HEX_CAP)),
+                  write(deal.seed, into: &state.deal_seed,
+                        capacity: Int(MXQ_DEAL_HEX_CAP)),
+                  write(deal.digest, into: &state.deal_digest,
+                        capacity: Int(MXQ_DEAL_HEX_CAP))
+            else { return nil }
+        }
         return state
     }
 

@@ -174,7 +174,17 @@ final class NearbyDriver {
             return nil
         }
         guard let stored else { return nil }
-        engine.adopt(stored)
+        // A session the engine will not take up is one whose deal no longer
+        // verifies against everything it came from. There is no game to play
+        // over it and nothing to resume: the store's session is let go of, and
+        // the game stays the library's active one for the player to file from
+        // the home, exactly as a game whose filing was refused does.
+        guard engine.adopt(stored) else {
+            log.note("\(Self.short(stored.id)) is not a session this device can "
+                     + "take up again.")
+            record.release()
+            return nil
+        }
         publish()
         // Whatever connections already stand are owed the resume the contract
         // says an interrupted session initiates.
@@ -423,6 +433,7 @@ final class NearbyDriver {
     func claimStands(in session: BoardGameSession) -> Bool {
         guard session.isInPlay, session.isLocalTurn else { return false }
         return rules.verdict(for: TurnAction.claim, after: session.plies,
+                             from: session.dealtStart,
                              of: session.rulesID) != .unlawful
     }
 
@@ -590,6 +601,17 @@ final class NearbyDriver {
             "accept \(short(accept.session))"
         case .decline(let decline):
             "decline \(short(decline.session)) \(decline.reason.rawValue)"
+        // **The handshake's values are not written down.** The seed and the
+        // nonce together are the deal, and the commitment is the seed's own
+        // hash, so a line carrying any of them into a log read far beyond this
+        // app would be a line disclosing every hidden identity in the game. The
+        // message and its session are the whole of what a run needs to read.
+        case .dealCommit(let commit):
+            "deal_commit \(short(commit.session))"
+        case .dealNonce(let nonce):
+            "deal_nonce \(short(nonce.session))"
+        case .dealSeed(let seed):
+            "deal_seed \(short(seed.session))"
         case .move(let move):
             "move \(short(move.session)) #\(move.index) \(move.move)"
         case .offerDraw(let offer):
@@ -603,8 +625,13 @@ final class NearbyDriver {
         case .resign(let resign):
             "resign \(short(resign.session))"
         case .resume(let resume):
+            // The digest is the one handshake value a line may carry: it
+            // discloses nothing about the deal it names — it is a hash of one —
+            // and comparing its tail across two devices is exactly what a
+            // resume of a dealt session is about.
             "resume \(short(resume.session)) undos=\(resume.undos) count=\(resume.count) "
-                + "keep=\(resume.keep) end=\(resume.end?.rawValue ?? "—")"
+                + "keep=\(resume.keep) end=\(resume.end?.rawValue ?? "—") "
+                + "deal=\(resume.dealDigest.map(short) ?? "—")"
         }
     }
 

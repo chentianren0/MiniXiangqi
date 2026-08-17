@@ -1,11 +1,13 @@
-// The BoardGame Protocol's eleven messages, and the strict codec that is the
+// The BoardGame Protocol's fourteen messages, and the strict codec that is the
 // only way in or out of them.
 //
-// docs/boardgame-protocol.md is binding, and this file implements its wire
+// docs/boardgame-protocol-v2.md is binding, and this file implements its wire
 // paragraph literally: one JSON object with exactly one member, the message's
-// name, whose value is an object holding exactly its named fields — `end` alone
-// may be omitted. An extra member, a missing one, a second top-level member, a
-// wrong type, a negative count, or a name this version does not know is
+// name, whose value is an object holding exactly its named fields — `end` and
+// `deal_digest` are the only two that may be omitted, each under the rule
+// stated for it. An extra member, a missing one, a second top-level member, a
+// wrong type, a negative count, a handshake value that is not sixty-four
+// lowercase hexadecimal digits, or a name this version does not know is
 // malformed, and malformed is a protocol violation rather than something to
 // skip.
 //
@@ -42,6 +44,18 @@ nonisolated enum DeclineReason: String, Codable, Sendable, CaseIterable {
     case rulesMismatch = "rules_mismatch"
     case busy
     case unknownSession = "unknown_session"
+    /// Two devices holding different games under one identifier, which a
+    /// resume's `deal_digest` is what discovers.
+    case dealMismatch = "deal_mismatch"
+
+    /// Whether this answer voids the session on both sides.
+    ///
+    /// The two that do "can cross the very exchange that provoked them: two
+    /// mandated `resume`s cross, each draws a voiding `decline`, and each
+    /// `decline` arrives for a session its receiver has already voided". So one
+    /// arriving for a session the receiver does not hold is discarded, never a
+    /// violation — both peers already agree the session is gone.
+    var voidsTheSession: Bool { self == .unknownSession || self == .dealMismatch }
 }
 
 /// A terminal one peer sent: the two ends that need a message, and exactly what
@@ -66,6 +80,9 @@ nonisolated enum BoardGameMessage: Sendable, Equatable {
     case propose(Propose)
     case accept(Accept)
     case decline(Decline)
+    case dealCommit(DealCommit)
+    case dealNonce(DealNonce)
+    case dealSeed(DealSeed)
     case move(Move)
     case offerDraw(OfferDraw)
     case acceptDraw(AcceptDraw)
@@ -75,7 +92,11 @@ nonisolated enum BoardGameMessage: Sendable, Equatable {
     case resume(Resume)
 
     /// The one protocol version this peer speaks, announced by `hello`.
-    static let version = 1
+    ///
+    /// "A version-2 peer does not play with a version-1 peer": the check
+    /// refuses anything else, there is no degradation and no negotiation, and
+    /// a peer announcing 1 is a peer this version closes on.
+    static let version = 2
 
     /// The session every message but `hello` names.
     var session: String? {
@@ -84,6 +105,9 @@ nonisolated enum BoardGameMessage: Sendable, Equatable {
         case .propose(let message): message.session
         case .accept(let message): message.session
         case .decline(let message): message.session
+        case .dealCommit(let message): message.session
+        case .dealNonce(let message): message.session
+        case .dealSeed(let message): message.session
         case .move(let message): message.session
         case .offerDraw(let message): message.session
         case .acceptDraw(let message): message.session
@@ -123,11 +147,33 @@ extension BoardGameMessage {
         var reason: DeclineReason
     }
 
+    /// The dealer binds its seed before it can know the other contribution.
+    nonisolated struct DealCommit: Sendable, Equatable {
+        var session: String
+        /// The SHA-256 of the seed's thirty-two bytes.
+        var commit: String
+    }
+
+    /// The other peer contributes its half.
+    nonisolated struct DealNonce: Sendable, Equatable {
+        var session: String
+        var nonce: String
+    }
+
+    /// The dealer opens its commitment; both ends derive the deal.
+    nonisolated struct DealSeed: Sendable, Equatable {
+        var session: String
+        var seed: String
+    }
+
     nonisolated struct Move: Sendable, Equatable {
         var session: String
         /// The ply's own number, which is the sender's `count` when it sent it.
         var index: Int
         /// A move in the game's own grammar; the receiver's rules judge it.
+        /// **It never names a hidden identity**, in a dealt game as in every
+        /// other: what a move revealed is not on the wire, and each end derives
+        /// it from the deal it holds.
         var move: String
     }
 
@@ -167,6 +213,13 @@ extension BoardGameMessage {
         /// The terminal the sender has sent for this session, absent when it
         /// has sent none.
         var end: Terminal?
+        /// The digest of the deal this session derived: present for a
+        /// hidden-information session and absent for every other.
+        ///
+        /// "Nothing about the deal re-travels — not the seed, not the nonce,
+        /// and least of all the deal." This one value does, because it is what
+        /// two devices compare to find out whether they hold one game.
+        var dealDigest: String?
     }
 }
 
@@ -174,9 +227,14 @@ extension BoardGameMessage {
 
 extension BoardGameMessage: Codable {
 
-    /// The eleven names, which are the only members a message object may have.
+    /// The fourteen names, which are the only members a message object may
+    /// have.
     fileprivate enum Name: String {
-        case hello, propose, accept, decline, move
+        case hello, propose, accept, decline
+        case dealCommit = "deal_commit"
+        case dealNonce = "deal_nonce"
+        case dealSeed = "deal_seed"
+        case move
         case offerDraw = "offer_draw"
         case acceptDraw = "accept_draw"
         case requestUndo = "request_undo"
@@ -215,6 +273,18 @@ extension BoardGameMessage: Codable {
             let fields = try WireObject(object, ["session", "reason"])
             self = .decline(Decline(session: try fields.text("session"),
                                     reason: try fields.word("reason")))
+        case .dealCommit:
+            let fields = try WireObject(object, ["session", "commit"])
+            self = .dealCommit(DealCommit(session: try fields.text("session"),
+                                          commit: try fields.hex("commit")))
+        case .dealNonce:
+            let fields = try WireObject(object, ["session", "nonce"])
+            self = .dealNonce(DealNonce(session: try fields.text("session"),
+                                        nonce: try fields.hex("nonce")))
+        case .dealSeed:
+            let fields = try WireObject(object, ["session", "seed"])
+            self = .dealSeed(DealSeed(session: try fields.text("session"),
+                                      seed: try fields.hex("seed")))
         case .move:
             let fields = try WireObject(object, ["session", "index", "move"])
             self = .move(Move(session: try fields.text("session"),
@@ -240,12 +310,13 @@ extension BoardGameMessage: Codable {
             self = .resign(Resign(session: try fields.text("session")))
         case .resume:
             let fields = try WireObject(object, ["session", "undos", "count", "keep"],
-                                        omissible: ["end"])
+                                        omissible: ["end", "deal_digest"])
             self = .resume(Resume(session: try fields.text("session"),
                                   undos: try fields.count("undos"),
                                   count: try fields.count("count"),
                                   keep: try fields.count("keep"),
-                                  end: try fields.wordIfPresent("end")))
+                                  end: try fields.wordIfPresent("end"),
+                                  dealDigest: try fields.hexIfPresent("deal_digest")))
         }
     }
 
@@ -269,6 +340,18 @@ extension BoardGameMessage: Codable {
             var fields = envelope.object(Name.decline)
             try fields.encode(message.session, forKey: WireKey("session"))
             try fields.encode(message.reason, forKey: WireKey("reason"))
+        case .dealCommit(let message):
+            var fields = envelope.object(Name.dealCommit)
+            try fields.encode(message.session, forKey: WireKey("session"))
+            try fields.encode(message.commit, forKey: WireKey("commit"))
+        case .dealNonce(let message):
+            var fields = envelope.object(Name.dealNonce)
+            try fields.encode(message.session, forKey: WireKey("session"))
+            try fields.encode(message.nonce, forKey: WireKey("nonce"))
+        case .dealSeed(let message):
+            var fields = envelope.object(Name.dealSeed)
+            try fields.encode(message.session, forKey: WireKey("session"))
+            try fields.encode(message.seed, forKey: WireKey("seed"))
         case .move(let message):
             var fields = envelope.object(Name.move)
             try fields.encode(message.session, forKey: WireKey("session"))
@@ -299,6 +382,8 @@ extension BoardGameMessage: Codable {
             try fields.encode(message.count, forKey: WireKey("count"))
             try fields.encode(message.keep, forKey: WireKey("keep"))
             try fields.encodeIfPresent(message.end, forKey: WireKey("end"))
+            try fields.encodeIfPresent(message.dealDigest,
+                                       forKey: WireKey("deal_digest"))
         }
     }
 }
@@ -367,6 +452,25 @@ nonisolated struct WireObject {
                       debugDescription: "\(name) is a non-negative integer"))
         }
         return value
+    }
+
+    /// One of the four handshake values: `commit`, `nonce`, `seed`,
+    /// `deal_digest`. Exactly sixty-four lowercase hexadecimal digits, and any
+    /// other string is malformed — an uppercase digit included, the spelling
+    /// being part of the value rather than a way of writing it.
+    func hex(_ name: String) throws -> String {
+        let value = try text(name)
+        guard DealHex.isWellFormed(value) else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: path,
+                      debugDescription: "\(name) is sixty-four lowercase hexadecimal digits"))
+        }
+        return value
+    }
+
+    func hexIfPresent(_ name: String) throws -> String? {
+        guard fields.contains(WireKey(name)) else { return nil }
+        return try hex(name)
     }
 
     /// A field whose value is one word of a closed vocabulary.
