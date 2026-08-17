@@ -209,9 +209,9 @@ struct PlayDestination: View {
 }
 
 private extension View {
-    /// The play content's accepted floor, 616 by 416 —
+    /// The play content's accepted floor, 626 by 416 —
     /// docs/interaction-design.md, "Layout shapes", where the height is
-    /// Xiangqi's and the width Mini Xiangqi's.
+    /// Xiangqi's and the width the placement board's.
     ///
     /// It belongs to the destination rather than to the board alone: a window
     /// that could be shrunk on one page and then walked to another is a window
@@ -222,7 +222,7 @@ private extension View {
     /// **It is a window's floor, so it is macOS's.** What a minimum does is stop
     /// a resize; iOS and iPadOS have no resize to stop — the screen is the size
     /// it is, and a multitasking iPad is sized by the system rather than by the
-    /// app. A 616-point minimum on a 440-point phone would not widen anything.
+    /// app. A 626-point minimum on a 440-point phone would not widen anything.
     /// It would only tell SwiftUI the content is wider than the screen, and the
     /// stacked shape exists precisely so that it is not.
     func playContentFloor() -> some View {
