@@ -1,11 +1,11 @@
 /* The session-free rules facade.
  *
  * mxq_rules_start_fen is a constant of the ruleset and needs no engine. The
- * other three replay a history through the pinned fork and are compiled only
- * when MXQ_ENABLE_RULES_FACADE is ON; without it they are absent from the
- * library rather than stubbed, because the error taxonomy has no
- * not-implemented code and inventing one would be inventing contract
- * vocabulary. */
+ * rest are compiled only when MXQ_ENABLE_RULES_FACADE is ON — four replay a
+ * history through a pinned fork, and mxq_rules_deal derives a dealt start;
+ * without the facade they are absent from the library rather than stubbed,
+ * because the error taxonomy has no not-implemented code and inventing one
+ * would be inventing contract vocabulary. */
 
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
