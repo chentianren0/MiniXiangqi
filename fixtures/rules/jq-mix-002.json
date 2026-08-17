@@ -1,0 +1,35 @@
+{
+  "id": "jq-mix-002",
+  "title": "Mutual perpetual chase after a reveal is a draw",
+  "area": "mix",
+  "variant": "jieqi",
+  "start_fen": "3c1k3/9/2n2r3/9/2N6/9/9/9/9/C~2RK4 w - - 0 1",
+  "moves": [
+    "a1a8",
+    "c8d6",
+    "c6d8",
+    "d6c8",
+    "d8c6",
+    "c8d6",
+    "c6d8",
+    "d6c8",
+    "d8c6"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3c1k3/9/C1n2r3/9/2N6/9/9/9/9/3RK4 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "draw",
+      "reason": "mutual-perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence; not yet a draw by mutual violation"
+  },
+  "rationale": "This is jq-mix-001's wheel with the two generals replaced by two chariots, which is the whole of what separates the mutual chase from the mutual check. The first ply is a reveal: the piece on a1 is face down, moves as the chariot whose square it is, and arrives on a8 face up as the cannon it turns out to be, attacking the black chariot on f8 over the black horse standing on c8 as its screen. Everything after it is one cycle of two horses, each of which stands on both cannon lines in turn: Red's horse alternates c6 and d8, where d8 screens the red cannon's rank and doubles the black cannon's file; Black's horse alternates c8 and d6, where d6 screens the black cannon's file and c8 doubles the red cannon's rank. So each side's attack is broken by the opponent's move and made afresh by its own, and neither attack ever merely persists: after every red move the red cannon attacks the black chariot from a rank it did not attack along before that move, and after every black move the black cannon attacks the red chariot the same way. An attack by a cannon on a chariot is a chase whatever defends the chariot, so protection decides nothing here, and no move of the cycle gives check. Both sides commit the same violation class across the occurrences of the position that stands after the reveal, at plies 1, 5 and 9, so the contract's mutual rule makes this a draw carrying the reserved reason mutual-perpetual-chase rather than a loss for either side or a claimable repetition. The reveal lies before every repeated position, which is the only shape a jieqi repetition can have — a hidden piece stands only on its own start square and flips the moment it moves, so the face-down set only ever shrinks and no repeating cycle can contain a reveal."
+}

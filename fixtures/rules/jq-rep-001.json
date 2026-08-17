@@ -1,0 +1,35 @@
+{
+  "id": "jq-rep-001",
+  "title": "Neutral repetition after a reveal becomes claimable at exactly the third occurrence",
+  "area": "rep",
+  "variant": "jieqi",
+  "start_fen": "5k3/9/9/9/9/9/9/9/9/N~2K5 w - - 0 1",
+  "moves": [
+    "a1a2",
+    "f10f9",
+    "d1d2",
+    "f9f10",
+    "d2d1",
+    "f10f9",
+    "d1d2",
+    "f9f10",
+    "d2d1"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/9/9/9/9/9/9/N8/3K5 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "claimable-draw",
+      "reason": "threefold-repetition",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence of the position after the reveal; not yet claimable"
+  },
+  "rationale": "The first ply is a reveal: the piece on a1 is face down, moves as the chariot whose square it is, and arrives on a2 face up as the horse it turns out to be. Everything after it is one cycle of two generals shuttling inside their palaces with no check and no attack by either side, so the position standing after the reveal stands again at plies 5 and 9; on the third occurrence it becomes eligible for a draw claim and never earlier, exactly as xq-rep-001 has it, the two games adjudicating repetition identically because this game's rules adopt those clauses whole. A neutral repetition is claimable rather than terminal: the game continues unless the claim is made. The reveal lies before every repeated position, which is not a convenience of the line but the only shape a jieqi repetition can have — a hidden piece stands only on its own start square and flips the moment it moves, so the face-down set only ever shrinks and no repeating cycle can contain a reveal. The halfmove clock counts the reveal like any other capture-free ply: nine plies, no capture, and a flip resets nothing."
+}

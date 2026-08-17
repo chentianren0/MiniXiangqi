@@ -1,0 +1,35 @@
+{
+  "id": "jq-mix-001",
+  "title": "Mutual perpetual check after a reveal is a draw",
+  "area": "mix",
+  "variant": "jieqi",
+  "start_fen": "3c5/9/2n2k3/9/2N6/9/9/9/9/C~2K5 w - - 0 1",
+  "moves": [
+    "a1a8",
+    "c8d6",
+    "c6d8",
+    "d6c8",
+    "d8c6",
+    "c8d6",
+    "c6d8",
+    "d6c8",
+    "d8c6"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "3c5/9/C1n2k3/9/2N6/9/9/9/9/3K5 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "draw",
+      "reason": "mutual-perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence; not yet a mutual draw"
+  },
+  "rationale": "The first ply is a reveal that opens Red's half of the wheel: the piece on a1 is face down, moves as the chariot whose square it is, and arrives on a8 face up as the cannon it turns out to be, checking the black general on f8 over the black horse standing on c8 as its screen. Everything after it is one cycle of two horses, each of which stands on both cannon lines in turn. Red's horse alternates c6 and d8, where d8 screens the red cannon's rank and doubles the black cannon's file; Black's horse alternates c8 and d6, where d6 screens the black cannon's file and c8 doubles the red cannon's rank. So the side to move stands in check at every ply of the cycle and each side's move is at once a check evasion and a check, sustained across the occurrences of the position that stands after the reveal, at plies 1, 5 and 9. Both sides commit the same violation class, so the contract's mutual rule makes this a draw carrying the reserved reason mutual-perpetual-check rather than a loss for either side; check outranks chase but never overrides that rule. The reveal lies before every repeated position, which is the only shape a jieqi repetition can have — a hidden piece stands only on its own start square and flips the moment it moves, so the face-down set only ever shrinks and no repeating cycle can contain a reveal."
+}

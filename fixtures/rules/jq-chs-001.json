@@ -1,0 +1,35 @@
+{
+  "id": "jq-chs-001",
+  "title": "Unilateral perpetual chase after a reveal: the chasing side loses at the third occurrence",
+  "area": "chs",
+  "variant": "jieqi",
+  "start_fen": "5k3/9/9/9/c8/9/9/9/9/1R~2K4 w - - 0 1",
+  "moves": [
+    "b1a3",
+    "a6b6",
+    "a3b3",
+    "b6a6",
+    "b3a3",
+    "a6b6",
+    "a3b3",
+    "b6a6",
+    "b3a3"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/9/9/c8/9/9/R8/9/4K4 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-chase",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence; not yet terminal"
+  },
+  "rationale": "The first ply is a reveal, and it is where the chase begins: the piece on b1 is face down, moves as the horse whose square it is, and arrives on a3 face up as the chariot it turns out to be, attacking the undefended black cannon up the open a-file. Everything after it is one cycle — the chariot shuttles a3 and b3, renewing the attack from a square it did not attack from before, and the cannon steps aside each time — and the position after the reveal stands at plies 1, 5 and 9. The cannon never attacks back: capturing down the file would need exactly one screen and there is none. The chase is one-sided, so on the third occurrence the chaser loses, exactly as xq-chs-001 has it, the two games adjudicating perpetual chase identically because this game's rules adopt those clauses whole. The reveal lies before every repeated position, which is the only shape a jieqi repetition can have — a hidden piece stands only on its own start square and flips the moment it moves, so the face-down set only ever shrinks and no repeating cycle can contain a reveal."
+}
