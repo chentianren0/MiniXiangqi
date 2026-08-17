@@ -299,13 +299,13 @@
     "_about": "The third engine: the pinned chentianren0/Pikafish fork's jieqi branch, from which the core vendors a rules slice rather than an engine. Jieqi is xiangqi played with the pieces face down, and neither of the other two engines can decide its rules: Fairy-Stockfish has no hidden-piece concept and Rapfi is a placement engine. What is vendored is three translation units and their header closure — the position, the move generator and the attack tables — and no search, evaluation or NNUE, so this fork pins no network and no configuration file. It sits beside 'fork' and 'gomoku_fork' because the three are separate engines with separate revisions and separate patch lists; nothing about one describes another.",
     "repository": "https://github.com/chentianren0/Pikafish",
     "branch": "jieqi-mxq",
-    "revision": "0401526394857ec9b31a878dbae8de81861db330",
-    "revision_committed_at": "2026-08-16T19:12:27-07:00",
+    "revision": "709ba1792d87be01e69975472936bc309ed54082",
+    "revision_committed_at": "2026-08-16T21:15:57-07:00",
     "upstream_repository": "https://github.com/official-pikafish/Pikafish",
     "upstream_branch": "jieqi",
     "upstream_base_revision": "9b963f727983a1d9308e0dca48b39c802b8e75a2",
     "license": "GPL-3.0-or-later",
-    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. Both entries touch files the vendored slice carries — src/position.cpp, src/position.h and src/types.h — so the bytes the core compiles are the patched ones.",
+    "_patches_about": "The ordered list of focused changes present in the pinned revision, oldest first. Every entry touches files the vendored slice carries — src/position.cpp, src/position.h and src/types.h — so the bytes the core compiles are the patched ones.",
     "patches": [
       {
         "id": "report-the-rule",
@@ -328,6 +328,18 @@
         "merge_revision": null,
         "commits": [
           "0401526"
+        ]
+      },
+      {
+        "id": "renew-chase-per-attacker",
+        "summary": "Takes the chase diff per chasing-chased pair instead of per chased piece, in src/position.cpp and one default argument of src/position.h. detect_chases kept 'chase[stm] &= after & ~chased(stm)', and both terms are masks of chased piece ids, so a target already under attack was dropped however it was attacked now and a chase whose attacker changed read as no chase at all — the shape being two chariots bearing on one target with a horse between them, each of whose moves blocks one line while it uncovers the other, so the target is never unattacked and no move ever attacks a piece that was not attacked before. chased() now takes an optional array receiving, for each chased piece, the pieces chasing it, and a piece counts as still chased when a piece attacks it that was not attacking it before the move. The new test is weaker than the old one on nothing: a piece not chased before the move has no chasers before it either, so everything the id diff found is still found, and callers that pass no array are unchanged. What it carries is the renewal-per-attacker reading and nothing further; it is no claim that the engine's chase adjudication agrees with docs/jieqi-rules.md in every shape.",
+        "required_by": [
+          "https://github.com/chentianren0/MiniXiangqi/issues/217",
+          "https://github.com/chentianren0/MiniXiangqi/issues/224"
+        ],
+        "merge_revision": null,
+        "commits": [
+          "709ba17"
         ]
       }
     ],
@@ -384,7 +396,7 @@
       ],
       "_excluded_about": "Everything outside source_paths, which is most of the fork: the search and evaluation half, every nnue/*.cpp, the UCI protocol and option table, main(), misc.cpp and memory.cpp, the whole of src/external (the bundled zstd, reached only from misc.cpp:37), the fork's Makefile, and its scripts, tests and CI.",
       "file_manifest": "core/third_party/pikafish/SOURCES.sha256",
-      "file_manifest_sha256": "321a680c4b6b0e5f969ca3c28b8962997637ca6973f888492967c3490bbd74c0",
+      "file_manifest_sha256": "2b6d2db0c58840cb834d1f25cb569747a344c9282e8e4827b362c2a582c4627a",
       "_hash_about": "file_manifest lists the SHA-256 of every file in the snapshot, one per line, and file_manifest_sha256 is the SHA-256 of that listing. Verify the snapshot with 'shasum -a 256 -c ../SOURCES.sha256' from the snapshot directory. Both hashes were computed from the vendored bytes; neither is a placeholder."
     },
     "core_build": {

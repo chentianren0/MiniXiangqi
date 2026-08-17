@@ -153,7 +153,7 @@ class Position {
     int      game_ply() const;
     bool     rule_judge(Value& result, int ply = 0, RuleJudgeRule* rule = nullptr);
     int      rule40_count() const;
-    uint16_t chased(Color c);
+    uint16_t chased(Color c, uint16_t* chasers = nullptr);
     Value    major_material(Color c) const;
     Value    major_material() const;
 
