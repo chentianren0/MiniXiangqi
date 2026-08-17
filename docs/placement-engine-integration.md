@@ -2,7 +2,7 @@
 
 This document defines how the shared core packages, calls, constrains, and validates the embedded Rapfi engine — the engine the placement games are played on — and the app-visible policies built on it. It does not define Rapfi internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Rapfi fork repository. Mini Xiangqi's and Xiangqi's engine is [engine-integration.md](engine-integration.md)'s subject, and the two documents are counterparts: what the two engines share is stated once, there, and bound here by reference.
 
-> **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md), which is one surface over both engines.
+> **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md), which is one surface over every engine the core embeds and over the two that search alike.
 
 ## Scope and ownership
 
@@ -101,7 +101,7 @@ On any refusal the engine is unwound whole to the released posture: a partial co
 
 ### The pinned-input manifest
 
-`pinned-inputs.json` is the single source of truth for this engine's inputs as it is for the first engine's, and records them separately from it — two engines have separate revisions, separate patch lists, and separate networks, and nothing about one describes the other:
+`pinned-inputs.json` is the single source of truth for this engine's inputs as it is for every other engine's, and records them separately from each — separate engines have separate revisions, separate patch lists, and separate networks where they have networks at all, and nothing about one describes another:
 
 - the fork's repository, the pinned revision, the upstream base it derives from, and the ordered list of focused patches applied at that revision;
 - what this contract asks of the fork and the pinned revision does not carry, each with the reason it is deferred and the trigger that ends the deferral;

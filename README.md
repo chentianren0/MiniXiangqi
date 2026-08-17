@@ -1,6 +1,6 @@
 # Star River
 
-Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, macOS, and Windows, carrying **Xiangqi** and **Mini Xiangqi**, with **Gomoku** and **Renju** on Apple platforms, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
+Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, macOS, and Windows, carrying **Xiangqi** and **Mini Xiangqi**, with **Jieqi**, **Gomoku** and **Renju** on Apple platforms, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
 
 ## Get the app
 
@@ -62,11 +62,14 @@ ctest --test-dir build --output-on-failure
 - [Product](docs/product.md) — product purpose, scope, capabilities, lifecycle policies, and MVP exclusions.
 - [Interaction design](docs/interaction-design.md) — UI, UX, platform visual language, board presentation, motion, sound, touch, help, localization, and accessibility.
 - [Mini Xiangqi rules](docs/xiangqi-rules.md) — normative rules source, adopted rules, runtime rules authority, and fixture requirements; the approved executable fixtures live in [fixtures/rules](fixtures/rules/).
+- [Jieqi rules](docs/jieqi-rules.md) — the hidden-identity xiangqi: the dealt start, hidden movement and the mandatory flip, who is entitled to know what, the endings, and its own fixture area.
+- [BoardGame protocol, version 2](docs/boardgame-protocol-v2.md) — the wire contract two devices play one game over, including the deal handshake a hidden-information game's session opens with.
 - [Architecture](docs/architecture.md) — the shared core, native frontends, dependency direction, concurrency, and lifecycle.
 - [Core C interface](docs/core-interface.md) — the core's C surface: modules, functions, error taxonomy, threading contract, and versioning.
 - [Game data](docs/game-data.md) — the library store, versioned game archive, saving, history, migrations, import, and export.
 - [Engine integration](docs/engine-integration.md) — the movement games' engine: the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
 - [Placement engine integration](docs/placement-engine-integration.md) — the placement games' engine: its pins, its preflight, the memory policy it shares with the first, and its failure boundary.
+- [Jieqi engine integration](docs/jieqi-engine-integration.md) — Jieqi's rules authority: its pin, the rules slice the core compiles, everything the bridge owns because the engine validates nothing, and the dialect it translates into and out of.
 - [Testing](docs/testing.md) — durable validation requirements and release gates.
 
 ## Distribution and license
