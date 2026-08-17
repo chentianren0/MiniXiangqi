@@ -1,0 +1,76 @@
+{
+  "id": "jq-move-001",
+  "title": "A hidden piece moves as the piece whose square it stands on",
+  "area": "move",
+  "variant": "jieqi",
+  "start_fen": "p~c~p~n~kb~r~a~p~/9/1n~5r~1/a~1b~1c~1p~1p~/9/9/B~1A~1C~1P~1P~/1R~5N~1/9/P~N~P~R~KC~P~A~B~ w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "p~c~p~n~kb~r~a~p~/9/1n~5r~1/a~1b~1c~1p~1p~/9/9/B~1A~1C~1P~1P~/1R~5N~1/9/P~N~P~R~KC~P~A~B~ w - - 0 1",
+    "legal_moves": [
+      "a1a2",
+      "a1a3",
+      "i1i2",
+      "i1i3",
+      "b1a3",
+      "b1c3",
+      "h1g3",
+      "h1i3",
+      "c1a3",
+      "c1e3",
+      "g1e3",
+      "g1i3",
+      "d1e2",
+      "f1e2",
+      "e1e2",
+      "b3b2",
+      "b3b4",
+      "b3b5",
+      "b3b6",
+      "b3b7",
+      "b3b10",
+      "b3a3",
+      "b3c3",
+      "b3d3",
+      "b3e3",
+      "b3f3",
+      "b3g3",
+      "h3h2",
+      "h3h4",
+      "h3h5",
+      "h3h6",
+      "h3h7",
+      "h3h10",
+      "h3c3",
+      "h3d3",
+      "h3e3",
+      "h3f3",
+      "h3g3",
+      "h3i3",
+      "a4a5",
+      "c4c5",
+      "e4e5",
+      "g4g5",
+      "i4i5"
+    ],
+    "rejected_moves": [
+      "a1a4",
+      "d1c2",
+      "b3b8"
+    ],
+    "applied": [
+      {
+        "move": "a1a3",
+        "result_fen": "p~c~p~n~kb~r~a~p~/9/1n~5r~1/a~1b~1c~1p~1p~/9/9/B~1A~1C~1P~1P~/PR~5N~1/9/1N~P~R~KC~P~A~B~ b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "One dealt start, and its complete legal set is every hidden role at once: the chariot squares slide, the horse squares step and turn, the elephant squares reach two points of their own half, the cannon squares slide and take the one shot a screen allows, the advisor squares reach only the palace centre, the soldier squares step one forward, and the general steps as it always does. Not one of those depends on what the piece turns out to be: a1 holds a soldier and moves as the chariot whose square it is, which is what the applied probe pins — a1a3 is a chariot's two-square slide, a move the soldier it reveals could never make, and the piece arrives face up as P behind its own soldier rank, where the rules leave it. b3b10 is the cannon shot, over the piece on b8 as its one screen; b3b8 is refused because a capture needs a screen between the two squares and there is none; a1a4 because the piece on a4 is Red's own; d1c2 because a hidden piece on an advisor's square is palace-bound, the freedom that square's piece gains being a freedom it gains on being revealed."
+}

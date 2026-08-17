@@ -1,11 +1,11 @@
 /*
  * The jieqi engine's smoke runner: two Stockfish-family engines in one process,
- * each answering for its own game.
+ * each answering for its own game, and the game axis the core carries over the
+ * second one.
  *
- * This is the isolation proof for the vendored Pikafish rules slice, and it is
- * the only thing that references that slice at this stage — no bridge exists
- * yet and no game reaches it through the C surface. What it exists to catch is
- * a failure that is silent everywhere else: Fairy-Stockfish and Pikafish are
+ * This is the isolation proof for the vendored Pikafish rules slice. What it
+ * exists to catch is a failure that is silent everywhere else: Fairy-Stockfish
+ * and Pikafish are
  * both Stockfish derivatives, both declare the namespace `Stockfish`, and both
  * define Position::init, Bitboards::init and their neighbours as strong symbols
  * with identical signatures. Two static archives holding the same strong symbol
@@ -29,10 +29,13 @@
  * makes each call site say out loud which engine it reaches, which is this
  * file's subject.
  *
- * The expectations are the ones the feasibility probe established and no more.
- * This is not a jieqi rules corpus: the vendored engine is the rules authority
- * for that game and it is unmodified and revision-pinned, so there is no second
- * reading to hold it against. Every case below is one wiring claim.
+ * This is not a jieqi rules corpus. That is the `jq-` fixtures' job, and they
+ * are the authority the bridge is held to; what the cases below claim is
+ * wiring — that each engine answers from its own tables, and that the game axis
+ * over the second one answers what docs/core-interface.md says it does. The
+ * axis half is here rather than beside the games it refuses because every one
+ * of those refusals is about this engine: nothing searches it, and the archive
+ * version that stores it is not this build's.
  *
  * Without MXQ_ENABLE_RULES_FACADE neither engine is in the build and every case
  * reports NOT IMPLEMENTED.
@@ -305,6 +308,125 @@ void case_a_face_down_piece_moves_as_the_piece_that_starts_there() {
     c.report();
 }
 
+/*
+ * The dealt start jq-set-001 states, in the record form the contract freezes:
+ * every face-down piece is its identity letter followed by `~`, and no
+ * permutation is the identity one — a1 holds a soldier and d1 a chariot.
+ */
+const char *const kDealtStart =
+    "p~c~p~n~kb~r~a~p~/9/1n~5r~1/a~1b~1c~1p~1p~/9/9/"
+    "B~1A~1C~1P~1P~/1R~5N~1/9/P~N~P~R~KC~P~A~B~ w - - 0 1";
+
+void case_the_core_answers_for_jieqi_through_the_c_surface() {
+    Case c("the rules facade answers for jieqi through mxq.h");
+
+    /*
+     * The same question the first engine's case asks, asked of the other one:
+     * the count is the bridge's answer rather than a constant of the surface,
+     * and reaching it needs the vendored slice's own tables. It also proves the
+     * link shape — mxq_core holds the bridge behind $<LINK_ONLY:>, so a caller
+     * that reaches this answer through mxq.h alone has the archive without the
+     * engine's headers or its renamed namespace anywhere near it.
+     */
+    std::vector<MxqMove> moves(64);
+    for (MxqMove &move : moves) {
+        move.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
+    }
+    std::size_t count = 0;
+    MxqError    err = make_error();
+    c.check_status(mxq_rules_legal_moves(g_core, MXQ_GAME_KIND_JIEQI,
+                                         kDealtStart, nullptr, 0, moves.data(),
+                                         moves.size(), &count, &err),
+                   MXQ_OK,
+                   "the rules facade answers (" + std::string(err.detail) + ")");
+    c.check_eq(static_cast<int64_t>(count), 44,
+               "a dealt start has forty-four legal moves");
+
+    MxqSetupViolation violation;
+    std::memset(&violation, 0, sizeof(violation));
+    violation.struct_size = static_cast<uint32_t>(sizeof(violation));
+    err = make_error();
+    c.check_status(mxq_rules_validate_setup(g_core, MXQ_GAME_KIND_JIEQI,
+                                            kDealtStart, &violation, &err),
+                   MXQ_OK, "a dealt start is a position to set up in");
+
+    c.report();
+}
+
+void case_the_game_axis_refuses_what_this_game_has_none_of() {
+    Case c("jieqi is prepared for nothing, searched never, and stored not yet");
+
+    /*
+     * Four refusals, and they are not one rule. Three of them are permanent and
+     * are docs/core-interface.md's: this game's rules authority performs no
+     * search and carries no network, so there is nothing to prepare, nothing to
+     * name it by, and no variant and network for a profile to report; and it has
+     * no frozen start to report, beginning from a dealt start and from no other
+     * position. The fourth is this build's rather than the game's — the archive
+     * version that spells this game is not the one this build writes, and a
+     * session is store-attached — and it is the one that does not assert, which
+     * is why it is the only one evaluated in both configurations.
+     */
+    MxqGameConfig config;
+    std::memset(&config, 0, sizeof(config));
+    config.struct_size = static_cast<uint32_t>(sizeof(config));
+    config.game = MXQ_GAME_KIND_JIEQI;
+    config.mode = MXQ_PLAY_MODE_FREE_PLAY;
+    config.human_side = MXQ_COLOR_NONE;
+    config.ai_level = MXQ_AI_LEVEL_NONE;
+    config.first_mover_choice = MXQ_FIRST_MOVER_NONE;
+    config.local_side = MXQ_COLOR_NONE;
+    std::memcpy(config.start_fen, kDealtStart, std::strlen(kDealtStart) + 1);
+
+    MxqGame  *game = nullptr;
+    MxqError  err = make_error();
+    c.check_status(mxq_game_create(g_core, &config, &game, &err),
+                   MXQ_ERR_ARG_RANGE,
+                   "no session is created for a game the archive cannot hold");
+    c.check(game == nullptr, "and no handle comes back");
+
+#if defined(NDEBUG)
+    /* The three programming errors, observable only where the assertion that
+     * stands guard over them is compiled out. */
+    char        fen[MXQ_FEN_CAP];
+    std::size_t fen_len = 0;
+    err = make_error();
+    c.check_status(mxq_rules_start_fen(MXQ_GAME_KIND_JIEQI, fen, sizeof(fen),
+                                       &fen_len, &err),
+                   MXQ_ERR_ARG_RANGE, "there is no frozen start to report");
+
+    MxqGameProfile profile;
+    std::memset(&profile, 0, sizeof(profile));
+    profile.struct_size = static_cast<uint32_t>(sizeof(profile));
+    err = make_error();
+    c.check_status(mxq_core_game_profile(MXQ_GAME_KIND_JIEQI, &profile, &err),
+                   MXQ_ERR_ARG_RANGE, "it binds no variant and no network");
+
+    char        profile_id[MXQ_PROFILE_ID_CAP];
+    std::size_t profile_len = 0;
+    err = make_error();
+    c.check_status(mxq_engine_profile_id(MXQ_GAME_KIND_JIEQI, profile_id,
+                                         sizeof(profile_id), &profile_len, &err),
+                   MXQ_ERR_ARG_RANGE, "and no profile identifier names it");
+
+    MxqEngineBudget budget;
+    std::memset(&budget, 0, sizeof(budget));
+    budget.struct_size = static_cast<uint32_t>(sizeof(budget));
+    budget.physical_bytes = 8ull * 1024ull * 1024ull * 1024ull;
+    budget.available_bytes = 4ull * 1024ull * 1024ull * 1024ull;
+    budget.active_processor_count = 4;
+    MxqEnginePlan applied;
+    std::memset(&applied, 0, sizeof(applied));
+    applied.struct_size = static_cast<uint32_t>(sizeof(applied));
+    err = make_error();
+    c.check_status(mxq_engine_prepare(g_core, MXQ_GAME_KIND_JIEQI, &budget,
+                                      &applied, &err),
+                   MXQ_ERR_ARG_RANGE, "and there is nothing to prepare");
+#endif
+
+    c.report();
+}
+
 #endif /* MXQ_TEST_RULES_FACADE */
 
 } /* namespace */
@@ -325,6 +447,8 @@ int main() {
     case_the_jieqi_slice_reads_its_own_start_position();
     case_the_jieqi_slice_generates_the_starting_move_set();
     case_a_face_down_piece_moves_as_the_piece_that_starts_there();
+    case_the_core_answers_for_jieqi_through_the_c_surface();
+    case_the_game_axis_refuses_what_this_game_has_none_of();
 
     mxq_core_shutdown(g_core, nullptr);
     g_core = nullptr;

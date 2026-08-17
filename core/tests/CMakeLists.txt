@@ -374,12 +374,13 @@ set_tests_properties(gomoku_rules PROPERTIES
 # beside the Fairy-Stockfish-backed core, in one process.
 #
 # It links the vendored slice directly, which is the same reason the two runners
-# above link their engines directly and one reason more. The claim it makes is
-# about the two engines' own symbols — that the namespace rename keeps
-# Bitboards::init and Position::init distinct where two Stockfish derivatives
-# would otherwise define one of each — and no facade can be asked to report on
-# that. There is also nothing else to drive: no bridge reaches this engine yet,
-# so this runner is its one consumer and its C++ API is the only door.
+# above link their engines directly. The claim it makes is about the two
+# engines' own symbols — that the namespace rename keeps Bitboards::init and
+# Position::init distinct where two Stockfish derivatives would otherwise define
+# one of each — and no facade can be asked to report on that: reaching it needs
+# this engine's C++ API, which is a door mxq.h deliberately does not have. Its
+# other half asks the C surface instead, because what the game axis over this
+# engine answers is exactly what mxq.h states about it.
 #
 # It does NOT link mxq::fairy-stockfish, and that omission is deliberate. The
 # two engines' headers share their file names — position.h, movegen.h,

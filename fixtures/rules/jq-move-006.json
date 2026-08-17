@@ -1,0 +1,23 @@
+{
+  "id": "jq-move-006",
+  "title": "A hidden piece capturing a hidden piece: the flip is mandatory and the count resets",
+  "area": "move",
+  "variant": "jieqi",
+  "start_fen": "p~3k4/9/9/9/9/9/9/9/9/P~4K3 w - - 6 4",
+  "moves": [
+    "a1a10"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "P3k4/9/9/9/9/9/9/9/9/5K3 b - - 0 4",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Both pieces are face down and both are on a chariot's start square, so the mover moves as a chariot up an empty file and takes the piece standing at the end of it. Three things follow at once. The mover flips face up on completing the move whether or not it captured, and it is a soldier: it stands on a10 as P, in the far corner of Black's half. The captured piece never flips — it leaves the board face down, and what it was is not something the position records afterwards. And the capture resets the halfmove clock to zero, which is the only thing that ever resets it: jq-cnt-001 is the same counter run to its end without one."
+}

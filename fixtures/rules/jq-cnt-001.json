@@ -1,0 +1,30 @@
+{
+  "id": "jq-cnt-001",
+  "title": "The capture-free move count runs out at eighty plies and draws the game",
+  "area": "cnt",
+  "variant": "jieqi",
+  "start_fen": "5k2r/9/9/9/9/9/9/9/9/R~2K5 w - - 76 39",
+  "moves": [
+    "a1a2",
+    "i10i9",
+    "a2a3",
+    "i9i8"
+  ],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "5k3/9/8r/9/9/9/9/R8/9/3K5 w - - 80 41",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "draw",
+      "reason": "forty-move-rule",
+      "at_occurrence": 0
+    }
+  },
+  "boundary": {
+    "prefix_len": 3,
+    "expect": "seventy-nine capture-free plies; still ongoing"
+  },
+  "rationale": "Jieqi draws a game that has run forty moves — eighty plies — without a capture. Only a capture resets the count, and the first ply here is the case that says so: the piece on a1 is face down, and revealing it is as irreversible as a move gets, yet the count goes from seventy-six to seventy-seven like any other quiet move. Four quiet plies carry it to eighty and the game is drawn, automatically rather than on a claim. The boundary one ply earlier, at seventy-nine, is still ongoing, which is what makes this the rule's exact edge. Forty is this game's own number: xq-cnt-001 is the same question in Xiangqi, which counts to fifty, and Mini Xiangqi counts to nothing at all."
+}

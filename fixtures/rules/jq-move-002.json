@@ -1,0 +1,36 @@
+{
+  "id": "jq-move-002",
+  "title": "A hidden piece on an advisor's square is palace-bound, whatever it is",
+  "area": "move",
+  "variant": "jieqi",
+  "start_fen": "3k5/9/9/9/9/9/9/9/9/3R~1K3 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k5/9/9/9/9/9/9/9/9/3R~1K3 w - - 0 1",
+    "legal_moves": [
+      "d1e2",
+      "f1e1",
+      "f1f2"
+    ],
+    "rejected_moves": [
+      "d1c2",
+      "d1d2",
+      "d1d10",
+      "d1a1"
+    ],
+    "applied": [
+      {
+        "move": "d1e2",
+        "result_fen": "3k5/9/9/9/9/9/9/9/4R4/5K3 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "The piece on d1 is a chariot and has exactly one legal move, because d1 is an advisor's square and a hidden piece is palace-bound like the advisor whose square it is: its one destination is the palace centre. d1c2 is the same diagonal step out of the palace, which the piece would be free to make once revealed and may not make while it is not; d1d2 is inside the palace and is not a diagonal at all; d1d10 and d1a1 are the chariot's own slides, which the square does not give it. The applied probe is the mandatory flip: the piece completes its one move and stands on e2 face up as the chariot it always was, free from that moment to slide the file it could not slide before."
+}

@@ -1,0 +1,39 @@
+{
+  "id": "jq-move-005",
+  "title": "A soldier moves by the side of the river it stands on",
+  "area": "move",
+  "variant": "jieqi",
+  "start_fen": "3k5/9/9/2P6/9/9/9/4P4/9/4K4 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k5/9/9/2P6/9/9/9/4P4/9/4K4 w - - 0 1",
+    "legal_moves": [
+      "e3e4",
+      "c7b7",
+      "c7c8",
+      "c7d7",
+      "e1e2",
+      "e1f1"
+    ],
+    "rejected_moves": [
+      "e3d3",
+      "e3f3",
+      "e3e2",
+      "c7c6"
+    ],
+    "applied": [
+      {
+        "move": "e3e4",
+        "result_fen": "3k5/9/9/2P6/9/9/4P4/9/9/4K4 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Two Red soldiers, one on each side of the river, and each moves by the side it stands on rather than by any history of crossing. The soldier on e3 stands deep in its own half, behind the rank soldiers start on and on a point a hidden piece's first move can leave it: it moves one square forward and no other way, so e3d3 and e3f3 are refused beside the backward e3e2. The soldier on c7 is past the river and never crossed it — it was revealed there — and it moves forward or sideways all the same, which is this contract's reading of the rule and the one place the two readings come apart. c7c6 is refused because no soldier ever moves backward."
+}

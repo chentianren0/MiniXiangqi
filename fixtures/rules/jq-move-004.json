@@ -1,0 +1,49 @@
+{
+  "id": "jq-move-004",
+  "title": "The revealed advisor and elephant are free, and the eye and the leg still block",
+  "area": "move",
+  "variant": "jieqi",
+  "start_fen": "3k5/9/9/9/1p4p2/2B1A1N2/9/9/9/4K4 w - - 0 1",
+  "moves": [],
+  "assertions": {
+    "in_check": false,
+    "result_fen": "3k5/9/9/9/1p4p2/2B1A1N2/9/9/9/4K4 w - - 0 1",
+    "legal_moves": [
+      "c5a3",
+      "c5e3",
+      "c5e7",
+      "e5d4",
+      "e5f4",
+      "e5d6",
+      "e5f6",
+      "g5e4",
+      "g5i4",
+      "g5e6",
+      "g5i6",
+      "g5f3",
+      "g5h3",
+      "e1e2",
+      "e1f1"
+    ],
+    "rejected_moves": [
+      "c5a7",
+      "g5f7",
+      "g5h7",
+      "e5e6",
+      "e1d1"
+    ],
+    "applied": [
+      {
+        "move": "c5e7",
+        "result_fen": "3k5/9/9/4B4/1p4p2/4A1N2/9/9/9/4K4 b - - 1 1",
+        "in_check": false
+      }
+    ],
+    "game_state": {
+      "state": "ongoing",
+      "reason": null
+    }
+  },
+  "boundary": null,
+  "rationale": "Two pieces are freed here and two rules are not. The advisor on e5 steps to all four diagonals — d4, f4, and d6 and f6 across the river — from a square no xiangqi advisor could stand on at all. The elephant on c5 reaches e7 across the river, which its own game forbids it, and reaches a3 and e3 behind it; a7 is refused, because the eye at b6 is occupied and only the confinement was lifted. The horse on g5 keeps its blocked leg for the same reason: g6 is occupied, by the opponent's soldier, so f7 and h7 are gone while the six destinations its other three legs offer remain. e5e6 is refused because an advisor steps diagonally however far it may roam, and e1d1 because the two generals may not face each other on an otherwise empty file, which is unchanged here in every respect."
+}
