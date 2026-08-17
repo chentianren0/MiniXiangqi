@@ -18,7 +18,7 @@
 // different axes, so the crossover is not at a width: the accepted macOS
 // minimum window is bound by its *height* and takes side by side there, while
 // an iPad in portrait is bound by nothing and takes stacked at more than twice
-// that width. One number would have to be both below 616 and above 834.
+// that width. One number would have to be both below 626 and above 834.
 //
 // Play settled the side-by-side numbers against a rendered screen; replay is
 // the same shape with a different panel in it, and a second copy of the numbers

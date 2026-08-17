@@ -844,11 +844,12 @@ final class PlayScreenUITests: XCTestCase {
     /// gate can be judged.
     ///
     /// The gate is read at the smallest window the product allows, because that
-    /// is where the pitch sits on its 44-point floor and the symbol measures
-    /// 22 points — and again at a large window, because a set that only works
-    /// small is not a set. Both appearances, because the discs and the ink
-    /// change with them. And the same two shots in 汉字, which are what say the
-    /// default is untouched.
+    /// is the smallest pitch this game ever draws — 45, one point above its
+    /// floor, since the minimum window is governed by the placement board's
+    /// width and Xiangqi's height — and again at a large window, because a set
+    /// that only works small is not a set. Both appearances, because the discs
+    /// and the ink change with them. And the same two shots in 汉字, which are
+    /// what say the default is untouched.
     ///
     /// The chariot-against-cannon pair needs no contrivance: the starting
     /// position puts them side by side on a1-b1 and f1-g1, on both back ranks,
@@ -867,8 +868,8 @@ final class PlayScreenUITests: XCTestCase {
                                "and so is the cannon's, on the point beside it")
                 XCTAssertEqual(point(app, "d7").label, "d7 黑 将")
                 if size == "floor" {
-                    XCTAssertEqual(pitch(app), 44, accuracy: 0.5,
-                                   "the gate is read at the pitch floor")
+                    XCTAssertEqual(pitch(app), 45, accuracy: 0.5,
+                                   "the gate is read at the smallest pitch the product draws")
                 }
                 attach(app, named: "30-icons-\(size)-\(appearance)")
             }
@@ -1323,30 +1324,33 @@ final class PlayScreenUITests: XCTestCase {
         // photographed like the rest because a size nobody has looked at is not
         // a decided size, and this one has not been decided yet.
         let first = record("firstlaunch", window: nil)
-        XCTAssertGreaterThanOrEqual(first.window.width, 760,
+        XCTAssertGreaterThanOrEqual(first.window.width, 770,
                                     "a first launch cannot open below the minimum")
         XCTAssertGreaterThanOrEqual(first.window.height, 520)
 
         // The smallest window the product allows. The size asked for is far
         // below it on both axes, so what comes back is the minimum itself.
         let floor = record("min-strips", window: CGSize(width: 320, height: 240))
-        XCTAssertEqual(floor.pitch, 44, accuracy: 0.5,
-                       "the board should sit exactly on its floor at the smallest window")
-        // Pitch 44 alone cannot catch a minimum that shrank: below the floor
-        // the fallback pins 44 too. The accepted numbers themselves are the pin.
+        XCTAssertEqual(floor.pitch, 45, accuracy: 0.5,
+                       "the floor is a bound rather than a target: the minimum is "
+                       + "governed by the placement board's width and Xiangqi's "
+                       + "height, so this game sits one point above its own 44")
+        // The accepted window numbers themselves are the pin: below the floor
+        // the fallback pins the pitch at 44, so the pitch alone cannot catch a
+        // minimum that shrank.
         //
         // The navigation container is what moved them: its sidebar takes 144
         // points of width and its toolbar 52 of height, and the play content
-        // still gets exactly the 616 by 416 it always asked for inside that.
-        // 760 = 616 + 144 and 468 = 416 + 52, measured rather than derived —
-        // and 760 by 520 is what docs/interaction-design.md § Layout shapes
+        // still gets exactly the 626 by 416 it always asked for inside that.
+        // 770 = 626 + 144 and 468 = 416 + 52, measured rather than derived —
+        // and 770 by 520 is what docs/interaction-design.md § Layout shapes
         // states as the accepted macOS minimum.
-        XCTAssertEqual(floor.window.width, 760,
-                       "the minimum window is the decided 760 points wide")
+        XCTAssertEqual(floor.window.width, 770,
+                       "the minimum window is the decided 770 points wide")
         XCTAssertEqual(floor.window.height - titleBar, 468, accuracy: 0.5,
                        "the minimum layout is the decided 468 points under the measured chrome")
-        XCTAssertEqual(floor.window.width - 616, 144, accuracy: 0.5,
-                       "and the play content still gets its own accepted 616")
+        XCTAssertEqual(floor.window.width - 626, 144, accuracy: 0.5,
+                       "and the play content still gets its own accepted 626")
         record("min-nostrips", window: CGSize(width: 320, height: 240), hidingNumerals: true)
         record("min-result", window: CGSize(width: 320, height: 240), replaying: Self.mateLine)
 
