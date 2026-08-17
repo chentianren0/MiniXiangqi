@@ -907,9 +907,9 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
      * mode is nearby, and absent otherwise, because a locally dealt game has no
      * handshake behind it to record and no other game has a deal at all. Both
      * halves are checked, and on both axes: a free-play jieqi document carrying
-     * them and a nearby minixiangqi document carrying them are the same
-     * mistake, and a rule checked on one side only refuses half of what it
-     * knows.
+     * them and a nearby minixiangqi document carrying them are two different
+     * mistakes, each refused in its own words, and a rule checked on one side
+     * only refuses half of what it knows.
      *
      * The shape is the format's — thirty-two bytes as sixty-four lowercase
      * hexadecimal digits, which is how all four handshake values are written
@@ -924,16 +924,28 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
                            out.mode == MXQ_PLAY_MODE_NEARBY;
         for (const char *name : kDealMembers) {
             const bool present = content.has_member(name);
-            if (present != dealt) {
-                return reject(
-                    err, MXQ_ERR_ARCHIVE_MALFORMED,
-                    present
-                        ? std::string("\"") + name +
-                              "\" is present in a game whose deal came from no "
-                              "handshake, which omits it"
-                        : std::string("\"content\" has no \"") + name +
-                              "\" member in a nearby jieqi game");
+            if (present == dealt) {
+                continue;
             }
+            if (!present) {
+                return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                              std::string("\"content\" has no \"") + name +
+                                  "\" member in a nearby jieqi game");
+            }
+            /* The two axes refuse a present member for two different reasons,
+             * and each says its own: a game that is dealt no start has no deal
+             * for a member to be evidence of, while the dealt game played
+             * locally has a deal and no handshake behind it. One sentence for
+             * both would leave whoever reads the detail unable to tell which
+             * mistake the file made. */
+            return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
+                          out.game != MXQ_GAME_KIND_JIEQI
+                              ? std::string("\"") + name +
+                                    "\" is present in a game that is dealt no "
+                                    "start and so has no deal at all"
+                              : std::string("\"") + name +
+                                    "\" is present in a game whose deal came "
+                                    "from no handshake, which omits it");
         }
         if (dealt) {
             std::string *const fields[] = {&out.deal_commit, &out.deal_nonce,
