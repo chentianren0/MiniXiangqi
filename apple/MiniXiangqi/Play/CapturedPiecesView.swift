@@ -1,11 +1,14 @@
-// The captured-pieces surface: two rows of discs and two counts.
+// The captured-pieces surface: two rows of discs.
 //
 // docs/interaction-design.md, "Captured pieces". The rows are the losses of one
 // side each, drawn as the board draws those pieces — the same `PieceDrawing` the
 // board and the Custom Scene palette call, at whatever pitch this surface can
 // spare, so a disc here and the disc it was on the board are one drawing. The
-// count beside a row is what that reader may not see: their own hidden losses,
-// which tell them a piece is gone and never which.
+// losses a reader may not see — their own hidden ones, which tell them a piece
+// is gone and never which — are that many face-down discs at the row's end,
+// after the revealed pieces: the face-down disc is already the surface's word
+// for a piece its reader cannot name, and an anonymous tail carries no order
+// worth keeping.
 //
 // **Where the rows and the counts stand, how large their discs are, and how a
 // disclosure arrives are settled against the rendered board**, as every other
@@ -59,29 +62,26 @@ struct CapturedPiecesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// One side's losses: whose they are, the discs, and the count of the ones
-    /// this reader may not see.
+    /// One side's losses: whose they are, then the discs — the revealed pieces
+    /// first, and the ones this reader may not see as face-down discs after
+    /// them. The count still reaches a screen reader in words, through the
+    /// row's own label, where discs cannot be counted at a glance.
     private func row(of panel: CapturedPieces.Panel) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(game.sideName(panel.side))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                if panel.hidden > 0 {
-                    Text(String(format: String(localized: "captured.hidden"),
-                                panel.hidden))
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text(game.sideName(panel.side))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
             // A wrapping grid rather than one row: fifteen discs never fit a
             // panel's width, and a surface that scrolled sideways would hide
             // exactly the material it exists to show.
             LazyVGrid(columns: [GridItem(.adaptive(minimum: BoardLayout.capturedDiscPitch),
                                          spacing: 0, alignment: .leading)],
                       alignment: .leading, spacing: 0) {
-                ForEach(Array(panel.pieces.enumerated()), id: \.offset) { _, piece in
+                let discs = panel.pieces + Array(repeating: Piece(kind: nil,
+                                                                  side: panel.side,
+                                                                  isFaceDown: true),
+                                                 count: panel.hidden)
+                ForEach(Array(discs.enumerated()), id: \.offset) { _, piece in
                     PieceDisc(piece: piece, pitch: BoardLayout.capturedDiscPitch,
                               board: game.board, style: style,
                               symbols: PieceSymbols.named(storedSymbols))
