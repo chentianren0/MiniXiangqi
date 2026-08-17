@@ -43,8 +43,10 @@ final class PhoneSettingsUITests: XCTestCase {
         let boardSection: String
         let symbols, hanzi: String
         let notation, traditional: String
+        let boardFooter: String
         let sound, haptics: String
         let confirmDelete, confirmDeleteFooter: String
+        let confirmPlacement: String
         let defaultsSection, defaultFirstMover, defaultAiLevel: String
         let iMoveFirst, standardLevel, defaultsFooter: String
         /// The About row at the foot of the screen, and the page it opens: the
@@ -62,9 +64,11 @@ final class PhoneSettingsUITests: XCTestCase {
             boardSection: "棋盘",
             symbols: "棋子符号", hanzi: "汉字",
             notation: "记谱法", traditional: "中文",
+            boardFooter: "适用于有棋子的棋类。揭棋的行棋记录使用自身的固定读法，不随记谱法改变。",
             sound: "声音", haptics: "触感",
             confirmDelete: "删除前确认",
             confirmDeleteFooter: "关闭后，删除立即执行。删除无法撤销。",
+            confirmPlacement: "落子前确认",
             defaultsSection: "人机对弈默认设置",
             defaultFirstMover: "默认先后手", defaultAiLevel: "默认 AI 等级",
             iMoveFirst: "我先手", standardLevel: "标准",
@@ -81,9 +85,11 @@ final class PhoneSettingsUITests: XCTestCase {
             boardSection: "Board",
             symbols: "Piece Symbols", hanzi: "Chinese Characters",
             notation: "Notation", traditional: "Chinese",
+            boardFooter: "Applies to the games played with pieces. Jieqi's move list keeps its own fixed reading, whichever Notation is chosen.",
             sound: "Sound", haptics: "Haptics",
             confirmDelete: "Confirm Before Deleting",
             confirmDeleteFooter: "When off, deletion happens immediately. A deletion cannot be undone.",
+            confirmPlacement: "Confirm Before Placing",
             defaultsSection: "Human versus AI Defaults",
             defaultFirstMover: "Default First Mover", defaultAiLevel: "Default AI Level",
             iMoveFirst: "I Move First", standardLevel: "Standard",
@@ -262,6 +268,8 @@ final class PhoneSettingsUITests: XCTestCase {
         XCTAssertEqual(selection(of: "settings-notation", in: app), language.traditional,
                        "and the launch states \(language.traditional) — the row reads "
                        + control(app, "settings-notation").label)
+        XCTAssertTrue(app.staticTexts[language.boardFooter].exists,
+                      "the group's footer says how far the two choices reach")
 
         // The human-versus-AI defaults, headed and footed.
         XCTAssertTrue(app.staticTexts[language.defaultsSection].exists)
@@ -280,7 +288,13 @@ final class PhoneSettingsUITests: XCTestCase {
                       "and should read \(language.sound)")
         XCTAssertTrue(isOn(sound), "声音 defaults on")
 
-        // And the one with a footer.
+        // The placement confirmation, off on a new installation.
+        let placement = control(app, "settings-confirm-placement")
+        XCTAssertTrue(placement.exists)
+        XCTAssertTrue(app.staticTexts[language.confirmPlacement].exists)
+        XCTAssertFalse(isOn(placement), "the placement confirmation defaults off")
+
+        // And the deletion confirmation, whose footer is the load-bearing one.
         let confirm = control(app, "settings-confirm-delete")
         XCTAssertTrue(confirm.exists)
         XCTAssertTrue(app.staticTexts[language.confirmDelete].exists)
