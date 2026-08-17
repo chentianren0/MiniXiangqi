@@ -17,12 +17,14 @@
  * deliberately not public macros: the contract exposes them through
  * mxq_core_version and mxq_archive_supported_versions so that a caller reads
  * the running core's values rather than the ones it compiled against. */
-#define MXQ_ARCHIVE_VERSION_CURRENT      5u
-#define MXQ_ARCHIVE_VERSION_MIN_READABLE 5u
-#define MXQ_STORE_SCHEMA_VERSION         5u
+#define MXQ_ARCHIVE_VERSION_CURRENT      6u
+#define MXQ_ARCHIVE_VERSION_MIN_READABLE 6u
+#define MXQ_STORE_SCHEMA_VERSION         6u
 
 /* The rules interpretation this build implements, owned by
- * docs/xiangqi-rules.md § Rules interpretation version. It increments only when
+ * docs/xiangqi-rules.md § Rules interpretation version — and, for Jieqi, by
+ * docs/jieqi-rules.md, which adopts that document's repetition clauses by
+ * reference and moves with it. It increments only when
  * an accepted interpretation change alters a legal move or a user-visible
  * result, which is exactly why an archive recorded under another one cannot be
  * reproduced here: it is a fifth axis, independent of the four MxqVersion

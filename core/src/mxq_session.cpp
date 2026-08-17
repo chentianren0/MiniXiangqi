@@ -5,6 +5,7 @@
 #include "mxq_archive_read.hpp"
 #include "mxq_archive_write.hpp"
 #include "mxq_core_state.hpp"
+#include "mxq_deal.hpp"
 #include "mxq_engine_bridge.hpp"
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
@@ -418,7 +419,9 @@ const char *nearby_terminal_text(MxqNearbyTerminal terminal) {
 
 /* The C struct as the store's row. The two identifiers travel verbatim; the two
  * closed vocabularies become the serialised spellings the schema's CHECK
- * constraints are written in, exactly as every other store vocabulary does. */
+ * constraints are written in, exactly as every other store vocabulary does; and
+ * the four deal values travel verbatim too, the empty string spelling the SQL
+ * NULL a session with no deal holds. */
 store::NearbySession nearby_row_of(const MxqNearbySession &state) {
     store::NearbySession row;
     row.session_id = state.session_id;
@@ -429,6 +432,10 @@ store::NearbySession nearby_row_of(const MxqNearbySession &state) {
     row.undos = static_cast<int64_t>(state.undos);
     row.keep = static_cast<int64_t>(state.keep);
     row.claimed = state.claimed != 0;
+    row.deal_commit = state.deal_commit;
+    row.deal_nonce = state.deal_nonce;
+    row.deal_seed = state.deal_seed;
+    row.deal_digest = state.deal_digest;
     return row;
 }
 
@@ -504,15 +511,46 @@ MxqStatus adopt_nearby_row(MxqGame &game, const store::NearbySession &row,
     state.keep = static_cast<uint32_t>(row.keep);
     state.claimed = row.claimed ? 1u : 0u;
 
+    /* The four deal values, present exactly for a session of the one game whose
+     * start is dealt. The schema says so too, in a trigger, so a row that
+     * disagrees is corruption rather than a shape this build should carry
+     * forward; and the values themselves are re-verified by the caller, against
+     * everything the deal comes from, before the session is handed out. */
+    {
+        const bool dealt = game.config.game == MXQ_GAME_KIND_JIEQI;
+        const std::string *const columns[] = {&row.deal_commit, &row.deal_nonce,
+                                              &row.deal_seed, &row.deal_digest};
+        char *const fields[] = {state.deal_commit, state.deal_nonce,
+                                state.deal_seed, state.deal_digest};
+        for (size_t i = 0; i < 4; ++i) {
+            if (columns[i]->empty() == dealt ||
+                (dealt && !deal::is_hex32(*columns[i]))) {
+                fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                           "the wire session's deal is not the shape this "
+                           "game's session has");
+                return MXQ_ERR_STORE_CORRUPT;
+            }
+            if (dealt) {
+                std::memcpy(fields[i], columns[i]->c_str(),
+                            columns[i]->size() + 1);
+            }
+        }
+    }
+
     game.has_nearby = true;
     game.nearby = state;
     return MXQ_OK;
 }
 
-/* The shape of an arriving wire session: the two closed vocabularies, and two
- * identifiers that are present and fit. It is a programming error to get any of
- * it wrong — every value here is one the frontend itself owns. */
-MxqStatus read_nearby_state(const MxqNearbySession *state,
+/*
+ * The shape of an arriving wire session: the two closed vocabularies, two
+ * identifiers that are present and fit, and the deal — four values that are
+ * each sixty-four lowercase hexadecimal digits for the one game whose start is
+ * dealt and empty for every other. It is a programming error to get any of it
+ * wrong; every value here is one the frontend itself owns, and which game it is
+ * playing most of all.
+ */
+MxqStatus read_nearby_state(MxqGameKind game, const MxqNearbySession *state,
                             MxqNearbySession &out, MxqError *err) {
     MxqStatus rc = check_in(state, state != nullptr ? state->struct_size : 0u,
                             static_cast<uint32_t>(sizeof(MxqNearbySession)),
@@ -535,14 +573,44 @@ MxqStatus read_nearby_state(const MxqNearbySession *state,
     out.keep = state->keep;
     out.sent_end = state->sent_end;
     out.claimed = state->claimed;
-    if (!vocabulary_ok ||
+
+    /* The deal, whose presence is the game's: a session of the one dealt game
+     * carries all four values and a session of any other carries none. Read
+     * bounded by the member's declared size, exactly as the two identifiers
+     * are, because the array is the caller's. */
+    bool deal_ok = true;
+    {
+        const bool dealt = game == MXQ_GAME_KIND_JIEQI;
+        const char *const from[] = {state->deal_commit, state->deal_nonce,
+                                    state->deal_seed, state->deal_digest};
+        char *const into[] = {out.deal_commit, out.deal_nonce, out.deal_seed,
+                              out.deal_digest};
+        for (size_t i = 0; i < 4; ++i) {
+            const void *nul = std::memchr(from[i], '\0', MXQ_DEAL_HEX_CAP);
+            const size_t length =
+                nul != nullptr
+                    ? static_cast<size_t>(static_cast<const char *>(nul) -
+                                          from[i])
+                    : MXQ_DEAL_HEX_CAP;
+            const std::string value(from[i], length);
+            if (dealt != deal::is_hex32(value)) {
+                deal_ok = false;
+                break;
+            }
+            if (dealt) {
+                std::memcpy(into[i], value.c_str(), value.size() + 1);
+            }
+        }
+    }
+
+    if (!vocabulary_ok || !deal_ok ||
         !copy_identifier(state->session_id, out.session_id,
                          MXQ_NEARBY_SESSION_ID_CAP) ||
         !copy_identifier(state->peer_id, out.peer_id, MXQ_NEARBY_PEER_ID_CAP)) {
         assert(false && "the wire session is not one the protocol carries");
         fill_error(err, MXQ_ERR_ARG_RANGE,
-                   "the nearby wire session's identifiers or vocabulary are "
-                   "not ones this interface defines");
+                   "the nearby wire session's identifiers, deal or vocabulary "
+                   "are not ones this interface defines");
         return MXQ_ERR_ARG_RANGE;
     }
     return MXQ_OK;
@@ -701,6 +769,9 @@ std::unique_ptr<MxqGame> session_of(MxqCore *core,
     game->started_at_ms = stored.started_at_ms;
     game->written_at_ms = stored.written_at_ms;
     game->moves = stored.moves;
+    game->deal_commit = stored.deal_commit;
+    game->deal_nonce = stored.deal_nonce;
+    game->deal_seed = stored.deal_seed;
     game->completed = stored.completed;
     game->outcome = stored.outcome;
     game->end_reason = stored.end_reason;
@@ -776,6 +847,27 @@ MxqStatus session_from_row(MxqCore *core, uint64_t record_id,
             fill_error(err, MXQ_ERR_STORE_CORRUPT,
                        ("the stored game does not start from a position its "
                         "game may begin from: " +
+                        why)
+                           .c_str());
+            return MXQ_ERR_STORE_CORRUPT;
+        }
+    }
+    /* And, where the row records the evidence of a deal, that the evidence is
+     * this game's: the seed hashes to the commitment and the deal it derives is
+     * the one the start spells. A row this core wrote can only hold a deal
+     * creation accepted, so a deal that no longer verifies is damage to the
+     * library — which is why this lands on the same status the start does
+     * rather than on the archive's own. The fourth value is the wire session's
+     * and is compared by the caller that has one. */
+    if (!stored.deal_commit.empty()) {
+        std::string why;
+        if (!deal::verify(stored.deal_commit, stored.deal_nonce,
+                          stored.deal_seed,
+                          notation::start_fen(stored.config),
+                          /*expected_digest=*/nullptr, why)) {
+            fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                       ("the stored game's deal is not the one its start "
+                        "spells: " +
                         why)
                            .c_str());
             return MXQ_ERR_STORE_CORRUPT;
@@ -921,6 +1013,9 @@ archive::Record record_of(const MxqGame &game) {
     record.game_id = game.game_id;
     record.config = game.config;
     record.moves = game.moves;
+    record.deal_commit = game.deal_commit;
+    record.deal_nonce = game.deal_nonce;
+    record.deal_seed = game.deal_seed;
     record.started_at_ms = game.started_at_ms;
     record.written_at_ms = game.written_at_ms;
     /* An active game's stored content records no end; a game one of the four
@@ -1159,6 +1254,19 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
                         "for this game, so no session can be stored for it");
         return MXQ_ERR_ARG_RANGE;
     }
+    /*
+     * The one game that plays fewer than three modes. Jieqi has no AI at all —
+     * no search, no network, nothing to prepare — so a game of it against a
+     * machine is a configuration of neither accepted shape, refused here beside
+     * the shape checks below and for the same reason they are.
+     */
+    if (config->game == MXQ_GAME_KIND_JIEQI &&
+        config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI) {
+        assert(false && "this game has no AI to play against");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "this game has no AI, so it is not played against one");
+        return MXQ_ERR_ARG_RANGE;
+    }
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
     const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;
     bool shape_ok =
@@ -1203,6 +1311,22 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     const std::string named = mxq::session::named_start(*config);
 
     /*
+     * A dealt game has no frozen start, so its configuration always names one:
+     * there is a start for every deal and no one position for an empty member
+     * to have meant. An empty member is therefore a configuration of a shape
+     * this game does not have — a programming error, exactly as the mode
+     * refusal above is, and not a position the frontend can show a person.
+     */
+    const bool dealt_game = config->game == MXQ_GAME_KIND_JIEQI;
+    if (dealt_game && named.empty()) {
+        assert(false && "a dealt game's configuration names its deal");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "this game begins from a dealt start, so its "
+                        "configuration names one");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    /*
      * A composed start is Free Play's, and only Free Play's.
      *
      * The other two modes each have a fact a composed position would make
@@ -1212,12 +1336,37 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
      * mover is the frozen start's, and a position naming its own side to move
      * leaves it saying nothing. A vs-AI-from-a-scene feature is a contract
      * change rather than something to inherit muddled here.
+     *
+     * A dealt start is not a composed one and the rule does not reach it:
+     * nobody put it together and neither player chose it. Free Play deals its
+     * own and a nearby session's two ends derive one identical deal from the
+     * handshake, so the two modes this game plays both name a start and neither
+     * is composing a position.
      */
-    if (!named.empty() && config->mode != MXQ_PLAY_MODE_FREE_PLAY) {
+    if (!named.empty() && !dealt_game &&
+        config->mode != MXQ_PLAY_MODE_FREE_PLAY) {
         assert(false && "a composed start belongs to a Free Play game");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "a game begun from a composed position is a Free Play "
                         "game; the other modes begin from the frozen start");
+        return MXQ_ERR_ARG_RANGE;
+    }
+
+    /*
+     * And a dealt game played over the wire carries the evidence its deal was
+     * dealt: the commitment, the nonce and the seed are content of the document
+     * this creation writes, so a nearby game of it is created through
+     * mxq_game_create_nearby — the entry that takes the wire session those
+     * values arrive in — and not through the plain one, which has nowhere to
+     * take them from.
+     */
+    if (dealt_game && config->mode == MXQ_PLAY_MODE_NEARBY &&
+        nearby == nullptr) {
+        assert(false && "a nearby dealt game is created over its wire session");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "a nearby game of this game records the deal its "
+                        "handshake produced, so it is created over the wire "
+                        "session that carries it");
         return MXQ_ERR_ARG_RANGE;
     }
 
@@ -1278,6 +1427,16 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     if (nearby != nullptr) {
         game->has_nearby = true;
         game->nearby = *nearby;
+        /* Three of the wire session's four deal values are this game's own
+         * evidence rather than this device's, so they are copied onto the
+         * session, where the document is written from. The digest is not among
+         * them: it is derivable from the deal, and a record carries what cannot
+         * be recomputed from what it already holds. */
+        if (dealt_game) {
+            game->deal_commit = nearby->deal_commit;
+            game->deal_nonce = nearby->deal_nonce;
+            game->deal_seed = nearby->deal_seed;
+        }
     }
 
     /*
@@ -1338,8 +1497,29 @@ MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
     if (rc != MXQ_OK) {
         return rc;
     }
+    /*
+     * Three things about the configuration this entry judges before create_game
+     * reads it, and all of them guard on the same condition: a struct at least
+     * the size this build declares, which is what check_in inside create_game
+     * will ask of it anyway. Equality would let a caller that passed a larger
+     * struct skip them and meet the store's trigger instead of this diagnostic.
+     * The game axis is part of the same condition because both reading a start
+     * and reading a deal need one: a game outside the vocabulary is refused by
+     * create_game, which owns that refusal, rather than judged here.
+     */
+    const bool config_readable =
+        config != nullptr && config->struct_size >= sizeof(MxqGameConfig) &&
+        mxq::notation::known_game(config->game);
+    if (!config_readable) {
+        /* Nothing here can be judged without one, so the configuration's own
+         * refusal is the whole answer and create_game is where it lives. */
+        return create_game(core, config, nullptr, out_game, err);
+    }
+
+    /* The wire session, read under the game it belongs to — which is what says
+     * whether it carries a deal. */
     MxqNearbySession state;
-    rc = mxq::session::read_nearby_state(session, state, err);
+    rc = mxq::session::read_nearby_state(config->game, session, state, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -1354,25 +1534,12 @@ MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
                         "retracted, claimed and declared nothing");
         return MXQ_ERR_ARG_RANGE;
     }
-    /*
-     * Two things about the configuration this entry judges before create_game
-     * reads it, and both guard on the same condition: a struct at least the
-     * size this build declares, which is what check_in inside create_game will
-     * ask of it anyway. Equality would let a caller that passed a larger struct
-     * skip these two and meet the store's trigger instead of this diagnostic.
-     * The game axis is part of the same condition because reading a start needs
-     * one: a game outside the vocabulary is refused by create_game, which owns
-     * that refusal, rather than judged here.
-     */
-    const bool config_readable =
-        config != nullptr && config->struct_size >= sizeof(MxqGameConfig) &&
-        mxq::notation::known_game(config->game);
 
     /* The mode is not a preference here: this call writes a nearby_session row,
      * and the schema's own trigger refuses one over any other kind of game.
      * Saying so before the transaction makes it a programming error rather than
      * a store failure. */
-    if (config_readable && config->mode != MXQ_PLAY_MODE_NEARBY) {
+    if (config->mode != MXQ_PLAY_MODE_NEARBY) {
         assert(false && "a wire session belongs to a nearby game");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "a wire session belongs to a nearby game");
@@ -1386,8 +1553,15 @@ MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
      * What is refused is a composed start and not a spelled-out one: the frozen
      * start written in full is the game's own start everywhere else in this
      * interface, and a caller that spells it is describing the game nearby play
-     * already plays. */
-    if (config_readable && !mxq::session::named_start(*config).empty()) {
+     * already plays.
+     *
+     * The dealt game is the exception, and it is not composure that makes it
+     * one: it has no frozen start for a spelled-out one to fold into, and the
+     * start it names is the deal both devices derived from the handshake rather
+     * than a position either of them chose. Its start is judged by the three
+     * questions in create_game like every other named one. */
+    if (config->game != MXQ_GAME_KIND_JIEQI &&
+        !mxq::session::named_start(*config).empty()) {
         assert(false && "a nearby game begins from its game's frozen start");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "a nearby game begins from its game's frozen start: "
@@ -1471,6 +1645,43 @@ MxqStatus MXQ_CALL mxq_game_resume_active(MxqCore *core, MxqGame **out_game,
                 mxq::session::adopt_nearby_row(*game, row, err);
             if (adopted != MXQ_OK) {
                 return adopted;
+            }
+            /*
+             * The re-verification the protocol requires of a dealt session
+             * before it uses its deal, and it is against everything the deal
+             * comes from rather than against one value: the persisted seed
+             * hashes to the persisted commitment, and the deal that seed and
+             * nonce derive carries the persisted digest — a nonce that has
+             * rotted passes the first check and fails the second, which is why
+             * the digest is the one the wire compares. The deal against the
+             * start it spells has already been asked of the document.
+             *
+             * Beside them, the row and the document must agree on the three
+             * values they both hold: they were written in one transaction, so a
+             * disagreement is damage rather than a state this build produced.
+             */
+            if (!game->deal_commit.empty()) {
+                const std::string digest = game->nearby.deal_digest;
+                std::string why;
+                if (game->deal_commit != game->nearby.deal_commit ||
+                    game->deal_nonce != game->nearby.deal_nonce ||
+                    game->deal_seed != game->nearby.deal_seed) {
+                    mxq::fill_error(err, MXQ_ERR_STORE_CORRUPT,
+                                    "the wire session's deal is not the deal "
+                                    "the stored game records");
+                    return MXQ_ERR_STORE_CORRUPT;
+                }
+                if (!mxq::deal::verify(game->deal_commit, game->deal_nonce,
+                                       game->deal_seed,
+                                       mxq::notation::start_fen(game->config),
+                                       &digest, why)) {
+                    mxq::fill_error(
+                        err, MXQ_ERR_STORE_CORRUPT,
+                        ("the stored wire session's deal no longer verifies: " +
+                         why)
+                            .c_str());
+                    return MXQ_ERR_STORE_CORRUPT;
+                }
             }
         }
     }
@@ -1935,7 +2146,7 @@ MxqStatus MXQ_CALL mxq_game_retract_nearby(MxqGame *game, uint32_t keep,
         return rc;
     }
     MxqNearbySession state;
-    rc = mxq::session::read_nearby_state(session, state, err);
+    rc = mxq::session::read_nearby_state(game->config.game, session, state, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -1993,7 +2204,7 @@ MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
         return rc;
     }
     MxqNearbySession state;
-    rc = mxq::session::read_nearby_state(session, state, err);
+    rc = mxq::session::read_nearby_state(game->config.game, session, state, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -2013,6 +2224,21 @@ MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
         assert(false && "a wire session's identity is frozen");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "the wire session's identifiers are not this game's");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    /* And so is its deal, for a stronger reason than the identifiers': the deal
+     * is what the game is played over, three of its four values are already in
+     * the document this row holds, and a call that revised them would leave the
+     * store holding a session whose evidence contradicts its own game. */
+    if (game->has_nearby &&
+        (std::strcmp(game->nearby.deal_commit, state.deal_commit) != 0 ||
+         std::strcmp(game->nearby.deal_nonce, state.deal_nonce) != 0 ||
+         std::strcmp(game->nearby.deal_seed, state.deal_seed) != 0 ||
+         std::strcmp(game->nearby.deal_digest, state.deal_digest) != 0)) {
+        assert(false && "a wire session's deal is frozen");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "the wire session's deal is not the one this game was "
+                        "dealt");
         return MXQ_ERR_ARG_RANGE;
     }
 

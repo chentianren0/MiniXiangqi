@@ -28,11 +28,20 @@ namespace mxq {
 namespace archive {
 
 /*
- * One version 5 document, as values.
+ * One version 6 document, as values.
  *
  * config is what the document's rules_id spells and what its start_fen is taken
  * from: one struct decides both, so a document cannot record one game's
  * identity beside a position of the other's board.
+ *
+ * The three deal members are the provenance of a dealt game's start, and are
+ * present exactly for a jieqi game whose deal came from the protocol's
+ * handshake — which is every nearby one. They are not in config because they
+ * are not a configuration: nobody chose them, and what they are for is letting
+ * anyone holding the file hash the seed against the commitment, derive the deal
+ * and check it against the start_fen in front of them. Empty is absent, and the
+ * writer refuses to write a document whose presence does not match its game and
+ * mode.
  *
  * The terminal trio is present exactly when completed is true; an active
  * game's stored content omits outcome, end_reason and ended_at, which is the
@@ -51,6 +60,9 @@ struct Record {
     std::string              game_id;
     MxqGameConfig            config{};
     std::vector<std::string> moves;
+    std::string              deal_commit;
+    std::string              deal_nonce;
+    std::string              deal_seed;
     int64_t                  started_at_ms = 0;
     int64_t                  written_at_ms = 0;
     bool                     completed = false;

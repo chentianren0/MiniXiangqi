@@ -212,15 +212,7 @@ const char *rules_id_text(MxqGameKind game) {
     case MXQ_GAME_KIND_XIANGQI:      return "xiangqi";
     case MXQ_GAME_KIND_GOMOKU_15:    return "gomoku-15";
     case MXQ_GAME_KIND_RENJU:        return "renju";
-    case MXQ_GAME_KIND_JIEQI:
-        /* No spelling, deliberately, and not an omission: the archive version
-         * that carries this game carries a deal beside its start and a
-         * forty-move reason among its ends, and this build writes the version
-         * before it. A null here is what the two readers below and the session
-         * surface read as "the archive does not carry this game", which is a
-         * refusal rather than a document naming a rules_id no version defines.
-         * It is one line to delete at the version that adds it. */
-        return nullptr;
+    case MXQ_GAME_KIND_JIEQI:        return "jieqi";
     default: break;
     }
     assert(false && "a game outside the closed vocabulary reached the writer");
@@ -295,11 +287,10 @@ const char *end_reason_text(MxqEndReason reason) {
     case MXQ_END_REASON_MUTUAL_RESIGNATION:     return "mutual-resignation";
     case MXQ_END_REASON_FIVE_IN_A_ROW:          return "five-in-a-row";
     case MXQ_END_REASON_BOARD_FULL:             return "board-full";
-    /* The forty-move rule is one game's alone, and this format version has no
-     * spelling for that game — rules_id_text says so first, and a session of it
-     * is refused before a reason can be reached. The arm is written out rather
-     * than left to the default so that the two absences are one decision. */
-    case MXQ_END_REASON_FORTY_MOVE_RULE:        return nullptr;
+    /* Jieqi's alone, as the fifty-move rule is Xiangqi's: two games counting
+     * captureless play to two different numbers, and Mini Xiangqi counting
+     * nothing at all. */
+    case MXQ_END_REASON_FORTY_MOVE_RULE:        return "forty-move-rule";
     default: break;
     }
     return nullptr; /* MXQ_END_REASON_NONE: no end is recorded */
@@ -311,7 +302,7 @@ const char *end_reason_text(MxqEndReason reason) {
 
 std::string content_bytes(const Record &record) {
     std::vector<std::pair<const char *, std::string>> members;
-    members.reserve(13);
+    members.reserve(16);
 
     members.emplace_back("rules_id", json_string(rules_id_text(record.config.game)));
     members.emplace_back("rules_version", std::to_string(MXQ_RULES_VERSION));
@@ -342,6 +333,32 @@ std::string content_bytes(const Record &record) {
         members.emplace_back(
             "first_mover_choice",
             json_string(first_mover_text(record.config.first_mover_choice)));
+    }
+
+    /*
+     * The deal's provenance, present exactly for a jieqi game whose deal came
+     * from the protocol's handshake — which is every nearby one, and no other
+     * game and no other mode: a locally dealt game has no handshake behind it
+     * to record. The digest is not among them, being derivable from the deal
+     * these three produce, and a record carries what cannot be recomputed from
+     * what it already holds.
+     *
+     * The presence is asserted against the game and the mode rather than merely
+     * followed from the values, because a writer that wrote whatever it was
+     * handed would produce a document its own reader refuses.
+     */
+    {
+        const bool dealt = record.config.game == MXQ_GAME_KIND_JIEQI &&
+                           record.config.mode == MXQ_PLAY_MODE_NEARBY;
+        assert(dealt == (!record.deal_commit.empty() &&
+                         !record.deal_nonce.empty() &&
+                         !record.deal_seed.empty()) &&
+               "the deal's provenance rides a nearby jieqi record and no other");
+        if (dealt) {
+            members.emplace_back("deal_commit", json_string(record.deal_commit));
+            members.emplace_back("deal_nonce", json_string(record.deal_nonce));
+            members.emplace_back("deal_seed", json_string(record.deal_seed));
+        }
     }
 
     members.emplace_back("started_at",

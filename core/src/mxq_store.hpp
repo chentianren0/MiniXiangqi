@@ -1,7 +1,7 @@
 /* The library store behind mxq_store_ and the attached-session commits.
  *
  * One embedded SQLite database, opened at mxq_core_init and closed at
- * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 5.
+ * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 6.
  * This header is internal: nothing SQLite-shaped is visible through mxq.h, per
  * docs/architecture.md, and core/CMakeLists.txt links the vendored library
  * PRIVATE for the same reason.
@@ -44,7 +44,7 @@ namespace store {
 
 /* The store's one database file, under the frontend-supplied store directory.
  * The name is part of the accepted contract: docs/game-data.md, "Library store
- * schema, version 5". Write-ahead logging keeps its journal beside it as
+ * schema, version 6". Write-ahead logging keeps its journal beside it as
  * library.sqlite3-wal and library.sqlite3-shm. */
 constexpr const char *kDatabaseFileName = "library.sqlite3";
 
@@ -119,6 +119,13 @@ struct NearbySession {
     int64_t     undos = 0;
     int64_t     keep = 0;
     bool        claimed = false;
+    /* The four values a dealt game's handshake left behind, each sixty-four
+     * lowercase hexadecimal digits and present exactly for a session of the one
+     * game whose start is dealt. Empty spells SQL NULL, as sent_end's does. */
+    std::string deal_commit;
+    std::string deal_nonce;
+    std::string deal_seed;
+    std::string deal_digest;
 };
 
 /*
@@ -403,12 +410,12 @@ MxqStatus history_delete(Store &store, uint64_t record_id, MxqError *err);
  *
  *   - the required pragmas are applied and then read back and verified:
  *     journal_mode=WAL, synchronous=FULL, foreign_keys=ON;
- *   - a fresh database receives the complete schema version 5 in one
- *     transaction, and its user_version pragma is set to 5;
- *   - an existing database is verified: the three tables must exist and be
+ *   - a fresh database receives the complete schema version 6 in one
+ *     transaction, and its user_version pragma is set to 6;
+ *   - an existing database is verified: the four tables must exist and be
  *     STRICT, and the single library row must be present;
  *   - a database recording any other schema version is refused, and never
- *     migrated: version 5 is the only schema this build defines. A newer one
+ *     migrated: version 6 is the only schema this build defines. A newer one
  *     is MXQ_ERR_STORE_SCHEMA_TOO_NEW, which the contract requires to be said
  *     distinctly; anything else is MXQ_ERR_STORE_MIGRATION_FAILED.
  *

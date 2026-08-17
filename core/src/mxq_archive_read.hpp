@@ -41,7 +41,7 @@
 namespace mxq {
 namespace archive {
 
-/* One version 5 document, decoded whole — a row's or a file's. The terminal
+/* One version 6 document, decoded whole — a row's or a file's. The terminal
  * trio is meaningful exactly when completed is true. written_at_ms is
  * origin.exported_at, which a resumed session carries forward so that
  * re-encoding it reproduces the bytes the store holds, and which an imported
@@ -54,6 +54,13 @@ struct Stored {
     std::string              game_id;
     MxqGameConfig            config{};
     std::vector<std::string> moves;
+    /* The deal's provenance, present exactly for a nearby jieqi document. A
+     * session carries it so that re-encoding reproduces the bytes it came from,
+     * and so that a resumed game can re-verify its own deal without the
+     * document it is not yet. */
+    std::string              deal_commit;
+    std::string              deal_nonce;
+    std::string              deal_seed;
     int64_t                  started_at_ms = 0;
     int64_t                  written_at_ms = 0;
     bool                     completed = false;

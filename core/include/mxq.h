@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 3
+#define MXQ_API_VERSION_MINOR 4
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -179,6 +179,20 @@ extern "C" {
  * to spare; a longer value is MXQ_ERR_ARG_RANGE rather than a truncation. */
 #define MXQ_NEARBY_SESSION_ID_CAP 128
 #define MXQ_NEARBY_PEER_ID_CAP 128
+
+/*
+ * One of the four values a dealt game's handshake left behind — the
+ * commitment, the nonce, the seed and the deal digest — each of them
+ * thirty-two bytes written as exactly sixty-four lowercase hexadecimal digits,
+ * which is the spelling docs/boardgame-protocol-v2.md fixes for all four and
+ * the spelling the archive carries three of them in. 65 is those digits and the
+ * NUL; the empty string is a session that has no deal, which is every session
+ * of a game whose start is not dealt. It is deliberately not
+ * MXQ_SHA256_HEX_CAP: that capacity is a digest's, and the seed is not a
+ * digest — one of these four is a value drawn at random and the other three are
+ * hashes of things, and they share a width rather than a meaning.
+ */
+#define MXQ_DEAL_HEX_CAP 65
 
 /* ------------------------------------------------------------------------- */
 /* Status codes                                                              */
@@ -670,7 +684,7 @@ enum {
     MXQ_PROVENANCE_LOCALLY_PLAYED = 0, /* "locally-played" */
     MXQ_PROVENANCE_IMPORTED       = 1, /* "imported" */
     MXQ_PROVENANCE_DERIVED        = 2  /* "derived"; reserved, and rejected by
-                                        * archive version 5. A game composed
+                                        * archive version 6. A game composed
                                         * from a position is identified by that
                                         * position, which start_fen already
                                         * carries, so nothing writes this */
@@ -1087,9 +1101,33 @@ typedef struct MxqGameConfig {
  * A resumed session's mover is MxqGameConfig.local_side and is not repeated
  * here: one fact, one place.
  *
+ * The last four are the deal handshake's, and they are present exactly for a
+ * session of MXQ_GAME_KIND_JIEQI and empty for every other — the same pairing
+ * the protocol draws between a hidden-information game and the handshake its
+ * session opens with. Each is thirty-two bytes as sixty-four lowercase
+ * hexadecimal digits:
+ *
+ *   deal_commit  the commitment the dealer bound its seed with
+ *   deal_nonce   the other peer's contribution
+ *   deal_seed    the seed itself, opened at the end of the handshake
+ *   deal_digest  the digest of the deal those two derive, which is the one of
+ *                the four a resume compares with the other device
+ *
+ * The deal itself is not among them: it is derived from the seed and the nonce
+ * as docs/boardgame-protocol-v2.md derives it, and where it is recorded is the
+ * game's own start_fen. Three of the four are archive content as well, because
+ * they are facts about the game rather than about this device; the digest is
+ * not, being derivable from the deal it names. They stand here too because a
+ * session must re-verify its deal without decoding a document that does not
+ * exist until the game is filed, and mxq_game_resume_active performs exactly
+ * that re-verification before it hands the session back.
+ *
  * The two identifiers are NUL-terminated on the way out. On the way in they are
  * borrowed for the duration of the call, must be non-empty, and must fit their
- * capacity.
+ * capacity. The four deal values are NUL-terminated on the way out too, and on
+ * the way in each must be either empty or sixty-four lowercase hexadecimal
+ * digits, all four together — a value of any other shape, or a deal on a game
+ * that has none, is MXQ_ERR_ARG_RANGE.
  */
 typedef struct MxqNearbySession {
     uint32_t          struct_size;
@@ -1101,6 +1139,10 @@ typedef struct MxqNearbySession {
     uint8_t           reserved0[3];
     char              session_id[MXQ_NEARBY_SESSION_ID_CAP];
     char              peer_id[MXQ_NEARBY_PEER_ID_CAP];
+    char              deal_commit[MXQ_DEAL_HEX_CAP];
+    char              deal_nonce[MXQ_DEAL_HEX_CAP];
+    char              deal_seed[MXQ_DEAL_HEX_CAP];
+    char              deal_digest[MXQ_DEAL_HEX_CAP];
 } MxqNearbySession;
 
 /*
@@ -1438,15 +1480,28 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  *                   spelling
  *   setup legality  MXQ_ERR_RULES_ILLEGAL_POSITION, exactly as
  *                   mxq_rules_validate_setup answers it. Xiangqi is the one
- *                   game whose rules define a predicate; every other game
- *                   refuses here for any position but its frozen start
+ *                   game whose rules define a predicate; Jieqi's membership
+ *                   question is the dealt start, refused with
+ *                   MXQ_SETUP_RULE_NOT_DEALT_START; every other game refuses
+ *                   here for any position but its frozen start
  *   startability    MXQ_ERR_STATE_GAME_OVER. Creation's own question and not
  *                   the predicate's: a position that already has a result of
  *                   its own is no game to play
  *
  * Ply 0 is the first move played from that position, by whichever side it has
  * to move, and every mover this core reports derives from the start position
- * and the ply rather than from the ply's parity.
+ * and the ply rather than from the ply's parity. A dealt start is always Red's
+ * to move, so a Jieqi session's ply 0 is Red's.
+ *
+ * MXQ_GAME_KIND_JIEQI has no frozen start, so its configuration always names
+ * one and the three questions above are always asked. An empty start_fen for
+ * it is MXQ_ERR_ARG_RANGE — a configuration of a shape the game does not have,
+ * and a programming error for the same reason a mode refusal is. Its two other
+ * refusals are the same kind of thing: MXQ_PLAY_MODE_HUMAN_VS_AI is
+ * MXQ_ERR_ARG_RANGE because the game has no AI, and a nearby game of it is
+ * created through mxq_game_create_nearby and not here, because the deal the
+ * handshake produced is evidence its record must carry and this entry takes no
+ * wire session to carry it.
  *
  * A session is store-attached, so a game the store cannot hold cannot have one:
  * a game outside the archive format's own rules_id vocabulary returns
@@ -1454,6 +1509,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * MxqSearchRequest.movetime_ms takes — it reports two parts of this core at
  * different stages of one widening, not a caller outside a vocabulary it owns.
  * The rules facade answers for such a game in full; only persistence refuses it.
+ * No game reaches it today: the archive version this build writes spells every
+ * game this build carries.
  *
  * Thread: any non-UI thread except inside a search callback — except the
  * store-attached active game, whose own calls docs/core-interface.md's
@@ -1481,11 +1538,23 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  * nothing.
  *
  * A nearby game begins from its game's frozen start and from no other: the
- * protocol in docs/boardgame-protocol.md carries no start position, so a
+ * protocol in docs/boardgame-protocol-v2.md carries no start position, so a
  * composed one is a game the two devices could not be playing. A composed
  * start_fen is therefore MXQ_ERR_ARG_RANGE here, beside the mode's own refusal
  * and for the same reason — a configuration this entry cannot honour. The
  * frozen start spelled out is not one, here as everywhere.
+ *
+ * MXQ_GAME_KIND_JIEQI is the exception, and it is not a composed start that
+ * makes it one: that game has no frozen start, its session opens with the deal
+ * handshake, and both devices derive one identical deal from what crossed the
+ * wire — so the two configurations name the same position without either device
+ * naming it to the other. A nearby game of it therefore states its dealt start
+ * and the four deal values the handshake left behind, and it is the only game
+ * whose session carries any of them: a session state carrying a deal for
+ * another game, or a Jieqi session carrying none, is MXQ_ERR_ARG_RANGE. The
+ * three the archive records are written into the game's own document here, and
+ * the fourth — the digest — stays in the wire session, being derivable from the
+ * deal it names.
  *
  * Thread and blocking: mxq_game_create's.
  */
@@ -1517,6 +1586,13 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
  * capture of a general, which the engine asserts against rather than
  * adjudicates. The import size bounds are deliberately not applied here — a
  * locally produced game longer than they allow must always resume.
+ *
+ * A dealt game's session re-verifies its deal here, against everything the deal
+ * comes from and before the session exists: the persisted seed must hash to the
+ * persisted commitment, the deal that seed and nonce derive must carry the
+ * persisted digest, and that deal must be the one the record's start_fen
+ * spells. A failure of any of the three is MXQ_ERR_STORE_CORRUPT, because what
+ * the library holds is then no longer the session it claims to be.
  *
  * Thread: any non-UI thread except inside a search callback — except the
  * store-attached active game, whose own calls docs/core-interface.md's

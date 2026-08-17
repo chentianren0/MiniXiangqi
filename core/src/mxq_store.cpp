@@ -1,6 +1,6 @@
 /* Opening, creating and closing the library store.
  *
- * The schema created here is the one docs/game-data.md accepts as version 5,
+ * The schema created here is the one docs/game-data.md accepts as version 6,
  * transcribed constraint for constraint; the connection regime — write-ahead
  * logging, full synchronous durability, foreign keys on — is the same
  * contract's, applied and then read back rather than assumed. Everything that
@@ -25,8 +25,8 @@ namespace store {
 namespace {
 
 /*
- * Schema version 5, exactly as accepted in docs/game-data.md ("Library store
- * schema, version 5"). Four STRICT tables; the single library row with the
+ * Schema version 6, exactly as accepted in docs/game-data.md ("Library store
+ * schema, version 6"). Four STRICT tables; the single library row with the
  * single nullable active-game reference; result well-formedness, the
  * mode-to-configuration relationship, the local-perspective rule and time
  * ordering as check constraints;
@@ -58,6 +58,7 @@ CREATE TABLE game (
   -- so a mixed History list can be labelled and ordered without decoding a
   -- blob per row.
   rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi',
+                                                          'jieqi',
                                                           'gomoku-15', 'renju')),
   mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play', 'nearby')),
   human_side         TEXT    CHECK (human_side IN ('red', 'black')),
@@ -73,6 +74,7 @@ CREATE TABLE game (
                                                    'mutual-perpetual-chase',
                                                    'resignation', 'ended-early',
                                                    'fifty-move-rule',
+                                                   'forty-move-rule',
                                                    'agreed-draw',
                                                    'mutual-resignation',
                                                    'five-in-a-row', 'board-full')),
@@ -100,7 +102,7 @@ CREATE TABLE game (
   CHECK (outcome IS NULL OR ((outcome = 'draw') =
          (end_reason IN ('threefold-repetition',
                          'mutual-perpetual-check', 'mutual-perpetual-chase',
-                         'fifty-move-rule',
+                         'fifty-move-rule', 'forty-move-rule',
                          'agreed-draw', 'mutual-resignation',
                          'board-full')))),
   -- A rule reason belongs to the kind of game whose rules produce it, both ways
@@ -116,12 +118,15 @@ CREATE TABLE game (
          end_reason NOT IN ('checkmate', 'stalemate', 'threefold-repetition',
                             'perpetual-check', 'perpetual-chase',
                             'mutual-perpetual-check', 'mutual-perpetual-chase',
-                            'fifty-move-rule') OR
-         rules_id IN ('minixiangqi', 'xiangqi')),
-  -- Narrower than the partition above: the move-count rule is Xiangqi's, and
-  -- Mini Xiangqi has none, so a record of it cannot carry that reason either.
+                            'fifty-move-rule', 'forty-move-rule') OR
+         rules_id IN ('minixiangqi', 'xiangqi', 'jieqi')),
+  -- Narrower than the partition above: two of the three movement games count
+  -- captureless play, to two different numbers, and Mini Xiangqi counts nothing
+  -- at all, so each reason names the one game whose rules reach it.
   CHECK (end_reason IS NULL OR end_reason <> 'fifty-move-rule' OR
          rules_id = 'xiangqi'),
+  CHECK (end_reason IS NULL OR end_reason <> 'forty-move-rule' OR
+         rules_id = 'jieqi'),
   -- A resignation needs an opponent to resign to, and the outcome names the
   -- winner, so the side that resigned is its opposite; the two rules above
   -- already leave only a win there. Human-versus-AI adds that the loser is the
@@ -144,6 +149,10 @@ CREATE TABLE game (
   CHECK ((mode = 'human-vs-ai') = (ai_level IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (ai_movetime_ms IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (first_mover_choice IS NOT NULL)),
+  -- And the one game that plays fewer than three modes: jieqi has no AI, so a
+  -- row recording a game of it against a machine records a game this app cannot
+  -- have played.
+  CHECK (rules_id <> 'jieqi' OR mode <> 'human-vs-ai'),
   -- The local-perspective rule: a nearby game played on this device has a local
   -- side, and nothing else has one — an imported nearby record had no local
   -- player, and neither local mode has two.
@@ -182,8 +191,49 @@ CREATE TABLE nearby_session (
   sent_end   TEXT    CHECK (sent_end IN ('resign', 'accept_draw')),
   -- Whether the last ply of the session is the rules contract's claim turn
   -- action, which is a ply the protocol counts and the archive does not record.
-  claimed    INTEGER NOT NULL DEFAULT 0 CHECK (claimed IN (0, 1))
+  claimed    INTEGER NOT NULL DEFAULT 0 CHECK (claimed IN (0, 1)),
+  -- The four values a dealt game's handshake left behind: the commitment, the
+  -- nonce, the seed, and the digest of the deal those derive. Each is
+  -- thirty-two bytes written as sixty-four lowercase hexadecimal digits, which
+  -- is the one spelling all four have anywhere. The deal itself is not here —
+  -- it is derived from the seed and the nonce, and where it is recorded is the
+  -- game row's own start_fen inside the archive.
+  --
+  -- Three of them are archive content too, being facts about the game rather
+  -- than about this device; they stand here as well because a session must
+  -- re-verify its deal without decoding a document that does not exist until
+  -- the game is filed, and the digest is the one of the four that never leaves
+  -- this table.
+  deal_commit TEXT   CHECK (length(deal_commit) = 64),
+  deal_nonce  TEXT   CHECK (length(deal_nonce) = 64),
+  deal_seed   TEXT   CHECK (length(deal_seed) = 64),
+  deal_digest TEXT   CHECK (length(deal_digest) = 64),
+  -- All four or none: they are one handshake's leavings, and three of them
+  -- verify nothing.
+  CHECK ((deal_commit IS NULL) = (deal_nonce IS NULL)),
+  CHECK ((deal_commit IS NULL) = (deal_seed IS NULL)),
+  CHECK ((deal_commit IS NULL) = (deal_digest IS NULL))
 ) STRICT;
+
+-- And the deal is present exactly for a session of the game whose start is
+-- dealt, which is the pairing the protocol draws between a hidden-information
+-- game and the handshake its session opens with. It is a trigger rather than a
+-- CHECK because the game axis is the game row's column and not this table's.
+CREATE TRIGGER nearby_session_deal_is_the_dealt_game
+BEFORE INSERT ON nearby_session
+WHEN ((SELECT rules_id FROM game WHERE record_id = NEW.record_id) IS 'jieqi')
+     <> (NEW.deal_commit IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a deal belongs to a session of the game that is dealt');
+END;
+
+CREATE TRIGGER nearby_session_deal_stays_the_dealt_game
+BEFORE UPDATE ON nearby_session
+WHEN ((SELECT rules_id FROM game WHERE record_id = NEW.record_id) IS 'jieqi')
+     <> (NEW.deal_commit IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a deal belongs to a session of the game that is dealt');
+END;
 
 -- A wire session belongs to a nearby game being played on this device, and to
 -- nothing else. The mode and provenance pair is the same one that makes
@@ -295,7 +345,7 @@ END;
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
 -- Non-authoritative bookkeeping; nothing reads this table to decide anything.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '5');
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '6');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh
@@ -401,7 +451,7 @@ MxqStatus apply_pragma(sqlite3 *db, const char *set_sql, const char *get_sql,
 }
 
 /* The structural verification run on every successful open: the four tables
- * of schema version 5 exist and are STRICT, and the single library row is
+ * of schema version 6 exist and are STRICT, and the single library row is
  * present. Deeper agreement — constraints, triggers, index — is the schema's
  * own text, which this build only ever creates whole. */
 MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
@@ -421,7 +471,7 @@ MxqStatus verify_schema(sqlite3 *db, MxqError *err) {
     if (value != "4") {
         return fail(err, MXQ_ERR_STORE_CORRUPT, 0,
                     "the store does not hold the four STRICT tables of schema "
-                    "version 5 (found " + value + ")");
+                    "version 6 (found " + value + ")");
     }
 
     if (!query_first_column(db, "SELECT count(*) FROM library;", value, rc,
@@ -443,15 +493,15 @@ MxqStatus create_schema(sqlite3 *db, MxqError *err) {
         return fail_sqlite(err, rc, "cannot begin the schema transaction: " + detail);
     }
     if (!exec(db, kSchema, rc, detail) ||
-        !exec(db, "PRAGMA user_version = 5;", rc, detail)) {
+        !exec(db, "PRAGMA user_version = 6;", rc, detail)) {
         const std::string cause = detail;
         std::string ignored;
         int rollback_rc = SQLITE_OK;
         exec(db, "ROLLBACK;", rollback_rc, ignored);
-        return fail_sqlite(err, rc, "cannot create schema version 5: " + cause);
+        return fail_sqlite(err, rc, "cannot create schema version 6: " + cause);
     }
     if (!exec(db, "COMMIT;", rc, detail)) {
-        return fail_sqlite(err, rc, "cannot commit schema version 5: " + detail);
+        return fail_sqlite(err, rc, "cannot commit schema version 6: " + detail);
     }
     return MXQ_OK;
 }
@@ -706,8 +756,9 @@ bool write_nearby_session(sqlite3 *db, uint64_t record_id,
                           std::string &detail) {
     Stmt upsert(db,
                 "INSERT INTO nearby_session (record_id, session_id, peer_id,"
-                " proposer, undos, keep, sent_end, claimed)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " proposer, undos, keep, sent_end, claimed,"
+                " deal_commit, deal_nonce, deal_seed, deal_digest)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (record_id) DO UPDATE SET"
                 " session_id = excluded.session_id,"
                 " peer_id = excluded.peer_id,"
@@ -715,7 +766,11 @@ bool write_nearby_session(sqlite3 *db, uint64_t record_id,
                 " undos = excluded.undos,"
                 " keep = excluded.keep,"
                 " sent_end = excluded.sent_end,"
-                " claimed = excluded.claimed;");
+                " claimed = excluded.claimed,"
+                " deal_commit = excluded.deal_commit,"
+                " deal_nonce = excluded.deal_nonce,"
+                " deal_seed = excluded.deal_seed,"
+                " deal_digest = excluded.deal_digest;");
     if (!upsert.ok()) {
         rc = upsert.rc();
         detail = upsert.error(db);
@@ -730,6 +785,14 @@ bool write_nearby_session(sqlite3 *db, uint64_t record_id,
     upsert.bind_text(7, nearby.sent_end.empty() ? nullptr
                                                 : nearby.sent_end.c_str());
     upsert.bind_int64(8, nearby.claimed ? 1 : 0);
+    /* The empty string is the absent deal, and it binds SQL NULL exactly as an
+     * absent sent_end does: the four columns are present together for the one
+     * game whose start is dealt and null together for every other. */
+    const std::string *const deal[] = {&nearby.deal_commit, &nearby.deal_nonce,
+                                       &nearby.deal_seed, &nearby.deal_digest};
+    for (int i = 0; i < 4; ++i) {
+        upsert.bind_text(9 + i, deal[i]->empty() ? nullptr : deal[i]->c_str());
+    }
     const int step = upsert.step();
     if (step != SQLITE_DONE) {
         rc = step;
@@ -915,7 +978,8 @@ MxqStatus load_nearby_session(Store &store, uint64_t record_id, bool &out_exists
     sqlite3 *db = store.db();
 
     Stmt select(db, "SELECT session_id, peer_id, proposer, undos, keep,"
-                    " sent_end, claimed FROM nearby_session"
+                    " sent_end, claimed, deal_commit, deal_nonce, deal_seed,"
+                    " deal_digest FROM nearby_session"
                     " WHERE record_id = ?;");
     if (!select.ok()) {
         return fail_sqlite(err, select.rc(),
@@ -940,6 +1004,10 @@ MxqStatus load_nearby_session(Store &store, uint64_t record_id, bool &out_exists
     out.keep = sqlite3_column_int64(select.get(), 4);
     out.sent_end = text_at(select.get(), 5);
     out.claimed = sqlite3_column_int64(select.get(), 6) != 0;
+    out.deal_commit = text_at(select.get(), 7);
+    out.deal_nonce = text_at(select.get(), 8);
+    out.deal_seed = text_at(select.get(), 9);
+    out.deal_digest = text_at(select.get(), 10);
     out_exists = true;
     return MXQ_OK;
 }
