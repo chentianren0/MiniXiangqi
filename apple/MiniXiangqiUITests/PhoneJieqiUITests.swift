@@ -54,6 +54,12 @@ final class PhoneJieqiUITests: XCTestCase {
         point(app, to).tap()
     }
 
+    /// The destination bar's tab at this index — the same addressing the
+    /// other phone suites wrap, for the same reason: the names are copy.
+    private func destination(_ app: XCUIApplication, _ index: Int) -> XCUIElement {
+        app.tabBars.firstMatch.buttons.element(boundBy: index)
+    }
+
     /// An element, waited for before it is read.
     private func settled(_ element: XCUIElement,
                          file: StaticString = #filePath,
@@ -140,11 +146,11 @@ final class PhoneJieqiUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10),
                       "leaving the board brings the destination bar back")
         settled(app.buttons["mode-xiangqi-free-play"]).tap()
-        settled(app.buttons["保存并继续"]).tap()
+        settled(app.alerts.firstMatch.buttons["保存并继续"]).tap()
         XCTAssertTrue(app.staticTexts["setup-explanation"].waitForExistence(timeout: 10),
                       "the chosen mode's pre-start page opens, with the game filed")
 
-        app.tabBars.firstMatch.buttons.element(boundBy: 1).tap()
+        destination(app, 1).tap()
         let record = control(app, "history-row-0")
         XCTAssertTrue(record.waitForExistence(timeout: 20), "the filed game is in History")
         XCTAssertTrue(record.label.contains("揭棋"),
@@ -166,7 +172,7 @@ final class PhoneJieqiUITests: XCTestCase {
         XCTAssertTrue(disclosed.hasPrefix("红 "),
                       "whose piece it was, then what it was — it reads \(disclosed)")
         XCTAssertNotEqual(disclosed, "红",
-                          "disclosed whole: a record is a game already over")
+                          "the disclosed row carries more than the side word")
         settled(app.buttons["captured-done"]).tap()
         XCTAssertTrue(control(app, "replay-progress").waitForExistence(timeout: 10),
                       "and the replay is where it was")

@@ -45,9 +45,9 @@ struct CapturedPiecesView: View {
         VStack(alignment: .leading, spacing: 8) {
             let panels = panels
             if panels.allSatisfy({ $0.pieces.isEmpty && $0.hidden == 0 }) {
-                // The surface is resident, so it is here before there is
-                // anything in it and says so rather than standing as a gap of
-                // unexplained air.
+                // The empty state stands wherever the surface stands —
+                // resident in a panel or raised as a sheet — and says so
+                // rather than answering a reader with unexplained air.
                 Text("captured.empty")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

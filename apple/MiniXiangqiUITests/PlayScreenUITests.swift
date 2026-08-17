@@ -1341,7 +1341,7 @@ final class PlayScreenUITests: XCTestCase {
         //
         // The navigation container is what moved them: its sidebar takes 144
         // points of width and its toolbar 52 of height, and the play content
-        // still gets exactly the 626 by 416 it always asked for inside that.
+        // still gets exactly its accepted 626 by 416 inside that.
         // 770 = 626 + 144 and 468 = 416 + 52, measured rather than derived —
         // and 770 by 520 is what docs/interaction-design.md § Layout shapes
         // states as the accepted macOS minimum.

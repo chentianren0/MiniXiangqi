@@ -342,7 +342,7 @@ struct NearbyBoardScreen: View {
                     } label: {
                         Label("captured.title", systemImage: "tray.full")
                     }
-                    .accessibilityIdentifier("play-captured")
+                    .accessibilityIdentifier("nearby-captured")
                 }
             }
         }

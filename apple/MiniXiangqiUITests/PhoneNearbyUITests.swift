@@ -225,7 +225,7 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cluster-resign"].exists)
         XCTAssertTrue(app.buttons["cluster-flip"].exists)
         XCTAssertFalse(app.staticTexts["nearby-asking"].exists)
-        XCTAssertFalse(app.buttons["play-captured"].exists,
+        XCTAssertFalse(app.buttons["nearby-captured"].exists,
                        "a game whose position is wholly public displays no captures")
         attach(app, named: "phone-nearby-04-off-turn")
     }
@@ -373,7 +373,7 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertTrue(point(app, "a1").waitForExistence(timeout: 30))
         XCTAssertEqual(label(app, "point-a1"), "a1 红 暗子")
 
-        let opener = app.buttons["play-captured"]
+        let opener = app.buttons["nearby-captured"]
         XCTAssertTrue(opener.exists,
                       "the board keeps its pitch floor, so the surface is reached "
                       + "rather than resident")
