@@ -341,16 +341,17 @@ MxqSearchResult make_result() {
     return result;
 }
 
-/* The first legal move in the session's current position. 128 is the size
- * docs/core-interface.md's capacity constants make provably sufficient for this
- * variant; 64 is not. */
+/* The first legal move in the session's current position. The buffer is the one
+ * shared figure docs/core-interface.md gives a caller that would rather use one
+ * fixed array than a per-game one — these helpers are exactly that caller, and
+ * the per-game derivations there size nothing. */
 bool first_legal_move(const MxqGame *game, std::string &out) {
-    MxqMove moves[128];
+    MxqMove moves[512];
     for (auto &m : moves) {
         m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
     }
     size_t count = 0;
-    if (mxq_game_legal_moves(game, moves, 128, &count, nullptr) != MXQ_OK ||
+    if (mxq_game_legal_moves(game, moves, 512, &count, nullptr) != MXQ_OK ||
         count == 0) {
         return false;
     }
@@ -363,12 +364,12 @@ bool first_legal_move(const MxqGame *game, std::string &out) {
  * position is the side to move's, and a proposal that commits nothing has to be
  * checked in a way that commits nothing either. */
 bool legal_here(const MxqGame *game, const std::string &move) {
-    MxqMove moves[128];
+    MxqMove moves[512];
     for (auto &m : moves) {
         m.struct_size = static_cast<uint32_t>(sizeof(MxqMove));
     }
     size_t count = 0;
-    if (mxq_game_legal_moves(game, moves, 128, &count, nullptr) != MXQ_OK) {
+    if (mxq_game_legal_moves(game, moves, 512, &count, nullptr) != MXQ_OK) {
         return false;
     }
     for (size_t i = 0; i < count; ++i) {
@@ -1843,9 +1844,9 @@ void case_reconfiguration_refused_mid_search() {
 
         /* The rules bridge is untouched by the whole episode: the session
          * keeps answering. */
-        MxqMove moves[128];
+        MxqMove moves[512];
         size_t count = 0;
-        c.check_status(mxq_game_legal_moves(game, moves, 128, &count, &err),
+        c.check_status(mxq_game_legal_moves(game, moves, 512, &count, &err),
                        MXQ_OK, "legal moves after teardown");
         c.check(count > 0, "the position still has its legal moves");
         mxq_game_release(game);

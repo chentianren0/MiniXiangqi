@@ -1742,9 +1742,12 @@ void case_tombstoned_handle() {
  * The measured worst case behind the legal-move capacity in
  * docs/core-interface.md, pinned so it cannot move quietly.
  *
- * The contract records that a fixed MxqMove[128] is provably sufficient for
- * this variant and MxqMove[64] is not, on a derived bound of 83 and a measured
- * maximum of 77 found by hill-climbing over positions the core accepts. That
+ * The contract sizes every game's fixed array at one shared figure, 512, and
+ * derives a per-game bound beside it that sizes nothing: Mini Xiangqi's is 83,
+ * over a measured maximum of 77 found by hill-climbing over positions the core
+ * accepts. What those derivations are for is the margin — a game whose bound
+ * crept toward the shared figure would be a game something had been mis-modeled
+ * about — and this is the one of them with a measurement under it. That
  * measurement is the kind that rots: a rules change — a mobility region, a
  * chase exclusion, a piece's move set — can swell legal-move counts toward the
  * ceiling without failing anything else, and the fixtures would not notice,
