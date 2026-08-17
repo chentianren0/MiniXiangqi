@@ -8,10 +8,10 @@
  * not blittable.
  *
  * It transcribes the accepted contract in docs/core-interface.md. Six groups,
- * 63 functions, three opaque handles.
+ * 64 functions, three opaque handles.
  *
- * The core plays four games — Mini Xiangqi, Xiangqi, Gomoku and Renju — and
- * MxqGameKind is the axis that names which. Every rules question is asked of one
+ * The core plays five games — Mini Xiangqi, Xiangqi, Gomoku, Renju and Jieqi —
+ * and MxqGameKind is the axis that names which. Every rules question is asked of one
  * game: the board, the move notation, the starting position, the adjudication
  * rules and the engine it is played on all follow from it, and nothing infers it
  * from a position.
@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 4
+#define MXQ_API_VERSION_MINOR 5
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -1037,6 +1037,38 @@ typedef struct MxqSetupViolation {
     MxqColor     side;
     char         square[MXQ_SQUARE_TEXT_CAP]; /* UTF-8, NUL-terminated */
 } MxqSetupViolation;
+
+/*
+ * One deal, as mxq_rules_deal derives it from the entropy a caller brings: the
+ * position a dealt game begins from, and the two derived values that stand
+ * beside it wherever such a game is recorded.
+ *
+ *   start_fen  the dealt start, in the position record docs/jieqi-rules.md
+ *              freezes — each side's fifteen non-general pieces face down on
+ *              that side's fifteen non-general start squares, the two generals
+ *              face up on their own points, Red to move, halfmove 0 and
+ *              fullmove 1. It is what MxqGameConfig.start_fen carries for a
+ *              game created from this deal
+ *   commit     the commitment this seed binds to: the SHA-256 of the seed's own
+ *              thirty-two bytes, which is what the commitment recorded beside a
+ *              dealt game is compared with rather than recomputed
+ *   digest     the digest of the deal itself, which binds everything the deal
+ *              comes from — the seed, the nonce and the derivation — where the
+ *              commitment binds the seed alone. It is the value a nearby
+ *              session's resume compares with the other device
+ *
+ * The last two are two of the four MxqNearbySession carries for a dealt
+ * session, in the spelling all four have: exactly sixty-four lowercase
+ * hexadecimal digits. The other two are the seed and the nonce, which this
+ * struct does not repeat — the caller passed them in.
+ */
+typedef struct MxqDeal {
+    uint32_t struct_size;
+    char     start_fen[MXQ_FEN_CAP];   /* the position the game begins from */
+    char     commit[MXQ_DEAL_HEX_CAP]; /* lowercase hexadecimal */
+    char     digest[MXQ_DEAL_HEX_CAP]; /* lowercase hexadecimal */
+    uint8_t  reserved0[2];
+} MxqDeal;
 
 /*
  * A game's frozen configuration. human_side, ai_level, ai_movetime_ms and
@@ -2134,6 +2166,57 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core,
                                                  MxqMove *out, size_t cap,
                                                  size_t *out_count,
                                                  MxqError *err);
+
+/*
+ * Derive the deal a seed and a nonce produce: the dealt start the game begins
+ * from, the commitment that seed binds to, and the deal's own digest.
+ *
+ * A deal is one game's, and the game is asked rather than inferred: only
+ * MXQ_GAME_KIND_JIEQI is dealt, and every other game is MXQ_ERR_ARG_RANGE, the
+ * answer every per-game absence in this header gives. seed and nonce are the
+ * two contributions the deal comes from, each exactly sixty-four lowercase
+ * hexadecimal digits — the one spelling all four handshake values are written
+ * in, here as in MxqNearbySession — and a value of any other shape is
+ * MXQ_ERR_ARG_RANGE too.
+ *
+ * The derivation is deterministic, and that is what this entry is for: one seed
+ * and one nonce derive one dealt start, one commitment and one digest, on every
+ * device, on every platform, in this build and in any other. Two devices playing
+ * a nearby dealt game never send the deal — each derives it from what the
+ * handshake exchanged, exactly as docs/boardgame-protocol-v2.md derives it — so
+ * two implementations of that derivation must agree byte for byte or the two
+ * are playing different games under one identifier. This is the core's
+ * implementation of it, and the one every caller above this interface derives
+ * through rather than writing a second.
+ *
+ * What this does NOT do is as fixed as what it does. It creates no game, stores
+ * nothing, and generates no randomness: drawing the entropy is the caller's,
+ * from the platform's cryptographic source for a game it deals itself and from
+ * the handshake for a game two devices deal, and the caller keeps what it drew.
+ * What this entry guarantees regardless of where the entropy came from is that
+ * determinism. What it guarantees for entropy drawn uniformly is the uniform
+ * deal docs/jieqi-rules.md makes a rule of the game — every assignment of a
+ * side's fifteen pieces to its fifteen squares equally likely, and the two
+ * sides dealt independently — which caller and core therefore satisfy together:
+ * a poor seed deals a deal no better than the seed.
+ *
+ * The dealt start it writes is a position of that game, is one
+ * mxq_rules_validate_setup accepts, and is what MxqGameConfig.start_fen carries
+ * to mxq_game_create or mxq_game_create_nearby for a game played from this
+ * deal.
+ *
+ * It takes the core, as every session-free rules entry but mxq_rules_start_fen
+ * does. That one reports a constant of a ruleset and is answerable before a
+ * core exists; this asks a rules question of a live one, and taking the handle
+ * is what refuses the call inside a search callback rather than leaving one
+ * more entry for that rule to enumerate.
+ *
+ * Thread: any thread except inside a search callback.
+ * Blocking: no.
+ */
+MXQ_API MxqStatus MXQ_CALL mxq_rules_deal(MxqCore *core, MxqGameKind game,
+                                          const char *seed, const char *nonce,
+                                          MxqDeal *out, MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Search facade, preparation — mxq_engine_                                  */

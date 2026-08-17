@@ -275,6 +275,52 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
 
 #if defined(MXQ_ENABLE_RULES_FACADE)
 
+std::string start_of(const Deal &deal) {
+    /* A record with nothing on it: the letter of an empty point is kEmpty,
+     * which is the zero this initialisation writes, and no point is face down
+     * until one is dealt onto it. */
+    jieqi::Record record{};
+
+    /* The two generals, face up on their own points, read off the same home
+     * table the dealt-start predicate reads: the start this spells and the
+     * predicate that accepts it then agree by construction rather than by two
+     * transcriptions of one array. */
+    for (int32_t rank = 0; rank < jieqi::kRanks; ++rank) {
+        for (int32_t file = 0; file < jieqi::kFiles; ++file) {
+            const char home = jieqi::home_letter(file, rank);
+            if (home == 'K' || home == 'k') {
+                record.letter[rank][file] = home;
+            }
+        }
+    }
+
+    /* And the thirty that were dealt, face down, each on the square of its own
+     * index — the protocol's order, which square_of holds. */
+    for (int32_t i = 0; i < kDealtPieces; ++i) {
+        for (int32_t which = 0; which < 2; ++which) {
+            const MxqColor side = which == 0 ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
+            int32_t file = 0;
+            int32_t rank = 0;
+            if (!notation::point_of_square(MXQ_GAME_KIND_JIEQI,
+                                           square_of(side, i), file, rank)) {
+                /* The same impossible case verify asserts on, and impossible
+                 * for the same reason: these are this module's own constants
+                 * and they are squares of this board. */
+                assert(false && "a dealt square is a square of this board");
+                continue;
+            }
+            record.letter[rank][file] = which == 0 ? deal.red[i] : deal.black[i];
+            record.down[rank][file] = true;
+        }
+    }
+
+    /* Red moves first, and a start has no plies behind it to count. */
+    record.side_to_move = MXQ_COLOR_RED;
+    record.halfmove = 0;
+    record.fullmove = 1;
+    return jieqi::write_record(record);
+}
+
 bool verify(const std::string &commit, const std::string &nonce,
             const std::string &seed, const char *start_fen,
             const std::string *expected_digest, std::string &detail) {
