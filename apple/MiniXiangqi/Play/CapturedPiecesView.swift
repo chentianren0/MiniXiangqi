@@ -10,10 +10,10 @@
 // for a piece its reader cannot name, and an anonymous tail carries no order
 // worth keeping.
 //
-// **Where the rows and the counts stand, how large their discs are, and how a
-// disclosure arrives are settled against the rendered board**, as every other
-// visual specific in that document is. What is settled here is what each part
-// says; what it looks like is the owner's to judge on a device.
+// **Where the rows stand, how large their discs are, and how a disclosure
+// arrives are settled against the rendered board**, as every other visual
+// specific in that document is. What is settled here is what each part says;
+// what it looks like is the owner's to judge on a device.
 //
 // It derives nothing. `CapturedPieces` is what a game took and who may see it,
 // and this draws that answer.

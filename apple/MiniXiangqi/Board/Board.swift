@@ -217,7 +217,9 @@ struct Piece: Hashable {
 
     static func stone(_ side: Side) -> Piece { Piece(kind: nil, side: side) }
 
-    var isStone: Bool { kind == nil }
+    /// A face-down piece is never a stone: its kind is nil too — concealment,
+    /// not stonehood — and the face-down body is its own third drawing.
+    var isStone: Bool { kind == nil && !isFaceDown }
 }
 
 /// The placement a FEN denotes. Only the placement: the side to move, the
