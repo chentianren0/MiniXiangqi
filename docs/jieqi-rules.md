@@ -153,6 +153,7 @@ The set pins at a minimum:
 - the revealed soldier: forward on its own side, forward or sideways past the river, never backward, and standing legally behind its own soldier rank;
 - checkmate, and stalemate as a loss for the side to move;
 - the no-capture draw at the ply it lands and not two plies earlier, and a reveal inside that stretch failing to reset it;
+- the adopted repetition and chase clauses, pinned for this game rather than left to the corpus of the games they are adopted from: a unilateral chase, the two mutual arms, and a chase renewed by an attacker other than the one that was attacking before;
 - adjudication across a reveal: a cycle that would repeat but for the reveal inside it is no repetition, and no violation attaches to it;
 - a dealt start accepted, and a shape that is not a dealt start refused.
 
