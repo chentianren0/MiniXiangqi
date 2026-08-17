@@ -50,14 +50,14 @@ enum BoardLayout {
     /// far in from the panel's own.
     static let panelInset: CGFloat = 16
 
-    /// The cell one captured disc occupies. A pitch, like every other dimension
-    /// a disc is drawn from, so the same routine that draws a board's piece
-    /// draws this one at the size this surface can spare — small enough that a
-    /// side's whole complement wraps into a panel's width, large enough that the
-    /// character on it is read rather than guessed at. It is a visual specific
-    /// docs/interaction-design.md leaves to a rendered board, and this is the
-    /// value that stands until the board says otherwise.
-    static let capturedDiscPitch: CGFloat = 26
+    /// The cell one captured disc occupies where the surface is resident
+    /// beside the board: the concealing board's own floor pitch, so a resident
+    /// disc never draws smaller than the smallest board its piece could stand
+    /// on. A side's losses wrap into the panel's width and the section extends
+    /// with its rows — the panel's list keeps its own scroll. The reached
+    /// sheet takes no constant; it draws at `capturedSheetPitch` below.
+    static let capturedDiscPitch: CGFloat =
+        BoardGeometry.minimumPitch(for: GameKind.jieqi.board)
 
     /// How far a was-hidden capture's symbol has arrived. A piece that left
     /// the board face down is drawn with its face partway up — the reveal's
@@ -66,12 +66,19 @@ enum BoardLayout {
     /// like the pitch above it.
     static let capturedWasHiddenArrival: Double = 0.55
 
-    /// What the captured-pieces surface is granted where it is a resident
-    /// section of a panel the move list shares — replay's, beside the board.
-    /// Two rows of discs with their labels; a side that has lost more than one
-    /// row's worth scrolls inside the grant rather than taking the room the
-    /// list is standing in.
-    static let capturedSurfaceHeight: CGFloat = 96
+    /// The pitch the reached captured sheet draws its discs at: what a board
+    /// fitted to the sheet's own width would carry, bounded by the accepted
+    /// floor and ceiling — the board's own arithmetic, so the disc and the
+    /// disc it was on the board are one size wherever the widths agree. Height
+    /// never governs a wrapping surface, so only the width is asked.
+    static func capturedSheetPitch(in width: CGFloat, game: GameKind) -> CGFloat {
+        let board = game.board
+        let fitted = BoardGeometry.fitting(CGSize(width: width,
+                                                  height: .greatestFiniteMagnitude),
+                                           board: board)
+            ?? BoardGeometry(board: board, pitch: BoardGeometry.minimumPitch(for: board))
+        return min(fitted.pitch, BoardGeometry.maximumPitch(for: board))
+    }
 
     /// What the stacked shape's chrome asks for: the turn status above the
     /// board and the play controls below it, together.

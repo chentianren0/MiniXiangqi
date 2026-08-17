@@ -304,21 +304,29 @@ struct PlayScreen: View {
     /// panels are one person's, and the local player's side where two people are
     /// playing. Everything discloses when the game ends, which is the same
     /// question the board already asks.
-    private func captured(_ game: Game) -> some View {
+    private func captured(_ game: Game,
+                          pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: game.captured,
                            game: game.kind,
                            throughPly: game.moves.count,
                            viewer: game.configuration.localSide,
-                           disclosed: game.isFinished)
+                           disclosed: game.isFinished,
+                           pitch: pitch)
     }
 
     /// The same surface on the phone's own transient, alongside the move list's.
+    /// Its discs are board-sized: the pitch a board of the sheet's own width
+    /// would carry, which on the phone is the board behind it.
     private func capturedSheet(_ game: Game) -> some View {
         NavigationStack {
-            ScrollView {
-                captured(game)
-                    .padding(.horizontal, BoardLayout.panelInset)
-                    .padding(.vertical, 8)
+            GeometryReader { room in
+                ScrollView {
+                    captured(game,
+                             pitch: BoardLayout.capturedSheetPitch(in: room.size.width,
+                                                                   game: game.kind))
+                        .padding(.horizontal, BoardLayout.panelInset)
+                        .padding(.vertical, 8)
+                }
             }
             .navigationTitle("captured.title")
             #if !os(macOS)

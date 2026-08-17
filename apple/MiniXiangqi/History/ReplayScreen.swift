@@ -277,19 +277,17 @@ struct ReplayScreen: View {
             // players read the same — and it follows the walk, so it shows
             // what had been taken by the position on screen.
             if beside && replay.record.game.conceals {
-                // Inside its own grant, and scrolling there: a side that has
-                // lost a whole complement must not take the room the list is
-                // standing in.
-                ScrollView {
-                    CapturedPiecesView(captured: replay.captured,
-                                       game: replay.record.game,
-                                       throughPly: replay.ply,
-                                       viewer: nil,
-                                       disclosed: true)
-                        .padding(.horizontal, BoardLayout.panelInset)
-                        .padding(.vertical, 8)
-                }
-                .frame(maxHeight: BoardLayout.capturedSurfaceHeight)
+                // The section extends with its rows rather than scrolling in a
+                // grant: the list below keeps its own scroll, and a section
+                // sized by its content is what the panel's other residents
+                // already are (owner device pass, 2026-08-17).
+                CapturedPiecesView(captured: replay.captured,
+                                   game: replay.record.game,
+                                   throughPly: replay.ply,
+                                   viewer: nil,
+                                   disclosed: true)
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
 
                 Divider()
             }
@@ -334,14 +332,21 @@ struct ReplayScreen: View {
     /// the resident section does.
     private func capturedSheet(_ replay: Replay) -> some View {
         NavigationStack {
-            ScrollView {
-                CapturedPiecesView(captured: replay.captured,
-                                   game: replay.record.game,
-                                   throughPly: replay.ply,
-                                   viewer: nil,
-                                   disclosed: true)
-                    .padding(.horizontal, BoardLayout.panelInset)
-                    .padding(.vertical, 8)
+            // Board-sized discs: the pitch a board of the sheet's own width
+            // would carry.
+            GeometryReader { room in
+                ScrollView {
+                    CapturedPiecesView(captured: replay.captured,
+                                       game: replay.record.game,
+                                       throughPly: replay.ply,
+                                       viewer: nil,
+                                       disclosed: true,
+                                       pitch: BoardLayout.capturedSheetPitch(
+                                           in: room.size.width,
+                                           game: replay.record.game))
+                        .padding(.horizontal, BoardLayout.panelInset)
+                        .padding(.vertical, 8)
+                }
             }
             .navigationTitle("captured.title")
             #if !os(macOS)

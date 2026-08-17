@@ -188,22 +188,28 @@ struct NearbyBoardScreen: View {
     /// own face-down losses as a count, their own captures whole, and every
     /// revealed loss as the discs both players saw go. Everything discloses when
     /// the game ends, which is the question the board itself already asks.
-    private func captured(_ play: NearbyPlay) -> some View {
+    private func captured(_ play: NearbyPlay,
+                          pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: play.captured,
                            game: play.game,
                            throughPly: play.shown.count,
                            viewer: play.localSide,
-                           disclosed: play.disclosesTheDeal)
+                           disclosed: play.disclosesTheDeal,
+                           pitch: pitch)
     }
 
     /// The same surface on the phone's own transient, exactly as the play screen
-    /// raises it.
+    /// raises it — board-sized discs at the sheet's own width-fitted pitch.
     private func capturedSheet(_ play: NearbyPlay) -> some View {
         NavigationStack {
-            ScrollView {
-                captured(play)
-                    .padding(.horizontal, BoardLayout.panelInset)
-                    .padding(.vertical, 8)
+            GeometryReader { room in
+                ScrollView {
+                    captured(play,
+                             pitch: BoardLayout.capturedSheetPitch(in: room.size.width,
+                                                                   game: play.game))
+                        .padding(.horizontal, BoardLayout.panelInset)
+                        .padding(.vertical, 8)
+                }
             }
             .navigationTitle("captured.title")
             .navigationBarTitleDisplayMode(.inline)
