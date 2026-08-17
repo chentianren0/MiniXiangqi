@@ -593,7 +593,14 @@ MxqStatus read_nearby_state(MxqGameKind game, const MxqNearbySession *state,
                                           from[i])
                     : MXQ_DEAL_HEX_CAP;
             const std::string value(from[i], length);
-            if (dealt != deal::is_hex32(value)) {
+            /* Two questions rather than one, exactly as adopt_nearby_row asks
+             * them: a value is empty precisely where the game has no deal, and
+             * hexadecimal where it has one. A single comparison against the hex
+             * test collapses them for the game with no deal — junk is not
+             * hexadecimal and neither is the empty string that game owes, so
+             * malformed text would read as absence, be dropped in silence, and
+             * leave the caller told nothing about what it passed. */
+            if (value.empty() == dealt || (dealt && !deal::is_hex32(value))) {
                 deal_ok = false;
                 break;
             }
@@ -611,6 +618,50 @@ MxqStatus read_nearby_state(MxqGameKind game, const MxqNearbySession *state,
         fill_error(err, MXQ_ERR_ARG_RANGE,
                    "the nearby wire session's identifiers, deal or vocabulary "
                    "are not ones this interface defines");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    return MXQ_OK;
+}
+
+/*
+ * What a call that rewrites a wire session may not change, asked of every call
+ * that rewrites one.
+ *
+ * A session's identity is not something a later call revises: where the game
+ * already carries a wire session, the two identifiers must be the ones it was
+ * created with, and a differing value is a caller writing one session's
+ * bookkeeping over another's.
+ *
+ * The deal is frozen for a stronger reason. It is what the game is played over,
+ * three of its four values are already in the document this row stands beside,
+ * and a call that revised them would leave the store holding a session whose
+ * evidence contradicts its own game — which the next resume answers
+ * MXQ_ERR_STORE_CORRUPT, so the game is not merely wrong but unopenable.
+ *
+ * Both entries that rewrite the row are held to it, because the reason above
+ * does not know which call arrived: the negotiated retraction writes every
+ * column the terminal this device sent writes, the deal's four among them.
+ */
+MxqStatus check_frozen_nearby(const MxqGame &game,
+                              const MxqNearbySession &state, MxqError *err) {
+    if (!game.has_nearby) {
+        return MXQ_OK;
+    }
+    if (std::strcmp(game.nearby.session_id, state.session_id) != 0 ||
+        std::strcmp(game.nearby.peer_id, state.peer_id) != 0) {
+        assert(false && "a wire session's identity is frozen");
+        fill_error(err, MXQ_ERR_ARG_RANGE,
+                   "the wire session's identifiers are not this game's");
+        return MXQ_ERR_ARG_RANGE;
+    }
+    if (std::strcmp(game.nearby.deal_commit, state.deal_commit) != 0 ||
+        std::strcmp(game.nearby.deal_nonce, state.deal_nonce) != 0 ||
+        std::strcmp(game.nearby.deal_seed, state.deal_seed) != 0 ||
+        std::strcmp(game.nearby.deal_digest, state.deal_digest) != 0) {
+        assert(false && "a wire session's deal is frozen");
+        fill_error(err, MXQ_ERR_ARG_RANGE,
+                   "the wire session's deal is not the one this game was "
+                   "dealt");
         return MXQ_ERR_ARG_RANGE;
     }
     return MXQ_OK;
@@ -2164,6 +2215,12 @@ MxqStatus MXQ_CALL mxq_game_retract_nearby(MxqGame *game, uint32_t keep,
                         "a negotiated retraction is a nearby action");
         return MXQ_ERR_STATE_UNDO_UNAVAILABLE;
     }
+    /* This entry rewrites the whole of the wire session, so what a rewrite may
+     * not change is asked of it exactly as it is asked of the other one. */
+    rc = mxq::session::check_frozen_nearby(*game, state, err);
+    if (rc != MXQ_OK) {
+        return rc;
+    }
     /* The protocol's own range: keep runs from the initial position to one less
      * than the count, so retracting nothing is not a retraction. */
     if (keep >= game->moves.size()) {
@@ -2219,32 +2276,11 @@ MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
                         "a wire session belongs to a nearby game");
         return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
     }
-    /* A session's identity is not something a later call revises. Where this
-     * game already carries one, the two identifiers must be the ones it was
-     * created with — a differing value is a caller writing one session's
-     * bookkeeping over another's. */
-    if (game->has_nearby &&
-        (std::strcmp(game->nearby.session_id, state.session_id) != 0 ||
-         std::strcmp(game->nearby.peer_id, state.peer_id) != 0)) {
-        assert(false && "a wire session's identity is frozen");
-        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "the wire session's identifiers are not this game's");
-        return MXQ_ERR_ARG_RANGE;
-    }
-    /* And so is its deal, for a stronger reason than the identifiers': the deal
-     * is what the game is played over, three of its four values are already in
-     * the document this row holds, and a call that revised them would leave the
-     * store holding a session whose evidence contradicts its own game. */
-    if (game->has_nearby &&
-        (std::strcmp(game->nearby.deal_commit, state.deal_commit) != 0 ||
-         std::strcmp(game->nearby.deal_nonce, state.deal_nonce) != 0 ||
-         std::strcmp(game->nearby.deal_seed, state.deal_seed) != 0 ||
-         std::strcmp(game->nearby.deal_digest, state.deal_digest) != 0)) {
-        assert(false && "a wire session's deal is frozen");
-        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "the wire session's deal is not the one this game was "
-                        "dealt");
-        return MXQ_ERR_ARG_RANGE;
+    /* The identifiers and the deal, frozen — the same question the negotiated
+     * retraction is asked, because the two calls rewrite the same row. */
+    rc = mxq::session::check_frozen_nearby(*game, state, err);
+    if (rc != MXQ_OK) {
+        return rc;
     }
 
     const bool had_nearby = game->has_nearby;
