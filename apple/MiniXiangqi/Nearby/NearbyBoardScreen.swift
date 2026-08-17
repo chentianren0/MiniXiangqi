@@ -42,6 +42,10 @@ struct NearbyBoardScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
+    /// The captured sheet's own width, measured as the play screen measures
+    /// its own — one shape for the three sheets, though this file never
+    /// builds for macOS, where the measurement is what keeps a sheet sized.
+    @State private var capturedWidth: CGFloat = 0
 
     /// What the stacked shape's chrome came to, exactly as the play screen
     /// takes it: the status above the board measured, and the cluster below it
@@ -202,14 +206,15 @@ struct NearbyBoardScreen: View {
     /// raises it — board-sized discs at the sheet's own width-fitted pitch.
     private func capturedSheet(_ play: NearbyPlay) -> some View {
         NavigationStack {
-            GeometryReader { room in
-                ScrollView {
-                    captured(play,
-                             pitch: BoardLayout.capturedSheetPitch(in: room.size.width,
-                                                                   game: play.game))
-                        .padding(.horizontal, BoardLayout.panelInset)
-                        .padding(.vertical, 8)
-                }
+            ScrollView {
+                captured(play,
+                         pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
+                                                               game: play.game))
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) {
+                capturedWidth = $0
             }
             .navigationTitle("captured.title")
             .navigationBarTitleDisplayMode(.inline)

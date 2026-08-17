@@ -75,6 +75,11 @@ struct PlayScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
+    /// The captured sheet's own width, measured rather than read through a
+    /// GeometryReader at the sheet's root: a reader there has no ideal size,
+    /// and on macOS the sheet takes exactly its content's ideal. Zero until
+    /// the first measurement, which the pitch fallback answers with the floor.
+    @State private var capturedWidth: CGFloat = 0
 
     /// What the stacked shape's chrome actually came to, measured rather than
     /// assumed: the status above the board at an accessibility text size, where
@@ -319,14 +324,15 @@ struct PlayScreen: View {
     /// would carry, which on the phone is the board behind it.
     private func capturedSheet(_ game: Game) -> some View {
         NavigationStack {
-            GeometryReader { room in
-                ScrollView {
-                    captured(game,
-                             pitch: BoardLayout.capturedSheetPitch(in: room.size.width,
-                                                                   game: game.kind))
-                        .padding(.horizontal, BoardLayout.panelInset)
-                        .padding(.vertical, 8)
-                }
+            ScrollView {
+                captured(game,
+                         pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
+                                                               game: game.kind))
+                    .padding(.horizontal, BoardLayout.panelInset)
+                    .padding(.vertical, 8)
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) {
+                capturedWidth = $0
             }
             .navigationTitle("captured.title")
             #if !os(macOS)
