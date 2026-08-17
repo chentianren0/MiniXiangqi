@@ -804,19 +804,22 @@ void check_positions(Case &c, MxqCore *core, const MxqGameConfig &config,
                      const std::vector<std::string> &moves,
                      const std::string &where) {
     const MxqGameKind kind = config.game;
-    /* Emptied first, because a game with no frozen start writes nothing here
-     * and answers MXQ_ERR_ARG_RANGE: its configuration always names a start,
-     * which is what the copy below reads. */
     char start_fen[MXQ_FEN_CAP];
     start_fen[0] = '\0';
     size_t fen_len = 0;
-    mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
-    /* The scenario's own start where it composed one. The empty member means
-     * the frozen start, so this is the same convention the core applies and
-     * not a second reading of it. */
+    /* The scenario's own start where it has one, and the game's frozen start
+     * where it has none. The empty member means the frozen start, so this is
+     * the same convention the core applies and not a second reading of it —
+     * and the two are asked in this order rather than the other way round
+     * because a game with no frozen start is a programming error to ask: it
+     * answers MXQ_ERR_ARG_RANGE, and where NDEBUG is undefined it asserts. A
+     * dealt game is that game, and its configuration always names its start. */
     if (config.start_fen[0] != '\0') {
         std::memcpy(start_fen, config.start_fen,
                     std::strlen(config.start_fen) + 1);
+    } else {
+        mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len,
+                            nullptr);
     }
 
     for (size_t ply = 0; ply <= moves.size(); ++ply) {
@@ -901,10 +904,15 @@ void check_legal_moves(Case &c, MxqCore *core, const MxqGameConfig &config,
     char start_fen[MXQ_FEN_CAP];
     start_fen[0] = '\0';
     size_t fen_len = 0;
-    mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len, nullptr);
+    /* The scenario's start before the frozen one, for the reason check_positions
+     * states: asking a game with no frozen start asserts where NDEBUG is
+     * undefined. */
     if (config.start_fen[0] != '\0') {
         std::memcpy(start_fen, config.start_fen,
                     std::strlen(config.start_fen) + 1);
+    } else {
+        mxq_rules_start_fen(kind, start_fen, sizeof(start_fen), &fen_len,
+                            nullptr);
     }
 
     std::vector<const char *> texts;
@@ -1767,6 +1775,178 @@ void case_dealt_start_ladder() {
     c.report();
 }
 
+/*
+ * The deal entry, asked for the same two deals the derivation is anchored on.
+ *
+ * case_deal_derivation states those vectors against the derivation itself; this
+ * states them against the public C surface, which is what a second
+ * implementation of docs/boardgame-protocol-v2.md's derivation is compared with
+ * and what every caller above this interface derives through. Two readings of
+ * one anchor: the fifteen letters a side and the digest there, the position
+ * record those letters spell and the same digest here, from the same seed and
+ * nonce.
+ *
+ * The start FENs below are not a third statement of the deal. Each is those
+ * same fifteen letters laid onto the fifteen squares the protocol fixes, in the
+ * order it fixes them, with the two generals face up between them — and the
+ * second vector's is the corpus's own dealt start, the one case_dealt_start_ladder
+ * creates a game from and the jieqi archive golden is built on. That the entry
+ * derives that exact record from that seed and nonce is what binds this surface
+ * to the corpus as well as to the anchor.
+ */
+void case_deal_entry() {
+    Case c("the deal entry, against the cross-implementation anchors");
+    const fs::path store = scratch_dir("deal-entry");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY, &core, &err) !=
+        MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    const auto make_deal = [] {
+        MxqDeal deal;
+        std::memset(&deal, 0, sizeof(deal));
+        deal.struct_size = static_cast<uint32_t>(sizeof(deal));
+        return deal;
+    };
+
+    const std::string seed(64, '0');
+    /* Both vectors are dealt from that seed, so both bind one commitment: the
+     * SHA-256 of thirty-two zero bytes. */
+    const std::string commit =
+        "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925";
+
+    struct Vector {
+        std::string nonce;
+        std::string start_fen;
+        std::string digest;
+        std::string what;
+    };
+    const std::vector<Vector> vectors = {
+        {std::string(64, 'f'),
+         "a~r~n~p~kb~b~c~a~/9/1p~5p~1/p~1p~1r~1n~1c~/9/9/A~1R~1B~1P~1N~/"
+         "1N~5A~1/9/P~C~P~B~KC~P~R~P~ w - - 0 1",
+         "ed1c9fb490c3d2f0e011e283c229b1408174109b7e632f8a0c01ac4541acb766",
+         "the plain path"},
+        {"a144410000000000000000000000000000000000000000000000000000000000",
+         "r~r~c~b~kp~n~n~b~/9/1p~5a~1/c~1p~1p~1p~1a~/9/9/P~1P~1C~1B~1R~/"
+         "1P~5B~1/9/C~A~P~N~KA~P~R~N~ w - - 0 1",
+         "98ec20c5cd254471f1b321de793bdb85683135b940e2a00558228637ea001baa",
+         "a rejected draw"},
+    };
+
+    for (const Vector &v : vectors) {
+        MxqDeal deal = make_deal();
+        err = make_error();
+        const MxqStatus rc = mxq_rules_deal(core, MXQ_GAME_KIND_JIEQI,
+                                            seed.c_str(), v.nonce.c_str(),
+                                            &deal, &err);
+        c.check(rc == MXQ_OK, v.what + ": the entry refused its input: " +
+                                  mxq_status_name(rc) + " (" + err.detail + ")");
+        if (rc != MXQ_OK) {
+            continue;
+        }
+        c.check_eq(std::string(deal.start_fen), v.start_fen,
+                   v.what + ": the dealt start");
+        c.check_eq(std::string(deal.commit), commit,
+                   v.what + ": the commitment the seed binds");
+        c.check_eq(std::string(deal.digest), v.digest,
+                   v.what + ": the deal digest");
+    }
+
+    /* A newer caller's struct: everything this build knows is written, and
+     * struct_size reads back the size this build could interpret rather than
+     * the size the caller declared. */
+    {
+        MxqDeal deal = make_deal();
+        deal.struct_size = static_cast<uint32_t>(sizeof(deal)) + 16u;
+        err = make_error();
+        const MxqStatus rc =
+            mxq_rules_deal(core, MXQ_GAME_KIND_JIEQI, seed.c_str(),
+                           vectors[0].nonce.c_str(), &deal, &err);
+        c.check(rc == MXQ_OK, std::string("a larger struct_size is a newer "
+                                          "caller, not a refusal: ") +
+                                  mxq_status_name(rc));
+        c.check_eq(static_cast<int64_t>(deal.struct_size),
+                   static_cast<int64_t>(sizeof(MxqDeal)),
+                   "struct_size reads back the size this build interprets");
+        c.check_eq(std::string(deal.start_fen), vectors[0].start_fen,
+                   "and the deal is the same deal");
+    }
+
+#if defined(NDEBUG)
+    /*
+     * The refusals, all four of them programming errors: they assert where
+     * NDEBUG is undefined and return their code where it is defined, so only a
+     * release build observes the codes.
+     */
+    const auto refused = [&](MxqGameKind game, const char *seed_text,
+                             const char *nonce_text, MxqStatus want,
+                             const std::string &what) {
+        MxqDeal deal = make_deal();
+        MxqError e = make_error();
+        const MxqStatus rc =
+            mxq_rules_deal(core, game, seed_text, nonce_text, &deal, &e);
+        c.check(rc == want, what + ": expected " +
+                                std::string(mxq_status_name(want)) + ", got " +
+                                std::string(mxq_status_name(rc)) + " (" +
+                                e.detail + ")");
+    };
+    const std::string nonce = vectors[0].nonce;
+
+    /* One game is dealt, and the game whose board it shares is not it. */
+    refused(MXQ_GAME_KIND_XIANGQI, seed.c_str(), nonce.c_str(),
+            MXQ_ERR_ARG_RANGE, "a game with no deal");
+
+    /* The one spelling all four handshake values have, asked of both of the
+     * two this entry takes. */
+    refused(MXQ_GAME_KIND_JIEQI, std::string(63, '0').c_str(), nonce.c_str(),
+            MXQ_ERR_ARG_RANGE, "a seed of sixty-three digits");
+    refused(MXQ_GAME_KIND_JIEQI, std::string(64, 'F').c_str(), nonce.c_str(),
+            MXQ_ERR_ARG_RANGE, "a seed in uppercase");
+    refused(MXQ_GAME_KIND_JIEQI, seed.c_str(), std::string(64, 'z').c_str(),
+            MXQ_ERR_ARG_RANGE, "a nonce that is not hexadecimal");
+
+    /* The two required strings. */
+    refused(MXQ_GAME_KIND_JIEQI, nullptr, nonce.c_str(), MXQ_ERR_ARG_NULL,
+            "a null seed");
+    refused(MXQ_GAME_KIND_JIEQI, seed.c_str(), nullptr, MXQ_ERR_ARG_NULL,
+            "a null nonce");
+
+    /* And the out struct: absent, and declared at a size this build cannot
+     * interpret — which is any size short of the whole struct while this
+     * interface version is the only one there has been. */
+    {
+        MxqError e = make_error();
+        const MxqStatus rc = mxq_rules_deal(core, MXQ_GAME_KIND_JIEQI,
+                                            seed.c_str(), nonce.c_str(),
+                                            nullptr, &e);
+        c.check(rc == MXQ_ERR_ARG_NULL,
+                std::string("a null out: expected MXQ_ERR_ARG_NULL, got ") +
+                    mxq_status_name(rc));
+    }
+    {
+        MxqDeal deal = make_deal();
+        deal.struct_size = 4u;
+        MxqError e = make_error();
+        const MxqStatus rc = mxq_rules_deal(core, MXQ_GAME_KIND_JIEQI,
+                                            seed.c_str(), nonce.c_str(), &deal,
+                                            &e);
+        c.check(rc == MXQ_ERR_ARG_STRUCT_SIZE,
+                std::string("a short struct_size: expected "
+                            "MXQ_ERR_ARG_STRUCT_SIZE, got ") +
+                    mxq_status_name(rc));
+    }
+#endif
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
 void case_resume_without_a_game() {
     Case c("resuming when there is nothing to resume");
     const fs::path store = scratch_dir("resume-nothing");
@@ -2326,6 +2506,7 @@ int main(int argc, char **argv) {
     case_second_active_game();
     case_start_position_ladder();
     case_dealt_start_ladder();
+    case_deal_entry();
     case_resume_without_a_game();
     case_refused_moves_change_nothing();
     case_failed_commit_leaves_the_game_unchanged();
