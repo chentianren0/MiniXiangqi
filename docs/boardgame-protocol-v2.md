@@ -38,7 +38,7 @@ Every message is one JSON object with exactly one member: the message's name, wh
 {"move": {"session": "0b34…", "index": 7, "move": "b1b3"}}
 ```
 
-`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal_digest` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes, most significant first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal_digest` are the only two that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
+`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal_digest` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes in order, two digits a byte, high nibble first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal_digest` are the only two that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
 
 ## Session states
 
@@ -77,7 +77,7 @@ The proposer sends `propose`. The receiver accepts only when it implements `rule
 
 **A proposal naming a `rules_id` the receiver does not carry is declined, never a violation.** The receiver answers `decline` with `unknown_game` through the ordinary decline flow; the connection stands and the pair may propose again at once. That is this version's definition of the case and not a courtesy it extends: a game this document never names is still a game two version-2 peers play the moment both carry it, so **a later game is a new `rules_id` and never a version 3**.
 
-A peer proposes only when its own copy of the pair's lingering session, if any, is settled: unsettled, it settles first or learns from that exchange that the session is void. An arriving `propose` retires the receiver's ended copy whatever its settledness. `busy` answers a `propose` that arrives while a **dealing** or **active** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding with that peer — on any connection — is the crossing case: the proposal whose session identifier sorts lower byte-wise survives, and the other is void without an answer.
+A peer proposes only when its own copy of the pair's lingering session, if any, is settled: unsettled, it settles first or learns from that exchange that the session is void. An arriving `propose` retires the receiver's ended copy whatever its settledness. `busy` answers a `propose` that arrives while a **dealing** or **active** session exists with that peer. A `propose` that arrives while the receiver's own proposal is outstanding with that peer — on any connection — is the crossing case: the proposal whose session identifier sorts lower byte-wise survives, and the other is void without an answer; identifiers that compare equal are no order at all, and both are void without an answer. That crossing aside, a `propose` naming a session the receiver still holds — the ended copy is already retired — is a violation, judged before `busy` has anything to answer.
 
 On `accept`, a perfect-information game's session becomes **active** and play begins. A hidden-information game's becomes **dealing**, and the proposer sends `deal_commit` at once.
 
@@ -89,7 +89,7 @@ On `accept`, a perfect-information game's session becomes **active** and play be
 2. The other peer draws a `nonce` of thirty-two bytes from a cryptographically secure random source and sends `deal_nonce`.
 3. The dealer sends `deal_seed` with the seed itself. The receiver hashes it and compares with the `commit` it holds; **a mismatch is a protocol violation**, which is the one thing the commitment exists to catch.
 
-Within a completed handshake neither side can choose or steer the deal, because each fixes its contribution before it can know the other's: the dealer commits without having seen the nonce, and the nonce is drawn against a hash that discloses nothing. One honest, well-drawn contribution then makes the deal uniform. A handshake abandoned before the seed travels is the other case — the dealer holds both contributions by then and can decline to complete it and propose again, which is a resample — and it stands with the modified-client caveat above rather than against it: what is guaranteed here is the completed exchange, never a peer's obedience.
+Within a completed handshake neither side can choose or steer the deal, because each fixes its contribution before it can know the other's: the dealer commits without having seen the nonce, and the nonce is drawn against a hash that discloses nothing. One honest, well-drawn contribution then makes the deal uniform. A contribution serves exactly one handshake: a pair that deals again — after an abandoned handshake, a voided session, any re-proposal — draws afresh on both ends, because a reused contribution is one the other side can already know, which is the one thing the argument above cannot survive. A handshake abandoned before the seed travels is the other case — the dealer holds both contributions by then and can decline to complete it and propose again, which is a resample — and it stands with the modified-client caveat above rather than against it: what is guaranteed here is the completed exchange, never a peer's obedience.
 
 The dealer's session becomes **active** when it has sent `deal_seed`; the other end's when `deal_seed` arrives and verifies. The first ply may follow immediately. Until then no `move` exists and none is sent.
 
@@ -146,9 +146,11 @@ A peer recognises its opponent on a fresh connection. It initiates `resume`, aft
 
 A `resume` whose `deal_digest` differs from the receiver's own is two devices holding different games under one identifier: the receiver answers `decline` with `deal_mismatch`, and the session is void on both sides. A peer that genuinely does not know the session — it holds nothing for it, it retired it, it holds only a proposal that died with its connection, or its own deal failed re-verification — answers `decline` with `unknown_session`, and the session is void on both sides.
 
+Both of those answers void the session on both sides, so between honest peers they can cross the very exchange that provoked them: two mandated `resume`s cross, each draws a voiding `decline`, and each `decline` arrives for a session its receiver has already voided. A `decline` whose `reason` is `unknown_session` or `deal_mismatch`, arriving for a session the receiver does not hold, is therefore discarded, never a violation: both peers already agree the session is gone.
+
 ## Violations
 
-A malformed message, an illegal move, a handshake departure named above, or any message with no lawful meaning in the receiver's connection and session state — beyond the stale-item, ended-state, and reconciliation allowances above — is a protocol violation: the detecting peer closes the connection and the session is void.
+A malformed message, an illegal move, a handshake departure named above, or any message with no lawful meaning in the receiver's connection and session state — beyond the stale-item, ended-state, voiding-decline, and reconciliation allowances above — is a protocol violation: the detecting peer closes the connection and the session is void.
 
 A connection carrying no session is the other case entirely: either peer may close one at any time, and such a closure means nothing.
 
