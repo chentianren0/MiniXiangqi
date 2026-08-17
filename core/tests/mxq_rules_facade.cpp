@@ -34,6 +34,7 @@ std::string reason_identifier(MxqEndReason reason) {
     case MXQ_END_REASON_RESIGNATION: return "resignation";
     case MXQ_END_REASON_ENDED_EARLY: return "ended-early";
     case MXQ_END_REASON_FIFTY_MOVE_RULE: return "fifty-move-rule";
+    case MXQ_END_REASON_FORTY_MOVE_RULE: return "forty-move-rule";
     default: break;
     }
     return "unknown(" + std::to_string(reason) + ")";
@@ -49,6 +50,7 @@ std::string rule_identifier(MxqSetupRule rule) {
     case MXQ_SETUP_RULE_FACING_GENERALS: return "facing-generals";
     case MXQ_SETUP_RULE_OPPONENT_IN_CHECK: return "opponent-in-check";
     case MXQ_SETUP_RULE_NOT_FROZEN_START: return "not-frozen-start";
+    case MXQ_SETUP_RULE_NOT_DEALT_START: return "not-dealt-start";
     default: break;
     }
     return "unknown(" + std::to_string(rule) + ")";

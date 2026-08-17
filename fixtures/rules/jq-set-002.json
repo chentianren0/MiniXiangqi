@@ -1,0 +1,14 @@
+{
+  "id": "jq-set-002",
+  "title": "Setup: the standard array face up is not a dealt start",
+  "area": "set",
+  "variant": "jieqi",
+  "start_fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+  "setup": {
+    "status": "illegal-position",
+    "rule": "not-dealt-start",
+    "side": null,
+    "square": null
+  },
+  "rationale": "This is a position record of this game — every piece stands where the standard array puts it, and a record with nothing face down is spelled exactly as the Xiangqi position it is not — and it is not a position a game of this one begins in, because a game begins from a deal and every piece here is face up. The refusal is not-dealt-start, and it names neither a side nor a point: a deal is dealt whole, so a shape that is not one is not one at a square, and there is no composer here to be told what to fix next. It is the answer not-frozen-start could not give, this game holding a start for every deal rather than one."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "jq-set-001",
+  "title": "Setup: a dealt start, which is the only shape a game begins in",
+  "area": "set",
+  "variant": "jieqi",
+  "start_fen": "p~c~p~n~kb~r~a~p~/9/1n~5r~1/a~1b~1c~1p~1p~/9/9/B~1A~1C~1P~1P~/1R~5N~1/9/P~N~P~R~KC~P~A~B~ w - - 0 1",
+  "setup": {
+    "status": "ok",
+    "rule": null,
+    "side": null,
+    "square": null
+  },
+  "rationale": "Every square of the standard array is filled and no other point is; the two generals stand face up on e1 and e10, the only pieces that ever start face up; the other thirty stand face down; each side's fifteen hidden identities are a permutation of that side's fifteen non-general pieces — two chariots, two horses, two elephants, two advisors, two cannons and five soldiers — and neither permutation is the identity one, a soldier standing on a chariot's square and a chariot on an advisor's; and Red moves first. That is the whole of the membership question this game answers in place of a setup-legality predicate, because there is no composed position for one to judge: there is a start for every deal and nothing else is a start at all."
+}

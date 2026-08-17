@@ -11,16 +11,14 @@
 # core/CMakeLists.txt adds this directory only when MXQ_ENABLE_RULES_FACADE is
 # ON, so the default configuration neither compiles nor links any of it.
 #
-# NOTHING REFERENCES THIS TARGET YET except the core's jieqi smoke-test runner.
-# The library is linked into mxq_core all the same, and therefore travels into
-# MiniXiangqiCore.xcframework, because the framework build is the one place the
-# slice's cross-platform reality is proven: the iOS SDK, the Simulator slice,
-# and the arm64 and arm64e device architectures. That evidence belongs to the
-# stage that vendors the sources rather than to the bridge stage that would
-# otherwise be the first to discover a platform the slice does not compile on.
-# It costs the app nothing: a static archive's members are pulled in only to
-# resolve a reference, and until the bridge lands there is no reference, so not
-# one byte of this engine reaches the shipped binary.
+# TWO TARGETS REFERENCE THIS ONE, and both link it the ordinary way: the core's
+# jieqi bridge, mxq_jieqi_bridge, which is the only translation unit of the core
+# that speaks this engine's types; and the jieqi smoke-test runner, which drives
+# both embedded engines in one process to prove the rename below holds. mxq_core
+# itself holds this library and the bridge alike behind $<LINK_ONLY:>, so
+# neither this directory's include path nor its namespace rename reaches a core
+# source that speaks to the OTHER engine. core/CMakeLists.txt carries that
+# reasoning where the links are written.
 
 cmake_minimum_required(VERSION 3.24)
 

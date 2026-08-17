@@ -78,7 +78,29 @@ Board board_of(MxqGameKind game);
 
 MoveClass move_class_of(MxqGameKind game);
 
-/* The frozen starting position of one game, in the frozen 6-field FEN. */
+/* Whether this game has a frozen starting position at all. Four of the five do;
+ * Jieqi does not, because it begins from a dealt start and there is one of those
+ * per deal. A caller that reads start_fen without asking this is asking a game
+ * with no such constant to name one. */
+bool has_frozen_start(MxqGameKind game);
+
+/*
+ * Whether any embedded engine searches this game.
+ *
+ * It is the game's engine axis rather than its rules, and it is answered from
+ * the same table because three entries refuse for it — preparation, the profile
+ * identifier, and the per-game profile — and three copies of one comparison
+ * disagree the day a fourth game is added to either side of it. Jieqi is the
+ * one game nothing searches: its rules authority performs no search and carries
+ * no network, so there is nothing to configure, nothing to name, and no move
+ * for a profile identifier to attribute. The refusals are permanent rather than
+ * a state some preparation would clear.
+ */
+bool searched(MxqGameKind game);
+
+/* The frozen starting position of one game, in the frozen 6-field FEN. Asked
+ * only of a game that has one: for a game that does not it asserts, and answers
+ * the empty string, which no position record is. */
 const char *start_fen(MxqGameKind game);
 
 /*
@@ -89,6 +111,10 @@ const char *start_fen(MxqGameKind game);
  * itself, the search snapshot, and the document the archive writes — and the
  * empty-means-frozen convention read three ways is three places for a game to
  * start somewhere its own configuration did not say.
+ *
+ * A configuration of a game with no frozen start always names one — creation
+ * refuses an empty member for such a game — so the fallback below is that
+ * refusal's other side rather than a second policy.
  */
 const char *start_fen(const MxqGameConfig &config);
 

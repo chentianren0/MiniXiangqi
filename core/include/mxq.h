@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 2
+#define MXQ_API_VERSION_MINOR 3
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -466,15 +466,26 @@ enum {
  * The vocabulary is the header's; which of it a build carries is the build's. A
  * core compiled without the engine a game is played on does not carry that game,
  * and every entry taking MxqGameKind answers MXQ_ERR_ARG_RANGE for it exactly as
- * for a value outside the vocabulary. Every shipped build carries all four.
+ * for a value outside the vocabulary. Every shipped build carries all five.
  */
 typedef int32_t MxqGameKind;
 enum {
     MXQ_GAME_KIND_MINI_XIANGQI = 0, /* serialised "minixiangqi"; 7x7 */
     MXQ_GAME_KIND_XIANGQI      = 1, /* serialised "xiangqi"; 9x10 */
     MXQ_GAME_KIND_GOMOKU_15    = 2, /* serialised "gomoku-15"; 15x15 freestyle */
-    MXQ_GAME_KIND_RENJU        = 3  /* serialised "renju"; 15x15, with Black's
+    MXQ_GAME_KIND_RENJU        = 3, /* serialised "renju"; 15x15, with Black's
                                      * forbidden moves */
+    MXQ_GAME_KIND_JIEQI        = 4  /* serialised "jieqi"; 9x10 played with the
+                                     * pieces face down. Xiangqi's board, palace,
+                                     * river and piece set exactly, and another
+                                     * game: a face-down piece moves as the piece
+                                     * whose square it stands on and flips up on
+                                     * arrival, and a revealed advisor and
+                                     * elephant are free of the palace and of the
+                                     * river. A position with nothing left face
+                                     * down is spelled exactly as the Xiangqi
+                                     * position it is not, which is why the game
+                                     * is never read off the board */
 };
 
 typedef int32_t MxqAiLevel;
@@ -569,11 +580,23 @@ enum {
                                                  * or more, and Renju with five
                                                  * or more for White and exactly
                                                  * five for Black */
-    MXQ_END_REASON_BOARD_FULL             = 14  /* "board-full"; a draw, and the
+    MXQ_END_REASON_BOARD_FULL             = 14, /* "board-full"; a draw, and the
                                                  * placement games' alone: every
                                                  * point is taken and no line of
                                                  * five was made. Automatic, like
                                                  * every rule reason but the
+                                                 * neutral repetition */
+    MXQ_END_REASON_FORTY_MOVE_RULE        = 15  /* "forty-move-rule"; a draw, and
+                                                 * Jieqi's alone: forty moves —
+                                                 * eighty plies — without a
+                                                 * capture, and only a capture
+                                                 * resets the count, a reveal
+                                                 * included. Forty is that game's
+                                                 * own number and inherits
+                                                 * nothing from the fifty
+                                                 * MXQ_END_REASON_FIFTY_MOVE_RULE
+                                                 * counts for Xiangqi. Automatic,
+                                                 * like every rule reason but the
                                                  * neutral repetition */
 };
 
@@ -613,7 +636,15 @@ enum {
  *                      that IS to move may stand in check: it answers as its
  *                      first move
  *   NOT_FROZEN_START   the game accepts only its frozen starting position, and
- *                      this is another. Every game but Xiangqi is that game
+ *                      this is another. Every game but Xiangqi and Jieqi is
+ *                      that game
+ *   NOT_DEALT_START    the game begins from a dealt start and from no other
+ *                      position, and this is not one. Jieqi's whole answer, and
+ *                      it stands to a game holding a start for every deal
+ *                      exactly as NOT_FROZEN_START stands to a game holding
+ *                      one: a dealt start is no frozen start, there being one
+ *                      of them per deal, so the seventh could not say this
+ *                      truthfully
  *
  * MXQ_SETUP_RULE_NONE is the legal setup, and the value MxqSetupViolation
  * carries whenever mxq_rules_validate_setup does not return
@@ -629,7 +660,8 @@ enum {
     MXQ_SETUP_RULE_SOLDIER_RANK      = 4, /* fixture "soldier-rank" */
     MXQ_SETUP_RULE_FACING_GENERALS   = 5, /* fixture "facing-generals" */
     MXQ_SETUP_RULE_OPPONENT_IN_CHECK = 6, /* fixture "opponent-in-check" */
-    MXQ_SETUP_RULE_NOT_FROZEN_START  = 7  /* fixture "not-frozen-start" */
+    MXQ_SETUP_RULE_NOT_FROZEN_START  = 7, /* fixture "not-frozen-start" */
+    MXQ_SETUP_RULE_NOT_DEALT_START   = 8  /* fixture "not-dealt-start" */
 };
 
 /* How a record entered this library. Local metadata, never an archive field. */

@@ -231,6 +231,17 @@ MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game, MxqGameProfile *out,
     if (rc != MXQ_OK) {
         return rc;
     }
+    /* What this reports is what one game binds for a search: a pinned variant
+     * and that variant's network. A game bound to no searched variant has
+     * neither, so there is nothing for the struct to carry and the entry
+     * answers for it exactly as preparation does. */
+    if (!mxq::notation::searched(game)) {
+        assert(false && "no engine searches this game");
+        mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
+                        "no engine searches this game, so it binds no variant "
+                        "and no network");
+        return MXQ_ERR_ARG_RANGE;
+    }
     rc = mxq::begin_out(out, out != nullptr ? out->struct_size : 0u,
                         static_cast<uint32_t>(sizeof(MxqGameProfile)),
                         static_cast<uint32_t>(sizeof(MxqGameProfile)), err);

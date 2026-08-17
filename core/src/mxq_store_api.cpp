@@ -64,10 +64,15 @@ bool value_of(const std::string &text, const Value (&domain)[N],
 }
 
 bool game_of(const std::string &text, MxqGameKind &out) {
+    /* Every game the vocabulary has, and the spelling is what says which of
+     * them this format version stores: a game it does not carry has none, and
+     * value_of's null test above is where that becomes a refusal rather than a
+     * row read as some other game. */
     static const MxqGameKind domain[] = {MXQ_GAME_KIND_MINI_XIANGQI,
                                          MXQ_GAME_KIND_XIANGQI,
                                          MXQ_GAME_KIND_GOMOKU_15,
-                                         MXQ_GAME_KIND_RENJU};
+                                         MXQ_GAME_KIND_RENJU,
+                                         MXQ_GAME_KIND_JIEQI};
     return value_of(text, domain, archive::rules_id_text, out);
 }
 

@@ -35,9 +35,9 @@ const std::set<std::string> kSetupStatuses = {"ok", "illegal-position",
 
 /* The setup rules a fixture may name, one for each the core reports. */
 const std::set<std::string> kSetupRules = {
-    "piece-count",     "palace",            "elephant-side",
-    "soldier-rank",    "facing-generals",   "opponent-in-check",
-    "not-frozen-start"};
+    "piece-count",      "palace",          "elephant-side",
+    "soldier-rank",     "facing-generals", "opponent-in-check",
+    "not-frozen-start", "not-dealt-start"};
 
 const std::set<std::string> kSides = {"red", "black"};
 
@@ -62,7 +62,8 @@ const std::set<std::string> kReasons = {
     "checkmate",             "stalemate",
     "threefold-repetition",  "perpetual-check",
     "perpetual-chase",       "mutual-perpetual-check",
-    "mutual-perpetual-chase", "fifty-move-rule"};
+    "mutual-perpetual-chase", "fifty-move-rule",
+    "forty-move-rule"};
 
 /* The ruleset identifiers a fixture may declare, and the game each names. The
  * identifier prefix a fixture's id must carry goes with it: the two are one
@@ -77,6 +78,11 @@ struct VariantRow {
 const VariantRow kVariants[] = {
     {"minixiangqi", MXQ_GAME_KIND_MINI_XIANGQI, "mx-"},
     {"xiangqi", MXQ_GAME_KIND_XIANGQI, "xq-"},
+    /* Jieqi is played on Xiangqi's board and is a different ruleset, so its
+     * fixtures declare their own identifier and carry their own prefix: a
+     * position of one is often spelled exactly as a position of the other, and
+     * dispatching on anything but this member would be replaying a guess. */
+    {"jieqi", MXQ_GAME_KIND_JIEQI, "jq-"},
 };
 
 class Loader {

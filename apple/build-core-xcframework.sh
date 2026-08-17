@@ -66,18 +66,17 @@ deployment_target=26.5
 # Simulator included, since a simulator binary is an iOS binary built against
 # another SDK rather than a macOS one.
 #
-# The core is six static libraries — the facade, the three vendored engines, the
-# lz4 the second engine decompresses its weights with, and the vendored SQLite —
-# and an XCFramework carries one, so they are combined per architecture with
-# libtool and then joined across architectures with lipo, rather than left for
-# every consumer to link in the right order.
+# The core is seven static libraries — the facade, its jieqi bridge, the three
+# vendored engines, the lz4 the second engine decompresses its weights with, and
+# the vendored SQLite — and an XCFramework carries one, so they are combined per
+# architecture with libtool and then joined across architectures with lipo,
+# rather than left for every consumer to link in the right order.
 #
-# The third engine, the Pikafish jieqi rules slice, is in that list although no
-# code calls it yet. Building it here is the point: this script is where the
-# slice meets the iOS SDK, the Simulator and arm64e, and a platform it does not
-# compile on is a finding the stage that vendored it should have, not the stage
-# that later writes its bridge. The app pays nothing for it — a static archive's
-# members are pulled in only to resolve a reference, and nothing references it.
+# The bridge is a library of its own rather than part of the facade because the
+# jieqi slice's namespace rename is a compile definition that must reach exactly
+# one translation unit; core/CMakeLists.txt carries the reasoning. It is listed
+# here for the plain reason that the app links what this script packages: a
+# framework without it resolves nothing the facade asks of the jieqi engine.
 build_platform() {
   sdk=$1
   system=$2
@@ -103,6 +102,7 @@ build_platform() {
     rm -f "$slice"
     libtool -static -no_warning_for_no_symbols -o "$slice" \
             "$build/libmxqcore.a" \
+            "$build/libmxqjieqibridge.a" \
             "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
             "$build/third_party/rapfi/libmxqrapfi.a" \
             "$build/third_party/rapfi/libmxqrapfilz4.a" \

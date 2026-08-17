@@ -1,0 +1,23 @@
+{
+  "id": "jq-end-001",
+  "title": "Checkmate delivered by a reveal: the mated side loses",
+  "area": "end",
+  "variant": "jieqi",
+  "start_fen": "4k4/1R7/9/9/9/9/9/9/9/R~4K3 w - - 0 1",
+  "moves": [
+    "a1a10"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "R3k4/1R7/9/9/9/9/9/9/9/5K3 b - - 1 1",
+    "legal_moves": [],
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "red-wins",
+      "reason": "checkmate"
+    }
+  },
+  "boundary": null,
+  "rationale": "The piece on a1 is face down and moves as the chariot whose square it is, up an empty file to a10, where it flips face up as the chariot it was dealt. From there it checks along the tenth rank, and the chariot on b9 covers d9, e9 and f9 while the tenth-rank check covers d10 and f10: the general to move is in check and has no legal move, so the side that cannot move has lost. Two things are worth separating in this one line. The move was legal because a1 is a chariot's square, not because the piece is a chariot — that never depends on what it flips up as. The check is the other way round: it is read from the position the move produced, where the piece stands face up as itself, so a piece dealt something else would have arrived as that and given no check at all. Nothing here is hidden from either player by the time it decides anything."
+}

@@ -1,0 +1,35 @@
+{
+  "id": "jq-chk-001",
+  "title": "Perpetual check across a reveal: the checking side loses at the third occurrence",
+  "area": "chk",
+  "variant": "jieqi",
+  "start_fen": "4k4/9/9/9/9/9/9/9/9/R~4K3 w - - 0 1",
+  "moves": [
+    "a1a10",
+    "e10e9",
+    "a10a9",
+    "e9e10",
+    "a9a10",
+    "e10e9",
+    "a10a9",
+    "e9e10",
+    "a9a10"
+  ],
+  "assertions": {
+    "in_check": true,
+    "result_fen": "R3k4/9/9/9/9/9/9/9/9/5K3 b - - 9 5",
+    "legal_moves": null,
+    "rejected_moves": null,
+    "applied": null,
+    "game_state": {
+      "state": "black-wins",
+      "reason": "perpetual-check",
+      "at_occurrence": 3
+    }
+  },
+  "boundary": {
+    "prefix_len": 5,
+    "expect": "second occurrence of the checking position; not yet terminal"
+  },
+  "rationale": "The first ply is a reveal: the piece on a1 is face down, moves as the chariot whose square it is, and arrives on a10 face up and giving check. Everything after it is one cycle — the chariot alternates a10 and a9, checking after every Red move, while the general shuttles e10 and e9 and never attacks anything — and the checking position stands at plies 1, 5 and 9. On the third occurrence the violation is complete and the side giving the checks loses, exactly as xq-chk-001 has it, the two games adjudicating repetition identically because this game's rules adopt those clauses whole. The reveal is what this fixture adds: it lies before every repeated position, which is not an accident of the line but the rule — a hidden piece stands only on its own start square and flips the moment it moves, so the face-down set only ever shrinks and no repeating cycle can contain a reveal."
+}

@@ -65,8 +65,9 @@ enum class Error {
  * wants a general a side, and a board short of one is exactly what a composer
  * has in front of them before the second tap: this predicate answers for it,
  * under the count clause, rather than declining to. Every other game keeps the
- * validator as its precondition, having one position to compare against and no
- * clauses to reach.
+ * validator as its precondition and then answers a membership question: three
+ * of them accept their frozen starting position and nothing else, and Jieqi
+ * accepts a dealt start and nothing else, there being one of those per deal.
  *
  * `detail` is filled on a refusal of either kind, as the short English
  * diagnostic MxqError carries.

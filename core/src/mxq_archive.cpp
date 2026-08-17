@@ -354,22 +354,28 @@ bool parse_timestamp(const std::string &text, int64_t &out_ms) {
  * rejected rather than mapped to a default: a value this build does not know is
  * a value it cannot honour.
  *
- * rules_id has four spellings, of which a build accepts the ones it carries.
- * Which games a build carries is the build's, per mxq.h: a core compiled
- * without the engine a game is played on does not carry that game, and here
- * that is not a preference but a necessity — the board, the move grammar and
- * the frozen start of a game this build does not carry are not in it, so there
- * is nothing to read the rest of the document against. Such a document meets
- * the same closed-vocabulary refusal any other unreadable rules_id meets, which
- * is what the header's rule says everywhere else. Every shipped build carries
- * all four.
+ * rules_id spells the games this format version carries, of which a build
+ * accepts the ones it also plays. Which games a build carries is the build's,
+ * per mxq.h: a core compiled without the engine a game is played on does not
+ * carry that game, and here that is not a preference but a necessity — the
+ * board, the move grammar and the frozen start of a game this build does not
+ * carry are not in it, so there is nothing to read the rest of the document
+ * against. A game the format version does not carry is the same refusal from
+ * the other side, and rules_id_text answering null is where that is said: this
+ * build plays Jieqi and writes an archive version that has no spelling for it,
+ * so a document naming it is refused exactly as any other unreadable rules_id
+ * is. Both are the closed-vocabulary refusal the header's rule states
+ * everywhere else.
  */
 bool read_rules_id(const std::string &text, MxqGameKind &out) {
     for (const MxqGameKind game : {MXQ_GAME_KIND_MINI_XIANGQI,
                                    MXQ_GAME_KIND_XIANGQI,
                                    MXQ_GAME_KIND_GOMOKU_15,
-                                   MXQ_GAME_KIND_RENJU}) {
-        if (notation::known_game(game) && text == rules_id_text(game)) {
+                                   MXQ_GAME_KIND_RENJU,
+                                   MXQ_GAME_KIND_JIEQI}) {
+        const char *spelling = rules_id_text(game);
+        if (notation::known_game(game) && spelling != nullptr &&
+            text == spelling) {
             out = game;
             return true;
         }
@@ -1084,7 +1090,8 @@ void fill_stored(const Decoded &decoded, Stored &out) {
      * states. Normalising here is what makes a stored game's configuration read
      * the same before and after a resume — and re-encoding writes the start
      * back in full either way, so the bytes are unchanged by it. */
-    if (decoded.start_fen != notation::start_fen(decoded.game)) {
+    if (!notation::has_frozen_start(decoded.game) ||
+        decoded.start_fen != notation::start_fen(decoded.game)) {
         copy_bounded(out.config.start_fen, sizeof(out.config.start_fen),
                      decoded.start_fen.c_str());
     }
