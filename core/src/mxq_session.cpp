@@ -1247,6 +1247,11 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
      * rule for it: it reports two parts of this core at different stages of one
      * widening rather than a caller outside a vocabulary it owns. The rules
      * facade answers for such a game in full; only persistence refuses it.
+     *
+     * No game reaches it today: this format version spells every game this core
+     * carries. It stays because the pairing is one rule and this is the half of
+     * it that a session asks — the version that adds a sixth game will spell it
+     * here or refuse it here, and neither should be a thing to remember.
      */
     if (mxq::archive::rules_id_text(config->game) == nullptr) {
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
