@@ -42,9 +42,10 @@ The runner takes `--fixtures <dir>` and `--junit <file>`, and honours
 `$MXQ_FIXTURES_DIR`. It reports `PASS`, `FAIL`, `NOT IMPLEMENTED` or `ERROR` per
 fixture and fails the run only on `FAIL` or `ERROR`.
 
-That default configuration does **not** compile the vendored engine. Add
-`-DMXQ_ENABLE_RULES_FACADE=ON` to build and link it; the engine is a multi-minute
-compile and nothing else in the core needs it, so it is opt-in. Engine-dependent
+That default configuration does **not** compile the vendored engines. Add
+`-DMXQ_ENABLE_RULES_FACADE=ON` to build and link them; the engines are a
+multi-minute compile and nothing else in the core needs them, so they are
+opt-in. Engine-dependent
 tests also need the NNUE networks, and they need no argument: both are in
 `assets/` beside the variant configuration, and configuration verifies each
 one's byte length and SHA-256 against `pinned-inputs.json` before staging it.
@@ -89,13 +90,15 @@ read surface; the interchange pair with its import preview; and the search
 facade — `mxq_engine_prepare`/`teardown`/`query` and the `mxq_search_` group
 over the core's one engine thread.
 
-Seven CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
+Ten CTest targets: `rules_fixtures` over [`fixtures/rules/`](../fixtures/rules/),
 `archive_fixtures` over [`fixtures/archive/`](../fixtures/archive/),
 `store_foundation`, `store_sessions`, and `store_history` over scratch stores
 (with [`fixtures/store/`](../fixtures/store/) holding their declarative
 expectations), `store_interchange`, which re-runs the archive corpus through
-the import pipeline, and `engine_search`, which drives real searches over real
-sessions. Everything that replays a move line through the engine —
+the import pipeline, `engine_search`, which drives real searches over real
+sessions, `gomoku_engine` and `gomoku_rules` over the placement engine and the
+placement games' rules surface, and `jieqi_engine`, which proves the vendored
+jieqi engine answers beside everything above in one binary. Everything that replays a move line through the engine —
 `mxq_rules_evaluate` and its relatives, `mxq_archive_validate`, every
 `mxq_game_` function, `mxq_store_import`, and everything in the `mxq_engine_`
 and `mxq_search_` groups that drives the engine — exists only in a build configured
