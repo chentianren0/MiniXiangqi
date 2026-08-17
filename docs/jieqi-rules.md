@@ -61,7 +61,7 @@ A jieqi game begins from a dealt start and from no other position. Jieqi therefo
 ## Positions, coordinates, and notation
 
 - Files are lettered `a` upward from Red's left and ranks numbered `1` upward from Red's back rank, `a1`–`i10`. A square is a file letter followed by a rank written in decimal with no leading zero, so `a10` is a square and `a010` is not. A FEN piece-placement field lists the highest rank first and rank 1 last. `w` is Red: uppercase pieces, moves first. `b` is Black: lowercase pieces.
-- The canonical coordinate form of a move is the origin square followed by the destination square, four to six characters, of which `a9a10` is the longest. Parsing needs no lookahead, because a file letter is never a digit.
+- The canonical coordinate form of a move is the origin square followed by the destination square, four to six characters, the longest being a move between two rank-10 squares, such as `a10b10`. Parsing needs no lookahead, because a file letter is never a digit.
 - **This coordinate notation is canonical for fixtures, game archives, and the shared core interface.** It carries no reveal and needs none: the deal recorded beside a game's moves makes every reveal derivable, so the coordinates and the deal together are a game's complete record. The notation shown to a human reader is a separate presentation decision and never changes what is stored or exchanged.
 - Beside the board moves, the canonical move-text grammar holds one turn action: `claim`, the word alone. It is a turn action of the side to move, lawful exactly when the claimable neutral repetition stands, and it ends the game as that claimed draw with reason `threefold-repetition`. It moves no piece and exists for game exchange between implementations.
 - A position record is a 6-field FEN. The third and fourth fields are always `-`. The sixth field is the fullmove number, starting at 1 and incrementing after each Black move. The fifth field counts plies since the last capture and drives the no-capture rule below.
@@ -138,7 +138,7 @@ The accepted rules interpretation carries an integer version, `rules_version`, a
 
 The shared core's rules facade executes the authoritative offline adjudication on every platform: legal moves, check state, results, repetition, claim eligibility, perpetual violations, and what each reveal turns up. Every one of its questions is asked of a named game; none is answered from a position alone. The facade holds the objective position, every hidden identity included, and nothing above the core's C interface re-derives legality or decides an affordance; what a surface may show its player is the disclosure section above and not a judgement the surface makes.
 
-The facade is deterministic over game, position and history, and the fixtures below — not any engine's agreement — are its authority. Which engine library implements it is owned by [engine-integration.md](engine-integration.md). Search scores and search-only results never commit a user-visible outcome.
+The facade is deterministic over game, position and history, and the fixtures below — not any engine's agreement — are its authority. Which engine library implements it is owned by [jieqi-engine-integration.md](jieqi-engine-integration.md). Search scores and search-only results never commit a user-visible outcome.
 
 ## Conformance fixtures
 

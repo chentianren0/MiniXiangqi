@@ -7,11 +7,11 @@ This document owns the product definition, the target platforms, and the feature
 ## Product identity and distribution
 
 - The product name is **Star River**, and **闲敲棋子** in Chinese. Each language uses its own name, and neither is a translation of the other; both are the name of the product rather than of any game inside it.
-- The product exists for board-game education inside a small internal group. Education means learning through complete games of the games it carries — **Xiangqi**, **Mini Xiangqi**, **Gomoku**, and **Renju** — against the AI or in Free Play. Structured lessons and practice drills are not part of the product.
+- The product exists for board-game education inside a small internal group. Education means learning through complete games of the games it carries — **Xiangqi**, **Mini Xiangqi**, **Jieqi**, **Gomoku**, and **Renju** — against the AI or in Free Play. Structured lessons and practice drills are not part of the product.
 - The application is licensed under GPLv3, matching the engines it embeds.
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
-- **Every build contains the AI networks of every game it plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the redistributed ones — built-in Xiangqi's and the placement games' — carry no strength claim of ours, per that document and [placement-engine-integration.md](placement-engine-integration.md).
+- **Every build contains the AI networks of every game its AI plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the redistributed ones — built-in Xiangqi's and the placement games' — carry no strength claim of ours, per that document and [placement-engine-integration.md](placement-engine-integration.md). Jieqi carries no network at all: nothing plays it, and the engine behind its rules neither searches nor evaluates, per [jieqi-engine-integration.md](jieqi-engine-integration.md).
 - The application is fully offline and must not require an Internet connection.
 - Fully offline constrains the app, not the platform beneath it: the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
@@ -25,25 +25,25 @@ This document owns the product definition, the target platforms, and the feature
 - Each platform uses a native frontend — SwiftUI on Apple platforms and WinUI 3 on Windows — over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across platforms; presentation follows each platform's conventions.
 - The application has one main window; multiple main windows are not supported.
 - iPhone runs in portrait orientation only. iPad supports every orientation, as iPadOS multitasking expects.
-- Captured pieces are not displayed during play. The board itself shows what remains, and a second inventory would compete with the board in every game that captures.
+- Captured pieces are not displayed during play, **Jieqi excepted**, where what a capture discloses is knowledge the player keeps and [interaction-design.md](interaction-design.md) states the surface for it. Everywhere else the board itself shows what remains, and a second inventory would compete with the board.
 
 ## Play modes
 
-- Every game a build carries offers the same three modes. **Gomoku and Renju are carried on Apple platforms**; the Windows frontend carries the two xiangqi games.
+- Every game a build carries offers the same three modes, **Jieqi excepted**: it has no AI, so it offers **Free Play** and **Nearby Play** alone. **Gomoku, Renju and Jieqi are carried on Apple platforms**; the Windows frontend carries Mini Xiangqi and Xiangqi.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
 - **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
-- **Custom Scene**, and **自定排局** in Chinese, is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other.
-- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because each game's frozen start has one first mover — Red in the xiangqi games, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
+- **Custom Scene**, and **自定排局** in Chinese, is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other; Jieqi's own start is dealt rather than frozen, and nobody composes it either.
+- Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because the frozen start of each game this mode offers has one first mover — Red in Mini Xiangqi and Xiangqi, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
 - The AI offers three difficulty levels that differ only in maximum thinking time: **Fast** at 1 second per move, **Standard** at 3 seconds per move, and **Deep** at 5 seconds per move. **Standard** is the new-install default.
-- **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in every game, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
+- **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in every game but **Jieqi**, which no engine here plays, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
 - **A hint is never offered in Nearby Play.** A suggestion engine on one side of a game between two people is not this product's nearby play.
 - **Nothing about a hint is recorded.** It is presentation, like flipping the board: the game, its History record, and every export are exactly what they would have been without it, and no assisted marker exists.
 - A chess clock is not part of the product.
 - Repeated undo is available. Redo is not.
-- Resign is available only in human-versus-AI games. After confirmation, resignation records a loss for the human player.
+- Resign is available in human-versus-AI and in nearby play. After confirmation, resignation records a loss for the player who resigned.
 - In-app help is the read-only Mini Xiangqi rules reference. It does not analyze the current game or suggest moves; a standard-Xiangqi Help reference is not part of the current product surface.
 
 ## Games and history

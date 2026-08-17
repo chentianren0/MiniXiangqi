@@ -1,6 +1,6 @@
 # Engine Integration
 
-This document defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine — the engine the movement games are played on — and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Fairy-Stockfish repository, and it does not define the placement games' engine, whose counterpart contract is [placement-engine-integration.md](placement-engine-integration.md).
+This document defines how the shared core packages, calls, constrains, and validates the embedded Fairy-Stockfish engine — the engine Mini Xiangqi and Xiangqi are played on — and the app-visible policies built on it. It does not define Fairy-Stockfish internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Fairy-Stockfish repository, and it defines neither of the core's other embedded engines, whose counterpart contracts are [placement-engine-integration.md](placement-engine-integration.md) for the placement games' engine and [jieqi-engine-integration.md](jieqi-engine-integration.md) for Jieqi's rules authority.
 
 > **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md).
 
@@ -149,10 +149,12 @@ Search speed statistics such as nodes per second, depth, and hash utilization ar
 
 ### The variants the core runs
 
-The core runs exactly two variants, and the set is closed:
+This engine runs exactly two variants, and the set is closed:
 
 - **`minixiangqiaxf`**, the app's own 7×7 variant, defined in the bundled configuration file. It is described in the rest of this section and in [xiangqi-rules.md](xiangqi-rules.md).
 - **`xiangqi`**, the engine's built-in 9×10 game, taken as the engine defines it. Nothing in this repository configures its rules, and no configuration file defines it; the engine registers it behind its `LARGEBOARDS` build define, which the core's engine build therefore requires rather than merely carries.
+
+***Variant* is this engine's word and reaches exactly this far.** The core plays games the core's own vocabulary in [core-interface.md](core-interface.md) closes, and the games it plays on its other embedded engines are those engines' contracts' — neither expresses a game as a variant of this one, and nothing in this section is a statement about them.
 
 Each variant is pinned with its own network, and a variant is prepared and searched as a whole: the engine holds one variant's piece, bitboard and evaluation tables at a time, so the core's variant selection is part of engine preparation and never a per-call argument. Selecting a variant while a search runs is not a state this contract defines; the core serialises a selection behind any outstanding search exactly as it serialises reconfiguration.
 
@@ -217,6 +219,7 @@ The core preflights the network against the engine's observable load state befor
 - **A distribution carries a network for every variant it can play**, and carries no other. A network it cannot use is dead weight it must still license and hash-verify, and a variant it can select without a network is a variant it would play on classical evaluation.
 - **The Windows zip carries what it plays**, in `assets/` beside the variant configuration, and is the complete application. There is no second, more complete package: the artifact CI publishes is the whole thing.
 - An absent or mismatched network is damage in every distribution, reinstalling is what fixes it, and no distribution has a case in which absence is expected.
+- **The rule is about this engine's variants and about nothing else.** What a distribution carries for a game played on another embedded engine is that engine's contract's: the placement games' weights are [placement-engine-integration.md](placement-engine-integration.md)'s, and Jieqi's rules authority carries no network at all and is not the poorer for it, per [jieqi-engine-integration.md](jieqi-engine-integration.md).
 
 ### The pinned-input manifest
 
