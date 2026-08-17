@@ -114,6 +114,19 @@ than left for a consumer, so that the archive shipped inside
 `MiniXiangqiCore.xcframework` is complete: an archive with undefined symbols
 links correctly only for as long as nothing pulls its members in wholesale.
 
+Two consequences bind every future consumer. A consumer must never define one
+of these three symbols itself: the failure is silent, not a duplicate-symbol
+error — the archive member holding our body is simply never pulled in and the
+consumer's body wins — so a different body belongs in
+[`mxq_pikafish_link_closure.cpp`](mxq_pikafish_link_closure.cpp) or nowhere.
+And a consumer that speaks this engine's types needs the renamed namespace and
+this directory's include path, which `mxq_core` deliberately withholds through
+`$<LINK_ONLY:...>` so that the Fairy-Stockfish bridge can never bind here: the
+shape for a jieqi bridge is a small library of its own that links
+`mxq::pikafish` normally and is itself held by `mxq_core` behind `LINK_ONLY` —
+never the removal of `LINK_ONLY`, which would put this engine's rename on
+translation units that speak to the other one.
+
 The price of them is stated plainly, because it is the price of leaving
 `upstream/` verbatim. A three-line patch to `position.cpp` would remove all
 three references, and it is deliberately not applied: a patch is a fork change,

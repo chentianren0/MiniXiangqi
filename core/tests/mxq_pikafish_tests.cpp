@@ -56,6 +56,7 @@
     #include "bitboard.h"
     #include "movegen.h"
     #include "position.h"
+    #include "uci.h"
 #endif
 
 namespace fs = std::filesystem;
@@ -294,6 +295,12 @@ void case_a_face_down_piece_moves_as_the_piece_that_starts_there() {
     if (from_d0.size() == 1) {
         c.check_eq(from_d0.front(), "d0e1", "and it is the step to the palace centre");
     }
+
+    /* The one link-closure stub that is live code rather than a no-op: a wrong
+     * body would print wrong squares, so it is executed here rather than only
+     * linked. */
+    c.check_eq(PikafishJieqi::UCIEngine::square(PikafishJieqi::SQ_D0), "d0",
+               "the live stub prints the square it is given");
 
     c.report();
 }
