@@ -66,11 +66,18 @@ deployment_target=26.5
 # Simulator included, since a simulator binary is an iOS binary built against
 # another SDK rather than a macOS one.
 #
-# The core is five static libraries — the facade, the two vendored engines, the
+# The core is six static libraries — the facade, the three vendored engines, the
 # lz4 the second engine decompresses its weights with, and the vendored SQLite —
 # and an XCFramework carries one, so they are combined per architecture with
 # libtool and then joined across architectures with lipo, rather than left for
 # every consumer to link in the right order.
+#
+# The third engine, the Pikafish jieqi rules slice, is in that list although no
+# code calls it yet. Building it here is the point: this script is where the
+# slice meets the iOS SDK, the Simulator and arm64e, and a platform it does not
+# compile on is a finding the stage that vendored it should have, not the stage
+# that later writes its bridge. The app pays nothing for it — a static archive's
+# members are pulled in only to resolve a reference, and nothing references it.
 build_platform() {
   sdk=$1
   system=$2
@@ -99,6 +106,7 @@ build_platform() {
             "$build/third_party/fairy-stockfish/libmxqfairystockfish.a" \
             "$build/third_party/rapfi/libmxqrapfi.a" \
             "$build/third_party/rapfi/libmxqrapfilz4.a" \
+            "$build/third_party/pikafish/libmxqpikafish.a" \
             "$build/third_party/sqlite/libmxqsqlite.a"
     slices="$slices $slice"
   done
