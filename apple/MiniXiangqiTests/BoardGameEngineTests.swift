@@ -163,6 +163,21 @@ struct BoardGameEngineTests {
         #expect(engine.session("S-second") == nil)
     }
 
+    @Test("A proposal naming a session already held is a violation, judged before busy")
+    func aProposalNamingAHeldSessionIsAViolation() throws {
+        let engine = try connected()
+        let id = try activeSessionFromPeer(engine)
+
+        // The state `busy` answers, and an identifier `busy` would answer for:
+        // the ordering is what decides between the two, and the contract states
+        // it — "a `propose` naming a session the receiver still holds … is a
+        // violation, judged before `busy` has anything to answer".
+        let effects = peerProposes(engine, id)
+        #expect(violations(effects) == [.noLawfulMeaning])
+        #expect(closed(effects) == [.first])
+        #expect(sent(effects).isEmpty, "and nothing is declined, busy or otherwise")
+    }
+
     @Test("Crossed proposals: the lower session identifier survives")
     func crossingKeepsTheLowerIdentifier() throws {
         let engine = try connected(minting: ["A-mine"])
@@ -1304,6 +1319,19 @@ struct BoardGameEngineTests {
                 == [.noLawfulMeaning])
         #expect(dealer.session("S-1") == nil)
 
+        // The seed is the dealer's own too, and it is the other half of the same
+        // clause: "a `deal_commit` or a `deal_seed` from the peer that is not
+        // the dealer". A fresh engine, because the violation above closed that
+        // connection and took its session with it.
+        let opened = try connected(minting: ["S-1"], drawing: [Self.seed])
+        _ = try opened.propose(to: .peer, on: .first, rulesID: "jieqi", proposerMoves: .first)
+        _ = opened.receive(.accept(.init(session: "S-1")), on: .first)
+        let seed = opened.receive(.dealSeed(.init(session: "S-1", seed: Self.seed)), on: .first)
+        #expect(violations(seed) == [.noLawfulMeaning],
+                "the dealer opens its own commitment and never receives one opened")
+        #expect(closed(seed) == [.first])
+        #expect(opened.session("S-1") == nil)
+
         // And the other end never receives a nonce: that half is its own.
         let other = try connected(drawing: [Self.nonce])
         _ = peerProposes(other, "S-peer", game: "jieqi")
@@ -1384,6 +1412,29 @@ struct BoardGameEngineTests {
                                                    keep: 0, end: nil, dealDigest: Self.digest)),
                                      on: .second)
         #expect(sent(effects) == [.decline(.init(session: "S-peer", reason: .unknownSession))])
+    }
+
+    @Test("This peer's own resume of a dealing session is refused: it is never resumed")
+    func aDealingSessionIsNotResumedFromHere() throws {
+        let engine = try connected(drawing: [Self.nonce])
+        _ = peerProposes(engine, "S-peer", game: "jieqi")
+        _ = try engine.answer("S-peer", accepting: true)
+        _ = engine.receive(.dealCommit(.init(session: "S-peer", commit: Self.commit)), on: .first)
+        #expect(engine.session("S-peer")?.state == .dealing)
+
+        // Not on the connection it is bound to, which is the one it dies with —
+        // it holds nothing worth reconciling, and there is nothing an exchange
+        // over it could state.
+        #expect(throws: BoardGameRefusal.nothingToResume) {
+            try engine.resume("S-peer", on: .first)
+        }
+        // And not onto another connection either, which is the whole of "it is
+        // never resumed": the pair proposes again and deals again instead.
+        _ = connect(engine, .second)
+        #expect(throws: BoardGameRefusal.nothingToResume) {
+            try engine.resume("S-peer", on: .second)
+        }
+        #expect(engine.session("S-peer")?.state == .dealing, "and the refusal changed nothing")
     }
 
     @Test("busy answers a proposal that arrives while a session is dealing")

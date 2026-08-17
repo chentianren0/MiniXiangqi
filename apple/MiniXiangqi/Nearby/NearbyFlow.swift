@@ -183,10 +183,10 @@ nonisolated enum NearbyRefusal: Equatable, Sendable {
 
 /// Why a game the board was showing went away without a result.
 ///
-/// These are the three ways the engine parts with a session it was playing, and
-/// there is no fourth: everything else it does to a session leaves the session
-/// there. Which of them happened is read off what the driver holds afterwards
-/// rather than decided here.
+/// These are the ways the engine parts with a session the board was on:
+/// everything else it does to a session leaves the session there. Which of them
+/// happened is read off the session as it last stood and off what the driver
+/// holds afterwards, rather than decided here.
 nonisolated enum NearbyVoid: Equatable, Sendable {
     /// The other device answered this device's resume by saying it holds no
     /// such game — it was relaunched, or lost the session some other way.
@@ -199,6 +199,12 @@ nonisolated enum NearbyVoid: Equatable, Sendable {
     case disagreement
     /// The other player's fresh proposal retired it.
     case retired
+    /// The deal never finished. A dealing session is bound to the connection its
+    /// proposal travelled on and dies with it: it holds nothing worth
+    /// reconciling, it is never resumed, and the pair simply proposes again and
+    /// deals again. The protocol calls that routine, and it is the one of these
+    /// where no game had begun.
+    case dealDied
 
     /// The one sentence the board says about it. `unknown_session` already has
     /// its own words, and they are the same words for the same fact.
@@ -212,6 +218,12 @@ nonisolated enum NearbyVoid: Equatable, Sendable {
         case .dealMismatch: "nearby.refusal.dealMismatch"
         case .disagreement: "nearby.ended.disagreement"
         case .retired: "nearby.ended.newGame"
+        // A game that never began, which is the sentence this app already has
+        // for a game that could not start and may be proposed again. A board
+        // over a dealing session has no position to stand a notice in front of
+        // and leaves for the room instead, so these are the words the case is
+        // read in rather than words a reader has met.
+        case .dealDied: "nearby.refusal.notNow"
         }
     }
 
@@ -621,7 +633,14 @@ final class NearbyFlow {
         boardVoid = reasonItWent(boardSessionID, with: peer)
     }
 
-    /// Which of the four it was, read off what the driver holds now.
+    /// Which of them it was, read off the session as it last stood and off what
+    /// the driver holds now.
+    ///
+    /// **A session still dealing answers for itself**, ahead of everything read
+    /// off what is left behind: it died with the connection its proposal
+    /// travelled on, which is what the protocol says a dealing session does, and
+    /// the pair simply proposes again and deals again. A handshake that ended
+    /// that way is not the two devices disagreeing about anything.
     ///
     /// A decline naming an active session is one of the two answers that void a
     /// session on both sides — the other device saying it has no such game, or
@@ -631,6 +650,7 @@ final class NearbyFlow {
     /// closed on a violation, which is the only other thing that takes a session
     /// away from the peer it belongs to.
     private func reasonItWent(_ session: String, with peer: PeerDeviceID) -> NearbyVoid {
+        if boardHeld?.state == .dealing { return .dealDied }
         if let decline = driver.declines.first(where: { $0.session == session }) {
             return decline.reason == .dealMismatch ? .dealMismatch : .lostByPeer
         }

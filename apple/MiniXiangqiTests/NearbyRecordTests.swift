@@ -129,6 +129,43 @@ struct NearbyRecordTests {
                 "the fourth is the session's own, and never reaches the archive")
     }
 
+    @Test("A dealt game is created over its deal, and files the evidence it was dealt")
+    func aDealtGameIsFiledWithItsProvenance() throws {
+        let core = try TestCores.fresh()
+        let record = memory(over: core)
+
+        record.follow([dealtSession()])
+
+        // **The deal rides in the game's own start.** A dealt game has no frozen
+        // position to begin from: what the handshake derived is the position it
+        // was created over, and every reveal and disclosed capture replays from
+        // it.
+        #expect(try core.configuration().startFEN == BoardGameRulesTests.dealtStart)
+
+        var over = dealtSession(plies: ["b1c3"])
+        over.peerTerminal = .resign
+        record.follow([over])
+
+        let library = HistoryLibrary(store: core.history)
+        library.load()
+        let filed = try #require(library.records.first)
+        #expect(filed.game == .jieqi)
+        #expect(filed.mode == .nearby)
+
+        // And what stands beside the start in the filed document is the evidence
+        // the deal was not chosen: with the three, anybody holding the file can
+        // hash the seed against the commitment, derive the deal, and check that
+        // what comes out is the start in front of them.
+        let text = try #require(String(data: try core.history.export(filed.id),
+                                       encoding: .utf8))
+        #expect(text.contains("\"start_fen\":\"\(BoardGameRulesTests.dealtStart)\""))
+        #expect(text.contains("\"deal_commit\":\"\(BoardGameRulesTests.commit)\""))
+        #expect(text.contains("\"deal_nonce\":\"\(BoardGameRulesTests.nonce)\""))
+        #expect(text.contains("\"deal_seed\":\"\(BoardGameRulesTests.seed)\""))
+        #expect(!text.contains(BoardGameRulesTests.digest),
+                "the fourth is derivable from the deal it names, and is no part of it")
+    }
+
     @Test("A dealt game comes back over the deal it was played on, re-verified")
     func aDealtGameComesBack() throws {
         let directory = TestCores.scratchDirectory()

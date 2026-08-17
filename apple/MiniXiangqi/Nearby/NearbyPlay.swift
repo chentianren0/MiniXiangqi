@@ -94,6 +94,11 @@ final class NearbyPlay {
     private(set) var placement: Placement
     private(set) var legalMoves: [Move] = []
     private(set) var lastMove: Move?
+    /// What this game has taken off the board, as far as the board is drawing
+    /// it. **Jieqi displays them, because there the reasoning does not hold:
+    /// what a capture takes off the board is knowledge, and knowledge is that
+    /// game's material.** Empty in every other game, which displays none.
+    private(set) var captured = CapturedPieces()
     /// The core's evaluation of the drawn position: whose turn it is on the
     /// board, whether that side is in check, and what the position itself
     /// decides.
@@ -158,6 +163,8 @@ final class NearbyPlay {
         // wrong way up. So it opens, and stays, as it is drawn — the same
         // sentence the local board's own initialiser makes.
         self.flipped = game.isPlacement ? false : (flipped ?? (session.localMover == .second))
+        self.captured = Self.captures(of: game, from: session.dealtStart,
+                                      after: session.plies, positions)
         adopt(standing)
         self.lastMove = shown.last.flatMap { Move(text: $0, on: game.board) }
         soundedConclusion = session.end != nil
@@ -263,6 +270,16 @@ final class NearbyPlay {
     /// protocol's answer, from the mover this device holds and the ply parity,
     /// rather than anything derived from the board.
     var controller: TurnStatus.Controller { session.isLocalTurn ? .you : .peer }
+
+    /// Whose eyes this board is drawn for: this device's own player.
+    ///
+    /// It is what a nearby game adds to the captured surface. Free Play has one
+    /// person holding both hands and shows both panels whole; here the two
+    /// players' surfaces are not the same surface, and this device draws its
+    /// player's. The protocol names movers and the core names the side that
+    /// moves first, which is what `Side.red` is in every game the app carries —
+    /// the same equation `NearbyEnd` makes for a result.
+    var localSide: Side { session.localMover == .first ? .red : .black }
 
     /// Whether the board takes a tap: the game is on, the session is bound and
     /// exchanged, and the ply is this device's.
@@ -692,10 +709,75 @@ final class NearbyPlay {
     /// One position adopted: the plies the board is drawing, everything the core
     /// says about them, and the brackets on the move that produced it.
     private func land(_ plies: [String], _ standing: NearbyStanding, lastMove move: Move?) {
+        take(plies, leaving: placement)
         shown = plies
         adopt(standing)
         lastMove = move
         selected = nil
+    }
+
+    /// What the arriving line took, kept up as the line moves.
+    ///
+    /// The same three cases the board itself draws, and in the same order: a ply
+    /// added took whatever stood on its destination, a line that got shorter
+    /// gives back what its retracted plies took, and anything else — a resend, a
+    /// line that came back different after a reconnection — is the whole line
+    /// read again. It is the local game's own bookkeeping over a session's plies
+    /// instead of a store's: appended as a ply lands, dropped as a retraction
+    /// lands, read whole where neither is what happened.
+    ///
+    /// The position it reads is the one the ply was played into, which is the
+    /// board's own before it adopts the new one — a face-down victim's identity
+    /// stands there, and that is what the capture disclosed to whoever made it.
+    private func take(_ plies: [String], leaving before: Placement) {
+        guard game.conceals else { return }
+        if plies.count == shown.count + 1, plies.dropLast() == shown {
+            guard let text = plies.last, let move = Move(text: text, on: game.board),
+                  let capture = CapturedPieces.capture(atPly: shown.count, by: move,
+                                                       in: before)
+            else { return }
+            captured.taken.append(capture)
+            return
+        }
+        if plies.count < shown.count, shown.starts(with: plies) {
+            captured.removePlies(from: plies.count)
+            return
+        }
+        captured = Self.captures(of: game, from: dealtStart, after: plies, positions)
+    }
+
+    /// A whole line read back: what every ply of it took.
+    ///
+    /// Walked over the positions the core replays, exactly as the local game's
+    /// stored line and a record's replay are walked, so a nearby board and the
+    /// record it becomes answer with one surface. It is asked only of a game
+    /// that conceals — every other displays nothing, and the walk is what that
+    /// costs.
+    ///
+    /// **A claim takes nothing**: it moves no piece and can only be a line's
+    /// last ply, so the walk stops where the core's own replay of the line
+    /// stops. A line this board cannot read fails whole rather than partly, and
+    /// answers with an empty surface: one missing a capture would be a surface
+    /// quietly saying something else about the game.
+    private static func captures(of game: GameKind, from start: String?,
+                                 after plies: [String],
+                                 _ positions: any NearbyPositions) -> CapturedPieces {
+        guard game.conceals else { return CapturedPieces() }
+        let played = Array(plies.prefix { $0 != TurnAction.claim })
+        let read = try? CapturedPieces.line(for: played, on: game) { ply in
+            guard let standing = positions.standing(of: game, from: start,
+                                                    after: Array(played.prefix(ply)))
+            else { throw UnreplayableLine(ply: ply) }
+            return Placement(fen: standing.evaluation.fen, game: game)
+        }
+        return read ?? CapturedPieces()
+    }
+
+    /// A position the core would not replay, which the walk above cannot go on
+    /// without. It is a bug above the core rather than a state to design for:
+    /// the engine holds only plies its own oracle accepted.
+    private struct UnreplayableLine: Error {
+        var ply: Int
     }
 
     private func adopt(_ standing: NearbyStanding) {
