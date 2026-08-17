@@ -62,6 +62,10 @@ constexpr std::string_view DarkPieces("RNBAKABNR"
 
 static constexpr Piece Pieces[] = {W_ROOK, W_ADVISOR, W_CANNON, W_PAWN, W_KNIGHT, W_BISHOP, W_KING,
                                    B_ROOK, B_ADVISOR, B_CANNON, B_PAWN, B_KNIGHT, B_BISHOP, B_KING};
+
+// A side never has more than 16 pieces, so a piece id of the chasing detection is
+// always the index of a bit of a uint16_t
+constexpr int PIECE_ID_NB = 16;
 }  // namespace
 
 // Returns an ASCII representation of the position
@@ -992,10 +996,19 @@ bool Position::chase_legal(Move m) const {
 }
 
 
-// Calculates the chase information for a given color.
-uint16_t Position::chased(Color c) {
+// Calculates the chase information for a given color. When 'chasers' is given, it
+// receives for every chased piece id the ids of the pieces chasing it, so a chase can
+// be followed per chasing-chased pair instead of per chased piece alone.
+uint16_t Position::chased(Color c, uint16_t* chasers) {
 
     uint16_t chase = 0;
+
+    // Records the piece on 'target' as chased by the piece on 'attacker'
+    const auto add_chase = [&](Square attacker, Square target) {
+        chase |= (1 << idBoard[target]);
+        if (chasers)
+            chasers[idBoard[target]] |= (1 << idBoard[attacker]);
+    };
 
     std::swap(c, sideToMove);
 
@@ -1024,10 +1037,10 @@ uint16_t Position::chased(Color c) {
                 // Attacks against stronger pieces
                 if ((attackerType == KNIGHT || attackerType == CANNON)
                     && type_of(piece_on(to)) == ROOK)
-                    chase |= (1 << idBoard[to]);
+                    add_chase(from, to);
                 if ((attackerType == ADVISOR || attackerType == BISHOP)
                     && type_of(piece_on(to)) & 1)
-                    chase |= (1 << idBoard[to]);
+                    add_chase(from, to);
                 // Attacks against potentially unprotected pieces
                 else
                 {
@@ -1053,11 +1066,11 @@ uint16_t Position::chased(Color c) {
                             sideToMove = ~sideToMove;
                             if ((attackerType == KNIGHT && ((between_bb(from, to) ^ to) & pieces()))
                                 || !chase_legal(Move(to, from)))
-                                chase |= (1 << idBoard[to]);
+                                add_chase(from, to);
                             sideToMove = ~sideToMove;
                         }
                         else
-                            chase |= (1 << idBoard[to]);
+                            add_chase(from, to);
                     }
                 }
             }
@@ -1102,11 +1115,25 @@ Value Position::detect_chases(int d, int ply, bool* chasing) {
         }
         else
         {
-            uint16_t after = chased(~sideToMove);
+            // The chasing pieces of every chased piece, indexed by the chased piece id
+            uint16_t after[PIECE_ID_NB] = {}, before[PIECE_ID_NB] = {};
+
+            chased(~sideToMove, after);
             undo_move(st->move, st->capturedPiece);
             st = st->previous;
-            // Take the exact diff to detect the chase
-            chase[sideToMove] &= after & ~chased(sideToMove);
+            chased(sideToMove, before);
+
+            // Take the exact diff to detect the chase, one chasing piece at a time: a
+            // piece is still chased when a piece attacks it that was not attacking it
+            // before the move. Diffing the chased pieces alone ends the chase where the
+            // attack passes from one piece to another, which is what a move that blocks
+            // one line while it uncovers another does.
+            uint16_t renewed = 0;
+            for (int id = 0; id < PIECE_ID_NB; ++id)
+                if (after[id] & ~before[id])
+                    renewed |= (1 << id);
+
+            chase[sideToMove] &= renewed;
         }
     }
 
