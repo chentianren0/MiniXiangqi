@@ -2,7 +2,7 @@
 
 This document defines the local-data contract: the library store, the versioned game archive, saving, import, and export. It does not define the rules of any game, screen flows, the wire protocol two devices play over, or engine internals.
 
-One version is defined: **6**, for both the archive format and the store schema.
+One version is defined: **7**, for both the archive format and the store schema.
 
 > **Status: binding.**
 
@@ -29,7 +29,7 @@ A networked game is played by two devices, and each keeps its own record of it. 
 The archive is independent of the database schema and is also the export and import interchange format, so it must be portable across platforms and app versions.
 
 - An archive is one canonical-JSON document per game, file extension `.mxq`, Apple UTI `com.chentianren.minixiangqi.game` conforming to `public.json`, internal MIME type `application/vnd.minixiangqi.game+json`. JSON has no inclusion, reference, or execution mechanism, satisfying the untrusted-input rules structurally, and files stay human-inspectable.
-- The in-band type check is the `archive_format` member, exactly `minixiangqi-game`; the extension and UTI are hints only. It names the file format, which every game and every mode share — which game a file records is `content.rules_id`. `archive_version` is a single monotonically increasing integer, `6` for this specification.
+- The in-band type check is the `archive_format` member, exactly `minixiangqi-game`; the extension and UTI are hints only. It names the file format, which every game and every mode share — which game a file records is `content.rules_id`. `archive_version` is a single monotonically increasing integer, `7` for this specification.
 - The document has an envelope — `archive_format`, `archive_version`, `content`, `game_id`, `origin` — and a `content` object carrying everything that defines the game. The split exists so identity and content compare independently, which is what duplicate and conflict handling require.
 - `content` members: `rules_id` (the ruleset identity a game is played under, not an engine variant), `rules_version`, `start_fen` (the position the game began from, per the start policy below), `moves`, `mode`, `started_at`; then, for `human-vs-ai` games only, `human_side`, `ai_level`, `ai_movetime_ms`, `first_mover_choice`; then, for a `jieqi` game whose deal came from the protocol's handshake — which is every networked one — `deal_commit`, `deal_nonce` and `deal_seed`; then, present exactly when the game is completed — which every exported file is — `outcome`, `end_reason`, `ended_at`. The active game's stored content omits those three. Timestamps are RFC 3339 UTC instants in the exact fixed-width form `YYYY-MM-DDTHH:MM:SS.sssZ`.
 - `moves` is the game's board move line in that game's canonical notation; index 0 is the first ply played from `start_fen`, by whichever side that position has to move. A movement game's ply names the square a piece leaves and the square it arrives at; a placement game's names the one point a stone arrives on, because nothing moves. The turn action `claim` is not one of its elements: a claimed draw is recorded as the terminal trio over the position the claim stood in, so one game has one recorded move line however it was played.
@@ -39,7 +39,7 @@ The archive is independent of the database schema and is also the export and imp
 - `rules_id` decides how the rest of `content` is read: `start_fen` is checked against the starts that game accepts, `moves` against that game's board and move grammar, and `end_reason` against the reasons that game's rules can reach. So `a9a10` is a move in a `xiangqi` document and malformed in a `minixiangqi` one, and `h8` is a ply of a `renju` document and of no xiangqi game.
 - **Which position a document begins from is the game's own.** A `xiangqi` document may carry any `start_fen` that game's setup-legality predicate in [xiangqi-rules.md](xiangqi-rules.md) accepts, with either side to move, halfmove `0` and fullmove `1`. A `jieqi` document carries a dealt start, spelled in the position record [jieqi-rules.md](jieqi-rules.md) freezes — every face-down piece its identity letter followed by `~` — with Red to move, halfmove `0` and fullmove `1`. Every other game's documents carry exactly that game's frozen starting FEN: a game whose rules define neither a setup-legality predicate nor a deal has no other position to begin from.
 - **A `jieqi` document's deal rides in `start_fen`, and what stands beside it is the evidence the deal was not chosen.** The dealt start holds every hidden identity, so the deal and the move line are the whole record of play: each position, each reveal and each disclosed capture replays from them, and a per-move reveal field would be a second copy of what the replay already decides. The three deal members are the deal's provenance rather than more of its content — with them anyone holding the file can hash the seed against the commitment, derive the deal as [boardgame-protocol-v2.md](boardgame-protocol-v2.md) derives it, and check that what comes out is the `start_fen` in front of them, which is what makes a finished record verifiable instead of merely asserted. The digest is not among them: it is derivable from the deal it names, and a record carries what cannot be recomputed from what it already holds.
-- Version 6 excludes: pin state and every other local library field, per-move timing, comments and annotations, discarded lines, undo counts, per-move reveal data, and any engine diagnostics.
+- Version 7 excludes: pin state and every other local library field, per-move timing, comments and annotations, discarded lines, undo counts, per-move reveal data, and any engine diagnostics.
 
 ### Serialized identifier vocabulary
 
@@ -164,7 +164,7 @@ Imported files are untrusted input. Before saving, the importer must:
 
 Imported games are local data. Importing must not contact a server.
 
-## Library store schema, version 6
+## Library store schema, version 7
 
 - The store is one database file named `library.sqlite3` in the frontend-supplied store directory, whose leading directories the core creates as needed; write-ahead logging keeps its journal beside it (`library.sqlite3-wal`, `library.sqlite3-shm`). The connection regime — WAL, `synchronous=FULL`, `foreign_keys=ON` — is applied and read back at open rather than assumed.
 - Four `STRICT` tables: `meta` (non-authoritative bookkeeping; nothing reads it to decide anything), `game` (one row per stored game), `library` (exactly one row, enforced by constraint and a permanence trigger, holding the single nullable active-game reference), and `nearby_session` (below). There is one active game across every game and every mode, not one per kind.
@@ -173,7 +173,7 @@ Imported games are local data. Importing must not contact a server.
 - The stable identity is unique; the game axis, result well-formedness (the cross-field vocabulary rules), the mode-to-configuration relationship, the local-perspective rule, and time ordering are check constraints; History content immutability — everything except pin state — and the archive-and-clear ordering are trigger-enforced; the single active game is structural through the one reference column. What SQL cannot express — the start policy, legality of the move line, derived-column agreement, ended-early never recording a naturally terminal position — is core logic gated by tests.
 - The accepted History ordering — pinned first, then newest History-added time within each group, with `record_id` descending as the tie-break — is served by one partial index that excludes the active game structurally. `record_id` is never reused (`AUTOINCREMENT`), so the tie-break is strict recency and a stale id held across a deletion dangles rather than resolving to a later game.
 - SQLite ships vendored in the core, pinned to a stable amalgamation and hash-recorded in the repository's pinned-input manifest, with a floor of 3.37.0 for `STRICT`; updates are explicit reviewed changes, never silent. It is compiled with the hardened option set and without extension loading. The store is one process, one connection, one serialized writer; every operation is one transaction.
-- Local preferences are not in schema version 6 and are not planned for a later one: they live with each platform, per the placement below. Should that ever be revisited, a key-value table remains a purely additive change.
+- Local preferences are not in schema version 7 and are not planned for a later one: they live with each platform, per the placement below. Should that ever be revisited, a key-value table remains a purely additive change.
 
 ### The wire session of an unfinished networked game
 
@@ -199,13 +199,13 @@ The eight persistent preferences accepted in [product.md](product.md) — the de
 
 ## Versions
 
-**Version 6 is the only version.** It is the only archive format and the only store schema this build defines, writes, verifies or reads, on either axis. There is no migration, no dispatch slot waiting for one, and nothing anywhere that names another shape: a store or a document recording any other version is refused by the same version check that any other nonconforming input meets, and nothing about the refusal knows what that other version was.
+**Version 7 is the only version.** It is the only archive format and the only store schema this build defines, writes, verifies or reads, on either axis. There is no migration, no dispatch slot waiting for one, and nothing anywhere that names another shape: a store or a document recording any other version is refused by the same version check that any other nonconforming input meets, and nothing about the refusal knows what that other version was.
 
 The two axes stay independent and both are dispatched on explicitly. A store whose recorded schema version is newer than this build's is refused with the distinct newer-build answer; any other recorded version is refused as one this build has no path to. An archive whose `archive_version` is newer is refused with the created-by-a-newer-version message, never as corruption; any other version is refused as unsupported. Stored archives are never rewritten.
 
 A refusal is the whole of what happens. A store this build cannot read is left exactly as it was found — not migrated, not renamed, not emptied — so the app has no library until that file is removed by hand; the publish page is where that path is stated. Discarding a user's games silently to make the app start would be the one outcome worse than not starting.
 
-The user-visible compatibility promise: a game file exported by a build can be imported by that build and by every later build that still defines its version; a file a build cannot read says so and imports nothing; a file is never partially imported. Version 6 defines no projection of any other version's content and compares nothing across versions: two exports of one game under two versions are an identity conflict, which is the accepted answer rather than a gap. A later version inherits that choice or states its own.
+The user-visible compatibility promise: a game file exported by a build can be imported by that build and by every later build that still defines its version; a file a build cannot read says so and imports nothing; a file is never partially imported. Version 7 defines no projection of any other version's content and compares nothing across versions: two exports of one game under two versions are an identity conflict, which is the accepted answer rather than a gap. A later version inherits that choice or states its own.
 
 ## Local-only boundary
 

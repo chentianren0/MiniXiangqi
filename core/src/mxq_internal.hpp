@@ -17,9 +17,9 @@
  * deliberately not public macros: the contract exposes them through
  * mxq_core_version and mxq_archive_supported_versions so that a caller reads
  * the running core's values rather than the ones it compiled against. */
-#define MXQ_ARCHIVE_VERSION_CURRENT      6u
-#define MXQ_ARCHIVE_VERSION_MIN_READABLE 6u
-#define MXQ_STORE_SCHEMA_VERSION         6u
+#define MXQ_ARCHIVE_VERSION_CURRENT      7u
+#define MXQ_ARCHIVE_VERSION_MIN_READABLE 7u
+#define MXQ_STORE_SCHEMA_VERSION         7u
 
 /* The rules interpretation this build implements, owned by
  * docs/xiangqi-rules.md § Rules interpretation version — and, for Jieqi, by

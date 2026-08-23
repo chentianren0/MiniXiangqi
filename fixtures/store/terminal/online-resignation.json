@@ -1,0 +1,18 @@
+{
+  "title": "Online, Black resigns",
+  "why": "The declared endings belong to networked play rather than to one transport, so the mode that reaches its peer over a network ends exactly as the nearby one does: the caller states which side resigned, because the reconciled session is the authority for that and the board is not, and the core derives the win from it. A store that admitted the declared reasons for nearby alone would refuse this ending outright. It names no golden, its document differing from the nearby one in the mode string alone.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "online",
+    "local_side": "red"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "end": {
+    "action": "commit_nearby_end",
+    "reason": "resignation",
+    "resigning_side": "black",
+    "outcome": "red-wins",
+    "end_reason": "resignation",
+    "state": "ongoing"
+  }
+}

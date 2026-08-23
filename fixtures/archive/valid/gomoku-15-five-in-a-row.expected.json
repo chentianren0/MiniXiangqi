@@ -2,7 +2,7 @@
   "title": "Gomoku, Free Play, the line of five that ended it",
   "why": "The completed shape of a placement game, carrying the win only a placement game's rules reach. It is the version 4 vocabulary's own case: five-in-a-row is written and read back, and the cross-field rule that keeps it to the games whose rules produce it is satisfied by a document the core itself wrote.",
   "info": {
-    "archive_version": 6,
+    "archive_version": 7,
     "game": "gomoku-15",
     "move_count": 9,
     "mode": "free-play",

@@ -1,6 +1,6 @@
 # Game Archive Fixtures
 
-This directory holds the approved, executable fixtures for the version 6 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
+This directory holds the approved, executable fixtures for the version 7 game archive: a **golden corpus** of archives the codec must accept, decoded exactly as stated, and a **rejection corpus** of one archive per rejection class the accepted validation order defines. The fixtures and [docs/game-data.md](../../docs/game-data.md) form one contract and are reviewed together: a change to either is a data-contract change.
 
 Normative stance: every expected value comes from the accepted archive format, its serialized vocabularies, its cross-field rules, and its validation order — never from what the codec currently happens to do. A file here that the codec disagrees with is a codec defect until the contract says otherwise.
 
@@ -66,13 +66,13 @@ Every golden asserts three things:
 | `renju-free-play-active` | Renju, Free Play, active | none |
 | `gomoku-15-five-in-a-row` | Gomoku, Free Play, complete | `red-wins` / `five-in-a-row` |
 
-Between them they cover every game the format records, all four `outcome` values, the terminal pairs a version 6 file can carry, both human sides, all three AI levels, both halves of the per-game start policy, and both halves of the omission rule: Free Play and networked play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface. Of the modes they cover human-versus-AI, Free Play and `nearby`; `online` is `nearby`'s twin in every rule this corpus exercises, and where that twinning is asserted is the core suite rather than a second set of documents differing in one member.
+Between them they cover every game the format records, all four `outcome` values, the terminal pairs a version 7 file can carry, both human sides, all three AI levels, both halves of the per-game start policy, and both halves of the omission rule: Free Play and networked play omit `human_side`, `ai_level`, `ai_movetime_ms` and `first_mover_choice` rather than writing a null, which is exactly what `MXQ_COLOR_NONE`, `MXQ_AI_LEVEL_NONE` and `MXQ_FIRST_MOVER_NONE` stand for on the other side of the C interface. Of the modes they cover human-versus-AI, Free Play and `nearby`; `online` is `nearby`'s twin in every rule this corpus exercises, and where that twinning is asserted is the core suite rather than a second set of documents differing in one member.
 
 The five networked goldens also carry the portability law: none of them names a peer device, a pairing, or which side this device's player took. `nearby-resignation` is a resignation with no `human_side` to check its winner against — the outcome names the winner and the side that resigned is its opposite — and the two draws are the ends only two players can reach.
 
 `jieqi-nearby-active` and `jieqi-nearby-ended-early` are the goldens whose start is dealt, and the ones that carry the deal's provenance — the active shape and the completed one, so that filing a dealt game is shown to keep the three members the document holds while the wire session that held the fourth dies with the game. Its `start_fen` is the deal itself — every hidden identity, ninety-nine characters, Red to move — and the three members beside it are what make the record checkable rather than asserted: validation hashes the seed against the commitment, derives the deal as [docs/boardgame-protocol-v2.md](../../docs/boardgame-protocol-v2.md) derives it, and compares what comes out with the start in front of it. The seed and the nonce are plain values on purpose. They are a cross-implementation vector rather than a secret, and the vector was chosen so that deriving this deal draws a value of `0xfffffffd` below nine and has to discard it: an implementation that skipped the rejection sampling fails this file, and one that ran Fisher–Yates the other way, laid the pieces onto the squares in another order, or fed the seed and the nonce to the key in the other order fails it too.
 
-The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 6 document and not an incomplete one.
+The active-game shape is the archive as the store holds it while the game is being played, not something an export ever produces: an exported file is always a completed game. The codec reads both, and refusing to import an incomplete one is the importer's rule rather than the codec's. `free-play-created` is the extreme of that shape — the row a creation writes, with an empty `moves` array, which is a complete version 7 document and not an incomplete one.
 
 The two placement goldens are what the second board looks like in this format: a frozen empty 15×15 start, single-square plies, and — in `gomoku-15-five-in-a-row` — an end only a placement game's rules reach. A codec carrying a movement game's start position, move grammar or end-reason set passes every xiangqi golden unchanged and fails these two.
 
@@ -83,7 +83,7 @@ The two placement goldens are what the second board looks like in this format: a
   "title": "…",
   "why": "…",
   "info": {
-    "archive_version": 6,
+    "archive_version": 7,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "free-play",
@@ -220,7 +220,7 @@ The corpus pins the frozen-only half of the policy through the Mini Xiangqi file
 
 Five more fixtures carry the third half of that policy, the one Jieqi adds, and they divide the way the validation order divides it.
 
-Three are structural, and they are the presence rule on both of its axes: the three deal members ride a `jieqi` document whose mode is `nearby` and no other. `jieqi-deal-members-missing` is that document without them, `jieqi-free-play-carries-deal` is the mode axis — Free Play deals its own start locally, so there is no handshake behind it for a commitment to bind — and `nearby-carries-deal-members` is the game axis, a `minixiangqi` nearby document carrying provenance for a deal that never happened. A rule checked on one side only refuses half of what it knows, which is why the corpus states all three.
+Three are structural, and they are the presence rule on both of its axes: the three deal members ride a `jieqi` document whose mode is a networked one and no other. `jieqi-deal-members-missing` is that document without them, `jieqi-free-play-carries-deal` is the mode axis — Free Play deals its own start locally, so there is no handshake behind it for a commitment to bind — and `nearby-carries-deal-members` is the game axis, a `minixiangqi` nearby document carrying provenance for a deal that never happened. A rule checked on one side only refuses half of what it knows, which is why the corpus states all three.
 
 Two are the rules tier, and neither is reachable structurally. `jieqi-deal-commit-mismatch` carries a well-formed commitment of some seed and not of this one; `jieqi-deal-not-the-start` carries evidence that is internally consistent — the seed does hash to the commitment — and still derives a different deal from the one `start_fen` holds, because the nonce is another peer's. The first is caught by hashing and the second only by deriving, which is why the derivation is part of validation rather than a convenience for whoever wants to check a record by hand. Both land on `INCONSISTENT_REPLAY`: a file whose own evidence contradicts its start is the file disagreeing with itself, not the setup question being answered.
 
@@ -234,7 +234,7 @@ The golden files are held to the full canonical form anyway, because they are wh
 
 `core/tests/mxq_interchange_tests.cpp`, registered as `store_interchange`, re-runs this corpus through `mxq_store_import` rather than through the codec's own entry points. It asserts nothing about what the codec decides — the sidecars already fix that, and it reads its expectations out of them — and everything about what the pipeline around it does: that every rejection class refuses through the surface a frontend actually calls, with the status the sidecar states for `validate`, and that the library is untouched each time. It also drives the round trip, the duplicate and conflict answers, and the accepted two-second budget over the largest golden.
 
-The active shapes are its one deliberate divergence: they are valid version 6 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
+The active shapes are its one deliberate divergence: they are valid version 7 documents, so `archive_fixtures` accepts them, and an import refuses them because an imported record is a completed game. That refusal is asked after the ordered stages rather than among them, so a file's rejection class is the same whichever entry point asked — which is what lets this runner read its expectations from these sidecars at all.
 
 ## Consumption
 

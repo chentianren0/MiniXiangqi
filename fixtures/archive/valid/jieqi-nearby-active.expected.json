@@ -3,7 +3,7 @@
   "why": "The one game whose start is dealt, in the one mode whose deal came from a handshake. start_fen is the deal itself — every hidden identity, ninety-nine characters, Red to move — and the three deal members beside it are what make the record checkable rather than asserted: the seed hashes to the commitment, and the deal that seed and nonce derive is the one the start spells. Validation re-derives it and compares, so a reader that skipped the derivation, ran Fisher-Yates the other way, or dropped the rejection sampling fails this file: deriving it draws a value of 0xfffffffd below nine, which is at the limit and must be discarded. The seed and nonce are plain on purpose, being a cross-implementation vector rather than a secret.",
   "game": "jieqi",
   "info": {
-    "archive_version": 6,
+    "archive_version": 7,
     "game": "jieqi",
     "move_count": 2,
     "mode": "nearby",

@@ -2,7 +2,7 @@
   "title": "Nearby, active: the mode two devices play, carrying nothing device-local",
   "why": "A nearby game omits the four human-versus-AI members exactly as Free Play does, and carries no peer identity, no local side and no session bookkeeping: content is device-portable, so which side this device's player took lives in the store and never in the file.",
   "info": {
-    "archive_version": 6,
+    "archive_version": 7,
     "game": "minixiangqi",
     "move_count": 2,
     "mode": "nearby",
