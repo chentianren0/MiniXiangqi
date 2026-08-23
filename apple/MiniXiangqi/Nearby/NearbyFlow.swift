@@ -368,8 +368,10 @@ final class NearbyFlow {
     /// a shorter reach rather than a feature that is not there. So the question
     /// this answers is the platform's alone, and no hardware answer is read.
     ///
-    /// Never on the Mac, which has neither the entitlement nor the system's
-    /// pairing UI, and where the whole feature is compiled out.
+    /// Never on the Mac. The surfaces are built on every platform, so this
+    /// answer, rather than their absence, is what withholds nearby play there —
+    /// and it can only be the platform's, because the transports and the flow
+    /// assembled over them are written for iOS alone.
     static var isAvailableHere: Bool {
         #if os(iOS)
         true

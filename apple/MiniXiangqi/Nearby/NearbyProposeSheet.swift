@@ -16,9 +16,6 @@
 // not.** The side, the room and the invitation are the shape a proposal has
 // wherever two devices can reach each other; pairing is the system's own
 // peer-to-peer errand, and its views exist only where that system service does.
-// So the section carrying them is the file's one platform gate, and everything
-// around it — this sheet and the two answers below it — compiles wherever the
-// app runs.
 
 import SwiftUI
 
