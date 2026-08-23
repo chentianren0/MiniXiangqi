@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   MiniXiangqi.entitlements plus Wi-Fi Aware, which only iPhone and iPad may
-  sign. A key added to the shared file is added here too.
+  sign, and less that file's App Sandbox key, which only the Mac is sandboxed
+  by. A key added to the shared file is added here too.
 -->
 <plist version="1.0">
 <dict>
@@ -11,6 +12,8 @@
 		<string>Publish</string>
 		<string>Subscribe</string>
 	</array>
+	<key>com.apple.developer.game-center</key>
+	<true/>
 	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
 	<true/>
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
