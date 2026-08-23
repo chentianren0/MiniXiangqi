@@ -315,6 +315,7 @@ struct OnlineTests {
         let second = FakeMatch()
         let fresh = transport.open(over: second)
         fresh.becameUsable(reaching: .friend, named: "Wei")
+        await settle { second.sent.count == 2 }
 
         #expect(transport.connections.count == 1, "one connection, and it is the fresh one")
         #expect(transport.connections.first === fresh)
@@ -328,6 +329,20 @@ struct OnlineTests {
         #expect(driver.sessions.first?.state == .active)
         #expect(driver.peers[standing.id] == nil)
         #expect(driver.peers[fresh.id] == .friend)
+
+        // **And the game is picked up on the connection that replaced it.**
+        // The death alone would leave a session nothing is carrying, which is
+        // an interrupted game with no way back; what makes the replacement
+        // whole is the resume going out on the fresh match, once, after the
+        // greeting that opens it. Exactly one, because the engine holds an
+        // exchange per session and a second resume on one connection would
+        // re-send plies the other player already has.
+        let opening = try second.messages
+        #expect(opening.count(where: { if case .hello = $0 { true } else { false } }) == 1)
+        #expect(opening.count(where: { if case .resume = $0 { true } else { false } }) == 1,
+                "the interrupted game rides the fresh connection — \(opening)")
+        #expect(first.sent.count == 2,
+                "and nothing more was said on the match that gave way")
     }
 
     @Test("and a match with somebody else leaves the first alone")

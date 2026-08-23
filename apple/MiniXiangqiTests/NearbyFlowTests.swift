@@ -436,6 +436,54 @@ struct NearbyFlowTests {
         #expect(driver.proposals.count == 1)
     }
 
+    /// A friend who comes back on a fresh connection is offered the game again.
+    ///
+    /// **A first proposal comes to nothing often enough to design for**: their
+    /// app closes before they answer, or this engine refuses it while the
+    /// pair's last game is still settling. What they come back on is a fresh
+    /// match under a fresh connection — the same person, reached again.
+    ///
+    /// What this would catch is the guard being keyed by the person rather than
+    /// by the connection. Nothing else on this surface sends a proposal, so
+    /// that person could never be offered a game again for the rest of the
+    /// surface's life: the invitation the player can see would lead nowhere,
+    /// with no refusal and nothing to try.
+    @Test("A friend who comes back on a fresh connection is proposed to again")
+    func aFriendOnAFreshConnectionIsProposedToAgain() {
+        let driver = FakeDriver()
+        let reach = FakeReach(hasRadio: false)
+        reach.playerChoosesFromTheRoom = false
+        let flow = flow(driver: driver, reach: reach, mode: .online)
+
+        flow.open(.xiangqi)
+        reach.peers = [.other]
+        flow.roomChanged()
+        #expect(driver.proposals.count == 1)
+
+        // The proposal came to nothing, and the match it travelled went with
+        // it: the engine holds no session, and the room is empty again.
+        driver.sessions = []
+        reach.peers = []
+        flow.roomChanged()
+
+        // They rejoin. Online that is a fresh match, which is a connection this
+        // surface has never offered anything on.
+        let again = ConnectionID("online-2")
+        reach.peers = [NearbyPeer(connection: again, peer: NearbyPeer.other.peer,
+                                  name: NearbyPeer.other.name)]
+        flow.roomChanged()
+
+        #expect(driver.proposals.count == 2,
+                "the game goes out again, because nothing else here can send it")
+        #expect(driver.proposals.last?.connection == again)
+
+        // The same connection publishing again is the same offer, and is still
+        // refused a second proposal — which is what the guard is for.
+        driver.sessions = []
+        flow.roomChanged()
+        #expect(driver.proposals.count == 2)
+    }
+
     @Test("and where the room is the choice, nothing goes out until it is pressed")
     func aRoomChosenFromSendsNothingByItself() {
         let driver = FakeDriver()

@@ -373,12 +373,21 @@ final class NearbyFlow {
     /// left.
     private var orientations: [String: Bool] = [:]
 
-    /// Who the surface now up has already offered its game to. It is the
-    /// sheet's own rule — "while an invitation is unanswered the sheet says so
-    /// and offers no second one" — kept where a proposal goes out by itself
-    /// rather than by a press, so that a room republishing under a refusal the
-    /// player is still reading cannot propose again behind it.
-    private var offeredTo: Set<PeerDeviceID> = []
+    /// The connections the surface now up has already offered its game on. It
+    /// is the sheet's own rule — "while an invitation is unanswered the sheet
+    /// says so and offers no second one" — kept where a proposal goes out by
+    /// itself rather than by a press, so that a room republishing under a
+    /// refusal the player is still reading cannot propose again behind it.
+    ///
+    /// **The connection is what it counts, not the person.** Where the
+    /// proposal is the only way a game is offered, a person who may be offered
+    /// one once may never be offered one again — and a first proposal comes to
+    /// nothing often enough to design for: their app closes before they answer,
+    /// or this engine refuses it while the pair's last game is still settling.
+    /// What they come back on is a fresh match under a fresh connection, which
+    /// this has never offered anything, so the game goes out again. The same
+    /// connection publishing again is the same offer, and is still refused.
+    private var offeredOn: Set<ConnectionID> = []
 
     init(driver: any NearbyDriving, reach: any NearbyReach,
          positions: any NearbyPositions, mode: PlayMode,
@@ -607,7 +616,7 @@ final class NearbyFlow {
     /// from the consent prompt when this device accepts one.
     func openBoard(_ session: String) {
         proposing = nil
-        offeredTo = []
+        offeredOn = []
         boardSessionID = session
         boardVoid = nil
         boardHeld = nil
@@ -620,7 +629,7 @@ final class NearbyFlow {
     /// comes.
     func dismissSheet() {
         proposing = nil
-        offeredTo = []
+        offeredOn = []
         restIfIdle()
     }
 
@@ -681,9 +690,9 @@ final class NearbyFlow {
             return
         }
         guard invited == nil, let device = chosenDevice,
-              device.connection != nil, !offeredTo.contains(device.peer)
+              let connection = device.connection, !offeredOn.contains(connection)
         else { return }
-        offeredTo.insert(device.peer)
+        offeredOn.insert(connection)
         invite(device, to: game)
     }
 
