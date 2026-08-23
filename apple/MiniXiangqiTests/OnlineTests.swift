@@ -215,6 +215,19 @@ struct OnlineTests {
         #expect(driver.peers[first.id] == nil)
     }
 
+    @Test("A minted name carries no rank, and is its own name")
+    func mintedNamesAreOutsideTheRankSpace() {
+        let id = OnlineTransport.mintName()
+
+        // The nearby transport writes a rank digit and a hyphen at the head of
+        // the names it mints, and `name` hands back whatever follows one. A
+        // mint that began with a digit here would lose its first characters on
+        // the way to a log line and a screen, and would carry a preference
+        // between two local paths that online is no part of.
+        #expect(id.name == id.rawValue)
+        #expect(id.rawValue.first?.isNumber == false)
+    }
+
     @Test("An online peer is a Game Center player, in a namespace of its own")
     func onlineIdentityCannotCollideWithANearbyOne() {
         let identifier = "A:_1a2b3c4d5e"
@@ -329,7 +342,7 @@ struct OnlineTests {
     /// tasks with nothing to wait on, so this is a handful of turns rather than
     /// a wait; the bound is there so a broken transport fails a test rather
     /// than hanging a run.
-    private func settle(until reached: @MainActor () -> Bool = { false }) async {
+    private func settle(until reached: @MainActor () -> Bool) async {
         for _ in 0..<200 {
             if reached() { return }
             await Task.yield()

@@ -8,8 +8,7 @@
 // handler either says the player is signed in or hands over the system's own
 // view controller, which is presented as it is. The app writes no words about
 // Game Center, mints no account, holds no credential and asks for nothing: the
-// whole ceremony belongs to the system, and this is the twenty lines that put it
-// on screen.
+// whole ceremony belongs to the system, and this file only puts it on screen.
 //
 // **What the surfaces read is one boolean, and its rule is the contract's.**
 // The interaction contract says the Online Play row "stands where the player's

@@ -2,8 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   MiniXiangqi.entitlements plus Wi-Fi Aware, which only iPhone and iPad may
-  sign, and less that file's App Sandbox key, which only the Mac is sandboxed
-  by. A key added to the shared file is added here too.
+  sign, and less that file's com.apple.security.network.client, which is a
+  sandbox gate the Mac alone has. A key added to the shared file is added here
+  too.
 -->
 <plist version="1.0">
 <dict>
