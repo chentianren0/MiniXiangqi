@@ -12,8 +12,8 @@ This document owns the product definition, the target platforms, and the feature
 - **Windows ships through the Microsoft Store, and the zip stays.** A package submitted to the Store is signed **by the Store**, with Microsoft's certificate, after it is accepted, so a Store submission never needs a certificate of ours. The CI-built zip per architecture remains beside it as the direct download — unpack and run, no installer, no runtime install — because it is the channel that needs no account and no store.
 - On Apple platforms, distribution is TestFlight internal testing and the public App Store; the App Store listing states the application's GPLv3 licence and links the complete source.
 - **Every build contains the AI networks of every game its AI plays, the Windows zip included**, so there is no file a recipient has to add. What the network this project trained plays like is measured in [engine-integration.md](engine-integration.md); the redistributed ones — built-in Xiangqi's and the placement games' — carry no strength claim of ours, per that document and [placement-engine-integration.md](placement-engine-integration.md). Jieqi carries no network at all: nothing plays it, and the engine behind its rules neither searches nor evaluates, per [jieqi-engine-integration.md](jieqi-engine-integration.md).
-- The application is fully offline and must not require an Internet connection.
-- Fully offline constrains the app, not the platform beneath it: the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
+- The application is fully offline in everything but **Online Play**, and no other feature may require an Internet connection.
+- Fully offline constrains the app, not the platform beneath it: outside **Online Play** the app reaches no Internet host and no server of any kind, and the only network it uses is the local one two devices are on together. **Online Play** reaches exactly one service, Game Center, Apple's own, which provides the accounts, the invitations, and the connection between the players; the app operates no server, relay, or account system of its own anywhere. Platform-provided backup of its store — iCloud backup, Time Machine — is permitted, and operating-system crash reporting follows the user's own system setting rather than being overridden here.
 
 ## Target platforms
 
@@ -29,21 +29,22 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Play modes
 
-- Every game a build carries offers the same three modes, **Jieqi excepted**: it has no AI, so it offers **Free Play** and **Nearby Play** alone. **Gomoku, Renju and Jieqi are carried on Apple platforms**; the Windows frontend carries Mini Xiangqi and Xiangqi.
+- Every game a build carries offers the same four modes, **Jieqi excepted**: it has no AI, so it offers **Free Play**, **Nearby Play**, and **Online Play**. **Gomoku, Renju and Jieqi are carried on Apple platforms**; the Windows frontend carries Mini Xiangqi and Xiangqi.
 - Human versus AI.
 - **Free Play**, where one person controls both Red and Black. It is not presented as a local two-player mode.
-- **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad, and internet play stays excluded.
-- **Custom Scene**, and **自定排局** in Chinese, is Xiangqi's alone and is not a fourth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other; Jieqi's own start is dealt rather than frozen, and nobody composes it either.
+- **Nearby Play**, where two people play one game on two devices that reach each other without the Internet. It is offered on iPhone and iPad.
+- **Online Play**, where two people play one game on two devices at any distance, over Game Center. It is offered on iPhone, iPad, and Mac, to friends alone: a Game Center invitation or a shared party code brings the two players together, and nothing matches a player with a stranger. The invitation consents to the connection, as pairing does in Nearby Play; the game itself is proposed and accepted over that connection, gated by the same alert Nearby Play uses.
+- **Custom Scene**, and **自定排局** in Chinese, is Xiangqi's alone and is not a fifth mode: the player composes a position on an empty board, chooses which side moves first, and plays it out as a **Free Play** game — one person controlling both sides, with the hint, repeated undo, and the board flip, and nothing to resign to. It is offered on Apple platforms. Every other game begins from its own frozen starting position and from no other; Jieqi's own start is dealt rather than frozen, and nobody composes it either.
 - Human-versus-AI setup offers **I Move First**, **AI Moves First**, and **Random**. Because the frozen start of each game this mode offers has one first mover — Red in Mini Xiangqi and Xiangqi, Black in the placement games — the resolved choice determines which side the human player takes, which is retained in game metadata.
 - On a new installation, the Settings default is **I Move First**. The user may change the persistent default to **AI Moves First** or **Random**.
 - Human-versus-AI setup copies the Settings defaults into a temporary per-game draft. Changes to that draft apply only to the game being prepared and never change the Settings defaults.
 - The AI offers three difficulty levels that differ only in maximum thinking time: **Fast** at 1 second per move, **Standard** at 3 seconds per move, and **Deep** at 5 seconds per move. **Standard** is the new-install default.
 - **An on-demand hint** suggests the engine's move for the side to move. It is offered in human-versus-AI play and in Free Play, in every game but **Jieqi**, which no engine here plays, on the player's own turn in a live game — the human's turn against the AI, either turn in Free Play, since one person controls both sides there. The player asks for it and nothing offers it unbidden; it plays nothing, and the suggested move becomes a move only by the player making it.
-- **A hint is never offered in Nearby Play.** A suggestion engine on one side of a game between two people is not this product's nearby play.
+- **A hint is never offered in Nearby Play or Online Play.** A suggestion engine on one side of a game between two people is not this product's play between people.
 - **Nothing about a hint is recorded.** It is presentation, like flipping the board: the game, its History record, and every export are exactly what they would have been without it, and no assisted marker exists.
 - A chess clock is not part of the product.
 - Repeated undo is available. Redo is not.
-- Resign is available in human-versus-AI and in nearby play. After confirmation, resignation records a loss for the player who resigned.
+- Resign is available in human-versus-AI play, Nearby Play, and Online Play. After confirmation, resignation records a loss for the player who resigned.
 - In-app help is the read-only Mini Xiangqi rules reference. It does not analyze the current game or suggest moves; a standard-Xiangqi Help reference is not part of the current product surface.
 
 ## Games and history
@@ -97,7 +98,7 @@ Detailed navigation behavior and presentation belong in [interaction-design.md](
 
 ## Exclusions
 
-- Internet-dependent features, and servers, relays, and accounts of every kind.
+- Internet-dependent features beyond Online Play, and servers, relays, and account systems of our own, of every kind.
 - Chess clocks.
 - Multiple main windows.
 - Structured lessons and practice drills.
