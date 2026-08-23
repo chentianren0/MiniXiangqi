@@ -43,6 +43,9 @@ final class GameCenterAvailability {
     /// sign-ins, and GameKit calls whichever it holds.
     @ObservationIgnored private var hasAuthenticated = false
 
+    /// How many reads have been asked for, and so which one is the newest.
+    @ObservationIgnored private var reads = 0
+
     /// Ask Game Center to sign the player in. Called once, at launch;
     /// idempotent, so calling it again is nothing.
     func authenticate() {
@@ -91,18 +94,46 @@ final class GameCenterAvailability {
     /// Game Center is a launch with no online row, and a row that appears a
     /// moment later is a row appearing when its answer does.
     func refresh() {
-        // Detached deliberately: a `Task` started here would inherit this
-        // actor and block exactly the thread this is avoiding.
-        Task.detached(priority: .utility) { [weak self] in
+        let read = issueRead()
+        Self.daemon.async { [weak self] in
             let player = GKLocalPlayer.local
             let stands = Self.stands(
                 authenticated: player.isAuthenticated,
                 multiplayerRestricted: player.isMultiplayerGamingRestricted)
-            await MainActor.run { self?.adopt(stands) }
+            Task { @MainActor in self?.adopt(stands, from: read) }
         }
     }
 
-    private func adopt(_ stands: Bool) {
+    /// **A call that blocks is carried by a queue rather than by a task.** The
+    /// cooperative pool is a thread per core, and a task that blocks holds one
+    /// of them until the block ends — so a daemon that never answers takes a
+    /// share of every `await` in the process with it, which is a whole app made
+    /// slow by one question about a row. A queue's thread is the queue's own,
+    /// and one never given back is paid for here alone.
+    ///
+    /// Its own rather than the party's, so that a registration the daemon does
+    /// not answer still leaves the row free to appear when its answer does.
+    /// Serial, because two reads at once ask one daemon one question.
+    private static let daemon = DispatchQueue(
+        label: "com.chentianren.MiniXiangqi.game-center-availability", qos: .utility)
+
+    /// The number the next read carries, minted here so the order is the order
+    /// the reads were asked for in.
+    func issueRead() -> Int {
+        reads += 1
+        return reads
+    }
+
+    /// What a read that has come back is allowed to write.
+    ///
+    /// **Only the newest read may write.** Two are in flight together whenever
+    /// the answer changes while one is still out — signing out asks again — and
+    /// the older one carries an answer about an account that has since gone. It
+    /// is the read's own number that decides, not the order the landings happen
+    /// to arrive in: nothing orders a hop onto this actor, and a row left
+    /// standing for a gone account stands until the next foreground return.
+    func adopt(_ stands: Bool, from read: Int) {
+        guard read == reads else { return }
         guard stands != isAvailable else { return }
         isAvailable = stands
         Self.note("Online play is \(stands ? "available" : "not available") here.")

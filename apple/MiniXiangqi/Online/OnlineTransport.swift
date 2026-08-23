@@ -150,11 +150,11 @@ final class OnlineTransport: NearbyReach {
     /// section that would draw one.
     var hasRadio: Bool { false }
 
-    /// **No.** The player names their opponent before there is a room at all —
+    /// **Yes.** The player names their opponent before there is a room at all —
     /// one friend in the system's own invitation, or one friend they said a
     /// party code to — so whoever arrives is who they picked, and there is
     /// nothing left to choose between.
-    var playerChoosesFromTheRoom: Bool { false }
+    var pairsOnArrival: Bool { true }
 
     /// **Nothing brings a match back.** There is no rediscovery here by design,
     /// so a link that has gone is gone until the two players meet again through

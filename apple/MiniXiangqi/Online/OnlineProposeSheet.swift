@@ -55,7 +55,7 @@ struct OnlineProposeSheet: View {
             if flow.invited != nil {
                 Text("nearby.waitingForAnswer")
                     .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("nearby-waiting")
+                    .accessibilityIdentifier("propose-waiting")
             } else {
                 Button("online.invite") { party.invite() }
                     .buttonStyle(.borderedProminent)

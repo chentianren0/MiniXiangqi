@@ -208,7 +208,7 @@ final class NearbyStagedReach: NearbyReach {
     let hasRadio = false
     let isRunning = false
     let peers: [NearbyPeer] = []
-    let playerChoosesFromTheRoom = true
+    let pairsOnArrival = false
     let interruption = LinkInterruption.passing
 
     func watchPairedDevices() { }

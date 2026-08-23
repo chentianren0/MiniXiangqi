@@ -50,7 +50,7 @@ struct NearbyProposeSheet: View {
             if flow.invited != nil {
                 Text("nearby.waitingForAnswer")
                     .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("nearby-waiting")
+                    .accessibilityIdentifier("propose-waiting")
             } else {
                 invite
             }
