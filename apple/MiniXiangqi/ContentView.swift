@@ -153,15 +153,22 @@ private struct Destinations: View {
     /// be invisible to the copy being looked at.
     @State private var library: HistoryLibrary
 
-    #if os(iOS)
     /// The nearby feature, created once with the window like the game and the
     /// library, and for a stronger reason than either: a nearby session belongs
     /// to the *peer*, so the engine holding it has to outlive every page and
     /// every destination. Leaving the board is an interruption the protocol
     /// already models, and coming back finds the game where the two devices left
     /// it.
-    @State private var nearby: NearbyFlow
-    #endif
+    ///
+    /// **Nothing at all where the platform has no nearby play.** A Mac never
+    /// offers it — the entitlement is signed for iPhone and iPad and the
+    /// system's pairing UI does not exist there — so the transport underneath
+    /// is built for those two alone and there is no flow to hold. The surfaces
+    /// below take this optional and draw nothing when it is empty, which is why
+    /// every one of them is declared on every platform: absence is a value here
+    /// rather than a gate, and the same surfaces serve a mode whose own reach
+    /// is a fact about the player rather than about the build.
+    @State private var nearby: NearbyFlow?
 
     private enum Destination: Hashable { case play, history, settings }
 
@@ -183,6 +190,12 @@ private struct Destinations: View {
     /// another device — and the flow the surfaces read. Assembled here because
     /// this is where the window is, and nothing below it is allowed to own a
     /// session.
+    ///
+    /// **This is the file's one platform gate, and the transport is why.** What
+    /// nearby play needs that a Mac has not got is the radio and the system's
+    /// pairing, which live in the transport and nowhere above it. So the stack
+    /// is assembled where it can be, and everything the assembly is handed to
+    /// is written once for every platform.
     private static func nearbyFlow(over core: Core) -> NearbyFlow {
         #if DEBUG
         // `-mxq-nearby-board <stage>` stands the board up on a session nobody
@@ -209,25 +222,13 @@ private struct Destinations: View {
     }
     #endif
 
-    /// The nearby feature, where the platform has one. A Mac never offers
-    /// nearby play — the entitlement is signed for iPhone and iPad and the
-    /// system's pairing UI does not exist there — so every surface that takes
-    /// this takes nothing at all.
-    private var nearbyFlow: NearbyFlow? {
-        #if os(iOS)
-        nearby
-        #else
-        nil
-        #endif
-    }
-
     var body: some View {
         TabView(selection: $destination) {
             Tab("nav.play", systemImage: "square.grid.3x3", value: Destination.play) {
                 PlayDestination(play: play, replay: { record in
                     pendingReplay = record
                     destination = .history
-                }, nearby: nearbyFlow)
+                }, nearby: nearby)
             }
 
             Tab("nav.history", systemImage: "clock", value: Destination.history) {
@@ -243,7 +244,6 @@ private struct Destinations: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        #if os(iOS)
         // The three nearby presentations that are not a page: the sheet a
         // game's own nearby row raises, the consent prompt an arriving
         // invitation puts up, and the refusal that answers one this device
@@ -251,21 +251,29 @@ private struct Destinations: View {
         // destination, because an invitation arrives when it arrives and a
         // refusal answers something the player may have sent from a sheet they
         // have already put away.
+        //
+        // **They are declared wherever the app runs and ask the flow whether
+        // there is anything to show.** With no flow every binding here is
+        // false and every observed value is nil and stays nil, so a platform
+        // without nearby play carries the declarations and presents none of
+        // them — and a mode that reaches further hangs on the same three
+        // without moving any of them.
         .sheet(isPresented: proposing) {
-            if let game = nearby.proposing {
+            if let nearby, let game = nearby.proposing {
                 NearbyProposeSheet(flow: nearby, game: game)
             }
         }
         .nearbyAnswers(nearby) { destination = .play }
         // The engine publishes on every input, and this is where the flow reads
         // what moved: a proposal answered, or a refusal to present.
-        .onChange(of: nearby.driver.sessions) { nearby.sessionsChanged() }
-        .onChange(of: nearby.driver.declines.count) { nearby.sessionsChanged() }
+        .onChange(of: nearby?.driver.sessions) { nearby?.sessionsChanged() }
+        .onChange(of: nearby?.driver.declines.count) { nearby?.sessionsChanged() }
         // The two objects that both have a claim on the library's one active
         // game, introduced to each other here because this is where both are
         // built. Nearby play makes room through the accepted 保存并继续, and
         // the paths that take the active game away tell whoever is playing it.
         .task {
+            guard let nearby else { return }
             play.nearbyHolder = nearby
             play.resumeNearby = { [weak nearby] game in nearby?.reenter(game) }
             nearby.room = play
@@ -276,11 +284,10 @@ private struct Destinations: View {
         // the engine and any owed search go with the board that is showing:
         // down when the nearby board goes up, and open again on the local page
         // still standing underneath when it comes down.
-        .onChange(of: nearby.boardSessionID) { _, session in
+        .onChange(of: nearby?.boardSessionID) { _, session in
             play.nearbyBoardPresented(session != nil,
                                       policy: MotionPolicy(reduceMotion: reduceMotion))
         }
-        #endif
         // **Which destination is showing is what the game's session hangs on.**
         // Issue #133's decision of 2026-08-05 gives the session, the engine and
         // any owed search to the board surface, so walking to another
@@ -315,7 +322,7 @@ private struct Destinations: View {
         // change of visibility; `Suspension` subscribes to those signals and
         // this must not become a second, looser answer to the same question.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { nearby.returnedToForeground() }
+            if phase == .active { nearby?.returnedToForeground() }
         }
         #else
         // The window closing, which on this platform is not the app quitting.
@@ -347,12 +354,10 @@ private struct Destinations: View {
         #endif
     }
 
-    #if os(iOS)
     private var proposing: Binding<Bool> {
-        Binding(get: { nearby.proposing != nil },
-                set: { if !$0 { nearby.dismissSheet() } })
+        Binding(get: { nearby?.proposing != nil },
+                set: { if !$0 { nearby?.dismissSheet() } })
     }
-    #endif
 
     #if DEBUG
     /// The appearance `-mxq-appearance dark` or `-mxq-appearance light` names.
