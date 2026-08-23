@@ -2,7 +2,7 @@
   "class": "content: the deal's presence",
   "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
   "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
-  "detail_contains": "in a nearby jieqi game",
+  "detail_contains": "in a networked jieqi game",
   "game": "jieqi",
   "why": "A dealt game played over the wire records the evidence its deal was dealt rather than chosen. Without it the start is a deal nobody can check, which is exactly the record this format refuses to call a record — and the refusal is structural, because presence is decided by the game and the mode and needs no rules question."
 }

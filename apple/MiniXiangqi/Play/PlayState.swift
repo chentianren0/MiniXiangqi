@@ -377,7 +377,7 @@ final class PlayState {
         // the session it is played over is held above this object. It is given
         // up before the transaction rather than left writing to a game that is
         // gone.
-        if activeSummary?.mode == .nearby { nearbyHolder?.giveUpActiveGame() }
+        if activeSummary?.mode.isNetworked == true { nearbyHolder?.giveUpActiveGame() }
         rules.archiveActiveAndClear { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
             refreshActiveSummary()
@@ -411,10 +411,10 @@ final class PlayState {
     /// the session, prepares the engine and asks for the reply the game owes.
     func resume(policy: MotionPolicy) {
         guard page == .home, modeSwitch == nil, let summary = activeSummary else { return }
-        // A nearby game is continued on its own board, over the session it was
-        // played on: the card is the one way back into the active game whatever
-        // mode it is, and which board that is follows from the mode.
-        if summary.mode == .nearby {
+        // A networked game is continued on its own board, over the session it
+        // was played on: the card is the one way back into the active game
+        // whatever mode it is, and which board that is follows from the mode.
+        if summary.mode.isNetworked {
             resumeNearby?(summary.game)
             return
         }
@@ -502,12 +502,12 @@ final class PlayState {
                     page = .home
                     return
                 }
-                // A nearby game is not played on this board: it is played over
-                // a session with another device, on a board of its own, and the
-                // home's card is what opens it. Asked of the game rather than of
-                // the summary because this is the answer that decides whether a
-                // session stays attached.
-                if try rules.configuration().mode == .nearby {
+                // A networked game is not played on this board: it is played
+                // over a session with another device, on a board of its own,
+                // and the home's card is what opens it. Asked of the game rather
+                // than of the summary because this is the answer that decides
+                // whether a session stays attached.
+                if try rules.configuration().mode.isNetworked {
                     core.endSession()
                     page = .home
                     refreshActiveSummary()
@@ -1117,7 +1117,7 @@ final class PlayState {
 
 extension PlayState: NearbyRoom {
     var standingNearbyGame: GameKind? {
-        guard let activeSummary, activeSummary.mode == .nearby else { return nil }
+        guard let activeSummary, activeSummary.mode.isNetworked else { return nil }
         return activeSummary.game
     }
 

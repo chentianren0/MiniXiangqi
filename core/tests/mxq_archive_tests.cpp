@@ -164,6 +164,7 @@ std::string mode_text(MxqPlayMode mode) {
     case MXQ_PLAY_MODE_HUMAN_VS_AI: return "human-vs-ai";
     case MXQ_PLAY_MODE_FREE_PLAY: return "free-play";
     case MXQ_PLAY_MODE_NEARBY: return "nearby";
+    case MXQ_PLAY_MODE_ONLINE: return "online";
     default: break;
     }
     return "unknown(" + std::to_string(mode) + ")";

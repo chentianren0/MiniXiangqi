@@ -86,7 +86,7 @@ struct CopyTests {
             "metadata.inProgress",
             "game.miniXiangqi", "game.xiangqi", "game.gomoku", "game.renju",
             "game.jieqi",
-            "mode.humanVersusAI", "mode.freePlay", "mode.nearby",
+            "mode.humanVersusAI", "mode.freePlay", "mode.nearby", "mode.online",
             "mode.customScene",
             "scene.firstMover", "scene.firstMover.caption",
             "scene.side.red", "scene.side.black",

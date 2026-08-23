@@ -267,10 +267,10 @@ uint32_t undo_plies_for(const MxqGame &game) {
     if (n == 0) {
         return 0;
     }
-    /* A nearby game has no unilateral undo (docs/game-data.md): a retraction
+    /* A networked game has no unilateral undo (docs/game-data.md): a retraction
      * there is the two players' agreement, and what it retracts is what they
      * agreed to keep, which is not this call's one-or-two plies. */
-    if (game.config.mode == MXQ_PLAY_MODE_NEARBY) {
+    if (mxq::networked_mode(game.config.mode)) {
         return 0;
     }
     if (game.config.mode != MXQ_PLAY_MODE_HUMAN_VS_AI) {
@@ -1311,8 +1311,8 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
         return MXQ_ERR_ARG_RANGE;
     }
     /*
-     * The one game that plays fewer than three modes. Jieqi has no AI at all —
-     * no search, no network, nothing to prepare — so a game of it against a
+     * The one game that does not play every mode. Jieqi has no AI at all — no
+     * search, no network, nothing to prepare — so a game of it against a
      * machine is a configuration of neither accepted shape, refused here beside
      * the shape checks below and for the same reason they are.
      */
@@ -1324,7 +1324,7 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
         return MXQ_ERR_ARG_RANGE;
     }
     const bool human_vs_ai = config->mode == MXQ_PLAY_MODE_HUMAN_VS_AI;
-    const bool two_devices = config->mode == MXQ_PLAY_MODE_NEARBY;
+    const bool two_devices = mxq::networked_mode(config->mode);
     bool shape_ok =
         human_vs_ai || two_devices || config->mode == MXQ_PLAY_MODE_FREE_PLAY;
     if (human_vs_ai) {
@@ -1339,15 +1339,16 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
                     config->first_mover_choice == MXQ_FIRST_MOVER_RANDOM) &&
                    config->ai_movetime_ms > 0;
     } else {
-        /* Free Play and nearby play omit all four rather than writing the NONE
-         * constants into the archive, so they must not carry values to omit. */
+        /* Free Play and networked play omit all four rather than writing the
+         * NONE constants into the archive, so they must not carry values to
+         * omit. */
         shape_ok = shape_ok && config->human_side == MXQ_COLOR_NONE &&
                    config->ai_level == MXQ_AI_LEVEL_NONE &&
                    config->first_mover_choice == MXQ_FIRST_MOVER_NONE &&
                    config->ai_movetime_ms == 0;
     }
     /* The mirror rule, and the only member that is store metadata rather than
-     * archive content: a nearby game is played from one of the two sides of
+     * archive content: a networked game is played from one of the two sides of
      * this device, and a local game is played from neither. */
     shape_ok = shape_ok &&
                (two_devices ? (config->local_side == MXQ_COLOR_RED ||
@@ -1385,18 +1386,18 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     /*
      * A composed start is Free Play's, and only Free Play's.
      *
-     * The other two modes each have a fact a composed position would make
-     * meaningless. Nearby play's is the wire protocol, which carries no start.
-     * Human-versus-AI's is first_mover_choice, which the archive records and
-     * cannot reconstruct: "human first" is a statement about a game whose first
-     * mover is the frozen start's, and a position naming its own side to move
-     * leaves it saying nothing. A vs-AI-from-a-scene feature is a contract
+     * The other modes each have a fact a composed position would make
+     * meaningless. Networked play's is the wire protocol, which carries no
+     * start. Human-versus-AI's is first_mover_choice, which the archive records
+     * and cannot reconstruct: "human first" is a statement about a game whose
+     * first mover is the frozen start's, and a position naming its own side to
+     * move leaves it saying nothing. A vs-AI-from-a-scene feature is a contract
      * change rather than something to inherit muddled here.
      *
      * A dealt start is not a composed one and the rule does not reach it:
      * nobody put it together and neither player chose it. Free Play deals its
-     * own and a nearby session's two ends derive one identical deal from the
-     * handshake, so the two modes this game plays both name a start and neither
+     * own and a wire session's two ends derive one identical deal from the
+     * handshake, so every mode this game plays names a start and none of them
      * is composing a position.
      */
     if (!named.empty() && !dealt_game &&
@@ -1411,16 +1412,15 @@ static MxqStatus create_game(MxqCore *core, const MxqGameConfig *config,
     /*
      * And a dealt game played over the wire carries the evidence its deal was
      * dealt: the commitment, the nonce and the seed are content of the document
-     * this creation writes, so a nearby game of it is created through
+     * this creation writes, so a networked game of it is created through
      * mxq_game_create_nearby — the entry that takes the wire session those
      * values arrive in — and not through the plain one, which has nowhere to
      * take them from.
      */
-    if (dealt_game && config->mode == MXQ_PLAY_MODE_NEARBY &&
-        nearby == nullptr) {
-        assert(false && "a nearby dealt game is created over its wire session");
+    if (dealt_game && mxq::networked_mode(config->mode) && nearby == nullptr) {
+        assert(false && "a networked dealt game needs its wire session");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "a nearby game of this game records the deal its "
+                        "a networked game of this game records the deal its "
                         "handshake produced, so it is created over the wire "
                         "session that carries it");
         return MXQ_ERR_ARG_RANGE;
@@ -1584,21 +1584,22 @@ MxqStatus MXQ_CALL mxq_game_create_nearby(MxqCore *core,
      * a caller describing a session it cannot have. */
     if (state.undos != 0 || state.keep != 0 || state.claimed != 0 ||
         state.sent_end != MXQ_NEARBY_TERMINAL_NONE) {
-        assert(false && "a nearby game is created over a session at its birth");
+        assert(false && "a networked game starts on a session at its birth");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "a nearby game is created over a wire session that has "
-                        "retracted, claimed and declared nothing");
+                        "a networked game is created over a wire session that "
+                        "has retracted, claimed and declared nothing");
         return MXQ_ERR_ARG_RANGE;
     }
 
-    /* The mode is not a preference here: this call writes a nearby_session row,
-     * and the schema's own trigger refuses one over any other kind of game.
-     * Saying so before the transaction makes it a programming error rather than
-     * a store failure. */
-    if (config->mode != MXQ_PLAY_MODE_NEARBY) {
-        assert(false && "a wire session belongs to a nearby game");
+    /* Which networked mode this is the configuration says, and this entry
+     * serves both. What it will not take is a local one: this call writes a
+     * nearby_session row, and the schema's own trigger refuses one over a game
+     * with no second device. Saying so before the transaction makes it a
+     * programming error rather than a store failure. */
+    if (!mxq::networked_mode(config->mode)) {
+        assert(false && "a wire session belongs to a networked game");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
-                        "a wire session belongs to a nearby game");
+                        "a wire session belongs to a networked game");
         return MXQ_ERR_ARG_RANGE;
     }
     /* And the start, refused in the same voice and on the same rung as the
@@ -2207,12 +2208,12 @@ MxqStatus MXQ_CALL mxq_game_retract_nearby(MxqGame *game, uint32_t keep,
         return rc;
     }
 
-    /* The mirror of mxq_game_undo refusing on a nearby session: what two
+    /* The mirror of mxq_game_undo refusing on a networked session: what two
      * players agreed to keep is not one player taking a move back, and neither
      * call is the other with an argument. */
-    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+    if (!mxq::networked_mode(game->config.mode)) {
         mxq::fill_error(err, MXQ_ERR_STATE_UNDO_UNAVAILABLE,
-                        "a negotiated retraction is a nearby action");
+                        "a negotiated retraction is a networked action");
         return MXQ_ERR_STATE_UNDO_UNAVAILABLE;
     }
     /* This entry rewrites the whole of the wire session, so what a rewrite may
@@ -2271,9 +2272,9 @@ MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
         return rc;
     }
 
-    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+    if (!mxq::networked_mode(game->config.mode)) {
         mxq::fill_error(err, MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
-                        "a wire session belongs to a nearby game");
+                        "a wire session belongs to a networked game");
         return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
     }
     /* The identifiers and the deal, frozen — the same question the negotiated
@@ -2557,9 +2558,9 @@ MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game, MxqEndReason reason
 
     /* These are the ends two players declare to each other, so a game with one
      * player has none of them. */
-    if (game->config.mode != MXQ_PLAY_MODE_NEARBY) {
+    if (!mxq::networked_mode(game->config.mode)) {
         mxq::fill_error(err, MXQ_ERR_STATE_RESIGN_UNAVAILABLE,
-                        "an agreed ending is a nearby action");
+                        "an agreed ending is a networked action");
         return MXQ_ERR_STATE_RESIGN_UNAVAILABLE;
     }
 
