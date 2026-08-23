@@ -16,9 +16,6 @@
 // not.** The side, the room and the invitation are the shape a proposal has
 // wherever two devices can reach each other; pairing is the system's own
 // peer-to-peer errand, and its views exist only where that system service does.
-// So the section carrying them is the file's one platform gate, and everything
-// around it — this sheet and the two answers below it — compiles wherever the
-// app runs.
 
 import SwiftUI
 
@@ -168,11 +165,11 @@ struct NearbyProposeSheet: View {
     /// stands here instead says only that this device cannot pair, and names no
     /// reason for it, as no word this application writes may.
     ///
-    /// **And they are built only where the system offers them at all**, which
-    /// is the platform gate this file has: the frameworks the two views come
-    /// from ship on iPhone and iPad and nowhere else. Where they are absent the
-    /// section is absent with them, rather than standing empty over a sentence
-    /// about a device that was never going to pair.
+    /// **And they are built only where the system offers them at all**: the
+    /// frameworks the two views come from ship on iPhone and iPad and nowhere
+    /// else. Where they are absent the section is absent with them, rather than
+    /// standing empty over a sentence about a device that was never going to
+    /// pair.
     @ViewBuilder
     private var pairing: some View {
         #if os(iOS)

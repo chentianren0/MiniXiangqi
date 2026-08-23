@@ -191,11 +191,11 @@ private struct Destinations: View {
     /// this is where the window is, and nothing below it is allowed to own a
     /// session.
     ///
-    /// **This is the file's one platform gate, and the transport is why.** What
-    /// nearby play needs that a Mac has not got is the radio and the system's
-    /// pairing, which live in the transport and nowhere above it. So the stack
-    /// is assembled where it can be, and everything the assembly is handed to
-    /// is written once for every platform.
+    /// **The transport is why this is gated.** What nearby play needs that a
+    /// Mac has not got is the radio and the system's pairing, which live in the
+    /// transport and nowhere above it. So the stack is assembled where it can
+    /// be, and everything the assembly is handed to is written once for every
+    /// platform.
     private static func nearbyFlow(over core: Core) -> NearbyFlow {
         #if DEBUG
         // `-mxq-nearby-board <stage>` stands the board up on a session nobody

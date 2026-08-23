@@ -138,6 +138,8 @@ final class PlayHomeUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["home-current-game"].exists,
                        "with no game there is no current game to describe")
         XCTAssertFalse(app.buttons["home-resume"].exists)
+        XCTAssertFalse(app.buttons["mode-xiangqi-nearby"].exists,
+                       "and no nearby row, which this platform does not offer")
         attach(app, named: "60-the-play-home")
     }
 
