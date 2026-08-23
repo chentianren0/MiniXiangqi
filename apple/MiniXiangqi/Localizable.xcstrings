@@ -1961,6 +1961,23 @@
         }
       }
     },
+    "mode.online": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online Play"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线对弈"
+          }
+        }
+      }
+    },
     "moveList.rowNumber": {
       "comment": "A move-list row number: numerals and a full stop. No word is translated.",
       "extractionState": "manual",

@@ -43,6 +43,7 @@ extension RecordSummary {
         case .humanVersusAI: String(localized: "mode.humanVersusAI")
         case .freePlay: String(localized: "mode.freePlay")
         case .nearby: String(localized: "mode.nearby")
+        case .online: String(localized: "mode.online")
         }
     }
 

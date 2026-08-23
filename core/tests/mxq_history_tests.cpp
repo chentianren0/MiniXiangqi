@@ -1825,6 +1825,149 @@ void case_the_wire_session_lives_with_its_game() {
 }
 
 /*
+ * Online play is nearby play's twin everywhere the mode gates behaviour.
+ *
+ * The two networked modes differ in how the two devices reached each other and
+ * in nothing this core is asked about, so the interesting claim is that every
+ * rule keyed to a second player on the other end reads the same for both: the
+ * creation door takes it, the store's constraints accept the row and its local
+ * side, the unilateral undo stays withheld, the negotiated retraction and the
+ * wire-session rewrite are legal, the agreed ending commits, and the document
+ * that comes out spells the mode it was played in.
+ *
+ * It is one case rather than a second copy of the nearby suite because what is
+ * under test is the twinning and not the wire session, which
+ * case_the_wire_session_lives_with_its_game already follows from birth to death.
+ */
+void case_online_is_nearbys_twin() {
+    Case c("an online game is a nearby game in everything the mode decides");
+    const fs::path store = scratch_dir("online-twin");
+
+    MxqCore *core = nullptr;
+    MxqError err = make_error();
+    if (init_core(store, 0, &core, &err) != MXQ_OK) {
+        c.check(false, "mxq_core_init failed");
+        c.report();
+        return;
+    }
+
+    MxqGameConfig config = make_config();
+    config.mode = MXQ_PLAY_MODE_ONLINE;
+    config.local_side = MXQ_COLOR_BLACK;
+
+    MxqNearbySession birth;
+    std::memset(&birth, 0, sizeof(birth));
+    birth.struct_size = static_cast<uint32_t>(sizeof(birth));
+    birth.proposer = MXQ_NEARBY_PROPOSER_PEER;
+    std::snprintf(birth.session_id, sizeof(birth.session_id),
+                  "0f2e4d6c-8a91-7b23-9c05-1d2e3f405162");
+    std::snprintf(birth.peer_id, sizeof(birth.peer_id), "game-center-A4C19E70");
+
+    /* The creation door: one entry for both networked modes, and the
+     * configuration is what says which of them this game is. */
+    MxqGame *game = nullptr;
+    err = make_error();
+    c.check_status(mxq_game_create_nearby(core, &config, &birth, &game, &err),
+                   MXQ_OK, "an online game is created over its wire session");
+    c.check(game != nullptr, "and the session handle exists");
+    if (game == nullptr) {
+        mxq_core_shutdown(core, nullptr);
+        c.report();
+        return;
+    }
+
+    sqlite3 *reader = open_second_connection(store);
+    c.check(reader != nullptr, "a second connection reads the store");
+    if (reader != nullptr) {
+        c.check_eq(query_text(reader, "SELECT mode FROM game;"), "online",
+                   "the row records the mode it was played in");
+        c.check_eq(query_text(reader, "SELECT local_side FROM game;"), "black",
+                   "and carries the local side networked play requires");
+        c.check_eq(query_text(reader, "SELECT count(*) FROM nearby_session;"),
+                   "1", "and the schema takes its wire session");
+    }
+
+    /* The withheld unilateral undo, which is the mode's rule and not the
+     * transport's: what two players agreed to keep is the only retraction
+     * either networked mode has. */
+    mxq_game_apply_move(game, "b1b3", nullptr, nullptr, nullptr);
+    mxq_game_apply_move(game, "b7b5", nullptr, nullptr, nullptr);
+    MxqGameStatus status = make_status();
+    err = make_error();
+    mxq_game_status(game, &status, &err);
+    c.check_eq(status.undo_available, 0, "an online game offers no undo");
+    c.check_eq(status.undo_plies, 0, "and has no plies to take back");
+    err = make_error();
+    c.check_status(mxq_game_undo(game, nullptr, &err),
+                   MXQ_ERR_STATE_UNDO_UNAVAILABLE,
+                   "and refuses one asked for");
+
+    /* And the three entries a wire session's game answers. */
+    MxqNearbySession retracted = birth;
+    retracted.undos = 1;
+    retracted.keep = 1;
+    err = make_error();
+    c.check_status(mxq_game_retract_nearby(game, 1, &retracted, &err), MXQ_OK,
+                   "the two players' retraction is legal on it");
+    MxqNearbySession sent = retracted;
+    sent.sent_end = MXQ_NEARBY_TERMINAL_ACCEPT_DRAW;
+    err = make_error();
+    c.check_status(mxq_game_set_nearby_session(game, &sent, &err), MXQ_OK,
+                   "and so is recording the terminal this device sent");
+
+    /* The agreed ending, which belongs to the modes with a player on the other
+     * end and to no other. */
+    uint64_t filed = 0;
+    err = make_error();
+    c.check_status(mxq_game_commit_nearby_end(game, MXQ_END_REASON_AGREED_DRAW,
+                                              MXQ_COLOR_NONE, &filed, &err),
+                   MXQ_OK, "the draw the two players agreed files the game");
+    MxqRecordSummary record = make_summary();
+    err = make_error();
+    mxq_store_history_get(core, filed, &record, &err);
+    c.check_eq(record.mode, MXQ_PLAY_MODE_ONLINE,
+               "the History record names the mode truthfully");
+    c.check_eq(outcome_text(record.outcome), "draw", "and records a draw");
+    c.check_eq(reason_text(record.end_reason), "agreed-draw",
+               "that the two players agreed");
+    c.check_eq(record.local_side, MXQ_COLOR_BLACK,
+               "with the local perspective it was played from");
+    if (reader != nullptr) {
+        c.check_eq(query_text(reader, "SELECT count(*) FROM nearby_session;"),
+                   "0", "and the filed game leaves no wire session behind");
+        sqlite3_close(reader);
+    }
+    mxq_game_release(game);
+
+    /* The document, which is where the mode crosses to another device: the
+     * archive spells it, and a reader gets back the mode that was written. */
+    MxqGame *replay = nullptr;
+    err = make_error();
+    c.check_status(mxq_store_history_open(core, filed, &replay, &err), MXQ_OK,
+                   "the record opens for replay");
+    if (replay != nullptr) {
+        const std::string document = encode_of(core, replay, c, "the record");
+        c.check(document.find("\"mode\":\"online\"") != std::string::npos,
+                "whose document spells the mode in the archive's vocabulary");
+        MxqArchiveInfo info;
+        std::memset(&info, 0, sizeof(info));
+        info.struct_size = static_cast<uint32_t>(sizeof(info));
+        err = make_error();
+        c.check_status(
+            mxq_archive_validate(
+                core, reinterpret_cast<const uint8_t *>(document.data()),
+                document.size(), &info, &err),
+            MXQ_OK, "and validates");
+        c.check_eq(info.mode, MXQ_PLAY_MODE_ONLINE,
+                   "reading back the mode it was written in");
+        mxq_game_release(replay);
+    }
+
+    mxq_core_shutdown(core, nullptr);
+    c.report();
+}
+
+/*
  * The deal a wire session carries, refused where its game has none.
  *
  * The presence rule is two questions rather than one: a value is empty exactly
@@ -2724,6 +2867,7 @@ int main(int argc, char **argv) {
     case_archive_and_clear_without_a_game();
     case_endings_refuse_where_they_do_not_apply();
     case_the_wire_session_lives_with_its_game();
+    case_online_is_nearbys_twin();
     case_a_deal_is_refused_where_its_game_has_none();
     case_a_retraction_may_not_rewrite_the_wire_session();
     case_history_ordering();

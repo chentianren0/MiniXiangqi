@@ -89,6 +89,19 @@ MxqStatus check_in(const void *in, uint32_t declared, uint32_t known,
  */
 MxqStatus require_game(MxqGameKind game, MxqError *err);
 
+/*
+ * Whether a mode is one of the networked ones — a game played by two devices
+ * over the BoardGame protocol, which is Nearby play and Online play and nothing
+ * else. Every rule that turns on there being a player on the other end asks
+ * this: the declared endings, local_side, the withheld unilateral undo, the
+ * wire session, and the deal a dealt game's handshake leaves behind.
+ *
+ * It is one function for require_game's reason: the alternative is every caller
+ * writing the disjunction, and a vocabulary that grows would then grow in a
+ * dozen places.
+ */
+bool networked_mode(MxqPlayMode mode);
+
 /* Copy a NUL-terminated string into a fixed-capacity field, truncating never:
  * a source that does not fit is a core bug and trips an assertion in debug
  * builds. */

@@ -2,9 +2,10 @@
 // whether they may ask for it.
 //
 // docs/product.md, "Play modes": an on-demand hint in human-versus-AI play and
-// in Free Play, in both games, and never in Nearby Play — which is why this
-// type lives beside the local board's own machinery and the nearby screen never
-// builds one. Nothing here is recorded: a suggestion is presentation, like
+// in Free Play, in both games, and never in Nearby Play or Online Play — which
+// is why this type lives beside the local board's own machinery and the screen
+// a networked game is played on never builds one. Nothing here is recorded: a
+// suggestion is presentation, like
 // flipping the board, and the game, History and every export are untouched by
 // it.
 //
@@ -120,11 +121,12 @@ final class Hint {
         case .humanVersusAI: return !game.searchExpected
         // Free Play is one person on both sides, so either turn is theirs.
         case .freePlay: return true
-        // Never in nearby play. A suggestion engine on one side of a game
-        // between two people is not this product's nearby play, and the nearby
-        // board never builds this object at all — this is the second lock on
-        // the same door rather than the only one.
-        case .nearby: return false
+        // Never in networked play. A suggestion engine on one side of a game
+        // between two people is not this product's play against a person, and
+        // the board a networked game is played on never builds this object at
+        // all — this is the second lock on the same door rather than the only
+        // one.
+        case .nearby, .online: return false
         }
     }
 

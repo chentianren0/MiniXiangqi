@@ -406,6 +406,10 @@ bool read_mode(const std::string &text, MxqPlayMode &out) {
         out = MXQ_PLAY_MODE_NEARBY;
         return true;
     }
+    if (text == "online") {
+        out = MXQ_PLAY_MODE_ONLINE;
+        return true;
+    }
     return false;
 }
 
@@ -807,14 +811,14 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     if (!read_mode(mode->string(), out.mode)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                       "\"mode\" is not one of \"human-vs-ai\", \"free-play\", "
-                      "\"nearby\"");
+                      "\"nearby\", \"online\"");
     }
 
     /*
      * The mode-to-configuration relationship, which is also the mapping the C
      * interface's NONE constants stand for: the four configuration members
      * exist exactly for human-versus-AI games, and every other mode omits them
-     * rather than writing a null or an empty value. A Free Play or nearby
+     * rather than writing a null or an empty value. A Free Play or networked
      * document carrying one of them is as malformed as a human-versus-AI
      * document missing one.
      */
@@ -904,12 +908,12 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
 
     /*
      * The deal's provenance: present exactly when the game is jieqi and the
-     * mode is nearby, and absent otherwise, because a locally dealt game has no
-     * handshake behind it to record and no other game has a deal at all. Both
-     * halves are checked, and on both axes: a free-play jieqi document carrying
-     * them and a nearby minixiangqi document carrying them are two different
-     * mistakes, each refused in its own words, and a rule checked on one side
-     * only refuses half of what it knows.
+     * mode is a networked one, and absent otherwise, because a locally dealt
+     * game has no handshake behind it to record and no other game has a deal at
+     * all. Both halves are checked, and on both axes: a free-play jieqi document
+     * carrying them and a networked minixiangqi document carrying them are two
+     * different mistakes, each refused in its own words, and a rule checked on
+     * one side only refuses half of what it knows.
      *
      * The shape is the format's — thirty-two bytes as sixty-four lowercase
      * hexadecimal digits, which is how all four handshake values are written
@@ -921,7 +925,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
         static const char *const kDealMembers[] = {"deal_commit", "deal_nonce",
                                                    "deal_seed"};
         const bool dealt = out.game == MXQ_GAME_KIND_JIEQI &&
-                           out.mode == MXQ_PLAY_MODE_NEARBY;
+                           mxq::networked_mode(out.mode);
         for (const char *name : kDealMembers) {
             const bool present = content.has_member(name);
             if (present == dealt) {
@@ -930,7 +934,7 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
             if (!present) {
                 return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                               std::string("\"content\" has no \"") + name +
-                                  "\" member in a nearby jieqi game");
+                                  "\" member in a networked jieqi game");
             }
             /* The two axes refuse a present member for two different reasons,
              * and each says its own: a game that is dealt no start has no deal
@@ -1049,13 +1053,13 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
     /*
      * A resignation is a side losing, and the outcome names the winner, so the
      * side that resigned is its opposite and no member has to say it. Free Play
-     * has nobody to resign to; the two modes with an opponent each add their own
-     * rule — human-versus-AI's loser is the human, and a nearby game's is
+     * has nobody to resign to; the modes with an opponent each add their own
+     * rule — human-versus-AI's loser is the human, and a networked game's is
      * whichever side the sender was, which the outcome already carries.
      */
     if (out.end_reason == MXQ_END_REASON_RESIGNATION) {
         if (out.mode != MXQ_PLAY_MODE_HUMAN_VS_AI &&
-            out.mode != MXQ_PLAY_MODE_NEARBY) {
+            !mxq::networked_mode(out.mode)) {
             return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
                           "\"resignation\" needs an opponent to resign to");
         }
@@ -1070,11 +1074,11 @@ bool read_content(const json::Value &content, Decoded &out, Reject &err) {
             }
         }
     }
-    /* The two ends two players declare to each other belong to the one mode
-     * that has two players. */
-    if (is_agreed_reason(out.end_reason) && out.mode != MXQ_PLAY_MODE_NEARBY) {
+    /* The two ends two players declare to each other belong to the modes that
+     * have two players. */
+    if (is_agreed_reason(out.end_reason) && !mxq::networked_mode(out.mode)) {
         return reject(err, MXQ_ERR_ARCHIVE_MALFORMED,
-                      "\"agreed-draw\" and \"mutual-resignation\" are nearby "
+                      "\"agreed-draw\" and \"mutual-resignation\" are networked "
                       "end reasons");
     }
     /* A rule reason belongs to the kind of game whose rules produce it, both

@@ -104,7 +104,7 @@ extern "C" {
  * separately by MxqVersion and are never conflated with this one.
  */
 #define MXQ_API_VERSION_MAJOR 3
-#define MXQ_API_VERSION_MINOR 5
+#define MXQ_API_VERSION_MINOR 6
 #define MXQ_API_VERSION_PATCH 0
 
 /* ------------------------------------------------------------------------- */
@@ -171,8 +171,9 @@ extern "C" {
  * be attributed to the configuration that produced it. */
 #define MXQ_PROFILE_ID_CAP 64
 
-/* The two identifiers a nearby game's wire session is held by. Both are opaque
- * to the core, which stores and returns them and compares neither: the session
+/* The two identifiers a networked game's wire session is held by. Both are
+ * opaque to the core, which stores and returns them and compares neither: the
+ * session
  * identifier is the proposer-minted string the two peers compare byte-wise, and
  * the peer identifier is the transport's own name for the paired device. The
  * caps are the smallest that hold a UUID and a transport-prefixed one with room
@@ -458,17 +459,29 @@ enum {
     MXQ_COLOR_BLACK = 1  /* lowercase pieces and stones */
 };
 
+/*
+ * The last two are the networked modes: one game played by two devices over the
+ * protocol in docs/boardgame-protocol-v2.md. They are one thing to every rule
+ * in this interface and differ only in how the two devices reach each other,
+ * which is a fact about the transport and never about the game — so every rule
+ * below names networked play rather than either of them, and a caller asking
+ * "has this game a second player on the other end" asks that and not a mode.
+ *
+ * Like Free Play they carry none of the four human-versus-AI members. Unlike
+ * either local mode they have a player on the other end to declare an end to,
+ * so they are the modes a resignation, an agreed draw and a mutual resignation
+ * belong to — the last two MxqEndReason values record the agreements — the
+ * modes MxqGameConfig.local_side is required in, and the modes a wire session
+ * is held for.
+ */
 typedef int32_t MxqPlayMode;
 enum {
     MXQ_PLAY_MODE_HUMAN_VS_AI = 0, /* serialised "human-vs-ai" */
     MXQ_PLAY_MODE_FREE_PLAY   = 1, /* serialised "free-play" */
-    MXQ_PLAY_MODE_NEARBY      = 2  /* serialised "nearby": one game played by
-                                    * two devices. Like Free Play it carries
-                                    * none of the four human-versus-AI members;
-                                    * unlike either local mode it can end by an
-                                    * agreement between the two players, which
-                                    * is what the last two MxqEndReason values
-                                    * record */
+    MXQ_PLAY_MODE_NEARBY      = 2, /* serialised "nearby": the two devices reach
+                                    * each other where they are */
+    MXQ_PLAY_MODE_ONLINE      = 3  /* serialised "online": the two devices reach
+                                    * each other at any distance */
 };
 
 /*
@@ -582,7 +595,10 @@ enum {
                                                 * mutual-violation tranche */
     MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE = 7, /* "mutual-perpetual-chase";
                                                 * reserved likewise */
-    MXQ_END_REASON_RESIGNATION            = 8, /* "resignation"; human-vs-AI only */
+    MXQ_END_REASON_RESIGNATION            = 8, /* "resignation"; the modes with
+                                                * an opponent to resign to —
+                                                * human-versus-AI and the two
+                                                * networked ones */
     MXQ_END_REASON_ENDED_EARLY            = 9, /* "ended-early" */
     MXQ_END_REASON_FIFTY_MOVE_RULE        = 10, /* "fifty-move-rule"; a draw, and
                                                  * Xiangqi's alone: Mini Xiangqi
@@ -592,12 +608,13 @@ enum {
                                                  * rule reason but the neutral
                                                  * repetition */
     MXQ_END_REASON_AGREED_DRAW            = 11, /* "agreed-draw"; a draw, and
-                                                 * MXQ_PLAY_MODE_NEARBY's alone:
-                                                 * the two players agreed to it */
+                                                 * networked play's alone: the
+                                                 * two players agreed to it */
     MXQ_END_REASON_MUTUAL_RESIGNATION     = 12, /* "mutual-resignation"; a draw,
-                                                 * and nearby's alone: both
-                                                 * players resigned, which is a
-                                                 * draw rather than two losses */
+                                                 * and networked play's alone:
+                                                 * both players resigned, which
+                                                 * is a draw rather than two
+                                                 * losses */
     MXQ_END_REASON_FIVE_IN_A_ROW          = 13, /* "five-in-a-row"; the placement
                                                  * games' win, and theirs alone.
                                                  * What counts as one is the
@@ -702,7 +719,7 @@ enum {
 };
 
 /*
- * The terminal a nearby peer has sent for its session, which the BoardGame
+ * The terminal a peer has sent for its session, which the BoardGame
  * protocol's resume exchange states and which decides whether that peer holds
  * the session settled. MXQ_NEARBY_TERMINAL_NONE is "this device has sent none",
  * and it is what a session in ordinary play carries.
@@ -715,7 +732,7 @@ enum {
 };
 
 /*
- * Which peer proposed a nearby session — the only asymmetry a session ever has,
+ * Which peer proposed a wire session — the only asymmetry a session ever has,
  * and the reason it is worth a column: the resume exchange completes on the
  * connection the *proposer* chose, so a peer that forgot which it was could not
  * re-bind a session it had held for days. Every other asymmetry a session needs
@@ -1054,7 +1071,7 @@ typedef struct MxqSetupViolation {
  *              dealt game is compared with rather than recomputed
  *   digest     the digest of the deal itself, which binds everything the deal
  *              comes from — the seed, the nonce and the derivation — where the
- *              commitment binds the seed alone. It is the value a nearby
+ *              commitment binds the seed alone. It is the value a networked
  *              session's resume compares with the other device
  *
  * The last two are two of the four MxqNearbySession carries for a dealt
@@ -1086,7 +1103,7 @@ typedef struct MxqDeal {
  * some game.
  *
  * local_side is the one member that is not archive content. It is the side this
- * device's player took, meaningful exactly in MXQ_PLAY_MODE_NEARBY and
+ * device's player took, meaningful exactly in networked play and
  * MXQ_COLOR_NONE everywhere else, and the archive never writes it: which side
  * is local is true of a device rather than of the game, and the portability law
  * in docs/game-data.md keeps that out of a file two devices could exchange. The
@@ -1112,8 +1129,10 @@ typedef struct MxqGameConfig {
 } MxqGameConfig;
 
 /*
- * The wire session a nearby active game is being played over, as
- * docs/game-data.md's nearby_session table holds it.
+ * The wire session a networked active game is being played over, as
+ * docs/game-data.md's nearby_session table holds it. One session type serves
+ * both networked modes: what the protocol needs to continue an interrupted
+ * game is the same whichever way the two devices reached each other.
  *
  * It is not archive content and it is not a game's configuration: it is what the
  * BoardGame protocol needs to continue an interrupted session after this
@@ -1195,9 +1214,9 @@ typedef struct MxqNearbySession {
  * Every field is exactly recomputable from the stored archive blob except the
  * four the blob does not decide, which are local library metadata: provenance,
  * pinned, added_at_ms, and local_side. local_side is MXQ_COLOR_RED or
- * MXQ_COLOR_BLACK exactly for a locally played MXQ_PLAY_MODE_NEARBY record and
- * MXQ_COLOR_NONE for every other row, an imported nearby record included — an
- * imported game had no local player.
+ * MXQ_COLOR_BLACK exactly for a locally played networked record and
+ * MXQ_COLOR_NONE for every other row, an imported networked record included —
+ * an imported game had no local player.
  */
 typedef struct MxqRecordSummary {
     uint32_t      struct_size;
@@ -1223,8 +1242,8 @@ typedef struct MxqRecordSummary {
     MxqGameKind   game;            /* which game this record is of; a History
                                     * list holds both */
     MxqColor      local_side;      /* the side this device's player took, in a
-                                    * locally played nearby record; otherwise
-                                    * MXQ_COLOR_NONE */
+                                    * locally played networked record;
+                                    * otherwise MXQ_COLOR_NONE */
 } MxqRecordSummary;
 
 /*
@@ -1496,11 +1515,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * successful creation commits a resolved side and the core never invents a
  * value the frontend owns. The four human-versus-AI members must be present
  * exactly in MXQ_PLAY_MODE_HUMAN_VS_AI and must read as the NONE constants and
- * zero in Free Play and nearby play, matching the archive, which omits them;
- * local_side is the mirror rule, required in MXQ_PLAY_MODE_NEARBY and
- * MXQ_COLOR_NONE in the two local modes. A configuration that is none of the
- * three shapes is a programming error and returns MXQ_ERR_ARG_RANGE, as is a
- * game outside the closed vocabulary.
+ * zero in Free Play and networked play, matching the archive, which omits them;
+ * local_side is the mirror rule, required in networked play and MXQ_COLOR_NONE
+ * in the two local modes. A configuration that is none of the three shapes is a
+ * programming error and returns MXQ_ERR_ARG_RANGE, as is a game outside the
+ * closed vocabulary.
  *
  * The single-active-game rule spans every game and every mode: the library
  * holds one active game, so creating one while any is active returns
@@ -1541,7 +1560,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err);
  * it is MXQ_ERR_ARG_RANGE — a configuration of a shape the game does not have,
  * and a programming error for the same reason a mode refusal is. Its two other
  * refusals are the same kind of thing: MXQ_PLAY_MODE_HUMAN_VS_AI is
- * MXQ_ERR_ARG_RANGE because the game has no AI, and a nearby game of it is
+ * MXQ_ERR_ARG_RANGE because the game has no AI, and a networked game of it is
  * created through mxq_game_create_nearby and not here, because the deal the
  * handshake produced is evidence its record must carry and this entry takes no
  * wire session to carry it.
@@ -1565,22 +1584,25 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
                                            MxqGame **out_game, MxqError *err);
 
 /*
- * Create a nearby active game and the wire session it is being played over, in
- * one transaction.
+ * Create a networked active game and the wire session it is being played over,
+ * in one transaction. Which networked mode it is the configuration says, and
+ * this entry is the door for both: the two are one event whichever way the
+ * devices reached each other.
  *
  * It is mxq_game_create with the second row, and it exists because the two are
- * one event: an active nearby game whose wire session the store does not hold
- * cannot be resumed after a relaunch, and a wire session with no game is
+ * one event: an active networked game whose wire session the store does not
+ * hold cannot be resumed after a relaunch, and a wire session with no game is
  * nothing at all. Every refusal mxq_game_create makes it makes, and the
- * configuration must be MXQ_PLAY_MODE_NEARBY's — any other mode is a
- * programming error and returns MXQ_ERR_ARG_RANGE.
+ * configuration's mode must be a networked one — a local mode is a programming
+ * error and returns MXQ_ERR_ARG_RANGE, having no second device for a wire
+ * session to name.
  *
  * The session state must be the shape of a session at birth: undos and claimed
  * zero, keep zero, sent_end MXQ_NEARBY_TERMINAL_NONE. Anything else is
  * MXQ_ERR_ARG_RANGE — a game with no plies has retracted nothing and declared
  * nothing.
  *
- * A nearby game begins from its game's frozen start and from no other: the
+ * A networked game begins from its game's frozen start and from no other: the
  * protocol in docs/boardgame-protocol-v2.md carries no start position, so a
  * composed one is a game the two devices could not be playing. A composed
  * start_fen is therefore MXQ_ERR_ARG_RANGE here, beside the mode's own refusal
@@ -1591,9 +1613,9 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_create(MxqCore *core,
  * makes it one: that game has no frozen start, its session opens with the deal
  * handshake, and both devices derive one identical deal from what crossed the
  * wire — so the two configurations name the same position without either device
- * naming it to the other. A nearby game of it therefore states its dealt start
- * and the four deal values the handshake left behind, and it is the only game
- * whose session carries any of them: a session state carrying a deal for
+ * naming it to the other. A networked game of it therefore states its dealt
+ * start and the four deal values the handshake left behind, and it is the only
+ * game whose session carries any of them: a session state carrying a deal for
  * another game, or a Jieqi session carrying none, is MXQ_ERR_ARG_RANGE. The
  * three the archive records are written into the game's own document here, and
  * the fourth — the digest — stays in the wire session, being derivable from the
@@ -1825,7 +1847,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
                                          MxqError *err);
 
 /*
- * The nearby retraction: keep the first `keep` plies of the move line, drop
+ * The negotiated retraction: keep the first `keep` plies of the move line, drop
  * every ply beyond them, and rewrite the wire session in the same transaction.
  * Commits before returning, like every other mutation.
  *
@@ -1838,8 +1860,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_undo(MxqGame *game,
  * store holding a line one transaction and a retraction count the next would
  * reconcile the next resume to a line neither player played.
  *
- * Legal only on a MXQ_PLAY_MODE_NEARBY session, which is the mirror of
- * mxq_game_undo refusing on one; otherwise MXQ_ERR_STATE_UNDO_UNAVAILABLE.
+ * Legal only on a networked session, which is the mirror of mxq_game_undo
+ * refusing on one; otherwise MXQ_ERR_STATE_UNDO_UNAVAILABLE.
  * `keep` must be below the session's own move count — retracting nothing is not
  * a retraction — and is otherwise MXQ_ERR_ARG_RANGE. A store-domain failure
  * leaves the game exactly at its pre-mutation committed state.
@@ -1934,7 +1956,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
                                                    MxqError *err);
 
 /*
- * Commit the end two nearby players declared to each other. Same atomic
+ * Commit the end the two players declared to each other. Same atomic
  * transaction and same archived-session consequence as mxq_game_claim_draw.
  *
  * The three reasons this accepts are the explicit ends the BoardGame protocol
@@ -1951,8 +1973,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_confirm_result(MxqGame *game,
  *
  * The caller states which end the two players reached; the core still derives
  * the outcome from it, so no caller ever asserts a result. Legal only on a
- * MXQ_PLAY_MODE_NEARBY session — otherwise MXQ_ERR_STATE_RESIGN_UNAVAILABLE —
- * and only while the game has no result of its own: an end the rules decided
+ * networked session — otherwise MXQ_ERR_STATE_RESIGN_UNAVAILABLE — and only
+ * while the game has no result of its own: an end the rules decided
  * outranks one the players declared, so a terminal position is
  * MXQ_ERR_STATE_GAME_OVER, and the archive refuses such a record for the same
  * reason. A claimable neutral repetition is not a result, and either end is
@@ -1971,7 +1993,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game,
                                                       MxqError *err);
 
 /*
- * Rewrite the wire session of a nearby active game, and commit before
+ * Rewrite the wire session of a networked active game, and commit before
  * returning.
  *
  * Most of what this state records moves with the move line and is written by the
@@ -1980,8 +2002,8 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_commit_nearby_end(MxqGame *game,
  * the game does not have — this device sending a terminal, which ends nothing
  * until the resume exchange settles it — and this is the call for that.
  *
- * Legal only on a MXQ_PLAY_MODE_NEARBY session; otherwise
- * MXQ_ERR_STATE_RESIGN_UNAVAILABLE, the same refusal the other nearby-only
+ * Legal only on a networked session; otherwise
+ * MXQ_ERR_STATE_RESIGN_UNAVAILABLE, the same refusal the other networked-only
  * ending makes. The session identifier, the peer identifier and the four deal
  * values are frozen: a value differing from the one the game was created with
  * is MXQ_ERR_ARG_RANGE and nothing is written, because a session's identity is
@@ -2000,11 +2022,11 @@ MXQ_API MxqStatus MXQ_CALL mxq_game_set_nearby_session(MxqGame *game,
                                                        MxqError *err);
 
 /*
- * Read back the wire session of a nearby active game: what a relaunched
+ * Read back the wire session of a networked active game: what a relaunched
  * application needs to rebuild the protocol session it was playing over.
  *
  * *out_exists is 0, and MXQ_OK is returned, where the game carries none — a
- * local game, an imported nearby record, a replay, or a nearby game whose
+ * local game, an imported networked record, a replay, or a networked game whose
  * session the store no longer holds. Absence is an ordinary answer, not a
  * failure.
  *
@@ -2182,7 +2204,7 @@ MXQ_API MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core,
  * The derivation is deterministic, and that is what this entry is for: one seed
  * and one nonce derive one dealt start, one commitment and one digest, on every
  * device, on every platform, in this build and in any other. Two devices playing
- * a nearby dealt game never send the deal — each derives it from what the
+ * a networked dealt game never send the deal — each derives it from what the
  * handshake exchanged, exactly as docs/boardgame-protocol-v2.md derives it — so
  * two implementations of that derivation must agree byte for byte or the two
  * are playing different games under one identifier. This is the core's

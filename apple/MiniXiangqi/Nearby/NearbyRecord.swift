@@ -97,7 +97,7 @@ final class NearbyRecord: NearbyRecording {
     func standing() throws -> BoardGameSession? {
         guard held == nil else { return held }
         guard let summary = try library.activeGameSummary(),
-              summary.mode == .nearby, let localSide = summary.localSide
+              summary.mode.isNetworked, let localSide = summary.localSide
         else { return nil }
         guard !library.hasSession else {
             log.note("The library's nearby game is held by another surface.")

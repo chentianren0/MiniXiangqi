@@ -132,6 +132,10 @@ MxqStatus require_game(MxqGameKind game, MxqError *err) {
     return MXQ_OK;
 }
 
+bool networked_mode(MxqPlayMode mode) {
+    return mode == MXQ_PLAY_MODE_NEARBY || mode == MXQ_PLAY_MODE_ONLINE;
+}
+
 void copy_bounded(char *dst, size_t cap, const char *src) {
     assert(dst != nullptr && cap > 0);
     if (src == nullptr) {

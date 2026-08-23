@@ -79,7 +79,8 @@ bool game_of(const std::string &text, MxqGameKind &out) {
 bool mode_of(const std::string &text, MxqPlayMode &out) {
     static const MxqPlayMode domain[] = {MXQ_PLAY_MODE_HUMAN_VS_AI,
                                          MXQ_PLAY_MODE_FREE_PLAY,
-                                         MXQ_PLAY_MODE_NEARBY};
+                                         MXQ_PLAY_MODE_NEARBY,
+                                         MXQ_PLAY_MODE_ONLINE};
     return value_of(text, domain, archive::mode_text, out);
 }
 

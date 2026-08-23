@@ -100,12 +100,13 @@ nonisolated enum Outcome: Sendable {
 }
 
 nonisolated enum PlayMode: Sendable {
-    case humanVersusAI, freePlay, nearby
+    case humanVersusAI, freePlay, nearby, online
 
     init(_ mode: MxqPlayMode) {
         switch mode {
         case MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI): self = .humanVersusAI
         case MxqPlayMode(MXQ_PLAY_MODE_NEARBY): self = .nearby
+        case MxqPlayMode(MXQ_PLAY_MODE_ONLINE): self = .online
         // Every switch over a core vocabulary needs a default arm. Free Play is
         // the reading that claims least about a mode this build has not heard
         // of: one board, no opponent, no AI configuration to look for.
@@ -118,6 +119,18 @@ nonisolated enum PlayMode: Sendable {
         case .humanVersusAI: MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI)
         case .freePlay: MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
         case .nearby: MxqPlayMode(MXQ_PLAY_MODE_NEARBY)
+        case .online: MxqPlayMode(MXQ_PLAY_MODE_ONLINE)
+        }
+    }
+
+    /// One game played by two devices over the BoardGame protocol. The two
+    /// networked modes differ in how the two devices reached each other and in
+    /// nothing else, so every rule that turns on there being a player on the
+    /// other end asks this rather than naming a mode.
+    var isNetworked: Bool {
+        switch self {
+        case .nearby, .online: true
+        case .humanVersusAI, .freePlay: false
         }
     }
 }
@@ -282,7 +295,7 @@ nonisolated enum FirstMoverChoice: Sendable, Hashable, CaseIterable {
     }
 }
 
-/// A game's frozen configuration, as the core holds it. Free Play and nearby
+/// A game's frozen configuration, as the core holds it. Free Play and networked
 /// play carry the absent constants, exactly as the archive omits the members.
 nonisolated struct GameConfiguration: Sendable, Hashable {
     var game: GameKind
@@ -293,7 +306,7 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     var aiLevel: AiLevel?
     var firstMoverChoice: FirstMoverChoice?
     var movetimeMilliseconds: UInt32
-    /// The side this device's player took, in a nearby game and nowhere else.
+    /// The side this device's player took, in a networked game and nowhere else.
     /// The archive never carries it — content is device-portable — so it is
     /// library metadata the store holds beside the blob.
     var localSide: Side?
@@ -316,8 +329,9 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
                           startFEN: startFEN)
     }
 
-    /// A game played with the other device over the BoardGame protocol. It
-    /// freezes no AI configuration and one local perspective.
+    /// A game played with the other device over the BoardGame protocol, the two
+    /// having found each other where they are. It freezes no AI configuration
+    /// and one local perspective.
     ///
     /// - Parameter startFEN: the dealt start, for the one game whose start is
     ///   dealt. It is no composed position — nobody composed it and neither
@@ -327,6 +341,18 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
     static func nearby(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .nearby, humanSide: nil,
+                          aiLevel: nil, firstMoverChoice: nil,
+                          movetimeMilliseconds: 0, localSide: localSide,
+                          startFEN: startFEN)
+    }
+
+    /// The same game, the two devices having reached each other at any
+    /// distance. Everything the configuration freezes is nearby play's, the
+    /// mode included in what it means: both are created through
+    /// `Core.createNearby(_:wire:)`, over a wire session of the same shape.
+    static func online(game: GameKind, localSide: Side,
+                       startFEN: String? = nil) -> GameConfiguration {
+        GameConfiguration(game: game, mode: .online, humanSide: nil,
                           aiLevel: nil, firstMoverChoice: nil,
                           movetimeMilliseconds: 0, localSide: localSide,
                           startFEN: startFEN)

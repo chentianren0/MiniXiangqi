@@ -224,6 +224,7 @@ const char *mode_text(MxqPlayMode mode) {
     case MXQ_PLAY_MODE_HUMAN_VS_AI: return "human-vs-ai";
     case MXQ_PLAY_MODE_FREE_PLAY:   return "free-play";
     case MXQ_PLAY_MODE_NEARBY:      return "nearby";
+    case MXQ_PLAY_MODE_ONLINE:      return "online";
     default: break;
     }
     assert(false && "a mode outside the closed vocabulary reached the writer");
@@ -317,7 +318,7 @@ std::string content_bytes(const Record &record) {
     members.emplace_back("mode", json_string(mode_text(record.config.mode)));
 
     /* The four configuration members exist exactly for human-versus-AI games;
-     * Free Play and nearby play omit them rather than writing a null or an
+     * Free Play and networked play omit them rather than writing a null or an
      * empty value, which is what MXQ_COLOR_NONE, MXQ_AI_LEVEL_NONE and
      * MXQ_FIRST_MOVER_NONE stand for on the other side of the C interface.
      * config.local_side is written by no branch at all: it is a fact about this
@@ -337,11 +338,11 @@ std::string content_bytes(const Record &record) {
 
     /*
      * The deal's provenance, present exactly for a jieqi game whose deal came
-     * from the protocol's handshake — which is every nearby one, and no other
-     * game and no other mode: a locally dealt game has no handshake behind it
-     * to record. The digest is not among them, being derivable from the deal
-     * these three produce, and a record carries what cannot be recomputed from
-     * what it already holds.
+     * from the protocol's handshake — which is every networked one, and no
+     * other game and no other mode: a locally dealt game has no handshake
+     * behind it to record. The digest is not among them, being derivable from
+     * the deal these three produce, and a record carries what cannot be
+     * recomputed from what it already holds.
      *
      * The presence is asserted against the game and the mode rather than merely
      * followed from the values, because a writer that wrote whatever it was
@@ -349,11 +350,11 @@ std::string content_bytes(const Record &record) {
      */
     {
         const bool dealt = record.config.game == MXQ_GAME_KIND_JIEQI &&
-                           record.config.mode == MXQ_PLAY_MODE_NEARBY;
+                           mxq::networked_mode(record.config.mode);
         assert(dealt == (!record.deal_commit.empty() &&
                          !record.deal_nonce.empty() &&
                          !record.deal_seed.empty()) &&
-               "the deal's provenance rides a nearby jieqi record and no other");
+               "the deal's provenance rides a networked jieqi record alone");
         if (dealt) {
             members.emplace_back("deal_commit", json_string(record.deal_commit));
             members.emplace_back("deal_nonce", json_string(record.deal_nonce));

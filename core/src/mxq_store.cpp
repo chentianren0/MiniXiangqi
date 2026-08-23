@@ -60,7 +60,8 @@ CREATE TABLE game (
   rules_id           TEXT    NOT NULL CHECK (rules_id IN ('minixiangqi', 'xiangqi',
                                                           'jieqi',
                                                           'gomoku-15', 'renju')),
-  mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play', 'nearby')),
+  mode               TEXT    NOT NULL CHECK (mode IN ('human-vs-ai', 'free-play',
+                                                      'nearby', 'online')),
   human_side         TEXT    CHECK (human_side IN ('red', 'black')),
   ai_level           TEXT    CHECK (ai_level IN ('fast', 'standard', 'deep')),
   ai_movetime_ms     INTEGER CHECK (ai_movetime_ms > 0),
@@ -130,34 +131,34 @@ CREATE TABLE game (
   -- A resignation needs an opponent to resign to, and the outcome names the
   -- winner, so the side that resigned is its opposite; the two rules above
   -- already leave only a win there. Human-versus-AI adds that the loser is the
-  -- human, which nearby play has no member to say and does not need.
+  -- human, which networked play has no member to say and does not need.
   CHECK (end_reason IS NULL OR end_reason <> 'resignation' OR
-         mode IN ('human-vs-ai', 'nearby')),
+         mode IN ('human-vs-ai', 'nearby', 'online')),
   CHECK (end_reason IS NULL OR end_reason <> 'resignation' OR
          mode <> 'human-vs-ai' OR
          ((human_side = 'red' AND outcome = 'black-wins') OR
           (human_side = 'black' AND outcome = 'red-wins'))),
-  -- The two ends two players declare to each other belong to the one mode that
-  -- has two players.
+  -- The two ends two players declare to each other belong to the modes that
+  -- have two players.
   CHECK (end_reason IS NULL OR
          end_reason NOT IN ('agreed-draw', 'mutual-resignation') OR
-         mode = 'nearby'),
+         mode IN ('nearby', 'online')),
   -- The mode-to-configuration relationship: the four configuration fields
   -- exist exactly for human-versus-AI games, matching the archive, which
-  -- simply omits them in the other two modes.
+  -- simply omits them in every other mode.
   CHECK ((mode = 'human-vs-ai') = (human_side IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (ai_level IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (ai_movetime_ms IS NOT NULL)),
   CHECK ((mode = 'human-vs-ai') = (first_mover_choice IS NOT NULL)),
-  -- And the one game that plays fewer than three modes: jieqi has no AI, so a
+  -- And the one game that does not play every mode: jieqi has no AI, so a
   -- row recording a game of it against a machine records a game this app cannot
   -- have played.
   CHECK (rules_id <> 'jieqi' OR mode <> 'human-vs-ai'),
-  -- The local-perspective rule: a nearby game played on this device has a local
-  -- side, and nothing else has one — an imported nearby record had no local
-  -- player, and neither local mode has two.
+  -- The local-perspective rule: a networked game played on this device has a
+  -- local side, and nothing else has one — an imported networked record had no
+  -- local player, and neither local mode has two.
   CHECK ((local_side IS NOT NULL) =
-         (mode = 'nearby' AND provenance = 'locally-played')),
+         (mode IN ('nearby', 'online') AND provenance = 'locally-played')),
   -- A record can only enter this library as imported once it is complete.
   CHECK (provenance <> 'imported' OR outcome IS NOT NULL)
 ) STRICT;
@@ -167,7 +168,7 @@ CREATE TABLE library (
   active_record_id INTEGER REFERENCES game (record_id)
 ) STRICT;
 
--- The wire session an unfinished nearby game is being played over: what the
+-- The wire session an unfinished networked game is being played over: what the
 -- BoardGame protocol needs to continue it after this application has been
 -- relaunched, and every value of it device-local by the portability law. It is
 -- a table of its own rather than columns on game because the two have different
@@ -235,30 +236,37 @@ BEGIN
   SELECT RAISE(ABORT, 'a deal belongs to a session of the game that is dealt');
 END;
 
--- A wire session belongs to a nearby game being played on this device, and to
--- nothing else. The mode and provenance pair is the same one that makes
+-- A wire session belongs to a networked game being played on this device, and
+-- to nothing else. The mode and provenance pair is the same one that makes
 -- local_side present, so a row here is exactly a row with a local side.
 --
 -- Both rules are stated on insert and on update, because a row is written by an
 -- insert with an explicit conflict clause and either arm can be the one that
 -- runs: a guard on half of them would be a guard the contract could not state
 -- flatly.
-CREATE TRIGGER nearby_session_is_a_local_nearby_game
+--
+-- The mode is asked with IS NOT rather than NOT IN because that operator is the
+-- null-safe one: a row naming a game that is not there answers NULL, and NULL
+-- is not either networked mode, so the guard aborts instead of passing on a
+-- comparison that is neither true nor false.
+CREATE TRIGGER nearby_session_is_a_local_networked_game
 BEFORE INSERT ON nearby_session
-WHEN (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+WHEN ((SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+      AND (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'online')
   OR (SELECT provenance FROM game WHERE record_id = NEW.record_id)
        IS NOT 'locally-played'
 BEGIN
-  SELECT RAISE(ABORT, 'a wire session belongs to a nearby game played here');
+  SELECT RAISE(ABORT, 'a wire session belongs to a networked game played here');
 END;
 
-CREATE TRIGGER nearby_session_stays_a_local_nearby_game
+CREATE TRIGGER nearby_session_stays_a_local_networked_game
 BEFORE UPDATE ON nearby_session
-WHEN (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+WHEN ((SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'nearby'
+      AND (SELECT mode FROM game WHERE record_id = NEW.record_id) IS NOT 'online')
   OR (SELECT provenance FROM game WHERE record_id = NEW.record_id)
        IS NOT 'locally-played'
 BEGIN
-  SELECT RAISE(ABORT, 'a wire session belongs to a nearby game played here');
+  SELECT RAISE(ABORT, 'a wire session belongs to a networked game played here');
 END;
 
 -- And it belongs to one that is still being played: a History record's game is
@@ -879,7 +887,7 @@ MxqStatus create_active(Store &store, const ActiveGame &row,
     const int64_t record_id = sqlite3_last_insert_rowid(db);
 
     /* The wire session, in the same transaction as the game it belongs to: the
-     * two are one event, and an active nearby game the store cannot resume is
+     * two are one event, and an active networked game the store cannot resume is
      * worse than no game at all. */
     if (nearby != nullptr &&
         !write_nearby_session(db, static_cast<uint64_t>(record_id), *nearby, rc,
@@ -997,7 +1005,7 @@ MxqStatus load_nearby_session(Store &store, uint64_t record_id, bool &out_exists
     select.bind_int64(1, static_cast<int64_t>(record_id));
     const int step = select.step();
     if (step == SQLITE_DONE) {
-        /* No wire session. A local game has none, and so does a nearby game the
+        /* No wire session. A local game has none, and so does a networked one the
          * protocol has parted with. */
         return MXQ_OK;
     }
@@ -1109,7 +1117,7 @@ MxqStatus rewrite_active(Store &store, uint64_t record_id,
         }
     }
 
-    /* A nearby game's wire session moves with its move line and is written in
+    /* A networked game's wire session moves with its move line and is written in
      * the same transaction: a ply carries the retraction count it did not
      * change, a retraction carries the one it did, and neither can be committed
      * without the other. */
