@@ -29,7 +29,8 @@ struct NearbyRecordTests {
     }
 
     private func memory(over core: Core) -> NearbyRecord {
-        NearbyRecord(library: core, rules: core.boardGameRules, log: NearbyLog())
+        NearbyRecord(library: core, rules: core.boardGameRules, log: NearbyLog(),
+                     mode: .nearby)
     }
 
     /// The same, over a library whose archive-and-clear this suite answers. It
@@ -39,7 +40,7 @@ struct NearbyRecordTests {
     /// seam.
     private func memory(over parked: ParkedNearbyArchive) -> NearbyRecord {
         NearbyRecord(library: parked, rules: parked.core.boardGameRules,
-                     log: NearbyLog())
+                     log: NearbyLog(), mode: .nearby)
     }
 
     /// A session this device's *peer* proposed: local takes the second mover,
@@ -105,6 +106,47 @@ struct NearbyRecordTests {
         #expect(wire.undos == 0)
         #expect(wire.sentEnd == nil)
         #expect(!wire.claimed)
+    }
+
+    /// The mode is the record's own, and it is the only thing the two ways of
+    /// reaching another device differ by in the library.
+    ///
+    /// What this would catch is every game two devices play being filed as a
+    /// nearby one: History and the Current Game card would name the mode
+    /// untruthfully, and the record a player exported would say a game played
+    /// at any distance had been played in the same room.
+    @Test("A game played over Game Center is recorded as an online one")
+    func anOnlineGameIsRecordedAsOnline() throws {
+        let core = try TestCores.fresh()
+        let record = NearbyRecord(library: core, rules: core.boardGameRules,
+                                  log: NearbyLog(), mode: .online)
+
+        record.follow([session()])
+
+        let summary = try #require(try core.activeGameSummary())
+        #expect(summary.mode == .online)
+        #expect(summary.game == .miniXiangqi)
+        #expect(summary.localSide == .red, "and everything else is nearby play's")
+        #expect(try core.nearbyWireSession()?.sessionID == Self.identifier)
+    }
+
+    /// One record per way of reaching another device, and each takes up only
+    /// its own mode's interrupted game.
+    ///
+    /// What this would catch is a record reading any networked active game
+    /// back: both records would claim one game at launch, and the session one
+    /// of them handed the engine would be offered to peers that never held it.
+    @Test("A record takes up the interrupted game of its own mode alone")
+    func aRecordResumesOnlyItsOwnMode() throws {
+        let core = try TestCores.fresh()
+        NearbyRecord(library: core, rules: core.boardGameRules,
+                     log: NearbyLog(), mode: .online).follow([session()])
+        core.endSession()
+
+        #expect(try memory(over: core).standing() == nil,
+                "the online game standing is not the nearby record's to rebuild")
+        #expect(try NearbyRecord(library: core, rules: core.boardGameRules,
+                                 log: NearbyLog(), mode: .online).standing() != nil)
     }
 
     @Test("A dealt game reaches the library as its deal, with the evidence it was dealt")

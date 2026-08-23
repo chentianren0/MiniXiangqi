@@ -28,12 +28,6 @@ import GameKit
 import Observation
 import OSLog
 
-#if os(macOS)
-import AppKit
-#else
-import UIKit
-#endif
-
 /// Whether Game Center can carry a game on this device, and the sign-in that
 /// decides it.
 @MainActor
@@ -72,18 +66,43 @@ final class GameCenterAvailability {
                 }
                 if let viewController {
                     Self.note("Presenting Game Center's own sign-in.")
-                    Self.present(viewController)
+                    OnlineSystemSurface.present(viewController)
                 }
                 self.refresh()
             }
         }
     }
 
-    /// What the sign-in and the system's restrictions add up to, read again.
+    /// What the sign-in and the system's restrictions add up to, asked again.
+    ///
+    /// **Neither answer is read on the main thread, and that is not a
+    /// nicety.** Both of them reach the Game Center daemon over synchronous
+    /// XPC and return when it answers — measured on a signed Mac build, where
+    /// `isMultiplayerGamingRestricted` blocked in
+    /// `-[GKDaemonProxy effectiveValueForSetting:]` and did not come back. The
+    /// one place this is asked from at launch is the sign-in handler, which
+    /// GameKit calls on the main thread, so asking there is an app that draws
+    /// nothing at all: no window, no accessibility, no first frame. The
+    /// question therefore goes away from the screen and only the answer comes
+    /// back to it.
+    ///
+    /// That makes the answer arrive rather than be had, which is the right way
+    /// round anyway: `isAvailable` starts false, a launch that never hears from
+    /// Game Center is a launch with no online row, and a row that appears a
+    /// moment later is a row appearing when its answer does.
     func refresh() {
-        let player = GKLocalPlayer.local
-        let stands = Self.stands(authenticated: player.isAuthenticated,
-                                 multiplayerRestricted: player.isMultiplayerGamingRestricted)
+        // Detached deliberately: a `Task` started here would inherit this
+        // actor and block exactly the thread this is avoiding.
+        Task.detached(priority: .utility) { [weak self] in
+            let player = GKLocalPlayer.local
+            let stands = Self.stands(
+                authenticated: player.isAuthenticated,
+                multiplayerRestricted: player.isMultiplayerGamingRestricted)
+            await MainActor.run { self?.adopt(stands) }
+        }
+    }
+
+    private func adopt(_ stands: Bool) {
         guard stands != isAvailable else { return }
         isAvailable = stands
         Self.note("Online play is \(stands ? "available" : "not available") here.")
@@ -120,39 +139,4 @@ final class GameCenterAvailability {
         print("[nearby] \(text)")
         #endif
     }
-
-    // MARK: - Putting the system's view controller on screen
-
-    // The one platform split in this layer, and it is not about Game Center:
-    // GameKit reaches the Mac exactly as it reaches iPhone and iPad, and the
-    // handler hands back a view controller of whichever kit the platform has.
-    // Presenting one is all that differs, so that is all that is written twice.
-
-    #if os(macOS)
-    private static func present(_ viewController: NSViewController) {
-        guard let host = NSApp.keyWindow?.contentViewController
-                ?? NSApp.windows.first(where: \.isVisible)?.contentViewController
-        else {
-            note("No window to present Game Center's sign-in in.")
-            return
-        }
-        host.presentAsSheet(viewController)
-    }
-    #else
-    private static func present(_ viewController: UIViewController) {
-        guard let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }),
-              let root = scene.keyWindow?.rootViewController
-        else {
-            note("No window to present Game Center's sign-in in.")
-            return
-        }
-        // Whatever is frontmost, so the sign-in is not put behind a sheet the
-        // player already has open.
-        var host = root
-        while let presented = host.presentedViewController { host = presented }
-        host.present(viewController, animated: true)
-    }
-    #endif
 }

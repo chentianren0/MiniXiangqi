@@ -504,7 +504,7 @@ struct PlayHomeTests {
         let core = try TestCores.fresh()
         let state = try nearbyStateOverAGame(core)
         let asked = Asked()
-        state.resumeNearby = { game in asked.record(game) }
+        state.resumeNetworkedGame = { _, game in asked.record(game) }
 
         state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(asked.games == [.miniXiangqi])
@@ -535,7 +535,7 @@ struct PlayHomeTests {
         let (state, archive) = try parkedStateOverAGame(core)
         let opened = Asked()
 
-        state.makeRoom(for: .xiangqi) { opened.record(.xiangqi) }
+        state.makeRoom(for: .xiangqi, in: .nearby) { opened.record(.xiangqi) }
         #expect(state.modeSwitch == .confirming(PlaySelection(game: .xiangqi, mode: .nearby)))
         #expect(opened.games.isEmpty, "nothing opens until the game is filed")
 
@@ -552,7 +552,7 @@ struct PlayHomeTests {
         let state = try stateOverAGame(core)
         let opened = Asked()
 
-        state.makeRoom(for: .xiangqi) { opened.record(.xiangqi) }
+        state.makeRoom(for: .xiangqi, in: .nearby) { opened.record(.xiangqi) }
         state.dismissConfirmation()
         #expect(state.modeSwitch == nil)
         #expect(opened.games.isEmpty)
@@ -566,7 +566,7 @@ struct PlayHomeTests {
         let opened = Asked()
 
         // Room asked for, the archive refused, and the accepted retry cancelled.
-        state.makeRoom(for: .miniXiangqi) { opened.record(.miniXiangqi) }
+        state.makeRoom(for: .miniXiangqi, in: .nearby) { opened.record(.miniXiangqi) }
         state.saveAndContinue()
         archive.answerWithRefusal()
         #expect(state.modeSwitch == .failed(PlaySelection(game: .miniXiangqi,
@@ -591,7 +591,7 @@ struct PlayHomeTests {
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         let opened = Asked()
 
-        state.makeRoom(for: .miniXiangqi) { opened.record(.miniXiangqi) }
+        state.makeRoom(for: .miniXiangqi, in: .nearby) { opened.record(.miniXiangqi) }
         #expect(opened.games == [.miniXiangqi])
         #expect(state.modeSwitch == nil)
     }

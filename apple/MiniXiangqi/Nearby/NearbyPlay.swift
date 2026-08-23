@@ -77,6 +77,9 @@ final class NearbyPlay {
 
     private let driver: any NearbyDriving
     private let positions: any NearbyPositions
+    /// What a link that has gone means here, which decides both when the one
+    /// quiet line appears and what it says.
+    private let interruption: LinkInterruption
     private let transits: TransitMotion
     private let animator: MotionAnimator
     private let feedback: Feedback
@@ -130,6 +133,7 @@ final class NearbyPlay {
     init?(session: BoardGameSession,
           driver: any NearbyDriving,
           positions: any NearbyPositions,
+          interruption: LinkInterruption,
           flipped: Bool? = nil,
           policy: MotionPolicy = MotionPolicy(reduceMotion: false),
           animator: MotionAnimator = .live,
@@ -145,6 +149,7 @@ final class NearbyPlay {
         self.session = session
         self.driver = driver
         self.positions = positions
+        self.interruption = interruption
         self.policy = policy
         self.feedback = feedback
         self.animator = animator
@@ -363,14 +368,20 @@ final class NearbyPlay {
 
     /// Whether to say anything at all about the connection.
     ///
-    /// **In ordinary play there is no connection chrome.** Connections idle out
-    /// between moves by the radio's own design and the driver brings them back
-    /// beneath the game, so a board that reported either would be reporting
-    /// weather. What is worth one quiet line is the case where the link is
-    /// actually costing the player something: what they did is waiting to reach
-    /// the other device, or their own turn has been blocked long enough that the
-    /// silence needs explaining. It withdraws by itself the moment the link is
-    /// back.
+    /// **In ordinary play there is no connection chrome.** Where connections
+    /// idle out between moves by the radio's own design and the driver brings
+    /// them back beneath the game, a board that reported either would be
+    /// reporting weather. What is worth one quiet line there is the case where
+    /// the link is actually costing the player something: what they did is
+    /// waiting to reach the other device, or their own turn has been blocked
+    /// long enough that the silence needs explaining. It withdraws by itself
+    /// the moment the link is back.
+    ///
+    /// **Where nothing will bring the link back, there is no weather.** A link
+    /// that is gone for good is not a wait the player can sit out, so it is
+    /// said as soon as it happens and whosever turn it is: what the line
+    /// carries then is what has become of the game rather than how long it has
+    /// been quiet, and the way out of the board is where it always is.
     var isWaitingOnConnection: Bool {
         // A session that went away is not waiting for anything, and the notice
         // in front of the board has already said what became of it.
@@ -381,8 +392,15 @@ final class NearbyPlay {
         // exchange has settled it there is nothing owed, and a link that idles
         // out afterwards is a finished board's own quiet.
         if !session.settled, session.localTerminal != nil { return true }
-        return session.state == .active && session.isLocalTurn && blocked
+        guard session.state == .active else { return false }
+        switch interruption {
+        case .lasting: return true
+        case .passing: return session.isLocalTurn && blocked
+        }
     }
+
+    /// The sentence that line carries, as its key.
+    var interruptionKey: String { interruption.messageKey }
 
     /// Whether the session is bound to a connection at all, which is the whole
     /// of what "the two devices are talking" means here.
@@ -690,7 +708,10 @@ final class NearbyPlay {
             reachedForABlockedBoard = false
             return
         }
-        guard !blockedLongEnough else { return }
+        // A link that is not coming back has nothing to wait out: the line is
+        // already up, and a timer whose answer nothing reads is a timer to
+        // explain later.
+        guard interruption == .passing, !blockedLongEnough else { return }
         stretch = Task { [weak self] in
             try? await Task.sleep(for: Self.connectionStretch)
             guard !Task.isCancelled else { return }

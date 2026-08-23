@@ -119,6 +119,12 @@ final class OnlineConnection: NSObject, NearbyLink, GKMatchDelegate {
     /// go of it. The transport sets it; nothing else reads it.
     @ObservationIgnored var whenFinished: (@MainActor () -> Void)?
 
+    /// Told once, at the instant the player behind this connection is known and
+    /// before the driver hears of it, so the transport can keep the rule that
+    /// it never holds two live connections to one peer. The transport sets it;
+    /// nothing else reads it.
+    @ObservationIgnored var whenNaming: (@MainActor (PeerDeviceID) -> Void)?
+
     @ObservationIgnored private let driver: NearbyDriver
     @ObservationIgnored private let log: NearbyLog
     /// The match, released when this connection's life ends.
@@ -192,6 +198,11 @@ final class OnlineConnection: NSObject, NearbyLink, GKMatchDelegate {
         self.peerName = name
         log.note("The online connection \(NearbyDriver.short(id)) reaches ",
                  naming: name, " (\(peer.rawValue)).")
+        // Before the driver is told, so that it is never holding two links to
+        // one person even for an instant: an older connection to this same
+        // player is let go of here, and its death is what interrupts whatever
+        // it was carrying.
+        whenNaming?(peer)
         driver.connectionReady(self, with: peer)
         isOpen = true
         let held = waiting
@@ -221,6 +232,16 @@ final class OnlineConnection: NSObject, NearbyLink, GKMatchDelegate {
     /// fresh invitation the protocol's resume reconciles.
     func playerLeft() {
         died("the other player disconnected")
+    }
+
+    /// A fresh match with the same player has arrived, and this one is being
+    /// let go of to make room for it. **A death**, and reported as one: the
+    /// driver holds a link to this connection, and a match dropped without it
+    /// hearing would leave the engine believing in a link with nothing behind
+    /// it. The session stands interrupted, which is exactly what it is — the
+    /// fresh connection's own resume is what picks the game back up.
+    func replaced() {
+        died("a fresh match with the same player replaced it")
     }
 
     /// GameKit could not keep this device connected to the match. **A death**,

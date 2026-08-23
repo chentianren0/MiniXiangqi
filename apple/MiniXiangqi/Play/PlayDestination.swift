@@ -43,12 +43,13 @@ struct PlayDestination: View {
     /// recorded result is the only thing that asks.
     var replay: (UInt64) -> Void
 
-    /// The nearby feature, where this device has one. Its board is a page over
-    /// this destination like the other two, and it is drawn from here for the
-    /// same reason they are — but the session behind it belongs to the peer and
-    /// outlives every page, so nothing about leaving this destination touches
-    /// it.
+    /// The ways this device can play somebody on another device, where it has
+    /// them. Their board is a page over this destination like the other two,
+    /// and it is drawn from here for the same reason they are — but the session
+    /// behind it belongs to the peer and outlives every page, so nothing about
+    /// leaving this destination touches it.
     var nearby: NearbyFlow?
+    var online: NearbyFlow?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -143,21 +144,33 @@ struct PlayDestination: View {
         }
     }
 
-    /// The page on screen: a nearby board where one is up, and the local pages
-    /// otherwise.
+    /// The flow whose board is up, where one is.
     ///
-    /// **Which it is asks the flow rather than the platform.** A device with no
-    /// nearby play has no flow and therefore no board session, so the same
-    /// expression draws the local page there without a gate — and the board
-    /// screen it names is built on every platform, so there is nothing here for
-    /// a gate to protect.
+    /// **At most one of them ever has a board, and that is the library's
+    /// contract rather than a rule kept here**: a game two devices are playing
+    /// is the library's one active game, and no flow opens a board without
+    /// first asking for the one active-game slot and getting it. So this asks
+    /// in a fixed order and takes the first answer — the order settles nothing,
+    /// because there is never a second answer to prefer over it.
+    ///
+    /// **Which flow it is asks the flows rather than the platform.** A device
+    /// with no nearby play has no flow to ask, and a player Game Center cannot
+    /// carry a game for has an online flow that never opens a board, so the
+    /// same expression draws the local page in both cases without a gate.
+    private var board: NearbyFlow? {
+        [nearby, online].compactMap { $0 }.first { $0.boardSessionID != nil }
+    }
+
+    /// The page on screen: that board where one is up, and the local pages
+    /// otherwise.
     @ViewBuilder
     private var page: some View {
-        if let nearby, nearby.boardSessionID != nil {
-            // A nearby game is over every page of this destination, because it
-            // is the game this device is playing: the local pages are still
-            // there underneath it, exactly where the player left them.
-            NearbyBoardScreen(flow: nearby)
+        if let board {
+            // A game with somebody is over every page of this destination,
+            // because it is the game this device is playing: the local pages
+            // are still there underneath it, exactly where the player left
+            // them.
+            NearbyBoardScreen(flow: board)
         } else {
             playPage
         }
@@ -167,7 +180,7 @@ struct PlayDestination: View {
     private var playPage: some View {
         switch play.page {
         case .home:
-            PlayHome(play: play, nearby: nearby)
+            PlayHome(play: play, nearby: nearby, online: online)
                 .navigationTitle("nav.play")
         case .setup(let selection):
             SetupScreen(play: play, selection: selection)
@@ -195,13 +208,12 @@ struct PlayDestination: View {
 
     /// Whether the page on screen is one over the home, whichever kind it is.
     private var showsBackControl: Bool {
-        if nearby?.boardSessionID != nil { return true }
-        return play.page != .home
+        board != nil || play.page != .home
     }
 
     private func leaveTopPage() {
-        if let nearby, nearby.boardSessionID != nil {
-            nearby.leaveBoard()
+        if let board {
+            board.leaveBoard()
             return
         }
         play.leaveTopPage()

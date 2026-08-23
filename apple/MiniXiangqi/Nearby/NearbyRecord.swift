@@ -1,6 +1,6 @@
-// The store's memory of a nearby game.
+// The store's memory of a game two devices are playing.
 //
-// The board a nearby game is played on is a projection: it draws a position the
+// The board such a game is played on is a projection: it draws a position the
 // session-free rules facade derives from the engine's ply list, and it persists
 // nothing. The engine is the authority on what the two devices have agreed the
 // game is. This is the one place that turns that authority into the library's
@@ -63,6 +63,15 @@ final class NearbyRecord: NearbyRecording {
     /// engine's own reading of the same plies.
     private let rules: any BoardGameRules
     private let log: NearbyLog
+    /// The mode a game created here is recorded under.
+    ///
+    /// **This is the whole of what the two networked modes differ by in the
+    /// library.** Everything the configuration freezes is the same — no AI, one
+    /// local perspective, the dealt start where a game has one — and what
+    /// History and the Current Game card name the game is read off this. So it
+    /// is handed down from the assembly that built the transport, which is the
+    /// one place that knows how these two devices reached each other.
+    private let mode: PlayMode
 
     private(set) var ownMoveRefusals = 0
 
@@ -86,21 +95,27 @@ final class NearbyRecord: NearbyRecording {
     /// publication tries again.
     private var written: NearbyWireSession?
 
-    init(library: any NearbyLibrary, rules: any BoardGameRules, log: NearbyLog) {
+    init(library: any NearbyLibrary, rules: any BoardGameRules, log: NearbyLog,
+         mode: PlayMode) {
         self.library = library
         self.rules = rules
         self.log = log
+        self.mode = mode
     }
 
     // MARK: - Coming back to an interrupted game
 
     func standing() throws -> BoardGameSession? {
         guard held == nil else { return held }
+        // This record's own mode and not merely a networked one: there is one
+        // of these per way of reaching another device, and a game played the
+        // other way is not this one's to rebuild — the session it would hand
+        // over would be offered to peers that never held it.
         guard let summary = try library.activeGameSummary(),
-              summary.mode.isNetworked, let localSide = summary.localSide
+              summary.mode == mode, let localSide = summary.localSide
         else { return nil }
         guard !library.hasSession else {
-            log.note("The library's nearby game is held by another surface.")
+            log.note("The library's game with somebody is held by another surface.")
             return nil
         }
         guard try library.resumeActive() else { return nil }
@@ -108,7 +123,7 @@ final class NearbyRecord: NearbyRecording {
         guard let wire = try library.nearbyWireSession() else {
             // A nearby active game the protocol has already parted with: there
             // is nothing to resume, and it is the player's to file.
-            log.note("The library's nearby game carries no wire session.")
+            log.note("The library's game with somebody carries no wire session.")
             library.endSession()
             attached = false
             return nil
@@ -122,7 +137,7 @@ final class NearbyRecord: NearbyRecording {
             // says it does. There is no position to play the line over, so
             // there is no session to give back; the game stays the library's
             // active one for the player to file.
-            log.note("The library's nearby game does not verify against its "
+            log.note("The library's game with somebody does not verify against its "
                      + "own deal.")
             library.endSession()
             attached = false
@@ -292,10 +307,13 @@ final class NearbyRecord: NearbyRecording {
                                       peerID: session.peer.rawValue,
                                       proposedLocally: session.proposer == .local,
                                       deal: Self.deal(of: session))
+        let configuration = mode == .online
+            ? GameConfiguration.online(game: game, localSide: localSide,
+                                       startFEN: session.dealtStart)
+            : GameConfiguration.nearby(game: game, localSide: localSide,
+                                       startFEN: session.dealtStart)
         do {
-            try library.createNearby(.nearby(game: game, localSide: localSide,
-                                             startFEN: session.dealtStart),
-                                     wire: birth)
+            try library.createNearby(configuration, wire: birth)
         } catch {
             log.note("The library refused \(NearbyDriver.short(session.id)): "
                      + "\(CoreError(wrapping: error)).")

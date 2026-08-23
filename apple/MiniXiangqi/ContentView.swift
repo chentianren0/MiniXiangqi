@@ -55,6 +55,11 @@ func hidesDestinationBar(_ widthClass: UserInterfaceSizeClass?) -> Bool {
 #endif
 
 struct ContentView: View {
+    /// Whether the player's own Game Center could carry a game, which is what
+    /// the online rows stand on. It is the scene's, because the sign-in that
+    /// produces it is a launch errand.
+    let gameCenter: GameCenterAvailability
+
     var body: some View {
         #if DEBUG
         if Self.isHostingUnitTests {
@@ -86,10 +91,10 @@ struct ContentView: View {
             if NearbyLaunch.current.opensHarness {
                 NearbyHarnessScreen(core: core)
             } else {
-                Destinations(core: core)
+                Destinations(core: core, gameCenter: gameCenter)
             }
             #else
-            Destinations(core: core)
+            Destinations(core: core, gameCenter: gameCenter)
             #endif
         case .failure(let error):
             // A core that will not start is a packaging failure, and saying so
@@ -170,19 +175,39 @@ private struct Destinations: View {
     /// is a fact about the player rather than about the build.
     @State private var nearby: NearbyFlow?
 
+    /// Online play, which every platform this app runs on has: the same flow
+    /// over Game Center, and the party that brings the two players together.
+    /// Whether it is offered at all is the player's own account rather than the
+    /// build's, so the flow exists here wherever the app does and answers that
+    /// question for itself.
+    @State private var online: NearbyFlow
+    @State private var party: OnlineParty
+
+    /// Game Center's own answer, kept by the scene and read whenever a row is
+    /// drawn or the app comes back to the front.
+    private let gameCenter: GameCenterAvailability
+
     private enum Destination: Hashable { case play, history, settings }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    init(core: Core) {
+    init(core: Core, gameCenter: GameCenterAvailability) {
         self.core = core
+        self.gameCenter = gameCenter
         _play = State(initialValue: PlayState(core: core))
         _library = State(initialValue: HistoryLibrary(store: core.history))
         #if os(iOS)
         _nearby = State(initialValue: Self.nearbyFlow(over: core))
         #endif
+        let online = Self.onlinePlay(over: core, gameCenter: gameCenter)
+        _online = State(initialValue: online.flow)
+        _party = State(initialValue: online.party)
     }
+
+    /// Every way this device can reach another one, in the order their rows
+    /// stand on the Play home.
+    private var flows: [NearbyFlow] { [nearby, online].compactMap { $0 } }
 
     #if os(iOS)
     /// The nearby stack: the log every layer writes to, the protocol engine's
@@ -212,23 +237,64 @@ private struct Destinations: View {
         // driver, because a ply can land while the board is down and the
         // driver is what every engine input funnels through.
         let record = NearbyRecord(library: core, rules: core.boardGameRules,
-                                  log: log)
+                                  log: log, mode: .nearby)
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: record)
         let transport = NearbyTransport(driver: driver, log: log)
         return NearbyFlow(driver: driver, reach: transport,
-                          positions: core.nearbyPositions,
-                          isAvailable: NearbyFlow.isAvailableHere)
+                          positions: core.nearbyPositions, mode: .nearby,
+                          availability: { NearbyFlow.isAvailableHere })
     }
     #endif
 
-    var body: some View {
+    /// The online stack, layer for layer the same as the one above it: one log,
+    /// the store's memory of the game, the protocol engine's driver over it, a
+    /// transport under that, and the flow the surfaces read. What differs is
+    /// the transport and the mode a game is recorded in, which is the whole of
+    /// what differs between the two ways of reaching another device.
+    ///
+    /// **It is assembled on every platform**, because nothing in it belongs to
+    /// one: GameKit reaches the Mac exactly as it reaches iPhone and iPad, and
+    /// whether a game can be carried at all is the player's own account rather
+    /// than anything a build knows.
+    private static func onlinePlay(over core: Core,
+                                   gameCenter: GameCenterAvailability)
+        -> (flow: NearbyFlow, party: OnlineParty) {
+        let log = NearbyLog()
+        let record = NearbyRecord(library: core, rules: core.boardGameRules,
+                                  log: log, mode: .online)
+        let driver = NearbyDriver(rules: core.boardGameRules, log: log,
+                                  record: record)
+        let transport = OnlineTransport(driver: driver, log: log)
+        let flow = NearbyFlow(driver: driver, reach: transport,
+                              positions: core.nearbyPositions, mode: .online,
+                              availability: { Self.onlineStands(gameCenter) })
+        return (flow, OnlineParty(transport: transport, log: log))
+    }
+
+    /// Whether the online rows stand: Game Center's own answer, asked at every
+    /// draw so that a sign-out or a restriction takes them away under the
+    /// reader.
+    private static func onlineStands(_ gameCenter: GameCenterAvailability) -> Bool {
+        #if DEBUG
+        // `-mxq-online-available` stands the rows up where no account can be
+        // signed in to earn them, which is every Simulator this suite runs on.
+        // It grants the rows and the surface behind them and nothing else:
+        // whether Game Center actually carries a game is two signed-in devices'
+        // to show.
+        if DebugLaunch.contains("-mxq-online-available") { return true }
+        #endif
+        return gameCenter.isAvailable
+    }
+
+    /// The adaptive container and the three destinations in it.
+    private var container: some View {
         TabView(selection: $destination) {
             Tab("nav.play", systemImage: "square.grid.3x3", value: Destination.play) {
                 PlayDestination(play: play, replay: { record in
                     pendingReplay = record
                     destination = .history
-                }, nearby: nearby)
+                }, nearby: nearby, online: online)
             }
 
             Tab("nav.history", systemImage: "clock", value: Destination.history) {
@@ -244,119 +310,211 @@ private struct Destinations: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // The three nearby presentations that are not a page: the sheet a
-        // game's own nearby row raises, the consent prompt an arriving
-        // invitation puts up, and the refusal that answers one this device
-        // sent. All three sit above the container rather than inside a
-        // destination, because an invitation arrives when it arrives and a
-        // refusal answers something the player may have sent from a sheet they
-        // have already put away.
+    }
+
+    /// The container, everything playing somebody hangs on it, and what the
+    /// window itself answers for.
+    ///
+    /// It is written in pieces rather than as one chain because the chain grew
+    /// past what the type checker will accept in a single expression. Where it
+    /// is cut is where the subject changes, so each piece is about one thing.
+    var body: some View {
+        playingSomebody(container)
+            // **Which destination is showing is what the game's session hangs
+            // on.** Issue #133's decision of 2026-08-05 gives the session, the
+            // engine and any owed search to the board surface, so walking to
+            // another destination puts them down and coming back opens them
+            // again — every move is committed as it is made, so a board
+            // returned to reads the same game back and thinks again about what
+            // it still owes.
+            //
+            // It is driven from this selection rather than from the play
+            // destination's own `onDisappear`, and the difference is not
+            // cosmetic: SwiftUI disposes tab content at moments that are not
+            // the player leaving — the container builds and drops it while the
+            // window is coming up — and a game torn down there is torn down
+            // under a board that is still on screen. This value changes only
+            // when the player moves.
+            .onChange(of: destination) { _, showing in
+                if showing == .play {
+                    play.enterBoard(policy: MotionPolicy(reduceMotion: reduceMotion))
+                } else {
+                    play.leaveBoard()
+                }
+            }
+            // Coming back to the front. Nothing about a game is at stake —
+            // every ply was committed as it landed — and what is taken up
+            // again is what a suspension put down: the radio's publisher and
+            // browser, and the system's pairing snapshots, which can end on
+            // their own. Returning to the page that was showing stays in place.
+            //
+            // **Game Center is asked again here**, which is the one thing that
+            // has to happen on every platform: a restriction applied while the
+            // app was in the background arrives with no notification to hear,
+            // so the answer the online rows stand on is read on the way back
+            // rather than trusted from before.
+            //
+            // **Only `.active` is read, and deliberately.**
+            // docs/engine-integration.md is explicit that a teardown's trigger
+            // is the platform's own suspension or memory-pressure signal and
+            // never a change of visibility; `Suspension` subscribes to those
+            // signals and this must not become a second, looser answer to the
+            // same question.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                gameCenter.refresh()
+                for flow in flows { flow.returnedToForeground() }
+            }
+            #if !os(iOS)
+            // The window closing, which on this platform is not the app
+            // quitting. The session and any search owed to it go with the
+            // surface they belonged to; the engine stays, because a window is
+            // not sleep.
+            .background(WindowCloseWatcher { play.windowClosed() })
+            #endif
+            // The two launch arguments that are about the *window* rather than
+            // about a destination sit here, above the container: applied to a
+            // destination they would be re-applied every time the player came
+            // back to it, and the window would jump.
+            #if DEBUG
+            .preferredColorScheme(Self.launchColorScheme)
+            #if os(macOS)
+            .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
+            #endif
+            // `-mxq-open-replay` walks the launch to the newest record's
+            // replay, which is the page a formatting screenshot is about and
+            // three clicks from a launch otherwise. It waits for Play to have
+            // appeared, because that appearance is what files the same launch's
+            // `-mxq-history` games: switching sooner would open History onto a
+            // library nothing had written to yet. History pushes the record
+            // whenever the list arrives, so nothing here depends on this wait
+            // being long enough.
+            .task {
+                guard DebugLaunch.contains("-mxq-open-replay") else { return }
+                try? await Task.sleep(for: .seconds(2))
+                destination = .history
+            }
+            #endif
+    }
+
+    /// Everything about playing somebody on another device that belongs above
+    /// the container rather than inside a destination: what it presents, and
+    /// what it hangs on.
+    private func playingSomebody(_ content: some View) -> some View {
+        publications(surfaces(presentations(content)))
+    }
+
+    /// The three presentations that are not a page.
+    private func presentations(_ content: some View) -> some View {
+        content
+        // The surface a game's own
+        // row raises, the consent prompt an arriving invitation puts up, and
+        // the refusal that answers one this device sent. All three sit above
+        // the container rather than inside a destination, because an invitation
+        // arrives when it arrives and a refusal answers something the player
+        // may have sent from a surface they have already put away.
         //
-        // **They are declared wherever the app runs and ask the flow whether
-        // there is anything to show.** With no flow every binding here is
-        // false and every observed value is nil and stays nil, so a platform
-        // without nearby play carries the declarations and presents none of
-        // them — and a mode that reaches further hangs on the same three
-        // without moving any of them.
+        // **They are declared wherever the app runs and ask the flows whether
+        // there is anything to show.** With no flow every binding here is false
+        // and every observed value is nil and stays nil, so a platform without
+        // nearby play carries the declarations and presents none of them.
+        //
+        // The propose surface is the one of the three that differs by the way
+        // the two devices reach each other, and it differs in one section:
+        // whom to reach, and how. The side and the frame around it are one
+        // surface written once.
         .sheet(isPresented: proposing) {
-            if let nearby, let game = nearby.proposing {
+            if let game = online.proposing {
+                OnlineProposeSheet(flow: online, game: game, party: party)
+            } else if let nearby, let game = nearby.proposing {
                 NearbyProposeSheet(flow: nearby, game: game)
             }
         }
-        .nearbyAnswers(nearby) { destination = .play }
-        // The engine publishes on every input, and this is where the flow reads
-        // what moved: a proposal answered, or a refusal to present.
-        .onChange(of: nearby?.driver.sessions) { nearby?.sessionsChanged() }
-        .onChange(of: nearby?.driver.declines.count) { nearby?.sessionsChanged() }
-        // The two objects that both have a claim on the library's one active
-        // game, introduced to each other here because this is where both are
-        // built. Nearby play makes room through the accepted 保存并继续, and
-        // the paths that take the active game away tell whoever is playing it.
-        .task {
-            guard let nearby else { return }
-            play.nearbyHolder = nearby
-            play.resumeNearby = { [weak nearby] game in nearby?.reenter(game) }
-            nearby.room = play
-            nearby.libraryChanged = { [weak play] in play?.activeGameChanged() }
-        }
-        // A nearby board is drawn over every page of the Play destination, so
-        // while one is up the local game's board is not on screen. The session,
-        // the engine and any owed search go with the board that is showing:
-        // down when the nearby board goes up, and open again on the local page
-        // still standing underneath when it comes down.
-        .onChange(of: nearby?.boardSessionID) { _, session in
-            play.nearbyBoardPresented(session != nil,
-                                      policy: MotionPolicy(reduceMotion: reduceMotion))
-        }
-        // **Which destination is showing is what the game's session hangs on.**
-        // Issue #133's decision of 2026-08-05 gives the session, the engine and
-        // any owed search to the board surface, so walking to another
-        // destination puts them down and coming back opens them again — every
-        // move is committed as it is made, so a board returned to reads the
-        // same game back and thinks again about what it still owes.
-        //
-        // It is driven from this selection rather than from the play
-        // destination's own `onDisappear`, and the difference is not
-        // cosmetic: SwiftUI disposes tab content at moments that are not the
-        // player leaving — the container builds and drops it while the window
-        // is coming up — and a game torn down there is torn down under a board
-        // that is still on screen. This value changes only when the player
-        // moves.
-        .onChange(of: destination) { _, showing in
-            if showing == .play {
-                play.enterBoard(policy: MotionPolicy(reduceMotion: reduceMotion))
-            } else {
-                play.leaveBoard()
-            }
-        }
-        #if os(iOS)
-        // Coming back from a suspension. Nothing about the game is at stake —
-        // every ply was committed as it landed — but the radio's publisher and
-        // browser stopped with the app, and the system's pairing snapshots can
-        // end on their own, so both are taken up again. Returning to the page
-        // that was showing stays in place.
-        //
-        // **Only `.active` is read here, and deliberately.**
-        // docs/engine-integration.md is explicit that a teardown's trigger is
-        // the platform's own suspension or memory-pressure signal and never a
-        // change of visibility; `Suspension` subscribes to those signals and
-        // this must not become a second, looser answer to the same question.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { nearby?.returnedToForeground() }
-        }
-        #else
-        // The window closing, which on this platform is not the app quitting.
-        // The session and any search owed to it go with the surface they
-        // belonged to; the engine stays, because a window is not sleep.
-        .background(WindowCloseWatcher { play.windowClosed() })
-        #endif
-        // The two launch arguments that are about the *window* rather than
-        // about a destination sit here, above the container: applied to a
-        // destination they would be re-applied every time the player came back
-        // to it, and the window would jump.
-        #if DEBUG
-        .preferredColorScheme(Self.launchColorScheme)
-        #if os(macOS)
-        .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
-        #endif
-        // `-mxq-open-replay` walks the launch to the newest record's replay,
-        // which is the page a formatting screenshot is about and three clicks
-        // from a launch otherwise. It waits for Play to have appeared, because
-        // that appearance is what files the same launch's `-mxq-history` games:
-        // switching sooner would open History onto a library nothing had
-        // written to yet. History pushes the record whenever the list arrives,
-        // so nothing here depends on this wait being long enough.
-        .task {
-            guard DebugLaunch.contains("-mxq-open-replay") else { return }
-            try? await Task.sleep(for: .seconds(2))
-            destination = .history
-        }
-        #endif
+        .nearbyAnswers(flows) { destination = .play }
     }
 
+    /// What each flow hangs on: the engine publishes once per input, and this
+    /// is where a flow reads what moved — a proposal answered, or a refusal to
+    /// present.
+    private func publications(_ content: some View) -> some View {
+        content
+        .onChange(of: nearby?.driver.sessions) { nearby?.sessionsChanged() }
+        .onChange(of: nearby?.driver.declines.count) { nearby?.sessionsChanged() }
+        .onChange(of: online.driver.sessions) { online.sessionsChanged() }
+        .onChange(of: online.driver.declines.count) { online.sessionsChanged() }
+    }
+
+    /// What the surfaces themselves hang on: a room that moved, a party that
+    /// has to live exactly as long as the screen offering it, the objects with
+    /// a claim on the library's one active game, and a board going up or coming
+    /// down.
+    private func surfaces(_ content: some View) -> some View {
+        content
+        // The room moving, which online play answers by proposing: the friend
+        // the player already chose has arrived, and there is nothing left for
+        // them to press.
+        .onChange(of: online.peers) { online.roomChanged() }
+        // The party lives exactly as long as the surface offering it. Opening
+        // it is what mints the code a friend can join by, and putting the
+        // surface away ends it — a code nobody can read any more is a code
+        // nobody can say.
+        .onChange(of: online.proposing) { _, game in
+            if let game { party.open(game) } else { party.close() }
+        }
+        // The objects that have a claim on the library's one active game,
+        // introduced to each other here because this is where they are all
+        // built. A game with somebody makes room through the accepted
+        // 保存并继续, and the paths that take the active game away tell
+        // whoever is playing it — which is the one flow whose mode it is.
+        //
+        // **Every capture here is written out**, the errand's own and the
+        // stored closures' both: the errand holds these three for as long as it
+        // runs and no longer, while what it leaves behind on them must not hold
+        // them at all — each of these objects lives as long as the window, and
+        // a closure stored on one that kept another alive would be a cycle for
+        // the sake of nothing.
+        .task { [play, party, nearby, online, flows] in
+            play.resumeNetworkedGame = { [weak nearby, weak online] mode, game in
+                (mode == .online ? online : nearby)?.reenter(game)
+            }
+            play.giveUpNetworkedGame = { [weak nearby, weak online] mode in
+                (mode == .online ? online : nearby)?.giveUpActiveGame()
+            }
+            for flow in flows {
+                flow.room = play
+                flow.libraryChanged = { [weak play] in play?.activeGameChanged() }
+            }
+            // An invitation is accepted in Game Center's own surfaces, at a
+            // moment no screen of this app chose, so the listener is taken up
+            // with the window rather than with a page.
+            party.listen()
+        }
+        // A board two people are playing on is drawn over every page of the
+        // Play destination, so while one is up the local game's board is not on
+        // screen. The session, the engine and any owed search go with the board
+        // that is showing: down when that board goes up, and open again on the
+        // local page still standing underneath when it comes down.
+        .onChange(of: boardIsUp) { _, up in
+            play.nearbyBoardPresented(up,
+                                      policy: MotionPolicy(reduceMotion: reduceMotion))
+        }
+    }
+
+    /// Whether any of the ways to reach another device is composing a proposal.
+    /// At most one is: raising a surface asks for the library's one active-game
+    /// slot first, and there is one of those.
     private var proposing: Binding<Bool> {
-        Binding(get: { nearby?.proposing != nil },
-                set: { if !$0 { nearby?.dismissSheet() } })
+        Binding(get: { flows.contains { $0.proposing != nil } },
+                set: { up in
+                    guard !up else { return }
+                    for flow in flows { flow.dismissSheet() }
+                })
+    }
+
+    /// Whether a board two people are playing on is up, on whichever of them
+    /// holds the game.
+    private var boardIsUp: Bool {
+        flows.contains { $0.boardSessionID != nil }
     }
 
     #if DEBUG

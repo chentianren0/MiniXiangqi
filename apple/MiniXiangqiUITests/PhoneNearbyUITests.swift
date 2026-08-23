@@ -1,4 +1,10 @@
-// Nearby play, as far as a Simulator can honestly go.
+// Playing somebody on another device, as far as a Simulator can honestly go.
+//
+// **Online play is here for the same reason nearby play is**, and stops at the
+// same place: no Simulator has a Game Center account to sign in with, so what
+// can be answered is whether the rows stand where the answer says they should
+// and what the surface behind them is made of. Whether Game Center carries a
+// game between two accounts is two signed-in devices' to show.
 //
 // A Simulator has no Wi-Fi Aware, and every launch here holds the other path
 // down, so there is no room, no pairing and no game to play — and this suite
@@ -32,7 +38,11 @@ import XCTest
 @MainActor
 final class PhoneNearbyUITests: XCTestCase {
 
-    private func launch(board: String? = nil) -> XCUIApplication {
+    /// - Parameter online: whether online play is staged as on offer.
+    ///   Whether it is on offer at all is the player's own Game Center, and no
+    ///   Simulator has an account to sign in with — so the launch grants the
+    ///   answer, and nothing else about Game Center is faked or reached.
+    private func launch(board: String? = nil, online: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
         app.launchArguments += ["-mxq-store-name", "mxq-uitest-store-" + UUID().uuidString]
@@ -47,6 +57,7 @@ final class PhoneNearbyUITests: XCTestCase {
         // session is handed to the app, and everything above it — the flow, the
         // board's model, the position — is the real thing.
         if let board { app.launchArguments += ["-mxq-nearby-board", board] }
+        if online { app.launchArguments.append("-mxq-online-available") }
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
                       "the app should reach the foreground")
@@ -123,9 +134,9 @@ final class PhoneNearbyUITests: XCTestCase {
         return app.buttons[identifier].exists
     }
 
-    /// Each game's section carries a third row, under that game's own two and
-    /// inside that game's own section.
-    func testTheNearbyRowIsTheThirdRowInEachGamesSection() {
+    /// Each game's section carries a nearby row, under the ways to play that
+    /// game locally and inside that game's own section.
+    func testTheNearbyRowStandsUnderTheLocalWaysToPlay() {
         let app = launch()
         let xiangqiNearby = app.buttons["mode-xiangqi-nearby"]
         XCTAssertTrue(xiangqiNearby.waitForExistence(timeout: 30))
@@ -144,6 +155,109 @@ final class PhoneNearbyUITests: XCTestCase {
         XCTAssertLessThan(app.buttons["mode-mini-xiangqi-free-play"].frame.minY,
                           miniNearby.frame.minY)
         attach(app, named: "phone-nearby-02-the-home-with-the-rows")
+    }
+
+    /// **Absent rather than disabled**, where the player's own Game Center
+    /// could not carry a game. No Simulator has an account signed in, so this
+    /// launch is the real case rather than a staged one — and the nearby rows
+    /// standing beside the missing ones is what says the home is otherwise
+    /// itself.
+    func testTheOnlineRowsAreAbsentWithoutAnAccount() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["mode-xiangqi-nearby"].waitForExistence(timeout: 30))
+
+        for identifier in ["mode-xiangqi-online", "mode-mini-xiangqi-online"] {
+            XCTAssertFalse(app.buttons[identifier].exists,
+                           "\(identifier) is a promise no account here can keep")
+        }
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-nearby"].exists,
+                      "and the rows that do stand are untouched")
+    }
+
+    /// Under that game's nearby row, and inside that game's own section.
+    func testTheOnlineRowStandsUnderTheNearbyRowInEachSection() {
+        let app = launch(online: true)
+        let xiangqiOnline = app.buttons["mode-xiangqi-online"]
+        XCTAssertTrue(xiangqiOnline.waitForExistence(timeout: 30))
+        XCTAssertEqual(xiangqiOnline.label, "在线对弈")
+
+        XCTAssertLessThan(app.buttons["mode-xiangqi-nearby"].frame.minY,
+                          xiangqiOnline.frame.minY,
+                          "under Nearby Play")
+        XCTAssertLessThan(xiangqiOnline.frame.minY,
+                          app.buttons["mode-xiangqi-custom-scene"].frame.minY,
+                          "and above Custom Scene, which is last of all in this section")
+
+        let miniOnline = app.buttons["mode-mini-xiangqi-online"]
+        XCTAssertLessThan(app.buttons["mode-mini-xiangqi-human-versus-ai"].frame.minY,
+                          miniOnline.frame.minY,
+                          "inside the next game's own section")
+        XCTAssertLessThan(app.buttons["mode-mini-xiangqi-nearby"].frame.minY,
+                          miniOnline.frame.minY)
+        attach(app, named: "phone-online-01-the-home-with-the-rows")
+
+        // Every game the app carries, it carries at any distance — the dealt
+        // game and the placement games included, further down the list.
+        for identifier in ["mode-jieqi-online", "mode-gomoku-online",
+                           "mode-renju-online"] {
+            XCTAssertTrue(scrollTo(app, identifier),
+                          "\(identifier) completes that game's section")
+        }
+        attach(app, named: "phone-online-01b-the-placement-sections")
+    }
+
+    // MARK: - The surface the online row raises
+
+    /// The propose surface: the side this device would take, in the same
+    /// control and the same two words the nearby sheet uses, and the two ways
+    /// of bringing the friend.
+    ///
+    /// There is no account here, so Game Center mints no code and the surface
+    /// is the field alone — which is the state a device without a party can
+    /// show, and it says nothing about why.
+    func testTheOnlineProposeSurfaceOffersTheFriendAndTheCode() {
+        let app = launch(online: true)
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-online"].waitForExistence(timeout: 30))
+
+        app.buttons["mode-mini-xiangqi-online"].tap()
+
+        let invite = app.buttons["online-invite"]
+        XCTAssertTrue(invite.waitForExistence(timeout: 10),
+                      "the row raises the surface that offers the game")
+        XCTAssertTrue(element(app, saying: "迷你象棋").exists,
+                      "the surface names the game its row named")
+
+        // The side is the shared frame's, so it is the same control with the
+        // same two words the nearby sheet carries.
+        XCTAssertTrue(app.descendants(matching: .any)["propose-side"].exists)
+        XCTAssertTrue(element(app, saying: "我先手").exists)
+        XCTAssertTrue(element(app, saying: "对方先手").exists)
+
+        XCTAssertEqual(invite.label, "邀请好友")
+        XCTAssertTrue(element(app, saying: "好友").exists)
+        XCTAssertTrue(element(app, saying: "只有你邀请的好友才能加入。").exists)
+
+        XCTAssertTrue(element(app, saying: "对局码").exists)
+        XCTAssertTrue(app.descendants(matching: .any)["online-code-field"].exists,
+                      "the field a friend's code is entered in")
+        let join = app.buttons["online-code-join"]
+        XCTAssertTrue(join.exists)
+        XCTAssertEqual(join.label, "加入")
+        XCTAssertFalse(join.isEnabled, "nothing typed is not a code")
+        XCTAssertFalse(app.descendants(matching: .any)["online-code"].exists,
+                       "and with no account there is no code to say")
+        attach(app, named: "phone-online-02-the-propose-surface")
+
+        // **No room and no device list**: nobody is out there to be found here,
+        // and the two ways in are the ones above.
+        XCTAssertFalse(app.staticTexts["nearby-searching"].exists)
+        XCTAssertFalse(app.buttons["nearby-invite"].exists)
+        XCTAssertFalse(element(app, saying: "配对").exists,
+                       "pairing is the local paths' errand")
+
+        app.buttons["propose-close"].tap()
+        XCTAssertTrue(app.buttons["mode-mini-xiangqi-online"].waitForExistence(timeout: 10),
+                      "and putting it away returns to the Play home")
     }
 
     // MARK: - The sheet the row raises
@@ -167,7 +281,7 @@ final class PhoneNearbyUITests: XCTestCase {
 
         // The side is the proposer's choice, and the other device takes what is
         // left — which is why the second option names the other player.
-        XCTAssertTrue(app.descendants(matching: .any)["nearby-side"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["propose-side"].exists)
         XCTAssertTrue(element(app, saying: "我先手").exists)
         XCTAssertTrue(element(app, saying: "对方先手").exists)
 
@@ -191,7 +305,7 @@ final class PhoneNearbyUITests: XCTestCase {
                       + "would be")
         attach(app, named: "phone-nearby-03-the-propose-sheet")
 
-        app.buttons["nearby-close"].tap()
+        app.buttons["propose-close"].tap()
         XCTAssertTrue(app.buttons["mode-mini-xiangqi-nearby"].waitForExistence(timeout: 10),
                       "and putting the sheet away returns to the Play home")
         XCTAssertFalse(app.buttons["nearby-invite"].exists)

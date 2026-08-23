@@ -10,12 +10,13 @@
 // the play controls are the ones a nearby game has, which is every mode's cluster
 // less the hint and with the negotiations of whoever's turn it is.
 //
-// **There is no connection chrome.** Connections idle out between moves by the
-// radio's own design and the driver brings them back underneath; a board that
-// announced either would be announcing the weather. One quiet line appears where
-// the link is actually costing the player something — what they did has not
-// reached the other device, or their own turn has been blocked past a real
-// stretch — and it goes when the link comes back.
+// **There is no connection chrome.** Where connections idle out between moves
+// by the radio's own design and the driver brings them back underneath, a board
+// that announced either would be announcing the weather. One quiet line appears
+// where the link is actually costing the player something — what they did has
+// not reached the other device, their own turn has been blocked past a real
+// stretch, or the link has gone somewhere it will not come back from — and what
+// it says is the transport's own answer to what an interruption means.
 //
 // **A game that goes away says why it went.** Three things take a session from
 // the peer it belongs to — the other device no longer holding it, a connection
@@ -139,6 +140,7 @@ struct NearbyBoardScreen: View {
         play?.close()
         play = flow.boardSession.flatMap {
             NearbyPlay(session: $0, driver: flow.driver, positions: flow.positions,
+                       interruption: flow.reach.interruption,
                        flipped: flow.orientation(of: $0.id), policy: policy)
         }
         wentAway()
@@ -422,7 +424,7 @@ struct NearbyBoardScreen: View {
             }
 
             if play.isWaitingOnConnection {
-                Text("nearby.connecting")
+                Text(LocalizedStringKey(play.interruptionKey))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
