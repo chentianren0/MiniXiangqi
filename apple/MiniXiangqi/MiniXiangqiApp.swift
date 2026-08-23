@@ -37,6 +37,17 @@ struct MiniXiangqiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     #endif
 
+    /// Game Center's sign-in, and whether online play is on offer once it has
+    /// answered.
+    ///
+    /// **It is started here because it is a launch errand rather than a
+    /// screen's**: the answer gates whether a row exists at all, so it has to be
+    /// asked before anything draws, and asking it twice would be two sign-ins.
+    /// The scene owns it for the same reason it owns the window — one app, one
+    /// account, one answer — and the surfaces that read it are handed it from
+    /// here.
+    @State private var gameCenter = GameCenterAvailability()
+
     /// The window's title is the app's own name: a proper noun, not copy, so
     /// it is typed as a plain string and never enters the catalog.
     private static let title = "MiniXiangqi"
@@ -45,11 +56,13 @@ struct MiniXiangqiApp: App {
         #if os(macOS)
         Window(Self.title, id: "play") {
             ContentView()
+                .task { gameCenter.authenticate() }
         }
         .windowResizability(.contentMinSize)
         #else
         WindowGroup {
             ContentView()
+                .task { gameCenter.authenticate() }
         }
         #endif
     }
