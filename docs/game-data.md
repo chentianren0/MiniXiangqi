@@ -51,7 +51,7 @@ Closed sets; unknown values are rejected at import.
 - `end_reason`: the movement games' rule reasons `checkmate`, `stalemate`, `perpetual-check`, `perpetual-chase`, `threefold-repetition`, `mutual-perpetual-check`, `mutual-perpetual-chase`, `fifty-move-rule`, `forty-move-rule`; the placement games' rule reasons `five-in-a-row` and `board-full`; the user-scoped `resignation` and `ended-early`; and the ends two players declare to each other, `agreed-draw` and `mutual-resignation`.
 - Cross-field rules, enforced at import and as store constraints:
   - `outcome = none` exactly when `end_reason = ended-early`;
-  - `outcome = draw` exactly when the reason is one of the draw reasons — the rule draws, `agreed-draw`, and `mutual-resignation`;
+  - `outcome = draw` exactly when the reason is one of the draw reasons — `threefold-repetition`, `mutual-perpetual-check`, `mutual-perpetual-chase`, `fifty-move-rule`, `forty-move-rule`, `board-full`, `agreed-draw` and `mutual-resignation`;
   - `resignation` only in `human-vs-ai` and in networked play, and never with a draw or absent outcome: the `outcome` names the winner, and the side that resigned is its opposite. In `human-vs-ai` that winner is additionally the side opposite `human_side`;
   - `agreed-draw` and `mutual-resignation` only in networked play;
   - `human-vs-ai` never with `rules_id = jieqi`, and with it none of that mode's configuration members: the game has no AI, so a document recording one against a machine records a game this app cannot have played;

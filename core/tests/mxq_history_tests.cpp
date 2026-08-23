@@ -509,7 +509,7 @@ struct Scenario {
 };
 
 /* The wire session a dealt scenario is created over: a session at its birth,
- * carrying the deal and the two identifiers nothing compares. */
+ * carrying the deal and the session and peer identifiers nothing compares. */
 MxqNearbySession nearby_session_of(const Scenario &scenario) {
     MxqNearbySession wire;
     std::memset(&wire, 0, sizeof(wire));
@@ -574,8 +574,8 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         const mxqtest::JsonValue *first = config->member("first_mover_choice");
         if (side == nullptr || level == nullptr || movetime == nullptr ||
             first == nullptr) {
-            error = "a human-versus-AI scenario states every configuration "
-                    "member";
+            error = "a human-versus-AI scenario states human_side, ai_level, "
+                    "ai_movetime_ms and first_mover_choice";
             return false;
         }
         out.config.human_side =
@@ -660,7 +660,7 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         out.deal_digest = value("digest");
         if (out.deal_commit.size() != 64 || out.deal_nonce.size() != 64 ||
             out.deal_seed.size() != 64 || out.deal_digest.size() != 64) {
-            error = "a scenario's \"deal\" states 64-digit values";
+            error = "a scenario's \"deal\" states four 64-digit values";
             return false;
         }
     }
@@ -2477,7 +2477,7 @@ void case_pagination_boundaries() {
     c.check_status(mxq_store_history_page(core, 0, 3, exact.data(), 3, &written,
                                           &page_revision, &err),
                    MXQ_OK, "an exact page");
-    c.check_eq(static_cast<int64_t>(written), 3, "all three were written");
+    c.check_eq(static_cast<int64_t>(written), 3, "every record was written");
     c.check_eq(static_cast<int64_t>(page_revision),
                static_cast<int64_t>(revision),
                "the page reports the same revision the count did");

@@ -498,8 +498,8 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         const mxqtest::JsonValue *first = config->member("first_mover_choice");
         if (side == nullptr || level == nullptr || movetime == nullptr ||
             first == nullptr) {
-            error = "a human-versus-AI scenario states every configuration "
-                    "member";
+            error = "a human-versus-AI scenario states human_side, ai_level, "
+                    "ai_movetime_ms and first_mover_choice";
             return false;
         }
         out.config.human_side =
@@ -594,7 +594,7 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         out.deal_digest = value("digest");
         if (out.deal_commit.size() != 64 || out.deal_nonce.size() != 64 ||
             out.deal_seed.size() != 64 || out.deal_digest.size() != 64) {
-            error = "a scenario's \"deal\" states 64-digit values";
+            error = "a scenario's \"deal\" states four 64-digit values";
             return false;
         }
     }
@@ -1456,7 +1456,7 @@ void case_second_active_game() {
  * created the way every game before this one was must still be created.
  */
 void case_start_position_ladder() {
-    Case c("the three questions a composed start is asked, in order");
+    Case c("the questions a composed start is asked, in order");
     const fs::path store = scratch_dir("start-ladder");
 
     MxqCore *core = nullptr;

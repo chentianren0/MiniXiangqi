@@ -175,9 +175,9 @@ One archive per rejection class of the accepted validation order, each stating t
 | rules tier: the recorded deal | `jieqi-deal-commit-mismatch` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 | rules tier: the recorded deal | `jieqi-deal-not-the-start` | `MXQ_OK` | `INCONSISTENT_REPLAY` |
 
-Statuses are written without their `MXQ_ERR_ARCHIVE_` prefix here; the sidecars spell the constant in full. Some rows carry a status with no such prefix, and that is the point of them: see the start policy below.
+Statuses are written without their `MXQ_ERR_ARCHIVE_` prefix here; the sidecars spell the constant in full. `MXQ_OK` and `MXQ_ERR_RULES_ILLEGAL_POSITION` have no such prefix to drop: the first is the probe accepting what a full validation refuses, and the second is the setup question's own answer, which is the point of the rows carrying it — see the start policy below.
 
-Some limits are size limits, and a fixture file for one would be a megabyte or seventy kilobytes of noise in the repository. They are built by the runner instead, on **both** sides of each boundary — exactly 1 MiB and exactly 10 000 plies must be accepted, one byte and one ply more must not — which pins them as boundaries rather than approximations. That is why those rows say *synthesised*.
+The transport size limit and the ply limit are size limits, and a fixture file for either would be a megabyte or seventy kilobytes of noise in the repository. They are built by the runner instead, on **both** sides of each boundary — exactly 1 MiB and exactly 10 000 plies must be accepted, one byte and one ply more must not — which pins them as boundaries rather than approximations. That is why those rows say *synthesised*.
 
 ### Sidecar
 
