@@ -394,6 +394,7 @@ struct JieqiTests {
         session.accepted = true
         let play = try #require(NearbyPlay(session: session, driver: FakeDriver(),
                                            positions: core.nearbyPositions,
+                                           interruption: .passing,
                                            animator: ManualAnimator().animator,
                                            feedback: Feedback(perform: { _ in },
                                                               play: { _ in })))
@@ -439,7 +440,7 @@ struct JieqiTests {
     /// transition a case looks at is still standing when it looks.
     private func nearbyBoard(on core: Core, plies: [String]) -> NearbyPlay? {
         NearbyPlay(session: dealtSession(plies: plies), driver: FakeDriver(),
-                   positions: core.nearbyPositions,
+                   positions: core.nearbyPositions, interruption: .passing,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(perform: { _ in }, play: { _ in }))
     }

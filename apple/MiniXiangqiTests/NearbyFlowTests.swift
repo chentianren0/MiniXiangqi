@@ -21,7 +21,7 @@ struct NearbyFlowTests {
     @Test("Where the platform offers nothing, nothing is drawn and nothing starts")
     func theEntryIsGatedOnThePlatform() {
         let reach = FakeReach(hasRadio: false)
-        let flow = flow(reach: reach, isAvailable: false)
+        let flow = flow(reach: reach, isAvailable: { false })
 
         #expect(!flow.isAvailable)
         // Even asked, there is nothing to wake: the rows are not drawn, and
@@ -71,12 +71,34 @@ struct NearbyFlowTests {
     @Test("A device with the radio offers it too, and the surface wakes it")
     func theEntryIsOfferedWhereTheRadioIs() {
         let reach = FakeReach(hasRadio: true)
-        let flow = flow(reach: reach, isAvailable: true)
+        let flow = flow(reach: reach)
 
         #expect(flow.isAvailable)
         flow.open(.miniXiangqi)
         #expect(flow.proposing == .miniXiangqi)
         #expect(reach.isRunning, "the sheet is a nearby surface, so the transport comes up")
+    }
+
+    /// Whether the rows stand is asked at every draw rather than kept from
+    /// whenever the flow was built.
+    ///
+    /// It is the whole of what makes the online rows honest: the sign-in
+    /// completes after the window is already up, and the player can sign out or
+    /// have multiplayer restricted while the app is in the background. What
+    /// this would catch is the answer being read once into a stored value —
+    /// which leaves a row standing for an account that is gone, or withholds
+    /// one from a player who has just signed in.
+    @Test("Whether the rows stand is asked, not remembered")
+    func availabilityIsAskedEveryTime() {
+        var stands = false
+        let flow = flow(reach: FakeReach(hasRadio: false), mode: .online,
+                        isAvailable: { stands })
+
+        #expect(!flow.isAvailable)
+        stands = true
+        #expect(flow.isAvailable)
+        stands = false
+        #expect(!flow.isAvailable)
     }
 
     @Test("Availability is the platform's answer, and the Mac's is no")
@@ -318,6 +340,36 @@ struct NearbyFlowTests {
         #expect(flow.boardSessionID == "S")
     }
 
+    /// "A code carries its own game, and entering it joins that game whatever
+    /// row raised the surface."
+    ///
+    /// The surface is up for one game and the proposal that arrives names
+    /// another, which is what happens when a friend's code is entered from the
+    /// wrong row. It is an arrival rather than an error: the game is the
+    /// proposal's, the room is made for *that* game, and its board is what
+    /// opens. What this would catch is accepting being gated on the surface's
+    /// own game, which would turn the contract's arrival into a refusal.
+    @Test("A proposal for another game than the surface was raised for is an arrival")
+    func aProposalForAnotherGameIsAnArrival() {
+        let driver = FakeDriver()
+        driver.sessions = [session(proposer: .peer, rulesID: "xiangqi")]
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
+        let room = FakeRoom()
+        flow.room = room
+        flow.open(.miniXiangqi)
+        room.grant()
+        #expect(flow.proposing == .miniXiangqi, "the surface was raised for one game")
+
+        flow.accept("S")
+        room.grant()
+
+        #expect(room.asked.map(\.game) == [.miniXiangqi, .xiangqi],
+                "the room the game needs is the arriving game's, not the row's")
+        #expect(driver.answers == [FakeDriver.Answer(session: "S", accepting: true)])
+        #expect(flow.boardSessionID == "S")
+        #expect(flow.proposing == nil, "and the surface has done its errand")
+    }
+
     @Test("Declining answers the peer and opens nothing")
     func decliningOpensNothing() {
         let driver = FakeDriver()
@@ -349,6 +401,117 @@ struct NearbyFlowTests {
         flow.open(.xiangqi)
         #expect(flow.proposing == .xiangqi)
         #expect(flow.boardSessionID == nil)
+    }
+
+    // MARK: - Reaching somebody the player chose before the room existed
+
+    /// Where the player named their opponent to the system first — one friend
+    /// invited, one code said to one friend — whoever turns up is who they
+    /// picked, so the proposal goes out on arrival rather than on a press.
+    ///
+    /// What this would catch is a surface that waited for a control that is not
+    /// there: nothing on the online propose surface sends a proposal, so a flow
+    /// that did not send one here would leave the two devices connected and
+    /// neither of them ever asked to play.
+    @Test("The friend arriving is the proposal, where there was nobody to choose")
+    func anArrivingFriendIsProposedTo() {
+        let driver = FakeDriver()
+        let reach = FakeReach(hasRadio: false)
+        reach.playerChoosesFromTheRoom = false
+        let flow = flow(driver: driver, reach: reach, mode: .online)
+
+        flow.open(.xiangqi)
+        #expect(flow.proposing == .xiangqi)
+        flow.roomChanged()
+        #expect(driver.proposals.isEmpty, "nobody has arrived yet")
+
+        reach.peers = [.other]
+        flow.roomChanged()
+        #expect(driver.proposals.map(\.rulesID) == ["xiangqi"],
+                "the game is the row's, and the side the one being composed")
+
+        // The room republishes for its own reasons, and a second proposal to
+        // one person is one the engine refuses and the player has to read.
+        flow.roomChanged()
+        #expect(driver.proposals.count == 1)
+    }
+
+    @Test("and where the room is the choice, nothing goes out until it is pressed")
+    func aRoomChosenFromSendsNothingByItself() {
+        let driver = FakeDriver()
+        let flow = flow(driver: driver,
+                        reach: FakeReach(hasRadio: true, peers: [.other]))
+
+        flow.open(.xiangqi)
+        flow.roomChanged()
+
+        #expect(driver.proposals.isEmpty,
+                "the sheet's own invitation is what sends a local proposal")
+    }
+
+    // MARK: - A standing game, and the way back into it
+
+    /// A game the library is holding belongs to one way of reaching another
+    /// device, and the other one's row must not walk into it.
+    ///
+    /// What this would catch is the row asking whether *any* networked game
+    /// stands: the nearby row would then rebuild an online game's session and
+    /// offer its resume to peers that never held it.
+    @Test("A standing game is only its own mode's to walk back into")
+    func aStandingGameBelongsToOneWayOfReaching() {
+        let driver = FakeDriver()
+        let flow = flow(driver: driver, reach: FakeReach(hasRadio: true))
+        let room = FakeRoom()
+        room.standing = (.miniXiangqi, .online)
+        flow.room = room
+
+        flow.open(.miniXiangqi)
+
+        #expect(driver.resumedStored == 0,
+                "an online game is not the nearby row's to rebuild")
+        #expect(room.asked.map(\.mode) == [.nearby],
+                "so the row asks for the room a game of its own would need")
+    }
+
+    /// Where nothing will bring a link back, the way into a standing game is
+    /// the surface that reaches its player — not a board nobody could move on.
+    ///
+    /// "Resuming later is a fresh invitation or party code, on which the
+    /// protocol's resume reconciliation picks the game up unchanged." What this
+    /// would catch is the row opening the board there: the game is kept, and
+    /// the player would have no way at all to ask for it back.
+    @Test("A standing game nothing can reach is met again rather than opened")
+    func anUnreachableStandingGameIsMetAgain() {
+        let driver = FakeDriver()
+        driver.stored = with(session(proposer: .local, accepted: true)) {
+            $0.plies = ["b1b3"]
+            $0.connection = nil
+        }
+        let reach = FakeReach(hasRadio: false)
+        reach.playerChoosesFromTheRoom = false
+        reach.interruption = .lasting
+        let flow = flow(driver: driver, reach: reach, mode: .online)
+        let room = FakeRoom()
+        room.standing = (.miniXiangqi, .online)
+        flow.room = room
+
+        flow.open(.miniXiangqi)
+
+        #expect(driver.resumedStored == 1, "the session is rebuilt either way")
+        #expect(flow.boardSessionID == nil)
+        #expect(flow.proposing == .miniXiangqi)
+        #expect(flow.isMeetingAgain,
+                "and the sides were settled when the two devices agreed to play")
+
+        // The friend arrives. Nothing is proposed — the game is already
+        // theirs, and the protocol's own resume rides the fresh connection —
+        // and the board is where it goes on.
+        reach.peers = [.other]
+        flow.roomChanged()
+
+        #expect(driver.proposals.isEmpty)
+        #expect(flow.boardSessionID == "S")
+        #expect(!flow.isMeetingAgain, "the surface is gone with the errand")
     }
 
     // MARK: - The transport
@@ -464,6 +627,41 @@ struct NearbyFlowTests {
         // And it goes when the link comes back, with the reaching forgotten.
         play.sync(with: live)
         #expect(!play.isWaitingOnConnection)
+    }
+
+    /// A link that is not coming back is not weather, and the board says so at
+    /// once and whosever turn it is.
+    ///
+    /// The local paths' one quiet line waits out a stretch and speaks only on
+    /// the player's own turn, because there the browsers dial again by
+    /// themselves and a wait that ends on its own is not worth reporting. Where
+    /// nothing dials, a player waiting off turn is waiting forever. What this
+    /// would catch is the two transports being given one answer: with the local
+    /// rule everywhere, an online player whose friend has gone sits at a board
+    /// that never says anything; with the lasting rule everywhere, every idle
+    /// radio would announce itself.
+    @Test("Where nothing will bring the link back, the board says so at once")
+    func aLastingInterruptionIsSaidWhoseverTurnItIs() throws {
+        let live = session(proposer: .local, accepted: true)
+        let play = try #require(board(live, interruption: .lasting))
+        #expect(!play.isWaitingOnConnection, "a bound session says nothing")
+
+        play.sync(with: with(live) { $0.plies = ["b1b2"]; $0.connection = nil })
+        #expect(play.isWaitingOnConnection, "off turn, and still the player's problem")
+        #expect(play.interruptionKey == "online.interrupted")
+
+        // A game that went away has already been told what became of it, and
+        // the link is beside the point.
+        play.wentAway(.disagreement)
+        #expect(!play.isWaitingOnConnection)
+
+        let passing = try #require(board(live))
+        passing.sync(with: with(live) { $0.plies = ["b1b2"]; $0.connection = nil })
+        #expect(!passing.isWaitingOnConnection)
+        #expect(passing.interruptionKey == "nearby.connecting")
+        // Distinct, because one of them promises a wait that ends and the other
+        // promises the game is kept.
+        #expect(LinkInterruption.passing.messageKey != LinkInterruption.lasting.messageKey)
     }
 
     // MARK: - Which way round the board is
@@ -984,7 +1182,7 @@ struct NearbyFlowTests {
         flow.room = room
 
         flow.open(.miniXiangqi)
-        #expect(room.asked == [.miniXiangqi])
+        #expect(room.asked.map(\.game) == [.miniXiangqi])
         #expect(flow.proposing == nil, "nothing is composed while the room is being made")
 
         room.grant()
@@ -1018,7 +1216,7 @@ struct NearbyFlowTests {
         }
         let flow = flow(driver: driver, reach: reach)
         let room = FakeRoom()
-        room.standingNearbyGame = .miniXiangqi
+        room.standing = (.miniXiangqi, .nearby)
         flow.room = room
 
         flow.open(.miniXiangqi)
@@ -1071,9 +1269,11 @@ struct NearbyFlowTests {
 
     private func flow(driver: any NearbyDriving = FakeDriver(),
                       reach: any NearbyReach,
-                      isAvailable: Bool = true) -> NearbyFlow {
+                      mode: PlayMode = .nearby,
+                      isAvailable: @escaping @MainActor () -> Bool = { true })
+        -> NearbyFlow {
         NearbyFlow(driver: driver, reach: reach, positions: FakePositions(),
-                   isAvailable: isAvailable)
+                   mode: mode, availability: isAvailable)
     }
 
     /// The board's model over one session, with the position faked: what a
@@ -1085,9 +1285,10 @@ struct NearbyFlowTests {
     /// like is the shared rule the motion suites already pin.
     private func board(_ session: BoardGameSession, flipped: Bool? = nil,
                        driver: FakeDriver = FakeDriver(),
-                       positions: any NearbyPositions = FakePositions()) -> NearbyPlay? {
+                       positions: any NearbyPositions = FakePositions(),
+                       interruption: LinkInterruption = .passing) -> NearbyPlay? {
         NearbyPlay(session: session, driver: driver, positions: positions,
-                   flipped: flipped,
+                   interruption: interruption, flipped: flipped,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(perform: { _ in }, play: { _ in }))
     }
@@ -1145,12 +1346,20 @@ struct NearbyFlowTests {
 /// and the making of room that is somebody else's flow.
 @MainActor
 private final class FakeRoom: NearbyRoom {
-    var standingNearbyGame: GameKind?
-    private(set) var asked: [GameKind] = []
+    /// The library's one active game, and the mode it is played in. A flow
+    /// asks only about its own mode, so a game standing in the other one is
+    /// the same answer as no game at all.
+    var standing: (game: GameKind, mode: PlayMode)?
+    private(set) var asked: [(game: GameKind, mode: PlayMode)] = []
     private var pending: (@MainActor () -> Void)?
 
-    func makeRoom(for game: GameKind, then opening: @escaping @MainActor () -> Void) {
-        asked.append(game)
+    func standingGame(in mode: PlayMode) -> GameKind? {
+        standing?.mode == mode ? standing?.game : nil
+    }
+
+    func makeRoom(for game: GameKind, in mode: PlayMode,
+                  then opening: @escaping @MainActor () -> Void) {
+        asked.append((game, mode))
         pending = opening
     }
 
@@ -1171,6 +1380,11 @@ private final class FakeReach: NearbyReach {
     /// again, off the transport's own bracket.
     private(set) var watches = 0
     var peers: [NearbyPeer]
+    /// The two answers a transport gives about reaching somebody. They default
+    /// to the local paths', which is what most of this suite is about; a case
+    /// that is about the other answer says so.
+    var playerChoosesFromTheRoom = true
+    var interruption = LinkInterruption.passing
 
     init(hasRadio: Bool, peers: [NearbyPeer] = []) {
         self.hasRadio = hasRadio

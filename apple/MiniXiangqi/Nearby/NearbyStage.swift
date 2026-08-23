@@ -208,6 +208,8 @@ final class NearbyStagedReach: NearbyReach {
     let hasRadio = false
     let isRunning = false
     let peers: [NearbyPeer] = []
+    let playerChoosesFromTheRoom = true
+    let interruption = LinkInterruption.passing
 
     func watchPairedDevices() { }
     func start() { }
@@ -221,7 +223,8 @@ extension NearbyFlow {
                        rules: any BoardGameRules) -> NearbyFlow {
         let flow = NearbyFlow(driver: NearbyStagedDriver(stage, dealtBy: rules),
                               reach: NearbyStagedReach(),
-                              positions: positions, isAvailable: true)
+                              positions: positions, mode: .nearby,
+                              availability: { true })
         flow.openBoard(NearbyStage.sessionID)
         return flow
     }

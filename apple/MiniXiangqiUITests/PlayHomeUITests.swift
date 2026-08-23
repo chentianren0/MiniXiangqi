@@ -140,6 +140,14 @@ final class PlayHomeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["home-resume"].exists)
         XCTAssertFalse(app.buttons["mode-xiangqi-nearby"].exists,
                        "and no nearby row, which this platform does not offer")
+        // Online play reaches this platform, and stands on the player's own
+        // Game Center rather than on the build: no account is signed in on the
+        // machine a suite runs on, so the row is **absent rather than
+        // disabled**, which is what the contract asks for and what a row that
+        // could never be pressed would break.
+        XCTAssertFalse(app.buttons["mode-xiangqi-online"].exists,
+                       "and no online row, with nobody signed in to carry a game")
+        XCTAssertFalse(app.buttons["mode-mini-xiangqi-online"].exists)
         attach(app, named: "60-the-play-home")
     }
 

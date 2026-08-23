@@ -1,14 +1,19 @@
-// The nearby feature as the person in front of the screen meets it: whether the
-// entry is offered at all, which nearby page is showing, the proposal being
-// composed, and the answer a proposal is owed.
+// Playing somebody on another device, as the person in front of the screen
+// meets it: whether the entry is offered at all, which page is showing, the
+// proposal being composed, and the answer a proposal is owed.
 //
-// docs/interaction-design.md, "Nearby play": the entry is a third row inside
-// each game's section on the Play home, standing wherever either way of
-// reaching another device could carry a game — which on iPhone and iPad is
-// always; the row raises that game's propose sheet, where a device is chosen and
-// a side with it, or opens the game already going with somebody; the peer
-// answers a consent prompt; and a refusal is presented by its reason rather than
-// by its code.
+// docs/interaction-design.md, "Nearby play" and "Online play": the entry is a
+// row inside each game's section on the Play home; the row raises that game's
+// propose surface, where a side is chosen, or opens the game already going with
+// somebody; the peer answers a consent prompt; and a refusal is presented by its
+// reason rather than by its code.
+//
+// **One object, and one of it per way of reaching another device.** "An online
+// game is the nearby game in everything but how the two devices reach each
+// other", so online play is a second instance of this over a second transport
+// rather than a second class beside it: what differs is under the seams below —
+// the reach, and the driver's own record of the mode a game is played in — and
+// a surface that would tell the two apart is a surface designed wrong.
 //
 // **It holds no protocol logic.** Which proposals may be made, which are
 // refused, whose turn it is and when a session is void are the engine's
@@ -68,6 +73,22 @@ protocol NearbyReach: AnyObject {
     /// records and whatever is advertising itself on the network, carrying the
     /// connection to each where one is up.
     var peers: [NearbyPeer] { get }
+
+    /// Whether choosing somebody to play is done from the room, or was already
+    /// done before anybody was in it.
+    ///
+    /// The local paths list whoever happens to be reachable, so the room is a
+    /// list to pick from and picking is what the propose surface is for. Where
+    /// the player names their opponent to the system first — an invitation to
+    /// one friend, a code said to one friend — the person who arrives is the
+    /// person who was chosen, and a control asking which of them to play would
+    /// be asking a question with one answer.
+    var playerChoosesFromTheRoom: Bool { get }
+
+    /// What a link that has gone means here, which is the one thing a board
+    /// says about a connection.
+    var interruption: LinkInterruption { get }
+
     /// Take up the system's pairing record, which is one of what the room is
     /// made of.
     ///
@@ -126,6 +147,34 @@ protocol NearbyDriving: AnyObject {
 }
 
 extension NearbyDriver: NearbyDriving { }
+
+/// What a link that has gone means on the transport that was carrying it.
+///
+/// The board says one thing about a connection, and this is which thing. It is
+/// the transport's answer because the fact is the transport's — "an online game
+/// is the nearby game in everything but how the two devices reach each other",
+/// and how a lost reach is regained is exactly that.
+nonisolated enum LinkInterruption: Equatable, Sendable {
+    /// It comes back without anybody doing anything. The local paths dial again
+    /// by themselves seconds later, so the wait ends on its own and the line
+    /// says so — and off the player's own turn it is not worth saying at all.
+    case passing
+    /// Nothing will bring it back. There is no rediscovery here, so what the
+    /// player is owed is not a wait but what became of the game: it is kept,
+    /// and leaving costs them nothing.
+    case lasting
+
+    /// The sentence the player reads, as its key rather than its string — the
+    /// reason `NearbyRefusal.messageKey` is a key: this mapping is the whole of
+    /// the promise that an interruption reaches the reader as words, and it is
+    /// pinned without a language being chosen for it.
+    var messageKey: String {
+        switch self {
+        case .passing: "nearby.connecting"
+        case .lasting: "online.interrupted"
+        }
+    }
+}
 
 /// Why a game did not start, as the player is told: the other peer's own
 /// refusal, or this device's engine declining to make the proposal.
@@ -243,10 +292,22 @@ final class NearbyFlow {
     /// and the board is opened from it.
     let positions: any NearbyPositions
 
-    /// Whether the Play home offers nearby at all. Injected rather than read
-    /// here: the answer belongs to the platform, and a test has to be able to
-    /// show a screen with the rows and a screen without them.
-    let isAvailable: Bool
+    /// Which way of playing somebody this instance is. It is what a game
+    /// created here is recorded under and what the library is asked about, so
+    /// the two instances never mistake each other's active game for their own.
+    let mode: PlayMode
+
+    /// Whether the Play home offers this way of playing at all.
+    ///
+    /// **Asked rather than stored**, because one of the two answers moves under
+    /// the app: the local paths' answer is the platform's and is the same for
+    /// the whole launch, while Game Center's is the player's own account —
+    /// a sign-in that completes after the window is up, a sign-out in Settings,
+    /// a restriction applied while the app was in the background. A value read
+    /// once at assembly would be a row standing for an account that is gone.
+    private let availability: @MainActor () -> Bool
+
+    var isAvailable: Bool { availability() }
 
     /// The library's one active game, as something to ask for and to come back
     /// into. A nearby game *is* an active game now, so the way in depends on
@@ -312,12 +373,21 @@ final class NearbyFlow {
     /// left.
     private var orientations: [String: Bool] = [:]
 
+    /// Who the surface now up has already offered its game to. It is the
+    /// sheet's own rule — "while an invitation is unanswered the sheet says so
+    /// and offers no second one" — kept where a proposal goes out by itself
+    /// rather than by a press, so that a room republishing under a refusal the
+    /// player is still reading cannot propose again behind it.
+    private var offeredTo: Set<PeerDeviceID> = []
+
     init(driver: any NearbyDriving, reach: any NearbyReach,
-         positions: any NearbyPositions, isAvailable: Bool) {
+         positions: any NearbyPositions, mode: PlayMode,
+         availability: @escaping @MainActor () -> Bool) {
         self.driver = driver
         self.reach = reach
         self.positions = positions
-        self.isAvailable = isAvailable
+        self.mode = mode
+        self.availability = availability
         watchPublications()
     }
 
@@ -454,13 +524,16 @@ final class NearbyFlow {
     func open(_ game: GameKind) {
         wake()
         if let live = liveSession, live.rulesID == game.rulesID {
-            openBoard(live.id)
+            if reachable(live) { openBoard(live.id) } else { proposing = game }
             return
         }
         // The interrupted game the library is holding is the same destination
         // by another route: after a relaunch the engine holds nothing, and the
-        // row still names the game that is waiting.
-        if room?.standingNearbyGame == game {
+        // row still names the game that is waiting. It is asked of this
+        // instance's own mode, because the library's one active game belongs to
+        // exactly one way of reaching another device and the other row must not
+        // lead into it.
+        if room?.standingGame(in: mode) == game {
             reenter(game)
             return
         }
@@ -480,12 +553,43 @@ final class NearbyFlow {
     /// game stays on the home as a record the player can file.
     func reenter(_ game: GameKind) {
         wake()
-        guard let session = driver.resumeStoredGame() else {
+        guard let id = driver.resumeStoredGame() else {
             libraryChanged?()
             return
         }
-        openBoard(session)
         libraryChanged?()
+        guard let session = driver.sessions.first(where: { $0.id == id }),
+              reachable(session)
+        else {
+            proposing = game
+            return
+        }
+        openBoard(id)
+    }
+
+    /// Whether the two devices are in touch over that game, or will be without
+    /// anybody doing anything.
+    ///
+    /// **It is what decides whether the way into a standing game is its board
+    /// or the surface that reaches its player.** Where a link comes back by
+    /// itself the board is the whole of coming back: the transport dials, the
+    /// protocol's resume goes out beneath it, and the game carries on — so the
+    /// board opens whether or not anything is connected at that instant. Where
+    /// nothing will bring one back, a board would be a position nobody could
+    /// move on, and what the game needs is for the two people to meet again.
+    private func reachable(_ session: BoardGameSession) -> Bool {
+        session.connection != nil || reach.interruption == .passing
+    }
+
+    /// Whether the surface now up is meeting again over a game that already
+    /// exists, rather than composing a new one.
+    ///
+    /// There is no side to choose then: the game has one, the two devices
+    /// agreed it when they started, and offering the choice again would be
+    /// offering a control that changes nothing.
+    var isMeetingAgain: Bool {
+        guard let proposing else { return false }
+        return liveSession?.rulesID == proposing.rulesID
     }
 
     /// The accepted 保存并继续, asked for on behalf of a nearby game about to
@@ -496,13 +600,14 @@ final class NearbyFlow {
             opening()
             return
         }
-        room.makeRoom(for: game, then: opening)
+        room.makeRoom(for: game, in: mode, then: opening)
     }
 
     /// Into a session's board — from the sheet when a proposal is answered, and
     /// from the consent prompt when this device accepts one.
     func openBoard(_ session: String) {
         proposing = nil
+        offeredTo = []
         boardSessionID = session
         boardVoid = nil
         boardHeld = nil
@@ -515,6 +620,7 @@ final class NearbyFlow {
     /// comes.
     func dismissSheet() {
         proposing = nil
+        offeredTo = []
         restIfIdle()
     }
 
@@ -553,6 +659,32 @@ final class NearbyFlow {
         } catch {
             refusal = .refused(error)
         }
+    }
+
+    /// The room moved under the surface being composed.
+    ///
+    /// **Where the player chose their opponent before anybody was in the room,
+    /// the proposal goes out the moment that person arrives.** They named one
+    /// friend to the system, or said one code to one friend; whoever comes back
+    /// is who they picked, and a control asking which of them to play would be
+    /// asking a question with one answer. Where the room *is* the choice — the
+    /// local paths, which list whoever happens to be reachable — this does
+    /// nothing, and the sheet's own invitation is what sends.
+    func roomChanged() {
+        guard !reach.playerChoosesFromTheRoom, let game = proposing else { return }
+        // The game the two of them were already playing, back within reach.
+        // Nothing is proposed, because there is nothing to propose: the game is
+        // theirs, the protocol's own resume reconciles it over the connection
+        // that has just come up, and the board is where it goes on.
+        if let live = liveSession, live.rulesID == game.rulesID {
+            openBoard(live.id)
+            return
+        }
+        guard invited == nil, let device = chosenDevice,
+              device.connection != nil, !offeredTo.contains(device.peer)
+        else { return }
+        offeredTo.insert(device.peer)
+        invite(device, to: game)
     }
 
     /// The consent prompt's two answers. Accepting opens the board at once: the
@@ -739,7 +871,7 @@ final class NearbyFlow {
     }
 }
 
-extension NearbyFlow: ActiveGameHolder {
+extension NearbyFlow {
     /// The library is about to hold another game. The session this one was
     /// played over is given up — the store's memory of it with it — and the
     /// board comes down, because the game it was showing is not this device's

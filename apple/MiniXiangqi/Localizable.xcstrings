@@ -2526,6 +2526,165 @@
         }
       }
     },
+    "online.code": {
+      "comment": "The section that carries the code this device is offering and the field for one a friend said. The code itself is minted by the system and is never composed here.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Party Code"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对局码"
+          }
+        }
+      }
+    },
+    "online.code.enter": {
+      "comment": "The field's own placeholder, for the code a friend said.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a code"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入对局码"
+          }
+        }
+      }
+    },
+    "online.code.footer": {
+      "comment": "The second sentence is the contract's own rule: a code carries its own game, so entering one for another game is an arrival rather than a mistake.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Say your code to a friend, or enter the one they said. A code opens the game it was made for."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把你的对局码告诉好友，或者输入好友给你的对局码。对局码会打开它所属的那局对弈。"
+          }
+        }
+      }
+    },
+    "online.code.join": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Join"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入"
+          }
+        }
+      }
+    },
+    "online.code.yours": {
+      "comment": "Beside the code itself, which is data and is never translated.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Code"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的对局码"
+          }
+        }
+      }
+    },
+    "online.friend": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Friend"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好友"
+          }
+        }
+      }
+    },
+    "online.friend.footer": {
+      "comment": "The one thing a reader may wonder about a game played at a distance: nobody is matched with a stranger.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only a friend you invite can join."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有你邀请的好友才能加入。"
+          }
+        }
+      }
+    },
+    "online.interrupted": {
+      "comment": "The one quiet line a board says where the link has gone somewhere it will not come back from. It says the game is kept and that leaving costs nothing, because waiting for a link nothing will restore is not something to ask of anybody.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your game is saved. You can leave and invite them again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这局对弈已保存。你可以先离开，稍后再邀请对方继续。"
+          }
+        }
+      }
+    },
+    "online.invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite a Friend"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请好友"
+          }
+        }
+      }
+    },
     "piece.advisor": {
       "comment": "The piece's name where words are used rather than the board's own glyph. English names it by its piece name; Chinese names it by the character the piece carries, which is game content, is never translated, and so passes through as the argument rather than being written here.",
       "extractionState": "manual",

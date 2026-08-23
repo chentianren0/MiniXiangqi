@@ -7,14 +7,15 @@
 //
 // **Each game has a section of its own, and that is the whole of the
 // extensibility.** A section offers the ways to play that game that the app can
-// actually carry, which is all three for every game the app carries where the
-// platform carries nearby play at all. The selection carried by
-// every row is explicit, so neither its setup nor a game created from it can
-// fall through to a hidden default.
+// actually carry here — which leaves out the AI where the game has none, and
+// leaves out a way of reaching another device that this platform or this
+// player's own account cannot carry. The selection carried by every row is
+// explicit, so neither its setup nor a game created from it can fall through to
+// a hidden default.
 //
 // docs/interaction-design.md, "Saving the active game before choosing a new
 // mode": with a game active the page shows its metadata and a direct Resume, and
-// **both mode entries stay interactive**. Selecting one presents the accepted
+// **the mode entries stay interactive**. Selecting one presents the accepted
 // confirmation — one fixed title, header, message and pair of actions for every
 // combination of old mode, new mode and game state, with only the metadata
 // changing — and 保存并继续 archives the game as it stands before the selected
@@ -29,6 +30,11 @@ struct PlayHome: View {
     /// never offers nearby play, and its own availability decides whether the
     /// rows below are drawn on a device that does.
     var nearby: NearbyFlow?
+
+    /// Online play, on every platform this app runs on. Its availability is the
+    /// player's own Game Center rather than the build's, so the answer is asked
+    /// at every draw and the row comes and goes with it.
+    var online: NearbyFlow?
 
     /// 回到对局 is what opens the session and starts the engine thinking, so the
     /// page needs the policy that game's motion will run under.
@@ -105,7 +111,8 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-xiangqi-human-versus-ai")
             entry(PlaySelection(game: .xiangqi, mode: .freePlay),
                   "mode.freePlay", "mode-xiangqi-free-play")
-            nearbyEntry(.xiangqi, "mode-xiangqi-nearby")
+            reachEntry(nearby, "mode.nearby", .xiangqi, "mode-xiangqi-nearby")
+            reachEntry(online, "mode.online", .xiangqi, "mode-xiangqi-online")
             // Last of all, and in this section alone: Custom Scene is Xiangqi's
             // own, because Xiangqi is the one game whose rules say which
             // positions it may be set up in. It is a row like the others and
@@ -123,20 +130,24 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-mini-xiangqi-human-versus-ai")
             entry(PlaySelection(game: .miniXiangqi, mode: .freePlay),
                   "mode.freePlay", "mode-mini-xiangqi-free-play")
-            nearbyEntry(.miniXiangqi, "mode-mini-xiangqi-nearby")
+            reachEntry(nearby, "mode.nearby", .miniXiangqi, "mode-mini-xiangqi-nearby")
+            reachEntry(online, "mode.online", .miniXiangqi, "mode-mini-xiangqi-online")
         } header: {
             Text(GameKind.miniXiangqi.localizedName)
         }
 
-        // **Two rows, not three**, because the game has no AI to offer:
-        // docs/interaction-design.md, "The Play home". The two it has are Free
-        // Play and Nearby Play — the second because this peer now speaks the
-        // handshake that settles the deal between accepting and the first move,
-        // so a proposal of it is taken exactly where the row says it will be.
+        // **No Human versus AI row**, because the game has no AI to offer:
+        // docs/interaction-design.md, "The Play home". The section opens on
+        // Free Play instead, and the ways of playing somebody else follow it —
+        // this peer speaks the handshake that settles the deal between
+        // accepting and the first move, so a proposal of jieqi is taken exactly
+        // where its row says it will be, however the two devices reached each
+        // other.
         Section {
             entry(PlaySelection(game: .jieqi, mode: .freePlay),
                   "mode.freePlay", "mode-jieqi-free-play")
-            nearbyEntry(.jieqi, "mode-jieqi-nearby")
+            reachEntry(nearby, "mode.nearby", .jieqi, "mode-jieqi-nearby")
+            reachEntry(online, "mode.online", .jieqi, "mode-jieqi-online")
         } header: {
             Text(GameKind.jieqi.localizedName)
         }
@@ -148,7 +159,8 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-gomoku-human-versus-ai")
             entry(PlaySelection(game: .gomoku15, mode: .freePlay),
                   "mode.freePlay", "mode-gomoku-free-play")
-            nearbyEntry(.gomoku15, "mode-gomoku-nearby")
+            reachEntry(nearby, "mode.nearby", .gomoku15, "mode-gomoku-nearby")
+            reachEntry(online, "mode.online", .gomoku15, "mode-gomoku-online")
         } header: {
             Text(GameKind.gomoku15.localizedName)
         }
@@ -158,7 +170,8 @@ struct PlayHome: View {
                   "mode.humanVersusAI", "mode-renju-human-versus-ai")
             entry(PlaySelection(game: .renju, mode: .freePlay),
                   "mode.freePlay", "mode-renju-free-play")
-            nearbyEntry(.renju, "mode-renju-nearby")
+            reachEntry(nearby, "mode.nearby", .renju, "mode-renju-nearby")
+            reachEntry(online, "mode.online", .renju, "mode-renju-online")
         } header: {
             Text(GameKind.renju.localizedName)
         }
@@ -173,31 +186,32 @@ struct PlayHome: View {
         row(title, identifier) { play.choose(selection) }
     }
 
-    /// The third row in each game's section: playing that game with somebody in
-    /// the room.
+    /// A row for playing that game with somebody on another device — one per
+    /// way of reaching one, in the order the contract puts them in: the room
+    /// this device is in, then anywhere at all.
     ///
-    /// **It stands wherever either way of reaching another device could carry a
-    /// game**, which on iPhone and iPad is always — one of the two needs no
-    /// hardware of its own. It is absent altogether on a Mac, which has neither
-    /// the entitlement nor the system's pairing UI: a row that could never be
-    /// pressed would be a promise the platform cannot keep, and no explanation
-    /// would help a reader who cannot change the answer.
+    /// **Each stands where a game could actually be carried, and is otherwise
+    /// absent rather than disabled**: a row that could never be pressed is a
+    /// promise nobody can keep, and no explanation helps a reader who cannot
+    /// change the answer. Nearby play asks the platform, which on iPhone and
+    /// iPad is always yes — one of its two paths needs no hardware of its own —
+    /// and on a Mac is no. Online play asks the player's own Game Center, which
+    /// is nobody's build-time answer.
     ///
     /// **The absence is the flow's rather than the compiler's.** There is one
     /// question here on every platform — is there a flow, and does it say it is
-    /// available — and a Mac answers it by having no flow to ask, so the row is
-    /// as absent there as it would be behind a gate and this file needs none.
-    /// A row whose availability is a runtime fact is also the only kind the mode
-    /// beneath it can have: whether the player's own account could carry a game
-    /// is not something a build can know.
+    /// available — so a Mac withholds the nearby row by having no flow to ask,
+    /// and this file needs no gate. It is also the only kind of answer that can
+    /// change under the reader, which the online row's does.
     ///
-    /// Where a nearby game is already going in this row's own game, the row
-    /// leads back into it, exactly as the current-game card above leads back
-    /// into a local one. The rest of that decision is the flow's.
+    /// Where a game is already going in this row's own game *and* its own mode,
+    /// the row leads back into it, exactly as the current-game card above leads
+    /// back into a local one. The rest of that decision is the flow's.
     @ViewBuilder
-    private func nearbyEntry(_ game: GameKind, _ identifier: String) -> some View {
-        if let nearby, nearby.isAvailable {
-            row("mode.nearby", identifier) { nearby.open(game) }
+    private func reachEntry(_ flow: NearbyFlow?, _ title: LocalizedStringKey,
+                            _ game: GameKind, _ identifier: String) -> some View {
+        if let flow, flow.isAvailable {
+            row(title, identifier) { flow.open(game) }
         }
     }
 

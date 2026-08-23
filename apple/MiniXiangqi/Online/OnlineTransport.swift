@@ -14,9 +14,11 @@
 // of this process has had — plus the hold that keeps a match's delegate alive
 // and the room the surfaces read off it.
 //
-// **Assembly is stage 4's.** Nothing here reaches for a match: `adopt(_:)` is
-// the door, and what walks through it — an accepted invitation, a party code,
-// the matchmaker's own view controller — is chosen where the surfaces are.
+// **Nothing here reaches for a match.** `adopt(_:)` is the door, and what walks
+// through it — an accepted invitation, a party code, the matchmaker's own view
+// controller — is chosen in `OnlineParty`. What this owns about an arrival is
+// the rule that no two live connections ever reach one player, which is kept at
+// the instant a connection names the person behind it.
 
 import Foundation
 import GameKit
@@ -65,9 +67,45 @@ final class OnlineTransport: NearbyReach {
         connection.whenFinished = { [weak self, weak connection] in
             self?.connections.removeAll { $0 === connection }
         }
+        connection.whenNaming = { [weak self, weak connection] peer in
+            guard let self, let connection else { return }
+            letGoOfEverythingReaching(peer, except: connection)
+        }
         connections.append(connection)
         log.note("Adopting the online connection \(NearbyDriver.short(connection.id)).")
         return connection
+    }
+
+    /// **The single-adoption rule**, kept at the one instant it can be: a
+    /// connection has just named the player behind it, and anything else
+    /// reaching that same player is let go of before the driver is told of this
+    /// one.
+    ///
+    /// The rule is `OnlineIdentity`'s, and the reason is that an online peer is
+    /// a **person**: the driver routes by peer, so a game standing on one
+    /// connection would have its resume offered on the other, which is not
+    /// holding it and answers `unknown_session` — an answer that voids the
+    /// session on both sides. What must never stand is therefore not a second
+    /// game but a second *concurrent* connection; one connection after another
+    /// is the ordinary way back into an interrupted game.
+    ///
+    /// **The one standing gives way rather than the fresh one being turned
+    /// down.** The fresh match is what the player has just consented to and the
+    /// standing one is what their friend walked away from to make it; refusing
+    /// would leave them holding a match with nobody at the other end.
+    ///
+    /// **It is here rather than at the door a match arrives through**, which is
+    /// where stage 2 expected it, because a door cannot always answer: GameKit
+    /// hands a match over before every player it is waiting for has connected,
+    /// and such a match names nobody to compare. A peer becoming known is the
+    /// first moment the question has an answer, and it is the same moment
+    /// whichever way the match arrived.
+    private func letGoOfEverythingReaching(_ peer: PeerDeviceID,
+                                           except keeping: OnlineConnection) {
+        for connection in connections where connection !== keeping
+            && connection.peer == peer {
+            connection.replaced()
+        }
     }
 
     /// How many connections this process has named. Never reset, never
@@ -111,6 +149,19 @@ final class OnlineTransport: NearbyReach {
     /// nothing else asks it; online play has no pairing ceremony, and no
     /// section that would draw one.
     var hasRadio: Bool { false }
+
+    /// **No.** The player names their opponent before there is a room at all —
+    /// one friend in the system's own invitation, or one friend they said a
+    /// party code to — so whoever arrives is who they picked, and there is
+    /// nothing left to choose between.
+    var playerChoosesFromTheRoom: Bool { false }
+
+    /// **Nothing brings a match back.** There is no rediscovery here by design,
+    /// so a link that has gone is gone until the two players meet again through
+    /// a fresh invitation or code — on which the protocol's own resume picks
+    /// the game up unchanged. What the board owes the player meanwhile is not a
+    /// wait but the fact that the game is kept.
+    var interruption: LinkInterruption { .lasting }
 
     /// The players in the room: whoever the matches this transport holds have
     /// reached, one row each, under the name Game Center gave them.

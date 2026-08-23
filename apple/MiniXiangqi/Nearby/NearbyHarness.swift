@@ -50,7 +50,7 @@ struct NearbyHarnessScreen: View {
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: NearbyRecord(library: core,
                                                        rules: core.boardGameRules,
-                                                       log: log))
+                                                       log: log, mode: .nearby))
         _log = State(initialValue: log)
         _driver = State(initialValue: driver)
         _transport = State(initialValue: NearbyTransport(driver: driver, log: log))

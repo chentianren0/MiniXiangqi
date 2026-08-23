@@ -44,7 +44,8 @@ struct MiniXiangqiApp: App {
     /// screen's**: the answer gates whether a row exists at all, so it has to be
     /// asked before anything draws, and asking it twice would be two sign-ins.
     /// The scene owns it for the same reason it owns the window — one app, one
-    /// account, one answer.
+    /// account, one answer — and hands it down, because the answer moves while
+    /// the app is running and the row has to move with it.
     @State private var gameCenter = GameCenterAvailability()
 
     /// The window's title is the app's own name: a proper noun, not copy, so
@@ -54,13 +55,13 @@ struct MiniXiangqiApp: App {
     var body: some Scene {
         #if os(macOS)
         Window(Self.title, id: "play") {
-            ContentView()
+            ContentView(gameCenter: gameCenter)
                 .task { gameCenter.authenticate() }
         }
         .windowResizability(.contentMinSize)
         #else
         WindowGroup {
-            ContentView()
+            ContentView(gameCenter: gameCenter)
                 .task { gameCenter.authenticate() }
         }
         #endif

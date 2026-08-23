@@ -290,6 +290,98 @@ struct OnlineTests {
         #expect(transport.peers.count == 1)
     }
 
+    // MARK: - One connection per player
+
+    /// **The single-adoption rule.** A Game Center peer is a *person*, and the
+    /// driver routes by peer: a game standing on one connection would have its
+    /// resume offered on the other, which is not holding it and answers
+    /// `unknown_session` — an answer that voids the session on both sides. So a
+    /// fresh match with a player this transport already reaches replaces the
+    /// one standing rather than joining it.
+    ///
+    /// The replacement is a **death**, which is the other half of the rule:
+    /// the session it carried is interrupted and resumable, and the fresh
+    /// connection's own resume is what picks the game back up. What this would
+    /// catch is the older connection being dropped without the driver hearing —
+    /// the engine would go on holding a link with nothing behind it — and the
+    /// rule being dropped altogether, which is a game ending because its own
+    /// player opened the app somewhere else.
+    @Test("A second match with one player replaces the first rather than joining it")
+    func aSecondMatchWithOnePlayerReplacesTheFirst() async throws {
+        let (transport, driver) = madeTransport()
+        let first = FakeMatch()
+        let standing = try await inPlay(over: first, on: transport, driver: driver)
+
+        let second = FakeMatch()
+        let fresh = transport.open(over: second)
+        fresh.becameUsable(reaching: .friend, named: "Wei")
+
+        #expect(transport.connections.count == 1, "one connection, and it is the fresh one")
+        #expect(transport.connections.first === fresh)
+        #expect(transport.peers.count == 1, "and one row in the room")
+        #expect(first.isDisconnected, "the match that gave way is let go of")
+        #expect(!second.isDisconnected)
+
+        // A death rather than a violation: the game stands, interrupted, and
+        // the driver holds the fresh connection in the old one's place.
+        #expect(driver.sessions.count == 1)
+        #expect(driver.sessions.first?.state == .active)
+        #expect(driver.peers[standing.id] == nil)
+        #expect(driver.peers[fresh.id] == .friend)
+    }
+
+    @Test("and a match with somebody else leaves the first alone")
+    func aMatchWithSomebodyElseIsNotAReplacement() async throws {
+        let (transport, driver) = madeTransport()
+        let first = FakeMatch()
+        let standing = try await inPlay(over: first, on: transport, driver: driver)
+
+        let second = FakeMatch()
+        let other = transport.open(over: second)
+        other.becameUsable(reaching: .otherFriend, named: "Lan")
+
+        #expect(transport.connections.count == 2, "two people are two connections")
+        #expect(!first.isDisconnected)
+        #expect(driver.peers[standing.id] == .friend)
+        #expect(driver.peers[other.id] == .otherFriend)
+    }
+
+    // MARK: - What this transport answers about reaching somebody
+
+    /// The two answers the shared surfaces read off a transport, which is where
+    /// the whole of "an online game is the nearby game in everything but how
+    /// the two devices reach each other" is kept.
+    ///
+    /// What this would catch is either of them being given the local paths'
+    /// answer: a room to choose from would leave a friend who has joined
+    /// waiting for a control nothing draws, and a passing interruption would
+    /// leave a player whose friend has gone at a board that never says so.
+    @Test("Nobody is chosen from this room, and a link that goes is gone")
+    func theTransportAnswersForReachingSomebody() {
+        let (transport, _) = madeTransport()
+
+        #expect(!transport.playerChoosesFromTheRoom)
+        #expect(transport.interruption == .lasting)
+        #expect(transport.interruption.messageKey == "online.interrupted")
+    }
+
+    /// The activity identifiers, verbatim as App Store Connect carries them.
+    ///
+    /// They are Game Center's own names for the games rather than the
+    /// protocol's, and the two agree for four of the five by coincidence: a
+    /// `rules_id` says `gomoku-15` where the activity says `gomoku`. An
+    /// identifier the service does not hold answers with no definition at all,
+    /// which is a party with no code and a code that joins nothing — and it
+    /// fails that way in silence, which is why it is pinned here.
+    @Test("Each game names the activity Game Center knows it by")
+    func everyGameNamesItsActivity() {
+        #expect(GameKind.allCases.map(OnlineParty.activityID(of:))
+                == ["minixiangqi", "xiangqi", "gomoku", "renju", "jieqi"])
+        #expect(Set(GameKind.allCases.map(OnlineParty.activityID(of:))).count
+                == GameKind.allCases.count,
+                "two games sharing an activity would be two parties Game Center could not tell apart")
+    }
+
     // MARK: - Whether the row stands at all
 
     @Test("Online play stands only where Game Center could carry a game")

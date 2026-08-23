@@ -76,32 +76,24 @@ struct PlaySelection: Equatable {
     var mode: PlayMode
 }
 
-/// Whatever is holding the library's active game while it is a nearby one.
-///
-/// The library holds one active game, and nearby play is one of the ways to
-/// have one; the wire session it is being played over is held above this
-/// object. So the paths that take the active game away say so first, and the
-/// session goes with the game rather than being left writing to one that is
-/// gone.
-@MainActor
-protocol ActiveGameHolder: AnyObject {
-    func giveUpActiveGame()
-}
-
-/// Making room in a library that holds one active game, as the nearby surfaces
-/// need it: a nearby game is created the moment two devices agree to play one,
-/// and there is no room for it until whatever stands is filed.
+/// Making room in a library that holds one active game, as the surfaces two
+/// people play over need it: a game between two devices is created the moment
+/// they agree to play one, and there is no room for it until whatever stands is
+/// filed.
 @MainActor
 protocol NearbyRoom: AnyObject {
-    /// The nearby game the library is holding, where the one active game is
-    /// one. It is what tells a nearby entry row that the way in is back into
-    /// the interrupted game rather than on to a new proposal.
-    var standingNearbyGame: GameKind? { get }
+    /// The game the library is holding, where the one active game is played in
+    /// that mode. It is what tells an entry row that the way in is back into
+    /// the interrupted game rather than on to a new proposal — and it is asked
+    /// per mode because the answer belongs to one of them: an online game
+    /// standing is not something the nearby row may walk into.
+    func standingGame(in mode: PlayMode) -> GameKind?
 
     /// Ask for the active-game slot. `then` runs once it is free — at once
     /// where it already was, and after the accepted 保存并继续 otherwise. It
     /// does not run at all if the player cancels or the archive is refused.
-    func makeRoom(for game: GameKind, then: @escaping @MainActor () -> Void)
+    func makeRoom(for game: GameKind, in mode: PlayMode,
+                  then: @escaping @MainActor () -> Void)
 }
 
 @Observable
@@ -225,10 +217,19 @@ final class PlayState {
     /// discarded with it.
     private var pendingOpening: (@MainActor () -> Void)?
 
-    /// Whatever holds the active game while it is a nearby one. Set by the
-    /// destination that assembles both; absent on macOS and in the tests that
-    /// have no nearby layer.
-    weak var nearbyHolder: (any ActiveGameHolder)?
+    /// The active game let go of by whichever surface is playing it, where it
+    /// is a game two devices are playing.
+    ///
+    /// The library holds one active game and a networked mode is one of the
+    /// ways to have one; the wire session it is played over is held above this
+    /// object. So the paths that take the active game away say so first, and
+    /// the session goes with the game rather than being left writing to one
+    /// that is gone. The mode is what says which surface that is — there is one
+    /// per way of reaching another device, and only one of them is holding it.
+    ///
+    /// Set by the destination that assembles them; absent in the tests that
+    /// have no such layer.
+    var giveUpNetworkedGame: (@MainActor (PlayMode) -> Void)?
 
     /// Whether a creation attempt is in flight. **开始对局** cannot be invoked
     /// again while it is.
@@ -377,7 +378,9 @@ final class PlayState {
         // the session it is played over is held above this object. It is given
         // up before the transaction rather than left writing to a game that is
         // gone.
-        if activeSummary?.mode.isNetworked == true { nearbyHolder?.giveUpActiveGame() }
+        if let mode = activeSummary?.mode, mode.isNetworked {
+            giveUpNetworkedGame?(mode)
+        }
         rules.archiveActiveAndClear { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
             refreshActiveSummary()
@@ -415,18 +418,18 @@ final class PlayState {
         // was played on: the card is the one way back into the active game
         // whatever mode it is, and which board that is follows from the mode.
         if summary.mode.isNetworked {
-            resumeNearby?(summary.game)
+            resumeNetworkedGame?(summary.mode, summary.game)
             return
         }
         page = .board
         enterBoard(policy: policy)
     }
 
-    /// How a nearby active game is come back into. Set by the destination that
-    /// assembles the nearby layer; absent where there is none, and then the
-    /// card simply does nothing rather than opening a nearby game on a local
-    /// board.
-    var resumeNearby: (@MainActor (GameKind) -> Void)?
+    /// How an active game two devices are playing is come back into, on the
+    /// board of the mode it is played in. Set by the destination that assembles
+    /// those surfaces; absent where there are none, and then the card simply
+    /// does nothing rather than opening such a game on a local board.
+    var resumeNetworkedGame: (@MainActor (PlayMode, GameKind) -> Void)?
 
     private func openSetup(_ selection: PlaySelection) {
         draft = SetupDraft.fromDefaults()
@@ -1113,22 +1116,23 @@ final class PlayState {
     #endif
 }
 
-// MARK: - The one active game, and nearby play's claim on it
+// MARK: - The one active game, and the claim playing somebody has on it
 
 extension PlayState: NearbyRoom {
-    var standingNearbyGame: GameKind? {
-        guard let activeSummary, activeSummary.mode.isNetworked else { return nil }
+    func standingGame(in mode: PlayMode) -> GameKind? {
+        guard let activeSummary, activeSummary.mode == mode else { return nil }
         return activeSummary.game
     }
 
-    /// The accepted flow, asked for by a nearby surface rather than by a mode
-    /// row: the library holds one active game, so a nearby game that is about to
+    /// The accepted flow, asked for by one of those surfaces rather than by a
+    /// mode row: the library holds one active game, so a game that is about to
     /// exist needs whatever stands to be filed first, and the confirmation that
     /// files it is the one the contract already accepts.
     ///
     /// The board is left before the asking, because both of that flow's alerts
     /// belong to the home — the same invariant 回到对局 relies on.
-    func makeRoom(for game: GameKind, then opening: @escaping @MainActor () -> Void) {
+    func makeRoom(for game: GameKind, in mode: PlayMode,
+                  then opening: @escaping @MainActor () -> Void) {
         guard modeSwitch == nil else { return }
         if page == .board {
             leaveBoard()
@@ -1139,6 +1143,6 @@ extension PlayState: NearbyRoom {
             return
         }
         pendingOpening = opening
-        modeSwitch = .confirming(PlaySelection(game: game, mode: .nearby))
+        modeSwitch = .confirming(PlaySelection(game: game, mode: mode))
     }
 }
