@@ -49,7 +49,6 @@ struct ProposeSheet<Connection: View>: View {
                 }
             }
         }
-        .accessibilityIdentifier("propose-sheet")
     }
 
     /// Which mover this device takes. The proposer chooses, and the other

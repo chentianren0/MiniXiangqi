@@ -417,7 +417,7 @@ struct NearbyFlowTests {
     func anArrivingFriendIsProposedTo() {
         let driver = FakeDriver()
         let reach = FakeReach(hasRadio: false)
-        reach.playerChoosesFromTheRoom = false
+        reach.pairsOnArrival = true
         let flow = flow(driver: driver, reach: reach, mode: .online)
 
         flow.open(.xiangqi)
@@ -452,7 +452,7 @@ struct NearbyFlowTests {
     func aFriendOnAFreshConnectionIsProposedToAgain() {
         let driver = FakeDriver()
         let reach = FakeReach(hasRadio: false)
-        reach.playerChoosesFromTheRoom = false
+        reach.pairsOnArrival = true
         let flow = flow(driver: driver, reach: reach, mode: .online)
 
         flow.open(.xiangqi)
@@ -536,7 +536,7 @@ struct NearbyFlowTests {
             $0.connection = nil
         }
         let reach = FakeReach(hasRadio: false)
-        reach.playerChoosesFromTheRoom = false
+        reach.pairsOnArrival = true
         reach.interruption = .lasting
         let flow = flow(driver: driver, reach: reach, mode: .online)
         let room = FakeRoom()
@@ -1431,7 +1431,7 @@ private final class FakeReach: NearbyReach {
     /// The two answers a transport gives about reaching somebody. They default
     /// to the local paths', which is what most of this suite is about; a case
     /// that is about the other answer says so.
-    var playerChoosesFromTheRoom = true
+    var pairsOnArrival = false
     var interruption = LinkInterruption.passing
 
     init(hasRadio: Bool, peers: [NearbyPeer] = []) {

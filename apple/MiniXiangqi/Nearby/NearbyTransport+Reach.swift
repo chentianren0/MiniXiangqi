@@ -17,10 +17,10 @@ extension NearbyTransport: NearbyReach {
     /// than a type — and the pairing entry is the one surface that asks.
     var hasRadio: Bool { Self.hasRadio }
 
-    /// **Yes.** The room here is a list of devices that happen to be reachable,
+    /// **No.** The room here is a list of devices that happen to be reachable,
     /// and the player has told nobody in advance which of them they mean, so
     /// choosing one of them is what the propose sheet is for.
-    var playerChoosesFromTheRoom: Bool { true }
+    var pairsOnArrival: Bool { false }
 
     /// A connection lost here comes back on its own: it idles out between moves
     /// by the radio's own design, and the browsers dial again seconds later

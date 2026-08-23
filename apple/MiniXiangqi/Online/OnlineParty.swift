@@ -95,10 +95,24 @@ final class OnlineParty: NSObject {
     /// Nothing waits on it. What registering buys is callbacks, and they arrive
     /// when they arrive.
     func listen() {
-        Task.detached(priority: .utility) { [self] in
+        Self.daemon.async { [self] in
             GKLocalPlayer.local.register(self)
         }
     }
+
+    /// The queue every synchronous call in this file is made on.
+    ///
+    /// **A call that blocks is carried by a queue rather than by a task.** The
+    /// cooperative pool is a thread per core, and a task that blocks holds one
+    /// of them until the block ends, so the daemon described above would not
+    /// merely fail to answer — it would take a share of every `await` in the
+    /// process with it. A queue's thread is the queue's own, and one never
+    /// given back is paid for here alone.
+    ///
+    /// Serial, because these are one conversation with one daemon and there is
+    /// nothing to gain from having two of them at once.
+    private static let daemon = DispatchQueue(
+        label: "com.chentianren.MiniXiangqi.game-center-party", qos: .utility)
 
     // MARK: - The surface
 
@@ -191,34 +205,40 @@ final class OnlineParty: NSObject {
     /// Game Center's own start, asked away from the thread that draws — a fresh
     /// party where `code` is nil, and a friend's party where it is one.
     ///
-    /// **The work is detached deliberately.** Starting an activity is a
+    /// **It is asked on the queue deliberately.** Starting an activity is a
     /// synchronous round trip to the Game Center daemon, so it is one of the
     /// calls `listen()` above owns the reason for: nothing this app asks
     /// GameKit synchronously is asked where a slow answer would stop the screen
-    /// from drawing. What comes back is the activity, or the refusal in the
-    /// words the service used — carried as text, because an error is not
-    /// something to move between isolations.
+    /// from drawing, or hold a thread the rest of the process is awaiting on.
+    /// What comes back is the activity, or the refusal in the words the service
+    /// used — carried as text, because an error is not something to move
+    /// between isolations.
     private static func started(_ definition: GKGameActivityDefinition,
                                 joining code: String?)
         async -> (GKGameActivity?, String?) {
-        await Task.detached(priority: .utility) { () -> (GKGameActivity?, String?) in
-            do {
-                if let code {
-                    return (try GKGameActivity.start(definition: definition,
-                                                     partyCode: code), nil)
+        await withCheckedContinuation { continuation in
+            daemon.async {
+                do {
+                    let activity: GKGameActivity
+                    if let code {
+                        activity = try GKGameActivity.start(definition: definition,
+                                                            partyCode: code)
+                    } else {
+                        activity = try GKGameActivity.start(definition: definition)
+                    }
+                    continuation.resume(returning: (activity, nil))
+                } catch {
+                    continuation.resume(returning: (nil, String(describing: error)))
                 }
-                return (try GKGameActivity.start(definition: definition), nil)
-            } catch {
-                return (nil, String(describing: error))
             }
-        }.value
+        }
     }
 
     /// A party this device is done offering, ended off the drawing thread for
     /// the same reason. Nothing waits for it: what it ends is Game Center's own
     /// record of what this player is doing.
     private static func end(_ activity: GKGameActivity) {
-        Task.detached(priority: .utility) { activity.end() }
+        daemon.async { activity.end() }
     }
 
     /// The system's own invitation, to friends and to nobody else.

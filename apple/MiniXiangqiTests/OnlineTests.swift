@@ -375,7 +375,7 @@ struct OnlineTests {
     func theTransportAnswersForReachingSomebody() {
         let (transport, _) = madeTransport()
 
-        #expect(!transport.playerChoosesFromTheRoom)
+        #expect(transport.pairsOnArrival)
         #expect(transport.interruption == .lasting)
         #expect(transport.interruption.messageKey == "online.interrupted")
     }
@@ -414,6 +414,35 @@ struct OnlineTests {
                                                multiplayerRestricted: true))
         #expect(!GameCenterAvailability.stands(authenticated: false,
                                                multiplayerRestricted: true))
+    }
+
+    /// Which of two overlapping reads the row is allowed to take its answer
+    /// from.
+    ///
+    /// Two are in flight together whenever the answer changes while one is
+    /// still out — signing out is exactly that, since it asks again — and
+    /// nothing orders the landings, so the older read may come back last
+    /// carrying the answer from before. What this would catch is that read
+    /// being allowed to write: the row would go on standing for an account
+    /// nobody is signed in to, until some later foreground return happened to
+    /// ask again.
+    @Test("An overtaken read leaves the row where the newest one put it")
+    func anOvertakenReadWritesNothing() {
+        let availability = GameCenterAvailability()
+        let older = availability.issueRead()
+        let newer = availability.issueRead()
+
+        availability.adopt(true, from: newer)
+        #expect(availability.isAvailable)
+
+        availability.adopt(false, from: older)
+        #expect(availability.isAvailable,
+                "the older read answers for a moment that has already been asked about again")
+
+        // The newest one still writes, which is the half of the rule that keeps
+        // it from being a row that can never change again.
+        availability.adopt(false, from: newer)
+        #expect(!availability.isAvailable)
     }
 
     // MARK: - The suite's own parts

@@ -74,16 +74,17 @@ protocol NearbyReach: AnyObject {
     /// connection to each where one is up.
     var peers: [NearbyPeer] { get }
 
-    /// Whether choosing somebody to play is done from the room, or was already
-    /// done before anybody was in it.
+    /// Whether arrival is itself the pairing: the person who turns up is the
+    /// person this player already chose.
     ///
-    /// The local paths list whoever happens to be reachable, so the room is a
-    /// list to pick from and picking is what the propose surface is for. Where
-    /// the player names their opponent to the system first — an invitation to
-    /// one friend, a code said to one friend — the person who arrives is the
-    /// person who was chosen, and a control asking which of them to play would
-    /// be asking a question with one answer.
-    var playerChoosesFromTheRoom: Bool { get }
+    /// **It is a fact about the transport rather than about a surface.** Where
+    /// the player names their opponent to the system before there is a room at
+    /// all — an invitation to one friend, a code said to one friend — whoever
+    /// comes back is who they picked, and a control asking which of them to
+    /// play would be asking a question with one answer. The local paths list
+    /// whoever happens to be reachable instead, so there the room is a list to
+    /// pick from and picking is what the propose surface is for.
+    var pairsOnArrival: Bool { get }
 
     /// What a link that has gone means here, which is the one thing a board
     /// says about a connection.
@@ -680,7 +681,7 @@ final class NearbyFlow {
     /// local paths, which list whoever happens to be reachable — this does
     /// nothing, and the sheet's own invitation is what sends.
     func roomChanged() {
-        guard !reach.playerChoosesFromTheRoom, let game = proposing else { return }
+        guard reach.pairsOnArrival, let game = proposing else { return }
         // The game the two of them were already playing, back within reach.
         // Nothing is proposed, because there is nothing to propose: the game is
         // theirs, the protocol's own resume reconciles it over the connection
