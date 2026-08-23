@@ -11,12 +11,23 @@
 // every destination: an invitation arrives when it arrives, and a refusal
 // answers an invitation the player may have sent minutes ago from a sheet they
 // have already put away.
+//
+// **The sheet is built on every platform, and pairing is the one part that is
+// not.** The side, the room and the invitation are the shape a proposal has
+// wherever two devices can reach each other; pairing is the system's own
+// peer-to-peer errand, and its views exist only where that system service does.
+// So the section carrying them is the file's one platform gate, and everything
+// around it — this sheet and the two answers below it — compiles wherever the
+// app runs.
+
+import SwiftUI
 
 #if os(iOS)
-
+// Pairing's own frameworks, imported where pairing is built. Neither exists on
+// macOS, and nothing outside the pairing section names either of them.
 import DeviceDiscoveryUI
-import SwiftUI
 import WiFiAware
+#endif
 
 struct NearbyProposeSheet: View {
     let flow: NearbyFlow
@@ -31,7 +42,9 @@ struct NearbyProposeSheet: View {
             }
             .formStyle(.grouped)
             .navigationTitle(Text(game.localizedName))
+            #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // The platform's own close, so the one name this adds is
@@ -154,8 +167,15 @@ struct NearbyProposeSheet: View {
     /// pairing, which is the system's own and happens over that radio. What
     /// stands here instead says only that this device cannot pair, and names no
     /// reason for it, as no word this application writes may.
+    ///
+    /// **And they are built only where the system offers them at all**, which
+    /// is the platform gate this file has: the frameworks the two views come
+    /// from ship on iPhone and iPad and nowhere else. Where they are absent the
+    /// section is absent with them, rather than standing empty over a sentence
+    /// about a device that was never going to pair.
     @ViewBuilder
     private var pairing: some View {
+        #if os(iOS)
         Section {
             if flow.reach.hasRadio,
                let publishable = WAPublishableService.boardGame,
@@ -188,12 +208,15 @@ struct NearbyProposeSheet: View {
         } footer: {
             Text("nearby.pairing.footer")
         }
+        #endif
     }
 
+    #if os(iOS)
     private var unavailable: some View {
         Label("nearby.pairing.unavailable", systemImage: "xmark.circle")
             .foregroundStyle(.secondary)
     }
+    #endif
 }
 
 // MARK: - The two answers that belong above every destination
@@ -207,23 +230,30 @@ extension View {
     /// as this feature gets. The refusal is the same "it did not happen, nothing
     /// changed" alert the rest of the app uses, and it says which of the
     /// protocol's reasons it was in words rather than in the wire's own code.
-    func nearbyAnswers(_ flow: NearbyFlow, opening board: @escaping () -> Void) -> some View {
+    ///
+    /// The flow is the optional every nearby surface takes, so this modifier
+    /// stands over the container on every platform: with no flow there is
+    /// nothing to be asked and nothing to be refused, and both alerts hold a
+    /// binding that is never true.
+    func nearbyAnswers(_ flow: NearbyFlow?, opening board: @escaping () -> Void) -> some View {
         modifier(NearbyAnswers(flow: flow, opening: board))
     }
 }
 
 private struct NearbyAnswers: ViewModifier {
-    let flow: NearbyFlow
+    let flow: NearbyFlow?
     let opening: () -> Void
 
     func body(content: Content) -> some View {
         content
             .alert("alert.nearbyInvite.title", isPresented: inviting) {
                 Button("control.decline", role: .cancel) {
-                    if let invitation = flow.invitation { flow.decline(invitation.id) }
+                    if let flow, let invitation = flow.invitation {
+                        flow.decline(invitation.id)
+                    }
                 }
                 Button("control.accept") {
-                    guard let invitation = flow.invitation else { return }
+                    guard let flow, let invitation = flow.invitation else { return }
                     flow.accept(invitation.id)
                     opening()
                 }
@@ -235,9 +265,9 @@ private struct NearbyAnswers: ViewModifier {
             // itself knows, because only one of the protocol's reasons ever
             // answers a resume.
             .alert(Text(LocalizedStringKey(refusalTitleKey)), isPresented: refused) {
-                Button("control.ok") { flow.dismissRefusal() }
+                Button("control.ok") { flow?.dismissRefusal() }
             } message: {
-                if let refusal = flow.refusal {
+                if let refusal = flow?.refusal {
                     Text(LocalizedStringKey(refusal.messageKey))
                 }
             }
@@ -249,7 +279,7 @@ private struct NearbyAnswers: ViewModifier {
     /// sentence beneath it says what accepting does, which is the one thing the
     /// line cannot say.
     private var invitationMessage: String {
-        guard let invitation = flow.invitation else { return "" }
+        guard let flow, let invitation = flow.invitation else { return "" }
         var parts: [String] = []
         // **The alert always names the device.** A proposal arrives from
         // somebody, and a prompt that said only which game and which side would
@@ -274,7 +304,7 @@ private struct NearbyAnswers: ViewModifier {
     }
 
     private var inviting: Binding<Bool> {
-        Binding(get: { flow.invitation != nil },
+        Binding(get: { flow?.invitation != nil },
                 set: { _ in
                     // Deliberately nothing. The two buttons are the only
                     // answers there are, and each of them makes the invitation
@@ -288,15 +318,13 @@ private struct NearbyAnswers: ViewModifier {
     }
 
     private var refused: Binding<Bool> {
-        Binding(get: { flow.refusal != nil },
-                set: { if !$0 { flow.dismissRefusal() } })
+        Binding(get: { flow?.refusal != nil },
+                set: { if !$0 { flow?.dismissRefusal() } })
     }
 
     /// A title is needed whether or not a refusal stands, and the one for a
     /// game that never began is the one this alert is usually about.
     private var refusalTitleKey: String {
-        flow.refusal?.titleKey ?? "alert.nearbyDeclined.title"
+        flow?.refusal?.titleKey ?? "alert.nearbyDeclined.title"
     }
 }
-
-#endif

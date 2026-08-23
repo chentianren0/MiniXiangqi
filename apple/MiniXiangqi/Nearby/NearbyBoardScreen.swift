@@ -27,8 +27,13 @@
 // interruption the protocol already models, and the model below is a
 // presentation built when the board opens and let go of when it closes — which
 // is also what keeps a nearby move's sound with the board that is showing it.
-
-#if os(iOS)
+//
+// It is built wherever the play screen is, and for the same reason it looks like
+// it: a board two people are playing over is one screen, and what differs
+// between the ways their devices reach each other is underneath it rather than
+// on it. The two places it defers to the platform are the two the play screen
+// defers in — the destination bar it hides only where that bar stands across the
+// bottom, and the title style a navigation bar has.
 
 import SwiftUI
 
@@ -43,8 +48,8 @@ struct NearbyBoardScreen: View {
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
     /// The captured sheet's own width, measured as the play screen measures
-    /// its own — one shape for the three sheets, though this file never
-    /// builds for macOS, where the measurement is what keeps a sheet sized.
+    /// its own — one shape for the three sheets, and on macOS the measurement
+    /// is what keeps a sheet sized.
     @State private var capturedWidth: CGFloat = 0
 
     /// What the stacked shape's chrome came to, exactly as the play screen
@@ -60,7 +65,12 @@ struct NearbyBoardScreen: View {
     @State private var saveFailureShown = false
 
     @Environment(\.motionPolicy) private var policy
+
+    #if os(iOS)
+    /// Whether the navigation container is presenting as a bar across the
+    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
     @Environment(\.horizontalSizeClass) private var widthClass
+    #endif
 
     /// Whether the reader is at one of the accessibility text sizes, which is
     /// what decides where the turn status stands in the stacked shape.
@@ -83,8 +93,12 @@ struct NearbyBoardScreen: View {
             }
         }
         // docs/interaction-design.md, "Navigation": a board screen hides the
-        // destination bar where that bar stands across the bottom.
+        // destination bar where that bar stands across the bottom. The rule
+        // never reaches macOS, where the container presents as a sidebar and
+        // nothing about the window changes.
+        #if os(iOS)
         .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
+        #endif
         .task(id: flow.boardSessionID) { open() }
         .onChange(of: flow.boardSession) { _, session in
             // A session that went away under the board leaves the board where it
@@ -217,7 +231,9 @@ struct NearbyBoardScreen: View {
                 capturedWidth = $0
             }
             .navigationTitle("captured.title")
+            #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("control.done") { capturedShown = false }
@@ -850,5 +866,3 @@ private struct NearbyNotice: View {
         }
     }
 }
-
-#endif

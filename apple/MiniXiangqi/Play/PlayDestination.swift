@@ -143,9 +143,16 @@ struct PlayDestination: View {
         }
     }
 
+    /// The page on screen: a nearby board where one is up, and the local pages
+    /// otherwise.
+    ///
+    /// **Which it is asks the flow rather than the platform.** A device with no
+    /// nearby play has no flow and therefore no board session, so the same
+    /// expression draws the local page there without a gate — and the board
+    /// screen it names is built on every platform, so there is nothing here for
+    /// a gate to protect.
     @ViewBuilder
     private var page: some View {
-        #if os(iOS)
         if let nearby, nearby.boardSessionID != nil {
             // A nearby game is over every page of this destination, because it
             // is the game this device is playing: the local pages are still
@@ -154,9 +161,6 @@ struct PlayDestination: View {
         } else {
             playPage
         }
-        #else
-        playPage
-        #endif
     }
 
     @ViewBuilder
@@ -191,19 +195,15 @@ struct PlayDestination: View {
 
     /// Whether the page on screen is one over the home, whichever kind it is.
     private var showsBackControl: Bool {
-        #if os(iOS)
         if nearby?.boardSessionID != nil { return true }
-        #endif
         return play.page != .home
     }
 
     private func leaveTopPage() {
-        #if os(iOS)
         if let nearby, nearby.boardSessionID != nil {
             nearby.leaveBoard()
             return
         }
-        #endif
         play.leaveTopPage()
     }
 }

@@ -183,16 +183,22 @@ struct PlayHome: View {
     /// pressed would be a promise the platform cannot keep, and no explanation
     /// would help a reader who cannot change the answer.
     ///
+    /// **The absence is the flow's rather than the compiler's.** There is one
+    /// question here on every platform — is there a flow, and does it say it is
+    /// available — and a Mac answers it by having no flow to ask, so the row is
+    /// as absent there as it would be behind a gate and this file needs none.
+    /// A row whose availability is a runtime fact is also the only kind the mode
+    /// beneath it can have: whether the player's own account could carry a game
+    /// is not something a build can know.
+    ///
     /// Where a nearby game is already going in this row's own game, the row
     /// leads back into it, exactly as the current-game card above leads back
     /// into a local one. The rest of that decision is the flow's.
     @ViewBuilder
     private func nearbyEntry(_ game: GameKind, _ identifier: String) -> some View {
-        #if os(iOS)
         if let nearby, nearby.isAvailable {
             row("mode.nearby", identifier) { nearby.open(game) }
         }
-        #endif
     }
 
     private func row(_ title: LocalizedStringKey, _ identifier: String,
