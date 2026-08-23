@@ -16,7 +16,7 @@ Jieqi's board, palaces, river, piece set and start squares are Xiangqi's exactly
 
 ## Normative sources
 
-Three public statements of the game's rules are the evidence for the rules below, and the game's de-facto engine is cited for the one machine fact this contract takes from it. A dated copy of each is retained outside this repository as workspace-only research evidence. None is a runtime dependency, and none is expected to exist in a standalone clone.
+The public statements of the game's rules recorded here are the evidence for the rules below, and the game's de-facto engine is cited for the one machine fact this contract takes from it. A dated copy of each is retained outside this repository as workspace-only research evidence. None is a runtime dependency, and none is expected to exist in a standalone clone.
 
 The **Chinese Wikipedia article 揭棋**, in its wikitext form, is the source for the deal, for hidden movement by the square's role, for the mandatory flip, for the freed revealed advisor and elephant, for the concealment of a captured hidden piece, and for the result taxonomy:
 
@@ -94,7 +94,7 @@ A revealed piece moves as xiangqi's piece of that kind, with the advisor and the
 
 ### Every fact that decides play is public
 
-How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So what the position conceals is exactly two things — the identities still face down, and the identity of a hidden piece that has been captured — and neither of them decides a legal move, a check, or a result. Concealment is a property of the position and never of what a player remembers.
+How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So what the position conceals is exactly this — the identities still face down, and the identity of a hidden piece that has been captured — and neither of them decides a legal move, a check, or a result. Concealment is a property of the position and never of what a player remembers.
 
 **A move's legality never depends on what the moving piece flips up as.** The piece occupies its destination whatever it turns out to be, and occupancy is the whole of what blocking, screening and the flying-general rule read. Both players therefore hold the same legal-move set, the same check state and the same adjudication at every moment of the game, and jieqi's uncertainty is uncertainty about the identities the position still conceals.
 
@@ -116,7 +116,7 @@ This section states who is entitled to know what, which is a rule of the game. H
 
 Adopting those clauses by reference is deliberate, and it binds in both directions: an amendment to them is an amendment to this contract, and the two games' `rules_version` move together. Restating them here would be a second copy free to drift from the first, and the two games are meant to adjudicate identically.
 
-Two things follow from jieqi's own positions, and they are how those clauses are read here:
+These follow from jieqi's own positions, and they are how those clauses are read here:
 
 - **Every clause that names a piece type reads a hidden piece as the type its square gives it.** One mechanism answers the whole family: a hidden piece on a soldier's start square is a soldier for the chase rule's purposes, one on a chariot's start square is a chariot, and so on. Where a clause is phrased for a piece that has crossed the river, jieqi reads it by the side of the river the piece stands on, which is the same fact in Xiangqi and the available one here.
 - **No repeating cycle can contain a reveal.** A hidden piece stands only on its own start square and flips the moment it moves, so along a game's move history — which is what repetition is judged over — the set of face-down squares only ever shrinks. Two positions with equal placement therefore have equal face-down sets, and no reveal and no capture of a hidden piece lies between them. Every repetition, and so every perpetual violation, lies wholly inside one stretch of play between two reveals.
@@ -125,7 +125,7 @@ Resignation, draw offers, and the surfaces through which a claimable draw is tak
 
 ## Accepted interpretations
 
-Two questions the retained sources do not settle. Each is recorded as an interpretation rather than as a reading of a source, so that an authoritative text on either reopens it as a contract amendment rather than arriving as a discovery.
+These questions the retained sources do not settle. Each is recorded as an interpretation rather than as a reading of a source, so that an authoritative text on any of them reopens it as a contract amendment rather than arriving as a discovery.
 
 - **A soldier's sideways step is read by the side of the river it stands on, not by whether it crossed.** The two readings never differ in Xiangqi, where a soldier reaches the far side only by crossing, and jieqi is the one place they come apart: a soldier revealed past the river has never crossed it. The sources state the rule in the crossing's language because their own game gives them no other case. The side-of-the-river reading is adopted because it is the reason the rule carries — a soldier steps sideways where stepping sideways is what the position asks of it — and because a soldier's own history is not something the position records, so the alternative would decide a legal move on a fact no position holds.
 - **Capturing a hidden piece discloses its identity to the capturer.** The sources state the other half: the owner of a captured hidden piece may not turn it over, and it is the capturer who sets it down face down. None of them says what the capturer may see. Disclosure to the capturer is adopted as this document's rule, because the capturer takes the piece off the board — a rule concealing it from the hand that holds it would be a rule about presentation and not about the game — and the asymmetry that follows is the knowledge the capture buys.
@@ -142,7 +142,7 @@ The facade is deterministic over game, position and history, and the fixtures be
 
 ## Conformance fixtures
 
-The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the identifier scheme, and the immutability rules, and Jieqi's fixtures are held to all three. Identifiers are `jq-<area>-NNN`, the areas are the shared ones, and each fixture names `jieqi` in its `variant` member, which is what the runner dispatches on. Fixtures and this document must be reviewed together: a change to either is a rules-contract change.
+The approved executable fixtures live in [`fixtures/rules/`](../fixtures/rules/); that directory's README defines the schema, the identifier scheme, and the immutability rules, and Jieqi's fixtures are held to all of them. Identifiers are `jq-<area>-NNN`, the areas are the shared ones, and each fixture names `jieqi` in its `variant` member, which is what the runner dispatches on. Fixtures and this document must be reviewed together: a change to either is a rules-contract change.
 
 The set pins at a minimum:
 
@@ -153,7 +153,7 @@ The set pins at a minimum:
 - the revealed soldier: forward on its own side, forward or sideways past the river, never backward, and standing legally behind its own soldier rank;
 - checkmate, and stalemate as a loss for the side to move;
 - the no-capture draw at the ply it lands and not two plies earlier, and a reveal inside that stretch failing to reset it;
-- the adopted repetition and chase clauses, pinned for this game rather than left to the corpus of the games they are adopted from: a unilateral chase, the two mutual arms, and a chase renewed by an attacker other than the one that was attacking before;
+- the adopted repetition and chase clauses, pinned for this game rather than left to the corpus of the games they are adopted from: a unilateral chase, the mutual arms, and a chase renewed by an attacker other than the one that was attacking before;
 - adjudication across a reveal: a cycle that would repeat but for the reveal inside it is no repetition, and no violation attaches to it;
 - a dealt start accepted, and a shape that is not a dealt start refused.
 

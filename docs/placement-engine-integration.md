@@ -2,7 +2,7 @@
 
 This document defines how the shared core packages, calls, constrains, and validates the embedded Rapfi engine — the engine the placement games are played on — and the app-visible policies built on it. It does not define Rapfi internals, fork maintenance, source-level patch design, or upstream synchronization; those belong in the Rapfi fork repository. Mini Xiangqi's and Xiangqi's engine is [engine-integration.md](engine-integration.md)'s subject, and the two documents are counterparts: what the two engines share is stated once, there, and bound here by reference.
 
-> **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md), which is one surface over every engine the core embeds and over the two that search alike.
+> **Status: binding.** The concrete search-facade C surface is in [core-interface.md](core-interface.md), which is one surface over every engine the core embeds and over the ones that search alike.
 
 ## Scope and ownership
 
@@ -40,15 +40,15 @@ The pinned fork carries only focused changes this contract requires, each record
 
 One change is owed and deliberately not yet carried:
 
-- **Recoverable large-page release**, the second half of the same hazard. The engine's Windows large-page free path exits the process when the release fails, and two owners reach it: the transposition table, through every resize and through its destructor, and the NNUE weights, whose large-page deleter frees them when an evaluator is dropped. The branch is Windows-only and no build this repository produces compiles this engine for Windows, so it is unreachable here; the manifest records it as pending with its trigger. **The trigger is exact: any Windows build of this engine lands the fork change first.**
+- **Recoverable large-page release**, the second half of the same hazard. The engine's Windows large-page free path exits the process when the release fails, and it is reached by the transposition table, through every resize and through its destructor, and by the NNUE weights, whose large-page deleter frees them when an evaluator is dropped. The branch is Windows-only and no build this repository produces compiles this engine for Windows, so it is unreachable here; the manifest records it as pending with its trigger. **The trigger is exact: any Windows build of this engine lands the fork change first.**
 
-Neither applied change touches rules behaviour, so neither owes a rules fixture. A fork change that ever does touch rules behaviour lands together with the test that pins it.
+No applied change touches rules behaviour, so none owes a rules fixture. A fork change that ever does touch rules behaviour lands together with the test that pins it.
 
 ## Vendoring
 
 - The pinned revision reaches the core as a **copied source snapshot**, compiled by a core-owned build description, and never as an artifact the fork built.
 - **Nothing in the snapshot is edited here.** Every engine source change belongs to the fork and arrives as a new snapshot at a new pinned revision, which is what keeps the manifest's ordered patch list a description of the bytes the core compiles.
-- The snapshot excludes the engine's own `main`, its stdin protocol, and the five offline command-module implementations — database maintenance, training-data preparation, opening generation, self-play and tuning: the core is a library and drives the engine through its C++ API, so a second entry point and a training toolchain have no business in it. The command directory's remaining sources compile, none of them reached by a search. The excluded set and the recipe that reproduces the snapshot are recorded beside it.
+- The snapshot excludes the engine's own `main`, its stdin protocol, and the offline command-module implementations — database maintenance, training-data preparation, opening generation, self-play and tuning: the core is a library and drives the engine through its C++ API, so a second entry point and a training toolchain have no business in it. The command directory's remaining sources compile, none of them reached by a search. The excluded set and the recipe that reproduces the snapshot are recorded beside it.
 - **The engine's configuration is the one compiled into it**, handed to it from memory. No configuration file is searched for and none is read: the engine's own resolution order reaches the working directory and a directory derived from the executable path, and inside an app bundle either would let a file left there replace the engine's configuration, weights included.
 - **Every asset path the engine is given is absolute and already verified**, so no working directory and no executable location can substitute an asset behind the app's back.
 - Third-party notices and corresponding-source availability for the GPLv3 engine and for every library vendored inside it must be prepared before any build containing it is distributed. Where a vendored library ships no licence text of its own, the notices carry that text from its own repository.
@@ -57,14 +57,14 @@ Neither applied change touches rules behaviour, so neither owes a rules fixture.
 
 The lifecycle contract is one for both engines and is [engine-integration.md](engine-integration.md) § Search lifecycle's: where search runs, what cancels it, the rejection of a stale or superseded result, backgrounding and teardown and their ordering, the preparation ordering at game creation, and the hint's own rules — its thinking time, its lazy preparation in Free Play, its inertness, and the refusal while a search is outstanding. All of it binds here unchanged. What is this engine's own:
 
-- **The three accepted levels are the shared ones**, defined in [engine-integration.md](engine-integration.md) § AI difficulty profiles and differing only in maximum thinking time. On this engine the one strongest configuration they share is alpha-beta search, the engine's strength knob at its maximum, one principal variation, no node or depth limit, and no pondering.
+- **The accepted levels are the shared ones**, defined in [engine-integration.md](engine-integration.md) § AI difficulty profiles and differing only in maximum thinking time. On this engine the one strongest configuration they share is alpha-beta search, the engine's strength knob at its maximum, one principal variation, no node or depth limit, and no pondering.
 - **A level's thinking time is a turn time, and there is no match clock.** The engine keeps its own small reserve inside that time and returns before it elapses.
 - **The trivial-opening probe stays on**, so the engine's prepared openings answer where it has one. It is not what makes the first move instant: a board with no stone on it offers a search no candidate, and the centre point comes back whatever the probe is set to. Either way an instant reply is inside a level's maximum thinking time, which is the whole of what a level promises.
 - **A hint is an ordinary search under the prepared game's rules.** Its board presentation is the placement grammar's own, fixed in [interaction-design.md](interaction-design.md).
 
 ## Memory
 
-**There is one memory policy in this core, and this engine is a second consumer of it rather than a second copy.** The adaptive arithmetic, the 4 GiB cap, the 256 MiB minimum, the fresh probe at every preparation, and the insufficient-memory presentation are [engine-integration.md](engine-integration.md) § AI difficulty profiles', and they bind here unchanged. Two consequences are this facade's:
+**There is one memory policy in this core, and this engine is a second consumer of it rather than a second copy.** The adaptive arithmetic, the 4 GiB cap, the 256 MiB minimum, the fresh probe at every preparation, and the insufficient-memory presentation are [engine-integration.md](engine-integration.md) § AI difficulty profiles', and they bind here unchanged. These consequences are this facade's:
 
 - **Preparing either engine releases the other first.** The plan is computed once from one probe and sizes one transposition table; leaving the other engine holding its own would put two tables on a device the plan sized for one. Releasing before configuring is also what makes a failed preparation leave nothing prepared.
 - **The thread count and the table size are the plan's**, and a preparation that cannot meet them reports the accepted engine failure rather than settling for less.
@@ -83,7 +83,7 @@ Each file is pinned by exact byte length and SHA-256 in the manifest, keyed by t
 
 ### The preflight
 
-Three gates run at preparation, in this order, and each is fatal:
+These gates run at preparation, in this order, and each is fatal:
 
 1. **Selection** — the files this game's pins name, in the asset directory the frontend supplied. A missing one is a damaged installation and is refused here.
 2. **Bytes** — every selected file's length and SHA-256 against its own pins, before the engine is given a path. A weight file carries a structural header the engine checks and no content hash at all, so the manifest pins are the whole of the integrity check.

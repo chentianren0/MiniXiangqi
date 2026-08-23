@@ -14,14 +14,14 @@ This document defines the system's stable boundaries: the shared core, the nativ
 
 ## Shared core
 
-The core is a C++ library exposing a stable C interface, embedding three pinned engine forks as in-process libraries: `chentianren0/Fairy-Stockfish` for Mini Xiangqi and Xiangqi, `chentianren0/rapfi` for the placement games, and `chentianren0/Pikafish` as Jieqi's rules authority, which answers rules and never searches. C++ is not a choice that can be revisited: every one of them is C++ and must build on every platform that carries it, so the core concentrates the remaining correctness-critical logic beside them rather than duplicating that logic per platform. The core owns:
+The core is a C++ library exposing a stable C interface, embedding pinned engine forks as in-process libraries: `chentianren0/Fairy-Stockfish` for Mini Xiangqi and Xiangqi, `chentianren0/rapfi` for the placement games, and `chentianren0/Pikafish` as Jieqi's rules authority, which answers rules and never searches. C++ is not a choice that can be revisited: every one of them is C++ and must build on every platform that carries it, so the core concentrates the remaining correctness-critical logic beside them rather than duplicating that logic per platform. The core owns:
 
 - **Rules facade** — legal-move generation, move application, check state, and authoritative result adjudication, including repetition, claimable draws, perpetual check, and perpetual chase. The facade is deterministic over position and history. Where this project owns a game's rules it is validated by the approved conformance fixtures that game's own rules contract requires — [xiangqi-rules.md](xiangqi-rules.md) for Mini Xiangqi and Xiangqi, [jieqi-rules.md](jieqi-rules.md) for Jieqi — and agreement with unvalidated engine behavior is never its authority. The core exposes it two ways: inside a **game session**, which composes it with the game's frozen configuration — mode, resolved human side, AI level and thinking time — because undo, resign, and search eligibility are mode-aware; and session-free over an initial position plus complete move history, which is the fixture-harness and import-validation surface.
 - **Search facade** — engine sessions that receive an app-approved position and history and return a proposed move or typed failure, with the option profiles, cancellation, and lifecycle defined in [engine-integration.md](engine-integration.md) and [placement-engine-integration.md](placement-engine-integration.md). Search output never mutates game state, and adjudication never derives from search scores.
 - **Game archive codec** — encoding, decoding, and validation of the versioned portable game format defined in [game-data.md](game-data.md).
 - **Library store** — the SQLite-backed game library: the single active game, autosave, History records, pin metadata, import, export, deletion, and their transactional invariants.
 
-The rules facade and the search facade are two contracts over the pinned engine implementations, and a game's rules answers and its search answers always come from the same one. Sharing an implementation between the two facades is an efficiency choice where this project owns the rules: there the fixtures remain the independent authority, and when an approved fixture exposes an engine mismatch, the fork receives a focused change rather than the contract bending to the engine. Where the pinned engine is itself the rules authority — the placement games, per [placement-engine-integration.md](placement-engine-integration.md) — there is no corpus over it, and the facade above it is an adapter that adds no rule of its own.
+The rules facade and the search facade are contracts over the pinned engine implementations, and a game's rules answers and its search answers always come from the same one. Sharing an implementation between the two facades is an efficiency choice where this project owns the rules: there the fixtures remain the independent authority, and when an approved fixture exposes an engine mismatch, the fork receives a focused change rather than the contract bending to the engine. Where the pinned engine is itself the rules authority — the placement games, per [placement-engine-integration.md](placement-engine-integration.md) — there is no corpus over it, and the facade above it is an adapter that adds no rule of its own.
 
 ## Native frontends
 
@@ -31,7 +31,7 @@ Each frontend renders state, collects user intentions, and calls core operations
 - localization resources and accessibility integration;
 - platform services: storage location, file pickers, share and export surfaces, memory probes, lifecycle events, and the transports nearby play and online play are carried over;
 - transient UI state such as selection, pre-start drafts, and confirmation flows;
-- the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the two that affect a game are passed as arguments to game creation, where they are frozen into the game.
+- the persistent Settings preferences, held in each platform's own preference system as fixed in [game-data.md](game-data.md). The core never reads one: the ones that affect a game are passed as arguments to game creation, where they are frozen into the game.
 
 Frontends must not reimplement rules, result classification, archive parsing, or library invariants, and must not reach around the core to its storage or the engine.
 
@@ -40,7 +40,7 @@ Frontends must not reimplement rules, result classification, archive parsing, or
 Dependencies point inward:
 
 1. Frontends depend only on the core's C interface, through a thin idiomatic binding per platform — Swift on Apple platforms, C# P/Invoke on Windows.
-2. The core depends on its three engines and on SQLite as internal, replaceable components; none of them is visible through the C interface, and neither is the fact that there is more than one engine.
+2. The core depends on its engines and on SQLite as internal, replaceable components; none of them is visible through the C interface, and neither is the fact that there is more than one engine.
 3. The core never depends on UI frameworks, platform services, or frontend code. Platform-specific values it needs — storage paths, memory budgets, processor counts — are passed in by the frontend.
 
 ## Concurrency and lifecycle
@@ -78,7 +78,7 @@ The Apple frontend's Xcode project sits under `apple/`, and every reference insi
 
 - Core tests run on every development platform without a frontend, through **one shared C++ test runner** rather than per-platform harnesses. The approved fixtures are the project's independent authority, so they must be executed by one harness producing identical results everywhere; two harnesses would make a discrepancy between them possible.
 - Platform binding tests — the Swift and C# layers over the C interface — stay in each platform's native framework, because what they test is the binding rather than the core.
-- GitHub Actions covers a macOS runner and **two** Windows runners, `x64` and `ARM64`, in `.github/workflows/core-suites.yml`. `ARM64` is compiled nowhere else.
+- GitHub Actions covers a macOS runner and Windows runners for `x64` and `ARM64`, in `.github/workflows/core-suites.yml`. `ARM64` is compiled nowhere else.
 - Developer-machine runs remain the evidence a change is validated by; CI is the second place each platform builds, and it is not a merge gate.
 - CI must not receive undocumented inputs: pinned revisions and asset hashes come from the repository's manifests. Every build input CI needs is in this repository, both NNUE networks included, so **CI takes no secrets at all**, every suite runs on every runner, and a pull request from a fork gets the same run as a branch's.
 - The Windows distributions are the one thing CI does not merely reproduce but produces: the zip anybody is given and the unsigned MSIX submitted to the Microsoft Store are both built per architecture by `.github/workflows/windows-frontend.yml` and exist nowhere else. Neither needs a secret — the zip because every input is in this repository, the package because the Store signs what it accepts.

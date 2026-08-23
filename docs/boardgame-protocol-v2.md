@@ -38,7 +38,7 @@ Every message is one JSON object with exactly one member: the message's name, wh
 {"move": {"session": "0b34…", "index": 7, "move": "b1b3"}}
 ```
 
-`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal_digest` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes in order, two digits a byte, high nibble first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal_digest` are the only two that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
+`protocol` is an integer. `session` is an opaque string, minted by the proposer as a UUID, echoed verbatim, and compared byte-wise. `index`, `at`, `count`, `keep`, and `undos` are non-negative integers. `commit`, `nonce`, `seed`, and `deal_digest` are strings of exactly sixty-four lowercase hexadecimal digits — thirty-two bytes in order, two digits a byte, high nibble first — and any other string is malformed. A message carries exactly its named fields: `end` and `deal_digest` are the only ones that may be omitted, each under the rule stated for it, and every other extra or missing member is malformed.
 
 ## Session states
 
@@ -83,7 +83,7 @@ On `accept`, a perfect-information game's session becomes **active** and play be
 
 ## The deal handshake
 
-**The proposer is the dealer.** Three messages, in this order and no other, on the session's own connection:
+**The proposer is the dealer.** These messages, in this order and no other, on the session's own connection:
 
 1. The dealer draws a `seed` of thirty-two bytes from a cryptographically secure random source and sends `deal_commit` with `commit`, the SHA-256 of those bytes. A thirty-two-byte seed carries enough entropy that the hash discloses nothing about it and binds it completely, which is why the commitment needs no separate blinding value.
 2. The other peer draws a `nonce` of thirty-two bytes from a cryptographically secure random source and sends `deal_nonce`.
@@ -93,7 +93,7 @@ Within a completed handshake neither side can choose or steer the deal, because 
 
 The dealer's session becomes **active** when it has sent `deal_seed`; the other end's when `deal_seed` arrives and verifies. The first ply may follow immediately. Until then no `move` exists and none is sent.
 
-Every departure is a protocol violation: a handshake message for a perfect-information game's session, a `deal_commit` or `deal_seed` from the peer that is not the dealer, a `deal_nonce` from the dealer, any of the three arriving out of the stated order or a second time, a malformed value, and any other message arriving for a session in **dealing**.
+Every departure is a protocol violation: a handshake message for a perfect-information game's session, a `deal_commit` or `deal_seed` from the peer that is not the dealer, a `deal_nonce` from the dealer, any of them arriving out of the stated order or a second time, a malformed value, and any other message arriving for a session in **dealing**.
 
 ### Deriving the deal
 

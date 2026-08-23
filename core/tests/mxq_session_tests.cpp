@@ -498,8 +498,8 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         const mxqtest::JsonValue *first = config->member("first_mover_choice");
         if (side == nullptr || level == nullptr || movetime == nullptr ||
             first == nullptr) {
-            error = "a human-versus-AI scenario states all four configuration "
-                    "members";
+            error = "a human-versus-AI scenario states every configuration "
+                    "member";
             return false;
         }
         out.config.human_side =
@@ -529,7 +529,7 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         out.config.local_side =
             local->string() == "red" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
     } else if (mode->string() != "free-play") {
-        error = "\"config.mode\" is not one of the four accepted modes";
+        error = "\"config.mode\" is not one of the accepted modes";
         return false;
     }
 
@@ -594,7 +594,7 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
         out.deal_digest = value("digest");
         if (out.deal_commit.size() != 64 || out.deal_nonce.size() != 64 ||
             out.deal_seed.size() != 64 || out.deal_digest.size() != 64) {
-            error = "a scenario's \"deal\" states four 64-digit values";
+            error = "a scenario's \"deal\" states 64-digit values";
             return false;
         }
     }
