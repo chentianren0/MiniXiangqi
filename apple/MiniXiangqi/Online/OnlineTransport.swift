@@ -1,13 +1,13 @@
 // The matches this device is playing over, and the room the surfaces read.
 //
-// The nearby transport is two paths, four loops and a pairing registry, because
-// *finding* the other device is the whole problem there. **Here there is nothing
-// to find.** Game Center delivers a match — from an invitation the player
-// accepted or a party code they entered, both of them the system's own surfaces
-// — and this adopts it. There is no publisher, no browser, no discovery, and by
-// design no rediscovery: online play stands no reconnection vigil, and coming
-// back to an interrupted game is a fresh invitation on which the protocol's
-// resume reconciliation picks it up unchanged.
+// The nearby transport is built around discovery, because *finding* the other
+// device is the whole problem there. **Here there is nothing to find.** Game
+// Center delivers a match — from an invitation the player accepted or a party
+// code they entered, both of them the system's own surfaces — and this adopts
+// it. There is no publisher, no browser, no discovery, and by design no
+// rediscovery: online play stands no reconnection vigil, and coming back to an
+// interrupted game is a fresh invitation on which the protocol's resume
+// reconciliation picks it up unchanged.
 //
 // That is why this object is small, and why it is not smaller: what it owns is
 // the one thing a connection cannot own for itself — a name no other connection
@@ -93,6 +93,13 @@ final class OnlineTransport: NearbyReach {
     /// ever name, so nothing would ever consult the preference a rank encodes.
     /// A name that begins with a letter is also the name `ConnectionID.name`
     /// gives back whole, which is what a log line and a screen read.
+    ///
+    /// These sort as text, so past nine connections `online-10` comes before
+    /// `online-2` — the trap `NearbyLinkKind` keeps its ranks to one digit to
+    /// avoid, and harmless here for the reason above: `NearbyCandidate.ordered`
+    /// asks only that the answer be the same every time it is asked, and
+    /// between two online connections to one player there is no preference to
+    /// get backwards.
     static func mintName() -> ConnectionID {
         minted += 1
         return ConnectionID("online-\(minted)")

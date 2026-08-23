@@ -60,9 +60,9 @@
 //
 // Readiness, the buffer that holds what arrives before it, the decode, and the
 // death — every one of them reachable without a network, a match, or a second
-// signed-in player. GameKit's four callbacks reduce its objects to values and
-// hand them to those decisions, which is why the callbacks are three lines each
-// and why what this layer actually decides can be proved.
+// signed-in player. GameKit's callbacks reduce its objects to values and hand
+// them to those decisions, which is why what this layer actually decides can be
+// proved.
 
 import Foundation
 import GameKit

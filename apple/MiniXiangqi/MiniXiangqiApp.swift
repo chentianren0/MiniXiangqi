@@ -44,8 +44,7 @@ struct MiniXiangqiApp: App {
     /// screen's**: the answer gates whether a row exists at all, so it has to be
     /// asked before anything draws, and asking it twice would be two sign-ins.
     /// The scene owns it for the same reason it owns the window — one app, one
-    /// account, one answer — and the surfaces that read it are handed it from
-    /// here.
+    /// account, one answer.
     @State private var gameCenter = GameCenterAvailability()
 
     /// The window's title is the app's own name: a proper noun, not copy, so

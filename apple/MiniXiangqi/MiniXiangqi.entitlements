@@ -2,9 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   macOS signs with this file. iPhone and iPad sign with
-  MiniXiangqi-iOS.entitlements — this file plus Wi-Fi Aware, less the App
-  Sandbox key below, which only the Mac is sandboxed by. So a key added here is
-  added there too, unless it is one the sandbox alone gives meaning to.
+  MiniXiangqi-iOS.entitlements — this file plus Wi-Fi Aware, less
+  com.apple.security.network.client, whose own comment below says why it stays
+  here. So a key added here is added there too, unless it is one the Mac's
+  sandbox alone gives meaning to.
+
+  Neither file writes com.apple.security.app-sandbox, and neither needs to: on
+  the Mac the project's ENABLE_APP_SANDBOX is the switch, and iPhone and iPad
+  are sandboxed by the system with no entitlement at all.
 -->
 <plist version="1.0">
 <dict>
@@ -13,13 +18,6 @@
 	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
 	<true/>
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
-	<true/>
-	<!--
-	  Game Center reaches Apple's servers and the other player from inside the
-	  Mac's sandbox. iPhone and iPad have no such gate, which is why this one key
-	  does not travel to the file beside it.
-	-->
-	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.hardened-process</key>
 	<true/>
@@ -33,5 +31,12 @@
 	<true/>
 	<key>com.apple.security.hardened-process.platform-restrictions-string</key>
 	<string>2</string>
+	<!--
+	  Game Center reaches Apple's servers and the other player from inside the
+	  Mac's sandbox. iPhone and iPad have no such gate, which is why this one key
+	  does not travel to the file beside it.
+	-->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>
