@@ -47,10 +47,35 @@ nonisolated enum OnlineIdentity {
 
     /// The peer identity a Game Center player identifier names.
     ///
-    /// `PeerDeviceID` is named for what the local paths could name — an install
-    /// on a device — and what it holds here is a person. Nothing above cares:
-    /// the engine only ever compares one to another, and the contract's demand
-    /// is stability rather than what the identity is *of*.
+    /// **It names a person rather than a device**, because a person is the
+    /// finest grain Game Center offers: `gamePlayerID` is an account within
+    /// this game, and it is the same account wherever its owner is signed in.
+    /// The local paths' identity is one install on one device, so this one is
+    /// deliberately coarser — and the difference is not a matter of taste,
+    /// because **the driver routes by it**. A session with a peer is offered
+    /// its resume on every connection standing to that peer, and the engine
+    /// accepts the exchange on any connection whose record names the same one.
+    ///
+    /// **So the layer that adopts matches must never hold two live connections
+    /// to one peer.** Two of them are one person on two devices under one
+    /// identity, and a game being played on the first would have its resume
+    /// offered to the second, which is not holding it and answers
+    /// `unknown_session` — an answer that voids the session on both sides. The
+    /// game in progress would end because its own player opened the app
+    /// somewhere else.
+    ///
+    /// One connection after another is a different thing entirely, and it is
+    /// the ordinary way back: the earlier one is dead by then, and reconciling
+    /// what the two devices hold is exactly what resume is for. It is the
+    /// concurrency that is unsafe.
+    ///
+    /// Nothing here can enforce that, and nothing here should: a match becomes
+    /// a connection in `OnlineTransport.adopt(_:)`, and whether one is wanted
+    /// at all is a question about what the player just asked for — an
+    /// invitation, a party code, a game already going. So the obligation lands
+    /// on `adopt`'s callers, which are stage 4's: a second adoption for a peer
+    /// that already has a live connection is refused, or it replaces the one
+    /// standing. Neither leaves two.
     static func peer(_ gamePlayerID: String) -> PeerDeviceID {
         PeerDeviceID("\(peerPrefix)\(gamePlayerID)")
     }

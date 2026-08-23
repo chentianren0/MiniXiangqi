@@ -60,6 +60,31 @@ struct OnlineTests {
         #expect(!match.isDisconnected)
     }
 
+    @Test("A match names its player once, and a second naming changes nothing")
+    func aSecondNamingIsRefused() async throws {
+        let (transport, driver) = madeTransport()
+        let match = FakeMatch()
+        let connection = transport.open(over: match)
+        connection.becameUsable(reaching: .friend, named: "Wei")
+        await settle { match.sent.count == 1 }
+
+        // Every real match reaches this twice: adoption names the player where
+        // GameKit has already delivered one, and GameKit reports that same
+        // player connecting a moment later, through the hop.
+        connection.becameUsable(reaching: .otherFriend, named: "Lan")
+
+        // The driver refuses a second open of one connection whatever this
+        // does, so it goes on holding the first peer — which is exactly why the
+        // naming has to be refused *here* as well. Renamed, the room would show
+        // one player while the driver routed to another, and what the driver
+        // routes by peer is the resume a session is owed.
+        #expect(connection.peer == .friend)
+        #expect(connection.peerName == "Wei")
+        #expect(driver.peers[connection.id] == .friend)
+        #expect(transport.peers.first?.peer == .friend)
+        #expect(transport.peers.first?.name == "Wei")
+    }
+
     @Test("A payload the codec refuses is a violation, not a death")
     func aRefusedPayloadVoidsTheSession() async throws {
         let (transport, driver) = madeTransport()
@@ -361,4 +386,7 @@ private nonisolated struct OnlineStub: BoardGameRules {
 extension PeerDeviceID {
     /// The other player, named the way Game Center names one.
     fileprivate static let friend = OnlineIdentity.peer("A:_1a2b3c4d5e")
+    /// Somebody else, for the case that must not be able to rename a player a
+    /// connection has already been opened under.
+    fileprivate static let otherFriend = OnlineIdentity.peer("A:_9f8e7d6c5b")
 }
