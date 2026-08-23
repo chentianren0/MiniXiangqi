@@ -3,5 +3,5 @@
   "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
   "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
   "detail_contains": "exactly when",
-  "why": "outcome is draw exactly when the reason is one of the six draw reasons."
+  "why": "outcome is draw exactly when the reason is one of the draw reasons."
 }

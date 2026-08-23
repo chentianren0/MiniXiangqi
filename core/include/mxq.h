@@ -685,8 +685,8 @@ enum {
  *                      it stands to a game holding a start for every deal
  *                      exactly as NOT_FROZEN_START stands to a game holding
  *                      one: a dealt start is no frozen start, there being one
- *                      of them per deal, so the seventh could not say this
- *                      truthfully
+ *                      of them per deal, so NOT_FROZEN_START could not say
+ *                      this truthfully
  *
  * MXQ_SETUP_RULE_NONE is the legal setup, and the value MxqSetupViolation
  * carries whenever mxq_rules_validate_setup does not return

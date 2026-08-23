@@ -94,7 +94,7 @@ A revealed piece moves as xiangqi's piece of that kind, with the advisor and the
 
 ### Every fact that decides play is public
 
-How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So what the position conceals is exactly this — the identities still face down, and the identity of a hidden piece that has been captured — and neither of them decides a legal move, a check, or a result. Concealment is a property of the position and never of what a player remembers.
+How a hidden piece moves is public: its square says it, and both players see the square. What a piece flips up as becomes public the instant it flips. So the position conceals exactly this: the identities still face down, and the identity of a hidden piece that has been captured. Neither of them decides a legal move, a check, or a result. Concealment is a property of the position and never of what a player remembers.
 
 **A move's legality never depends on what the moving piece flips up as.** The piece occupies its destination whatever it turns out to be, and occupancy is the whole of what blocking, screening and the flying-general rule read. Both players therefore hold the same legal-move set, the same check state and the same adjudication at every moment of the game, and jieqi's uncertainty is uncertainty about the identities the position still conceals.
 
