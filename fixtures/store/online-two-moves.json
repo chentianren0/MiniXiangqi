@@ -1,0 +1,21 @@
+{
+  "title": "Online, two moves: the networked round trip that reaches its peer over a network",
+  "why": "Online is the second networked mode, and the store owes it everything it owes the first: one commit per accepted move, a local side that survives the close although no byte of the archive carries it, and an Undo refused because a retraction between two players is their agreement rather than one device's decision. A mode that reached the store as Free Play would keep no local side and would offer the undo. It names no golden: its document differs from the nearby one in the mode string alone, and the archive corpus states each rule once rather than twice.",
+  "config": {
+    "game": "minixiangqi",
+    "mode": "online",
+    "local_side": "black"
+  },
+  "moves": ["b1b3", "b7b5"],
+  "status": {
+    "state": "ongoing",
+    "reason": null,
+    "at_occurrence": 0,
+    "claim_available": false,
+    "undo_available": false,
+    "undo_plies": 0,
+    "resign_available": false,
+    "search_expected": false
+  },
+  "undo": []
+}

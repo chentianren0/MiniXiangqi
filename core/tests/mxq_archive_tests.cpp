@@ -671,7 +671,7 @@ void run_rejection(MxqCore *core, const fs::path &file,
  */
 std::string document_with_plies(size_t count) {
     std::string doc =
-        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":6,"
+        "{\"archive_format\":\"minixiangqi-game\",\"archive_version\":7,"
         "\"content\":{\"mode\":\"free-play\",\"moves\":[";
     for (size_t i = 0; i < count; ++i) {
         if (i != 0) {
@@ -797,10 +797,10 @@ void run_argument_contract(MxqCore *core, const std::string &golden) {
     rc = mxq_archive_supported_versions(&min_readable, &current, &err);
     c.check(rc == MXQ_OK, "mxq_archive_supported_versions failed");
     /* One version is defined, so the window is one version wide: the corpus
-     * above is entirely version 6, and a build that quietly kept reading an
+     * above is entirely version 7, and a build that quietly kept reading an
      * earlier shape would widen this pair rather than fail a fixture. */
-    c.check_eq(static_cast<int64_t>(min_readable), 6, "minimum readable");
-    c.check_eq(static_cast<int64_t>(current), 6, "current");
+    c.check_eq(static_cast<int64_t>(min_readable), 7, "minimum readable");
+    c.check_eq(static_cast<int64_t>(current), 7, "current");
 
     report(c);
 }

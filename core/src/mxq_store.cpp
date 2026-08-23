@@ -353,7 +353,7 @@ END;
 INSERT INTO library (id, active_record_id) VALUES (1, NULL);
 
 -- Non-authoritative bookkeeping; nothing reads this table to decide anything.
-INSERT INTO meta (key, value) VALUES ('created_schema_version', '6');
+INSERT INTO meta (key, value) VALUES ('created_schema_version', '7');
 
 -- The library revision: the monotonic counter every committed store mutation
 -- bumps, which is the accepted answer to library-change observation. A fresh

@@ -173,11 +173,11 @@ extern "C" {
 
 /* The two identifiers a networked game's wire session is held by. Both are
  * opaque to the core, which stores and returns them and compares neither: the
- * session
- * identifier is the proposer-minted string the two peers compare byte-wise, and
- * the peer identifier is the transport's own name for the paired device. The
- * caps are the smallest that hold a UUID and a transport-prefixed one with room
- * to spare; a longer value is MXQ_ERR_ARG_RANGE rather than a truncation. */
+ * session identifier is the proposer-minted string the two peers compare
+ * byte-wise, and the peer identifier is the transport's own name for the paired
+ * device. The caps are the smallest that hold a UUID and a transport-prefixed
+ * one with room to spare; a longer value is MXQ_ERR_ARG_RANGE rather than a
+ * truncation. */
 #define MXQ_NEARBY_SESSION_ID_CAP 128
 #define MXQ_NEARBY_PEER_ID_CAP 128
 

@@ -589,21 +589,22 @@ bool read_scenario(const fs::path &path, Scenario &out, std::string &error) {
             first->string() == "human-first"  ? MXQ_FIRST_MOVER_HUMAN_FIRST
             : first->string() == "ai-first"   ? MXQ_FIRST_MOVER_AI_FIRST
                                               : MXQ_FIRST_MOVER_RANDOM;
-    } else if (mode->string() == "nearby") {
-        out.config.mode = MXQ_PLAY_MODE_NEARBY;
+    } else if (mode->string() == "nearby" || mode->string() == "online") {
+        out.config.mode = mode->string() == "nearby" ? MXQ_PLAY_MODE_NEARBY
+                                                     : MXQ_PLAY_MODE_ONLINE;
         /* Local perspective is store metadata rather than archive content, and
-         * a nearby game is played from one of the two sides of this device, so
-         * a nearby scenario states which. */
+         * a networked game is played from one of the two sides of this device,
+         * so a networked scenario states which. */
         const mxqtest::JsonValue *local = config->member("local_side");
         if (local == nullptr || !local->is_string() ||
             (local->string() != "red" && local->string() != "black")) {
-            error = "a nearby scenario states \"config.local_side\"";
+            error = "a networked scenario states \"config.local_side\"";
             return false;
         }
         out.config.local_side =
             local->string() == "red" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
     } else if (mode->string() != "free-play") {
-        error = "\"config.mode\" is not one of the three accepted modes";
+        error = "\"config.mode\" is not one of the four accepted modes";
         return false;
     }
 
