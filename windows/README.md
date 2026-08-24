@@ -756,11 +756,10 @@ artifact wrappers described [below](#the-distribution), so a release download is
 and not a zip around it. It stops at a draft deliberately: this repository has release
 immutability enabled, so publishing freezes both the assets and the tag, and that click is
 the owner's to make after running the thing. Before either runner starts, it also refuses
-a tag whose version and `Package.appxmanifest`'s disagree — `windows-v1.6` means
-`1.6.0.0` — since a release page and the package hanging off it should not answer *which
-version is this* two different ways. The `windows-` prefix says which channel a tag means:
-bare `v*` tags are the Apple channel's, which Xcode Cloud archives to TestFlight, and the
-two channels version independently.
+a tag whose version and `Package.appxmanifest`'s disagree, since a release page and the
+package hanging off it should not answer *which version is this* two different ways. The
+tag shape, its mapping to a package version, and which channel each tag prefix belongs to
+live in [`release.yml`](../.github/workflows/release.yml) alone.
 
 ## Strings
 
@@ -1040,10 +1039,10 @@ of the app belongs. `DisplayName` is **Xiangqi Master**, the reserved name.
 `Version` is hardcoded and bumped by hand, in a commit, before the release tag it belongs
 to is pushed. CI does not stamp it: the Store refuses a version that is not higher than
 the last accepted one and reserves the fourth part for itself, and a version that moves on
-every run is a version nobody chose. What CI does is compare, because the tag names the
-same number: `windows-vX.Y` is `X.Y.0.0` and `windows-vX.Y.Z` is `X.Y.Z.0`, and
-[`release.yml`](../.github/workflows/release.yml) stops a release whose two answers
-differ.
+every run is a version nobody chose. What CI does is compare:
+[`release.yml`](../.github/workflows/release.yml) stops a release whose tag and manifest
+answer *which version is this* differently; the tag shape and its mapping live there
+alone.
 
 ### What the manifest declares, and what it deliberately does not
 
