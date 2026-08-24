@@ -1041,7 +1041,7 @@ of the app belongs. `DisplayName` is **Xiangqi Master**, the reserved name.
 to is pushed. CI does not stamp it: the Store refuses a version that is not higher than
 the last accepted one and reserves the fourth part for itself, and a version that moves on
 every run is a version nobody chose. What CI does is compare, because the tag names the
-same number: `vX.Y` is `X.Y.0.0` and `vX.Y.Z` is `X.Y.Z.0`, and
+same number: `windows-vX.Y` is `X.Y.0.0` and `windows-vX.Y.Z` is `X.Y.Z.0`, and
 [`release.yml`](../.github/workflows/release.yml) stops a release whose two answers
 differ.
 

@@ -48,7 +48,7 @@ fi
 
 if [ -n "${CI_TAG:-}" ]; then
   if ! printf '%s' "$CI_TAG" | grep -Eq '^v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){1,2}$'; then
-    echo "error: tag '$CI_TAG' does not name a version; release tags are v<major>.<minor>[.<patch>], no leading zeros." >&2
+    echo "error: tag '$CI_TAG' does not name a version; Apple release tags are v<major>.<minor>[.<patch>], no leading zeros." >&2
     exit 1
   fi
   version=${CI_TAG#v}
