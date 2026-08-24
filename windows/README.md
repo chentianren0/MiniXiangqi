@@ -746,7 +746,7 @@ The bindings check is the obligation issue #80 carried from #85's verify: a `Mxq
 that differs from what the generator writes is a transcription of the header rather than
 the header, and the DLL export path and the bindings can no longer drift silently.
 
-**A `v*` tag makes a release out of the same run.**
+**A `windows-v*` tag makes a release out of the same run.**
 [`release.yml`](../.github/workflows/release.yml) builds nothing of its own: it calls the
 workflow above, so a release is the ordinary build with the ordinary proofs rather than a
 second definition of them, and then attaches five of that run's artifacts — the two zips,
@@ -756,9 +756,11 @@ artifact wrappers described [below](#the-distribution), so a release download is
 and not a zip around it. It stops at a draft deliberately: this repository has release
 immutability enabled, so publishing freezes both the assets and the tag, and that click is
 the owner's to make after running the thing. Before either runner starts, it also refuses
-a tag whose version and `Package.appxmanifest`'s disagree — `v1.6` means `1.6.0.0` — since
-a release page and the package hanging off it should not answer *which version is this*
-two different ways.
+a tag whose version and `Package.appxmanifest`'s disagree — `windows-v1.6` means
+`1.6.0.0` — since a release page and the package hanging off it should not answer *which
+version is this* two different ways. The `windows-` prefix says which channel a tag means:
+bare `v*` tags are the Apple channel's, which Xcode Cloud archives to TestFlight, and the
+two channels version independently.
 
 ## Strings
 
@@ -1039,7 +1041,7 @@ of the app belongs. `DisplayName` is **Xiangqi Master**, the reserved name.
 to is pushed. CI does not stamp it: the Store refuses a version that is not higher than
 the last accepted one and reserves the fourth part for itself, and a version that moves on
 every run is a version nobody chose. What CI does is compare, because the tag names the
-same number: `vX.Y` is `X.Y.0.0` and `vX.Y.Z` is `X.Y.Z.0`, and
+same number: `windows-vX.Y` is `X.Y.0.0` and `windows-vX.Y.Z` is `X.Y.Z.0`, and
 [`release.yml`](../.github/workflows/release.yml) stops a release whose two answers
 differ.
 
