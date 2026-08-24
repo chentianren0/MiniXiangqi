@@ -31,8 +31,8 @@
 #
 # THE SAME BUILD IS WHAT A RELEASE IS MADE OF
 #
-# This workflow is callable, and .github/workflows/release.yml calls it when a
-# windows-v* tag is pushed. A release is therefore built by this file rather than beside
+# This workflow is callable, and .github/workflows/release.yml calls it to build
+# a release. A release is therefore built by this file rather than beside
 # it: one definition of the build, one set of proofs, and no second copy to
 # drift out of step with this one — which it would, in the direction nobody
 # notices, the release build being the one that runs least often. Nothing here
