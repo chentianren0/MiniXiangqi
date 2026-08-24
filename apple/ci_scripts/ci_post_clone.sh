@@ -28,6 +28,15 @@ for tool in cmake ninja; do
   command -v "$tool" >/dev/null 2>&1 || brew install "$tool"
 done
 
+# Xcode Cloud does not export DEVELOPER_DIR to custom build scripts (Build 45's
+# log: "xcrun: error: missing DEVELOPER_DIR path"), and the generator's unset
+# fallback is this workspace's beta path, which no cloud runner carries.
+# xcode-select on the runner names the workflow's chosen Xcode.
+if [ -n "${CI_XCODE_CLOUD:-}" ]; then
+  DEVELOPER_DIR="$(xcode-select --print-path)"
+  export DEVELOPER_DIR
+fi
+
 # Only a cloud checkout is edited below: run by hand, the same command would
 # rewrite the developer's own working tree.
 if [ -n "${CI_XCODE_CLOUD:-}" ]; then
