@@ -1,10 +1,16 @@
-# The release: a v* tag, the Windows build that every pull request gets, and a
-# draft release carrying everything a person or the Store is handed.
+# The release: a windows-v* tag, the Windows build that every pull request gets,
+# and a draft release carrying everything a person or the Store is handed.
 #
 # The shape is the owner's, in the owner's words: "why not use the tag? when we
 # tag, and it run, then i could find what i need in the releases?" Before it, a
 # release was assembled by hand out of a run's artifacts — findable only under
 # Actions, expiring in a fortnight, and named by whoever did the downloading.
+#
+# The windows- prefix is load-bearing. Bare v* tags are the Apple channel's —
+# Xcode Cloud archives them to TestFlight — and the two channels version
+# independently, so a bare version cannot say which channel a tag means, and
+# the guard below cannot know whether a Windows release was intended at all.
+# This workflow reacts only to tags that name it.
 #
 # THIS FILE BUILDS NOTHING
 #
@@ -58,7 +64,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'windows-v*'
 
 # Two runs for one tag would race to attach assets to one release. This
 # serializes them instead, and the release job below stops the second before it
@@ -92,9 +98,10 @@ jobs:
   # and the one the Store believes is not the one anybody read. So the bump
   # stays a commit made before tagging, and this is what says it was made.
   #
-  # The mapping is the whole rule: vX.Y is X.Y.0.0 and vX.Y.Z is X.Y.Z.0, the
-  # fourth part being the revision the Store reserves for itself. Any other tag
-  # shape stops here rather than producing a release nobody can explain.
+  # The mapping is the whole rule: windows-vX.Y is X.Y.0.0 and windows-vX.Y.Z
+  # is X.Y.Z.0, the fourth part being the revision the Store reserves for
+  # itself. Any other tag shape stops here rather than producing a release
+  # nobody can explain.
   version:
     name: The tag and the package agree
     runs-on: ubuntu-24.04
@@ -108,8 +115,8 @@ jobs:
           manifest=windows/MiniXiangqi.App/Package.appxmanifest
           tag="$GITHUB_REF_NAME"
 
-          if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
-            echo "The tag is '$tag'. A release tag is vMAJOR.MINOR or vMAJOR.MINOR.PATCH — v1.6, v1.6.1 — because it has to name a four-part package version and nothing else can be turned into one." >&2
+          if [[ ! "$tag" =~ ^windows-v([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
+            echo "The tag is '$tag'. A Windows release tag is windows-vMAJOR.MINOR or windows-vMAJOR.MINOR.PATCH — windows-v1.6, windows-v1.6.1 — because it has to name a four-part package version and nothing else can be turned into one. Bare v* tags belong to the Apple channel." >&2
             exit 1
           fi
           expected="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[4]:-0}.0"
