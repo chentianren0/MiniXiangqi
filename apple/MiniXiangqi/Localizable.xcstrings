@@ -1,6 +1,177 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "about.acknowledgements": {
+      "comment": "The row that opens the acknowledgements, and that page's title. The component names on the page are the projects' own and are not copy.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acknowledgements"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "致谢"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.data.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SQLite is in the public domain."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SQLite 属于公有领域。"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.engines.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The engines are free software under the GNU General Public License v3, like Star River itself."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以上引擎与闲敲棋子一样，是依据 GNU General Public License v3 发布的自由软件。"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.fairyStockfish": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xiangqi and Mini Xiangqi engine"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "象棋与迷你象棋引擎"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.networks.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The networks are published under CC0 1.0."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以上网络依据 CC0 1.0 发布。"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.pikafish": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Jieqi rules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揭棋规则"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.rapfi": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Gomoku and Renju engine"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "五子棋与连珠引擎"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.rapfiNetworks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Gomoku and Renju networks, trained by the Rapfi developers"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "五子棋与连珠网络，由 Rapfi 开发者训练"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.sqlite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The History database"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "历史数据库"
+          }
+        }
+      }
+    },
+    "about.acknowledgements.xiangqiNetwork": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xiangqi network, trained by the Pikafish developers"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "象棋网络，由 Pikafish 开发者训练"
+          }
+        }
+      }
+    },
     "about.build": {
       "extractionState": "manual",
       "localizations": {

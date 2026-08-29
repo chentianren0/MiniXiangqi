@@ -39,6 +39,13 @@ struct CopyTests {
         let keys = [
             "about.title", "about.name", "about.version", "about.build",
             "about.license", "about.license.statement", "about.source",
+            "about.acknowledgements",
+            "about.acknowledgements.fairyStockfish", "about.acknowledgements.rapfi",
+            "about.acknowledgements.pikafish",
+            "about.acknowledgements.xiangqiNetwork", "about.acknowledgements.rapfiNetworks",
+            "about.acknowledgements.sqlite",
+            "about.acknowledgements.engines.footer", "about.acknowledgements.networks.footer",
+            "about.acknowledgements.data.footer",
             "alert.claimDraw.title", "alert.claimDraw.message",
             "alert.saveFailed.title", "alert.saveFailed.message",
             "alert.aiUnavailable.title", "alert.aiUnavailable.message",

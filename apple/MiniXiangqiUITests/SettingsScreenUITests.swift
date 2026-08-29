@@ -56,10 +56,11 @@ final class SettingsScreenUITests: XCTestCase {
         let defaultsSection, defaultFirstMover, defaultAiLevel: String
         let iMoveFirst, standardLevel, defaultsFooter: String
         /// The About row at the foot of the screen, and the page it opens: the
-        /// three facts about this build, the licence and its statement, and the
-        /// source the licence is about.
+        /// three facts about this build, the licence and its statement, the
+        /// source the licence is about, and the acknowledgements behind it.
         let about, name, version, build: String
         let license, licenseStatement, source: String
+        let acknowledgements: String
         /// The product's own name in this language, which is what the name row
         /// carries — the bundle's display name is localized like any other copy.
         let productName: String
@@ -89,6 +90,7 @@ final class SettingsScreenUITests: XCTestCase {
             license: "许可证",
             licenseStatement: "闲敲棋子是自由软件，依据 GNU General Public License v3 发布。",
             source: "源代码",
+            acknowledgements: "致谢",
             productName: "闲敲棋子",
             deleteTitle: "删除这盘棋？", delete: "删除", cancel: "取消",
             oldestRow: "迷你象棋 · 自由对弈 · 红方获胜 · 将死 · 3 步")
@@ -113,6 +115,7 @@ final class SettingsScreenUITests: XCTestCase {
             license: "License",
             licenseStatement: "Star River is free software, released under the GNU General Public License v3.",
             source: "Source Code",
+            acknowledgements: "Acknowledgements",
             productName: "Star River",
             deleteTitle: "Delete this game?", delete: "Delete", cancel: "Cancel",
             oldestRow: "Mini Xiangqi · Free Play · Red Wins · Checkmate · 3 moves")
@@ -444,6 +447,12 @@ final class SettingsScreenUITests: XCTestCase {
         XCTAssertTrue(detail(app, "about-source").contains(language.source),
                       "the source row should read \(language.source) — it reads "
                       + detail(app, "about-source"))
+        // The acknowledgements row arrived too. The page behind it is the same
+        // SwiftUI screen every Apple platform draws, and the phone suite walks
+        // it; what only this platform can say is that the row is on the page.
+        XCTAssertTrue(detail(app, "about-acknowledgements").contains(language.acknowledgements),
+                      "the acknowledgements row should read \(language.acknowledgements) — it reads "
+                      + detail(app, "about-acknowledgements"))
         XCTAssertTrue(app.staticTexts[language.licenseStatement].exists,
                       "the footer should state the licence")
         attach(app, named: "42-the-about-page")
