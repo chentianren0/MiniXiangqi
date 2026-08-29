@@ -13,9 +13,11 @@
 // owed. The facts themselves are read from the bundle by `About`, which is why
 // nothing on this page is a literal.
 //
-// **Nothing else is here.** No credits, no third-party notices, no diagnostics:
-// the page exists for the licence and the release it identifies, and the source
-// link is the licence's own other half rather than a fifth thing.
+// **And the work it is built on.** The licence group's third row opens the
+// Acknowledgements page, which names the open-source components the application
+// embeds — each one, what it does here, and its home — because a free-software
+// application says what it is made of. No diagnostics: the page exists for the
+// licence, the release it identifies, and the work under both.
 
 import SwiftUI
 
@@ -52,11 +54,13 @@ struct AboutScreen: View {
         }
     }
 
-    /// The licence, its full text, and the source it is a licence about.
+    /// The licence, its full text, the source it is a licence about, and the
+    /// open-source work that arrived under the same terms.
     ///
-    /// The two rows are one group because the second exists on account of the
-    /// first: GPLv3 is a licence about source, so the address is part of what
-    /// the statement beneath them says rather than a separate offer. The
+    /// The three rows are one group because the later ones exist on account of
+    /// the first: GPLv3 is a licence about source, so the address is part of
+    /// what the statement beneath them says rather than a separate offer, and
+    /// the acknowledgements name the work that licence was accepted for. The
     /// statement is a footer because that is what a sentence of explanation is
     /// on this screen — the two footers in Settings are the same shape.
     private var licence: some View {
@@ -65,6 +69,8 @@ struct AboutScreen: View {
                 .accessibilityIdentifier("about-license")
             Link("about.source", destination: About.repository)
                 .accessibilityIdentifier("about-source")
+            NavigationLink("about.acknowledgements") { AcknowledgementsScreen() }
+                .accessibilityIdentifier("about-acknowledgements")
         } footer: {
             Text("about.license.statement")
                 .accessibilityIdentifier("about-license-statement")
@@ -106,5 +112,78 @@ struct LicenseScreen: View {
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+}
+
+/// The open-source work the application embeds, named.
+///
+/// docs/interaction-design.md, "Navigation": the About page names the
+/// open-source components the application is built on — each one, what it does
+/// here, its licence, and a link to its home. The components and their
+/// licences are the ones `pinned-inputs.json` records; the addresses are
+/// spelled here for the reason `About.repository` is, so a URL that failed to
+/// parse would be a typo in its own line rather than a state the running
+/// application can reach.
+///
+/// Three groups by what the components are — the engines, the networks they
+/// play with, and the library beneath History — each footer carrying its
+/// group's licence, because the licences differ by group and a sentence per
+/// row would say each one three times.
+struct AcknowledgementsScreen: View {
+
+    var body: some View {
+        Form {
+            Section {
+                row("Fairy-Stockfish", "about.acknowledgements.fairyStockfish",
+                    "https://github.com/fairy-stockfish/Fairy-Stockfish",
+                    id: "ack-fairy-stockfish")
+                row("Rapfi", "about.acknowledgements.rapfi",
+                    "https://github.com/dhbloo/rapfi",
+                    id: "ack-rapfi")
+                row("Pikafish", "about.acknowledgements.pikafish",
+                    "https://github.com/official-pikafish/Pikafish",
+                    id: "ack-pikafish")
+            } footer: {
+                Text("about.acknowledgements.engines.footer")
+            }
+            Section {
+                row("Fairy-Stockfish NNUE", "about.acknowledgements.xiangqiNetwork",
+                    "https://github.com/fairy-stockfish/Fairy-Stockfish-NNUE",
+                    id: "ack-xiangqi-network")
+                row("Rapfi Networks", "about.acknowledgements.rapfiNetworks",
+                    "https://github.com/dhbloo/rapfi-networks",
+                    id: "ack-rapfi-networks")
+            } footer: {
+                Text("about.acknowledgements.networks.footer")
+            }
+            Section {
+                row("SQLite", "about.acknowledgements.sqlite",
+                    "https://sqlite.org",
+                    id: "ack-sqlite")
+            } footer: {
+                Text("about.acknowledgements.data.footer")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("about.acknowledgements")
+        #if !os(macOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    /// One component: its own name, what it does in this application, and a
+    /// link out to where it lives. The name is verbatim — a project's name is
+    /// not copy — and the row is the link, the way the source row on About is.
+    private func row(_ name: String, _ role: LocalizedStringKey,
+                     _ address: String, id: String) -> some View {
+        Link(destination: URL(string: address)!) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: name)
+                Text(role)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier(id)
     }
 }

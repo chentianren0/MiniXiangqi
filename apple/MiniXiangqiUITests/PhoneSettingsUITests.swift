@@ -50,10 +50,11 @@ final class PhoneSettingsUITests: XCTestCase {
         let defaultsSection, defaultFirstMover, defaultAiLevel: String
         let iMoveFirst, standardLevel, defaultsFooter: String
         /// The About row at the foot of the screen, and the page it opens: the
-        /// three facts about this build, the licence and its statement, and the
-        /// source the licence is about.
+        /// three facts about this build, the licence and its statement, the
+        /// source the licence is about, and the acknowledgements behind it.
         let about, name, version, build: String
         let license, licenseStatement, source: String
+        let acknowledgements: String
         /// The product's own name in this language, which is what the name row
         /// carries — the bundle's display name is localized like any other copy.
         let productName: String
@@ -77,6 +78,7 @@ final class PhoneSettingsUITests: XCTestCase {
             license: "许可证",
             licenseStatement: "闲敲棋子是自由软件，依据 GNU General Public License v3 发布。",
             source: "源代码",
+            acknowledgements: "致谢",
             productName: "闲敲棋子")
 
         static let english = Language(
@@ -98,6 +100,7 @@ final class PhoneSettingsUITests: XCTestCase {
             license: "License",
             licenseStatement: "Star River is free software, released under the GNU General Public License v3.",
             source: "Source Code",
+            acknowledgements: "Acknowledgements",
             productName: "Star River")
     }
 
@@ -372,6 +375,9 @@ final class PhoneSettingsUITests: XCTestCase {
         XCTAssertTrue(detail(of: "about-source", in: app).contains(language.source),
                       "the source row should read \(language.source) — it reads "
                       + detail(of: "about-source", in: app))
+        XCTAssertTrue(detail(of: "about-acknowledgements", in: app).contains(language.acknowledgements),
+                      "the acknowledgements row should read \(language.acknowledgements) — it reads "
+                      + detail(of: "about-acknowledgements", in: app))
         XCTAssertTrue(app.staticTexts[language.licenseStatement].exists,
                       "the footer should state the licence")
         attach(app, named: "\(language.short)-phone-about")
@@ -386,8 +392,25 @@ final class PhoneSettingsUITests: XCTestCase {
                       "the licence page should show the GNU General Public License")
         attach(app, named: "\(language.short)-phone-about-license")
 
-        // Back out the way the platform leaves a pushed page, twice, which is
-        // the whole of how this page is entered and left.
+        // Back out the way the platform leaves a pushed page.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(control(app, "about-name").waitForExistence(timeout: 10))
+
+        // The work the application is built on, behind its own row. The rows
+        // on that page are links out rather than pages, so what is asserted is
+        // that the names arrived — one from each group: an engine, a network,
+        // and the library beneath History.
+        control(app, "about-acknowledgements").tap()
+        XCTAssertTrue(control(app, "ack-fairy-stockfish").waitForExistence(timeout: 20),
+                      "the Acknowledgements page should open on the engines")
+        XCTAssertTrue(control(app, "ack-xiangqi-network").exists,
+                      "with the networks beneath them")
+        XCTAssertTrue(control(app, "ack-sqlite").exists,
+                      "and the library beneath History")
+        attach(app, named: "\(language.short)-phone-about-acknowledgements")
+
+        // And back to Settings, which is the whole of how these pages are
+        // entered and left.
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(control(app, "about-name").waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()

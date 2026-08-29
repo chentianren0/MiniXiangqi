@@ -158,24 +158,52 @@ xcodebuild -create-xcframework \
            -library "$staging/iphonesimulator/libMiniXiangqiCore.a" -headers "$headers" \
            -output "$output" >/dev/null
 
-# Signed if this machine can sign, and never failing if it cannot. Xcode
-# validates the frameworks a project links and stops with a trust prompt at an
-# unsigned one; a locally built artifact that carries this machine's development
-# signature is accepted without the prompt. A machine with no identity — CI, a
-# fresh checkout — still gets a working framework, and the prompt is the price.
+# Signed if this machine can sign as the app's own team, and never failing if
+# it cannot. Xcode validates the frameworks a project links and stops with a
+# trust prompt at an unsigned one; a locally built artifact that carries a
+# development signature is accepted without the prompt. The identity must
+# belong to the team that signs the app — a keychain can hold identities from
+# other Apple accounts, and Xcode records whatever signature the artifact
+# carries into project.pbxproj as an expectedSignature, so signing with a
+# foreign team writes that team into the repository. The team is read from the
+# project rather than spelled here, so the two cannot disagree; the identity is
+# matched by its certificate's OU, which is where a signing certificate carries
+# its team, and passed to codesign by hash because a keychain can hold a
+# revoked twin under the same name. A machine with no identity for the team —
+# CI, a fresh checkout — still gets a working framework, and the prompt is the
+# price.
 #
 # --timestamp=none: a development signature does not need Apple's timestamp
 # server, and asking for it makes the build depend on the network.
-identity=$(security find-identity -v -p codesigning 2>/dev/null \
-             | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p' | head -1)
+team=$(sed -n 's/.*DEVELOPMENT_TEAM = \([A-Z0-9]*\);.*/\1/p' \
+         "$root/apple/MiniXiangqi.xcodeproj/project.pbxproj" | head -1)
+identity=""
+identity_name=""
+if [ -n "$team" ]; then
+  while IFS= read -r line; do
+    case "$line" in *CSSMERR*) continue ;; esac
+    name=$(printf '%s\n' "$line" | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p')
+    [ -n "$name" ] || continue
+    subject=$(security find-certificate -c "$name" -p 2>/dev/null \
+                | openssl x509 -noout -subject 2>/dev/null)
+    case "$subject" in
+      *"OU=$team"* | *"OU = $team"*)
+        identity=$(printf '%s\n' "$line" | awk '{print $2}')
+        identity_name=$name
+        break ;;
+    esac
+  done <<IDENTITIES
+$(security find-identity -v -p codesigning 2>/dev/null)
+IDENTITIES
+fi
 if [ -n "$identity" ]; then
   if codesign --timestamp=none --sign "$identity" "$output"; then
-    echo "signed $output as $identity"
+    echo "signed $output as $identity_name"
   else
     echo "note: signing failed; Xcode will ask you to trust the unsigned framework." >&2
   fi
 else
-  echo "note: no Apple Development identity on this machine, so the framework is unsigned; Xcode's Accept Unsigned is expected for a locally built artifact."
+  echo "note: no Apple Development identity for team ${team:-unknown} on this machine, so the framework is unsigned; Xcode's Accept Unsigned is expected for a locally built artifact."
 fi
 
 # A stable path to the published headers, for targets that compile against the

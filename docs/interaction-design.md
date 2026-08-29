@@ -20,7 +20,7 @@ The primary destinations are:
 - **History** for reviewing and managing history records.
 - **Settings** for user preferences.
 
-Settings groups its preferences, with an **About** page under them, which states the application's name, version, build and licence and links its source repository. **Group footers stand under these alone** — **Confirm Before Deleting**, saying what turning the switch off costs; **Confirm Before Placing**, saying what the switch does in both positions and which games it applies to; and **Human versus AI Defaults**, saying what those values are for — because a footer under every group is a screen nobody reads.
+Settings groups its preferences, with an **About** page under them, which states the application's name, version, build and licence, links its source repository, and opens an **Acknowledgements** page naming the open-source work the application embeds — each component, what it does here, its licence, and a link to its home. **Group footers stand under these alone** — **Confirm Before Deleting**, saying what turning the switch off costs; **Confirm Before Placing**, saying what the switch does in both positions and which games it applies to; and **Human versus AI Defaults**, saying what those values are for — because a footer under every group is a screen nobody reads.
 
 The navigation presentation must adapt appropriately to iPhone, iPad, Mac, and Windows. Platform adaptation may change presentation, but it must not create different product capabilities without an explicit product decision.
 
