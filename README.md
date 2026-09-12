@@ -49,7 +49,6 @@ ctest --test-dir build --output-on-failure
 ## Documentation
 
 - [Product](docs/product.md) — product purpose, scope, capabilities, lifecycle policies, and MVP exclusions.
-- [Interaction design](docs/interaction-design.md) — UI, UX, platform visual language, board presentation, motion, sound, touch, help, localization, and accessibility.
 - [Mini Xiangqi rules](docs/xiangqi-rules.md) — normative rules source, adopted rules, runtime rules authority, and fixture requirements; the approved executable fixtures live in [fixtures/rules](fixtures/rules/).
 - [Jieqi rules](docs/jieqi-rules.md) — the hidden-identity xiangqi: the dealt start, hidden movement and the mandatory flip, who is entitled to know what, the endings, and its own fixture area.
 - [BoardGame protocol, version 2](docs/boardgame-protocol-v2.md) — the wire contract two devices play one game over, including the deal handshake a hidden-information game's session opens with.
