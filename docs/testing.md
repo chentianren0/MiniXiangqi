@@ -10,12 +10,13 @@ This document owns which evidence a change or build of the Star River applicatio
 - UI suites declare their platform per file, not by target: macOS suites drive a window, naming a size and reading frames back, and phone suites answer what only a phone can — the stacked arrangement, the pitch floors, real disjoint hit cells, portrait. A destination therefore selects its own suites, and `LaunchPreferences` keeps the hermetic-launch table single rather than letting two copies drift. The suite census is the tree itself.
 - iOS layout evidence is taken on a current compact-width iPhone and a current iPad, and names its device: compact width is a specific number of points, and a phone of a different width is a different case, not a stand-in. One simulator is booted at a time.
 - What a simulator cannot prove is not claimed from one: feel, latency, memory, energy, thermals, and the radio belong to device passes, and driven runs on real devices are reserved for what only devices prove — protocol, transport, radio, and lifecycle behavior.
-- The Apple toolchain and its selection are the workspace's own rule — `DEVELOPER_DIR` per invocation, never a change to the global `xcode-select`. Deployment targets, the pinned core toolchains, and the pinned engine inputs live in the project and `pinned-inputs.json`: the build is their record, not this document.
+- Deployment targets and the pinned engine inputs live in the project and `pinned-inputs.json`: the build is their record, not this document.
 - The shared core builds and its tests run on every development platform without a frontend. Windows `ARM64` is CI-only — no developer machine compiles it — so a validation claim about it cites a CI run, the one place the developer-runs-are-the-evidence rule does not reach. CI supplements the gates below and replaces none of them.
 
 ## Validation principles
 
 - Select tests from the contract changed, not only from the files edited.
+- Tests are small sets on real user paths, never batteries for edge cases nobody will face; every new test names the future change it would catch, and a test the code would not be hurt without is not added.
 - Keep rules, domain, persistence, engine, and UI tests independently runnable where practical.
 - Prefer deterministic, behavior-focused fixtures over snapshots of incidental implementation details.
 - Test length is never a reason to omit necessary evidence. Add and run a long test when it is the smallest honest way to protect load-bearing behavior. The run budget limits duplicate execution, not test scope: one completed passing run of each affected suite under the current code and conditions is sufficient, and an unchanged green suite is not run again. After code, tests, or relevant conditions change, run the affected suites once. Diagnose a failed or interrupted run before retrying it.

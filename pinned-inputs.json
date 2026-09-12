@@ -446,17 +446,11 @@
     }
   },
   "build_flags": {
-    "_about": "The build flags and defines the app build uses for each supported platform. A packaging build exists on Windows and on no Apple platform, and it established the deployment settings and the frontend toolchain rather than any flag set, so no flag set is established anywhere. The toolchain, packaging and architecture entries are established — by docs/testing.md on the Apple platforms, and on Windows by the builds recorded under windows.toolchain_core, windows.toolchain and windows.packaging_flags — and are recorded so that the unestablished parts are visibly the compile flags alone.",
+    "_about": "The build flags and defines the app build uses for each supported platform. A packaging build exists on Windows and on no Apple platform, and it established the deployment settings and the frontend toolchain rather than any flag set, so no flag set is established anywhere. The packaging and architecture entries are established — by docs/testing.md on the Apple platforms, and on Windows by the builds recorded under windows.toolchain_core, windows.toolchain and windows.packaging_flags — and are recorded so that the unestablished parts are visibly the compile flags alone.",
     "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set, on macOS/arm64 and on Windows for both x64 and arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt — which is also where the places the platforms differ are written down: IS_64BIT reaches the compiler from the command line under Clang and from types.h under MSVC, so it is defined exactly once on each; and MSVC on arm64 takes the fork's portable general-64 profile rather than its apple-silicon one, because USE_POPCNT and prefetch select x86 headers under _MSC_VER and the fork's NEON code uses GCC and Clang vector-extension syntax MSVC does not have. None of it is copied here: these fields describe the packaging build, and the Windows packaging build that now exists publishes a frontend over a prebuilt core and chooses none of the core's compile flags, so recording a developer build's flags under them would still make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
     "platforms": {
       "macos": {
         "established": false,
-        "toolchain": {
-          "xcode": "27 beta",
-          "xcode_build": "27A5228h",
-          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
-          "swift": "6"
-        },
         "architectures": [
           "arm64"
         ],
@@ -477,12 +471,6 @@
       },
       "ios": {
         "established": false,
-        "toolchain": {
-          "xcode": "27 beta",
-          "xcode_build": "27A5228h",
-          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
-          "swift": "6"
-        },
         "architectures": [
           "arm64"
         ],
@@ -503,12 +491,6 @@
       },
       "ipados": {
         "established": false,
-        "toolchain": {
-          "xcode": "27 beta",
-          "xcode_build": "27A5228h",
-          "developer_dir": "/Applications/Xcode-beta.app/Contents/Developer",
-          "swift": "6"
-        },
         "architectures": [
           "arm64"
         ],

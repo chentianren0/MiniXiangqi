@@ -34,7 +34,9 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 staging="$root/core/.build-apple"
 output="$root/apple/Generated/MiniXiangqiCore.xcframework"
 
-: "${DEVELOPER_DIR:=/Applications/Xcode-beta.app/Contents/Developer}"
+# The Xcode build phase exports DEVELOPER_DIR for the Xcode building the app; a
+# terminal run takes the selected Xcode.
+: "${DEVELOPER_DIR:=$(xcode-select --print-path)}"
 export DEVELOPER_DIR
 
 # Xcode runs a build phase with its own PATH, which carries neither CMake nor
@@ -50,12 +52,11 @@ for tool in cmake ninja; do
   }
 done
 
-# One deployment target for all three, because the project sets one: both
-# MACOSX_DEPLOYMENT_TARGET and IPHONEOS_DEPLOYMENT_TARGET in
-# apple/MiniXiangqi.xcodeproj are 26.5. A core built for a newer system than the
-# app targets is what the linker warns about, so this follows the project rather
-# than leading it.
-deployment_target=26.5
+# One deployment target for all three, read from the project so the core follows
+# the app rather than leading it: a core built for a newer system than the app
+# targets is what the linker warns about.
+deployment_target=$(grep -m1 -oE 'IPHONEOS_DEPLOYMENT_TARGET = [^;]*' "$root/apple/MiniXiangqi.xcodeproj/project.pbxproj" | sed 's/.*= //')
+[ -n "$deployment_target" ] || { echo "error: no IPHONEOS_DEPLOYMENT_TARGET in project.pbxproj." >&2; exit 1; }
 
 # Configure, compile and merge one platform's library.
 #

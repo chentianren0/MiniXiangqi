@@ -29,20 +29,9 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
 - Apple platforms are implemented and distributed first; Windows follows on the same shared core.
 
-## Apple toolchain
+## Building for Apple platforms
 
-- Swift 6.
-- Xcode 27 beta at `/Applications/Xcode-beta.app`.
-- Expected Xcode build: `27A5228h`.
-
-Use the beta developer directory explicitly:
-
-```sh
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-xcodebuild -version
-```
-
-Open `apple/MiniXiangqi.xcodeproj` with that Xcode installation. See [Testing](docs/testing.md) for the draft validation contract, the verified toolchain check, and the build/test commands that still need to be approved.
+Open `apple/MiniXiangqi.xcodeproj` in Xcode. See [Testing](docs/testing.md) for the validation contract.
 
 ## Windows toolchain
 
