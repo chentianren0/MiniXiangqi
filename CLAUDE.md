@@ -1,6 +1,6 @@
 # Claude Code Notes
 
-Rules for this repository. The workspace `../CLAUDE.md` also applies, and owns the workspace boundary, authorization, identity isolation, and the Apple toolchain.
+Rules for this repository. The workspace `../CLAUDE.md` also applies, and owns the workspace boundary, authorization, and identity isolation.
 
 - `docs/` holds the accepted contracts. Each document states its own scope and status in its opening lines — read the relevant one before changing behavior, and follow the status it declares. Design is currently paused in favour of building; `docs/interaction-design.md` deliberately leaves exact board dimensions to be settled against a rendered board rather than in prose, and they live in `apple/MiniXiangqi/Board/BoardGeometry.swift`.
 - The shared core in `core/` is the only place rules are decided. Nothing above the C interface may re-derive legality, adjudication, or an affordance.
