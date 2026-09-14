@@ -1,12 +1,11 @@
 # Star River
 
-Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, macOS, and Windows, carrying **Xiangqi** and **Mini Xiangqi**, with **Jieqi**, **Gomoku** and **Renju** on Apple platforms, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
+Star River (闲敲棋子) is a native, fully offline board-game application for iOS, iPadOS, and macOS, carrying **Xiangqi**, **Mini Xiangqi**, **Jieqi**, **Gomoku** and **Renju**, and built for board-game education inside a small internal group. This README is an introduction for anyone handed the app, and for the developers, testers, and reviewers behind it; it describes the intended MVP and points to the project contracts, but it does not record implementation progress. Progress, tasks, and delivery status belong in [GitHub Issues](https://github.com/chentianren0/MiniXiangqi/issues).
 
 ## Get the app
 
-- **Windows 11 (x64 or ARM):** download the zip for your machine from [the latest release](https://github.com/chentianren0/MiniXiangqi/releases/latest) — `MiniXiangqi-windows-x64.zip` for Intel/AMD machines, `MiniXiangqi-windows-arm64.zip` for ARM machines — unzip it anywhere, open the folder, and run `MiniXiangqi.App.exe`. If Windows SmartScreen warns about an unrecognized app the first time, choose **More info**, then **Run anyway**. There is no installer and no administrator prompt, and deleting the folder removes the app completely. The Microsoft Store is the intended future public channel.
 - **macOS, iPhone, and iPad:** the app ships through TestFlight internal testing and the public App Store — the listing states the application's GPLv3 licence and links the complete source (owner decision, 2026-08-04).
-- The app is fully offline and collects nothing. The source is this repository — every release is built by CI from the tagged revision — and the licence is the [GNU General Public License version 3](LICENSE); the Windows zip carries `LICENSE` and `NOTICE.md` beside the app.
+- The app is fully offline and collects nothing. The source is this repository — every release is built by CI from the tagged revision — and the licence is the [GNU General Public License version 3](LICENSE).
 
 ## Target MVP
 
@@ -17,7 +16,7 @@ Star River (闲敲棋子) is a native, fully offline board-game application for 
 - Local history with replay, deletion, and export, plus compatible game-record import.
 - An in-app Mini Xiangqi rules reference as the help surface.
 - `Play`, `History`, and `Settings` as the top-level destinations.
-- Native interaction on every platform: Liquid Glass on Apple platforms and WinUI 3 Fluent design on Windows.
+- Native interaction: Liquid Glass on every platform.
 
 The MVP has no game clock, network features, accounts, online play, lessons or drills, or multiple main windows.
 
@@ -25,26 +24,12 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 
 - iOS and iPadOS 26.5 or later.
 - macOS 26.5 or later on Apple silicon; `x86_64` is not supported on macOS.
-- Windows 11 on `x64` and `ARM64`. Windows 10 left Microsoft support in October 2025 (owner decision, 2026-07-30). `ARM64` came off the list the same day for want of hardware to test it on and returned on 2026-07-31, when that condition was met: it is built, tested and distributed on the same terms as `x64`.
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
-- Apple platforms are implemented and distributed first; Windows follows on the same shared core.
+- Windows support ended at v3.0.0. The last version that carried the Windows frontend is archived, read-only, at [chentianren0/MiniXiangqi-Windows](https://github.com/chentianren0/MiniXiangqi-Windows).
 
 ## Building for Apple platforms
 
 Open `apple/MiniXiangqi.xcodeproj` in Xcode. See [Testing](docs/testing.md) for the validation contract.
-
-## Windows toolchain
-
-The Windows toolchain is pinned in [`pinned-inputs.json`](pinned-inputs.json), by builds that produced it rather than by intent. The core's half is Visual Studio 2026 Community with the MSVC v14.51 toolset, the Windows 11 SDK, CMake and Ninja, measured once per architecture. The frontend's half — the Windows App SDK version, the .NET version, and the packaging flags — was recorded by the first packaging build, which is [`windows/package-zip.ps1`](windows/package-zip.ps1) running in CI. What that build did not measure is still recorded as unestablished: the engine and SQLite compile flags stay empty, because the packaging build publishes the frontend over a prebuilt core rather than choosing the core's flags.
-
-Build and run the core suites the same way as on macOS, from a shell with the Visual Studio environment loaded:
-
-```bat
-call "%ProgramFiles%\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
-cmake -S core -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMXQ_ENABLE_RULES_FACADE=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
 
 ## Documentation
 
@@ -62,8 +47,8 @@ ctest --test-dir build --output-on-failure
 
 ## Distribution and license
 
-Distribution: Apple platforms ship through TestFlight internal testing and the public App Store — the listing states the application's GPLv3 licence and links the complete source (owner decision, 2026-08-04). Windows ships as a CI-built zip published on this repository's [releases](https://github.com/chentianren0/MiniXiangqi/releases) — one per architecture, unpacked and run, with no installer — and the Microsoft Store is the intended public channel (owner decision, 2026-07-31): the Store signs submissions itself, so the signing-certificate concern that once deferred MSIX does not apply. The project is licensed under the [GNU General Public License version 3](LICENSE), matching the engines it embeds, and the Windows zip carries that licence and an attribution note beside the app.
+Distribution: the app ships through TestFlight internal testing and the public App Store — the listing states the application's GPLv3 licence and links the complete source (owner decision, 2026-08-04). The project is licensed under the [GNU General Public License version 3](LICENSE), matching the engines it embeds, and the app's About screen names each embedded component and its licence.
 
-The NNUE network the AI evaluates with is **this project's own**, trained from zero by the public pipeline at [`chentianren0/minixiangqi-nnue`](https://github.com/chentianren0/minixiangqi-nnue) with no other network as a teacher or a seed. It lives in this repository at `core/assets/`, pinned by byte length and SHA-256 in [`pinned-inputs.json`](pinned-inputs.json) along with its provenance, and every build verifies it before staging it. Every distribution carries it, the Windows zip included: there is one artifact and it is the complete application.
+The NNUE network the AI evaluates with is **this project's own**, trained from zero by the public pipeline at [`chentianren0/minixiangqi-nnue`](https://github.com/chentianren0/minixiangqi-nnue) with no other network as a teacher or a seed. It lives in this repository at `core/assets/`, pinned by byte length and SHA-256 in [`pinned-inputs.json`](pinned-inputs.json) along with its provenance, and every build verifies it before staging it. Every build carries it: there is one artifact and it is the complete application.
 
 It replaced a community-trained network of unestablished origin, and it is weaker — about 300 Elo below it at the app's settings, and far above having no network at all. The trade bought a provenance that can be stated, and [Engine integration](docs/engine-integration.md) records the measurements the swap was accepted on.

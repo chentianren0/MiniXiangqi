@@ -132,8 +132,8 @@ struct PlayMotionTests {
 
     @Test("Against the machine the flip is the same toggle, over the orientation the mode chose")
     func theFlipAgainstTheMachine() throws {
-        // The owner's recommendation of 2026-07-31, recorded in issue #80, and
-        // the semantics the Windows half already ships: what is on screen is
+        // The owner's recommendation of 2026-07-31, recorded in issue #80: what
+        // is on screen is
         // the mode's own orientation *exclusive-or* the player's flip. An AI
         // 先手 game resolves the human as Black, so it opens with Black at the
         // bottom; one flip views the same game from the machine's side.

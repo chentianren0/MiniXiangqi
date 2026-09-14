@@ -117,8 +117,8 @@ the core links. That change landed at `86dad87e`, and `pinned-inputs.json`
 records the artifact and its build command under `fork.static_library`.
 
 The core does not consume that artifact. Several architectures come out of one
-build system here — `arm64` and `arm64e` on the Apple platforms, `x64` and
-`arm64` on Windows — and producing them from the fork's Makefile means driving it
+build system here — `arm64` and `arm64e` across the Apple platforms — and
+producing them from the fork's Makefile means driving it
 once per `ARCH` and joining the results, a second build system to keep correct
 alongside the one the core already has. What it does instead: `CMakeLists.txt` in
 this directory is a **core-owned** build of the snapshot. It compiles the same
@@ -143,11 +143,8 @@ If the core ever switches to consuming the fork's own artifact:
 3. Move the flag set out of this file and into
    `build_flags.platforms.<platform>.engine_defines` and `engine_flags`, which
    are recorded as unestablished today precisely because no build had produced
-   them. Builds now produce them for macOS/arm64 and for Windows on both
-   architectures, and they are still not recorded there. A Windows packaging
-   build exists as of 2026-07-31 and did not change that: it publishes the
-   frontend over a core somebody else already built and chooses none of these
-   flags, so filling those fields from a developer build's command line would
+   them. Builds now produce them for macOS/arm64, and they are still not
+   recorded there: filling those fields from a developer build's command line would
    record the wrong build's answer. Establishing them means first deciding that
    the core build *is* part of the packaging build, which is a separate
    question — `docs/architecture.md` carries it as an open one.

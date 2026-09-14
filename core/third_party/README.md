@@ -41,9 +41,9 @@ hash in that manifest before packaging and fail on a mismatch rather than ship
 unverified bytes. That verification belongs beside whichever target copies the
 assets into the bundle, and that is where it is: `core/CMakeLists.txt` stages the
 variant configuration and the network only after checking both against the
-manifest, and the Windows packaging build — `windows/package-zip.ps1`, the first
-one on any platform — ships that verified staging rather than making a second
-uncontrolled copy of it.
+manifest, and the Apple generator — `apple/build-core-xcframework.sh` — verifies
+the same inputs against the manifest before packing them into the app's engine
+asset pack.
 
 - **Fairy-Stockfish.** Vendored as a copied source snapshot of the pinned
   revision, built by a core-owned `CMakeLists.txt`. The contract requires the

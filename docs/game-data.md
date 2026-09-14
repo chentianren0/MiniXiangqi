@@ -10,7 +10,7 @@ One version is defined: **7**, for both the archive format and the store schema.
 
 The shared core owns persistence through an embedded SQLite library store, behind the repository boundary defined in [architecture.md](architecture.md). One implementation carries the transactional invariants — the single active game, atomic archive-and-clear, import validation, duplicate detection — identically on every platform, and one test suite validates them. Frontends never touch the database directly, and never decode or modify an archive outside the core's codec. The running game is a core-owned session; what each frontend language holds are plain presentation value types projected from it, per [core-interface.md](core-interface.md).
 
-- The frontend supplies the store's location at startup: the app's Application Support directory on Apple platforms and its local application-data directory on Windows.
+- The frontend supplies the store's location at startup: the app's Application Support directory.
 - The pinned SQLite version ships inside the core on every platform; the core does not depend on a system-provided SQLite.
 - One logical `GameLibrary` holds an optional reference to the single active game and one `StoredGame` per active or History record. A library holds records of every game the app carries and of every play mode.
 - `StoredGame` carries queryable summary fields — stable identity, which game it is, dates, play mode, participants, result summary, local perspective, imported provenance, pinned state — plus a versioned archive blob holding the complete replayable game record.
