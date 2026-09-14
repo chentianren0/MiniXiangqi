@@ -27,9 +27,79 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
 - Windows support ended at v3.0.0. The last version that carried the Windows frontend is archived, read-only, at [chentianren0/MiniXiangqi-Windows](https://github.com/chentianren0/MiniXiangqi-Windows).
 
-## Building for Apple platforms
+## Building
 
-Open `apple/MiniXiangqi.xcodeproj` in Xcode. See [Testing](docs/testing.md) for the validation contract.
+Requires Xcode, plus CMake and Ninja for the shared core. Open `MiniXiangqi.xcodeproj` in Xcode; see [Testing](docs/testing.md) for the validation contract.
+
+The core is a prebuilt dependency, not something the app build produces. Build it first, and again whenever anything under `core/` changes:
+
+```sh
+./build-core-xcframework.sh
+```
+
+That compiles the core for every platform and architecture the app runs on — see [Architectures](#architectures) — packages the three as `Generated/MiniXiangqiCore.xcframework`, packs the bundled variant configuration and every pinned network into `MiniXiangqi/Resources/engine-assets.mxqpack`, and records a digest of what it built from. Then build or run the `MiniXiangqi` scheme as usual.
+
+**Every network is in the repository**, at `core/assets/`, beside the variant configuration they are loaded with and already under the names the engine's variant-matching rule requires — so the script packs each under its own name, and nothing has to be told where the bytes are. It verifies each network's byte length and SHA-256 against `pinned-inputs.json` before packing it: that is what catches an `MXQ_NNUE_SOURCE` or `MXQ_XIANGQI_NNUE_SOURCE` override pointed at the wrong bytes, and damaged weights have no other symptom. Absence or a mismatch stops the script rather than producing an app whose AI is quietly a different opponent. The app's `Check the shared core is current` phase refuses a build unless the pack is the one the generator recorded and nothing sits beside it in `Resources`, for the same reason.
+
+**The app ships a pack rather than the files** because three of the networks are published files that other apps embedding the same engines carry byte-for-byte, and App Review compares binaries across developers. `MiniXiangqi/Core/AssetPack.swift` is the format and the reasoning; `AssetPackTool` is the packer, compiled from that same file by the script; and at start-up the app stages the directory the core reads from the pack into its own caches, where the core verifies every file against its pins exactly as it did when they were bundled loose.
+
+The framework is signed with this machine's first Apple Development identity if it has one, because Xcode stops at an unsigned framework with a trust prompt. On a machine with no identity it is left unsigned and the script says so; the prompt's `Accept Unsigned` is the right answer for an artifact you just built yourself.
+
+It cannot be folded into the app's build. Xcode plans its build graph before any phase runs, so the task that extracts the library the app links takes the framework as it stood beforehand: a framework rebuilt mid-build is picked up only by the *next* build, silently. The app's `Check the shared core is current` phase exists to make that impossible — it compares a digest of the core's sources against the one recorded at package time and fails the build, naming the command to run. It compares content rather than timestamps, because switching branches rewinds modification times and would make a stale core look fresh.
+
+## Architectures
+
+Physical platforms carry both `arm64` and `arm64e`; the Simulator carries `arm64` alone. That holds
+for the app and for every slice of the prebuilt core. The unit bundle is the exception, and the table
+records what the project actually resolves rather than what the policy asks for.
+
+| Target | macOS | iOS device | iOS Simulator |
+| --- | --- | --- | --- |
+| `MiniXiangqi` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
+| `MiniXiangqiTests` | `arm64` `arm64e` | `arm64` | `arm64` |
+| `MiniXiangqiUITests` | `arm64` `arm64e` | `arm64` | `arm64` |
+| `MiniXiangqiCore.xcframework` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
+
+`arm64e` is the pointer-authentication architecture, and the app asks for it by asking for Enhanced
+Security: `ENABLE_ENHANCED_SECURITY` turns on `ENABLE_POINTER_AUTHENTICATION`, which adds `arm64e` to
+`ARCHS_STANDARD` as a cohort architecture. So the app states no `ARCHS` of its own — it excludes
+`x86_64` and inherits the rest, and Xcode drops `arm64e` from Simulator builds itself, there being no
+such runtime. Test bundles get no Enhanced Security, so their `ARCHS_STANDARD` is `arm64 x86_64` and
+cannot express the policy; both set `ARCHS[sdk=macosx*]` explicitly. The unit bundle needs its
+`arm64e` slice to run at all, because the host app launches `arm64e` on Apple silicon and can only
+inject a bundle whose architecture matches.
+
+**That `arm64e` slice is macOS's alone, because the override that produces it is keyed to
+`sdk=macosx*`.** On `iphoneos` the unit bundle resolves to `ARCHS = arm64` while the app it hosts in
+resolves to `arm64 arm64e`, so the same host/bundle mismatch the macOS override exists to prevent is
+live on a physical iPhone or iPad: the bundle cannot inject into an `arm64e` host there. It does not
+bite today, because the iOS runs are on the Simulator, where the app is `arm64` too. The fix belongs
+to whichever PR first runs this suite on a device — the on-device measurement the probe still owes —
+because that is where it can be seen to work rather than argued to.
+
+There are no dashes left in the table: both bundles now declare
+`iphoneos iphonesimulator macosx`.
+
+The **unit bundle** was AppKit-bound — `NSColor` for the contrast measurements, `NSBitmapImageRep` for
+the rendered snapshots — and Stage 6's iOS pass made those three call sites cross-platform, so it now
+declares `iphoneos iphonesimulator macosx` and runs on an iOS Simulator. That is what makes the iOS
+memory probe and the layout-shape rule testable on the platform they are about, rather than only on
+the one the app was first written for.
+
+The **UI bundle** declared `macosx` alone until the iOS suite existed to justify widening it, and the
+reason it did is still true of its five original suites: they drive windows — `-mxq-window`,
+`NSScreen`, the measured minimum window size — and window geometry is the thing iOS has not got.
+What changed is that an honest iOS suite now exists beside them rather than instead of them. The
+platform is declared **per file**: the five window suites are `#if os(macOS)`, the two phone suites —
+`PhonePlayUITests` and `PhoneSettingsUITests`, about the stacked shape and touch — are
+`#if os(iOS)`, and each destination runs its own and nothing else. Widening the one bundle rather
+than adding a second target is what keeps `LaunchPreferences` a single file: it carries the
+hermetic-launch table both sets of suites read, and two copies of that table would drift. See
+[`docs/testing.md`](docs/testing.md) for what each set covers and the command each is run with.
+
+The `arm64e` question above does not arise for this bundle. A UI-test bundle is not injected into the
+app: Xcode builds it a runner app of its own and drives the app under test from a separate process,
+so there is no host whose architecture it has to match.
 
 ## Documentation
 

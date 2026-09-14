@@ -62,16 +62,19 @@ Dependencies point inward:
 
 ```text
 MiniXiangqi/
-├── core/       # shared C++ core, its tests, and pinned third-party inputs
-├── apple/      # Xcode project and SwiftUI frontend
-├── fixtures/   # approved conformance fixtures
-├── .github/    # the CI workflows and their scripts
+├── MiniXiangqi.xcodeproj   # the Xcode project, at the root with what it builds
+├── MiniXiangqi/            # SwiftUI frontend
+├── MiniXiangqiTests/       # unit suite, hosted by the app
+├── MiniXiangqiUITests/     # UI suite
+├── core/                   # shared C++ core, its tests, and pinned third-party inputs
+├── fixtures/               # approved conformance fixtures
+├── .github/                # the CI workflow and its script
 └── docs/
 ```
 
 `fixtures/` stays at the root rather than under `core/`: it is the independent authority the core is validated against, not an implementation detail of the core it validates.
 
-The Apple frontend's Xcode project sits under `apple/`, and every reference inside the project is relative to the project directory.
+The Xcode project sits at the repository root, and every reference inside the project is relative to the project directory.
 
 ## Testing and CI policy
 

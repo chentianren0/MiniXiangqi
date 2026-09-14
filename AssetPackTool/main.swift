@@ -1,8 +1,8 @@
-// The command apple/build-core-xcframework.sh packs the engine assets with.
+// The command build-core-xcframework.sh packs the engine assets with.
 //
-// Compiled from this file and apple/MiniXiangqi/Core/AssetPack.swift, so that
+// Compiled from this file and MiniXiangqi/Core/AssetPack.swift, so that
 // the format has one implementation: the one the app decodes with. It lives
-// outside the Xcode project's folders deliberately — apple/MiniXiangqi is a
+// outside the Xcode project's folders deliberately — MiniXiangqi is a
 // file-system-synchronized group, and a second main.swift inside it would be a
 // second entry point in the app.
 //
