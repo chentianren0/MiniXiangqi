@@ -603,13 +603,13 @@ final class Core {
     }
 
     init(storeDirectory: String) throws {
-        // The bundled variant configuration the engine loads at initialisation.
-        // Its absence is a packaging failure and surfaces here rather than at
-        // the first move.
-        guard let assets = Bundle.main.resourcePath else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
-                            detail: "the bundle has no resource path")
-        }
+        // The directory the core reads its assets from — the variant
+        // configuration the engine loads at initialisation and every pinned
+        // network — staged from the pack the bundle carries. A pack that is
+        // missing or does not decode is a packaging failure and surfaces here
+        // rather than at the first move; what the core then verifies, file by
+        // file against its pins, is unchanged.
+        let assets = try Self.stageAssets()
         try FileManager.default.createDirectory(atPath: storeDirectory,
                                                 withIntermediateDirectories: true)
 
@@ -686,6 +686,27 @@ final class Core {
         return FileManager.default.urls(for: .applicationSupportDirectory,
                                         in: .userDomainMask)[0]
             .appendingPathComponent("MiniXiangqi", isDirectory: true).path
+    }
+
+    /// The asset directory, staged from the bundle's pack into the app's own
+    /// caches: the files are re-creatable from the bundle, so the system may
+    /// reclaim them, and a launch after that stages them again. When they are
+    /// already there and right, staging is a hash check per file; when they
+    /// are not, a decode. AssetPack.swift says why the bundle carries a pack.
+    private static func stageAssets() throws -> String {
+        guard let pack = Bundle.main.url(forResource: AssetPack.fileName, withExtension: nil) else {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
+                            detail: "the bundle has no \(AssetPack.fileName)")
+        }
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EngineAssets", isDirectory: true)
+        do {
+            try AssetPack.stage(pack, into: directory)
+        } catch {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISMATCH),
+                            detail: "cannot stage the engine assets: \(error)")
+        }
+        return directory.path
     }
 
     // MARK: - The ruleset's constants
