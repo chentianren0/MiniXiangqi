@@ -67,8 +67,9 @@ cmake -S core -B core/.build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DMXQ_ENABLE_RULES_FACADE=ON
 ```
 
-This CMake project is standalone and is deliberately not wired into the Xcode
-project under [`apple/`](../apple/) yet.
+This CMake project is standalone: the Xcode project at the repository root
+consumes it as a prebuilt XCFramework, produced by
+[`build-core-xcframework.sh`](../build-core-xcframework.sh).
 
 ## State
 

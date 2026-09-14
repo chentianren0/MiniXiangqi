@@ -41,7 +41,7 @@
 //
 // The keystream is xorshift64* seeded from the entry's digest, each output word
 // laid down in little-endian order, so the header alone decodes an entry and one
-// function both encodes and decodes. apple/AssetPackTool writes packs with this
+// function both encodes and decodes. AssetPackTool writes packs with this
 // file and the app reads them with it: the format has one implementation.
 
 import Compression
@@ -49,8 +49,8 @@ import CryptoKit
 import Foundation
 
 nonisolated enum AssetPack {
-    /// The pack's name in the bundle. apple/build-core-xcframework.sh writes it
-    /// under this name and apple/check-core-is-current.sh looks for it by it.
+    /// The pack's name in the bundle. build-core-xcframework.sh writes it
+    /// under this name and check-core-is-current.sh looks for it by it.
     static let fileName = "engine-assets.mxqpack"
 
     static let magic: [UInt8] = Array("MXQASSET".utf8)

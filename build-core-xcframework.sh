@@ -7,7 +7,7 @@
 # nothing in the app's build settings has to name a path inside the core's build
 # directory.
 #
-#   ./apple/build-core-xcframework.sh
+#   ./build-core-xcframework.sh
 #
 # Three library sets, because the app has three destinations and an XCFramework
 # carries one library per platform:
@@ -30,9 +30,9 @@
 
 set -eu
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$(dirname "$0")" && pwd)
 staging="$root/core/.build-apple"
-output="$root/apple/Generated/MiniXiangqiCore.xcframework"
+output="$root/Generated/MiniXiangqiCore.xcframework"
 
 # The Xcode build phase exports DEVELOPER_DIR for the Xcode building the app; a
 # terminal run takes the selected Xcode.
@@ -55,7 +55,7 @@ done
 # One deployment target for all three, read from the project so the core follows
 # the app rather than leading it: a core built for a newer system than the app
 # targets is what the linker warns about.
-deployment_target=$(grep -m1 -oE 'IPHONEOS_DEPLOYMENT_TARGET = [^;]*' "$root/apple/MiniXiangqi.xcodeproj/project.pbxproj" | sed 's/.*= //')
+deployment_target=$(grep -m1 -oE 'IPHONEOS_DEPLOYMENT_TARGET = [^;]*' "$root/MiniXiangqi.xcodeproj/project.pbxproj" | sed 's/.*= //')
 [ -n "$deployment_target" ] || { echo "error: no IPHONEOS_DEPLOYMENT_TARGET in project.pbxproj." >&2; exit 1; }
 
 # Configure, compile and merge one platform's library.
@@ -177,7 +177,7 @@ xcodebuild -create-xcframework \
 # --timestamp=none: a development signature does not need Apple's timestamp
 # server, and asking for it makes the build depend on the network.
 team=$(sed -n 's/.*DEVELOPMENT_TEAM = \([A-Z0-9]*\);.*/\1/p' \
-         "$root/apple/MiniXiangqi.xcodeproj/project.pbxproj" | head -1)
+         "$root/MiniXiangqi.xcodeproj/project.pbxproj" | head -1)
 identity=""
 identity_name=""
 if [ -n "$team" ]; then
@@ -227,11 +227,11 @@ cp -R "$output/$slice/Headers" "$headers_published"
 # another branch rewinds mtimes, and a check that trusted them would call a
 # stale core fresh — which is the one failure this whole arrangement exists to
 # prevent.
-"$root/apple/core-inputs-digest.sh" > "$(dirname "$output")/core-inputs.digest"
+"$root/core-inputs-digest.sh" > "$(dirname "$output")/core-inputs.digest"
 
 # The engine's assets — the variant configuration the engine loads at
 # initialisation and every pinned network — ship as one pack rather than as the
-# files themselves. apple/MiniXiangqi/Core/AssetPack.swift is the format and
+# files themselves. MiniXiangqi/Core/AssetPack.swift is the format and
 # says why; the app stages the directory the core reads from the pack at
 # start-up, and the core's own verification of every staged file is unchanged.
 #
@@ -240,8 +240,8 @@ cp -R "$output/$slice/Headers" "$headers_published"
 # Xcode DEVELOPER_DIR names is the one whose compiler runs.
 tool="$(dirname "$output")/asset-pack-tool"
 xcrun --sdk macosx swiftc -O -o "$tool" \
-      "$root/apple/MiniXiangqi/Core/AssetPack.swift" \
-      "$root/apple/AssetPackTool/main.swift"
+      "$root/MiniXiangqi/Core/AssetPack.swift" \
+      "$root/AssetPackTool/main.swift"
 
 # The bundled NNUE networks, verified before they are packed under the same
 # policy the core's CMake staging enforces: nothing is consumed on trust.
@@ -334,12 +334,12 @@ for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
 done
 gomoku_pack_arguments=${gomoku_pack_arguments# }
 
-# Resources holds the pack and nothing else. apple/MiniXiangqi is a
+# Resources holds the pack and nothing else. MiniXiangqi is a
 # file-system-synchronized group, so every file in here ships in the .app; a
 # network or configuration left beside the pack — which is how the files were
 # staged before the pack existed — would ship verbatim, which is what the pack
 # exists to prevent. So anything that is not the pack goes first.
-resources="$root/apple/MiniXiangqi/Resources"
+resources="$root/MiniXiangqi/Resources"
 pack_name="engine-assets.mxqpack" # AssetPack.fileName
 mkdir -p "$resources"
 for stale in "$resources"/*; do

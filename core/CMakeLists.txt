@@ -16,8 +16,8 @@
 #   cmake --build core/.build
 #   ctest --test-dir core/.build --output-on-failure
 #
-# This project is deliberately standalone and is not wired into the Xcode
-# project under apple/; that integration comes later.
+# This project is deliberately standalone: the Xcode project at the repository
+# root consumes it as a prebuilt XCFramework, produced by build-core-xcframework.sh.
 
 cmake_minimum_required(VERSION 3.24)
 

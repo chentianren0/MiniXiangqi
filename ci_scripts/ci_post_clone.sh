@@ -2,7 +2,7 @@
 # Xcode Cloud post-clone: make the fresh clone buildable, and give a tag-started
 # build the version its tag names.
 #
-# A fresh clone carries neither apple/Generated/ nor apple/MiniXiangqi/Resources/
+# A fresh clone carries neither Generated/ nor MiniXiangqi/Resources/
 # — both are generated, and the "Check the shared core is current" build phase
 # refuses to build without them — so this runs the same generator a developer
 # runs. The generator needs CMake and Ninja, which the Xcode Cloud image does
@@ -18,8 +18,8 @@
 
 set -eu
 
-repo="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/../.." && pwd)}"
-pbxproj="$repo/apple/MiniXiangqi.xcodeproj/project.pbxproj"
+repo="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/.." && pwd)}"
+pbxproj="$repo/MiniXiangqi.xcodeproj/project.pbxproj"
 
 # Skipping Homebrew's index refresh: both formulae are years old, and the
 # refresh costs more time than the installs.
@@ -65,4 +65,4 @@ if [ -n "${CI_TAG:-}" ]; then
   echo "MARKETING_VERSION set to $version from tag $CI_TAG"
 fi
 
-"$repo/apple/build-core-xcframework.sh"
+"$repo/build-core-xcframework.sh"

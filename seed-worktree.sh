@@ -77,4 +77,4 @@ while IFS= read -r path || [ -n "$path" ]; do
 done < "$include"
 
 cd "$target"
-./apple/check-core-is-current.sh
+./check-core-is-current.sh
