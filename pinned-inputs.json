@@ -2,7 +2,7 @@
   "manifest_format": "minixiangqi-pinned-inputs",
   "manifest_version": 1,
   "_about": "The single source of truth for every input a reproducible Mini Xiangqi build consumes, per docs/engine-integration.md. The build verifies every hash before packaging and fails on a mismatch rather than shipping unverified bytes. The Fairy-Stockfish fork repository owns how its patches are implemented and how its own artifacts are built; this file records which revision and which inputs the app consumes, so that an app build is reproducible without reading the fork's history.",
-  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. A packaging build now exists and has consumed part of it — windows/package-zip.ps1, first run in CI on 2026-07-31 — but only the Windows entry's, so the names below are still a proposal rather than a frozen schema and the Apple entries are still waiting on their own. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. Three fields have been added under that licence rather than by fixing the schema, all in build_flags.platforms.windows: toolchain_core, because the compiler that builds the core and the stack that packages the frontend become known at different times and one boolean over one 'toolchain' object cannot say that half of it is measured; packaging_flags, for the same reason one step further on, since the deployment settings a packaging build applies and the compile flags it does not are two different measurements; and toolchain_core's per-architecture split, because two machines established it and one of them is a CI runner. manifest_version stays 1: nothing existing changed shape except toolchain_core, whose only reader is a human, and the reader in core/CMakeLists.txt asks for none of this. The network section was added to under the same licence on 2026-07-31, when the project's own network replaced the community one: path, which is not a new shape at all — the variant entry beside it already carried one, and the network needed one for the same reason, because it is now a file in this repository rather than bytes fetched from elsewhere; and provenance, which is what the old network never had and is the whole reason this one exists. network._ci_delivery was removed rather than rewritten: there is no delivery left to describe. One more was added on the same licence later that day, when the Microsoft Store became the intended public channel: build_flags.platforms.windows.packaging_flags.store_package, because the deployment settings of two distributions are two measurements and the flat fields beside it — which were the whole of packaging_flags until then — describe the zip alone. Nothing in packaging_flags changed shape or value; the new object sits beside what was there, carries its own 'established' flag for the same reason toolchain_core does, and holds null in every field only a run can answer. The network section was reshaped on 2026-08-01, when the core gained a second variant to search: it is no longer one flat entry but a map of one entry per variant, keyed by that variant's engine identifier, each carrying what the flat entry carried. That one does have machine readers, and they changed with it — core/CMakeLists.txt, apple/build-core-xcframework.sh, apple/check-core-is-current.sh and windows/package-zip.ps1 all address a network by its variant key now. manifest_version still stays 1: every reader of the old flat shape was moved to the map in the same change, so no consumer is left that a version bump would be telling anything. Two top-level keys were added on the same licence on 2026-08-12, when the core gained a second engine for the placement games: gomoku_fork, which mirrors fork's shape — repository, revision, upstream base, an ordered patch list, a static-library note and a vendored block — because it is the same kind of thing about a different engine, and gomoku_network, which does not mirror network's shape and could not. The two engines bind weights to a game differently: Fairy-Stockfish binds by filename prefix and takes one file per variant, Rapfi binds by a rule mask and a board-size mask inside the file's own header and takes one file per side, so an entry there is a list of files with a role each rather than a single file. Both are additions beside what exists and nothing existing changed shape, so manifest_version stays 1 and every reader of 'fork' and 'network' reads exactly what it read before. gomoku_fork.core_build is the one field with no counterpart at all: it records the define and flag set the CORE's own build of the vendored snapshot applies, per architecture profile, which build_flags.platforms.* deliberately does not carry because those fields describe a packaging build. Putting the core build's answer in a field that describes somebody else's build is the confusion that entry is shaped to avoid, so the answer went next to the engine it is about instead.",
+  "_field_names_are_provisional": "docs/engine-integration.md leaves the manifest's concrete field names and schema version to be fixed when the first build consumes it. core/CMakeLists.txt and apple/build-core-xcframework.sh consume variant, network, gomoku_network, fork, gomoku_fork and jieqi_fork; build_flags is read by nothing and records what docs/testing.md establishes. Every value whose 'established' field is false is recorded as null or an empty list rather than as a plausible-looking placeholder; no hash in this file was invented. network is a map of one entry per variant, keyed by that variant's engine identifier, because the first engine binds a network to a variant by filename prefix. gomoku_network is keyed by rules identifier and holds a list of files with a role each, because the second engine binds weights by the rule and board-size masks in a file's own header and takes one file per side. gomoku_fork.core_build records the define and flag set the core's own build of the vendored snapshot applies, per architecture profile, which build_flags.platforms.* deliberately does not carry because those fields describe a packaging build.",
   "fork": {
     "repository": "https://github.com/chentianren0/Fairy-Stockfish",
     "revision": "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e",
@@ -273,7 +273,7 @@
         },
         "x86_64": {
           "established": false,
-          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 simulator — five slices and no x86_64 among them. The branch exists in core/third_party/rapfi/CMakeLists.txt for a host that configures the core natively on x86_64 and for the Windows build when the second engine reaches it, and what it would apply is written below rather than left to be guessed. It becomes established when a build produces it.",
+          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 simulator — five slices and no x86_64 among them. The branch exists in core/third_party/rapfi/CMakeLists.txt for a host that configures the core natively on x86_64, and what it would apply is written below rather than left to be guessed. It becomes established when a build produces it.",
           "defines": [
             "USE_SSE"
           ],
@@ -431,7 +431,7 @@
         },
         "x86_64": {
           "established": false,
-          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 Simulator. The branch exists for a host that configures the core natively on x86_64 and for the Windows build, which sets MXQ_ENABLE_RULES_FACADE and therefore reaches this engine.",
+          "_established_note": "Stated, and not established: no build here produces this slice. apple/build-core-xcframework.sh builds macOS arm64 and arm64e, iOS arm64 and arm64e, and an arm64 Simulator. The branch exists for a host that configures the core natively on x86_64.",
           "defines": [
             "IS_64BIT",
             "USE_POPCNT"
@@ -446,8 +446,8 @@
     }
   },
   "build_flags": {
-    "_about": "The build flags and defines the app build uses for each supported platform. A packaging build exists on Windows and on no Apple platform, and it established the deployment settings and the frontend toolchain rather than any flag set, so no flag set is established anywhere. The packaging and architecture entries are established — by docs/testing.md on the Apple platforms, and on Windows by the builds recorded under windows.toolchain_core, windows.toolchain and windows.packaging_flags — and are recorded so that the unestablished parts are visibly the compile flags alone.",
-    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set, on macOS/arm64 and on Windows for both x64 and arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt — which is also where the places the platforms differ are written down: IS_64BIT reaches the compiler from the command line under Clang and from types.h under MSVC, so it is defined exactly once on each; and MSVC on arm64 takes the fork's portable general-64 profile rather than its apple-silicon one, because USE_POPCNT and prefetch select x86 headers under _MSC_VER and the fork's NEON code uses GCC and Clang vector-extension syntax MSVC does not have. None of it is copied here: these fields describe the packaging build, and the Windows packaging build that now exists publishes a frontend over a prebuilt core and chooses none of the core's compile flags, so recording a developer build's flags under them would still make an unestablished value look established. The sqlite_defines arrays are the one exception, filled on the Apple platforms while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies. The Windows arrays stay empty with the rest of that unpinned entry.",
+    "_about": "The build flags and defines the app build uses for each supported platform. No packaging build has established a flag set, so none is recorded as established. The packaging and architecture entries are established by docs/testing.md and are recorded so that the unestablished parts are visibly the compile flags alone.",
+    "_core_build_note": "The core's own CMake build of the vendored engine does compile it with a concrete define set, on macOS/arm64. That set is stated, and each entry cited back to a line of the fork's Makefile at the pinned revision, in core/third_party/fairy-stockfish/CMakeLists.txt. None of it is copied here: these fields describe a packaging build, and recording a developer build's flags under them would make an unestablished value look established. The sqlite_defines arrays are the one exception, filled while the platform entries stay unestablished: that set is hardening policy required by docs/game-data.md — identical on every platform and independent of any toolchain — decided and annotated in core/third_party/sqlite/CMakeLists.txt, which every build of the core applies.",
     "platforms": {
       "macos": {
         "established": false,
@@ -508,149 +508,6 @@
           "SQLITE_DEFAULT_WAL_SYNCHRONOUS=2"
         ],
         "sqlite_flags": []
-      },
-      "windows": {
-        "established": false,
-        "_note": "'established' still reads false here, and it now means something narrower than it did. It governs the four flag arrays at the bottom of this entry, which describe how the CORE is compiled: engine_defines, engine_flags, sqlite_defines, sqlite_flags. A Windows packaging build now exists — windows/package-zip.ps1, first run in CI on 2026-07-31 — and it did not establish any of them, because it publishes the frontend over a core somebody else already built and chooses none of the core's compile flags. Copying them out of windows/build-core-dll.ps1's command line would record a developer build's flags in fields that describe a packaging build, which is the confusion this entry is shaped to avoid. What that build DID establish is under toolchain and packaging_flags, each marked established in its own right; what the core builds established is under toolchain_core, once per architecture. sqlite_defines stays empty for the same old reason: that list is hardening policy every build of the core applies, so it would be true here, but this entry records what a Windows packaging build applied and the packaging build applies nothing to SQLite.",
-        "toolchain": {
-          "established": true,
-          "_about": "The frontend's packaging toolchain, measured by the first Windows packaging build rather than intended: windows/package-zip.ps1 running in .github/workflows/windows-frontend.yml on 2026-07-31, on both architectures. This field was null until then, and docs/architecture.md's open question — 'Windows toolchain pinning for the frontend, which waits for a packaging build to establish it' — is what it was waiting for. It stays separate from toolchain_core because the core's compiler and the frontend's packaging stack are established at different times and one being known says nothing about the other.",
-          "windows_app_sdk": "2.3.1",
-          "win2d": "1.4.0",
-          "dotnet_sdk": "10.0.302",
-          "dotnet_runtime": "10.0.10",
-          "target_framework": "net10.0-windows10.0.26100.0",
-          "target_platform_min_version": "10.0.22000.0",
-          "runtime_identifiers": [
-            "win-x64",
-            "win-arm64"
-          ],
-          "packaged_by": "windows/package-zip.ps1",
-          "measured_on": "2026-07-31",
-          "measured_host": "GitHub-hosted runners windows-2025 and windows-11-arm",
-          "_measured_note": "dotnet_runtime is the runtime the published self-contained app actually carried, reported by the smoke harness running from inside the unpacked zip. The Windows App SDK and Win2D versions are the package references the publish resolved. target_framework and target_platform_min_version are the frontend projects' own, and they are not one value across the tree: MiniXiangqi.App, MiniXiangqi.Board and MiniXiangqi.Shots target net10.0-windows10.0.26100.0, because they use WinUI 3 and Win2D and so need the Windows SDK projection; MiniXiangqi.Core, MiniXiangqi.Play and MiniXiangqi.Smoke target plain net10.0-windows, because they deliberately reference no UI framework — which is what lets the harness run where a WinUI process cannot. The version recorded here is the first group's, the one the app itself is built against; the second group is named because MiniXiangqi.Smoke ships in the zip beside the app and target_platform_min_version therefore does not describe every executable in it. Both groups run on the same runtime."
-        },
-        "packaging_flags": {
-          "established": true,
-          "_about": "The deployment settings the packaging builds apply, as distinct from the compile flags below that they do not. Recorded as its own field for the same reason toolchain_core is: one 'established' boolean over an entry whose halves are measured by different builds cannot say which half is which. docs/engine-integration.md calls this manifest's field names provisional until a build consumes them, and this is a build consuming them. THE FLAT FIELDS BELOW ARE THE ZIP'S, and were the whole of this object until 2026-07-31; store_package beside them is the Microsoft Store's, added when the Store became the intended public channel. Two channels, two deployment shapes of one app, one project switched by one MSBuild property — so two sets of flags, rather than one set that would have to be read as an average of them.",
-          "package_type": "unpackaged",
-          "windows_package_type": "None",
-          "self_contained": true,
-          "windows_app_sdk_self_contained": true,
-          "distribution": "zip",
-          "_distribution_note": "One zip per architecture, unpacked and run, with no installer and no runtime install on the target machine (owner decision, 2026-07-30). It is no longer the only channel — see store_package — and it is still the direct one: no account, no store, and what internal testers already have. The zip is the complete two-game application: it carries every entry under 'network' below in assets/ beside the variant configuration, and windows/package-zip.ps1 verifies the exact set of staged names, byte lengths and SHA-256 values before packaging. Before 2026-07-31 the zip excluded a community network whose redistribution licence was not established and named it in a NETWORK.md; both networks now have established redistribution terms, so there is one zip and nothing to add to it.",
-          "app_local_runtimes": {
-            "_about": "The three runtimes the zip carries beside the app so that unpacking installs nothing, and where each one's version is recorded. The first two are package references whose versions are toolchain.dotnet_runtime and toolchain.windows_app_sdk above, and are not restated here. The third is not a package reference at all: mxqcore.dll links the C++ runtime dynamically, neither self-contained mode carries it, and windows/build-core-dll.ps1 stages it beside the core from whichever Visual Studio redistributable the build machine happens to carry for the target architecture — so what shipped is recorded here, per architecture, and the two differ because the two CI runners carry different Visual Studio versions. Staging moved from windows/package-zip.ps1 to that script on 2026-07-31, when the Store package needed the same runtime by a route that reaches a build output rather than a publish; the redistributable it comes from and the per-file PE check that selects it are unchanged.",
-            "dotnet": "toolchain.dotnet_runtime",
-            "windows_app_sdk": "toolchain.windows_app_sdk",
-            "msvc_crt": {
-              "x64": {
-                "redistributable": "Microsoft.VC145.CRT",
-                "msvc_toolset": "14.51.36231",
-                "from": "Visual Studio 2026 Enterprise on the windows-2025 runner"
-              },
-              "arm64": {
-                "redistributable": "Microsoft.VC143.CRT",
-                "msvc_toolset": "14.44.35112",
-                "from": "Visual Studio 2022 Enterprise on the windows-11-arm runner"
-              },
-              "_note": "Each file is taken only if its own PE machine type is the target architecture, rather than trusted for sitting in that architecture's folder — which is not a formality: the arm64 redistributable contains an x64 vcruntime140_1.dll, the x64 exception unwinder that ARM64 has no use for, and it is the one file present in the x64 zip and absent from the arm64 one. The msvc_toolset here is the redistributable's own version and is not the toolset that compiled the core; on x64 they coincide, and on arm64 they do not, because the runner's redistributable and its compiler ship on separate schedules. toolchain_core records what compiled it."
-            }
-          },
-          "measured_on": "2026-07-31",
-          "store_package": {
-            "established": true,
-            "_about": "The Microsoft Store's deployment shape, beside the zip's flat fields above. The Store is the intended public channel for Windows (owner decision, 2026-07-31) and windows/package-msix.ps1 is the build, first run in CI on 2026-07-31 on both architectures. Two fields could only be answered by a run and were null until it happened: windows_app_runtime_framework, read out of the unpacked package's generated manifest, and msbuild, read off each leg. Everything else here is what the project decides rather than what a build measures, and it is recorded so that a reader asking 'how does the Store copy differ' does not have to read a csproj condition to find out.",
-            "package_type": "packaged",
-            "windows_package_type": null,
-            "_windows_package_type_note": "Null because the property is ABSENT in a packaged build rather than set to anything. Its documented vocabulary is 'None, or absent (for a packaged app)' — there is no affirmative value meaning packaged — so MiniXiangqi.App.csproj sets it only under the condition that builds the zip, and a packaged build is one that does not name it.",
-            "self_contained": true,
-            "windows_app_sdk_self_contained": false,
-            "_self_contained_note": "The asymmetry is the interesting part and it is not an oversight. An MSIX can declare a dependency on a Windows App SDK framework package because one exists in the Store, so the package sheds its private copy of that runtime. There is no equivalent for the .NET runtime: a package cannot express a dependency on it, so a framework-dependent .NET app in a package installs and then fails to start wherever that runtime is absent, with nothing to say why. .NET therefore travels, and package-msix.ps1 checks for hostfxr.dll and coreclr.dll in the unpacked package rather than trusting the command line that asked for them.",
-            "_what_framework_dependence_removed": "Measured on the unpacked package from the first packaged CI run, and narrower than it was first written to be. What left is the Windows App Runtime itself: Microsoft.ui.xaml.dll is absent from the payload and so is Microsoft.WindowsAppRuntime.dll, leaving only the two Bootstrap DLLs that reach the framework package the Store installs. What did NOT leave is the machine-learning redistributables the SDK depends on and this application never loads: onnxruntime.dll, Microsoft.ML.OnnxRuntime.dll and DirectML.dll are extracted out of the .msix on both architectures. The package's NOTICE.md names them for that reason, as the zip's does. Recorded as its own field because the first version of this entry claimed the opposite, and a manifest whose job is to record what a build measured is the wrong place to leave an expectation standing in for a measurement.",
-            "signing": "unsigned",
-            "_signing_note": "Nothing in this repository signs the package and nothing ever will. A package accepted by the Microsoft Store is signed BY THE STORE, with Microsoft's own certificate, after acceptance — so a submission package is supposed to be unsigned, AppxPackageSigningEnabled=false is what says so, and there is no key to obtain, store, rotate, expire or leak. docs/product.md and docs/architecture.md deferred MSIX until 2026-07-31 on the cost of a signing certificate; that cost never existed. The consequence for anyone holding the artifact is that an unsigned .msix cannot be installed by double-clicking it; windows/README.md gives the certificate-free registered install the owner checks with.",
-            "distribution": "microsoft_store",
-            "_distribution_note": "One unsigned .msix per architecture, and one .msixupload holding both at its root — a plain zip, which is Microsoft's documented manual alternative to UapAppxPackageBuildMode StoreUpload. Both are built by .github/workflows/windows-frontend.yml, which takes no secret for this either. No .msixbundle: the Store takes the two packages separately. No symbol package: an .appxsym is documented as optional, and StoreUpload's way of producing one drags mspdbcmf into a hosted runner.",
-            "target_device_family": "Windows.Desktop",
-            "min_version": "10.0.22000.0",
-            "max_version_tested": "10.0.26100.0",
-            "_min_version_note": "min_version is Windows 11's first build and MUST equal toolchain.target_platform_min_version above: the project setting decides what the compiler allows and the manifest's decides which machines the Store offers the app to, and the two disagreeing offers the app to a machine it was not built against. max_version_tested is the SDK the app is built against, the same number as the target framework's platform version.",
-            "declared_languages": [
-              "en-US",
-              "zh-Hans"
-            ],
-            "_declared_languages_note": "Declared explicitly rather than with the template's x-generate, and en-US first because first is the package's default (owner decision). x-generate declares one language per set of qualified resources found, and this app has none — its bilingualism is a C# string table selected from CurrentUICulture — so it would have published an app that says it speaks one language.",
-            "declared_capabilities": [
-              "runFullTrust"
-            ],
-            "_declared_capabilities_note": "The only one, and the one every packaged desktop app declares: it is what says this is a Win32 process rather than a sandboxed UWP one. internetClient is absent because the app never touches the network, and a permission declared for nothing is shown to every customer on the listing page.",
-            "identity_source": "Partner Center, 'View app identity details', after the name reservation",
-            "_identity_note": "windows/MiniXiangqi.App/Package.appxmanifest carries the identity Partner Center assigned when the name Xiangqi Master was reserved: Identity/@Name Tianren.XiangqiMaster, Identity/@Publisher CN=B60A5E70-3747-4342-8C97-BC3427301F8F, Properties/PublisherDisplayName Tianren — the package family Tianren.XiangqiMaster_9vydfafgh3mdt. A package whose identity does not match the reservation is rejected at upload, so these change only if the reservation itself does. Version is hardcoded and the owner bumps it per submission; CI does not stamp it, because the Store reserves the fourth part and refuses a version that is not higher than the last accepted one, and a version that moves on every run is a version nobody chose.",
-            "windows_app_runtime_framework": {
-              "name": "Microsoft.WindowsAppRuntime.2",
-              "min_version": "2.3.1.0"
-            },
-            "_windows_app_runtime_framework_note": "The framework package the generated manifest declares a dependency on, which the Store installs. Read out of the unpacked package rather than derived from the csproj's package reference: the name and the minimum version are the Windows App SDK's own choice, not ours, and both architectures' packages declared the same one. The packaging build also stages a copy of this framework package beside the app's for sideloading; a submission carries neither, because the Store resolves the declared dependency, and windows/package-msix.ps1 names them and leaves them where they are.",
-            "msbuild": {
-              "x64": "18.7.8.30822",
-              "arm64": "17.14.51.32402",
-              "_note": "Visual Studio's MSBuild rather than the .NET CLI's, because the packaging targets that produce an .msix are Visual Studio's, and located through vswhere rather than named. The two runner images carry different Visual Studio versions — 2026 Enterprise on windows-2025, 2022 Enterprise 17.14 on windows-11-arm — as toolchain_core already records for the compiler, so this is per leg. THE ARM64 LEG WARNS: the .NET SDK emits NETSDK1233, 'Targeting .NET 10.0 or higher in Visual Studio 2022 17.14 is not supported', on every project it builds there. It is recorded rather than worked around, and what makes that defensible is a comparison rather than a green tick. The two legs are driven by two different MSBuild major versions on two different machines, and they produced equivalent packages: 294 files against 293, whose single difference is vcruntime140_1.dll, the x64 exception unwinder the CRT staging deliberately omits on arm64 because the file in the arm64 redistributable is an x64 binary; the same framework dependency at the same minimum version, Microsoft.WindowsAppRuntime.2 2.3.1.0; the same two declared languages; the same sole capability; and the same image resolution, five qualified frames for each of two logos and twenty for the third. An 18.x package and a 17.14 package agreeing on every property either could differ in is the measurement. What the warning states is a support position; what this manifest records is what the builds produced."
-            },
-            "packaged_by": "windows/package-msix.ps1",
-            "measured_on": "2026-07-31",
-            "measured_host": "GitHub-hosted runners windows-2025 and windows-11-arm"
-          }
-        },
-        "toolchain_core": {
-          "established": true,
-          "_about": "The core's Windows toolchain, pinned from the machines that built it rather than from intent, one entry per architecture. docs/engine-integration.md calls this manifest's field names provisional until a build consumes them; this field is separate from 'toolchain' because the core's compiler and the frontend's packaging stack are established at different times and one being known says nothing about the other.",
-          "x64": {
-            "visual_studio": "2026 Community 18.8.12009.203",
-            "vs_developer_command_prompt": "18.8.0",
-            "msvc_toolset": "14.51.36231",
-            "msvc_compiler": "19.51.36248",
-            "windows_sdk": "10.0.26100.0",
-            "cmake": "4.4.0",
-            "generator": "Ninja 1.13.2",
-            "target_architecture": "x64",
-            "measured_on": "2026-07-30",
-            "measured_host": "Windows 11, build 10.0.26100.33158",
-            "configurations_verified": [
-              "RelWithDebInfo",
-              "Debug"
-            ]
-          },
-          "arm64": {
-            "visual_studio": "Visual Studio Enterprise 2022 17.14.37516.0",
-            "msvc_toolset": "14.44.35207",
-            "msvc_compiler": "19.44.35228.0",
-            "windows_sdk": "10.0.26100.0",
-            "cmake": "4.4.0",
-            "generator": "Ninja 1.13.2",
-            "generator_core_suites": "Visual Studio 17 2022, platform ARM64",
-            "target_architecture": "arm64",
-            "measured_on": "2026-07-31",
-            "measured_host": "GitHub-hosted windows-11-arm runner, Windows 11 build 10.0.26200.8875",
-            "configurations_verified": [
-              "RelWithDebInfo",
-              "Debug"
-            ],
-            "_measured_note": "Measured in CI rather than on a developer machine, because there is no ARM64 developer machine: the owner's ARM64 hardware runs the product and does not build it, so the workflow is the only place this architecture is compiled at all. Two generators are named because two jobs build it — Ninja under vcvarsarm64 for the frontend's DLL, and the Visual Studio generator with -A ARM64 for the core suites — and both produced the same failures and then the same passes, which is how the finding below is known to be the compiler's rather than the build system's. windows_sdk is the newest of the SDKs installed on the runner and the one CMake selects by default; nothing in this project names a version, so it is the same selection the x64 entry records.",
-            "_engine_profile_note": "This architecture takes the vendored engine's portable general-64 profile rather than the apple-silicon one that the other arm64 targets take, and core/third_party/fairy-stockfish/CMakeLists.txt argues it at length with the compiler's own error text. In short: USE_POPCNT and prefetch select x86 headers under _MSC_VER, and the fork's NEON code is written in GCC and Clang vector-extension syntax that MSVC does not have. The consequence is search rate and nothing else — the network, the weights and the integer arithmetic are identical, so the evaluation returns the same numbers."
-          }
-        },
-        "architectures": [
-          "x64",
-          "arm64"
-        ],
-        "_architectures_note": "Both. ARM64 came off the promised architectures on 2026-07-30 (owner decision) for want of hardware to test it on, and returned on 2026-07-31 when that condition was met. Unlike deployment_target below, this is no longer only the product's target from docs/product.md: it is also what the packaging build expresses as a build setting, as the runtime_identifiers under toolchain record, and what two CI runners compile and exercise.",
-        "deployment_target": "Windows 11",
-        "_deployment_target_note": "Windows 11 is the floor (owner decision, 2026-07-30): Windows 10 left Microsoft support in October 2025. The packaging build expresses it as target_platform_min_version 10.0.22000.0 under toolchain — Windows 11's first build — so this field's product prose and the build's own setting now agree and each is recorded where it belongs.",
-        "engine_defines": [],
-        "engine_flags": [],
-        "sqlite_defines": [],
-        "sqlite_flags": []
       }
     }
   },
@@ -665,7 +522,7 @@
     "established": true
   },
   "network": {
-    "_about": "One NNUE network per variant the core can search, keyed by that variant's engine identifier. The key is load-bearing rather than a label: the engine restricts NNUE to the matching variant by requiring the file's basename to begin with the variant identifier, and a name that does not match disables NNUE silently while the Use NNUE option still reads true — so each network is committed under the name it is loaded as, and staging copies rather than renames. Every network lives in this repository beside the variant configuration, at the path its entry gives, and every build reads it from there: no fetch, no secret, no separate location. byte_length and sha256 are over content, and no consumer stages or hands the engine a byte it has not verified against them first: core/CMakeLists.txt for the core's own staging, core/src/mxq_engine_bridge.cpp before the engine sees a path, apple/build-core-xcframework.sh for the app's resources, windows/package-zip.ps1 for the distribution zip. Both frontends bundle every network in this map so either game can prepare its own engine profile.",
+    "_about": "One NNUE network per variant the core can search, keyed by that variant's engine identifier. The key is load-bearing rather than a label: the engine restricts NNUE to the matching variant by requiring the file's basename to begin with the variant identifier, and a name that does not match disables NNUE silently while the Use NNUE option still reads true — so each network is committed under the name it is loaded as, and staging copies rather than renames. Every network lives in this repository beside the variant configuration, at the path its entry gives, and every build reads it from there: no fetch, no secret, no separate location. byte_length and sha256 are over content, and no consumer stages or hands the engine a byte it has not verified against them first: core/CMakeLists.txt for the core's own staging, core/src/mxq_engine_bridge.cpp before the engine sees a path, apple/build-core-xcframework.sh for the app's resources. The app bundles every network in this map so either game can prepare its own engine profile.",
     "minixiangqiaxf": {
       "_about": "The network for the app's pinned custom variant, and it is this project's own.",
       "filename": "minixiangqiaxf-ad52b8658c9e.nnue",

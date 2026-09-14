@@ -11,7 +11,7 @@ This document owns which evidence a change or build of the Star River applicatio
 - iOS layout evidence is taken on a current compact-width iPhone and a current iPad, and names its device: compact width is a specific number of points, and a phone of a different width is a different case, not a stand-in. One simulator is booted at a time.
 - What a simulator cannot prove is not claimed from one: feel, latency, memory, energy, thermals, and the radio belong to device passes, and driven runs on real devices are reserved for what only devices prove — protocol, transport, radio, and lifecycle behavior.
 - Deployment targets and the pinned engine inputs live in the project and `pinned-inputs.json`: the build is their record, not this document.
-- The shared core builds and its tests run on every development platform without a frontend. Windows `ARM64` is CI-only — no developer machine compiles it — so a validation claim about it cites a CI run, the one place the developer-runs-are-the-evidence rule does not reach. CI supplements the gates below and replaces none of them.
+- The shared core builds and its tests run on every development platform without a frontend. CI supplements the gates below and replaces none of them.
 
 ## Validation principles
 
@@ -28,7 +28,7 @@ This document owns which evidence a change or build of the Star River applicatio
 
 One entry per domain: the evidence a change there requires, and the testing-specific rules no other document states. What the behavior must be is the owning contract's, and the tests cite it directly.
 
-- **Shared core.** The core suite — every game's rules fixtures, the archive codec, the library store, the search facade — on at least one Apple platform and on Windows, in **both** a debug and a release configuration: the programming errors in [core-interface.md](core-interface.md)'s taxonomy assert where `NDEBUG` is undefined and return their codes where it is defined, so neither configuration is a superset of the other, and the vendored engines' own assertions are live only in the first.
+- **Shared core.** The core suite — every game's rules fixtures, the archive codec, the library store, the search facade — on at least one Apple platform, in **both** a debug and a release configuration: the programming errors in [core-interface.md](core-interface.md)'s taxonomy assert where `NDEBUG` is undefined and return their codes where it is defined, so neither configuration is a superset of the other, and the vendored engines' own assertions are live only in the first.
 - **Rules.** The conformance fixtures in `fixtures/rules/` for every game the change touches, each under the ruleset it declares, with every ply's legal set, resulting position, check state, and final result verified. A minimized failing fixture lands before an accepted interpretation changes. Wherever search consumes terminal adjudication, the same fixtures run against the app-visible adjudicator and the engine configuration, and the two must agree on position identity, repetition occurrence, and classification — without an engine result auto-committing a claim the contract leaves to the player.
 - **Game data.** The store's schema-enforced invariants — the single active game, History immutability outside pin state, atomic archive-and-clear, no partial import, deletion rollback — plus cross-platform round-trips with byte-identical canonical content and hash, and the one-defined-version refusal on each axis, per [game-data.md](game-data.md): nothing migrates, and a test that named an older shape would be the only thing in the repository that did.
 - **Engines.** Each embedded engine is verified through the app's own boundary: initialization, capability checks and option application, cancellation, suspension, teardown, stale-result rejection, and the memory-budget boundaries on real hardware. A network or weights file is proven effective by its fingerprint and the engine's own positive load signal, never by filename alone. A pinned-input hash mismatch fails the build rather than packaging.
@@ -36,14 +36,13 @@ One entry per domain: the evidence a change there requires, and the testing-spec
 
 ## Build and distribution gates
 
-A distribution candidate — TestFlight on Apple platforms, or the Windows zip or Store package — requires:
+A distribution candidate — a TestFlight build — requires:
 
-- successful builds for every supported configuration on the distributed platform, which on Windows means both architectures, each a separate artifact that a separate machine runs;
+- successful builds for every supported configuration on the distributed platform;
 - passing shared-core tests plus targeted unit, integration, persistence, import and export, rules, engine, and critical UI tests;
 - no unresolved data-loss, illegal-move, rules-result, engine-termination, or version-validation failure;
 - verified license inputs, carried in every artifact somebody is handed: the project's own `LICENSE`, and the generated notice naming each vendored engine at its pinned revision and each bundled network with the filename, byte length, SHA-256, and provenance the manifest records;
 - every bundled network's verified pinned hash, in every distribution without exception, so that an absent network is damage rather than a case a recipient has instructions for;
-- for the Windows zip, a run of the headless harness against the unpacked zip exactly as produced, with nothing added to it, rather than against the build tree the zip was made from;
 - manual smoke testing of new game, resume, undo, end, history replay, deletion, export, import, and settings on each distributed platform.
 
 ## Thresholds not yet set

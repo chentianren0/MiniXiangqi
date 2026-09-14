@@ -1,13 +1,9 @@
 # Build for the shared core.
 #
-# Two targets always, and a third on request: the static library `mxq_core`,
-# which is what the Apple frontend links; the executable `mxq_core_tests`, which
-# is the one shared C++ test runner docs/architecture.md requires — it runs on
-# every development platform without a frontend and executes the approved
-# fixtures identically everywhere; and, behind MXQ_BUILD_SHARED_LIBRARY, the
-# shared library `mxq_core_shared`, which is the same C ABI in a form a
-# non-C++ frontend can load. The Windows frontend is C# and consumes the core
-# through P/Invoke, which needs a DLL rather than an archive.
+# Two targets: the static library `mxq_core`, which is what the Apple frontend
+# links; and the executable `mxq_core_tests`, which is the one shared C++ test
+# runner docs/architecture.md requires — it runs on every development platform
+# without a frontend and executes the approved fixtures identically everywhere.
 #
 # Beside those and the vendored inputs there is one more, and it is a library
 # only because a compile definition has to be confined to one translation unit:
@@ -61,16 +57,6 @@ second engine bridge against it. Off by default for the same reason the first \
 engine is: it is a multi-minute build and nothing else in the core needs it. \
 While it is off, third_party/rapfi is not added at all and the Rapfi bridge is \
 absent from the library rather than stubbed."
-       OFF)
-
-option(MXQ_BUILD_SHARED_LIBRARY
-       "Also build the C ABI as a shared library, for a frontend that loads the \
-core at runtime instead of linking it: mxqcore.dll on Windows, which the C# \
-frontend reaches through P/Invoke, and libmxqcore.dylib on macOS, where it is \
-built as the portability check on the export surface. No other platform's \
-shared library has been built, so none is claimed. Off by default: the Apple \
-frontend links the static library, the test runners link the static library, \
-and building both compiles every source twice."
        OFF)
 
 # Whether the facade's own entry points exist in src/. They do, and this has
@@ -291,69 +277,33 @@ set(MXQ_CORE_SOURCES
 
 add_library(mxq_core STATIC ${MXQ_CORE_SOURCES})
 add_library(mxq::core ALIAS mxq_core)
-set(MXQ_CORE_TARGETS mxq_core)
 
-# The shared library is the same translation units compiled a second time with
-# MXQ_BUILD_SHARED defined, which is the switch mxq.h already carries: it turns
-# MXQ_API into __declspec(dllexport) under MSVC and leaves it as the
-# default-visibility attribute elsewhere.
-#
-# The alternative — CMake's WINDOWS_EXPORT_ALL_SYMBOLS — was rejected, and not
-# on taste. The header declares the export macro on all 61 functions and on
-# nothing else, so the macro produces a DLL whose exported surface is exactly
-# the contract in docs/core-interface.md. Exporting all symbols would instead
-# publish every non-static symbol the link pulled in, which here means the whole
-# vendored Fairy-Stockfish fork and the whole SQLite amalgamation — components
-# docs/architecture.md requires to stay invisible through mxq.h. It would also
-# be Windows-only machinery for a decision the header already makes portably,
-# and it does not export data symbols at all. The macro costs one compile
-# definition; the flag would cost the boundary.
-if(MXQ_BUILD_SHARED_LIBRARY)
-  add_library(mxq_core_shared SHARED ${MXQ_CORE_SOURCES})
-  add_library(mxq::core_shared ALIAS mxq_core_shared)
-  target_compile_definitions(mxq_core_shared PRIVATE MXQ_BUILD_SHARED)
-  list(APPEND MXQ_CORE_TARGETS mxq_core_shared)
+target_include_directories(mxq_core
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${MXQ_GENERATED_DIR}"
+)
+target_link_libraries(mxq_core PRIVATE mxq_warnings)
 
-  # Both libraries are named mxqcore, and on Windows a DLL's import library is
-  # also mxqcore.lib — the same file the static library writes. They are kept
-  # apart by directory rather than by name, because the name is what the C#
-  # bindings' DllImport resolves and it is not ours to decorate.
-  set_target_properties(mxq_core_shared PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shared"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shared"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shared"
-  )
-  message(STATUS "Mini Xiangqi core: shared library in ${CMAKE_CURRENT_BINARY_DIR}/shared")
+# The facade's entry points are compiled out unless the engine is present, so
+# the switch must reach the compiler and not only CMake. Without this the
+# library builds and links cleanly while mxq_rules_evaluate and
+# mxq_rules_legal_moves simply do not exist in it — which surfaces as an
+# undefined symbol in whatever links it, a long way from the cause.
+if(MXQ_ENABLE_RULES_FACADE)
+  target_compile_definitions(mxq_core PRIVATE MXQ_ENABLE_RULES_FACADE=1)
+endif()
+if(MXQ_ENABLE_GOMOKU_FACADE)
+  target_compile_definitions(mxq_core PRIVATE MXQ_ENABLE_GOMOKU_FACADE=1)
 endif()
 
-foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
-  target_include_directories(${mxq_target}
-    PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/src"
-      "${MXQ_GENERATED_DIR}"
-  )
-  target_link_libraries(${mxq_target} PRIVATE mxq_warnings)
-
-  # The facade's entry points are compiled out unless the engine is present, so
-  # the switch must reach the compiler and not only CMake. Without this the
-  # library builds and links cleanly while mxq_rules_evaluate and
-  # mxq_rules_legal_moves simply do not exist in it — which surfaces as an
-  # undefined symbol in whatever links it, a long way from the cause.
-  if(MXQ_ENABLE_RULES_FACADE)
-    target_compile_definitions(${mxq_target} PRIVATE MXQ_ENABLE_RULES_FACADE=1)
-  endif()
-  if(MXQ_ENABLE_GOMOKU_FACADE)
-    target_compile_definitions(${mxq_target} PRIVATE MXQ_ENABLE_GOMOKU_FACADE=1)
-  endif()
-
-  set_target_properties(${mxq_target} PROPERTIES
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
-    OUTPUT_NAME mxqcore
-  )
-endforeach()
+set_target_properties(mxq_core PROPERTIES
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN ON
+  OUTPUT_NAME mxqcore
+)
 
 # --------------------------------------------------------------------------
 # Vendored third-party inputs
@@ -412,9 +362,7 @@ foreach(mxq_dep IN ITEMS fairy-stockfish rapfi pikafish sqlite)
                    "(${mxq_dep_gate} is OFF)")
   else()
     add_subdirectory("third_party/${mxq_dep}")
-    foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
-      target_link_libraries(${mxq_target} PRIVATE "${mxq_dep_link}")
-    endforeach()
+    target_link_libraries(mxq_core PRIVATE "${mxq_dep_link}")
     message(STATUS "Mini Xiangqi core: vendored ${mxq_dep}")
   endif()
 endforeach()
@@ -456,34 +404,7 @@ if(MXQ_ENABLE_RULES_FACADE AND TARGET mxq_pikafish)
     VISIBILITY_INLINES_HIDDEN ON
     OUTPUT_NAME mxqjieqibridge
   )
-  foreach(mxq_target IN LISTS MXQ_CORE_TARGETS)
-    target_link_libraries(${mxq_target} PRIVATE "$<LINK_ONLY:mxq::jieqi_bridge>")
-  endforeach()
-endif()
-
-# A shared library exports what its objects say is exportable, and the vendored
-# components are compiled as their own targets: hiding mxq_core_shared's own
-# symbols says nothing about theirs. On Windows nothing is exported without
-# __declspec(dllexport), so the DLL is already exactly mxq.h's 61 functions and
-# this changes nothing there. Where the default is the opposite — Mach-O, and
-# ELF by the same rule — the library also publishes every sqlite3_ entry point
-# and much of the engine, components docs/architecture.md requires to stay
-# invisible through mxq.h. Applied only while building a shared library, so
-# that the Apple frontend's static build compiles the same objects it always
-# did. Measured with nm on macOS: without it the library exported the whole
-# sqlite3_ surface alongside mxq.h's own functions; with it, mxq.h's own and
-# nothing else.
-if(MXQ_BUILD_SHARED_LIBRARY)
-  foreach(mxq_vendored IN ITEMS mxq_fairy_stockfish mxq_rapfi mxq_rapfi_lz4
-                                mxq_pikafish mxq_sqlite)
-    if(TARGET ${mxq_vendored})
-      set_target_properties(${mxq_vendored} PROPERTIES
-        C_VISIBILITY_PRESET hidden
-        CXX_VISIBILITY_PRESET hidden
-        VISIBILITY_INLINES_HIDDEN ON
-      )
-    endif()
-  endforeach()
+  target_link_libraries(mxq_core PRIVATE "$<LINK_ONLY:mxq::jieqi_bridge>")
 endif()
 
 # --------------------------------------------------------------------------
@@ -538,8 +459,7 @@ endif()
 #   test-assets-xiangqi    the variant configuration plus both networks, which is
 #                          the shape a two-game frontend and engine configuration use:
 #                          EvalFile is a list and the engine selects from it by
-#                          basename. windows/build-core-dll.ps1 copies this one
-#                          into the distribution's asset directory.
+#                          basename.
 #
 # That verification is not ceremony for files that are version-controlled: it is
 # the same gate every other consumer applies, and it is what catches an override
