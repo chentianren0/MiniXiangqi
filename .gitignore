@@ -14,3 +14,8 @@ core/.build-*/
 
 # Agent worktrees and session tooling live under the repo but never in it.
 .claude/
+.codex/
+.mcp.json
+
+# The owner's machine-specific notes and identity rules.
+CLAUDE.local.md
