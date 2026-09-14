@@ -44,144 +44,36 @@ if [ ! -f "$generated/CoreHeaders/mxq.h" ] ||
   exit 1
 fi
 
+# The engine's assets ship as one pack, apple/MiniXiangqi/Core/AssetPack.swift,
+# which the generator writes from core/assets after verifying every input
+# against pinned-inputs.json and then reads back entry by entry. The check is by
+# content against the digest the generator recorded beside it, for the same
+# reason the core is: a pack from another branch, or a damaged one, must not
+# pass because a file of the right name is present.
 resources="$root/apple/MiniXiangqi/Resources"
-variant_source="$root/core/assets/minixiangqi-variants.ini"
-variant_staged="$resources/minixiangqi-variants.ini"
-if [ ! -f "$variant_staged" ]; then
-  echo "error: the bundled variant configuration has not been staged." >&2
+pack_name="engine-assets.mxqpack" # AssetPack.fileName
+pack="$resources/$pack_name"
+recorded_pack="$root/apple/Generated/engine-assets.digest"
+if [ ! -f "$pack" ] || [ ! -f "$recorded_pack" ]; then
+  echo "error: the engine asset pack has not been staged." >&2
+  echo "note: run ./apple/build-core-xcframework.sh, which verifies the assets against pinned-inputs.json and packs them." >&2
+  exit 1
+fi
+if [ "$(shasum -a 256 "$pack" | cut -d' ' -f1)" != "$(cat "$recorded_pack")" ]; then
+  echo "error: the engine asset pack does not match the one the generator recorded." >&2
   echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
   exit 1
 fi
-if ! cmp -s "$variant_source" "$variant_staged"; then
-  echo "error: the bundled variant configuration does not match core/assets." >&2
-  echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
-  exit 1
-fi
 
-# The bundled networks derive from core/assets exactly as the variant
-# configuration does. Their names, counts and bytes are all load-bearing: a
-# correctly named damaged file must not pass merely because it is present.
-# Since a bundled network's name can change, Resources can also hold a previous
-# network or an extra network, and a recreate would leave it there.
-# apple/MiniXiangqi is a file-system-synchronized group, so every file would be
-# bundled and would ship — dead weight at best, and at worst a network this
-# project has no licence to distribute. The runtime would not complain, because
-# the bridge prefers the pinned basename. So this asserts the Windows packaging
-# build's rule on the app's own resources: exactly the two pinned networks, one
-# for each game the core can search, and anything else stops the build and says
-# which.
-mini_variant_id=$(plutil -extract variant.id raw -o - "$root/pinned-inputs.json")
-mini_nnue_name=$(plutil -extract "network.$mini_variant_id.filename" raw -o - "$root/pinned-inputs.json")
-xiangqi_nnue_name=$(plutil -extract network.xiangqi.filename raw -o - "$root/pinned-inputs.json")
-
-if [ "$mini_nnue_name" = "$xiangqi_nnue_name" ]; then
-  echo "error: pinned-inputs.json gives both games the same bundled network name, $mini_nnue_name." >&2
-  exit 1
-fi
-
-network_count=0
-found_mini=0
-found_xiangqi=0
-unexpected_networks=""
-for network in "$resources"/*.nnue; do
-  [ -e "$network" ] || continue
-  network_count=$((network_count + 1))
-  staged_name=$(basename "$network")
-  case "$staged_name" in
-    "$mini_nnue_name") found_mini=1 ;;
-    "$xiangqi_nnue_name") found_xiangqi=1 ;;
-    *) unexpected_networks="$unexpected_networks $staged_name" ;;
-  esac
-done
-unexpected_networks=${unexpected_networks# }
-
-if [ "$network_count" -eq 0 ]; then
-  echo "error: the bundled NNUE networks $mini_nnue_name and $xiangqi_nnue_name have not been staged." >&2
-  echo "note: run ./apple/build-core-xcframework.sh, which verifies them against pinned-inputs.json and stages them from core/assets." >&2
-  exit 1
-fi
-if [ "$network_count" -ne 2 ] || [ "$found_mini" -ne 1 ] || [ "$found_xiangqi" -ne 1 ]; then
-  echo "error: the app must bundle exactly $mini_nnue_name and $xiangqi_nnue_name; found $network_count NNUE file(s)." >&2
-  if [ -n "$unexpected_networks" ]; then
-    echo "error: unexpected bundled NNUE network(s): $unexpected_networks" >&2
-  fi
-  echo "note: run ./apple/build-core-xcframework.sh, which removes unexpected networks before staging both pinned ones." >&2
-  exit 1
-fi
-
-verify_staged_network() {
-  verify_variant=$1
-  verify_name=$2
-  verify_path="$resources/$verify_name"
-  verify_length=$(plutil -extract "network.$verify_variant.byte_length" raw -o - \
-                          "$root/pinned-inputs.json")
-  verify_sha256=$(plutil -extract "network.$verify_variant.sha256" raw -o - \
-                          "$root/pinned-inputs.json")
-
-  actual_length=$(wc -c < "$verify_path" | tr -d ' ')
-  if [ "$actual_length" != "$verify_length" ]; then
-    echo "error: the bundled network $verify_name is $actual_length bytes; pinned-inputs.json pins $verify_length." >&2
-    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
-    exit 1
-  fi
-  actual_sha256=$(shasum -a 256 "$verify_path" | cut -d' ' -f1)
-  if [ "$actual_sha256" != "$verify_sha256" ]; then
-    echo "error: the bundled network $verify_name does not match the SHA-256 pinned-inputs.json pins." >&2
-    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
-    exit 1
-  fi
-}
-
-verify_staged_network "$mini_variant_id" "$mini_nnue_name"
-verify_staged_network xiangqi "$xiangqi_nnue_name"
-
-# The second engine's weights, under the same rule and for the same reasons:
-# exactly the pinned set, each at its pinned length and hash. They are checked
-# separately because they are named and keyed differently — LZ4 frames under
-# .bin.lz4, keyed in the manifest by the game and then by the file's role, one
-# file for freestyle and one per side for renju.
-gomoku_expected=""
-for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
-  gomoku_game=${gomoku_entry%.*}
-  gomoku_index=${gomoku_entry##*.}
-  gomoku_key="gomoku_network.$gomoku_game.files.$gomoku_index"
-  gomoku_name=$(plutil -extract "$gomoku_key.filename" raw -o - "$root/pinned-inputs.json")
-  gomoku_path="$resources/$gomoku_name"
-  if [ ! -f "$gomoku_path" ]; then
-    echo "error: the bundled weight file $gomoku_name has not been staged." >&2
-    echo "note: run ./apple/build-core-xcframework.sh, which verifies it against pinned-inputs.json and stages it from core/assets." >&2
-    exit 1
-  fi
-  gomoku_length=$(plutil -extract "$gomoku_key.byte_length" raw -o - "$root/pinned-inputs.json")
-  actual_length=$(wc -c < "$gomoku_path" | tr -d ' ')
-  if [ "$actual_length" != "$gomoku_length" ]; then
-    echo "error: the bundled weight file $gomoku_name is $actual_length bytes; pinned-inputs.json pins $gomoku_length." >&2
-    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
-    exit 1
-  fi
-  gomoku_sha256=$(plutil -extract "$gomoku_key.sha256" raw -o - "$root/pinned-inputs.json")
-  actual_sha256=$(shasum -a 256 "$gomoku_path" | cut -d' ' -f1)
-  if [ "$actual_sha256" != "$gomoku_sha256" ]; then
-    echo "error: the bundled weight file $gomoku_name does not match the SHA-256 pinned-inputs.json pins." >&2
-    echo "note: run ./apple/build-core-xcframework.sh, then build again." >&2
-    exit 1
-  fi
-  gomoku_expected="$gomoku_expected $gomoku_name"
-done
-
-# And nothing else with that extension, for the same reason the .nnue sweep
-# above exists: Resources is a file-system-synchronized group, so a leftover
-# file from a previous pin ships.
-for staged in "$resources"/*.bin.lz4; do
+# And nothing beside it. apple/MiniXiangqi is a file-system-synchronized group,
+# so every file in Resources ships in the .app: a network or configuration left
+# here — as the files were staged before the pack existed, or by a generator
+# from before it — would ship verbatim, which is what the pack exists to
+# prevent. The generator removes them; this refuses a build until it has.
+for staged in "$resources"/*; do
   [ -e "$staged" ] || continue
-  staged_name=$(basename "$staged")
-  found=0
-  for expected in $gomoku_expected; do
-    [ "$staged_name" = "$expected" ] && found=1
-  done
-  if [ "$found" -eq 0 ]; then
-    echo "error: unexpected bundled weight file: $staged_name" >&2
-    echo "note: run ./apple/build-core-xcframework.sh, which removes unexpected weight files before staging the pinned ones." >&2
-    exit 1
-  fi
+  [ "$(basename "$staged")" = "$pack_name" ] && continue
+  echo "error: Resources carries a file beside the engine asset pack: $(basename "$staged")" >&2
+  echo "note: run ./apple/build-core-xcframework.sh, which leaves only the pack there." >&2
+  exit 1
 done

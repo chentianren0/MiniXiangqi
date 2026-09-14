@@ -19,11 +19,16 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # core: it is where every pinned name, byte length and hash reaches the bridges
 # as a macro, so a change to it changes the library without changing anything
 # else here.
+# The asset pack's two sources are in the list because the generator writes the
+# pack with them: a format change is a pack that must be written again, and
+# nothing else here would notice one.
 find "$root/core/src" "$root/core/include" "$root/core/assets" \
      "$root/core/cmake" \
      "$root/core/third_party" "$root/core/CMakeLists.txt" \
      "$root/pinned-inputs.json" \
      "$root/apple/build-core-xcframework.sh" \
+     "$root/apple/MiniXiangqi/Core/AssetPack.swift" \
+     "$root/apple/AssetPackTool" \
      -type f -print0 2>/dev/null \
   | LC_ALL=C sort -z \
   | xargs -0 shasum -a 256 \

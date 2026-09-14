@@ -229,18 +229,25 @@ cp -R "$output/$slice/Headers" "$headers_published"
 # prevent.
 "$root/apple/core-inputs-digest.sh" > "$(dirname "$output")/core-inputs.digest"
 
-# The bundled variant configuration the engine loads at initialisation. It is
-# an app resource, staged from the one copy in core/assets that the test runner
-# and the Windows frontend also read; a second committed copy would drift.
-resources="$root/apple/MiniXiangqi/Resources"
-mkdir -p "$resources"
-cp "$root/core/assets/minixiangqi-variants.ini" "$resources/"
+# The engine's assets — the variant configuration the engine loads at
+# initialisation and every pinned network — ship as one pack rather than as the
+# files themselves. apple/MiniXiangqi/Core/AssetPack.swift is the format and
+# says why; the app stages the directory the core reads from the pack at
+# start-up, and the core's own verification of every staged file is unchanged.
+#
+# The packer is compiled here from the same source file the app decodes with,
+# so the format cannot have a second implementation. Through xcrun, so that the
+# Xcode DEVELOPER_DIR names is the one whose compiler runs.
+tool="$(dirname "$output")/asset-pack-tool"
+xcrun --sdk macosx swiftc -O -o "$tool" \
+      "$root/apple/MiniXiangqi/Core/AssetPack.swift" \
+      "$root/apple/AssetPackTool/main.swift"
 
-# The bundled NNUE networks, staged the same way and under the same policy the
-# core's CMake staging enforces: nothing is consumed on trust.
+# The bundled NNUE networks, verified before they are packed under the same
+# policy the core's CMake staging enforces: nothing is consumed on trust.
 #
 # They come from core/assets, beside the variant configuration they are loaded
-# with, under the names they are bundled as — each has to begin with its variant
+# with, under the names they are packed as — each has to begin with its variant
 # identifier, because the engine restricts NNUE to the matching variant by that
 # basename and a name that does not match disables NNUE *silently* while the Use
 # NNUE option still reads true. MXQ_NNUE_SOURCE and MXQ_XIANGQI_NNUE_SOURCE
@@ -312,8 +319,7 @@ verify_network "$xiangqi_nnue_source" "$xiangqi_nnue_name" "$xiangqi_nnue_length
 # There is no override variable for these. MXQ_NNUE_SOURCE exists because trying
 # a candidate network before committing it is how this project's own network was
 # replaced; nothing trains these, so nothing tries a candidate.
-gomoku_weight_names=""
-gomoku_weight_sources=""
+gomoku_pack_arguments=""
 for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
   gomoku_game=${gomoku_entry%.*}
   gomoku_index=${gomoku_entry##*.}
@@ -324,59 +330,39 @@ for gomoku_entry in gomoku-15.0 renju.0 renju.1; do
   gomoku_source="$root/core/assets/$gomoku_name"
   verify_network "$gomoku_source" "$gomoku_name" "$gomoku_length" \
                  "$gomoku_sha256" "(no override; $gomoku_key)"
-  gomoku_weight_names="$gomoku_weight_names $gomoku_name"
-  gomoku_weight_sources="$gomoku_weight_sources $gomoku_source"
+  gomoku_pack_arguments="$gomoku_pack_arguments $gomoku_name $gomoku_source"
 done
-gomoku_weight_names=${gomoku_weight_names# }
-gomoku_weight_sources=${gomoku_weight_sources# }
+gomoku_pack_arguments=${gomoku_pack_arguments# }
 
-# Exactly the pinned weight files end up in Resources, so anything else goes
-# first.
-#
-# This matters the moment a bundled network's NAME changes, which it did when
-# the project's own network replaced the community one. Copying the new name
-# beside the old leaves an extra file, and apple/MiniXiangqi is a
-# file-system-synchronized group: every one would be bundled into the .app and
-# would ship. The runtime would not notice — each bridge asks for the pinned
-# basenames — which is exactly why nothing else would catch it.
-#
-# Two sweeps because the two engines' weights have different extensions: the
-# first engine's are .nnue, and the second's are LZ4 frames named .bin.lz4 as
-# they are published. An unmatched glob expands to the pattern itself in a POSIX
-# shell, so the existence test is what makes "none here" a no-op rather than an
-# attempt to delete a file called *.nnue.
-for stale in "$resources"/*.nnue; do
+# Resources holds the pack and nothing else. apple/MiniXiangqi is a
+# file-system-synchronized group, so every file in here ships in the .app; a
+# network or configuration left beside the pack — which is how the files were
+# staged before the pack existed — would ship verbatim, which is what the pack
+# exists to prevent. So anything that is not the pack goes first.
+resources="$root/apple/MiniXiangqi/Resources"
+pack_name="engine-assets.mxqpack" # AssetPack.fileName
+mkdir -p "$resources"
+for stale in "$resources"/*; do
   [ -e "$stale" ] || continue
-  staged_name=$(basename "$stale")
-  case "$staged_name" in
-    "$mini_nnue_name"|"$xiangqi_nnue_name") ;;
-    *)
-      rm -f "$stale"
-      echo "removed a network that is no longer bundled: $staged_name"
-      ;;
-  esac
-done
-for stale in "$resources"/*.bin.lz4; do
-  [ -e "$stale" ] || continue
-  staged_name=$(basename "$stale")
-  keep=0
-  for expected in $gomoku_weight_names; do
-    [ "$staged_name" = "$expected" ] && keep=1
-  done
-  if [ "$keep" -eq 0 ]; then
-    rm -f "$stale"
-    echo "removed a weight file that is no longer bundled: $staged_name"
-  fi
+  [ "$(basename "$stale")" = "$pack_name" ] && continue
+  rm -rf "$stale"
+  echo "removed from Resources, which carries only the pack: $(basename "$stale")"
 done
 
-cp "$mini_nnue_source" "$resources/$mini_nnue_name"
-cp "$xiangqi_nnue_source" "$resources/$xiangqi_nnue_name"
-echo "staged the pinned networks as $mini_nnue_name and $xiangqi_nnue_name"
+# The packer verifies what it wrote by reading it back and decoding every entry.
+# Word-splitting the gomoku arguments is deliberate: the paths are the
+# repository's own, which carry no spaces.
+# shellcheck disable=SC2086
+"$tool" pack "$resources/$pack_name" \
+        minixiangqi-variants.ini "$root/core/assets/minixiangqi-variants.ini" \
+        "$mini_nnue_name" "$mini_nnue_source" \
+        "$xiangqi_nnue_name" "$xiangqi_nnue_source" \
+        $gomoku_pack_arguments
 
-for gomoku_source in $gomoku_weight_sources; do
-  cp "$gomoku_source" "$resources/$(basename "$gomoku_source")"
-done
-echo "staged the pinned weight files: $gomoku_weight_names"
+# What check-core-is-current.sh compares: the pack this run wrote, by content,
+# beside the digest of what it was built from.
+shasum -a 256 "$resources/$pack_name" | cut -d' ' -f1 \
+  > "$(dirname "$output")/engine-assets.digest"
 
 echo "built $output"
 lipo -info "$output"/*/libMiniXiangqiCore.a
