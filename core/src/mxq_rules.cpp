@@ -1,4 +1,4 @@
-/* The session-free rules facade.
+/* The rules facade.
  *
  * mxq_rules_start_fen is a constant of the ruleset and needs no engine. Of the
  * rest, four replay a history through a pinned fork and mxq_rules_deal derives
@@ -143,7 +143,7 @@ bool validate_fen(MxqGameKind game, const char *fen, std::string &detail) {
 
 extern "C" {
 
-MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
+MxqStatus mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
                                        size_t *out_len, MxqError *err) {
     const MxqStatus rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
@@ -166,29 +166,7 @@ MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
 }
 
 
-MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, MxqGameKind game,
-                                          const char *fen, MxqError *err) {
-    MxqStatus rc = mxq::require_core(core, err);
-    if (rc != MXQ_OK) {
-        return rc;
-    }
-    rc = mxq::require_game(game, err);
-    if (rc != MXQ_OK) {
-        return rc;
-    }
-    if (fen == nullptr) {
-        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "fen was null");
-        return MXQ_ERR_ARG_NULL;
-    }
-    std::string detail;
-    if (!mxq::rules::validate_fen(game, fen, detail)) {
-        mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
-        return MXQ_ERR_RULES_INVALID_FEN;
-    }
-    return MXQ_OK;
-}
-
-MxqStatus MXQ_CALL mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
+MxqStatus mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
                                             const char *fen,
                                             MxqSetupViolation *out_violation,
                                             MxqError *err) {
@@ -329,7 +307,6 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
 
     if (out_position != nullptr) {
         out_position->ply_count = ply;
-        out_position->position_revision = 0; /* session-free: no revision exists */
         out_position->side_to_move = side_to_move;
         out_position->in_check = in_check ? 1u : 0u;
         mxq::copy_bounded(out_position->fen, sizeof(out_position->fen), fen.c_str());
@@ -340,15 +317,6 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
         out_status->reason = adj.reason;
         out_status->at_occurrence = adj.at_occurrence;
         out_status->side_to_move = side_to_move;
-        /* Session-free: undo, claim, resign and search are properties of a game
-         * session, not of a position and a history. They read as unavailable
-         * rather than as guesses. */
-        out_status->undo_plies = 0;
-        out_status->claim_available =
-            (adj.state == MXQ_GAME_CLAIMABLE_DRAW) ? 1u : 0u;
-        out_status->undo_available = 0;
-        out_status->resign_available = 0;
-        out_status->search_expected = 0;
     }
 
     return MXQ_OK;
@@ -356,7 +324,7 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
 
 } /* namespace */
 
-MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core, MxqGameKind game,
+MxqStatus mxq_rules_evaluate(MxqCore *core, MxqGameKind game,
                                       const char *start_fen,
                                       const char *const *moves, size_t move_count,
                                       MxqPosition *out_position,
@@ -367,7 +335,7 @@ MxqStatus MXQ_CALL mxq_rules_evaluate(MxqCore *core, MxqGameKind game,
                        out_status, nullptr, out_first_illegal_index, err);
 }
 
-MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
+MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
                                          const char *start_fen,
                                          const char *const *moves,
                                          size_t move_count, MxqMove *out,
@@ -406,7 +374,7 @@ MxqStatus MXQ_CALL mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
     return MXQ_OK;
 }
 
-MxqStatus MXQ_CALL mxq_rules_deal(MxqCore *core, MxqGameKind game,
+MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
                                   const char *seed, const char *nonce,
                                   MxqDeal *out, MxqError *err) {
     MxqStatus rc = mxq::require_core(core, err);

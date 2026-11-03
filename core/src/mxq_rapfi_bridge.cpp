@@ -490,30 +490,6 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
     }
 }
 
-ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
-                       const std::string &assets_dir, MxqEnginePlan &out_applied,
-                       std::string &detail) {
-    /* Nothing here throws — the plan is arithmetic over values, and configure()
-     * below is guarded in its own right. */
-    std::memset(&out_applied, 0, sizeof(out_applied));
-    out_applied.struct_size = static_cast<uint32_t>(sizeof(out_applied));
-
-    MxqEngineBudget probe = budget;
-    probe.struct_size = static_cast<uint32_t>(sizeof(probe));
-    const MxqStatus rc = mxq_engine_plan(&probe, &out_applied, nullptr);
-    if (rc != MXQ_OK) {
-        detail = "the memory plan could not be computed";
-        return ConfigureError::RulesLoadFailed;
-    }
-    if (out_applied.sufficient == 0) {
-        detail = "the calculated transposition-table budget is below the "
-                 "accepted minimum; nothing was initialised";
-        return ConfigureError::InsufficientMemory;
-    }
-    return configure(rules, out_applied.threads, out_applied.hash_mib,
-                     assets_dir, detail);
-}
-
 namespace {
 
 /* The body of configure(), with g_mutex already held and with exceptions still

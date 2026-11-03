@@ -32,12 +32,6 @@ extension Core {
                 #expect(xiangqi.hasSuffix("-xiangqi-c07e94a5c7cb"), "\(xiangqi)")
                 #expect(try preparedProfile(MXQ_GAME_KIND_RENJU) == renju)
 
-                var profile = MxqGameProfile()
-                profile.struct_size = UInt32(MemoryLayout<MxqGameProfile>.size)
-                #expect(mxq_core_game_profile(MxqGameKind(MXQ_GAME_KIND_XIANGQI), &profile, nil) == MXQ_OK)
-                #expect(string(of: profile.variant_id) == "xiangqi")
-                #expect(string(of: profile.nnue_sha256) == "c07e94a5c7cb")
-
                 #expect(mxq_engine_teardown(core, nil) == MXQ_OK)
                 #expect(try engineQuery(core).state == MXQ_ENGINE_STATE_UNINITIALIZED)
             }
@@ -46,19 +40,6 @@ extension Core {
         /// 256 MiB is the minimum table, and the reserve is the greater of a
         /// fifth of the probe or 128 MiB: 384 MiB available is exactly enough.
         @Test func aBudgetBelowTheMinimumConfiguresNothing() throws {
-            func plan(availableMiB: UInt64) -> MxqEnginePlan {
-                var budget = ampleBudget()
-                budget.available_bytes = availableMiB << 20
-                var plan = MxqEnginePlan()
-                plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
-                mxq_engine_plan(&budget, &plan, nil)
-                return plan
-            }
-            #expect(plan(availableMiB: 0).sufficient == 0)
-            #expect(plan(availableMiB: 383).sufficient == 0)
-            #expect(plan(availableMiB: 384).sufficient == 1)
-            #expect(plan(availableMiB: 384).hash_mib == 256)
-
             try withCore { core throws in
                 var budget = ampleBudget()
                 budget.available_bytes = 383 << 20
@@ -66,6 +47,12 @@ extension Core {
                     #expect(prepare(core, game, budget).0 == MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY)
                     #expect(try engineQuery(core).state == MXQ_ENGINE_STATE_UNINITIALIZED)
                 }
+
+                budget.available_bytes = 384 << 20
+                var plan = MxqEnginePlan()
+                plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
+                #expect(mxq_engine_prepare(core, MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI), &budget, &plan, nil) == MXQ_OK)
+                #expect(plan.hash_mib == 256)
             }
         }
 
@@ -122,17 +109,12 @@ extension Core {
             (MXQ_GAME_KIND_GOMOKU_15, ["h8", "h9", "i8"]),
             (MXQ_GAME_KIND_RENJU, ["h8", "h9", "i8"]),
         ])
-        func aHintIsALegalMoveWithinItsThinkingTime(game: Int, line: [String]) throws {
+        func aSearchAnswersALegalMoveWithinItsThinkingTime(game: Int, line: [String]) throws {
             try withCore { core throws in
                 let (status, detail) = prepare(core, game)
                 try #require(status == MXQ_OK, "\(detail)")
-                let session = try freePlay(core, game)
-                defer { mxq_game_release(session) }
-                for move in line {
-                    try #require(mxq_game_apply_move(session, move, nil, nil, nil) == MXQ_OK, "\(move)")
-                }
                 let begun = ContinuousClock.now
-                let result = try hint(core, session, movetime: UInt32(MXQ_MOVETIME_FAST_MS))
+                let result = try searched(core, game, line)
                 #expect(ContinuousClock.now - begun < .seconds(5))
                 #expect(result.outcome == MXQ_SEARCH_MOVE, "\(statusName(result.status))")
                 #expect(result.nodes > 0)
@@ -141,23 +123,19 @@ extension Core {
             }
         }
 
-        @Test func aCancelledHintStopsEarly() throws {
+        @Test func aCancelledSearchStopsEarly() throws {
             try withCore { core throws in
                 try #require(prepare(core, MXQ_GAME_KIND_GOMOKU_15).0 == MXQ_OK)
-                let session = try freePlay(core, MXQ_GAME_KIND_GOMOKU_15)
-                defer { mxq_game_release(session) }
-                for move in ["h8", "h9", "i8"] {
-                    try #require(mxq_game_apply_move(session, move, nil, nil, nil) == MXQ_OK)
-                }
-                var ticket: UInt64 = 0
+                let line = ["h8", "h9", "i8"]
+                let delivery = Delivery()
                 let begun = ContinuousClock.now
-                try #require(mxq_search_start_hint(core, session, UInt32(MXQ_MOVETIME_DEEP_MS), nil, nil, &ticket, nil) == MXQ_OK)
+                let ticket = try search(core, MXQ_GAME_KIND_GOMOKU_15, line, movetime: deep, delivery)
                 Thread.sleep(forTimeInterval: 0.15)
                 #expect(mxq_search_cancel(core, ticket, nil) == MXQ_OK)
-                let result = try wait(core, ticket)
-                #expect(ContinuousClock.now - begun < .milliseconds(Int(MXQ_MOVETIME_DEEP_MS) / 2))
+                let result = try #require(delivery.wait())
+                #expect(ContinuousClock.now - begun < .milliseconds(Int(deep) / 2))
                 #expect(result.outcome == MXQ_SEARCH_CANCELLED)
-                #expect(try hint(core, session, movetime: UInt32(MXQ_MOVETIME_FAST_MS)).outcome == MXQ_SEARCH_MOVE,
+                #expect(try searched(core, MXQ_GAME_KIND_GOMOKU_15, line).outcome == MXQ_SEARCH_MOVE,
                         "the engine searches again after a cancellation")
             }
         }
@@ -174,13 +152,7 @@ extension Core {
                 try withCore { core throws in
                     for (game, line) in [(MXQ_GAME_KIND_MINI_XIANGQI, ["b1b3"]), (MXQ_GAME_KIND_GOMOKU_15, ["h8"])] {
                         try #require(prepare(core, game).0 == MXQ_OK)
-                        let session = try freePlay(core, game)
-                        defer { mxq_game_release(session) }
-                        for move in line {
-                            try #require(mxq_game_apply_move(session, move, nil, nil, nil) == MXQ_OK)
-                        }
-                        _ = try hint(core, session, movetime: UInt32(MXQ_MOVETIME_FAST_MS))
-                        mxq_store_archive_and_clear(core, session, nil, nil)
+                        _ = try searched(core, game, line)
                     }
                 }
             }

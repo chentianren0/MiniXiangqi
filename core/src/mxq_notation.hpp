@@ -104,21 +104,6 @@ bool searched(MxqGameKind game);
 const char *start_fen(MxqGameKind game);
 
 /*
- * The position a session configured this way begins from: the configuration's
- * own start where it names one, and the game's frozen start where it does not.
- *
- * One function because everything that replays a session asks it — the session
- * itself, the search snapshot, and the document the archive writes — and the
- * empty-means-frozen convention read three ways is three places for a game to
- * start somewhere its own configuration did not say.
- *
- * A configuration of a game with no frozen start always names one — creation
- * refuses an empty member for such a game — so the fallback below is that
- * refusal's other side rather than a second policy.
- */
-const char *start_fen(const MxqGameConfig &config);
-
-/*
  * How many characters of `text` the square beginning at its start occupies, or
  * 0 when no square begins there. len bounds the read; text need not be
  * NUL-terminated.

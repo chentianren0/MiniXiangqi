@@ -30,9 +30,8 @@ struct BoardGameRulesTests {
         try TestCores.fresh().boardGameRules
     }
 
-    /// The dealt-start vector `fixtures/store/jieqi-nearby-dealt.json` pins:
-    /// one seed, one nonce, and the commitment, digest and start the core
-    /// derives from them. Bound to rather than restated — the derivation is one
+    /// One dealt-start vector: one seed, one nonce, and the commitment, digest
+    /// and start the core derives from them. The derivation is one
     /// implementation, and two devices playing one dealt game depend on it
     /// answering the same bytes everywhere.
     static let seed = String(repeating: "0", count: 64)

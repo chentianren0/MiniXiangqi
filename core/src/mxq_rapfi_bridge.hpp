@@ -175,38 +175,14 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
                    std::vector<std::string> *out_legal_moves,
                    size_t &first_illegal, std::string &detail);
 
-/* Why configure() refused. Each maps onto one engine-domain status of the error
- * taxonomy in docs/core-interface.md. */
+/* Why configure() refused. Each maps onto one engine-domain status. */
 enum class ConfigureError {
     None,
-    InsufficientMemory,   /* the planned budget is below the accepted minimum;
-                           * nothing was configured. Only prepare() returns it */
     AssetMissing,         /* a weight file this rule needs is not there */
     AssetMismatch,        /* the effective evaluator after configuration */
     RulesLoadFailed,      /* the engine could not be brought up for this rule */
     HashAllocationFailed, /* the transposition table could not be allocated */
 };
-
-/*
- * The whole of preparation, from the frontend's own probe values: compute the
- * accepted memory plan, refuse below its minimum without configuring anything,
- * and otherwise configure with the threads and the table size the plan yields.
- *
- * There is exactly one memory policy in this core and this is a second consumer
- * of it, not a second copy: the arithmetic is mxq_engine_plan's — reserve the
- * greater of a fifth of the probe or 128 MiB, cap the byte budget at 4 GiB and
- * at half the physical memory, round down to a 64 MiB multiple, refuse below
- * 256 MiB — and it is called here rather than restated. It is a pure function of
- * the probe values, which is what lets every boundary of it be tested without
- * an engine, and what lets this call it without one either.
- *
- * out_applied receives the plan whether or not it was applied, so a caller can
- * report the budget that was refused. Caller: the facade's engine thread only,
- * with no search outstanding.
- */
-ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
-                       const std::string &assets_dir, MxqEnginePlan &out_applied,
-                       std::string &detail);
 
 /*
  * Apply the plan: the requested rules, the accepted shared search profile, the

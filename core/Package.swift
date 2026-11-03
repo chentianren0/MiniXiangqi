@@ -110,8 +110,7 @@ let package = Package(
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/simde/include"),
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/lz4/include"),
                 .unsafeFlags(engineHeadersUnderCxx20),
-            ],
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            ]
         ),
         .testTarget(
             name: "MiniXiangqiCoreTests",

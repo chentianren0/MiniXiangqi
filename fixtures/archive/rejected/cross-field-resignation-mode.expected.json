@@ -1,7 +1,0 @@
-{
-  "class": "cross-field: resignation",
-  "probe": "MXQ_ERR_ARCHIVE_MALFORMED",
-  "validate": "MXQ_ERR_ARCHIVE_MALFORMED",
-  "detail_contains": "needs an opponent to resign to",
-  "why": "A resignation needs an opponent to resign to, and Free Play has none."
-}
