@@ -2,6 +2,7 @@
 
 - Upstream: https://github.com/official-pikafish/Pikafish, branch `jieqi`, base `9b963f727983a1d9308e0dca48b39c802b8e75a2`
 - Fork: https://github.com/chentianren0/Pikafish, branch `jieqi-mxq`, pinned at `709ba1792d87be01e69975472936bc309ed54082`, committed 2026-08-16
+- The upstream `jieqi` branch no longer exists; the fork's `jieqi` and `jieqi-mxq` branches carry the code.
 - Included: `src/position.cpp`, `src/movegen.cpp`, `src/bitboard.cpp` and the headers they reach. Excluded: search, evaluation, NNUE code, UCI, `misc.cpp`, `memory.cpp`, the bundled zstd, the Makefile, tests and CI.
 - `mxq_pikafish_link_closure.cpp` supplies the three definitions the slice references but does not carry. A consumer must never define them itself: its body would silently win.
 - `mxq_jieqi_bridge.cpp` and `include/mxq_jieqi_bridge.hpp` are the core's bridge to the slice, compiled in this target so they share its defines.
