@@ -11,7 +11,7 @@
 #define MXQ_BUILD_CORE_REVISION "unknown"
 
 /* The Fairy-Stockfish fork revision. */
-#define MXQ_BUILD_FORK_REVISION "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e"
+#define MXQ_BUILD_FORK_REVISION "791e25f5902ee0c8a9624886a768432a0badafc5"
 
 /* The Rapfi fork revision. */
 #define MXQ_BUILD_GOMOKU_FORK_REVISION "921aadc390b33a9346dad9be681d4ddde0d7406a"

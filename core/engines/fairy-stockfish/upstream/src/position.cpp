@@ -111,7 +111,6 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
       os << UCI::square(pos, pop_lsb(b)) << " ";
 
   if (    int(Tablebases::MaxCardinality) >= popcount(pos.pieces())
-      && Options["UCI_Variant"] == "chess"
       && !pos.can_castle(ANY_CASTLING))
   {
       StateInfo st;
@@ -1063,8 +1062,10 @@ bool Position::legal(Move m) const {
   if ((!checking_permitted() || (sittuyin_promotion() && type_of(m) == PROMOTION) || (!drop_checks() && type_of(m) == DROP)) && gives_check(m))
       return false;
 
-  // Illegal quiet moves
-  if (must_capture() && !capture(m) && has_capture())
+  // Illegal quiet moves (mandatory drops take precedence over mandatory captures)
+  if (   must_capture() && !capture(m)
+      && !(must_drop() && type_of(m) == DROP && count_in_hand(us, var->mustDropType) > 0)
+      && has_capture())
       return false;
 
   // Illegal non-drop moves
@@ -2492,7 +2493,9 @@ bool Position::see_ge(Move m, Value threshold) const {
       return extinction_value() < VALUE_ZERO;
 
   // Do not evaluate SEE if value would be unreliable
-  if (must_capture() || !checking_permitted() || is_gating(m) || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
+  if (   endgame_eval() == EG_EVAL_MISERE
+      || must_capture() || !checking_permitted() || is_gating(m)
+      || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
       return VALUE_ZERO >= threshold;
 
   int swap = PieceValue[MG][piece_on(to)] - threshold;
