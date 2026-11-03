@@ -136,13 +136,6 @@ struct SettingsScreen: View {
         }
     }
 
-    /// 落子前确认: the optional pending stone of the placement games.
-    ///
-    /// A group of its own with a footer, the shape 删除前确认 already set for an
-    /// optional confirmation — and the footer says what the flow *is* rather
-    /// than warning about it, because nothing here is irreversible: what the
-    /// switch buys is a second look before a stone goes down, and Undo is the
-    /// recovery whichever way it stands.
     private static var offersHaptics: Bool {
         #if os(iOS)
         CHHapticEngine.capabilitiesForHardware().supportsHaptics
@@ -151,6 +144,13 @@ struct SettingsScreen: View {
         #endif
     }
 
+    /// 落子前确认: the optional pending stone of the placement games.
+    ///
+    /// A group of its own with a footer, the shape 删除前确认 already set for an
+    /// optional confirmation — and the footer says what the flow *is* rather
+    /// than warning about it, because nothing here is irreversible: what the
+    /// switch buys is a second look before a stone goes down, and Undo is the
+    /// recovery whichever way it stands.
     private var placement: some View {
         Section {
             Toggle("settings.confirmPlacement.label", isOn: $confirmsPlacement)

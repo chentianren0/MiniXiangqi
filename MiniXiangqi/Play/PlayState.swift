@@ -279,11 +279,17 @@ final class PlayState {
     /// The platform's suspension signals, watched for as long as this lives.
     private var suspension: Suspension?
 
+    /// The archive step of 保存并继续: the core's own, replaceable so a test
+    /// can hold it in flight without suspending over a live core.
+    @ObservationIgnored
+    var archiveActiveGame: (@escaping @MainActor (Result<UInt64, CoreError>) -> Void) -> Void
+
     /// The engine is a seam because a working core will not refuse to prepare
     /// on request; it defaults to the core itself.
     init(core: Core, engine: AIEngine? = nil) {
         self.core = core
         self.engine = engine ?? core
+        self.archiveActiveGame = { [core] in core.archiveActiveAndClear(completion: $0) }
     }
 
     /// Reads the launch's answer, once.
@@ -391,7 +397,7 @@ final class PlayState {
         if let mode = activeSummary?.mode, mode.isNetworked {
             giveUpNetworkedGame?(mode)
         }
-        core.archiveActiveAndClear { [weak self] result in
+        archiveActiveGame { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
             refreshActiveSummary()
             switch result {

@@ -120,6 +120,24 @@ struct GameTests {
         #expect(game.presentedState == .redWins)
     }
 
+    @Test("An illegal move is refused by the core and leaves the game unchanged")
+    func anIllegalMoveIsRefused() throws {
+        let core = try TestCores.fresh()
+        let game = try openGame(on: core)
+        try game.replay(["b1b4"])
+        let before = game.evaluation
+
+        #expect(throws: CoreError.self) { try core.apply("a6a3") }
+        #expect(try core.moveHistory() == ["b1b4"])
+        let after = try core.evaluation()
+        #expect(after.fen == before.fen)
+        #expect(after.positionRevision == before.positionRevision)
+        #expect(after.sideToMove == .black)
+
+        try game.replay(["a6a5"])
+        #expect(game.moves == ["b1b4", "a6a5"], "and the game plays on")
+    }
+
     @Test("A natural result stays undoable, and Undo resumes the game")
     func undoResumesAfterANaturalResult() throws {
         let (game, _) = try game(playing: Self.mateLine)

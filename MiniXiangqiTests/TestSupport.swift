@@ -294,3 +294,25 @@ final class FakeDriver: NearbyDriving {
         stored = nil
     }
 }
+
+// MARK: - 保存并继续, held in flight
+
+/// Holds PlayState's archive step open, so a test decides when it answers.
+@MainActor
+final class HeldArchive {
+    private(set) var requests = 0
+    private var parked: (@MainActor (Result<UInt64, CoreError>) -> Void)?
+
+    init(holding state: PlayState) {
+        state.archiveActiveGame = { [unowned self] completion in
+            requests += 1
+            parked = completion
+        }
+    }
+
+    func answer(_ result: Result<UInt64, CoreError>) {
+        let completion = parked
+        parked = nil
+        completion?(result)
+    }
+}

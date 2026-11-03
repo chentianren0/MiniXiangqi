@@ -294,6 +294,25 @@ struct CustomSceneTests {
         #expect(try #require(state.scene).pieces.isEmpty)
     }
 
+    @Test("With a game active the row confirms first, and the editor opens after the archive")
+    func theRowIsAGameAndModeEntry() throws {
+        let core = try TestCores.fresh()
+        let state = PlayState(core: core)
+        let archive = HeldArchive(holding: state)
+        try core.create(.freePlay(game: .miniXiangqi))
+        state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
+
+        state.chooseCustomScene()
+        #expect(state.modeSwitch == .confirming(PlaySelection(game: .xiangqi, mode: .freePlay)))
+        #expect(state.page == .home, "nothing opens until the archive commits")
+        #expect(state.scene == nil)
+
+        state.saveAndContinue()
+        archive.answer(.success(1))
+        #expect(state.page == .customScene, "the editor, not a Free Play pre-start")
+        #expect(state.scene != nil)
+    }
+
     @Test("A draft that is not startable never reaches creation")
     func anUnstartableDraftNeverReachesCreation() throws {
         let core = try TestCores.fresh()

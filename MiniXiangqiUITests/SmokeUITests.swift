@@ -55,6 +55,16 @@ final class SmokeUITests: XCTestCase {
         let confirm = control(app, "settings-confirm-delete")
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         let before = isOn(confirm)
+        // The switch is the machine's real preference: put it back however
+        // the flow ends.
+        addTeardownBlock { @MainActor in
+            let restore = XCUIApplication()
+            restore.launch()
+            self.openDestination(restore, 2)
+            let row = self.control(restore, "settings-confirm-delete")
+            if row.waitForExistence(timeout: 10), self.isOn(row) != before { self.toggle(row) }
+            restore.terminate()
+        }
 
         toggle(confirm)
         XCTAssertTrue(waitForState(confirm, !before), "the switch moves")
@@ -63,9 +73,6 @@ final class SmokeUITests: XCTestCase {
         openDestination(app, 2)
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertEqual(isOn(confirm), !before, "and the preference is kept")
-
-        toggle(confirm)
-        XCTAssertTrue(waitForState(confirm, before))
     }
 
     // MARK: - Launching
