@@ -444,9 +444,9 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         /* Release the threads first, so the thread set is created exactly once
          * below. This avoids a deadlock in the engine's thread teardown:
          *
-         * SearchThread::init() queues a first task, leaving `running` true until
-         * the worker picks it up. The destructor sets `exit` and waits for
-         * `running` to fall. If it runs before the pickup, the worker sees
+         * SearchThread::init() queues a first task, leaving `running` true
+         * until the worker picks it up. The destructor sets `exit` and waits
+         * for `running` to fall. If it runs before the pickup, the worker sees
          * `exit` and returns without clearing `running`, and the destructor
          * waits forever. setupSearcher() re-creates the whole set itself, so
          * calling it with threads live and then resizing provokes this.
@@ -463,8 +463,8 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         /* After the load, which overwrites the [general] table. */
         Config::GeneralCfg.messageMode = MsgMode::NONE;
 
-        /* An identity resolver: the engine's own searches the working
-         * directory and next to argv[0], and these paths are already absolute. */
+        /* An identity resolver: the engine's own searches the working directory
+         * and next to argv[0], and these paths are already absolute. */
         Evaluation::EvaluatorWeightsConfig cfg;
         cfg.type = "mix9svq";
         Evaluation::EvaluatorWeightsConfig::WeightFiles files;
@@ -495,8 +495,7 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         Search::Engine.setupSearcher(Search::createSearcher("alphabeta"));
 
         /* setNumThreads must not be called from a worker thread; the facade's
-         * engine thread is not one. clear(true) begins a new game and flushes
-         * the transposition table. */
+         * engine thread is not one. */
         Search::Engine.setNumThreads(threads);
 
         /* The other half of the deadlock fix: nothing below synchronises on
@@ -511,6 +510,7 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
          * setBoardAndEvaluator reads. */
         Search::Engine.waitForIdle();
 
+        /* Begins a new game and flushes the transposition table. */
         Search::Engine.clear(true);
     }
 

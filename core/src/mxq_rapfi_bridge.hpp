@@ -96,8 +96,8 @@ enum class ReplayError {
 };
 
 /*
- * Replay a placement game's line from its starting position, and report where it
- * arrived. The rule and the notation both follow from the game.
+ * Replay a placement game's line from its starting position, and report where
+ * it arrived. The rule and the notation both follow from the game.
  *
  * Needs no prepared engine: the pattern tables are built at static
  * initialisation and the board is local, so rules queries work whether or not
@@ -138,8 +138,8 @@ enum class ConfigureError {
  *   - configure() and deconfigure() are the only mutators. Both run on the
  *     facade's engine thread, are refused while a search is outstanding, and
  *     take the same mutex.
- *   - A rules switch is a full reconfiguration: the board is begun again and the
- *     transposition table flushed, because entries keyed under one rule's
+ *   - A rules switch is a full reconfiguration: the board is begun again and
+ *     the transposition table flushed, because entries keyed under one rule's
  *     zobrist and pattern tables mean something else under the other's.
  *   - search_run() does not hold the mutex, so a search does not stall every
  *     other bridge call.
@@ -162,8 +162,9 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
                          const std::string &assets_dir, std::string &detail);
 
 /* Release the transposition table and return the engine to its unprepared
- * state: no threads, no evaluator, no table. Caller: the facade's engine thread
- * with no search outstanding, or the core's shutdown after that thread joined. */
+ * state: no threads, no evaluator, no table. Caller: the facade's engine
+ * thread with no search outstanding, or the core's shutdown after that
+ * thread joined. */
 void deconfigure();
 
 /* Why search_run() produced no point. */

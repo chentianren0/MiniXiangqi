@@ -1,12 +1,6 @@
 /*
- * The search facade behind mxq_engine_prepare/teardown/query and the
- * mxq_search_ group: the core's one engine thread, its task queue, the tickets
- * and the delivery ladder. See mxq_search.cpp for the
- * design; this header is only what mxq_core.cpp's lifecycle needs to call.
- *
- * The facade's state is process-global, exactly as the engine bridge's is and
- * for the same reason: the embedded engine's process-global state admits one
- * instance, which is why MxqCore is singleton-enforced.
+ * The search facade's lifecycle, as mxq_core.cpp calls it. The facade's state
+ * is process-global, like the engines it fronts.
  */
 
 #ifndef MXQ_SEARCH_HPP
@@ -19,20 +13,16 @@ struct MxqCore;
 namespace mxq {
 namespace search {
 
-/* Spawn the engine thread and reset the facade — tickets and engine state — for
- * a fresh core. Called by mxq_core_init after everything
- * that can fail has succeeded, so a failed initialisation never leaks a
- * thread. */
+/* Spawn the engine thread and reset the facade for a fresh core. Called last
+ * in mxq_core_init, so a failed initialisation never leaks a thread. */
 void startup();
 
-/* The engine-thread half of mxq_core_shutdown: cancel all work, drain it —
- * cancelled callbacks still fire — join the engine thread, and release the
- * engine to the deconfigured posture. */
+/* Cancel all work, drain it (cancelled callbacks still fire), join the engine
+ * thread and release the engines. */
 void shutdown();
 
-/* The body of mxq_core_cancel_all: cancel every outstanding search
- * cooperatively and block until the engine quiesces. Callbacks still fire,
- * with MXQ_SEARCH_CANCELLED. */
+/* Cancel every outstanding search and block until the engine thread is idle.
+ * Callbacks still fire, cancelled. */
 MxqStatus cancel_all_and_quiesce(MxqError *err);
 
 } /* namespace search */

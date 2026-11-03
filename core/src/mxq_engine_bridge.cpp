@@ -644,7 +644,8 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
         Options["EvalFile"] = eval_file;
 
         /* The Hash floor first, so the pool resize re-allocates a megabyte
-         * rather than the previous table; the target Hash then allocates once. */
+         * rather than the previous table; the target Hash then allocates
+         * once. */
         Options["Hash"] = std::string("1");
         Options["Threads"] = std::to_string(threads);
         Options["Hash"] = std::to_string(hash_mib);

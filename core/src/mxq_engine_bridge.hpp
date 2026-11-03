@@ -139,12 +139,12 @@ ProbeError side_to_move_in_check(Variant variant, const char *fen,
  * mxq_search.cpp holds the thread, queue, tickets and results; these functions
  * hold every Stockfish global the search needs.
  *
- * Serialisation. Search shares the engine's process-global state with the
- * rules bridge: Options, the thread pool, the transposition table, and the
- * variant, piece and bitboard tables. A rules query can land mid-search (undo
- * while thinking; cancellation is cooperative), so rules queries must never
- * block behind a multi-second search, and a search must never trip over a
- * concurrent replay:
+ * Serialisation. Search shares the engine's process-global state with the rules
+ * bridge: Options, the thread pool, the transposition table, and the variant,
+ * piece and bitboard tables. A rules query can land mid-search (undo while
+ * thinking; cancellation is cooperative), so rules queries must never block
+ * behind a multi-second search, and a search must never trip over a concurrent
+ * replay:
  *
  *   - The variant, piece and bitboard tables are built for ONE variant at a
  *     time: setting UCI_Variant rewrites pieceMap, the piece bitboards and the
@@ -159,17 +159,17 @@ ProbeError side_to_move_in_check(Variant variant, const char *fen,
  *     holds, so a replay never sees any of these mid-mutation and a variant
  *     switch is never concurrent with a search.
  *   - search_run() does NOT hold g_mutex: it only reads tables a replay also
- *     only reads, its Position is its own, and no rules path touches the TT —
- *     a replay's do_move only prefetches a TT address. Holding the mutex for a
+ *     only reads, its Position is its own, and no rules path touches the TT — a
+ *     replay's do_move only prefetches a TT address. Holding the mutex for a
  *     search would stall every board query for seconds.
- *   - Tolerated: a Position must name a Thread, replay names Threads.main(), and
- *     do_move counts a node on it, so a replay concurrent with a search
+ *   - Tolerated: a Position must name a Thread, replay names Threads.main(),
+ *     and do_move counts a node on it, so a replay concurrent with a search
  *     inflates the reported node count. The counter is atomic and diagnostic
  *     only.
  *
  * Pool size: ensure_initialised holds the pool at 1, which replay needs
- * (Threads.main() must exist). configure() sizes it from the plan; deconfigure()
- * restores 1. Nothing sets it to 0 before process shutdown.
+ * (Threads.main() must exist). configure() sizes it from the plan;
+ * deconfigure() restores 1. Nothing sets it to 0 before process shutdown.
  */
 
 /* Each maps onto one engine-domain status. */

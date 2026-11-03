@@ -38,7 +38,8 @@ constexpr char kEmpty = '\0';
  * know it.
  *
  * Indexed [rank from Red's back rank][file from a], both zero-based, so
- * letter[0][4] is e1. The FEN lists the highest rank first; read_record turns it.
+ * letter[0][4] is e1. The FEN lists the highest rank first; read_record turns
+ * it.
  */
 struct Record {
     char     letter[kRanks][kFiles]; /* the identity; its case is its side */
@@ -64,7 +65,8 @@ std::string write_record(const Record &record);
 
 /*
  * The piece that starts on a point of the standard array, kEmpty if none. A
- * hidden piece has never moved, so it plays the role of the square it stands on.
+ * hidden piece has never moved, so it plays the role of the square it stands
+ * on.
  */
 char home_letter(int32_t file, int32_t rank);
 
