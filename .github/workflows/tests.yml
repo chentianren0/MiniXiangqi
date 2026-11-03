@@ -23,5 +23,6 @@ jobs:
           -destination 'platform=macOS'
           CODE_SIGNING_ALLOWED=NO
       - name: Core tests
+        if: ${{ !cancelled() }}
         working-directory: core
         run: swift test
