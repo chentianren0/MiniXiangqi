@@ -37,7 +37,8 @@ extension Core {
         @Test func aPositionHasOneSpelling() throws {
             try withCore { core throws in
                 let valid = "15/15/15/15/15/15/15/7S7/15/15/15/15/15/15/15 b - - 0 1"
-                #expect(mxq_rules_validate_fen(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), valid, nil) == MXQ_OK)
+                #expect(mxq_rules_validate_setup(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), valid, nil, nil)
+                    == MXQ_ERR_RULES_ILLEGAL_POSITION, "a position of the board that is not its start")
                 let rejected = [
                     "15/15/15/15/15/15/15/7S7/15/15/15/15/15/15 b - - 0 1",
                     "15/15/15/15/15/15/15/7S7/15/15/15/15/15/15/15/15 b - - 0 1",
@@ -52,9 +53,9 @@ extension Core {
                     "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
                 ]
                 for fen in rejected {
-                    #expect(mxq_rules_validate_fen(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), fen, nil) == MXQ_ERR_RULES_INVALID_FEN, "\(fen)")
+                    #expect(mxq_rules_validate_setup(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), fen, nil, nil) == MXQ_ERR_RULES_INVALID_FEN, "\(fen)")
                 }
-                #expect(mxq_rules_validate_fen(core, MxqGameKind(MXQ_GAME_KIND_XIANGQI), valid, nil) == MXQ_ERR_RULES_INVALID_FEN)
+                #expect(mxq_rules_validate_setup(core, MxqGameKind(MXQ_GAME_KIND_XIANGQI), valid, nil, nil) == MXQ_ERR_RULES_INVALID_FEN)
             }
         }
 
@@ -169,12 +170,12 @@ extension Core {
                 #expect(full.status == MXQ_OK && full.state.state == MXQ_GAME_DRAW)
                 #expect(reasonName(full.state.reason) == "board-full")
                 #expect(full.position.ply_count == 225)
-                #expect(full.state.claim_available == 0)
                 // The widest position this interface carries.
                 #expect(full.fen.count == 251)
                 #expect(full.fen.hasSuffix(" b - - 0 113"))
                 #expect(full.fen.count < Int(MXQ_FEN_CAP))
-                #expect(mxq_rules_validate_fen(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), full.fen, nil) == MXQ_OK)
+                #expect(mxq_rules_validate_setup(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), full.fen, nil, nil)
+                    != MXQ_ERR_RULES_INVALID_FEN, "the widest position is one of the board")
             }
         }
     }

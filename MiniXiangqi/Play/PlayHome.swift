@@ -80,7 +80,7 @@ struct PlayHome: View {
 
     /// The active game: what it is, and the way back into it.
     ///
-    /// Every fact on the line is read from the store's own summary rather than
+    /// Every fact on the line is read from the library's own summary rather than
     /// worked out here — the page holds no session, and the game becomes live
     /// only when 回到对局 opens its board. The header is the same 当前对局 the
     /// confirmation puts over the same line.

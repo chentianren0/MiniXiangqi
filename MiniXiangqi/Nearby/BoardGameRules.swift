@@ -101,28 +101,15 @@ nonisolated protocol BoardGameRules: Sendable {
 /// Knowing a name is not the same as playing the game: which of these this peer
 /// carries over the wire is `version(of:)`'s answer below.
 nonisolated extension GameKind {
-    var rulesID: String {
-        switch self {
-        case .miniXiangqi: "minixiangqi"
-        case .xiangqi: "xiangqi"
-        case .gomoku15: "gomoku-15"
-        case .renju: "renju"
-        case .jieqi: "jieqi"
-        }
-    }
+    var rulesID: String { rawValue }
 
-    init?(rulesID: String) {
-        guard let match = Self.allCases.first(where: { $0.rulesID == rulesID }) else {
-            return nil
-        }
-        self = match
-    }
+    init?(rulesID: String) { self.init(rawValue: rulesID) }
 }
 
-/// The core's answers, over the session-free rules facade.
+/// The core's answers, over its rules facade.
 ///
-/// `@unchecked Sendable` for the reason `HistoryStore` is: what makes the
-/// handle safe to send is the C contract above it — `mxq_rules_*` is callable
+/// `@unchecked Sendable` because what makes the handle safe to send is the C
+/// contract above it — `mxq_rules_*` is callable
 /// from any thread except inside a search callback — which Swift cannot read.
 nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     private let core: OpaquePointer

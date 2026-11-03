@@ -1,9 +1,4 @@
-/* Engine preparation.
- *
- * Only mxq_engine_plan is implemented at this stage. The contract makes it a
- * pure function of the frontend-supplied probe values precisely so that every
- * budget boundary in docs/testing.md is testable without an engine, so it needs
- * nothing that is not yet vendored. */
+/* The Hash plan, a pure function of the probe: mxq_engine_prepare applies it. */
 
 #include "mxq_internal.hpp"
 
@@ -13,10 +8,10 @@ constexpr uint64_t kBytesPerMiB = 1024ull * 1024ull;
 
 } /* namespace */
 
-extern "C" {
+namespace mxq {
 
-MxqStatus MXQ_CALL mxq_engine_plan(const MxqEngineBudget *budget,
-                                   MxqEnginePlan *out, MxqError *err) {
+MxqStatus engine_plan(const MxqEngineBudget *budget, MxqEnginePlan *out,
+                      MxqError *err) {
     MxqStatus rc = mxq::check_in(
         budget, budget != nullptr ? budget->struct_size : 0u,
         static_cast<uint32_t>(sizeof(MxqEngineBudget)),
@@ -76,4 +71,4 @@ MxqStatus MXQ_CALL mxq_engine_plan(const MxqEngineBudget *budget,
     return MXQ_OK;
 }
 
-} /* extern "C" */
+} /* namespace mxq */

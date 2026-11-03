@@ -8,45 +8,41 @@ import Testing
 struct GameSessionTests {
     @Test("An untouched board persists nothing; 开始对局 is what creates the game")
     func startingTheGameCreatesIt() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
 
-        #expect(try !core.activeGameExists(),
+        #expect(try library.activeRecord() == nil,
                 "opening the app is not starting a game")
-        #expect(!core.hasSession, "no session either: there is nothing to attach")
+        #expect(!library.hasSession, "nothing is held either: there is nothing to hold")
 
-        try core.create(.freePlay(game: .miniXiangqi))
-        let game = try Game(core: core)
+        try library.create(.freePlay(game: .miniXiangqi))
+        let game = try Game(library: library)
 
-        #expect(core.hasSession)
-        #expect(try core.activeGameExists(), "the game exists before its first move")
+        #expect(library.hasSession)
+        #expect(try library.activeRecord() != nil, "the game exists before its first move")
         #expect(game.moves.isEmpty, "and has no moves in it")
         #expect(game.kind == .miniXiangqi)
         #expect(game.mode == .freePlay)
         #expect(game.humanSide == nil, "Free Play has no human side: one person plays both")
-        #expect(!game.identity.isEmpty, "a created game has its frozen identity")
 
         game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         game.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(game.moves == ["b1b4"])
     }
 
-    @Test("A created human-versus-AI game freezes its side, level and thinking time")
+    @Test("A created human-versus-AI game keeps its side, level and thinking time")
     func creationFreezesTheConfiguration() throws {
-        let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black,
-                                      level: .deep, choice: .random))
-        let game = try Game(core: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.humanVersusAI(game: .miniXiangqi, humanSide: .black, level: .deep))
+        let game = try Game(library: library)
 
         let configuration = game.configuration
         #expect(configuration.game == .miniXiangqi)
         #expect(configuration.mode == .humanVersusAI)
         #expect(configuration.humanSide == .black,
                 "the resolved side, not the choice that produced it")
-        #expect(configuration.firstMoverChoice == .random,
-                "the choice is retained because it cannot be reconstructed later")
         #expect(configuration.aiLevel == .deep)
         #expect(configuration.movetimeMilliseconds == 5000,
-                "深思 is go movetime 5000, frozen with the game")
+                "深思 is go movetime 5000")
         #expect(game.humanSide == .black)
         #expect(game.flipped,
                 "the human's own side is at the bottom, so a Black human turns the board")
@@ -55,35 +51,25 @@ struct GameSessionTests {
         #expect(!game.canResign == false, "resignation is on offer in human-versus-AI play")
     }
 
-    @Test("Every game value survives Swift configuration and core readback",
-          arguments: GameKind.allCases)
+    @Test("Every game is created as the game it was asked for", arguments: GameKind.allCases)
     func gameKindSurvivesConfiguration(_ kind: GameKind) throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
         let start = try Core.frozenStartFEN(for: kind) == nil
-            ? core.deal(kind).startFEN : nil
-        let configurations = [
-            GameConfiguration.freePlay(game: kind, startFEN: start),
-            GameConfiguration.humanVersusAI(game: kind, humanSide: .black,
-                                            level: .standard, choice: .random),
-        ]
+            ? library.core.deal(kind).startFEN : nil
+        let configuration = GameConfiguration.freePlay(game: kind, startFEN: start)
 
-        for configuration in configurations {
-            let decoded = try #require(GameConfiguration(configuration.raw))
-            #expect(decoded == configuration, "the Swift/C boundary retains the game axis")
-        }
-
-        try core.create(configurations[0])
-        #expect(try core.configuration() == configurations[0],
-                "the attached session reports the game it was created for")
+        try library.create(configuration)
+        #expect(try library.configuration() == configuration,
+                "the record reports the game it was created for")
     }
 
     @Test("A Xiangqi game presents every legal move the core returns")
     func xiangqiLegalMovesAreNeverDroppedByPresentationParsing() throws {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .xiangqi))
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .xiangqi))
 
-        let game = try Game(core: core)
-        let canonical = try core.legalMoves()
+        let game = try Game(library: library)
+        let canonical = try library.legalMoves()
 
         #expect(game.kind == .xiangqi)
         #expect(game.failure == nil)
@@ -95,33 +81,24 @@ struct GameSessionTests {
                 == Piece(kind: .elephant, side: .black))
     }
 
-    @Test("An unknown core game value has no Swift fallback")
-    func unknownGameKindIsRejected() {
-        var raw = GameConfiguration.freePlay(game: .miniXiangqi).raw
-        raw.game = MxqGameKind(5)
-
-        #expect(GameConfiguration(raw) == nil,
-                "an expanded core vocabulary must not silently become Mini Xiangqi")
-    }
-
-    @Test("A move is committed when it is accepted, with no separate save")
+    @Test("A move is saved when it is accepted, and survives a relaunch of the container")
     func everyMoveCommits() throws {
-        let directory = TestCores.scratchDirectory()
-        var core = try TestCores.open(at: directory)
-        let game = try openGame(on: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        let game = try openGame(on: library)
         try game.replay(["b1b4", "a6a5"])
 
-        core = try TestCores.open(at: directory)
-        let resumed = try openGame(on: core)
+        let relaunched = try TestLibraries.open(at: url, core: library.core)
+        let resumed = try openGame(on: relaunched)
         #expect(resumed.moves == ["b1b4", "a6a5"],
-                "both plies were committed as they were played")
+                "both plies were saved as they were played")
     }
 
     @Test("A stored game resumes exactly: position, history, notation, turn")
     func aStoredGameResumesExactly() throws {
-        let directory = TestCores.scratchDirectory()
-        var core = try TestCores.open(at: directory)
-        let played = try openGame(on: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        let played = try openGame(on: library)
         try played.replay(GameTests.captureLine)
         let fen = played.evaluation.fen
         let notation = played.notation
@@ -130,8 +107,8 @@ struct GameSessionTests {
         #expect(notation.map(\.wxf) == ["P4+1", "P4+1", "P4+1", "P4+1"],
                 "and these, since a resumed game has to read the same in either")
 
-        core = try TestCores.open(at: directory)
-        let resumed = try openGame(on: core)
+        let relaunched = try TestLibraries.open(at: url, core: library.core)
+        let resumed = try openGame(on: relaunched)
 
         #expect(resumed.moves == GameTests.captureLine)
         #expect(resumed.evaluation.fen == fen, "the position is the same position")
@@ -156,16 +133,16 @@ struct GameSessionTests {
 
     @Test("A forty-ply game resumes whole: every ply, every word, the same position")
     func aLongGameResumesWhole() throws {
-        let directory = TestCores.scratchDirectory()
-        var core = try TestCores.open(at: directory)
-        let played = try openGame(on: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        let played = try openGame(on: library)
         try played.replay(Self.longLine)
         #expect(played.moves.count == 40, "the premise: forty plies were committed")
         let fen = played.evaluation.fen
         let notation = played.notation
 
-        core = try TestCores.open(at: directory)
-        let resumed = try openGame(on: core)
+        let relaunched = try TestLibraries.open(at: url, core: library.core)
+        let resumed = try openGame(on: relaunched)
 
         #expect(resumed.moves == Self.longLine, "the whole line came back")
         #expect(resumed.notation == notation, "and reads in the same forty words")
@@ -178,113 +155,110 @@ struct GameSessionTests {
 
     @Test("Two finished games make two History records, newest first")
     func twoGamesFileIntoOneStore() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
 
-        let first = try openGame(on: core)
+        let first = try openGame(on: library)
         try first.replay(GameTests.mateLine)
         try first.file()
 
-        core.endSession()
-        let second = try openGame(on: core)
+        library.endSession()
+        let second = try openGame(on: library)
         try second.replay(GameTests.shuffleLine)
         second.claimDraw()
 
-        #expect(try core.historyCount() == 2, "one library, two games")
-        #expect(try !core.activeGameExists(), "and nothing left active")
+        #expect(try library.history().count == 2, "one library, two games")
+        #expect(try library.activeRecord() == nil, "and nothing left in play")
         #expect(first.filedRecordID != second.filedRecordID,
                 "two records, not one written twice")
-
-        let page = try core.history.all().records
-        #expect(page.map(\.id) == [second.filedRecordID, first.filedRecordID],
-                "the core orders the most recently added first")
+        #expect(try library.history().map(\.id) == [second.filedRecordID, first.filedRecordID],
+                "the most recently ended first")
     }
 
     @Test("With nothing stored, PlayState stays home and Game cannot represent absence")
     func absenceStaysAtHome() throws {
-        let core = try TestCores.fresh()
-        #expect(throws: CoreError.self) { try Game(core: core) }
+        let library = try TestLibraries.fresh()
+        #expect(throws: CoreError.self) { try Game(library: library) }
 
-        let state = PlayState(core: core)
+        let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
 
         #expect(state.started)
         #expect(state.page == .home)
         #expect(state.game == nil, "absence belongs to PlayState, not to a placeholder Game")
-        #expect(!core.hasSession, "absence resumes no session")
-        #expect(try !core.activeGameExists(), "and creates none")
+        #expect(!library.hasSession, "absence holds nothing")
+        #expect(try library.activeRecord() == nil, "and creates nothing")
     }
 
-    @Test("A launch describes the stored game without opening a session over it")
+    @Test("A launch describes the stored game without taking it up")
     func aStoredGameIsDescribedWithoutBeingOpened() throws {
-        let directory = TestCores.scratchDirectory()
-        var core = try TestCores.open(at: directory)
-        let played = try openGame(on: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        let played = try openGame(on: library)
         try played.replay(["b1b3", "b7b6"])
 
-        core = try TestCores.open(at: directory)
-        let state = PlayState(core: core)
+        let relaunched = try TestLibraries.open(at: url, core: library.core)
+        let state = PlayState(library: relaunched)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
 
         #expect(state.page == .home, "a fresh launch is not an entry into the game")
-        #expect(!core.hasSession, "and opens no session over the stored game")
+        #expect(!relaunched.hasSession, "and holds nothing")
         #expect(state.game == nil, "there is no living game to hold")
         #expect(state.activeSummary?.moveCount == 2,
-                "what the home has is the store's summary of the line it was left at")
+                "what the home has is the library's summary of the line it was left at")
 
         state.resume(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board, "and the card is the way in")
-        #expect(core.hasSession, "which is where the session is opened")
+        #expect(relaunched.hasSession, "which is where the game is taken up")
         #expect(state.game?.moves == ["b1b3", "b7b6"], "over the line it was left at")
     }
 
     @Test("An unconfirmed mate resumes finished, still undoable, and Undo resumes play")
     func anUnconfirmedResultResumesFinished() throws {
-        let directory = TestCores.scratchDirectory()
-        var core = try TestCores.open(at: directory)
-        let mated = try openGame(on: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        let mated = try openGame(on: library)
         try mated.replay(GameTests.mateLine)
         #expect(mated.isFinished)
 
-        core = try TestCores.open(at: directory)
-        let resumed = try openGame(on: core)
+        let relaunched = try TestLibraries.open(at: url, core: library.core)
+        let resumed = try openGame(on: relaunched)
 
         #expect(resumed.isFinished, "the unconfirmed result is the game's state")
         #expect(resumed.presentedState == .redWins)
         #expect(resumed.evaluation.reason == .checkmate)
-        #expect(resumed.canUndo,
-                "unconfirmed is unconfirmed across a relaunch: the core still offers Undo")
+        #expect(resumed.canUndo, "unconfirmed is unconfirmed across a relaunch")
 
         resumed.undo()
-        #expect(resumed.failure == nil, "the core accepted the undo")
+        #expect(resumed.failure == nil, "the library saved the undo")
         #expect(!resumed.isFinished, "and the game is running again")
         #expect(resumed.moves == ["b1b3", "b7b6"])
     }
 
     @Test("Starting anew confirms the natural result into History and the next move creates fresh")
     func filingConfirmsTheResult() throws {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(GameTests.mateLine)
 
         try game.file()
         #expect(game.filedRecordID != nil)
-        #expect(try core.historyCount() == 1, "the finished game is a History record")
-        #expect(try !core.activeGameExists(), "and no longer the active game")
+        #expect(try library.history().count == 1, "the finished game is a History record")
+        #expect(try library.activeRecord() == nil, "and no longer the game in play")
 
-        core.endSession()
-        try core.create(.freePlay(game: .miniXiangqi))
-        let next = try Game(core: core)
+        library.endSession()
+        try library.create(.freePlay(game: .miniXiangqi))
+        let next = try Game(library: library)
         #expect(next.moves.isEmpty)
         next.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         next.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
-        #expect(try core.activeGameExists())
-        #expect(try core.historyCount() == 1, "playing on files nothing further")
+        #expect(try library.activeRecord() != nil)
+        #expect(try library.history().count == 1, "playing on files nothing further")
     }
 
     @Test("A saved result stands on its own board as a record, with nothing to undo")
     func savingLeavesTheGameOnTheRecordedBoard() throws {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(GameTests.mateLine)
         #expect(game.canUndo, "the premise: an unconfirmed result is undoable")
         let mated = game.evaluation.fen
@@ -292,7 +266,7 @@ struct GameSessionTests {
         try game.file()
 
         #expect(game.filedRecordID != nil, "the record exists")
-        #expect(try core.historyCount() == 1)
+        #expect(try library.history().count == 1)
         #expect(game.isFinished, "and the finished game is still the game on screen")
         #expect(game.presentedState == .redWins, "with the result it reached")
         #expect(game.evaluation.reason == .checkmate)
@@ -307,8 +281,8 @@ struct GameSessionTests {
 
     @Test("A game already filed is not filed a second time")
     func filingIsNotRepeated() throws {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(GameTests.mateLine)
 
         try game.file()
@@ -317,22 +291,22 @@ struct GameSessionTests {
         try game.file()
 
         #expect(game.filedRecordID == record, "the same record, not a second one")
-        #expect(try core.historyCount() == 1, "and one game is one record")
+        #expect(try library.history().count == 1, "and one game is one record")
         #expect(game.filingFailure == nil, "nothing was refused, because nothing was asked")
     }
 
     @Test("A claimed draw needs no filing: the claim already was one")
     func aClaimedDrawIsAlreadyFiled() throws {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(GameTests.shuffleLine)
 
         game.claimDraw()
         #expect(game.claimedDraw)
-        #expect(try core.historyCount() == 1)
+        #expect(try library.history().count == 1)
 
         try game.file()
-        #expect(try core.historyCount() == 1,
+        #expect(try library.history().count == 1,
                 "filing a claimed draw commits nothing twice")
     }
 }

@@ -2,10 +2,10 @@
  * The one authority on what a square and a move look like, and on the board
  * each game is played on.
  *
- * Square and move text crosses this core at four places — the session surface
- * judging a caller, the archive codec judging a file, the search facade judging
- * the engine's own output, and the fixture harness — and each of them used to
- * carry its own copy of the grammar. Three copies of one regular expression
+ * Square and move text crosses this core at several places — the rules facade
+ * judging a caller, the search facade judging the engine's own output, and the
+ * placement bridge converting points — and each of them used to carry its own
+ * copy of the grammar. Three copies of one regular expression
  * agree until the day a second board exists, and then they disagree one at a
  * time: this module exists so that the board is a parameter rather than a
  * constant repeated.
@@ -104,29 +104,11 @@ bool searched(MxqGameKind game);
 const char *start_fen(MxqGameKind game);
 
 /*
- * The position a session configured this way begins from: the configuration's
- * own start where it names one, and the game's frozen start where it does not.
- *
- * One function because everything that replays a session asks it — the session
- * itself, the search snapshot, and the document the archive writes — and the
- * empty-means-frozen convention read three ways is three places for a game to
- * start somewhere its own configuration did not say.
- *
- * A configuration of a game with no frozen start always names one — creation
- * refuses an empty member for such a game — so the fallback below is that
- * refusal's other side rather than a second policy.
- */
-const char *start_fen(const MxqGameConfig &config);
-
-/*
  * How many characters of `text` the square beginning at its start occupies, or
  * 0 when no square begins there. len bounds the read; text need not be
  * NUL-terminated.
  *
- * This is the primitive the other three are written in terms of, and it is
- * exposed because one caller needs it directly: asking whether a move begins at
- * a given square is a comparison over the first square's own length, and
- * comparing a fixed two characters is exactly the bug a 10th rank introduces.
+ * This is the primitive the others are written in terms of.
  */
 size_t square_length(MxqGameKind game, const char *text, size_t len);
 
@@ -137,11 +119,6 @@ bool well_formed_square(MxqGameKind game, const char *text);
 /* Whether the whole string is one move of this game's board. */
 bool well_formed_move(MxqGameKind game, const char *text);
 bool well_formed_move(MxqGameKind game, const std::string &text);
-
-/* Whether `move` — which the caller has already established is well formed —
- * begins at the square `from_square` names. */
-bool move_begins_at(MxqGameKind game, const std::string &move,
-                    const char *from_square);
 
 /* ------------------------------------------------------------------------- */
 /* The placement games' position encoding                                     */

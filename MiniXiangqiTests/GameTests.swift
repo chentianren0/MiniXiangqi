@@ -15,33 +15,33 @@ struct GameTests {
 
     static let capturingCheckLine = ["c2c3", "a6a5", "c1d3", "c6c5", "d3c5"]
 
-    private func game(playing line: [String] = []) throws -> (game: Game, core: Core) {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+    private func game(playing line: [String] = []) throws -> (game: Game, library: GameLibrary) {
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(line)
-        return (game, core)
+        return (game, library)
     }
 
     @Test("Undo removes exactly one ply and nothing else")
     func undoRemovesOnePly() throws {
-        let (game, core) = try game(playing: ["b1b4", "a6a5"])
+        let (game, library) = try game(playing: ["b1b4", "a6a5"])
         game.undo()
 
         #expect(game.notation.count == 1)
         #expect(game.notation.map(\.traditional) == ["炮六进三"])
         #expect(game.notation.map(\.wxf) == ["C6+3"],
                 "both readings shorten together — a reading is one value")
-        #expect(game.moves == ["b1b4"], "the line is the session's own, read back")
+        #expect(game.moves == ["b1b4"], "the line is the record's own, read back")
         #expect(game.evaluation.sideToMove == .black)
         #expect(game.lastMove == Move(text: "b1b4", on: GameKind.miniXiangqi.board))
 
-        #expect(game.evaluation.fen == (try core.fen(atPly: 1)))
+        #expect(game.evaluation.fen == (try library.fen(atPly: 1)))
         #expect(game.failure == nil)
     }
 
     @Test("Undo repeats back to the initial position and stops there")
     func undoRepeatsToTheStart() throws {
-        let (game, core) = try game(playing: ["b1b4", "a6a5", "b4b6"])
+        let (game, library) = try game(playing: ["b1b4", "a6a5", "b4b6"])
         #expect(game.canUndo)
 
         game.undo()
@@ -53,13 +53,13 @@ struct GameTests {
         #expect(game.lastMove == nil)
         #expect(game.evaluation.sideToMove == .red)
 
-        #expect(game.evaluation.fen == (try core.fen(atPly: 0)))
+        #expect(game.evaluation.fen == (try library.fen(atPly: 0)))
         #expect(!game.canUndo, "there is nothing left to take back")
     }
 
     @Test("The start position a third time offers the claim, and claiming it ends the game")
     func theShuffleReachesAClaimableDraw() throws {
-        let (game, core) = try game(playing: Self.shuffleLine)
+        let (game, library) = try game(playing: Self.shuffleLine)
 
         #expect(game.evaluation.claimAvailable)
         #expect(game.evaluation.state == .claimableDraw)
@@ -75,8 +75,8 @@ struct GameTests {
         #expect(!game.canUndo, "the player confirmed this result")
 
         #expect(game.filedRecordID != nil)
-        #expect(try core.historyCount() == 1)
-        #expect(try !core.activeGameExists())
+        #expect(try library.history().count == 1)
+        #expect(try library.activeRecord() == nil)
 
         game.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         #expect(game.selected == nil, "a finished game accepts no input")
@@ -122,16 +122,15 @@ struct GameTests {
 
     @Test("An illegal move is refused by the core and leaves the game unchanged")
     func anIllegalMoveIsRefused() throws {
-        let core = try TestCores.fresh()
-        let game = try openGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try openGame(on: library)
         try game.replay(["b1b4"])
         let before = game.evaluation
 
-        #expect(throws: CoreError.self) { try core.apply("a6a3") }
-        #expect(try core.moveHistory() == ["b1b4"])
-        let after = try core.evaluation()
+        #expect(throws: CoreError.self) { try library.apply("a6a3") }
+        #expect(try library.moveHistory() == ["b1b4"])
+        let after = try library.evaluation()
         #expect(after.fen == before.fen)
-        #expect(after.positionRevision == before.positionRevision)
         #expect(after.sideToMove == .black)
 
         try game.replay(["a6a5"])

@@ -1,27 +1,21 @@
-// The Swift veneer over the shared core's C interface.
+// The Swift veneer over the core's C interface.
 //
 // Everything above this file speaks Swift; everything below it speaks `mxq_`.
-// The veneer converts types and raises errors, and it decides nothing: no rule,
-// no adjudication, and no affordance is re-derived here, because the whole
-// point of the core is that every frontend gets the same answer from the same
-// place.
-//
-// Since the app moved onto sessions, the veneer also holds the one live
-// session over the one active game. The core commits every accepted move
-// before returning — persistence is `mxq_game_apply_move`'s postcondition, not
-// a feature written here — so nothing in this file saves anything: it attaches,
-// asks, and releases.
+// The veneer converts types and raises errors, and it decides no rule: what is
+// legal, what a line's verdict is and what a deal deals are the core's answers.
+// The core is stateless, so every question here is asked of a game, a start and
+// a move line, and the game itself — its moves, its result, the library it is
+// filed in — is the app's, in GameRecord.
 
 import Foundation
 import MiniXiangqiCore
-import Security
 
-/// A failed core call. `status` is the contract; `detail` is a short English
-/// diagnostic for the log, never user-facing copy.
+/// A failed call. `status` is the core's code where the core refused, and
+/// `detail` is a short English diagnostic for the log, never user-facing copy.
 ///
 /// Nonisolated, as every type in this file that is pure data is: the target
 /// defaults declarations to the main actor, which is right for a view and
-/// wrong for a value the store surface builds off it.
+/// wrong for a value that crosses actors.
 nonisolated struct CoreError: Error, Equatable, CustomStringConvertible {
     var status: MxqStatus
     var detail: String
@@ -46,7 +40,10 @@ nonisolated struct CoreError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-nonisolated enum Side: Sendable {
+/// The side that moves first and the other, in every game. The placement games
+/// call the first mover's stones black, so `red` is the black stone there: what
+/// a side is drawn and called is the surface's.
+nonisolated enum Side: String, Codable, Sendable {
     case red, black
 
     init?(_ color: MxqColor) {
@@ -56,11 +53,11 @@ nonisolated enum Side: Sendable {
         default: return nil
         }
     }
+
+    var opponent: Side { self == .red ? .black : .red }
 }
 
-/// The live game state. These are exactly the fixture state identifiers, and
-/// exactly the core's own vocabulary: the C constants are mapped here so that
-/// no view has to import the C module to ask whose turn it is.
+/// The rules' verdict on a line: the fixture state identifiers.
 nonisolated enum GameState: Sendable {
     case ongoing, claimableDraw, redWins, blackWins, draw
 
@@ -70,58 +67,42 @@ nonisolated enum GameState: Sendable {
         case MxqGameState(MXQ_GAME_RED_WINS): self = .redWins
         case MxqGameState(MXQ_GAME_BLACK_WINS): self = .blackWins
         case MxqGameState(MXQ_GAME_DRAW): self = .draw
-        // Every switch over a core vocabulary needs a default arm: a build of
-        // the core newer than this app may report a state this one has not
-        // heard of, and treating it as ongoing is the reading that neither
-        // invents an outcome nor crashes.
         default: self = .ongoing
         }
     }
 
-    /// Ongoing and claimable-draw can never be a committed outcome.
+    /// Ongoing and claimable-draw are never a result.
     var isOver: Bool { self != .ongoing && self != .claimableDraw }
-}
 
-/// The committed result of a finished game, which is not the same question as
-/// the position's verdict: a resignation and an early end are outcomes no
-/// position produces. `none` is the ended-early record's outcome, exactly when
-/// the reason is `endedEarly`.
-nonisolated enum Outcome: Sendable {
-    case none, redWins, blackWins, draw
-
-    init(_ outcome: MxqOutcome) {
-        switch outcome {
-        case MxqOutcome(MXQ_OUTCOME_RED_WINS): self = .redWins
-        case MxqOutcome(MXQ_OUTCOME_BLACK_WINS): self = .blackWins
-        case MxqOutcome(MXQ_OUTCOME_DRAW): self = .draw
-        default: self = .none
-        }
-    }
-}
-
-nonisolated enum PlayMode: Sendable {
-    case humanVersusAI, freePlay, nearby, online
-
-    init(_ mode: MxqPlayMode) {
-        switch mode {
-        case MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI): self = .humanVersusAI
-        case MxqPlayMode(MXQ_PLAY_MODE_NEARBY): self = .nearby
-        case MxqPlayMode(MXQ_PLAY_MODE_ONLINE): self = .online
-        // Every switch over a core vocabulary needs a default arm. Free Play is
-        // the reading that claims least about a mode this build has not heard
-        // of: one board, no opponent, no AI configuration to look for.
-        default: self = .freePlay
-        }
-    }
-
-    var raw: MxqPlayMode {
+    /// The result a finished line gives, where it is finished.
+    var outcome: Outcome? {
         switch self {
-        case .humanVersusAI: MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI)
-        case .freePlay: MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
-        case .nearby: MxqPlayMode(MXQ_PLAY_MODE_NEARBY)
-        case .online: MxqPlayMode(MXQ_PLAY_MODE_ONLINE)
+        case .redWins: .redWins
+        case .blackWins: .blackWins
+        case .draw: .draw
+        case .ongoing, .claimableDraw: nil
         }
     }
+}
+
+/// The result of a finished game, which is not the same question as the
+/// position's verdict: a resignation and an early end are results no position
+/// produces. `none` is the ended-early record's, exactly when the reason is
+/// `endedEarly`.
+nonisolated enum Outcome: String, Codable, Sendable {
+    case none
+    case redWins = "red-wins"
+    case blackWins = "black-wins"
+    case draw
+
+    /// The win for `side`.
+    static func win(for side: Side) -> Outcome { side == .red ? .redWins : .blackWins }
+}
+
+nonisolated enum PlayMode: String, Codable, Sendable {
+    case humanVersusAI = "human-vs-ai"
+    case freePlay = "free-play"
+    case nearby, online
 
     /// One game played by two devices over the BoardGame protocol. The two
     /// networked modes differ in how the two devices reached each other and in
@@ -135,24 +116,14 @@ nonisolated enum PlayMode: Sendable {
     }
 }
 
-/// The closed rules vocabulary shared with the core. There is deliberately no
-/// fallback: an unknown C value is a broken boundary, not Mini Xiangqi.
-///
-/// The case names are the archive's own `rules_id`s, so the enum, the C
-/// enumerator and the serialized name are one vocabulary read three ways.
-nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
-    case miniXiangqi, xiangqi, gomoku15, renju, jieqi
-
-    init?(_ game: MxqGameKind) {
-        switch game {
-        case MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI): self = .miniXiangqi
-        case MxqGameKind(MXQ_GAME_KIND_XIANGQI): self = .xiangqi
-        case MxqGameKind(MXQ_GAME_KIND_GOMOKU_15): self = .gomoku15
-        case MxqGameKind(MXQ_GAME_KIND_RENJU): self = .renju
-        case MxqGameKind(MXQ_GAME_KIND_JIEQI): self = .jieqi
-        default: return nil
-        }
-    }
+/// Which game is played. The raw values are the `rules_id`s the protocol and the
+/// game file name the games by.
+nonisolated enum GameKind: String, Codable, Sendable, Hashable, CaseIterable {
+    case miniXiangqi = "minixiangqi"
+    case xiangqi
+    case gomoku15 = "gomoku-15"
+    case renju
+    case jieqi
 
     var raw: MxqGameKind {
         switch self {
@@ -175,20 +146,27 @@ nonisolated enum GameKind: Sendable, Hashable, CaseIterable {
     var conceals: Bool { self == .jieqi }
 }
 
-nonisolated enum EndReason: Sendable {
-    case none, checkmate, stalemate, threefoldRepetition
-    case perpetualCheck, perpetualChase
-    case mutualPerpetualCheck, mutualPerpetualChase
-    case fiftyMoveRule, resignation, endedEarly
-    /// The dealt game's own no-capture draw. Forty is Jieqi's own number and is
-    /// adopted deliberately; that Xiangqi keeps fifty is a fact about Xiangqi,
-    /// so this is a reason of its own rather than that one under another name.
-    case fortyMoveRule
-    /// The two ends two players declare to each other, and nearby play's alone.
-    case agreedDraw, mutualResignation
-    /// The placement games' two, and theirs alone: they have no check to be
-    /// mated in and no other automatic end.
-    case fiveInARow, boardFull
+nonisolated enum EndReason: String, Codable, Sendable {
+    case none, checkmate, stalemate
+    case threefoldRepetition = "threefold-repetition"
+    case perpetualCheck = "perpetual-check"
+    case perpetualChase = "perpetual-chase"
+    case mutualPerpetualCheck = "mutual-perpetual-check"
+    case mutualPerpetualChase = "mutual-perpetual-chase"
+    case fiftyMoveRule = "fifty-move-rule"
+    case resignation
+    case endedEarly = "ended-early"
+    /// The dealt game's own no-capture draw. Forty is Jieqi's own number, so
+    /// this is a reason of its own rather than Xiangqi's fifty under another
+    /// name.
+    case fortyMoveRule = "forty-move-rule"
+    /// The two ends two players declare to each other, and networked play's
+    /// alone.
+    case agreedDraw = "agreed-draw"
+    case mutualResignation = "mutual-resignation"
+    /// The placement games' two, and theirs alone.
+    case fiveInARow = "five-in-a-row"
+    case boardFull = "board-full"
 
     init(_ reason: MxqEndReason) {
         switch reason {
@@ -201,10 +179,6 @@ nonisolated enum EndReason: Sendable {
         case MxqEndReason(MXQ_END_REASON_MUTUAL_PERPETUAL_CHASE): self = .mutualPerpetualChase
         case MxqEndReason(MXQ_END_REASON_FIFTY_MOVE_RULE): self = .fiftyMoveRule
         case MxqEndReason(MXQ_END_REASON_FORTY_MOVE_RULE): self = .fortyMoveRule
-        case MxqEndReason(MXQ_END_REASON_RESIGNATION): self = .resignation
-        case MxqEndReason(MXQ_END_REASON_ENDED_EARLY): self = .endedEarly
-        case MxqEndReason(MXQ_END_REASON_AGREED_DRAW): self = .agreedDraw
-        case MxqEndReason(MXQ_END_REASON_MUTUAL_RESIGNATION): self = .mutualResignation
         case MxqEndReason(MXQ_END_REASON_FIVE_IN_A_ROW): self = .fiveInARow
         case MxqEndReason(MXQ_END_REASON_BOARD_FULL): self = .boardFull
         default: self = .none
@@ -212,238 +186,102 @@ nonisolated enum EndReason: Sendable {
     }
 }
 
-nonisolated enum AiLevel: Sendable, Hashable, CaseIterable {
+nonisolated enum AiLevel: String, Codable, Sendable, Hashable, CaseIterable {
     case fast, standard, deep
 
-    init?(_ level: MxqAiLevel) {
-        switch level {
-        case MxqAiLevel(MXQ_AI_LEVEL_FAST): self = .fast
-        case MxqAiLevel(MXQ_AI_LEVEL_STANDARD): self = .standard
-        case MxqAiLevel(MXQ_AI_LEVEL_DEEP): self = .deep
-        default: return nil
-        }
-    }
-
-    var raw: MxqAiLevel {
-        switch self {
-        case .fast: MxqAiLevel(MXQ_AI_LEVEL_FAST)
-        case .standard: MxqAiLevel(MXQ_AI_LEVEL_STANDARD)
-        case .deep: MxqAiLevel(MXQ_AI_LEVEL_DEEP)
-        }
-    }
-
-    /// The exact thinking time frozen with a created game. Read from the
-    /// core's own constants rather than written a second time here: the
-    /// accepted 1/3/5 seconds are the engine contract's, not this app's.
+    /// The thinking time of each level, which every search of a game at that
+    /// level runs for.
     var movetimeMilliseconds: UInt32 {
         switch self {
-        case .fast: MXQ_MOVETIME_FAST_MS
-        case .standard: MXQ_MOVETIME_STANDARD_MS
-        case .deep: MXQ_MOVETIME_DEEP_MS
+        case .fast: 1000
+        case .standard: 3000
+        case .deep: 5000
         }
     }
 
-    /// The serialized identifier in docs/game-data.md's archive vocabulary,
-    /// which is also the name the Settings default is stored under.
-    var name: String {
-        switch self {
-        case .fast: "fast"
-        case .standard: "standard"
-        case .deep: "deep"
-        }
-    }
+    /// The name the Settings default is stored under.
+    var name: String { rawValue }
 
-    init?(name: String) {
-        guard let match = Self.allCases.first(where: { $0.name == name }) else { return nil }
-        self = match
-    }
+    init?(name: String) { self.init(rawValue: name) }
 }
 
-nonisolated enum FirstMoverChoice: Sendable, Hashable, CaseIterable {
-    case humanFirst, aiFirst, random
+nonisolated enum FirstMoverChoice: String, Sendable, Hashable, CaseIterable {
+    case humanFirst = "human-first"
+    case aiFirst = "ai-first"
+    case random
 
-    init?(_ choice: MxqFirstMoverChoice) {
-        switch choice {
-        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_HUMAN_FIRST): self = .humanFirst
-        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_AI_FIRST): self = .aiFirst
-        case MxqFirstMoverChoice(MXQ_FIRST_MOVER_RANDOM): self = .random
-        default: return nil
-        }
-    }
+    /// The name the Settings default is stored under.
+    var name: String { rawValue }
 
-    var raw: MxqFirstMoverChoice {
-        switch self {
-        case .humanFirst: MxqFirstMoverChoice(MXQ_FIRST_MOVER_HUMAN_FIRST)
-        case .aiFirst: MxqFirstMoverChoice(MXQ_FIRST_MOVER_AI_FIRST)
-        case .random: MxqFirstMoverChoice(MXQ_FIRST_MOVER_RANDOM)
-        }
-    }
-
-    /// docs/game-data.md's serialized identifiers, and the stored preference
-    /// names with them.
-    var name: String {
-        switch self {
-        case .humanFirst: "human-first"
-        case .aiFirst: "ai-first"
-        case .random: "random"
-        }
-    }
-
-    init?(name: String) {
-        guard let match = Self.allCases.first(where: { $0.name == name }) else { return nil }
-        self = match
-    }
+    init?(name: String) { self.init(rawValue: name) }
 }
 
-/// A game's frozen configuration, as the core holds it. Free Play and networked
-/// play carry the absent constants, exactly as the archive omits the members.
+/// What a new game is created as. Free Play and networked play carry no AI
+/// configuration, and only networked play carries a local side.
 nonisolated struct GameConfiguration: Sendable, Hashable {
     var game: GameKind
     var mode: PlayMode
-    /// The *resolved* human side — set even when the choice was 随机, because
-    /// it cannot be reconstructed later.
+    /// The *resolved* human side — set even when the choice was 随机.
     var humanSide: Side?
     var aiLevel: AiLevel?
-    var firstMoverChoice: FirstMoverChoice?
-    var movetimeMilliseconds: UInt32
     /// The side this device's player took, in a networked game and nowhere else.
-    /// The archive never carries it — content is device-portable — so it is
-    /// library metadata the store holds beside the blob.
     var localSide: Side?
 
     /// The position the game begins from, where it is not the game's own frozen
-    /// start. `nil` *is* that frozen start, and the core keeps the member
-    /// canonical the same way: a start spelled out that turns out to be the
-    /// frozen one reads back absent, so one committed game answers one way
-    /// about where it began whether it was just created or resumed.
-    ///
-    /// A composed start is Free Play's and no other mode's, and Xiangqi is the
-    /// one game whose rules define which positions it may be — both of which
-    /// are the core's refusals rather than rules kept here.
+    /// start. A composed start is Free Play's, and a dealt start is Jieqi's in
+    /// every mode.
     var startFEN: String?
 
+    /// The thinking time the AI's every search runs for, in human-versus-AI
+    /// play; zero elsewhere.
+    var movetimeMilliseconds: UInt32 { aiLevel?.movetimeMilliseconds ?? 0 }
+
     static func freePlay(game: GameKind, startFEN: String? = nil) -> GameConfiguration {
-        GameConfiguration(game: game, mode: .freePlay, humanSide: nil,
-                          aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0, localSide: nil,
-                          startFEN: startFEN)
+        GameConfiguration(game: game, mode: .freePlay, startFEN: startFEN)
     }
 
     /// A game played with the other device over the BoardGame protocol, the two
-    /// having found each other where they are. It freezes no AI configuration
-    /// and one local perspective.
+    /// having found each other where they are.
     ///
     /// - Parameter startFEN: the dealt start, for the one game whose start is
-    ///   dealt. It is no composed position — nobody composed it and neither
-    ///   player chose it — and the two devices arrive at the same one by
-    ///   deriving it from the handshake rather than by either naming it to the
-    ///   other. Nil for every game whose rules freeze a start.
+    ///   dealt. Nobody composed it: the two devices arrive at the same one by
+    ///   deriving it from the handshake.
     static func nearby(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
-        GameConfiguration(game: game, mode: .nearby, humanSide: nil,
-                          aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0, localSide: localSide,
+        GameConfiguration(game: game, mode: .nearby, localSide: localSide,
                           startFEN: startFEN)
     }
 
     /// The same game, the two devices having reached each other at any
-    /// distance. Everything the configuration freezes is nearby play's, the
-    /// mode included in what it means: both are created through
-    /// `Core.createNearby(_:wire:)`, over a wire session of the same shape.
+    /// distance.
     static func online(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
-        GameConfiguration(game: game, mode: .online, humanSide: nil,
-                          aiLevel: nil, firstMoverChoice: nil,
-                          movetimeMilliseconds: 0, localSide: localSide,
+        GameConfiguration(game: game, mode: .online, localSide: localSide,
                           startFEN: startFEN)
     }
 
     /// A human-versus-AI game, with the first-mover choice already resolved to
-    /// a side. Resolution happens in the creation flow, after preparation
-    /// succeeds, and is committed only by a successful create.
-    static func humanVersusAI(game: GameKind, humanSide: Side, level: AiLevel,
-                              choice: FirstMoverChoice) -> GameConfiguration {
+    /// a side.
+    static func humanVersusAI(game: GameKind, humanSide: Side,
+                              level: AiLevel) -> GameConfiguration {
         GameConfiguration(game: game, mode: .humanVersusAI, humanSide: humanSide,
-                          aiLevel: level, firstMoverChoice: choice,
-                          movetimeMilliseconds: level.movetimeMilliseconds,
-                          localSide: nil, startFEN: nil)
+                          aiLevel: level)
     }
 
-    private init(game: GameKind, mode: PlayMode, humanSide: Side?, aiLevel: AiLevel?,
-                 firstMoverChoice: FirstMoverChoice?, movetimeMilliseconds: UInt32,
-                 localSide: Side?, startFEN: String?) {
+    private init(game: GameKind, mode: PlayMode, humanSide: Side? = nil,
+                 aiLevel: AiLevel? = nil, localSide: Side? = nil,
+                 startFEN: String? = nil) {
         self.game = game
         self.mode = mode
         self.humanSide = humanSide
         self.aiLevel = aiLevel
-        self.firstMoverChoice = firstMoverChoice
-        self.movetimeMilliseconds = movetimeMilliseconds
         self.localSide = localSide
         self.startFEN = startFEN
-    }
-
-    init?(_ config: MxqGameConfig) {
-        guard let game = GameKind(config.game) else { return nil }
-        // The empty string is the frozen start, and the core has already made
-        // it so for a start that spelled the frozen position out.
-        let start = string(of: config.start_fen, capacity: MXQ_FEN_CAP)
-        self.init(game: game,
-                  mode: PlayMode(config.mode),
-                  humanSide: Side(config.human_side),
-                  aiLevel: AiLevel(config.ai_level),
-                  firstMoverChoice: FirstMoverChoice(config.first_mover_choice),
-                  movetimeMilliseconds: config.ai_movetime_ms,
-                  localSide: Side(config.local_side),
-                  startFEN: start.isEmpty ? nil : start)
-    }
-
-    var raw: MxqGameConfig {
-        var config = MxqGameConfig()
-        config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-        config.mode = mode.raw
-        config.human_side = Self.rawColor(humanSide)
-        config.ai_level = aiLevel?.raw ?? MxqAiLevel(MXQ_AI_LEVEL_NONE)
-        config.first_mover_choice = firstMoverChoice?.raw
-            ?? MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
-        config.ai_movetime_ms = movetimeMilliseconds
-        config.game = game.raw
-        config.local_side = Self.rawColor(localSide)
-        if let startFEN {
-            let bytes = Array(startFEN.utf8)
-            // The ABI's own capacity, and no position of any board this core
-            // plays comes near it — the widest is 251 characters. A start that
-            // did not fit would be truncated into a different position, so it
-            // is refused here rather than sent.
-            precondition(bytes.count < Int(MXQ_FEN_CAP),
-                         "a start position wider than the interface's FEN capacity")
-            withUnsafeMutableBytes(of: &config.start_fen) { buffer in
-                for (index, byte) in bytes.enumerated() { buffer[index] = byte }
-                buffer[bytes.count] = 0
-            }
-        }
-        return config
-    }
-
-    /// `MxqColor` has no zero for absence — `MXQ_COLOR_RED` is 0 — so a side the
-    /// caller leaves unset must be written as `MXQ_COLOR_NONE` explicitly rather
-    /// than left at whatever a zeroed struct holds.
-    private static func rawColor(_ side: Side?) -> MxqColor {
-        switch side {
-        case .red: MxqColor(MXQ_COLOR_RED)
-        case .black: MxqColor(MXQ_COLOR_BLACK)
-        case nil: MxqColor(MXQ_COLOR_NONE)
-        }
     }
 }
 
 /// Which setup rule a position breaks, as the core reports it. A closed class
-/// vocabulary and never a sentence: the sentence is the frontend's to localize,
-/// which is exactly why the core does not compose one.
-///
-/// `notFrozenStart` is the answer of a game whose rules define no setup-legality
-/// predicate. It is in the vocabulary because the core's is total; no surface in
-/// this app can reach it, because the one surface that composes a position
-/// composes a Xiangqi one.
+/// vocabulary and never a sentence: the sentence is the frontend's to localize.
 nonisolated enum SetupRule: Sendable, Equatable {
     case pieceCount, palace, elephantSide, soldierRank
     case facingGenerals, opponentInCheck, notFrozenStart
@@ -457,15 +295,13 @@ nonisolated enum SetupRule: Sendable, Equatable {
         case MxqSetupRule(MXQ_SETUP_RULE_FACING_GENERALS): self = .facingGenerals
         case MxqSetupRule(MXQ_SETUP_RULE_OPPONENT_IN_CHECK): self = .opponentInCheck
         case MxqSetupRule(MXQ_SETUP_RULE_NOT_FROZEN_START): self = .notFrozenStart
-        // MXQ_SETUP_RULE_NONE, and anything a newer core has learned to say.
         default: return nil
         }
     }
 }
 
 /// Why a position is not one to set up in: the first violation the core found,
-/// whose it is, and where. The side and the square are absent exactly where the
-/// class has none, which the core writes rather than leaves to be guessed.
+/// whose it is, and where.
 nonisolated struct SetupViolation: Sendable, Equatable {
     var rule: SetupRule
     /// The side the violation belongs to; absent where it belongs to neither.
@@ -481,58 +317,27 @@ nonisolated enum SetupVerdict: Sendable, Equatable {
     case legal
     /// The predicate refused it, and this is the first rule it broke.
     case illegal(SetupViolation)
-    /// Not a position of this game's board at all, so no clause was reached.
-    /// It is about how the position is spelled and never about which pieces
-    /// stand on it: a board still missing a general is a position the predicate
-    /// has an answer for, and answers under its count clause.
+    /// Not a position of this game's board at all.
     case malformed
 }
 
-/// A position and the game state, exactly as the attached session reports it.
+/// A position and the rules' verdict on the line that reached it.
 nonisolated struct Evaluation: Sendable {
     var fen: String
     var sideToMove: Side
     var inCheck: Bool
     var plyCount: Int
-    /// The per-session monotonic counter every accepted mutation bumps. It is
-    /// the staleness authority, and the frontend's own comparison against it —
-    /// the second of the two the interface requires — is what rejects a search
-    /// result the core could not have known was stale.
-    var positionRevision: UInt64
-
     var state: GameState
     var reason: EndReason
     /// The occurrence a repetition-based outcome attached at; 0 otherwise.
     var atOccurrence: Int
-    var claimAvailable: Bool
-    /// The core's own Undo affordance. An archived or absent session offers
-    /// none, and nothing above the interface works that out for itself.
-    var undoAvailable: Bool
-    /// 1 or 2, by the decision-cycle rule. The core computes it; nothing above
-    /// the interface counts plies to reach the same answer.
-    var undoPlies: Int
-    /// Exactly when `mxq_game_resign` is legal, so the affordance and the
-    /// refusal are one rule.
-    var resignAvailable: Bool
-    /// Whether the committed state expects a search — the AI to move in an
-    /// unfinished human-versus-AI game. This is what "a search is owed" means,
-    /// and it is the core's answer rather than a derivation from the mode and
-    /// the side to move.
-    var searchExpected: Bool
 
     var isOver: Bool { state.isOver }
+    /// The neutral repetition, which is the player's to claim.
+    var claimAvailable: Bool { state == .claimableDraw }
 }
 
-// MARK: - Plumbing shared by every call in this file
-
-// Nonisolated because the store surface below is a value that may leave the
-// main actor, and it speaks through exactly the same four helpers the session
-// calls do.
-
-// Internal rather than private since the engine and search veneer moved into
-// Core/Engine.swift: it is the same four helpers over the same handle, and a
-// second copy of them beside the second file would be a second place for the
-// error conversion to drift.
+// MARK: - Plumbing shared by every call into the core
 
 nonisolated func freshError() -> MxqError {
     var err = MxqError()
@@ -548,35 +353,24 @@ nonisolated func string<T>(of fixedArray: T, capacity: Int32) -> String {
     }
 }
 
-private nonisolated func moveTexts(_ buffer: [MxqMove], count: Int) -> [String] {
-    buffer.prefix(count).map { string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP) }
-}
-
 nonisolated func check(_ status: MxqStatus, _ err: MxqError) throws {
     guard status != MXQ_OK else { return }
     throw CoreError(status: status, detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))
 }
 
-/// The process-wide core. Singleton because the core is singleton-enforced: a
-/// second `mxq_core_init` before shutdown is an error, not a second instance.
-///
-/// `shared` is the app's own core over the app's own store — the one whose
-/// games the player keeps. Tests never touch it: they build cores of their own
-/// against scratch store directories through the same initializer, which is
-/// what keeps the seam honest — a test core is the real core over a store
-/// nobody keeps, not a stand-in.
-final class Core {
-    // Internal rather than private since Core/Engine.swift carries the search
-    // facade's half of this veneer: it is the same handle, and the split is by
-    // subject rather than by visibility.
-    let handle: OpaquePointer
+/// A move line as the C array of borrowed strings the rules entries take.
+nonisolated func withCStrings<T>(_ strings: [String],
+                                 _ body: (UnsafePointer<UnsafePointer<CChar>?>?) -> T) -> T {
+    let copies = strings.map { strdup($0) }
+    defer { copies.forEach { free($0) } }
+    let pointers = copies.map { UnsafePointer($0) }
+    return pointers.withUnsafeBufferPointer { body(pointers.isEmpty ? nil : $0.baseAddress) }
+}
 
-    /// The one attached session over the one active game, while there is one.
-    /// Sessions are single-owner and this app is single-window, so the screen
-    /// that holds the game is the owner and everything runs where it runs —
-    /// the main actor, under the documented active-game exception in
-    /// docs/core-interface.md's threading contract.
-    private var session: OpaquePointer?
+/// The process-wide core. Singleton because the core is: the engines' state is
+/// process-global, so a second `mxq_core_init` before shutdown is an error.
+final class Core {
+    let handle: OpaquePointer
 
     /// Whether `shared` was ever asked for, so that termination can shut down
     /// a core that exists without creating one that does not.
@@ -585,48 +379,38 @@ final class Core {
     static let shared: Result<Core, CoreError> = {
         sharedWasCreated = true
         do {
-            return .success(try Core(storeDirectory: storeDirectory()))
+            return .success(try Core())
         } catch {
-            // A store directory that cannot be created is still a start-up
-            // failure to show, not a reason to stop the process in a type cast.
             return .failure(CoreError(wrapping: error))
         }
     }()
 
-    /// Best-effort deterministic teardown at termination: close the store and
-    /// join the engine thread rather than relying on process exit. Best effort
-    /// only — the store's journal is crash-safe by design, so nothing is owed
-    /// beyond the call itself.
+    /// Best-effort teardown at termination: join the engine thread rather than
+    /// relying on process exit.
     static func shutdownSharedIfLive() {
         guard sharedWasCreated, case .success(let core) = shared else { return }
         core.shutdown()
     }
 
-    init(storeDirectory: String) throws {
-        // The directory the core reads its assets from — the variant
-        // configuration the engine loads at initialisation and every pinned
-        // network — opened from the sealed copies the bundle carries. Assets
-        // that are missing or do not open are a packaging failure and surface
-        // here rather than at the first move.
-        let assets = try Self.openAssets()
-        try FileManager.default.createDirectory(atPath: storeDirectory,
-                                                withIntermediateDirectories: true)
-
+    init() throws {
+        // The variant configuration and the networks, opened from the sealed
+        // copies the bundle carries. Assets that are missing or do not open
+        // are a packaging failure and surface here rather than at the first
+        // move.
+        let assets: String
+        do {
+            assets = try EngineAssets.directory().path
+        } catch {
+            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
+                            detail: "cannot open the engine assets: \(error)")
+        }
         var handle: OpaquePointer?
-        var err = MxqError()
-        err.struct_size = UInt32(MemoryLayout<MxqError>.size)
-
-        try storeDirectory.withCString { storePath in
-            try assets.withCString { assetPath in
-                var config = MxqCoreConfig()
-                config.struct_size = UInt32(MemoryLayout<MxqCoreConfig>.size)
-                config.api_major = UInt32(MXQ_API_VERSION_MAJOR)
-                config.api_minor = UInt32(MXQ_API_VERSION_MINOR)
-                config.api_patch = UInt32(MXQ_API_VERSION_PATCH)
-                config.store_directory = storePath
-                config.asset_directory = assetPath
-                try check(mxq_core_init(&config, &handle, &err), err)
-            }
+        var err = freshError()
+        try assets.withCString { assetPath in
+            var config = MxqCoreConfig()
+            config.struct_size = UInt32(MemoryLayout<MxqCoreConfig>.size)
+            config.asset_directory = assetPath
+            try check(mxq_core_init(&config, &handle, &err), err)
         }
         guard let handle else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
@@ -635,83 +419,20 @@ final class Core {
         self.handle = handle
     }
 
-    /// Deterministic teardown. Every *session* handle this core issued answers
-    /// `MXQ_ERR_ARG_INVALID_HANDLE` afterwards instead of touching freed
-    /// memory, which is why nothing here has to be released first.
-    ///
-    /// The core handle itself is not covered by that promise: passing one that
-    /// is no longer the live instance is a programming error, and a debug build
-    /// asserts on it. So the engine queue is drained first. It is the only
-    /// frontend thread this app puts inside the core, it is where a prepare or
-    /// a teardown can still be running when the player quits, and a barrier
-    /// across it is what makes this call the last one in.
+    /// Deterministic teardown. The engine queue is drained first: it is the
+    /// one thread this app puts inside the core, a prepare or a teardown can
+    /// still be running on it when the player quits, and a core handle that is
+    /// no longer the live instance is a caller error the core asserts on.
     func shutdown() {
-        session = nil
         quiesceEngineWork()
-        // The archive queue is the app's second thread inside the core, and it
-        // is drained for the same reason the engine queue is: an archive still
-        // in flight when the player quits would be inside a core that is going
-        // away, and the interface's invalid-handle promise does not cover the
-        // core handle. The caller quiesces its own threads; the core does not
-        // defend against one that does not.
-        //
-        // The barrier waits for the transaction, not for the answer: an archive
-        // that finishes as the player quits still has its `Task { @MainActor }`
-        // to run, and on a quit that task runs after this. That is tolerable
-        // because the only handle it touches is the archived session, which the
-        // promise above covers — after shutdown the core's own sessions answer
-        // `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory — and
-        // because the process is on its way out with nothing left to tell.
-        ActiveGameArchiver.quiesce()
         mxq_core_shutdown(handle, nil)
-    }
-
-    /// Where the app's own store lives. Debug builds take
-    /// `-mxq-store-name <name>`, a scratch store in the app's temporary
-    /// directory, so a UI test never plays into the player's own library.
-    private static func storeDirectory() -> String {
-        #if DEBUG
-        if let name = UserDefaults.standard.string(forKey: "mxq-store-name") {
-            return FileManager.default.temporaryDirectory
-                .appendingPathComponent(name, isDirectory: true).path
-        }
-        #endif
-        return FileManager.default.urls(for: .applicationSupportDirectory,
-                                        in: .userDomainMask)[0]
-            .appendingPathComponent("MiniXiangqi", isDirectory: true).path
-    }
-
-    /// The asset directory, opened into the app's own caches.
-    /// EngineAssets.swift says why the bundle carries them sealed.
-    private static func openAssets() throws -> String {
-        do {
-            return try EngineAssets.directory().path
-        } catch {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
-                            detail: "cannot open the engine assets: \(error)")
-        }
     }
 
     // MARK: - The ruleset's constants
 
-    /// One game's frozen starting FEN, where its rules freeze one. A constant of
-    /// its ruleset, so it is read from the core rather than written a second
-    /// time here.
-    ///
-    /// **`nil` is a game whose rules freeze no start**, and the answer is the
-    /// core's rather than a list kept here: Jieqi begins from a dealt start and
-    /// from no other position, so there is one start for every deal and none to
-    /// report, and the entry says so with `MXQ_ERR_ARG_RANGE`. Every caller
-    /// therefore asks the game for its start and falls back to this constant
-    /// only where there is one — a `precondition` over the refusal would trap a
-    /// release build the first time a surface previewed that game.
-    ///
-    /// The precondition that remains is for the one failure that would be a bug
-    /// here: a frozen start too wide for the interface's own FEN capacity.
-    ///
-    /// `nonisolated` because it is: `mxq_rules_start_fen` takes no core instance
-    /// and is callable from any thread, including inside a search callback, so
-    /// the nearby layer's own nonisolated values may ask it.
+    /// One game's frozen starting FEN, where its rules freeze one. `nil` is a
+    /// game whose rules freeze no start: Jieqi begins from a deal, and the core
+    /// says so with `MXQ_ERR_ARG_RANGE`.
     nonisolated static func frozenStartFEN(for game: GameKind) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
         var length = 0
@@ -722,38 +443,29 @@ final class Core {
                       as: UTF8.self)
     }
 
+    /// The position a game begins from: its own start where it names one, the
+    /// game's frozen start where it does not. Empty for a game that has
+    /// neither, which no position is, so every rules question about it is
+    /// refused rather than answered about some other board.
+    nonisolated static func start(of game: GameKind, setup: String?) -> String {
+        setup ?? frozenStartFEN(for: game) ?? ""
+    }
+
     // MARK: - The deal
 
-    /// One deal, as the core derives it from the entropy this app drew: the
-    /// dealt start a game of it begins from, the commitment the seed binds to,
-    /// and the deal's own digest.
-    ///
-    /// The last two are the values a nearby game records beside its deal. A
-    /// Free Play deal keeps neither — nothing verifies a local game against
-    /// itself, and the dealt start in the record *is* the deal — so the two are
-    /// carried here rather than dropped only because the deriving entry answers
-    /// them and a caller that needs them should not have to derive them twice.
+    /// One deal: the dealt start a game of it begins from, the commitment the
+    /// seed binds to, and the deal's own digest.
     nonisolated struct Deal: Sendable, Hashable {
         var startFEN: String
         var commit: String
         var digest: String
     }
 
-    /// Deals one game of Jieqi, from entropy this app draws itself.
-    ///
-    /// docs/core-interface.md, "the deal": the derivation is the core's and the
-    /// entropy is the caller's, "from the platform's cryptographic source for a
-    /// game it deals itself". So the seed and the nonce are thirty-two bytes
-    /// each from `SecRandomCopyBytes`, spelled as the sixty-four lowercase
-    /// hexadecimal digits every handshake value is spelled in, and the core
-    /// turns them into the position. **Nothing here deals anything**: the
-    /// uniformity the rules make a rule of the game is a property of the
-    /// derivation, which is why it lives below this interface.
-    ///
-    /// Throws exactly what the core answers, plus the one failure the platform
-    /// can produce: a cryptographic source that would not fill the buffer. A
-    /// deal that cannot be drawn is a game that is not created, never a deal
-    /// made from something weaker.
+    /// Deals one game of Jieqi from entropy this app draws itself: the seed and
+    /// the nonce are thirty-two bytes each from the platform's cryptographic
+    /// source, and the core turns them into the position. A deal that cannot be
+    /// drawn is a game that is not created, never a deal made from something
+    /// weaker.
     func deal(_ game: GameKind) throws -> Deal {
         var deal = MxqDeal()
         deal.struct_size = UInt32(MemoryLayout<MxqDeal>.size)
@@ -770,13 +482,6 @@ final class Core {
                     digest: string(of: deal.digest, capacity: MXQ_DEAL_HEX_CAP))
     }
 
-    /// Thirty-two bytes from the platform's cryptographic source, as the
-    /// sixty-four lowercase hexadecimal digits the interface takes.
-    ///
-    /// Drawn where the wire handshake draws its own contributions, because it
-    /// is the same draw: what the contract asks for is the platform's
-    /// *cryptographic* source, and a deal — dealt here or dealt between two
-    /// devices — is a value nobody may be able to choose.
     private nonisolated static func entropy() throws -> String {
         guard let value = DealHex.contribution() else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
@@ -785,16 +490,12 @@ final class Core {
         return value
     }
 
-    // MARK: - The session-free questions a composed position is asked
+    // MARK: - The questions a position is asked
 
     /// Whether a position is one this game may be **set up** in — the core's
-    /// setup-legality predicate, asked of the position and of nothing else.
-    ///
-    /// It is the first of the three questions creation asks, and the editor
-    /// asks it for the same reason creation does rather than to anticipate the
-    /// answer: nothing composed here reaches a session or an engine without
-    /// passing it, because a position offering a general capture trips an
-    /// engine assertion. No clause of the predicate is written in Swift.
+    /// setup-legality predicate. Nothing composed here, and nothing imported,
+    /// reaches an engine without passing it: a position offering a general
+    /// capture trips an engine assertion.
     func setupVerdict(of fen: String, game: GameKind) -> SetupVerdict {
         var violation = MxqSetupViolation()
         violation.struct_size = UInt32(MemoryLayout<MxqSetupViolation>.size)
@@ -811,1059 +512,74 @@ final class Core {
                                            side: Side(violation.side),
                                            square: string(of: violation.square,
                                                           capacity: MXQ_SQUARE_TEXT_CAP)))
-        // MXQ_ERR_RULES_INVALID_FEN, and any other refusal this build has not
-        // heard of: either way the position is not one the predicate judged.
         default:
             return .malformed
         }
     }
 
     /// Whether a position the predicate accepted is one to **play**: a position
-    /// that already has a result of its own is no game to begin.
-    ///
-    /// Startability is creation's own question rather than the predicate's, and
-    /// it is asked the way the interface says to ask it — the session-free
-    /// evaluation over the position and no moves — and only of a position
-    /// `setupVerdict(of:game:)` has already accepted, which is the ordering
-    /// that keeps a position the engine must not be shown away from it.
-    ///
-    /// **Every answer that is not `MXQ_OK` reads as unplayable**, which is
-    /// exhaustive because of that ordering: over a position the predicate has
-    /// accepted, the refusals this entry can still make — a FEN of another
-    /// game's board, a move line it cannot replay — are all positions no game
-    /// begins from either. A caller that asked it of an unvalidated position
-    /// would be reading a refusal as a verdict.
+    /// that already has a result of its own is no game to begin. Asked only of
+    /// a position `setupVerdict(of:game:)` has accepted.
     func isPlayable(_ fen: String, game: GameKind) -> Bool {
-        var status = MxqGameStatus()
-        status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-        var err = freshError()
-        let result = fen.withCString {
-            mxq_rules_evaluate(handle, game.raw, $0, nil, 0, nil, &status, nil, &err)
-        }
-        guard result == MXQ_OK else { return false }
-        return !GameState(status.state).isOver
+        guard let evaluation = try? evaluate(game, from: fen, moves: []) else { return false }
+        return !evaluation.isOver
     }
 
-    /// One buffer wide enough for the legal moves of every game this app plays.
-    ///
-    /// **There is no C constant to read**: docs/core-interface.md, "Capacity
-    /// constants", says so out loud — the buffer protocol answers the count
-    /// instead, and only the ABI-frozen capacities take headroom. It also
-    /// derives the bound this reads, and derives it from the board: a placement
-    /// game's legal moves are its empty points less any point forbidden to the
-    /// side to move, so the bound *is* the board, reached exactly once per game
-    /// at the opening. That is the largest of the four — the movement games'
-    /// derived bounds are 119 in Xiangqi and 77 measured in Mini Xiangqi — so
-    /// the placement board's own point count is what one array is sized to.
-    ///
-    /// Read from the board rather than written as a number, so a wider board
-    /// arriving later cannot leave this behind.
+    /// One buffer wide enough for the legal moves of every game this app plays:
+    /// a placement game's legal moves are at most its empty points, so the
+    /// placement board's point count is the bound.
     nonisolated static let legalMoveCapacity = GameKind.gomoku15.board.squareCount
 
-    // MARK: - Plumbing
+    // MARK: - A line, asked of the rules
 
-    /// The attached session, or the typed refusal that says the caller asked a
-    /// session question with no session — an app bug, never a rules outcome.
-    func attachedSession() throws -> OpaquePointer {
-        guard let session else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
-                            detail: "no session is attached")
-        }
-        return session
+    /// The position `moves` reach from `start`, and the rules' verdict on the
+    /// line. A move that is not legal at its turn is
+    /// `MXQ_ERR_RULES_INVALID_HISTORY`, with its index in the error's detail.
+    func evaluate(_ game: GameKind, from start: String, moves: [String]) throws -> Evaluation {
+        try Self.evaluate(handle, game, from: start, moves: moves)
     }
 
-    /// One position and status pair, converted. Internal rather than private
-    /// because the nearby board asks the same question of the *session-free*
-    /// rules facade — same two structs, same conversion — and a second copy of
-    /// the field mapping would be a second place for it to drift. Nonisolated
-    /// with it: it is a conversion between two value types and touches nothing.
-    nonisolated static func evaluation(position: MxqPosition,
-                                       status: MxqGameStatus) throws -> Evaluation {
-        guard let side = Side(position.side_to_move) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported no side to move")
-        }
-        return Evaluation(
-            fen: string(of: position.fen, capacity: MXQ_FEN_CAP),
-            sideToMove: side,
-            inCheck: position.in_check != 0,
-            plyCount: Int(position.ply_count),
-            positionRevision: position.position_revision,
-            state: GameState(status.state),
-            reason: EndReason(status.reason),
-            atOccurrence: Int(status.at_occurrence),
-            claimAvailable: status.claim_available != 0,
-            undoAvailable: status.undo_available != 0,
-            undoPlies: Int(status.undo_plies),
-            resignAvailable: status.resign_available != 0,
-            searchExpected: status.search_expected != 0)
+    /// The legal moves at the end of the line.
+    func legalMoves(_ game: GameKind, from start: String, moves: [String]) throws -> [String] {
+        try Self.legalMoves(handle, game, from: start, moves: moves)
     }
 
-}
-
-// MARK: - The attached session
-
-extension Core {
-
-    var hasSession: Bool { session != nil }
-
-    func resumeActive() throws -> Bool {
-        precondition(session == nil, "a second session over the one active game")
-        var game: OpaquePointer?
-        var exists: UInt8 = 0
-        var err = freshError()
-        try check(mxq_game_resume_active(handle, &game, &exists, &err), err)
-        session = game
-        return exists != 0
-    }
-
-    func create(_ configuration: GameConfiguration) throws {
-        precondition(session == nil, "created a game over a game")
-        var config = configuration.raw
-        var game: OpaquePointer?
-        var err = freshError()
-        try check(mxq_game_create(handle, &config, &game, &err), err)
-        session = game
-    }
-
-    func configuration() throws -> GameConfiguration {
-        let session = try attachedSession()
-        var config = MxqGameConfig()
-        config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-        var err = freshError()
-        try check(mxq_game_config(session, &config, &err), err)
-        guard let configuration = GameConfiguration(config) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported an unknown game kind")
-        }
-        return configuration
-    }
-
-    /// The session's stable identity — the version 7 UUID frozen at creation.
-    /// Half of the staleness comparison a search result is judged by.
-    func gameID() throws -> String {
-        let session = try attachedSession()
-        var buffer = [CChar](repeating: 0, count: Int(MXQ_GAME_ID_CAP))
-        var length = 0
-        var err = freshError()
-        try check(mxq_game_id(session, &buffer, buffer.count, &length, &err), err)
-        return String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
-                      as: UTF8.self)
-    }
-
-    func resign() throws -> UInt64 {
-        let session = try attachedSession()
-        var recordID: UInt64 = 0
-        var err = freshError()
-        try check(mxq_game_resign(session, &recordID, &err), err)
-        return recordID
-    }
-
-    func apply(_ move: String) throws {
-        let session = try attachedSession()
-        var err = freshError()
-        try move.withCString {
-            try check(mxq_game_apply_move(session, $0, nil, nil, &err), err)
-        }
-    }
-
-    func undo() throws -> Int {
-        let session = try attachedSession()
-        var removed: UInt32 = 0
-        var err = freshError()
-        try check(mxq_game_undo(session, &removed, &err), err)
-        return Int(removed)
-    }
-
-    func claimDraw() throws -> UInt64 {
-        let session = try attachedSession()
-        var recordID: UInt64 = 0
-        var err = freshError()
-        try check(mxq_game_claim_draw(session, &recordID, &err), err)
-        return recordID
-    }
-
-    func confirmResult() throws -> UInt64 {
-        let session = try attachedSession()
-        var recordID: UInt64 = 0
-        var err = freshError()
-        try check(mxq_game_confirm_result(session, &recordID, &err), err)
-        return recordID
-    }
-
-    func evaluation() throws -> Evaluation {
-        let session = try attachedSession()
+    /// The same two questions over a bare handle, for the values that ask them
+    /// off the main actor: the core's rules entries are callable from any
+    /// thread but a search callback.
+    nonisolated static func evaluate(_ core: OpaquePointer, _ game: GameKind,
+                                     from start: String, moves: [String]) throws -> Evaluation {
         var position = MxqPosition()
         position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
         var status = MxqGameStatus()
         status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
         var err = freshError()
-
-        try check(mxq_game_position(session, &position, &err), err)
-        try check(mxq_game_status(session, &status, &err), err)
-        return try Self.evaluation(position: position, status: status)
-    }
-
-    func moveHistory() throws -> [String] {
-        guard let session else { return [] }
-        var err = freshError()
-        var count = 0
-        // The count alone first: a resumed game is as long as it is, and the
-        // resume path deliberately lifts the import bounds, so no fixed buffer
-        // is always sufficient here. The probe's buffer-too-small answer is
-        // the count arriving, routine by the interface's own words.
-        let probe = mxq_game_move_history(session, nil, 0, &count, &err)
-        if probe != MXQ_ERR_ARG_BUFFER_TOO_SMALL { try check(probe, err) }
-        guard count > 0 else { return [] }
-        var buffer = [MxqMove](repeating: MxqMove(), count: count)
-        try check(mxq_game_move_history(session, &buffer, buffer.count,
-                                             &count, &err), err)
-        return moveTexts(buffer, count: count)
-    }
-
-    func legalMoves() throws -> [String] {
-        let session = try attachedSession()
-        var err = freshError()
-        var count = 0
-        // One call sized to the widest position any of these rulesets can
-        // reach. The count comes back either way, so an undersized buffer is a
-        // bug here rather than a routine outcome to loop on.
-        var buffer = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
-
-        try check(mxq_game_legal_moves(session, &buffer, buffer.count,
-                                      &count, &err), err)
-        return moveTexts(buffer, count: count)
-    }
-
-    func fen(atPly ply: Int) throws -> String {
-        let session = try attachedSession()
-        var position = MxqPosition()
-        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
-        var err = freshError()
-        try check(mxq_game_position_at(session, UInt32(ply), &position, &err),
-                       err)
-        return string(of: position.fen, capacity: MXQ_FEN_CAP)
-    }
-
-    func firstMover() throws -> Side {
-        let session = try attachedSession()
-        var position = MxqPosition()
-        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
-        var err = freshError()
-        try check(mxq_game_position_at(session, 0, &position, &err), err)
+        try check(withCStrings(moves) { texts in
+            mxq_rules_evaluate(core, game.raw, start, texts, moves.count,
+                               &position, &status, nil, &err)
+        }, err)
         guard let side = Side(position.side_to_move) else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
                             detail: "the core reported no side to move")
         }
-        return side
-    }
-}
-
-// MARK: - Session lifecycle above the seam
-
-extension Core {
-    /// Releases the session, if one is attached. The screen calls this as it
-    /// replaces the game — after filing a finished one, or before resuming at
-    /// launch — because a released session is the single-session rule's
-    /// precondition, and release itself cannot fail and refuses nothing, so it
-    /// is no part of the refusal seam.
-    func endSession() {
-        mxq_game_release(session)
-        session = nil
+        return Evaluation(fen: string(of: position.fen, capacity: MXQ_FEN_CAP),
+                          sideToMove: side,
+                          inCheck: position.in_check != 0,
+                          plyCount: Int(position.ply_count),
+                          state: GameState(status.state),
+                          reason: EndReason(status.reason),
+                          atOccurrence: Int(status.at_occurrence))
     }
 
-    /// The accepted atomic archive-and-clear: the active game into History and
-    /// the active-game reference cleared, in one transaction.
-    ///
-    /// It is the fourth archiving path and the only one that may record
-    /// `ended-early`, and the classification is entirely the core's — an
-    /// ordinary ongoing game and an unclaimed claimable repetition are recorded
-    /// as ended early, and an unconfirmed natural terminal keeps its actual
-    /// result and its exact reason. Nothing here supplies any of that.
-    ///
-    /// **It runs off the UI thread**, which is where docs/core-interface.md's
-    /// threading table puts it: the main-actor exception covers the active
-    /// game's own commits and the History surface, and names import, export and
-    /// this call as the three that stay outside it. The session goes *with* the
-    /// call and is detached here first, because the same contract counts every
-    /// function taking an `MxqGame *` as being inside that session: a session
-    /// nothing on this actor can reach is a session only one thread is inside.
-    /// A refusal puts it back, the previously committed active game being
-    /// intact and unchanged.
-    func archiveActiveAndClear(
-        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
-    ) {
-        let active: OpaquePointer
-        let opened: Bool
-        if let session {
-            active = session
-            opened = false
-        } else {
-            // **The one session the Play home ever has, and it is not a game
-            // being played.** The home describes the active game from the
-            // store's summary and holds nothing; the C interface's
-            // archive-and-clear takes an `MxqGame *`, so the transaction opens
-            // the handle it needs and owns it for exactly this call. Nothing is
-            // prepared, nothing searches, and it is released either way.
-            do {
-                guard try resumeActive(), let attached = session else {
-                    throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
-                                    detail: "the library holds no active game to archive")
-                }
-                active = attached
-                opened = true
-            } catch {
-                // On a later turn, like every other answer this call makes: an
-                // answer arriving inside the press that asked for it would
-                // reach an alert still dismissing itself. A refusal that
-                // answered synchronously while the transaction answered from a
-                // queue would be two different calls wearing one signature.
-                Task { @MainActor in completion(.failure(CoreError(wrapping: error))) }
-                return
-            }
-        }
-        let archiver = ActiveGameArchiver(core: handle, active: active)
-        // For as long as this window is open the core has no session, so
-        // `evaluation()` and `legalMoves()` refuse. `PlayState` keeps the
-        // questions unreachable: the flow stands on the Play home for the
-        // whole archive, and `resume()` refuses to leave it while a mode switch
-        // is in flight.
-        session = nil
-        archiver.run { [self] result in
-            Task { @MainActor in
-                switch result {
-                case .success:
-                    // The archived session is still the caller's to release.
-                    mxq_game_release(archiver.active)
-                case .failure:
-                    // The previously committed active game is intact, so a
-                    // handle this call opened goes back with it — the accepted
-                    // retry opens its own — and one it was handed returns to
-                    // whoever handed it over.
-                    if opened { mxq_game_release(archiver.active) }
-                    else { session = archiver.active }
-                }
-                completion(result)
-            }
-        }
-    }
-}
-
-/// `mxq_store_archive_and_clear` over the core handle and the session it
-/// archives, off every actor.
-///
-/// A dispatch queue rather than the cooperative pool for the same reason the
-/// engine facade uses one: the call is a store transaction and it blocks for as
-/// long as the commit takes, and a blocking call has no business on a pool
-/// thread. It is serial because there is one active game and one archiving of
-/// it; a second while the first is in flight would be a second owner of one
-/// session, which the single-owner rule refuses.
-///
-/// `@unchecked` for the reason `HistoryStore` is: what makes the two pointers
-/// safe to send is the C contract above them, which Swift cannot read. The
-/// claim being made is exactly the header's — the session's owner, any thread
-/// except inside a search callback, off the UI thread — and the owner is this
-/// call for as long as it runs.
-private nonisolated struct ActiveGameArchiver: @unchecked Sendable {
-    let core: OpaquePointer
-    let active: OpaquePointer
-
-    private static let queue = DispatchQueue(label: "com.chentianren.MiniXiangqi.store",
-                                             qos: .userInitiated)
-
-    func run(_ completion: @escaping @Sendable (Result<UInt64, CoreError>) -> Void) {
-        Self.queue.async {
-            var recordID: UInt64 = 0
-            var err = freshError()
-            let status = mxq_store_archive_and_clear(core, active, &recordID, &err)
-            guard status == MXQ_OK else {
-                completion(.failure(CoreError(
-                    status: status,
-                    detail: string(of: err.detail, capacity: MXQ_DETAIL_CAP))))
-                return
-            }
-            completion(.success(recordID))
-        }
-    }
-
-    /// Waits for an archive already inside the core to finish, and for nothing
-    /// else. A barrier rather than a cancellation, exactly as the engine
-    /// queue's is, and called from `Core.shutdown` for the same reason.
-    static func quiesce() {
-        queue.sync { }
-    }
-}
-
-// MARK: - The wire session a nearby game is played over
-
-/// The terminal a peer has sent for its session, in the core's own vocabulary.
-/// The protocol layer has a word of its own for the same two things; this is
-/// the one the C interface carries, mapped here as every other closed core
-/// vocabulary in this file is.
-nonisolated enum WireTerminal: Sendable, Equatable {
-    case resign, acceptDraw
-}
-
-/// What the store keeps of the BoardGame session an unfinished nearby game is
-/// being played over — `docs/game-data.md`'s `nearby_session` row.
-///
-/// It is not the game and it is not the game's configuration: it is the
-/// protocol's own bookkeeping, and every value of it is device-local, which is
-/// why the portability law keeps all of it out of the archive. The mover is not
-/// here — that is `GameConfiguration.localSide`, and one fact lives in one
-/// place.
-nonisolated struct NearbyWireSession: Equatable, Sendable {
-    /// The identifier the proposer minted, compared byte-wise on the wire.
-    var sessionID: String
-    /// The paired device on the other end, as the transport names it.
-    var peerID: String
-    /// Which peer proposed — the only asymmetry a session has, and the one that
-    /// decides which connection a resume exchange completes on.
-    var proposedLocally: Bool
-    /// Accepted retractions, and the surviving count of the last one.
-    var undos: Int
-    var keep: Int
-    /// The terminal this device has sent, where it has sent one.
-    var sentEnd: WireTerminal?
-    /// Whether the session's last ply is the claim turn action. The archive does
-    /// not record one — a claimed draw is its terminal trio — so an unfinished
-    /// game has nowhere else to carry it, and a session that resumed a ply short
-    /// of its opponent would be sent that ply back on a turn that is not the
-    /// sender's.
-    var claimed: Bool
-    /// The four values a dealt session's handshake produced, "present exactly
-    /// for a `jieqi` session and absent for every other".
-    var deal: Deal?
-
-    /// What a hidden-information session persists of its handshake — the deal
-    /// itself is derived from the seed and the nonce again whenever it is
-    /// needed, and where it is recorded is the game's own `start_fen`.
-    nonisolated struct Deal: Equatable, Sendable {
-        var commit: String
-        var nonce: String
-        var seed: String
-        /// The one of the four a `resume` carries, and the one that is not
-        /// archive content, being derivable from the deal it names.
-        var digest: String
-    }
-
-    init(sessionID: String, peerID: String, proposedLocally: Bool,
-         undos: Int = 0, keep: Int = 0, sentEnd: WireTerminal? = nil,
-         claimed: Bool = false, deal: Deal? = nil) {
-        self.sessionID = sessionID
-        self.peerID = peerID
-        self.proposedLocally = proposedLocally
-        self.undos = undos
-        self.keep = keep
-        self.sentEnd = sentEnd
-        self.claimed = claimed
-        self.deal = deal
-    }
-
-    init?(_ raw: MxqNearbySession) {
-        let sentEnd: WireTerminal?
-        switch raw.sent_end {
-        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_RESIGN): sentEnd = .resign
-        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_ACCEPT_DRAW): sentEnd = .acceptDraw
-        case MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_NONE): sentEnd = nil
-        // Every switch over a core vocabulary needs a default arm, and there is
-        // no reading of an unknown terminal that is safe to guess at: a session
-        // whose settledness cannot be read is not one to resume.
-        default: return nil
-        }
-        // All four or none: the row carries a deal exactly for a session of the
-        // one game that has one, and the core refuses any other shape.
-        let commit = string(of: raw.deal_commit, capacity: MXQ_DEAL_HEX_CAP)
-        let nonce = string(of: raw.deal_nonce, capacity: MXQ_DEAL_HEX_CAP)
-        let seed = string(of: raw.deal_seed, capacity: MXQ_DEAL_HEX_CAP)
-        let digest = string(of: raw.deal_digest, capacity: MXQ_DEAL_HEX_CAP)
-        let deal = commit.isEmpty ? nil : Deal(commit: commit, nonce: nonce,
-                                               seed: seed, digest: digest)
-        self.init(sessionID: string(of: raw.session_id,
-                                    capacity: MXQ_NEARBY_SESSION_ID_CAP),
-                  peerID: string(of: raw.peer_id, capacity: MXQ_NEARBY_PEER_ID_CAP),
-                  proposedLocally: raw.proposer
-                      == MxqNearbyProposer(MXQ_NEARBY_PROPOSER_LOCAL),
-                  undos: Int(raw.undos), keep: Int(raw.keep), sentEnd: sentEnd,
-                  claimed: raw.claimed != 0, deal: deal)
-    }
-
-    /// The C struct, with the two identifiers copied into their capacities.
-    /// `nil` where one does not fit: the core refuses such a value, and building
-    /// a truncated one to be refused would be worse than not building it.
-    var raw: MxqNearbySession? {
-        var state = MxqNearbySession()
-        state.struct_size = UInt32(MemoryLayout<MxqNearbySession>.size)
-        state.proposer = MxqNearbyProposer(
-            proposedLocally ? MXQ_NEARBY_PROPOSER_LOCAL : MXQ_NEARBY_PROPOSER_PEER)
-        state.undos = UInt32(max(0, undos))
-        state.keep = UInt32(max(0, keep))
-        state.claimed = claimed ? 1 : 0
-        switch sentEnd {
-        case .resign: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_RESIGN)
-        case .acceptDraw: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_ACCEPT_DRAW)
-        case nil: state.sent_end = MxqNearbyTerminal(MXQ_NEARBY_TERMINAL_NONE)
-        }
-        guard write(sessionID, into: &state.session_id,
-                    capacity: Int(MXQ_NEARBY_SESSION_ID_CAP)),
-              write(peerID, into: &state.peer_id,
-                    capacity: Int(MXQ_NEARBY_PEER_ID_CAP))
-        else { return nil }
-        // Absent is the zeroed capacity the struct already carries, which is
-        // what a session of every other game states.
-        if let deal {
-            guard write(deal.commit, into: &state.deal_commit,
-                        capacity: Int(MXQ_DEAL_HEX_CAP)),
-                  write(deal.nonce, into: &state.deal_nonce,
-                        capacity: Int(MXQ_DEAL_HEX_CAP)),
-                  write(deal.seed, into: &state.deal_seed,
-                        capacity: Int(MXQ_DEAL_HEX_CAP)),
-                  write(deal.digest, into: &state.deal_digest,
-                        capacity: Int(MXQ_DEAL_HEX_CAP))
-            else { return nil }
-        }
-        return state
-    }
-
-    /// One identifier into its fixed capacity, NUL-terminated. Refuses rather
-    /// than truncates, because an identifier one byte short is another session.
-    private func write<Buffer>(_ text: String, into buffer: inout Buffer,
-                               capacity: Int) -> Bool {
-        let bytes = Array(text.utf8)
-        guard !bytes.isEmpty, bytes.count < capacity else { return false }
-        withUnsafeMutablePointer(to: &buffer) {
-            $0.withMemoryRebound(to: CChar.self, capacity: capacity) { out in
-                for (index, byte) in bytes.enumerated() {
-                    out[index] = CChar(bitPattern: byte)
-                }
-                out[bytes.count] = 0
-            }
-        }
-        return true
-    }
-}
-
-/// The end two nearby players declared to each other, as the fourth terminal
-/// commit takes it. A rules-decided end is not one of these: the board already
-/// knows that verdict, and `confirmResult()` is what commits it.
-nonisolated enum NearbyEnding: Equatable, Sendable {
-    /// One player resigned; the side named is the one that did.
-    case resignation(Side)
-    case mutualResignation
-    case agreedDraw
-}
-
-/// The library, as the nearby layer needs it: the attached session, plus the
-/// calls that exist only for a game two devices play.
-protocol NearbyLibrary: AnyObject {
-    var hasSession: Bool { get }
-    func resumeActive() throws -> Bool
-    func moveHistory() throws -> [String]
-    func apply(_ move: String) throws
-    func claimDraw() throws -> UInt64
-    func confirmResult() throws -> UInt64
-    func archiveActiveAndClear(
-        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void)
-    /// Let go of the attached session without ending its game. The library
-    /// keeps its active game, and the next resume reads it back.
-    func endSession()
-    /// What the store says about the active game, with no session attached.
-    func activeGameSummary() throws -> ActiveGameSummary?
-    /// Create the nearby game and the wire session it is played over, in one
-    /// transaction.
-    func createNearby(_ configuration: GameConfiguration,
-                      wire: NearbyWireSession) throws
-    /// The wire session the attached game carries, where it carries one.
-    func nearbyWireSession() throws -> NearbyWireSession?
-    /// Rewrite it. For the one change the move line does not share: a terminal
-    /// this device sent, which ends nothing until the exchange settles it.
-    func setNearbyWireSession(_ wire: NearbyWireSession) throws
-    /// The negotiated retraction: the surviving line and the counts that
-    /// produced it, in one transaction.
-    func retractNearby(to keep: Int, wire: NearbyWireSession) throws
-    /// Commit the end the two players declared. The core derives the outcome.
-    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UInt64
-}
-
-extension Core: NearbyLibrary {
-    func createNearby(_ configuration: GameConfiguration,
-                      wire: NearbyWireSession) throws {
-        precondition(!hasSession, "created a nearby game over a game")
-        guard var state = wire.raw else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
-                            detail: "the wire session's identifiers do not fit")
-        }
-        var config = configuration.raw
-        var game: OpaquePointer?
-        var err = freshError()
-        try check(mxq_game_create_nearby(handle, &config, &state, &game, &err), err)
-        session = game
-    }
-
-    func nearbyWireSession() throws -> NearbyWireSession? {
-        let session = try attachedSession()
-        var state = MxqNearbySession()
-        state.struct_size = UInt32(MemoryLayout<MxqNearbySession>.size)
-        var exists: UInt8 = 0
-        var err = freshError()
-        try check(mxq_game_nearby_session(session, &state, &exists, &err), err)
-        guard exists != 0 else { return nil }
-        guard let wire = NearbyWireSession(state) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported an unknown wire terminal")
-        }
-        return wire
-    }
-
-    func setNearbyWireSession(_ wire: NearbyWireSession) throws {
-        let session = try attachedSession()
-        guard var state = wire.raw else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
-                            detail: "the wire session's identifiers do not fit")
-        }
-        var err = freshError()
-        try check(mxq_game_set_nearby_session(session, &state, &err), err)
-    }
-
-    func retractNearby(to keep: Int, wire: NearbyWireSession) throws {
-        let session = try attachedSession()
-        guard var state = wire.raw else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_RANGE),
-                            detail: "the wire session's identifiers do not fit")
-        }
-        var err = freshError()
-        try check(mxq_game_retract_nearby(session, UInt32(max(0, keep)), &state,
-                                          &err), err)
-    }
-
-    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UInt64 {
-        let session = try attachedSession()
-        let reason: MxqEndReason
-        var side = MxqColor(MXQ_COLOR_NONE)
-        switch ending {
-        case .resignation(let resigning):
-            reason = MxqEndReason(MXQ_END_REASON_RESIGNATION)
-            side = MxqColor(resigning == .red ? MXQ_COLOR_RED : MXQ_COLOR_BLACK)
-        case .mutualResignation:
-            reason = MxqEndReason(MXQ_END_REASON_MUTUAL_RESIGNATION)
-        case .agreedDraw:
-            reason = MxqEndReason(MXQ_END_REASON_AGREED_DRAW)
-        }
-        var recordID: UInt64 = 0
-        var err = freshError()
-        try check(mxq_game_commit_nearby_end(session, reason, side, &recordID,
-                                             &err), err)
-        return recordID
-    }
-}
-
-// MARK: - The active game, without a session
-
-/// The active game as the store describes it, with no session attached.
-///
-/// docs/core-interface.md, "Library store": `mxq_store_active_summary` "serves
-/// the Play destination and the save-and-continue confirmation without
-/// materializing a session. It reports the summary columns and, derived by
-/// replaying the stored line, the same live state a session would report." That
-/// is the whole of what the Play home knows about the game it offers to go back
-/// into — the session itself belongs to the board.
-nonisolated struct ActiveGameSummary: Equatable, Sendable {
-    var game: GameKind
-    var mode: PlayMode
-    /// The human's resolved side in human-versus-AI play; absent in Free Play,
-    /// where the same person controls both.
-    var humanSide: Side?
-    /// The side this device's player took, in a nearby game. Store metadata: the
-    /// archive is device-portable and carries no local perspective, so this is
-    /// the only place an interrupted nearby game's own side can come back from.
-    var localSide: Side?
-    /// Plies, which is what 步 counts.
-    var moveCount: Int
-    /// The live state, derived by the core from the stored line exactly as a
-    /// session's is.
-    var state: GameState
-    var reason: EndReason
-    /// Whose turn it is, as the core's own status reports it. It is on the
-    /// status rather than worked out here because this summary carries no
-    /// position and no start: a game whose start has Black to move has Black
-    /// making ply 0, so a count of plies would name the wrong side.
-    var sideToMove: Side
-}
-
-extension Core {
-    /// The store's active game, or `nil` when it holds none. No session is
-    /// materialised and none is left behind.
-    func activeGameSummary() throws -> ActiveGameSummary? {
-        var summary = MxqRecordSummary()
-        summary.struct_size = UInt32(MemoryLayout<MxqRecordSummary>.size)
-        var status = MxqGameStatus()
-        status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-        var exists: UInt8 = 0
-        var err = freshError()
-        try check(mxq_store_active_summary(handle, &summary, &status, &exists, &err), err)
-        guard exists != 0 else { return nil }
-        guard let game = GameKind(summary.game) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported an unknown game kind")
-        }
-        guard let sideToMove = Side(status.side_to_move) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported no side to move")
-        }
-        return ActiveGameSummary(game: game,
-                                 mode: PlayMode(summary.mode),
-                                 humanSide: Side(summary.human_side),
-                                 localSide: Side(summary.local_side),
-                                 moveCount: Int(summary.move_count),
-                                 state: GameState(status.state),
-                                 reason: EndReason(status.reason),
-                                 sideToMove: sideToMove)
-    }
-}
-
-// MARK: - The library's History surface
-
-/// One stored game, as the History list reads it: the core's own summary,
-/// converted and nothing more. Every field here is the store's answer; the row
-/// composes them and judges none of them.
-nonisolated struct RecordSummary: Identifiable, Sendable, Hashable {
-    /// The store's `record_id`, never reissued after a deletion — so a stale
-    /// one dangles rather than naming some later game.
-    var id: UInt64
-    var game: GameKind
-    var mode: PlayMode
-    /// The human's resolved side in human-versus-AI play; absent in Free Play,
-    /// where the same person controls both.
-    var humanSide: Side?
-    /// The side this device's player took, in a nearby game played here. Local
-    /// library metadata: it is in no archive, so an imported nearby record has
-    /// none.
-    var localSide: Side?
-    var outcome: Outcome
-    var reason: EndReason
-    /// Plies, which is what 步 counts.
-    var moveCount: Int
-    var pinned: Bool
-    var imported: Bool
-    /// When the game ended — the instant that made it a record. The store
-    /// orders the list by its own History-added time instead, and for a game
-    /// played on this device the two are one transaction apart.
-    var endedAt: Date
-}
-
-/// The library's History surface.
-///
-/// The screen calls these on the main actor, under the documented exception in
-/// docs/core-interface.md's threading contract that the active game's commits
-/// already run under: a page read commits nothing and does not fsync, and a pin
-/// or a delete is one commit per user action, which is exactly the shape the
-/// owner's proportionality ruling accepted. `mxq_store_history_open` is the one
-/// the argument does not bound — it decodes and replays a whole game — and it
-/// is named in the contract as the call to measure at Stage 6.
-///
-/// It is nonetheless a `Sendable` value over the core handle alone rather than
-/// a method on `Core`: it holds no Swift state to race on, and the core
-/// serializes store work behind one mutex and one connection, so moving these
-/// calls back off the main actor is a change of call site rather than of
-/// design. That is what makes the contract's "held in reserve" mean something.
-///
-/// A store surface outliving its core is safe by the interface's own promise:
-/// after `mxq_core_shutdown` every handle the core *issued* — a session, a blob
-/// — answers `MXQ_ERR_ARG_INVALID_HANDLE` rather than touching freed memory.
-/// The promise does not extend to the core handle this struct carries, which
-/// after shutdown is a programming error to pass; what keeps that from
-/// happening is that shutdown is the app's last act and this surface is driven
-/// from the main actor, which is where it is called.
-///
-/// `@unchecked` because `OpaquePointer` carries no sendability of its own and
-/// cannot: what makes this one safe to send is the C contract above it, which
-/// Swift cannot read. The claim being made is exactly the header's — any thread
-/// except inside a search callback — and nothing else in the struct can race.
-nonisolated struct HistoryStore: @unchecked Sendable {
-    fileprivate let handle: OpaquePointer
-
-    /// How many records there are, and the library revision — a monotonic
-    /// counter every committed store mutation bumps. Return values plus this
-    /// cheap staleness check are the interface's whole answer to observing the
-    /// library; there is no notification to subscribe to.
-    func count() throws -> (records: Int, revision: UInt64) {
-        var count: UInt32 = 0
-        var revision: UInt64 = 0
-        var err = freshError()
-        try check(mxq_store_history_count(handle, &count, &revision, &err), err)
-        return (Int(count), revision)
-    }
-
-    /// One page, in the core's own order — pinned first, then newest within
-    /// each group. The order is a core guarantee and nothing above re-sorts it.
-    func page(offset: Int, limit: Int) throws -> (records: [RecordSummary],
-                                                  revision: UInt64) {
-        var buffer = [MxqRecordSummary](repeating: MxqRecordSummary(), count: limit)
-        var written = 0
-        var revision: UInt64 = 0
-        var err = freshError()
-        // The caller chose the page size, so a buffer smaller than the limit is
-        // this code's bug rather than a routine way to ask for the count: the
-        // two are the same number here by construction.
-        try check(mxq_store_history_page(handle, UInt32(offset), UInt32(limit),
-                                         &buffer, buffer.count, &written,
-                                         &revision, &err), err)
-        let records = try buffer.prefix(written).map { try RecordSummary($0) }
-        return (records, revision)
-    }
-
-    /// Every record, read a page at a time. The target MVP has no search and no
-    /// filters, so the list is the library, and a few thousand summaries is a
-    /// few hundred kilobytes.
-    func all() throws -> (records: [RecordSummary], revision: UInt64) {
-        var records: [RecordSummary] = []
-        var revision: UInt64 = 0
-        while true {
-            let page = try page(offset: records.count, limit: Self.pageSize)
-            records += page.records
-            revision = page.revision
-            // Short of the page size means the end of the list, by the
-            // interface's own words.
-            if page.records.count < Self.pageSize { return (records, revision) }
-        }
-    }
-
-    private static let pageSize = 200
-
-    /// Pin or unpin — the only mutable field a History record has.
-    func setPinned(_ pinned: Bool, on record: UInt64) throws {
-        var err = freshError()
-        try check(mxq_store_history_set_pinned(handle, record, pinned ? 1 : 0, &err),
-                  err)
-    }
-
-    /// Permanent, whole, and with no undo behind it.
-    func delete(_ record: UInt64) throws {
-        var err = freshError()
-        try check(mxq_store_history_delete(handle, record, &err), err)
-    }
-
-    /// Opens the record as a detached read-only session and hands back its
-    /// handle. Ownership passes to whoever receives it — the replay screen,
-    /// where every remaining call on it is a non-blocking session query.
-    func open(_ record: UInt64) throws -> ReplayHandle {
-        var replay: OpaquePointer?
-        var err = freshError()
-        try check(mxq_store_history_open(handle, record, &replay, &err), err)
-        guard let replay else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "mxq_store_history_open reported success without a session")
-        }
-        return ReplayHandle(handle: replay)
-    }
-}
-
-/// What one import did. Both cases are success: a file the library already
-/// holds is not an error, and the record it names is the one it already had.
-nonisolated enum ImportOutcome: Sendable {
-    case created
-    case existing
-}
-
-/// One import's answer: which of the two happened, and the record either way.
-nonisolated struct ImportedGame: Sendable {
-    var outcome: ImportOutcome
-    var record: RecordSummary
-}
-
-/// Interchange: one game out as a file, one game in from one.
-///
-/// These two are the calls `docs/core-interface.md` keeps **outside** the
-/// main-actor exception the rest of this surface runs under, so every caller
-/// reaches them from a detached context. Both are unbounded in a way the
-/// exception's argument does not cover: an export decodes and re-encodes a
-/// whole game, and an import validates an untrusted file — replaying every ply
-/// of it — against a two-second budget before it writes anything.
-nonisolated extension HistoryStore {
-    /// One immutable History record, as the portable file that leaves the app.
-    ///
-    /// The bytes are the record's own content with the export event stamped on
-    /// it; the core owns both halves of that sentence, and nothing here reads
-    /// or edits the document.
-    func export(_ record: UInt64) throws -> Data {
-        var blob: OpaquePointer?
-        var err = freshError()
-        try check(mxq_store_export(handle, record, &blob, &err), err)
-        guard let blob else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "mxq_store_export reported success without a blob")
-        }
-        // The one pointer into core memory this interface hands out, valid
-        // until the release below — so the bytes are copied before it goes.
-        defer { mxq_blob_release(blob) }
-        guard let bytes = mxq_blob_bytes(blob) else { return Data() }
-        return Data(bytes: bytes, count: mxq_blob_len(blob))
-    }
-
-    /// One game file, validated whole and filed — or refused, with the library
-    /// untouched. The bytes are untrusted input and the core treats them as
-    /// such; this hands them over and reports what came back.
-    func importGame(_ file: Data) throws -> ImportedGame {
-        var outcome = MxqImportOutcome(MXQ_IMPORT_CREATED)
-        var record: UInt64 = 0
-        var summary = MxqRecordSummary()
-        summary.struct_size = UInt32(MemoryLayout<MxqRecordSummary>.size)
-        var err = freshError()
-        // A zero-byte file is one the picker will really hand over, and the
-        // core has an answer for it — the archive is empty — but a null pointer
-        // is a programming error rather than a bad file. An empty buffer has no
-        // address, so a spare byte lends one and the length stays 0.
-        var spare: UInt8 = 0
-        let status = withUnsafePointer(to: &spare) { lent in
-            file.withUnsafeBytes { raw in
-                mxq_store_import(handle,
-                                 raw.bindMemory(to: UInt8.self).baseAddress ?? lent,
-                                 raw.count, &outcome, &record, &summary, &err)
-            }
-        }
-        try check(status, err)
-        return ImportedGame(outcome: outcome == MxqImportOutcome(MXQ_IMPORT_EXISTING)
-                                     ? .existing : .created,
-                            record: try RecordSummary(summary))
-    }
-}
-
-/// A detached replay session in transit, between the call that opened it and
-/// the object that will own it. The type exists to make that one hand-off
-/// visible, since a session is single-owner and this is the moment its owner is
-/// decided — and to keep the handle sendable, so that opening it off the main
-/// actor stays a change of call site rather than of design.
-nonisolated struct ReplayHandle: @unchecked Sendable {
-    fileprivate let handle: OpaquePointer
-}
-
-private nonisolated extension RecordSummary {
-    init(_ summary: MxqRecordSummary) throws {
-        guard let game = GameKind(summary.game) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported an unknown game kind")
-        }
-        self.init(id: summary.record_id,
-                  game: game,
-                  mode: PlayMode(summary.mode),
-                  humanSide: Side(summary.human_side),
-                  localSide: Side(summary.local_side),
-                  outcome: Outcome(summary.outcome),
-                  reason: EndReason(summary.end_reason),
-                  moveCount: Int(summary.move_count),
-                  pinned: summary.pinned != 0,
-                  imported: summary.provenance == MxqProvenance(MXQ_PROVENANCE_IMPORTED),
-                  endedAt: Date(milliseconds: summary.ended_at_ms != 0
-                                ? summary.ended_at_ms : summary.added_at_ms))
-    }
-}
-
-private nonisolated extension Date {
-    init(milliseconds: Int64) {
-        self.init(timeIntervalSince1970: Double(milliseconds) / 1000)
-    }
-}
-
-/// The position at one ply of a replayed game.
-nonisolated struct ReplayPosition: Sendable {
-    var fen: String
-    var sideToMove: Side
-    var inCheck: Bool
-}
-
-/// A History record open for replay: the core's detached read-only session.
-/// Every query answers as it does on any session, every affordance reads 0, and
-/// a mutation is refused — which is why the replay screen has no rule of its
-/// own to enforce about what the board will not do.
-///
-/// The queries below are the session's owner's to make and are non-blocking, so
-/// once the handle has arrived they cost a frame nothing: the walk is a lookup
-/// into a game the core has already replayed.
-final class ReplaySession {
-    private var handle: OpaquePointer?
-
-    init(_ opened: ReplayHandle) {
-        self.handle = opened.handle
-    }
-
-    /// The recorded line, whole.
-    func moves() throws -> [String] {
-        let session = try live()
-        var err = freshError()
+    nonisolated static func legalMoves(_ core: OpaquePointer, _ game: GameKind,
+                                       from start: String, moves: [String]) throws -> [String] {
+        var buffer = [MxqMove](repeating: MxqMove(), count: legalMoveCapacity)
         var count = 0
-        let probe = mxq_game_move_history(session, nil, 0, &count, &err)
-        if probe != MXQ_ERR_ARG_BUFFER_TOO_SMALL { try check(probe, err) }
-        guard count > 0 else { return [] }
-        var buffer = [MxqMove](repeating: MxqMove(), count: count)
-        try check(mxq_game_move_history(session, &buffer, buffer.count, &count, &err),
-                  err)
-        return moveTexts(buffer, count: count)
-    }
-
-    /// The position after the first `ply` plies. This is the walk: replay never
-    /// applies a move, it asks the core what the position was.
-    func position(atPly ply: Int) throws -> ReplayPosition {
-        let session = try live()
-        var position = MxqPosition()
-        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
         var err = freshError()
-        try check(mxq_game_position_at(session, UInt32(ply), &position, &err), err)
-        guard let side = Side(position.side_to_move) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
-                            detail: "the core reported no side to move")
-        }
-        return ReplayPosition(fen: string(of: position.fen, capacity: MXQ_FEN_CAP),
-                              sideToMove: side,
-                              inCheck: position.in_check != 0)
-    }
-
-    /// Releases the session. The screen calls this as it closes, because a
-    /// detached session is a handle the core is holding open for it; release
-    /// cannot fail and refuses nothing.
-    func close() {
-        mxq_game_release(handle)
-        handle = nil
-    }
-
-    /// The safety net under `close()`. Isolated, because releasing a session
-    /// is its owner's call and this class is the owner: an ordinary deinit
-    /// could run anywhere and would be exactly the cross-thread release the
-    /// single-owner rule forbids.
-    isolated deinit { mxq_game_release(handle) }
-
-    private func live() throws -> OpaquePointer {
-        guard let handle else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ARG_INVALID_HANDLE),
-                            detail: "the replay session is closed")
-        }
-        return handle
+        try check(withCStrings(moves) { texts in
+            mxq_rules_legal_moves(core, game.raw, start, texts, moves.count,
+                                  &buffer, buffer.count, &count, &err)
+        }, err)
+        return buffer.prefix(count).map { string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP) }
     }
 }
-
-extension Core {
-    /// The library's History surface over this core.
-    var history: HistoryStore { HistoryStore(handle: handle) }
-}
-
-#if DEBUG
-// MARK: - Test evidence
-
-// The store read-backs the session tests assert against. Debug-only because
-// they exist as evidence rather than as product surface — the History screen
-// reads through `history` above — and internal so a test reads the store
-// through the same veneer the app trusts rather than through a second one.
-extension Core {
-    /// Whether the library holds an active game.
-    func activeGameExists() throws -> Bool {
-        var exists: UInt8 = 0
-        var err = freshError()
-        try check(mxq_store_active_exists(handle, &exists, &err), err)
-        return exists != 0
-    }
-
-    /// The number of immutable History records.
-    func historyCount() throws -> Int {
-        try history.count().records
-    }
-}
-#endif

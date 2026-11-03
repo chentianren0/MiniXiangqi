@@ -3,10 +3,10 @@
 //
 // docs/game-data.md fixes all three of the type's parts — the `.mxq` extension,
 // the `com.chentianren.minixiangqi.game` identifier, and that it conforms to
-// `public.json`, because the archive is one canonical-JSON document and a file
-// that says so stays inspectable. The declaration itself lives in the app's
-// Info.plist, which is what registers it with the system; this is the Swift
-// spelling of the same identifier.
+// `public.json`, because a game file is one JSON document and a file that says
+// so stays inspectable. The declaration itself lives in the app's Info.plist,
+// which is what registers it with the system; this is the Swift spelling of the
+// same identifier.
 //
 // The transfer representation is a **file** representation deliberately. A data
 // representation alone is enough for a pasteboard and not enough for AirDrop,
@@ -15,17 +15,15 @@
 // directory and hands that over.
 //
 // The export runs inside that representation's own asynchronous closure rather
-// than in the button that presented the sheet. That is where it belongs twice
-// over: docs/core-interface.md keeps export off the main actor, and a share
-// sheet that has not been asked for a file yet has no reason to have done the
-// work.
+// than in the button that presented the sheet: a share sheet that has not been
+// asked for a file yet has no reason to have done the work.
 
 import CoreTransferable
 import Foundation
 import UniformTypeIdentifiers
 
 nonisolated extension UTType {
-    /// The archive's own type. `exportedAs` because this application defines
+    /// The game file's own type. `exportedAs` because this application defines
     /// it; the identifier and its conformance are the accepted ones and the
     /// Info.plist declaration must agree with them exactly.
     static let miniXiangqiGame = UTType(exportedAs: "com.chentianren.minixiangqi.game",
@@ -34,25 +32,32 @@ nonisolated extension UTType {
 
 /// One History record on its way out of the app.
 ///
-/// It holds the record and the store rather than the bytes, so that presenting
-/// a share control costs nothing: the export happens when a service asks for
-/// the file, and only then.
+/// It holds the record's identity and the library rather than the bytes, so
+/// that presenting a share control costs nothing: the export happens when a
+/// service asks for the file, and only then.
 nonisolated struct GameFile: Transferable, Sendable {
-    var record: RecordSummary
-    var store: HistoryStore
+    var id: UUID
+    var endedAt: Date
+    var library: GameLibrary
+
+    @MainActor
+    init(record: GameRecord, in library: GameLibrary) {
+        id = record.id
+        endedAt = record.endedAt ?? record.startedAt
+        self.library = library
+    }
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .miniXiangqiGame) { game in
-            SentTransferredFile(try game.write())
+            SentTransferredFile(try await game.write())
         }
         .suggestedFileName { $0.name }
     }
 
     /// The filename, built from the game's own end rather than from the export.
     ///
-    /// `origin.exported_at` is regenerated on every export, so a name built
-    /// from it would give one game a different name every time it was shared.
-    /// The game's end does not move.
+    /// A name built from the export would give one game a different name every
+    /// time it was shared. The game's end does not move.
     ///
     /// **The one place in this app that writes a date pattern, and the one
     /// place that is right to.** A displayed date belongs to the reader's
@@ -61,7 +66,7 @@ nonisolated struct GameFile: Transferable, Sendable {
     /// every device is worth more than a localized one. `en_US_POSIX` is what
     /// makes that a promise rather than a coincidence.
     var name: String {
-        Self.stamp.string(from: record.endedAt) + ".mxq"
+        Self.stamp.string(from: endedAt) + ".mxq"
     }
 
     private static let stamp: DateFormatter = {
@@ -74,11 +79,11 @@ nonisolated struct GameFile: Transferable, Sendable {
     /// Exports the record and writes it where a transfer can pick it up. The
     /// temporary directory is the app's own, so nothing here needs access to a
     /// location the user chose.
-    private func write() throws -> URL {
-        let bytes = try store.export(record.id)
+    private func write() async throws -> URL {
+        let contents = try await library.fileData(of: id)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(name, isDirectory: false)
-        try bytes.write(to: url, options: .atomic)
+        try contents.write(to: url, options: .atomic)
         return url
     }
 }

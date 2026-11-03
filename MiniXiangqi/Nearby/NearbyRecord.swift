@@ -53,7 +53,7 @@ protocol NearbyRecording: AnyObject {
     var ownMoveRefusals: Int { get }
 }
 
-/// The store's memory of a nearby game, over the shared core's library.
+/// The library's memory of a nearby game.
 @MainActor
 final class NearbyRecord: NearbyRecording {
     private let library: any NearbyLibrary
@@ -505,7 +505,7 @@ final class NearbyRecord: NearbyRecording {
     /// each other are the fourth commit's; an end the rules decided is the
     /// board's own verdict, and the core already holds it — the claimed draw
     /// through the claim, everything else through the confirmation.
-    private func file(_ end: BoardGameEnd, of session: BoardGameSession) throws -> UInt64 {
+    private func file(_ end: BoardGameEnd, of session: BoardGameSession) throws -> UUID {
         switch end.ending {
         case .rulesDecided:
             return session.plies.last == TurnAction.claim

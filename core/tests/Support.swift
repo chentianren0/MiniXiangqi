@@ -10,33 +10,22 @@ let repository = URL(filePath: #filePath).deletingLastPathComponent()
     .deletingLastPathComponent().deletingLastPathComponent()
 let assets = repository.appending(path: "core/assets")
 
-/// A core over a scratch store and `assets`, shut down when `body` returns.
+/// A core over `assets`, shut down when `body` returns.
 func withCore<T>(assets directory: URL = assets, _ body: (OpaquePointer) throws -> T) throws -> T {
-    let store = FileManager.default.temporaryDirectory
-        .appending(path: "MiniXiangqiCoreTests-\(UUID().uuidString)")
-    defer { try? FileManager.default.removeItem(at: store) }
-    let core = try makeCore(store: store, assets: directory)
+    let core = try makeCore(assets: directory)
     defer { mxq_core_shutdown(core, nil) }
     return try body(core)
 }
 
-/// A core over `store` and `assets`, which the caller shuts down.
-func makeCore(store: URL, assets directory: URL = assets) throws -> OpaquePointer {
-    try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+/// A core over `assets`, which the caller shuts down.
+func makeCore(assets directory: URL = assets) throws -> OpaquePointer {
     var config = MxqCoreConfig()
     config.struct_size = UInt32(MemoryLayout<MxqCoreConfig>.size)
-    config.api_major = UInt32(MXQ_API_VERSION_MAJOR)
-    config.api_minor = UInt32(MXQ_API_VERSION_MINOR)
-    config.api_patch = UInt32(MXQ_API_VERSION_PATCH)
-    config.flags = UInt32(MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY)
     var handle: OpaquePointer?
     var err = freshError()
-    let status = store.path.withCString { storePath in
-        directory.path.withCString { assetPath in
-            config.store_directory = storePath
-            config.asset_directory = assetPath
-            return mxq_core_init(&config, &handle, &err)
-        }
+    let status = directory.path.withCString { assetPath in
+        config.asset_directory = assetPath
+        return mxq_core_init(&config, &handle, &err)
     }
     try #require(status == MXQ_OK, "mxq_core_init: \(describe(status, err))")
     return try #require(handle)
@@ -68,11 +57,11 @@ func string<T>(of fixedArray: T) -> String {
 }
 
 func describe(_ status: MxqStatus, _ err: MxqError) -> String {
-    "\(String(cString: mxq_status_name(status))) \(string(of: err.detail))"
+    "status \(status): \(string(of: err.detail))"
 }
 
 func statusName(_ status: MxqStatus) -> String {
-    String(cString: mxq_status_name(status))
+    "status \(status)"
 }
 
 func startFEN(_ game: Int) -> String {
@@ -167,84 +156,58 @@ func engineQuery(_ core: OpaquePointer) throws -> (state: MxqEngineState, profil
     return (state, string(profile))
 }
 
-/// A Free Play session of `game`, the store's one active game.
-func freePlay(_ core: OpaquePointer, _ game: Int, start: String = "") throws -> OpaquePointer {
-    var config = MxqGameConfig()
-    config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-    config.game = MxqGameKind(game)
-    config.mode = MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
-    config.human_side = MxqColor(MXQ_COLOR_NONE)
-    config.ai_level = MxqAiLevel(MXQ_AI_LEVEL_NONE)
-    config.first_mover_choice = MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
-    config.local_side = MxqColor(MXQ_COLOR_NONE)
-    withUnsafeMutableBytes(of: &config.start_fen) { buffer in
-        let bytes = Array(start.utf8)
-        buffer.copyBytes(from: bytes)
-        buffer[bytes.count] = 0
+/// The thinking times of the app's fast and deep levels.
+let fast: UInt32 = 1000
+let deep: UInt32 = 5000
+
+/// Starts a search of the position `moves` reach from `game`'s frozen start, or
+/// from `start`, with `delivery` recording the callback.
+func search(_ core: OpaquePointer, _ game: Int, start: String? = nil, _ moves: [String],
+            movetime: UInt32 = fast, _ delivery: Delivery) throws -> UInt64 {
+    let record: MxqSearchCallback = { result, context in
+        guard let result, let context else { return }
+        Unmanaged<Delivery>.fromOpaque(context).takeUnretainedValue().record(result.pointee)
     }
-    return try create(core, config)
-}
-
-/// A human-versus-AI session of `game` from its frozen start, the human Red
-/// and moving first. The session freezes `level`'s thinking time.
-func humanVersusAI(_ core: OpaquePointer, _ game: Int, level: Int = MXQ_AI_LEVEL_FAST) throws -> OpaquePointer {
-    var config = MxqGameConfig()
-    config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-    config.game = MxqGameKind(game)
-    config.mode = MxqPlayMode(MXQ_PLAY_MODE_HUMAN_VS_AI)
-    config.human_side = MxqColor(MXQ_COLOR_RED)
-    config.ai_level = MxqAiLevel(level)
-    config.first_mover_choice = MxqFirstMoverChoice(MXQ_FIRST_MOVER_HUMAN_FIRST)
-    config.ai_movetime_ms = movetime(level)
-    config.local_side = MxqColor(MXQ_COLOR_NONE)
-    return try create(core, config)
-}
-
-func movetime(_ level: Int) -> UInt32 {
-    switch level {
-    case MXQ_AI_LEVEL_DEEP: UInt32(MXQ_MOVETIME_DEEP_MS)
-    case MXQ_AI_LEVEL_STANDARD: UInt32(MXQ_MOVETIME_STANDARD_MS)
-    default: UInt32(MXQ_MOVETIME_FAST_MS)
-    }
-}
-
-private func create(_ core: OpaquePointer, _ config: MxqGameConfig) throws -> OpaquePointer {
-    var config = config
-    var handle: OpaquePointer?
-    var err = freshError()
-    let status = mxq_game_create(core, &config, &handle, &err)
-    try #require(status == MXQ_OK, "mxq_game_create: \(describe(status, err))")
-    return try #require(handle)
-}
-
-func apply(_ session: OpaquePointer, _ moves: [String]) throws {
-    for move in moves {
-        var err = freshError()
-        let status = mxq_game_apply_move(session, move, nil, nil, &err)
-        try #require(status == MXQ_OK, "\(move): \(describe(status, err))")
-    }
-}
-
-/// Ends the store's active game, so the store can hold the next one.
-func clear(_ core: OpaquePointer, _ session: OpaquePointer) {
-    mxq_store_archive_and_clear(core, session, nil, nil)
-    mxq_game_release(session)
-}
-
-func hint(_ core: OpaquePointer, _ session: OpaquePointer, movetime: UInt32 = UInt32(MXQ_MOVETIME_FAST_MS)) throws -> MxqSearchResult {
     var ticket: UInt64 = 0
     var err = freshError()
-    let status = mxq_search_start_hint(core, session, movetime, nil, nil, &ticket, &err)
-    try #require(status == MXQ_OK, "mxq_search_start_hint: \(describe(status, err))")
-    return try wait(core, ticket)
+    let status = withCStrings(moves) { texts in
+        mxq_search_start(core, MxqGameKind(game), start ?? startFEN(game), texts, moves.count,
+                         movetime, record, Unmanaged.passUnretained(delivery).toOpaque(),
+                         &ticket, &err)
+    }
+    try #require(status == MXQ_OK, "mxq_search_start: \(describe(status, err))")
+    return ticket
 }
 
-func wait(_ core: OpaquePointer, _ ticket: UInt64) throws -> MxqSearchResult {
-    var result = MxqSearchResult()
-    result.struct_size = UInt32(MemoryLayout<MxqSearchResult>.size)
-    var ready: UInt8 = 0
-    var err = freshError()
-    let status = mxq_search_wait(core, ticket, 30_000, &result, &ready, &err)
-    try #require(status == MXQ_OK && ready == 1, "mxq_search_wait: \(describe(status, err))")
-    return result
+/// Searches and waits for the answer.
+func searched(_ core: OpaquePointer, _ game: Int, start: String? = nil, _ moves: [String],
+              movetime: UInt32 = fast) throws -> MxqSearchResult {
+    let delivery = Delivery()
+    _ = try search(core, game, start: start, moves, movetime: movetime, delivery)
+    return try #require(delivery.wait(), "the search answered within thirty seconds")
+}
+
+/// What a search callback delivered, written on the engine thread.
+final class Delivery: @unchecked Sendable {
+    private let lock = NSCondition()
+    private var result: MxqSearchResult?
+
+    var called: Bool { lock.withLock { result != nil } }
+    var outcome: Int32 { lock.withLock { result?.outcome ?? -1 } }
+    var status: Int32 { lock.withLock { result?.status ?? 0 } }
+
+    func record(_ delivered: MxqSearchResult) {
+        lock.withLock {
+            result = delivered
+            lock.broadcast()
+        }
+    }
+
+    func wait(seconds: Double = 30) -> MxqSearchResult? {
+        lock.withLock {
+            let deadline = Date().addingTimeInterval(seconds)
+            while result == nil, lock.wait(until: deadline) {}
+            return result
+        }
+    }
 }

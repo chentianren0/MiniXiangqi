@@ -41,7 +41,7 @@ struct PlayDestination: View {
     /// Opens one History record's replay. The screen it opens on is not in this
     /// destination, so the container above both is what performs it; 回放 on a
     /// recorded result is the only thing that asks.
-    var replay: (UInt64) -> Void
+    var replay: (UUID) -> Void
 
     /// The ways this device can play somebody on another device, where it has
     /// them. Their board is a page over this destination like the other two,
@@ -79,7 +79,7 @@ struct PlayDestination: View {
             // The board surface owns the session, the engine and any owed
             // search, and this destination is rebuilt on every visit — so a
             // return to a board that was left standing opens its game again.
-            // A board that already holds one asks the store for nothing, which
+            // A board that already holds one asks the library for nothing, which
             // is what makes this safe to run on every appearance.
             play.enterBoard(policy: policy)
         }

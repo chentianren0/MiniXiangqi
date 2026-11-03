@@ -16,36 +16,31 @@ constexpr uint32_t kStructSizeField = static_cast<uint32_t>(sizeof(uint32_t));
 
 namespace {
 
-/* required, index and subsystem go to their own fields; a caller that wants
- * none passes zero for each, which is what an unset field reads as. */
+/* required and index go to their own fields; a caller that wants neither
+ * passes zero for each, which is what an unset field reads as. */
 void fill(MxqError *err, MxqStatus status, const char *detail,
-          uint64_t required, uint64_t index, int32_t subsystem);
+          uint64_t required, uint64_t index);
 
 } /* namespace */
 
 void fill_error(MxqError *err, MxqStatus status, const char *detail) {
-    fill(err, status, detail, 0, 0, 0);
+    fill(err, status, detail, 0, 0);
 }
 
 void fill_error_required(MxqError *err, MxqStatus status, const char *detail,
                          uint64_t required) {
-    fill(err, status, detail, required, 0, 0);
+    fill(err, status, detail, required, 0);
 }
 
 void fill_error_index(MxqError *err, MxqStatus status, const char *detail,
                       uint64_t index) {
-    fill(err, status, detail, 0, index, 0);
-}
-
-void fill_error_subsystem(MxqError *err, MxqStatus status, const char *detail,
-                          int32_t subsystem_code) {
-    fill(err, status, detail, 0, 0, subsystem_code);
+    fill(err, status, detail, 0, index);
 }
 
 namespace {
 
 void fill(MxqError *err, MxqStatus status, const char *detail,
-          uint64_t required, uint64_t index, int32_t subsystem) {
+          uint64_t required, uint64_t index) {
     if (err == nullptr) {
         return;
     }
@@ -64,9 +59,6 @@ void fill(MxqError *err, MxqStatus status, const char *detail,
      * it, so an older frontend's smaller struct is never overrun. */
     if (writable >= offsetof(MxqError, status) + sizeof(err->status)) {
         err->status = status;
-    }
-    if (writable >= offsetof(MxqError, subsystem_code) + sizeof(err->subsystem_code)) {
-        err->subsystem_code = subsystem;
     }
     if (writable >= offsetof(MxqError, required_size) + sizeof(err->required_size)) {
         err->required_size = required;
@@ -132,10 +124,6 @@ MxqStatus require_game(MxqGameKind game, MxqError *err) {
     return MXQ_OK;
 }
 
-bool networked_mode(MxqPlayMode mode) {
-    return mode == MXQ_PLAY_MODE_NEARBY || mode == MXQ_PLAY_MODE_ONLINE;
-}
-
 void copy_bounded(char *dst, size_t cap, const char *src) {
     assert(dst != nullptr && cap > 0);
     if (src == nullptr) {
@@ -186,8 +174,7 @@ bool in_search_callback() {
 
 MxqStatus refuse_reentrant(MxqError *err) {
     fill_error(err, MXQ_ERR_ARG_REENTRANT,
-               "called from inside a search callback, where only the status "
-               "and blob helpers and the five pure queries are legal");
+               "called from inside a search callback");
     return MXQ_ERR_ARG_REENTRANT;
 }
 

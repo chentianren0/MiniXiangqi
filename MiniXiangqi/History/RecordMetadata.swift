@@ -11,8 +11,8 @@
 // one thing twice:
 //
 //   - The end reason is dropped where the result word already carries it, which
-//     is exactly the ended-early record: game-data.md makes `outcome = none`
-//     true exactly when `end_reason = ended-early`, so the two are one fact.
+//     is exactly the ended-early record: its result is `none` exactly when its
+//     reason is `ended-early`, so the two are one fact.
 //     The row shows 提前结束 in the result slot — "result *or* end reason" is
 //     what the product contract asks of the row — rather than adding a second
 //     word for the absence of a winner.
@@ -25,12 +25,13 @@
 
 import Foundation
 
-extension RecordSummary {
+@MainActor
+extension GameRecord {
     /// The metadata line: game, mode, human side, result, reason, move count.
     var metadataLine: String {
-        var parts = [game.localizedName, modeText]
+        var parts = [kind.localizedName, modeText]
         if mode == .humanVersusAI, let humanSide {
-            parts.append(game.youAreText(humanSide))
+            parts.append(kind.youAreText(humanSide))
         }
         parts.append(resultText)
         if let reasonText { parts.append(reasonText) }
@@ -51,34 +52,30 @@ extension RecordSummary {
     /// uses — 红方获胜 rather than the status line's shorter 红方胜. A record
     /// with no competitive result says why instead.
     var resultText: String {
-        switch outcome {
-        case .redWins: game.resultText(.red)
-        case .blackWins: game.resultText(.black)
+        switch result ?? .none {
+        case .redWins: kind.resultText(.red)
+        case .blackWins: kind.resultText(.black)
         case .draw: String(localized: "result.draw")
-        case .none: reason.text
+        case .none: (reason ?? .none).text
         }
     }
 
     /// The end reason, where it is not already what the result slot said.
     var reasonText: String? {
-        guard outcome != .none, reason != .none else { return nil }
+        guard let reason, (result ?? .none) != .none, reason != .none else { return nil }
         return reason.text
     }
 
     var moveCountText: String {
-        String(format: String(localized: "metadata.moveCount"), moveCount)
+        String(format: String(localized: "metadata.moveCount"), moves.count)
     }
 
     /// When the game ended, and — for a game that came from a file — that it
     /// did.
     ///
     /// The imported marker the contract asks for is a word rather than a glyph,
-    /// and it is on this line rather than the metadata one because of what it
-    /// explains. The list is ordered by when a record entered *this* library,
-    /// and the row shows when the game itself ended; for a game played here
-    /// those are one transaction apart, and for an imported one they can be
-    /// years apart. 导入 · is what tells a reader why a game from 2024 is
-    /// sitting at the top of the list.
+    /// and it is on this line rather than the metadata one because it is about
+    /// where the date came from: an imported game ended wherever it was played.
     var whenText: String {
         guard imported else { return endedAtText }
         return [String(localized: "metadata.imported"), endedAtText]
@@ -97,6 +94,7 @@ extension RecordSummary {
     /// the clock reads 14:32 or 2:32 PM belongs to the locale and to the
     /// reader's own system setting; a hand-written `HH:mm` would override both.
     var endedAtText: String {
+        let endedAt = self.endedAt ?? startedAt
         let calendar = Calendar.current
         if calendar.isDateInToday(endedAt) || calendar.isDateInYesterday(endedAt) {
             // Relative day names come only from `DateFormatter`, which is why

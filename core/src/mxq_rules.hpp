@@ -1,12 +1,11 @@
 /*
  * The rules facade's one dispatch: which engine answers for which game.
  *
- * Four surfaces ask the same rules question — the session-free entry points in
- * mxq_rules.cpp, a session replaying its retained line, the archive validator
- * replaying a file, and the search facade judging the engine's own move — and
- * every one of them used to name an engine to ask. Two engines make that a
- * choice, and a choice made in four places is made differently in four places
- * the day a third game arrives. This is where it is made.
+ * Two surfaces ask the same rules question — the entry points in mxq_rules.cpp
+ * and the search facade judging the engine's own move — and each used to name
+ * an engine to ask. Several engines make that a choice, and a choice made in
+ * several places is made differently in each the day another game arrives.
+ * This is where it is made.
  *
  * The choice follows from the game and from nothing else, and it is one axis
  * rather than a property of the position, the board size or the move text — the

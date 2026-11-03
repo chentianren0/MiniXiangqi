@@ -11,7 +11,7 @@ struct PlayMotionTests {
 
     private func makeMotion(playing line: [String] = [])
         throws -> (PlayMotion, ManualAnimator, FeedbackRecorder) {
-        let game = try openGame(on: TestCores.fresh())
+        let game = try openGame(on: TestLibraries.fresh())
         try game.replay(line)
         let animator = ManualAnimator()
         let recorder = FeedbackRecorder()

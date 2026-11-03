@@ -73,7 +73,7 @@ const char *rules_id(Rules rules);
 
 /* The rules one game is played under. The two vocabularies are deliberately
  * separate, for the reason the first bridge's variant_of gives: MxqGameKind is a
- * ruleset the product offers and an archive records, Rules is a configuration
+ * ruleset the product offers and a game records, Rules is a configuration
  * this engine can be asked to run, and the mapping is this function rather than
  * an assumption that the enumerators line up. */
 Rules rules_of(MxqGameKind game);
@@ -128,7 +128,7 @@ struct Adjudication {
 
 /* Why a replay did not complete. Returned rather than inferred from the detail
  * string, for the reason the first bridge gives: move text reaches this from
- * imported archives, so a history could otherwise name itself into the wrong
+ * imported game files, so a history could otherwise name itself into the wrong
  * error by containing the word the caller was matching on. */
 enum class ReplayError {
     None,
@@ -150,8 +150,8 @@ enum class ReplayError {
  * It takes no prepared engine and no configuration. The pattern tables it reads
  * are built once at static initialisation and are constants of the rule; the
  * board is local to the call. So a rules query is answerable before any
- * preparation and after any teardown, which is what the session surface needs —
- * a game is played, undone and replayed whether or not an engine is up.
+ * preparation and after any teardown, which is what the app needs — a game is
+ * played, undone and replayed whether or not an engine is up.
  *
  * start_fen must be the position this game begins from. These games have exactly
  * one, and it is the empty board: the facade's whole contract is a starting
@@ -175,38 +175,14 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
                    std::vector<std::string> *out_legal_moves,
                    size_t &first_illegal, std::string &detail);
 
-/* Why configure() refused. Each maps onto one engine-domain status of the error
- * taxonomy in docs/core-interface.md. */
+/* Why configure() refused. Each maps onto one engine-domain status. */
 enum class ConfigureError {
     None,
-    InsufficientMemory,   /* the planned budget is below the accepted minimum;
-                           * nothing was configured. Only prepare() returns it */
     AssetMissing,         /* a weight file this rule needs is not there */
     AssetMismatch,        /* the effective evaluator after configuration */
     RulesLoadFailed,      /* the engine could not be brought up for this rule */
     HashAllocationFailed, /* the transposition table could not be allocated */
 };
-
-/*
- * The whole of preparation, from the frontend's own probe values: compute the
- * accepted memory plan, refuse below its minimum without configuring anything,
- * and otherwise configure with the threads and the table size the plan yields.
- *
- * There is exactly one memory policy in this core and this is a second consumer
- * of it, not a second copy: the arithmetic is mxq_engine_plan's — reserve the
- * greater of a fifth of the probe or 128 MiB, cap the byte budget at 4 GiB and
- * at half the physical memory, round down to a 64 MiB multiple, refuse below
- * 256 MiB — and it is called here rather than restated. It is a pure function of
- * the probe values, which is what lets every boundary of it be tested without
- * an engine, and what lets this call it without one either.
- *
- * out_applied receives the plan whether or not it was applied, so a caller can
- * report the budget that was refused. Caller: the facade's engine thread only,
- * with no search outstanding.
- */
-ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
-                       const std::string &assets_dir, MxqEnginePlan &out_applied,
-                       std::string &detail);
 
 /*
  * Apply the plan: the requested rules, the accepted shared search profile, the
@@ -268,8 +244,8 @@ void deconfigure();
 enum class SearchError {
     None,
     NotConfigured, /* no engine was prepared, or one was released under it */
-    ReplayFailed,  /* a move in the snapshot is not playable: an invariant
-                    * breach, because it was legal when it was accepted */
+    ReplayFailed,  /* a move in the line is not playable: a breach of the
+                    * caller's contract, because the line must be legal */
     NoMove,        /* the engine reported no best point at all */
     Faulted,       /* the engine threw: an allocation it could not meet, a
                     * thread the system would not create */
@@ -284,7 +260,7 @@ struct SearchOutput {
 };
 
 /*
- * Run one search over the snapshot, under the active rules: replay `moves` onto
+ * Run one search over the line, under the active rules: replay `moves` onto
  * an empty board — these games have no other starting position — then think for
  * movetime_ms. The rules are not a parameter for the reason the first engine's
  * variant is not: the tables and the loaded weights are the prepared rule's, and

@@ -222,11 +222,6 @@ const char *start_fen(MxqGameKind game) {
     return frozen != nullptr ? frozen : "";
 }
 
-const char *start_fen(const MxqGameConfig &config) {
-    return config.start_fen[0] != '\0' ? config.start_fen
-                                       : start_fen(config.game);
-}
-
 size_t square_length(MxqGameKind game, const char *text, size_t len) {
     if (text == nullptr || len == 0) {
         return 0;
@@ -241,8 +236,8 @@ size_t square_length(MxqGameKind game, const char *text, size_t len) {
      * "a1" out of "a10" and call the rest a second square.
      *
      * The accumulator is bounded inside the loop rather than after it, and the
-     * reason is that this text is untrusted: an archive's move strings reach
-     * here from a file, and the format's string limit lets a caller spell a
+     * reason is that this text is untrusted: an imported game's move strings
+     * reach here from a file, and nothing bounds a string there short of a
      * digit run long enough to overflow an int32_t. Signed overflow is
      * undefined, and where it wrapped it would also invent spellings this
      * notation says it does not have — a rank that came back into range modulo
@@ -301,22 +296,6 @@ bool well_formed_move(MxqGameKind game, const std::string &text) {
     const size_t to =
         square_length(game, text.data() + from, text.size() - from);
     return to != 0 && from + to == text.size();
-}
-
-bool move_begins_at(MxqGameKind game, const std::string &move,
-                    const char *from_square) {
-    if (from_square == nullptr) {
-        return false;
-    }
-    const size_t from = square_length(game, move.data(), move.size());
-    if (from == 0) {
-        return false;
-    }
-    /* Length first, then bytes: "a1" is a prefix of "a10" and a comparison of
-     * the shorter one's characters alone would call a move from the tenth rank
-     * a move from the first. */
-    return std::strlen(from_square) == from &&
-           move.compare(0, from, from_square) == 0;
 }
 
 /* ------------------------------------------------------------------------- */

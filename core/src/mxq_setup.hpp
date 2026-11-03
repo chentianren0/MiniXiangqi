@@ -71,44 +71,6 @@ enum class Error {
 Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
                std::string &detail);
 
-/* ------------------------------------------------------------------------- */
-/* The per-game start policy                                                  */
-/* ------------------------------------------------------------------------- */
-
-/* What judge_start found. The three refusals are ordered as they are declared,
- * because a position that fails two must be refused by the earlier one however
- * it was reached. */
-enum class StartError {
-    None,
-    NotInitialised, /* the engine that plays this game was never brought up */
-    Structural,     /* not this game's board, or counters a start cannot carry */
-    Illegal,        /* a position of this game, but not one to set up in */
-};
-
-/*
- * Whether `game` may **begin** from `fen`, which is one question above the
- * predicate rather than a second copy of it.
- *
- * Three callers ask it — creating a session, validating an archive's start, and
- * resuming a stored row — and each spells the answer in its own domain's codes,
- * which is why this reports a class and not a status. The rungs:
- *
- *   1. the counters, halfmove 0 and fullmove 1, and the six fields that having
- *      a fifth and a sixth to read means: a game beginning from a position has
- *      no plies behind it to count, so no other value is a start at all. They
- *      are a start's spelling rather than a position's, which is why they are
- *      asked here and not among the predicate's clauses;
- *   2. `evaluate` above — the game's own setup-legality predicate, which is
- *      total over every game and answers NOT_FROZEN_START for the three whose
- *      rules define none. The rest of the structure is read there, and a FEN it
- *      cannot read at all is Structural here.
- *
- * out_violation carries the predicate's answer, and is the empty violation for
- * every other outcome. `detail` is filled on every refusal.
- */
-StartError judge_start(MxqGameKind game, const char *fen,
-                       Violation &out_violation, std::string &detail);
-
 } /* namespace setup */
 } /* namespace mxq */
 

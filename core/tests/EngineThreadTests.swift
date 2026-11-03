@@ -1,10 +1,8 @@
 import Foundation
 import MiniXiangqiCore
-import Synchronization
 import Testing
 
 /// The engine thread and the configurations it searches under, through mxq.h.
-/// A session is only the vehicle a search needs here.
 extension Core {
     @Suite struct EngineThread {
         static let miniStart = "rcnkncr/p1ppp1p/7/7/7/P1PPP1P/RCNKNCR w - - 0 1"
@@ -24,10 +22,7 @@ extension Core {
                 for (game, line, network) in steps {
                     let (status, detail) = prepare(core, game)
                     try #require(status == MXQ_OK, "\(detail)")
-                    let session = try freePlay(core, game)
-                    defer { clear(core, session) }
-                    try apply(session, line)
-                    let result = try hint(core, session)
+                    let result = try searched(core, game, line)
                     #expect(result.outcome == MXQ_SEARCH_MOVE)
                     #expect(string(of: result.profile_id).hasSuffix(network), "\(string(of: result.profile_id))")
                     let legal = try legalMoves(core, game, startFEN(game), line)
@@ -62,91 +57,68 @@ extension Core {
                 #expect(try legalMoves(core, MXQ_GAME_KIND_MINI_XIANGQI, Self.miniStart).count == 19)
 
                 try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-                let session = try freePlay(core, MXQ_GAME_KIND_MINI_XIANGQI)
-                defer { clear(core, session) }
-                let result = try hint(core, session)
+                let result = try searched(core, MXQ_GAME_KIND_MINI_XIANGQI, [])
                 #expect(result.outcome == MXQ_SEARCH_MOVE)
                 #expect(try legalMoves(core, MXQ_GAME_KIND_MINI_XIANGQI, Self.miniStart).contains(string(of: result.move.text)))
             }
         }
 
         @Test func shutdownDuringASearchCancelsAndJoins() throws {
-            let store = FileManager.default.temporaryDirectory.appending(path: "MiniXiangqiCoreTests-\(UUID().uuidString)")
-            defer { try? FileManager.default.removeItem(at: store) }
-            let core = try makeCore(store: store)
+            let core = try makeCore()
             try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-            let session = try humanVersusAI(core, MXQ_GAME_KIND_MINI_XIANGQI, level: MXQ_AI_LEVEL_DEEP)
-            defer { mxq_game_release(session) }
-            try apply(session, ["b1b3"])
             let delivery = Delivery()
-            _ = try search(core, session, level: MXQ_AI_LEVEL_DEEP, delivery)
+            _ = try search(core, MXQ_GAME_KIND_MINI_XIANGQI, ["b1b3"], movetime: deep, delivery)
 
             let begun = ContinuousClock.now
             #expect(mxq_core_shutdown(core, nil) == MXQ_OK)
-            #expect(ContinuousClock.now - begun < .milliseconds(Int(MXQ_MOVETIME_DEEP_MS) / 2))
+            #expect(ContinuousClock.now - begun < .milliseconds(Int(deep) / 2))
             #expect(delivery.called, "the callback fired before the join")
             #expect(delivery.outcome == MXQ_SEARCH_CANCELLED)
-            var status = MxqGameStatus()
-            status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-            #expect(mxq_game_status(session, &status, nil) == MXQ_ERR_ARG_INVALID_HANDLE)
         }
 
         @Test func reconfigurationIsRefusedDuringASearch() throws {
             try withCore { core throws in
                 try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-                let session = try humanVersusAI(core, MXQ_GAME_KIND_MINI_XIANGQI, level: MXQ_AI_LEVEL_DEEP)
-                defer { mxq_game_release(session) }
-                try apply(session, ["b1b3"])
-                let ticket = try search(core, session, level: MXQ_AI_LEVEL_DEEP)
+                let delivery = Delivery()
+                let ticket = try search(core, MXQ_GAME_KIND_MINI_XIANGQI, ["b1b3"], movetime: deep, delivery)
 
                 #expect(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_ERR_STATE_SEARCH_IN_PROGRESS)
                 #expect(prepare(core, MXQ_GAME_KIND_GOMOKU_15).0 == MXQ_ERR_STATE_SEARCH_IN_PROGRESS)
                 #expect(mxq_engine_teardown(core, nil) == MXQ_ERR_STATE_SEARCH_IN_PROGRESS)
                 #expect(mxq_search_cancel(core, ticket, nil) == MXQ_OK)
-                _ = try wait(core, ticket)
+                _ = delivery.wait()
                 #expect(mxq_engine_teardown(core, nil) == MXQ_OK)
 
-                var request = MxqSearchRequest()
-                request.struct_size = UInt32(MemoryLayout<MxqSearchRequest>.size)
-                request.movetime_ms = movetime(MXQ_AI_LEVEL_DEEP)
                 var next: UInt64 = 0
-                #expect(mxq_search_start(core, session, &request, nil, nil, &next, nil) == MXQ_ERR_STATE_ENGINE_NOT_READY)
+                let start = startFEN(MXQ_GAME_KIND_MINI_XIANGQI)
+                #expect(mxq_search_start(core, MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI), start, nil, 0,
+                                         deep, nil, nil, &next, nil) == MXQ_ERR_STATE_ENGINE_NOT_READY)
             }
         }
 
         @Test func cancelAllQuiescesTheEngineThread() throws {
             try withCore { core throws in
                 try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-                let session = try humanVersusAI(core, MXQ_GAME_KIND_MINI_XIANGQI, level: MXQ_AI_LEVEL_DEEP)
-                defer { mxq_game_release(session) }
-                try apply(session, ["b1b3"])
                 let delivery = Delivery()
-                _ = try search(core, session, level: MXQ_AI_LEVEL_DEEP, delivery)
+                _ = try search(core, MXQ_GAME_KIND_MINI_XIANGQI, ["b1b3"], movetime: deep, delivery)
 
                 #expect(mxq_core_cancel_all(core, nil) == MXQ_OK)
                 #expect(delivery.called, "the callback fired before cancel-all returned")
                 #expect(delivery.outcome == MXQ_SEARCH_CANCELLED)
                 #expect(try engineQuery(core).state == MXQ_ENGINE_STATE_READY)
-                try apply(session, ["f7f5"])
             }
         }
 
         @Test func noMoveOnATerminalPositionFailsCleanly() throws {
             try withCore { core throws in
                 try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-                let session = try humanVersusAI(core, MXQ_GAME_KIND_MINI_XIANGQI)
-                defer { mxq_game_release(session) }
-                try apply(session, ["b1b3", "a6a5", "b3d3"])
-                var status = MxqGameStatus()
-                status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-                #expect(mxq_game_status(session, &status, nil) == MXQ_OK)
-                #expect(status.state == MXQ_GAME_RED_WINS)
+                let mate = ["b1b3", "a6a5", "b3d3"]
+                let start = startFEN(MXQ_GAME_KIND_MINI_XIANGQI)
+                #expect(evaluate(core, MXQ_GAME_KIND_MINI_XIANGQI, start, mate).state.state == MXQ_GAME_RED_WINS)
 
-                let delivery = Delivery()
-                let result = try wait(core, try search(core, session, level: MXQ_AI_LEVEL_FAST, delivery))
+                let result = try searched(core, MXQ_GAME_KIND_MINI_XIANGQI, mate)
                 #expect(result.outcome == MXQ_SEARCH_FAILED)
                 #expect(result.status == MXQ_ERR_ENGINE_NO_MOVE)
-                #expect(delivery.status == MXQ_ERR_ENGINE_NO_MOVE)
                 #expect(try engineQuery(core).state == MXQ_ENGINE_STATE_READY)
             }
         }
@@ -163,10 +135,7 @@ extension Core {
                 for (game, network) in order {
                     let (status, detail) = prepare(core, game)
                     try #require(status == MXQ_OK, "\(detail)")
-                    let session = try freePlay(core, game)
-                    defer { clear(core, session) }
-                    try apply(session, ["h8", "h9", "i8"])
-                    let result = try hint(core, session)
+                    let result = try searched(core, game, ["h8", "h9", "i8"])
                     #expect(result.outcome == MXQ_SEARCH_MOVE)
                     #expect(string(of: result.profile_id).hasSuffix(network), "\(string(of: result.profile_id))")
                     let legal = try legalMoves(core, game, startFEN(game), ["h8", "h9", "i8"])
@@ -177,50 +146,17 @@ extension Core {
 
         @Test func aRapfiSearchWithoutItsEngineIsRefused() throws {
             try withCore { core throws in
-                let session = try freePlay(core, MXQ_GAME_KIND_GOMOKU_15)
-                defer { mxq_game_release(session) }
-                try apply(session, ["h8"])
-                var ticket: UInt64 = 0
-                let fast = UInt32(MXQ_MOVETIME_FAST_MS)
-                #expect(mxq_search_start_hint(core, session, fast, nil, nil, &ticket, nil) == MXQ_ERR_STATE_ENGINE_NOT_READY)
+                func start() -> MxqStatus {
+                    var ticket: UInt64 = 0
+                    return withCStrings(["h8"]) { texts in
+                        mxq_search_start(core, MxqGameKind(MXQ_GAME_KIND_GOMOKU_15), startFEN(MXQ_GAME_KIND_GOMOKU_15),
+                                         texts, 1, fast, nil, nil, &ticket, nil)
+                    }
+                }
+                #expect(start() == MXQ_ERR_STATE_ENGINE_NOT_READY)
                 try #require(prepare(core, MXQ_GAME_KIND_MINI_XIANGQI).0 == MXQ_OK)
-                #expect(mxq_search_start_hint(core, session, fast, nil, nil, &ticket, nil) == MXQ_ERR_STATE_ENGINE_NOT_READY,
-                        "the other engine being ready is not this game's")
+                #expect(start() == MXQ_ERR_STATE_ENGINE_NOT_READY, "the other engine being ready is not this game's")
             }
         }
     }
-}
-
-/// What a search callback delivered, written on the engine thread.
-private final class Delivery: Sendable {
-    private let delivered = Atomic<Bool>(false)
-    private let deliveredOutcome = Atomic<Int32>(-1)
-    private let deliveredStatus = Atomic<Int32>(0)
-
-    var called: Bool { delivered.load(ordering: .acquiring) }
-    var outcome: Int32 { deliveredOutcome.load(ordering: .relaxed) }
-    var status: Int32 { deliveredStatus.load(ordering: .relaxed) }
-
-    func record(_ result: MxqSearchResult) {
-        deliveredOutcome.store(result.outcome, ordering: .relaxed)
-        deliveredStatus.store(result.status, ordering: .relaxed)
-        delivered.store(true, ordering: .releasing)
-    }
-}
-
-/// Starts the AI's search on `session`, with `delivery` recording the callback.
-private func search(_ core: OpaquePointer, _ session: OpaquePointer, level: Int, _ delivery: Delivery? = nil) throws -> UInt64 {
-    let record: MxqSearchCallback = { result, context in
-        guard let result, let context else { return }
-        Unmanaged<Delivery>.fromOpaque(context).takeUnretainedValue().record(result.pointee)
-    }
-    var request = MxqSearchRequest()
-    request.struct_size = UInt32(MemoryLayout<MxqSearchRequest>.size)
-    request.movetime_ms = movetime(level)
-    var ticket: UInt64 = 0
-    var err = freshError()
-    let context = delivery.map { Unmanaged.passUnretained($0).toOpaque() }
-    let status = mxq_search_start(core, session, &request, delivery == nil ? nil : record, context, &ticket, &err)
-    try #require(status == MXQ_OK, "mxq_search_start: \(describe(status, err))")
-    return ticket
 }

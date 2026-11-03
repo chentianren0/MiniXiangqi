@@ -233,27 +233,27 @@ struct CustomSceneTests {
 
     @Test("A legal position that is already decided is not one to start from")
     func aDecidedPositionIsNotAScene() throws {
-        let core = try TestCores.fresh()
-        let scene = CustomScene(core: core)
+        let library = try TestLibraries.fresh()
+        let scene = CustomScene(core: library.core)
         scene.sideToMove = .black
         try place(scene, [("e1", Self.red(.general)), ("d10", Self.black(.general)),
                           ("d1", Self.red(.chariot)), ("e2", Self.red(.chariot))])
         #expect(scene.fen == Self.decidedScene)
 
-        #expect(core.setupVerdict(of: scene.fen, game: .xiangqi) == .legal,
+        #expect(library.core.setupVerdict(of: scene.fen, game: .xiangqi) == .legal,
                 "the predicate accepts it: startability is not its question")
         #expect(scene.verdict == .decided)
         #expect(!scene.canStart, "and 开始对局 is enabled on nothing else")
 
-        #expect(throws: CoreError.self) {
-            try core.create(.freePlay(game: .xiangqi, startFEN: scene.fen))
+        #expect(throws: LibraryRefusal.self) {
+            try library.create(.freePlay(game: .xiangqi, startFEN: scene.fen))
         }
     }
 
     @Test("开始对局 creates a Free Play game of Xiangqi from the composed position")
     func startingTheSceneCreatesTheFreePlayGame() throws {
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core)
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         state.chooseCustomScene()
         let scene = try #require(state.scene, "the row opens the editor")
@@ -277,8 +277,8 @@ struct CustomSceneTests {
 
     @Test("Leaving the editor discards the draft and creates nothing")
     func leavingTheEditorDiscardsTheDraft() throws {
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core)
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         state.chooseCustomScene()
         try generals(try #require(state.scene))
@@ -287,7 +287,7 @@ struct CustomSceneTests {
 
         #expect(state.page == .home)
         #expect(state.scene == nil, "the draft was only ever in memory")
-        #expect(try !core.activeGameExists(), "and nothing was created on the way out")
+        #expect(try !library.activeGameExists(), "and nothing was created on the way out")
         #expect(state.activeSummary == nil)
 
         state.chooseCustomScene()
@@ -296,10 +296,10 @@ struct CustomSceneTests {
 
     @Test("With a game active the row confirms first, and the editor opens after the archive")
     func theRowIsAGameAndModeEntry() throws {
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core)
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library)
         let archive = HeldArchive(holding: state)
-        try core.create(.freePlay(game: .miniXiangqi))
+        try library.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
 
         state.chooseCustomScene()
@@ -308,15 +308,15 @@ struct CustomSceneTests {
         #expect(state.scene == nil)
 
         state.saveAndContinue()
-        archive.answer(.success(1))
+        archive.answer(.success(UUID()))
         #expect(state.page == .customScene, "the editor, not a Free Play pre-start")
         #expect(state.scene != nil)
     }
 
     @Test("A draft that is not startable never reaches creation")
     func anUnstartableDraftNeverReachesCreation() throws {
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core)
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         state.chooseCustomScene()
         let scene = try #require(state.scene)
@@ -330,7 +330,7 @@ struct CustomSceneTests {
         #expect(state.page == .customScene, "the page and the draft stay")
         #expect(state.scene === scene)
         #expect(state.game == nil, "no game was created")
-        #expect(try !core.activeGameExists())
+        #expect(try !library.activeGameExists())
         #expect(!state.creating, "and 开始对局 is on offer again")
         #expect(state.creationFailure == nil,
                 "nothing failed: the position was never offered to the core")
@@ -349,40 +349,40 @@ struct GameStartConfigurationTests {
 
     @Test("A composed start survives the round trip, and a frozen one reads back absent")
     func theStartIsCanonicalAcrossTheRoundTrip() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
 
-        try core.create(.freePlay(game: .xiangqi, startFEN: Self.scene))
-        #expect(try core.configuration().startFEN == Self.scene,
+        try library.create(.freePlay(game: .xiangqi, startFEN: Self.scene))
+        #expect(try library.configuration().startFEN == Self.scene,
                 "the composed start comes back exactly as it went in")
-        core.endSession()
+        library.endSession()
 
-        let other = try TestCores.fresh()
+        let other = try TestLibraries.fresh()
         try other.create(.freePlay(game: .xiangqi,
                                    startFEN: frozenStart(.xiangqi)))
         #expect(try other.configuration().startFEN == nil)
 
-        let plain = try TestCores.fresh()
+        let plain = try TestLibraries.fresh()
         try plain.create(.freePlay(game: .xiangqi))
         #expect(try plain.configuration().startFEN == nil)
     }
 
     @Test("A start is Free Play's alone, and Xiangqi's alone")
     func theStartAxisIsRefusedWhereItIsMeaningless() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
 
         #expect(throws: CoreError.self) {
-            try core.create(.freePlay(game: .miniXiangqi, startFEN: Self.scene))
+            try library.create(.freePlay(game: .miniXiangqi, startFEN: Self.scene))
         }
-        #expect(try !core.activeGameExists(), "and a refused creation creates nothing")
+        #expect(try !library.activeGameExists(), "and a refused creation creates nothing")
     }
 
     @Test("The home reads whose turn it is from the core, not from the ply count")
     func theActiveSummaryCarriesTheCoresOwnSide() throws {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .xiangqi, startFEN: Self.scene))
-        core.endSession()
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .xiangqi, startFEN: Self.scene))
+        library.endSession()
 
-        let summary = try #require(try core.activeGameSummary())
+        let summary = try #require(try library.activeGameSummary())
         #expect(summary.moveCount == 0)
         #expect(summary.sideToMove == .black,
                 "a game whose start has Black to move has Black making ply 0")
@@ -419,9 +419,9 @@ struct FirstMoverTests {
 
     @Test("A scene game's own plies pair from the side its start had to move")
     func aSceneGamePairsFromItsOwnStart() throws {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .xiangqi, startFEN: Self.blackFirst))
-        let game = try Game(core: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .xiangqi, startFEN: Self.blackFirst))
+        let game = try Game(library: library)
         #expect(game.firstMover == .black)
 
         try game.replay(["d10d9", "e1e2"])
@@ -437,9 +437,9 @@ struct FirstMoverTests {
 
     @Test("A game from the frozen start still opens with Red")
     func aFrozenStartGameOpensWithRed() throws {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .xiangqi))
-        let game = try Game(core: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .xiangqi))
+        let game = try Game(library: library)
         #expect(game.firstMover == .red)
     }
 }

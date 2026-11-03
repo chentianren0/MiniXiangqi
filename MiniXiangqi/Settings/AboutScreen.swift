@@ -125,10 +125,9 @@ struct LicenseScreen: View {
 /// `About.repository` is, so a URL that failed to parse would be a typo in its
 /// own line rather than a state the running application can reach.
 ///
-/// Three groups by what the components are — the engines, the networks they
-/// play with, and the library beneath History — each footer carrying its
-/// group's licence, because the licences differ by group and a sentence per
-/// row would say each one three times.
+/// Two groups by what the components are — the engines and the networks they
+/// play with — each footer carrying its group's licence, because the licences
+/// differ by group and a sentence per row would say each one again and again.
 struct AcknowledgementsScreen: View {
 
     var body: some View {
@@ -155,13 +154,6 @@ struct AcknowledgementsScreen: View {
                     id: "ack-rapfi-networks")
             } footer: {
                 Text("about.acknowledgements.networks.footer")
-            }
-            Section {
-                row("SQLite", "about.acknowledgements.sqlite",
-                    "https://sqlite.org",
-                    id: "ack-sqlite")
-            } footer: {
-                Text("about.acknowledgements.data.footer")
             }
         }
         .formStyle(.grouped)

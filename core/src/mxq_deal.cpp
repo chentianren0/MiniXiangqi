@@ -2,10 +2,10 @@
 
 #include "mxq_deal.hpp"
 
-#include "mxq_sha256.hpp"
-
 #include "mxq_jieqi_bridge.hpp"
 #include "mxq_notation.hpp"
+
+#include <CommonCrypto/CommonDigest.h>
 
 #include <cassert>
 #include <cstring>
@@ -27,6 +27,20 @@ int hex_digit(char c) {
     return -1;
 }
 
+/* Whether `text` is one of the four handshake values as they are written
+ * everywhere: exactly sixty-four lowercase hexadecimal digits. */
+bool is_hex32(const std::string &text) {
+    if (text.size() != kValueBytes * 2) {
+        return false;
+    }
+    for (const char c : text) {
+        if (hex_digit(c) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool read_hex32(const std::string &text, uint8_t out[kValueBytes]) {
     if (!is_hex32(text)) {
         return false;
@@ -36,6 +50,10 @@ bool read_hex32(const std::string &text, uint8_t out[kValueBytes]) {
                                       hex_digit(text[i * 2 + 1]));
     }
     return true;
+}
+
+void sha256(const uint8_t *bytes, size_t len, uint8_t out[CC_SHA256_DIGEST_LENGTH]) {
+    CC_SHA256(bytes, static_cast<CC_LONG>(len), out);
 }
 
 std::string hex_of(const uint8_t *bytes, size_t len) {
@@ -180,35 +198,28 @@ constexpr const char *kBlackSquares[kDealtPieces] = {
 
 char lowercase(char c) { return static_cast<char>(c - 'A' + 'a'); }
 
-} /* namespace */
-
-bool is_hex32(const std::string &text) {
-    if (text.size() != kValueBytes * 2) {
-        return false;
-    }
-    for (const char c : text) {
-        if (hex_digit(c) < 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool commitment_of(const std::string &hex32, std::string &out) {
-    uint8_t bytes[kValueBytes];
-    if (!read_hex32(hex32, bytes)) {
-        return false;
-    }
-    out = sha256_hex(bytes, sizeof(bytes));
-    return true;
-}
-
+/* The i-th square of one side's list, as its text — `a1` for Red's first and
+ * `a7` for Black's. i outside 0..14 is a programming error and answers the
+ * empty string. */
 const char *square_of(MxqColor side, int32_t index) {
     if (index < 0 || index >= kDealtPieces) {
         assert(false && "a dealt square index outside the fifteen");
         return "";
     }
     return side == MXQ_COLOR_RED ? kRedSquares[index] : kBlackSquares[index];
+}
+
+} /* namespace */
+
+bool commitment_of(const std::string &hex32, std::string &out) {
+    uint8_t bytes[kValueBytes];
+    if (!read_hex32(hex32, bytes)) {
+        return false;
+    }
+    uint8_t digest[kValueBytes];
+    sha256(bytes, sizeof(bytes), digest);
+    out = hex_of(digest, sizeof(digest));
+    return true;
 }
 
 bool derive(const std::string &seed_hex, const std::string &nonce_hex,
@@ -300,9 +311,8 @@ std::string start_of(const Deal &deal) {
             int32_t rank = 0;
             if (!notation::point_of_square(MXQ_GAME_KIND_JIEQI,
                                            square_of(side, i), file, rank)) {
-                /* The same impossible case verify asserts on, and impossible
-                 * for the same reason: these are this module's own constants
-                 * and they are squares of this board. */
+                /* These are this module's own constants and squares of this
+                 * board. */
                 assert(false && "a dealt square is a square of this board");
                 continue;
             }
@@ -317,68 +327,6 @@ std::string start_of(const Deal &deal) {
     record.fullmove = 1;
     return jieqi::write_record(record);
 }
-
-bool verify(const std::string &commit, const std::string &nonce,
-            const std::string &seed, const char *start_fen,
-            const std::string *expected_digest, std::string &detail) {
-    /* The commitment first, because it is the check the commitment exists for:
-     * within a completed handshake it is what binds the dealer's contribution
-     * before the other one can be known. */
-    std::string computed;
-    if (!commitment_of(seed, computed)) {
-        detail = "the seed is not thirty-two bytes in lowercase hexadecimal";
-        return false;
-    }
-    if (computed != commit) {
-        detail = "the seed does not hash to the commitment recorded beside it";
-        return false;
-    }
-
-    Deal derived;
-    if (!derive(seed, nonce, derived, detail)) {
-        return false;
-    }
-    if (expected_digest != nullptr && derived.digest != *expected_digest) {
-        detail = "the deal the seed and the nonce derive is not the one the "
-                 "recorded digest names";
-        return false;
-    }
-
-    /* And the deal against the start it is supposed to be. The record is read
-     * through the bridge's own reading of it, so the identities compared here
-     * are the identities the rules read — there is no second parser of this
-     * form. */
-    jieqi::Record record{};
-    if (!jieqi::read_record(start_fen, record, detail)) {
-        return false;
-    }
-    for (int32_t i = 0; i < kDealtPieces; ++i) {
-        for (int32_t which = 0; which < 2; ++which) {
-            const MxqColor side = which == 0 ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
-            const char *square = square_of(side, i);
-            int32_t file = 0;
-            int32_t rank = 0;
-            if (!notation::point_of_square(MXQ_GAME_KIND_JIEQI, square, file,
-                                           rank)) {
-                assert(false && "a dealt square is a square of this board");
-                detail = "a dealt square is not a square of this board";
-                return false;
-            }
-            const char dealt = which == 0 ? derived.red[i] : derived.black[i];
-            if (!record.down[rank][file] ||
-                record.letter[rank][file] != dealt) {
-                detail = std::string("the derived deal puts a different piece "
-                                     "on ") +
-                         square + " than the start spells";
-                return false;
-            }
-        }
-    }
-
-    detail.clear();
-    return true;
-}
-
 
 } /* namespace deal */
 } /* namespace mxq */

@@ -52,8 +52,8 @@ final class Suspension {
         observe(workspace, NSWorkspace.didWakeNotification, .resume, handle)
         // Termination is deliberately *not* here. The accepted teardown order
         // at quit is `mxq_core_shutdown`, which the app delegate already
-        // performs: it cancels every search, joins the engine thread and closes
-        // the store, in one deterministic call. A second, asynchronous teardown
+        // performs: it cancels every search and joins the engine thread, in one
+        // deterministic call. A second, asynchronous teardown
         // racing it buys nothing and delays the exit, which on this platform is
         // long enough for the next launch to find the old process still there.
         #else

@@ -43,7 +43,7 @@ enum class Variant {
 };
 
 /* The variant one game is played under. The two vocabularies are deliberately
- * separate: MxqGameKind is a ruleset the product offers and an archive records,
+ * separate: MxqGameKind is a ruleset the product offers and a game records,
  * engine::Variant is a configuration this engine can be asked to run, and the
  * mapping between them is this one function rather than an assumption that the
  * enumerators line up. */
@@ -97,7 +97,7 @@ enum class InitError {
 InitError ensure_initialised(const char *assets_dir, std::string &detail);
 
 /* Why a replay did not complete. Returned rather than inferred from the detail
- * string: move text reaches this function from imported archives, so a history
+ * string: move text reaches this function from imported game files, so a history
  * could otherwise name itself into the wrong error by containing the word the
  * caller was matching on. */
 enum class ReplayError {
@@ -142,7 +142,7 @@ ReplayError replay(Variant variant, const char *start_fen,
                    size_t &first_illegal,
                    std::string &detail);
 
-/* Structural FEN validation only, per mxq_rules_validate_fen: the frozen
+/* Structural FEN validation only, as rules::validate_fen asks it: the frozen
  * encoding of `variant`'s own board, and never a judgment of setup legality. A
  * position of the other board fails it, because a board is part of what the
  * encoding fixes. */
@@ -195,8 +195,8 @@ ProbeError side_to_move_in_check(Variant variant, const char *fen,
  *
  * Search shares the engine's process-global state with the rules bridge —
  * Options, the thread pool, the transposition table, and the variant, piece
- * and bitboard tables. A rules query or a session mutation can land while a
- * search runs: undo-while-thinking is an accepted product flow, and the
+ * and bitboard tables. A rules query can land while a search runs:
+ * undo-while-thinking is an accepted product flow, and the
  * frontend cancels before it mutates, but cancellation is cooperative and a
  * plain query can land mid-search with nothing cancelled at all. The rules
  * bridge therefore must never block behind a multi-second search, and the
@@ -292,8 +292,8 @@ void deconfigure();
 /* Why search_run() produced no move. */
 enum class SearchError {
     None,
-    ReplayFailed,  /* the snapshot no longer replays: an invariant breach,
-                    * because it was legal when the session accepted it */
+    ReplayFailed,  /* the line does not replay: a breach of the caller's
+                    * contract, because the line must be legal */
     NoMove,        /* the engine reported no best move at all */
 };
 
@@ -307,11 +307,11 @@ struct SearchOutput {
 };
 
 /*
- * Run one search over the snapshot, in the active variant: replay moves from
+ * Run one search over the line, in the active variant: replay moves from
  * start_fen, then think for movetime_ms under the accepted shared profile. The
  * variant is not a parameter because it cannot be one — the tables the search
  * reads are the active variant's, and switching them is a reconfiguration —
- * so a snapshot of another variant fails to replay and returns ReplayFailed
+ * so a line of another variant fails to replay and returns ReplayFailed
  * rather than being searched under the wrong rules. cancelled is re-checked
  * after the engine's own stop flag is re-armed, so a cancellation racing the
  * start is still prompt rather than lost. Blocks until the engine finishes or

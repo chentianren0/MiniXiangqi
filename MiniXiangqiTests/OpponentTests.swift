@@ -22,6 +22,7 @@ final class TestEngine: AIEngine {
     private(set) var startedHintSearches = 0
     private(set) var lastMovetime: UInt32?
     private(set) var lastHintMovetime: UInt32?
+    private(set) var lastLine: SearchLine?
     private(set) var lastBudget: EngineBudget?
     private(set) var lastPreparedGame: GameKind?
     private(set) var preparedGame: GameKind?
@@ -73,7 +74,7 @@ final class TestEngine: AIEngine {
             return
         }
         preparedGame = game
-        completion(.success((try? Core.plan(for: budget)) ?? Self.emptyPlan))
+        completion(.success(Self.emptyPlan))
     }
 
     func markReady(for game: GameKind) { preparedGame = game }
@@ -87,7 +88,7 @@ final class TestEngine: AIEngine {
         next?()
     }
 
-    func startSearch(movetimeMilliseconds: UInt32,
+    func startSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
         if let startRefusal {
             self.startRefusal = nil
@@ -96,13 +97,14 @@ final class TestEngine: AIEngine {
         }
         startedSearches += 1
         lastMovetime = movetimeMilliseconds
+        lastLine = line
         self.completion = completion
         ticket += 1
         events.append(.search(movetimeMilliseconds))
         return ticket
     }
 
-    func startHintSearch(movetimeMilliseconds: UInt32,
+    func startHintSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                          completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
         if let hintStartRefusal {
             self.hintStartRefusal = nil
@@ -111,6 +113,7 @@ final class TestEngine: AIEngine {
         }
         startedHintSearches += 1
         lastHintMovetime = movetimeMilliseconds
+        lastLine = line
         hintCompletion = completion
         ticket += 1
         events.append(.hint(movetimeMilliseconds))
@@ -178,11 +181,9 @@ final class TestTimer {
 struct OpponentTests {
     private func makeOpponent(humanSide: Side = .red, level: AiLevel = .fast)
         throws -> (Opponent, Game, PlayMotion, TestEngine, TestTimer, ManualAnimator) {
-        let core = try TestCores.fresh()
-        try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: humanSide,
-                                       level: level,
-                                       choice: humanSide == .red ? .humanFirst : .aiFirst))
-        let game = try Game(core: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.humanVersusAI(game: .miniXiangqi, humanSide: humanSide, level: level))
+        let game = try Game(library: library)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game, animator: animator.animator,
                                 feedback: FeedbackRecorder().feedback)
@@ -195,7 +196,7 @@ struct OpponentTests {
         return (opponent, game, motion, engine, clock, animator)
     }
 
-    @Test("A search is prepared and started exactly when the core says one is owed")
+    @Test("A search is prepared and started exactly when one is owed")
     func aSearchIsOwedOrItIsNot() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
 
@@ -211,6 +212,9 @@ struct OpponentTests {
         #expect(engine.lastPreparedGame == .miniXiangqi)
         #expect(engine.startedSearches == 1, "then searches")
         #expect(engine.lastMovetime == 1000, "at the level the game froze")
+        #expect(engine.lastLine == SearchLine(game: .miniXiangqi, start: frozenStart(.miniXiangqi),
+                                              moves: ["b1b4"]),
+                "over the game's own line")
         animator.completeAll()
     }
 
@@ -262,44 +266,39 @@ struct OpponentTests {
         #expect(game.selected == nil, "and a tap selects nothing")
 
         opponent.cancelSearch()
-        engine.answer(searchResult(.failed, move: "", game: game))
+        engine.answer(searchResult(.failed, move: ""))
         #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable)
 
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         _ = animator
     }
 
-    @Test("The frontend compares staleness again before applying")
-    func theSecondStalenessComparisonRejectsAWrongResult() throws {
+    @Test("A reply to a line the game has left applies nothing")
+    func aReplyToAnOldLineIsRejected() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
-        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 1,
-                             revision: game.evaluation.positionRevision + 1))
+        // The line changes under the search, and nobody tells the opponent:
+        // the same position again, at a later revision.
+        game.undo()
+        game.play(Move(text: "b1b4", on: GameKind.miniXiangqi.board)!)
+        engine.answer(searchResult(.move, move: "a6a5", ticket: 1))
         clock.advance(by: 5)
         animator.completeAll()
-        #expect(game.moves == ["b1b4"], "a result from another position applies nothing")
+        #expect(game.moves == ["b1b4"], "a reply asked of another line applies nothing")
 
         opponent.gameChanged()
         #expect(engine.startedSearches == 2, "the premise: a search is running again")
-        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 2,
-                             identity: "00000000-0000-7000-8000-000000000000"))
-        clock.advance(by: 5)
-        animator.completeAll()
-        #expect(game.moves == ["b1b4"], "a result from another game applies nothing either")
-
-        opponent.gameChanged()
-        #expect(engine.startedSearches == 3)
-        engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 3))
+        engine.answer(searchResult(.move, move: "a6a5", ticket: 2))
         clock.advance(by: 5)
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"])
     }
 
-    @Test("A result whose identity and revision match is played through the board")
+    @Test("A reply to the game's own line is played through the board")
     func aMatchingResultIsPlayed() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
@@ -307,7 +306,7 @@ struct OpponentTests {
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()   // the player's move lands
 
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         clock.advance(by: Motion.replyFloor + 0.01)
         animator.completeAll()   // the reply travels and lands
 
@@ -322,7 +321,7 @@ struct OpponentTests {
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         #expect(game.moves == ["b1b4"], "nothing departs during the player's own move")
 
         animator.completeAll()   // the arrival the floor is measured from
@@ -346,7 +345,7 @@ struct OpponentTests {
         animator.completeAll()   // the arrival first, this time
 
         clock.advance(by: 0.1)   // a search shorter than the floor
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         #expect(game.moves == ["b1b4"], "a near-instant reply does not twitch")
 
         clock.advance(by: Motion.replyFloor - 0.15)
@@ -366,7 +365,7 @@ struct OpponentTests {
         animator.completeAll()
 
         clock.advance(by: 3)     // the search thinks for three seconds
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"], "the floor had long since passed")
     }
@@ -384,7 +383,7 @@ struct OpponentTests {
         clock.advance(by: 0.1)
         #expect(opponent.activity == .thinking, "and past the threshold it does")
 
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         #expect(opponent.activity == .idle, "the indicator is gone when the reply lands")
         clock.advance(by: 5)
         animator.completeAll()
@@ -405,20 +404,19 @@ struct OpponentTests {
         _ = game
     }
 
-    @Test("Undo consumes the core's own ply count: a whole exchange, not half of one")
+    @Test("Undo takes back a whole exchange, not half of one")
     func undoTakesBackTheCycle() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
         _ = opponent
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
+        engine.answer(searchResult(.move, move: "a6a5"))
         clock.advance(by: 5)
         animator.completeAll()
         #expect(game.moves == ["b1b4", "a6a5"], "the premise: a complete cycle")
 
-        #expect(game.evaluation.undoPlies == 2,
-                "the core counts the decision cycle; nothing above it does")
+        #expect(game.undoPlies == 2, "the game counts the decision cycle")
         motion.undo()
         animator.completeAll()
         #expect(game.moves.isEmpty, "one Undo removed the reply and the move that invited it")
@@ -432,7 +430,7 @@ struct OpponentTests {
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         animator.completeAll()
         #expect(engine.startedSearches == 1)
-        #expect(game.evaluation.undoPlies == 1,
+        #expect(game.undoPlies == 1,
                 "with no reply yet there is only the player's own move to remove")
 
         opponent.cancelSearch()
@@ -450,12 +448,12 @@ struct OpponentTests {
         opponent.begin()
         #expect(engine.startedSearches == 1, "the AI moves first, so it owes the opening")
 
-        engine.answer(searchResult(.move, move: "b1b4", game: game))
+        engine.answer(searchResult(.move, move: "b1b4"))
         clock.advance(by: 5)
         animator.completeAll()
 
         #expect(game.moves == ["b1b4"])
-        #expect(!game.canUndo, "the core offers no Undo: there is no decision to return to")
+        #expect(!game.canUndo, "there is no Undo: there is no decision to return to")
     }
 
     @Test("A preparation that fails raises the mid-game alert, and 稍后 leaves the stalled slot")

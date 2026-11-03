@@ -1,23 +1,21 @@
-// The real core over scratch stores, one at a time: the core is a process-wide
-// singleton, so opening the next one shuts down the last, and `.retiringItsCores`
-// shuts each down as its test ends. A core still running at process exit
-// aborts the host after the run has reported green.
+// The real core, one at a time: the core is a process-wide singleton, so
+// opening the next one shuts down the last, and `.retiringItsCores` shuts each
+// down as its test ends. A core still running at process exit aborts the host
+// after the run has reported green. Each test's library is its own, in memory
+// or in a scratch file.
 
 import Foundation
 import MiniXiangqiCore
 import Observation
+import SwiftData
 import Testing
 @testable import MiniXiangqi
 
 @MainActor
 enum TestCores {
-    private static var current: (core: Core, directory: URL)?
+    private static var current: Core?
 
     static func fresh() throws -> Core {
-        try open(at: scratchDirectory())
-    }
-
-    static func open(at directory: URL) throws -> Core {
         if OpenedCores.running == nil {
             Issue.record("""
                 This test opened a core without `.retiringItsCores`. Add the \
@@ -25,31 +23,46 @@ enum TestCores {
                 test ends rather than left to process exit.
                 """)
         }
-        retire(keeping: directory)
-        let core = try Core(storeDirectory: directory.path)
-        current = (core, directory)
+        retire()
+        let core = try Core()
+        current = core
         OpenedCores.running?.core = core
         return core
     }
 
-    static func scratchDirectory() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("mxq-test-store-\(UUID().uuidString)",
-                                    isDirectory: true)
-    }
-
-    static func retire(keeping directory: URL? = nil) {
-        guard let current else { return }
-        current.core.shutdown()
-        if current.directory != directory {
-            try? FileManager.default.removeItem(at: current.directory)
-        }
-        self.current = nil
+    static func retire() {
+        current?.shutdown()
+        current = nil
     }
 
     static func retire(_ opened: OpenedCores) {
-        guard let core = opened.core, current?.core === core else { return }
+        guard let core = opened.core, current === core else { return }
         retire()
+    }
+}
+
+@MainActor
+enum TestLibraries {
+    /// A fresh core and an empty library in memory.
+    static func fresh() throws -> GameLibrary {
+        GameLibrary(core: try TestCores.fresh(), container: try GameLibrary.container(at: nil))
+    }
+
+    /// A second empty library in memory, over the core the test already has.
+    static func another(over core: Core) -> GameLibrary {
+        GameLibrary(core: core, container: try! GameLibrary.container(at: nil))
+    }
+
+    /// A library file nobody keeps.
+    static func scratchURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("mxq-test-library-\(UUID().uuidString).store")
+    }
+
+    /// The library in `url`, as a relaunch opens it: a new container over the
+    /// same file, on the core the test already has or on a fresh one.
+    static func open(at url: URL, core: Core? = nil) throws -> GameLibrary {
+        GameLibrary(core: try core ?? TestCores.fresh(), container: try GameLibrary.container(at: url))
     }
 }
 
@@ -92,12 +105,17 @@ extension Trait where Self == RetiringCores {
     static var retiringItsCores: Self { Self() }
 }
 
+extension GameLibrary {
+    func activeGameExists() throws -> Bool { try activeRecord() != nil }
+    func historyCount() throws -> Int { try history().count }
+}
+
 @MainActor
-func openGame(on core: Core) throws -> Game {
-    if !core.hasSession, try !core.resumeActive() {
-        try core.create(.freePlay(game: .miniXiangqi))
+func openGame(on library: GameLibrary) throws -> Game {
+    if !library.hasSession, try !library.resumeActive() {
+        try library.create(.freePlay(game: .miniXiangqi))
     }
-    return try Game(core: core)
+    return try Game(library: library)
 }
 
 private struct RefusedReplayMove: Error {
@@ -118,29 +136,19 @@ extension Game {
 
 // MARK: - What a search's answer looks like
 
-@MainActor
-func searchResult(_ outcome: SearchOutcome, move: String, game: Game,
-                  ticket: UInt64 = 1, revision: UInt64? = nil,
-                  identity: String? = nil) -> SearchResult {
+func searchResult(_ outcome: SearchOutcome, move: String, ticket: UInt64 = 1) -> SearchResult {
     var raw = MxqSearchResult()
     raw.struct_size = UInt32(MemoryLayout<MxqSearchResult>.size)
     raw.outcome = switch outcome {
     case .move: MxqSearchOutcome(MXQ_SEARCH_MOVE)
     case .cancelled: MxqSearchOutcome(MXQ_SEARCH_CANCELLED)
-    case .stale: MxqSearchOutcome(MXQ_SEARCH_STALE)
     case .malformed: MxqSearchOutcome(MXQ_SEARCH_MALFORMED)
     case .illegal: MxqSearchOutcome(MXQ_SEARCH_ILLEGAL)
     case .failed: MxqSearchOutcome(MXQ_SEARCH_FAILED)
     }
     raw.ticket = ticket
-    raw.position_revision = revision ?? game.evaluation.positionRevision
     withUnsafeMutableBytes(of: &raw.move.text) { buffer in
         for (index, byte) in move.utf8.enumerated() { buffer[index] = byte }
-    }
-    withUnsafeMutableBytes(of: &raw.game_id) { buffer in
-        for (index, byte) in (identity ?? game.identity).utf8.enumerated() {
-            buffer[index] = byte
-        }
     }
     return SearchResult(raw)
 }
@@ -301,7 +309,7 @@ final class FakeDriver: NearbyDriving {
 @MainActor
 final class HeldArchive {
     private(set) var requests = 0
-    private var parked: (@MainActor (Result<UInt64, CoreError>) -> Void)?
+    private var parked: (@MainActor (Result<UUID, CoreError>) -> Void)?
 
     init(holding state: PlayState) {
         state.archiveActiveGame = { [unowned self] completion in
@@ -310,7 +318,7 @@ final class HeldArchive {
         }
     }
 
-    func answer(_ result: Result<UInt64, CoreError>) {
+    func answer(_ result: Result<UUID, CoreError>) {
         let completion = parked
         parked = nil
         completion?(result)

@@ -115,7 +115,7 @@ std::atomic<Rules> g_active_rules{kInitialRules};
 std::atomic<bool>  g_configured{false};
 
 /* The engine's global state is process-wide and not re-entrant, and the core is
- * singleton-enforced for exactly that reason (core-interface.md). */
+ * singleton-enforced for exactly that reason. */
 std::mutex g_mutex;
 
 /* Whether the engine's classical tables have been loaded from its own embedded
@@ -490,30 +490,6 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
     }
 }
 
-ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
-                       const std::string &assets_dir, MxqEnginePlan &out_applied,
-                       std::string &detail) {
-    /* Nothing here throws — the plan is arithmetic over values, and configure()
-     * below is guarded in its own right. */
-    std::memset(&out_applied, 0, sizeof(out_applied));
-    out_applied.struct_size = static_cast<uint32_t>(sizeof(out_applied));
-
-    MxqEngineBudget probe = budget;
-    probe.struct_size = static_cast<uint32_t>(sizeof(probe));
-    const MxqStatus rc = mxq_engine_plan(&probe, &out_applied, nullptr);
-    if (rc != MXQ_OK) {
-        detail = "the memory plan could not be computed";
-        return ConfigureError::RulesLoadFailed;
-    }
-    if (out_applied.sufficient == 0) {
-        detail = "the calculated transposition-table budget is below the "
-                 "accepted minimum; nothing was initialised";
-        return ConfigureError::InsufficientMemory;
-    }
-    return configure(rules, out_applied.threads, out_applied.hash_mib,
-                     assets_dir, detail);
-}
-
 namespace {
 
 /* The body of configure(), with g_mutex already held and with exceptions still
@@ -765,19 +741,19 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
     const RulesPin &active = pin_of(g_active_rules.load(std::memory_order_acquire));
 
     /* The board, replayed from empty. These games have no other starting
-     * position, so the whole snapshot is the move list. */
+     * position, so the whole line is the move list. */
     Board board(kBoardSize);
     board.newGame(active.engine_rule);
     for (size_t i = 0; i < moves.size(); ++i) {
         const Point &point = moves[i];
         if (point.x >= kBoardSize || point.y >= kBoardSize) {
-            detail = "the snapshot has an off-board point at ply " +
+            detail = "the line has an off-board point at ply " +
                      std::to_string(i);
             return SearchError::ReplayFailed;
         }
         const Pos pos(point.x, point.y);
         if (!board.isEmpty(pos)) {
-            detail = "the snapshot plays an occupied point at ply " +
+            detail = "the line plays an occupied point at ply " +
                      std::to_string(i);
             return SearchError::ReplayFailed;
         }

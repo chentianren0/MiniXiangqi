@@ -29,7 +29,7 @@
 import SwiftUI
 
 struct ReplayScreen: View {
-    let record: RecordSummary
+    let record: GameRecord
     let library: HistoryLibrary
 
     @State private var replay: Replay?
@@ -107,8 +107,6 @@ struct ReplayScreen: View {
         // exactly as it does on the play screen.
         .onChange(of: policy) { _, updated in replay?.policy = updated }
         .onDisappear {
-            // The detached session is the core's to hold open only for as long
-            // as this screen wants it.
             replay?.close()
             replay = nil
         }
@@ -122,11 +120,11 @@ struct ReplayScreen: View {
 
     private func layout(_ replay: Replay) -> some View {
         GeometryReader { proxy in
-            switch BoardLayout.shape(in: proxy.size, game: record.game) {
+            switch BoardLayout.shape(in: proxy.size, game: record.kind) {
             case .sideBySide:
                 HStack(spacing: 0) {
                     board(replay, BoardLayout.geometry(in: proxy.size,
-                                                       game: record.game))
+                                                       game: record.kind))
                     panel(replay, beside: true, edge: .top)
                         .frame(width: BoardLayout.panelWidth)
                 }
@@ -176,9 +174,9 @@ struct ReplayScreen: View {
     /// the header is a fact about the game and the list below it is what can be
     /// read a row at a time.
     private func stacked(_ replay: Replay, in size: CGSize) -> some View {
-        let chrome = BoardLayout.stackedChrome(in: size, game: record.game,
+        let chrome = BoardLayout.stackedChrome(in: size, game: record.kind,
                                                asking: headerHeight + panelHeight)
-        let geometry = BoardLayout.stackedGeometry(in: size, game: record.game,
+        let geometry = BoardLayout.stackedGeometry(in: size, game: record.kind,
                                                    chrome: chrome)
         return VStack(spacing: 0) {
             headerBlock(replay, airBelow: 0)
@@ -199,7 +197,7 @@ struct ReplayScreen: View {
             // answer, applied here on the owner's device pass (2026-08-17):
             // the list is what replay keeps on screen, and the board's floor
             // and the list's room both come before a third resident block.
-            if record.game.conceals {
+            if record.kind.conceals {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         capturedShown = true
@@ -281,7 +279,7 @@ struct ReplayScreen: View {
             // already over**, so what it shows is the disclosed surface both
             // players read the same — and it follows the walk, so it shows
             // what had been taken by the position on screen.
-            if beside && replay.record.game.conceals {
+            if beside && replay.game.conceals {
                 // The section extends with its rows rather than scrolling in a
                 // grant: the list below keeps its own scroll, and a section
                 // sized by its content is what the panel's other residents
@@ -333,7 +331,7 @@ struct ReplayScreen: View {
     private func captured(_ replay: Replay,
                           pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: replay.captured,
-                           game: replay.record.game,
+                           game: replay.game,
                            throughPly: replay.ply,
                            viewer: nil,
                            disclosed: true,
@@ -350,7 +348,7 @@ struct ReplayScreen: View {
             ScrollView {
                 captured(replay,
                          pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
-                                                               game: replay.record.game))
+                                                               game: replay.game))
                     .padding(.horizontal, BoardLayout.panelInset)
                     .padding(.vertical, 8)
             }

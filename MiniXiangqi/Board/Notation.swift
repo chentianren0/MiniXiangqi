@@ -139,8 +139,8 @@ struct MoveReading: Hashable {
     }
 
     /// A stored move this app cannot read, which a stored line can never
-    /// legitimately contain: the core validated the whole of it before any
-    /// session over it existed.
+    /// legitimately contain: every move was checked against the rules before it
+    /// was saved or imported.
     struct UnreadableStoredMove: Error, CustomStringConvertible {
         var ply: Int
         var description: String { "the stored line holds no move at ply \(ply)" }

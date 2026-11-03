@@ -20,9 +20,9 @@ nonisolated struct BoardDefinition: Hashable, Sendable {
     /// It is the board's rather than the game's because those three questions
     /// are all about the board, and because every consumer here already holds a
     /// `BoardDefinition` and would otherwise have to be handed the game beside
-    /// it. The core makes the same division: `MXQ_ERR_RULES_MALFORMED_MOVE`
-    /// spells one grammar per game and says how many squares a move is "follows
-    /// from the game and never from the text's length".
+    /// it. The core makes the same division: its notation spells one grammar
+    /// per game, and how many squares a move is follows from the game and never
+    /// from the text's length.
     enum Play: Hashable, Sendable {
         /// A piece is taken up and put down somewhere else — the xiangqi games.
         case movement

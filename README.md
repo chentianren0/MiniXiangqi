@@ -16,6 +16,6 @@ The Mini Xiangqi network is the project's own, trained by the public pipeline at
 
 - [Product](docs/product.md) — what the app does and does not do.
 - [Xiangqi and Mini Xiangqi rules](docs/xiangqi-rules.md) and [Jieqi rules](docs/jieqi-rules.md).
-- [Game data](docs/game-data.md) — game files, History, import and export.
+- [Game files](docs/game-data.md) — the format History exports and imports.
 
 The 4.0 plan is [#285](https://github.com/chentianren0/MiniXiangqi/issues/285).

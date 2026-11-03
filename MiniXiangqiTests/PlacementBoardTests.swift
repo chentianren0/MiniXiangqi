@@ -155,9 +155,9 @@ struct PlacementGameTests {
     static let doubleThreeLine = ["g8", "a1", "i8", "a15", "h7", "o1", "h9", "o15"]
 
     private func game(_ kind: GameKind, playing line: [String] = []) throws -> Game {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: kind))
-        let game = try Game(core: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: kind))
+        let game = try Game(library: library)
         try game.replay(line)
         return game
     }
