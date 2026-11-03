@@ -33,6 +33,28 @@ let ownWarnings: [CXXSetting] = [.unsafeFlags(["-Wall", "-Wextra"])]
 // The engine sources are upstream's, and so are their warnings.
 let engineFlags = ["-w"]
 
+// Enhanced Security's compiler settings stop at the package boundary, so the
+// core asks for them here. Every target gets libc++'s bounds checks and typed
+// allocation, which feeds the app's hardened heap. A debug build keeps the
+// package default, libc++'s debug mode. The typed-allocator link flags Xcode
+// passes leave this toolchain's link unchanged, so the core passes none.
+let hardening: [CXXSetting] = [
+    .define("_LIBCPP_HARDENING_MODE", to: "_LIBCPP_HARDENING_MODE_FAST", .when(configuration: .release)),
+    .unsafeFlags(["-ftyped-memory-operations", "-ftyped-cxx-new-delete", "-ftyped-cxx-delete"]),
+]
+
+// The rest of Enhanced Security, for the targets no search runs through: stack
+// zero-init costs the searching engines 5 to 13 percent of their speed.
+let enhancedSecurity: [CXXSetting] = [.unsafeFlags([
+    "-ftrivial-auto-var-init=zero",
+    "-Werror=return-type", "-Wconditional-uninitialized", "-Wimplicit-fallthrough",
+    "-Wshorten-64-to-32", "-Wshadow", "-Wempty-body",
+    // ENABLE_SECURITY_COMPILER_WARNINGS
+    "-Wbuiltin-memcpy-chk-size", "-Wformat-nonliteral", "-Warray-bounds",
+    "-Warray-bounds-pointer-arithmetic", "-Wsuspicious-memaccess", "-Wsizeof-array-div",
+    "-Wsizeof-pointer-div", "-Wreturn-stack-address",
+])]
+
 // The engines are C++17 and the facade is C++20; the engines' headers do
 // arithmetic on mixed enums, which C++20 deprecates.
 let engineHeadersUnderCxx20: [String] = [
@@ -54,7 +76,7 @@ let package = Package(
                       "upstream/Top CPU Contributors.txt", "upstream/src/incbin/UNLICENCE"],
             sources: ["upstream/src"],
             publicHeadersPath: "upstream/src",
-            cxxSettings: fairyStockfishDefines + release + [
+            cxxSettings: fairyStockfishDefines + release + hardening + [
                 .unsafeFlags(["-std=c++17", "-fno-exceptions"] + engineFlags),
             ]
         ),
@@ -68,7 +90,7 @@ let package = Package(
             exclude: ["README.md", "upstream/AUTHORS", "upstream/Copying.txt", "upstream/README.md",
                       "upstream/Top CPU Contributors.txt"],
             sources: ["upstream/src", "mxq_pikafish_link_closure.cpp", "mxq_jieqi_bridge.cpp"],
-            cxxSettings: release + ownWarnings + [
+            cxxSettings: release + ownWarnings + hardening + enhancedSecurity + [
                 .define("Stockfish", to: "PikafishJieqi"),
                 .define("NO_PREFETCH"),
                 .define("IS_64BIT"),
@@ -88,8 +110,8 @@ let package = Package(
                       "upstream/Rapfi/external/cpptoml/LICENSE", "upstream/Rapfi/external/lz4/LICENSE"],
             sources: ["upstream/Rapfi"],
             publicHeadersPath: "upstream/Rapfi",
-            cSettings: [.define("NDEBUG"), .unsafeFlags(["-O3"] + engineFlags)],
-            cxxSettings: rapfiDefines + release + [
+            cSettings: [.define("NDEBUG"), .unsafeFlags(["-O3", "-ftyped-memory-operations"] + engineFlags)],
+            cxxSettings: rapfiDefines + release + hardening + [
                 .headerSearchPath("upstream/Rapfi/external/cpptoml/include"),
                 .headerSearchPath("upstream/Rapfi/external/simde/include"),
                 .headerSearchPath("upstream/Rapfi/external/lz4/include"),
@@ -104,7 +126,8 @@ let package = Package(
             exclude: ["README.md", "assets", "engines", "tests"],
             sources: ["src", "include"],
             publicHeadersPath: "include",
-            cxxSettings: fairyStockfishDefines + rapfiDefines + release + ownWarnings + [
+            cxxSettings: fairyStockfishDefines + rapfiDefines + release + ownWarnings
+                + hardening + enhancedSecurity + [
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/cpptoml/include"),
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/simde/include"),
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/lz4/include"),
