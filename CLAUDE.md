@@ -10,6 +10,7 @@ Before you start, say in a line what you are about to do; brief updates while yo
 - Fix a wrong basis rather than patch around it. Breaking changes and big diffs are fine.
 - Tooling, CI and process are added when the owner asks for them.
 - A test earns its place by the regression it would catch; a red-tape test is deleted rather than fixed.
+- Run the tests related to the change.
 - Comments say what the code cannot.
 
 ## Docs
