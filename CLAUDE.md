@@ -25,5 +25,5 @@ Docs hold what the code, the project file and Apple cannot say: product decision
 ## Pull requests
 
 - The author session opens the PR and may carry one PR or several. Everything lands through a PR.
-- One review round: one to three fresh Opus reviewer sessions, findings ranked by severity with evidence. The lead weighs them, keeps what matters and tells the author; the author fixes. Work that seems to need a second review is split into more PRs instead.
+- One review round: one to three fresh Opus reviewer sessions post their findings on the PR, ranked by severity with evidence. The author judges each finding, fixes what matters and says on the PR what it left alone and why. Work that seems to need a second review is split into more PRs instead.
 - Merge or squash, delete the branch, tell the owner. Commit, push and merge without asking. Facts the owner should know later go on GitHub.
