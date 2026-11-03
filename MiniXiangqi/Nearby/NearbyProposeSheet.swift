@@ -67,18 +67,24 @@ extension View {
     /// The consent prompt and the refusal, presented over whatever the player is
     /// looking at, the same in both modes. Only one flow ever has either: a
     /// proposal is a game about to exist, and the library has room for one.
-    func nearbyAnswers(_ flows: [NearbyFlow],
+    ///
+    /// Applied to the container and to the propose sheet, and presented from the
+    /// sheet while it is up: iOS takes a sheet down to show an alert raised
+    /// beneath it, and the sheet going is the player putting the mode away.
+    func nearbyAnswers(_ flows: [NearbyFlow], inSheet: Bool,
                        opening board: @escaping () -> Void) -> some View {
-        modifier(NearbyAnswers(flows: flows, opening: board))
+        modifier(NearbyAnswers(flows: flows, inSheet: inSheet, opening: board))
     }
 }
 
 private struct NearbyAnswers: ViewModifier {
     let flows: [NearbyFlow]
+    let inSheet: Bool
     let opening: () -> Void
 
-    private var flow: NearbyFlow? { flows.first { $0.invitation != nil } }
-    private var refusing: NearbyFlow? { flows.first { $0.refusal != nil } }
+    private var presents: Bool { inSheet || !flows.contains { $0.proposing != nil } }
+    private var flow: NearbyFlow? { presents ? flows.first { $0.invitation != nil } : nil }
+    private var refusing: NearbyFlow? { presents ? flows.first { $0.refusal != nil } : nil }
 
     func body(content: Content) -> some View {
         content
@@ -89,7 +95,7 @@ private struct NearbyAnswers: ViewModifier {
                     opening()
                 }
             } message: {
-                Text(invitationMessage)
+                Text(flow?.invitationMessage ?? "")
             }
             .alert("alert.nearbyDeclined.title", isPresented: refused) {
                 Button("control.ok") { refusing?.dismissRefusal() }
@@ -98,18 +104,6 @@ private struct NearbyAnswers: ViewModifier {
                     Text(LocalizedStringKey(refusal.messageKey))
                 }
             }
-    }
-
-    /// Who is asking, which game, and which side this device would take, in
-    /// the metadata line's own composition, then what accepting does.
-    private var invitationMessage: String {
-        guard let flow, let invitation = flow.invitation else { return "" }
-        let parts = [flow.name(of: invitation.peer),
-                     invitation.kind.localizedName,
-                     invitation.kind.youAreText(invitation.proposerSide.opponent)]
-        return [parts.joined(separator: String(localized: "metadata.join")),
-                "",
-                String(localized: "alert.nearbyInvite.message")].joined(separator: "\n")
     }
 
     /// The two buttons are the only answers: a prompt the system takes away

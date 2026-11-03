@@ -121,8 +121,10 @@ final class PeerEngine {
     @ObservationIgnored var started: ((UUID) -> Void)?
     /// A connection to that peer opened, new or replacing an older one.
     @ObservationIgnored var arrived: ((String) -> Void)?
-    /// An ending this device owed the other has arrived there.
-    @ObservationIgnored var delivered: (() -> Void)?
+    /// Something that kept the carrier up has gone: an ending this device owed
+    /// the other has arrived there, or a proposal to this player ended without
+    /// a game.
+    @ObservationIgnored var released: (() -> Void)?
     @ObservationIgnored var libraryChanged: (() -> Void)?
 
     @ObservationIgnored private var links: [String: any PeerLink] = [:]
@@ -169,10 +171,13 @@ final class PeerEngine {
     private func lost(_ peer: String) {
         answered[peer] = nil
         if outgoing?.peer == peer { outgoing = nil }
-        if incoming?.peer == peer { incoming = nil }
         if active()?.peer == peer {
             inPlay = false
             offer = nil
+        }
+        if incoming?.peer == peer {
+            incoming = nil
+            released?()
         }
     }
 
@@ -251,7 +256,7 @@ final class PeerEngine {
             if record.endingUndelivered,
                holdsTheSame(record, moves: moves, takebacks: takebacks, ending: ending) {
                 try? library.change(record) { $0.endingUndelivered = false }
-                delivered?()
+                released?()
             }
             if record.endedAt == nil {
                 show(record.id)
@@ -259,7 +264,10 @@ final class PeerEngine {
                 offer = nil
             }
         case .gone(let game):
-            if incoming?.game == game { incoming = nil }
+            if incoming?.game == game {
+                incoming = nil
+                released?()
+            }
             guard let record = held(game, with: peer), record.endedAt == nil else { break }
             file(record, .lostByPeer)
         }
@@ -325,6 +333,7 @@ final class PeerEngine {
         guard begin(proposal, as: proposal.proposerSide.opponent) else {
             send(.decline(game: proposal.game, busy: true), to: proposal.peer)
             refresh()
+            released?()
             return false
         }
         send(.accept(game: proposal.game), to: proposal.peer)
@@ -337,6 +346,7 @@ final class PeerEngine {
         incoming = nil
         send(.decline(game: proposal.game, busy: false), to: proposal.peer)
         refresh()
+        released?()
     }
 
     /// Plays this player's move. False where it is not theirs to play or the
