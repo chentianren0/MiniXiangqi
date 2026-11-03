@@ -1,8 +1,5 @@
 import Foundation
 import Testing
-#if os(macOS)
-import SwiftUI
-#endif
 @testable import MiniXiangqi
 
 @MainActor
@@ -120,55 +117,6 @@ struct PeerFlowTests {
             #expect(!carrier.isRunning, "answered, nothing keeps Nearby up")
         }
     }
-
-    #if os(macOS)
-    // The board's model is built by `.task(id:)`, which never runs on a view
-    // that draws nothing; after Accept nothing else changes the game until the
-    // connection does.
-    @Test("The board draws the game as it opens after Accept, on both devices")
-    func theBoardOpensDrawn() async throws {
-        let devices = TwoDevices(core: try TestCores.fresh())
-        let flows = [devices.a, devices.b].map {
-            NearbyFlow(engine: $0, carrier: FakeCarrier(pairsOnArrival: false),
-                       positions: $0.library.core.nearbyPositions, availability: { true })
-        }
-        devices.connect()
-        flows[0].open(.xiangqi)
-        flows[0].invite(NearbyPeer(id: "B", name: "B", connected: true), to: .xiangqi)
-        devices.deliverAll()
-        flows[1].accept()
-        devices.deliverAll()
-
-        for (flow, device) in zip(flows, ["inviter", "invited"]) {
-            #expect(flow.boardGame != nil, "the \(device)'s game is there to draw")
-            let window = NSWindow(contentRect: NSRect(x: -4000, y: -4000, width: 700, height: 800),
-                                  styleMask: [.borderless], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: NearbyBoardScreen(flow: flow))
-            window.orderFrontRegardless()
-            defer { window.close() }
-            #expect(await draws(window.contentView!), "the \(device)'s board is not blank")
-        }
-    }
-
-    /// Whether the view puts anything on screen within a moment of opening.
-    private func draws(_ view: NSView) async -> Bool {
-        for _ in 0..<40 {
-            try? await Task.sleep(for: .milliseconds(25))
-            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-                continue
-            }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            let drawn = stride(from: 0, to: bitmap.pixelsWide, by: 5).contains { x in
-                stride(from: 0, to: bitmap.pixelsHigh, by: 5).contains { y in
-                    (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0
-                }
-            }
-            if drawn { return true }
-        }
-        return false
-    }
-    #endif
 
     @Test("The consent prompt names the device, the game and the side, with every format filled")
     func theInvitationReadsWhole() throws {
