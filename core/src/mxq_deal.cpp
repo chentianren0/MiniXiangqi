@@ -27,6 +27,20 @@ int hex_digit(char c) {
     return -1;
 }
 
+/* Whether `text` is one of the four handshake values as they are written
+ * everywhere: exactly sixty-four lowercase hexadecimal digits. */
+bool is_hex32(const std::string &text) {
+    if (text.size() != kValueBytes * 2) {
+        return false;
+    }
+    for (const char c : text) {
+        if (hex_digit(c) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool read_hex32(const std::string &text, uint8_t out[kValueBytes]) {
     if (!is_hex32(text)) {
         return false;
@@ -184,19 +198,18 @@ constexpr const char *kBlackSquares[kDealtPieces] = {
 
 char lowercase(char c) { return static_cast<char>(c - 'A' + 'a'); }
 
-} /* namespace */
-
-bool is_hex32(const std::string &text) {
-    if (text.size() != kValueBytes * 2) {
-        return false;
+/* The i-th square of one side's list, as its text — `a1` for Red's first and
+ * `a7` for Black's. i outside 0..14 is a programming error and answers the
+ * empty string. */
+const char *square_of(MxqColor side, int32_t index) {
+    if (index < 0 || index >= kDealtPieces) {
+        assert(false && "a dealt square index outside the fifteen");
+        return "";
     }
-    for (const char c : text) {
-        if (hex_digit(c) < 0) {
-            return false;
-        }
-    }
-    return true;
+    return side == MXQ_COLOR_RED ? kRedSquares[index] : kBlackSquares[index];
 }
+
+} /* namespace */
 
 bool commitment_of(const std::string &hex32, std::string &out) {
     uint8_t bytes[kValueBytes];
@@ -207,14 +220,6 @@ bool commitment_of(const std::string &hex32, std::string &out) {
     sha256(bytes, sizeof(bytes), digest);
     out = hex_of(digest, sizeof(digest));
     return true;
-}
-
-const char *square_of(MxqColor side, int32_t index) {
-    if (index < 0 || index >= kDealtPieces) {
-        assert(false && "a dealt square index outside the fifteen");
-        return "";
-    }
-    return side == MXQ_COLOR_RED ? kRedSquares[index] : kBlackSquares[index];
 }
 
 bool derive(const std::string &seed_hex, const std::string &nonce_hex,

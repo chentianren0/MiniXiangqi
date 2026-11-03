@@ -741,19 +741,19 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
     const RulesPin &active = pin_of(g_active_rules.load(std::memory_order_acquire));
 
     /* The board, replayed from empty. These games have no other starting
-     * position, so the whole snapshot is the move list. */
+     * position, so the whole line is the move list. */
     Board board(kBoardSize);
     board.newGame(active.engine_rule);
     for (size_t i = 0; i < moves.size(); ++i) {
         const Point &point = moves[i];
         if (point.x >= kBoardSize || point.y >= kBoardSize) {
-            detail = "the snapshot has an off-board point at ply " +
+            detail = "the line has an off-board point at ply " +
                      std::to_string(i);
             return SearchError::ReplayFailed;
         }
         const Pos pos(point.x, point.y);
         if (!board.isEmpty(pos)) {
-            detail = "the snapshot plays an occupied point at ply " +
+            detail = "the line plays an occupied point at ply " +
                      std::to_string(i);
             return SearchError::ReplayFailed;
         }

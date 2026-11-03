@@ -33,8 +33,8 @@ constexpr int32_t kDealtPieces = 15;
  *
  * red[i] and black[i] are piece letters in that side's own case — 'R', 'N',
  * 'B', 'A', 'C', 'P' for Red and their lowercase for Black — standing on the
- * i-th square of that side's list, which the protocol fixes and square_of names
- * below. The generals are not dealt and are not here.
+ * i-th square of that side's list, which the protocol fixes. The generals are
+ * not dealt and are not here.
  *
  * digest is the deal's own digest in the same sixty-four lowercase hexadecimal
  * digits the handshake's other three values are written in. It is what a resume
@@ -58,29 +58,16 @@ struct Deal {
 bool derive(const std::string &seed_hex, const std::string &nonce_hex,
             Deal &out, std::string &detail);
 
-/*
- * The i-th square of one side's list, as its text — `a1` for Red's first and
- * `a7` for Black's. Both lists are the protocol's own and are in its order; i
- * outside 0..14 is a programming error and answers the empty string.
-
- */
-const char *square_of(MxqColor side, int32_t index);
-
-/*
- * Whether `text` is one of the four handshake values as they are written
- * everywhere they are written: exactly sixty-four lowercase hexadecimal digits.
- */
-bool is_hex32(const std::string &text);
-
 /* The SHA-256 of the thirty-two bytes `hex32` spells, as the same sixty-four
  * lowercase hexadecimal digits — the commitment check, which is the one thing
- * the commitment exists to catch. False for a value is_hex32 refuses. */
+ * the commitment exists to catch. False for a value that is not sixty-four
+ * lowercase hexadecimal digits. */
 bool commitment_of(const std::string &hex32, std::string &out);
 
 
 /*
  * The position record this deal spells: the thirty dealt pieces face down on
- * the squares square_of lays them out on, the two generals face up on their
+ * the protocol's squares, in its order, the two generals face up on their
  * own, Red to move, halfmove 0 and fullmove 1.
  *
  * The record is written by the jieqi bridge's own writer, so there is no

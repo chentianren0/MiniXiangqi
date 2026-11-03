@@ -243,8 +243,7 @@ size_t occurrences_of(const std::vector<std::string> &identities,
  * value as "one side did it" would name the wrong loser. Neither pinned variant
  * has material counting, so that path is closed here — but neither switch below
  * guesses past what it was told, for the same reason: a wrong reason is
- * recorded in the archive forever, while an absent one is caught by a
- * fixture. */
+ * filed with the game forever, while an absent one is caught by a fixture. */
 Adjudication adjudicate(Position &pos,
                         const std::vector<std::string> &identities) {
     Adjudication a{};
@@ -344,7 +343,7 @@ Adjudication adjudicate(Position &pos,
              * and would hand a decisive value to the move-count rule and to a
              * mutual violation alike; with it off, the arm above and this one
              * mean what they say. If one ever fires, the reason is left unset
-             * rather than guessed — a wrong reason is recorded in the archive
+             * rather than guessed — a wrong reason is filed with the game
              * forever, and a fixture catches an absent one. */
             break;
         }
@@ -814,7 +813,7 @@ SearchError search_run(const std::string &start_fen,
         std::string move_text(moves[i]);
         const Move m = UCI::to_move(pos, move_text);
         if (m == MOVE_NONE) {
-            detail = "the snapshot no longer replays at ply " +
+            detail = "the line does not replay at ply " +
                      std::to_string(i) + " (" + move_text + ")";
             return SearchError::ReplayFailed;
         }

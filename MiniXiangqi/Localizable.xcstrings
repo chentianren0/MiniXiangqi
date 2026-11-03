@@ -523,6 +523,40 @@
         }
       }
     },
+    "alert.importEarlierVersion.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This version doesn't read game files from earlier versions. History is unchanged."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前版本不读取旧版本的对局文件。历史没有改变。"
+          }
+        }
+      }
+    },
+    "alert.importEarlierVersion.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This File Is from an Earlier Version of Star River"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件来自旧版闲敲棋子"
+          }
+        }
+      }
+    },
     "alert.importIllegalGame.message": {
       "extractionState": "manual",
       "localizations": {

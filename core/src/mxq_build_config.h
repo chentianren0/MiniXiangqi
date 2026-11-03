@@ -11,9 +11,6 @@
 /* The repository revision. The package build has no step that could read it. */
 #define MXQ_BUILD_CORE_REVISION "unknown"
 
-/* Written into an archive's origin.app_version. */
-#define MXQ_BUILD_APP_VERSION "1.0.0"
-
 /* The Fairy-Stockfish fork revision. */
 #define MXQ_BUILD_FORK_REVISION "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e"
 

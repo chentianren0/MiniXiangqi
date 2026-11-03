@@ -321,8 +321,10 @@ typedef struct MxqSearchResult {
 } MxqSearchResult;
 
 /* Delivered on the core's engine thread, exactly once per started search. It
- * must copy the result, which is valid only during the call, and return;
- * every core function called from inside it returns MXQ_ERR_ARG_REENTRANT. */
+ * must copy the result, which is valid only during the call, and return.
+ * Inside it every function that takes an MxqCore, and mxq_core_init, returns
+ * MXQ_ERR_ARG_REENTRANT; mxq_rules_start_fen and mxq_engine_profile_id answer
+ * as they do anywhere. */
 typedef void (*MxqSearchCallback)(const MxqSearchResult *result,
                                   void *user_data);
 
@@ -431,9 +433,12 @@ MXQ_API MxqStatus mxq_engine_profile_id(MxqGameKind game, char *out,
 /* ------------------------------------------------------------------------- */
 
 /* Search the position at the end of the line for movetime_ms and return a
- * ticket. The line is copied before this returns. The engine must be prepared
- * for game. Searches run one at a time, in order, on the engine thread, and
- * deliver to callback. */
+ * ticket. The line must be legal — a start the game replays from (a placement
+ * game's frozen start) and moves the rules accept — and the core does not
+ * check it. The line is copied before this returns. The engine must be
+ * prepared for game. Searches run one at a time, in order, on the engine
+ * thread, and deliver to callback; a NULL callback leaves the result
+ * unheard. */
 MXQ_API MxqStatus mxq_search_start(MxqCore *core, MxqGameKind game,
                                    const char *start_fen,
                                    const char *const *moves, size_t move_count,

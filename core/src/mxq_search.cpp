@@ -323,9 +323,9 @@ EngineRun run_engine(const Task &task, std::string &detail) {
     EngineRun out;
 
     if (played_on_gomoku_engine(task.game)) {
-        /* The second engine speaks points, and the snapshot is text. Every one
-         * of these was a legal move when the app accepted it, so a ply that
-         * does not parse is an invariant breach rather than a rules answer. */
+        /* The second engine speaks points, and the line is text. The line is
+         * legal by the caller's contract, so a ply that does not parse is a
+         * breach of it rather than a rules answer. */
         std::vector<rapfi::Point> points;
         points.reserve(task.moves.size());
         for (const std::string &move : task.moves) {
@@ -333,7 +333,7 @@ EngineRun run_engine(const Task &task, std::string &detail) {
             int32_t rank = 0;
             if (!notation::point_of_square(task.game, move.c_str(), file,
                                            rank)) {
-                detail = "the snapshot carries a ply that is not a point of "
+                detail = "the line carries a ply that is not a point of "
                          "this board";
                 out.faulted = true;
                 out.status = MXQ_ERR_ENGINE_FAULTED;

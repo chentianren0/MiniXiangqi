@@ -77,6 +77,8 @@ nonisolated enum ImportRefusal: Error, Equatable {
     case unreadable
     /// Written by a newer version of the app.
     case newerVersion
+    /// Written by a 3.x version of the app, whose files are not read.
+    case earlierVersion
     /// A game these rules do not play: a start the setup predicate refuses, a
     /// move that is not legal at its turn, or a result the moves contradict.
     case illegal
@@ -220,13 +222,10 @@ final class GameLibrary: NearbyLibrary {
                                  moves: Array(record.moves.prefix(ply))).fen
     }
 
-    /// Plays one move and saves. A move the rules refuse, or one played after
-    /// the rules have decided the game, changes nothing.
+    /// Plays one move and saves. A move the rules refuse changes nothing. The
+    /// callers offer no move once the rules have decided the game.
     func apply(_ move: String) throws {
         let record = try held()
-        guard try !core.evaluate(record.kind, from: record.start, moves: record.moves).isOver else {
-            throw LibraryRefusal.gameIsOver
-        }
         _ = try core.evaluate(record.kind, from: record.start, moves: record.moves + [move])
         record.moves.append(move)
         try save()
@@ -374,6 +373,8 @@ final class GameLibrary: NearbyLibrary {
             record = try GameRecord.decoding(file: file)
         } catch is GameRecord.NewerVersion {
             throw ImportRefusal.newerVersion
+        } catch is GameRecord.EarlierVersion {
+            throw ImportRefusal.earlierVersion
         } catch {
             throw ImportRefusal.unreadable
         }

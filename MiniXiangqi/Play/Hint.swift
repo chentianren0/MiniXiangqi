@@ -54,8 +54,8 @@ final class Hint {
     private let timer: MotionTimer
 
     /// The outstanding hint search, if one is running. One at a time, and never
-    /// beside the AI's own: the core refuses a hint while any search is
-    /// outstanding, and a hint is only ever offered on the player's own turn.
+    /// beside the AI's own: a hint is only ever offered on the player's own
+    /// turn, and every commit cancels it before the reply is asked for.
     private var ticket: UInt64?
 
     /// Bumped by everything that invalidates work in flight, so a preparation,

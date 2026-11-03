@@ -95,6 +95,19 @@ final class GameRecord {
     /// A file written by a newer version of the app.
     struct NewerVersion: Error {}
 
+    /// A file written by a 3.x version of the app, which spelled a game in
+    /// another format altogether.
+    struct EarlierVersion: Error {}
+
+    /// The one member every 3.x file carries.
+    private struct EarlierFile: Decodable {
+        var archiveVersion: Int
+
+        enum CodingKeys: String, CodingKey {
+            case archiveVersion = "archive_version"
+        }
+    }
+
     required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard try container.decode(Int.self, forKey: .version) <= Self.fileVersion else {
@@ -144,7 +157,14 @@ final class GameRecord {
     static func decoding(file data: Data) throws -> GameRecord {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(GameRecord.self, from: data)
+        do {
+            return try decoder.decode(GameRecord.self, from: data)
+        } catch let error as DecodingError {
+            if (try? decoder.decode(EarlierFile.self, from: data)) != nil {
+                throw EarlierVersion()
+            }
+            throw error
+        }
     }
 }
 

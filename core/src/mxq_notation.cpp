@@ -236,8 +236,8 @@ size_t square_length(MxqGameKind game, const char *text, size_t len) {
      * "a1" out of "a10" and call the rest a second square.
      *
      * The accumulator is bounded inside the loop rather than after it, and the
-     * reason is that this text is untrusted: an archive's move strings reach
-     * here from a file, and the format's string limit lets a caller spell a
+     * reason is that this text is untrusted: an imported game's move strings
+     * reach here from a file, and nothing bounds a string there short of a
      * digit run long enough to overflow an int32_t. Signed overflow is
      * undefined, and where it wrapped it would also invent spellings this
      * notation says it does not have — a rank that came back into range modulo

@@ -156,12 +156,13 @@ final class HistoryLibrary {
 
 /// Everything an import can answer other than a row appearing.
 ///
-/// The created-by-a-newer-version answer is distinct and never presented as a
-/// damaged file. The picker is where the wrong-file case is actually
+/// The answers about a file another version wrote are distinct and never
+/// presented as a damaged file. The picker is where the wrong-file case is actually
 /// prevented, by filtering to the declared type.
 enum ImportAnswer: Equatable {
     case duplicate(GameRecord)
     case newerVersion
+    case earlierVersion
     case unreadable
     /// The file is readable and the game it records is not one these rules
     /// play. No bytes are held, because nothing about a retry would change the
@@ -175,6 +176,7 @@ enum ImportAnswer: Equatable {
         switch refusal {
         case .unreadable: self = .unreadable
         case .newerVersion: self = .newerVersion
+        case .earlierVersion: self = .earlierVersion
         case .illegal: self = .illegalGame
         }
     }
@@ -183,6 +185,7 @@ enum ImportAnswer: Equatable {
         switch self {
         case .duplicate: "alert.importDuplicate.title"
         case .newerVersion: "alert.importNewerVersion.title"
+        case .earlierVersion: "alert.importEarlierVersion.title"
         case .unreadable: "alert.importUnreadable.title"
         case .illegalGame: "alert.importIllegalGame.title"
         case .saveFailed: "alert.importSaveFailed.title"
@@ -193,6 +196,7 @@ enum ImportAnswer: Equatable {
         switch self {
         case .duplicate: "alert.importDuplicate.message"
         case .newerVersion: "alert.importNewerVersion.message"
+        case .earlierVersion: "alert.importEarlierVersion.message"
         case .unreadable: "alert.importUnreadable.message"
         case .illegalGame: "alert.importIllegalGame.message"
         case .saveFailed: "alert.importSaveFailed.message"

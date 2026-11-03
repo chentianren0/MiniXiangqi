@@ -535,8 +535,8 @@ Adjudication adjudicate(pf::Position &pos,
         /* A plain repetition is drawn by construction — the chase detector
          * returns a decisive value only where exactly one side chased, and then
          * it reports a chase — so this arm names no rule rather than guessing
-         * one. A wrong reason is recorded in the archive forever, while an
-         * absent one is caught by a fixture. */
+         * one. A wrong reason is filed with the game forever, while an absent
+         * one is caught by a fixture. */
         break;
     }
     return a;

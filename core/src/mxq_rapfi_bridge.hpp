@@ -73,7 +73,7 @@ const char *rules_id(Rules rules);
 
 /* The rules one game is played under. The two vocabularies are deliberately
  * separate, for the reason the first bridge's variant_of gives: MxqGameKind is a
- * ruleset the product offers and an archive records, Rules is a configuration
+ * ruleset the product offers and a game records, Rules is a configuration
  * this engine can be asked to run, and the mapping is this function rather than
  * an assumption that the enumerators line up. */
 Rules rules_of(MxqGameKind game);
@@ -128,7 +128,7 @@ struct Adjudication {
 
 /* Why a replay did not complete. Returned rather than inferred from the detail
  * string, for the reason the first bridge gives: move text reaches this from
- * imported archives, so a history could otherwise name itself into the wrong
+ * imported game files, so a history could otherwise name itself into the wrong
  * error by containing the word the caller was matching on. */
 enum class ReplayError {
     None,
@@ -150,8 +150,8 @@ enum class ReplayError {
  * It takes no prepared engine and no configuration. The pattern tables it reads
  * are built once at static initialisation and are constants of the rule; the
  * board is local to the call. So a rules query is answerable before any
- * preparation and after any teardown, which is what the session surface needs —
- * a game is played, undone and replayed whether or not an engine is up.
+ * preparation and after any teardown, which is what the app needs — a game is
+ * played, undone and replayed whether or not an engine is up.
  *
  * start_fen must be the position this game begins from. These games have exactly
  * one, and it is the empty board: the facade's whole contract is a starting
@@ -244,8 +244,8 @@ void deconfigure();
 enum class SearchError {
     None,
     NotConfigured, /* no engine was prepared, or one was released under it */
-    ReplayFailed,  /* a move in the snapshot is not playable: an invariant
-                    * breach, because it was legal when it was accepted */
+    ReplayFailed,  /* a move in the line is not playable: a breach of the
+                    * caller's contract, because the line must be legal */
     NoMove,        /* the engine reported no best point at all */
     Faulted,       /* the engine threw: an allocation it could not meet, a
                     * thread the system would not create */
@@ -260,7 +260,7 @@ struct SearchOutput {
 };
 
 /*
- * Run one search over the snapshot, under the active rules: replay `moves` onto
+ * Run one search over the line, under the active rules: replay `moves` onto
  * an empty board — these games have no other starting position — then think for
  * movetime_ms. The rules are not a parameter for the reason the first engine's
  * variant is not: the tables and the loaded weights are the prepared rule's, and

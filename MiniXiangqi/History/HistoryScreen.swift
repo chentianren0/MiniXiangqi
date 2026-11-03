@@ -329,7 +329,7 @@ struct HistoryScreen: View {
             Button("control.tryAgain") { library.importGame(bytes) }
         // These offer only acknowledgement: there is no action the app can put
         // behind a button that would change the answer.
-        case .unreadable, .newerVersion, .illegalGame:
+        case .unreadable, .newerVersion, .earlierVersion, .illegalGame:
             Button("control.ok", role: .cancel) { }
         }
     }
