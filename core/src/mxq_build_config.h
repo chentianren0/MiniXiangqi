@@ -14,7 +14,7 @@
 #define MXQ_BUILD_FORK_REVISION "d3b4ba2e198fe25891a1c3af8ff90b5710c2539e"
 
 /* The Rapfi fork revision. */
-#define MXQ_BUILD_GOMOKU_FORK_REVISION "265b7d66c7b57bbd8689c8dfd1efb4133e02b5ed"
+#define MXQ_BUILD_GOMOKU_FORK_REVISION "921aadc390b33a9346dad9be681d4ddde0d7406a"
 
 /* The variant the app plays, defined by assets/minixiangqi-variants.ini, and
  * the engine's own name for built-in xiangqi. */
