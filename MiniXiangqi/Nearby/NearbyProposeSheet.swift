@@ -91,7 +91,13 @@ private struct NearbyAnswers: ViewModifier {
             .alert("alert.nearbyInvite.title", isPresented: inviting) {
                 Button("control.decline", role: .cancel) { flow?.decline() }
                 Button("control.accept") {
-                    flow?.accept()
+                    // Accepting chooses this game, so the other mode's sheet,
+                    // which the prompt may be presented in, goes with it.
+                    let accepting = flow
+                    for other in flows where other !== accepting && other.proposing != nil {
+                        other.dismissSheet()
+                    }
+                    accepting?.accept()
                     opening()
                 }
             } message: {
