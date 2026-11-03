@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      # The runner has none of the team's certificates, so everything is
+      # signed ad hoc: an unsigned build leaves the UI test runner unsigned,
+      # which macOS kills. Ad hoc cannot carry the keys that need a
+      # provisioning profile, so those go; the sandbox and the Enhanced
+      # Security keys stay, and the engine is tested hardened as it ships.
+      - name: Drop the profile-only entitlements
+        run: |
+          for key in game-center kernel.extended-virtual-addressing kernel.increased-memory-limit; do
+            /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.$key" MiniXiangqi/MiniXiangqi.entitlements
+          done
+      - name: App tests
+        run: >
+          xcodebuild test
+          -project MiniXiangqi.xcodeproj
+          -scheme MiniXiangqi
+          -destination 'platform=macOS,arch=arm64e'
+          CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual
+          DEVELOPMENT_TEAM=
+      - name: Core tests
+        if: ${{ !cancelled() }}
+        working-directory: core
+        run: swift test
