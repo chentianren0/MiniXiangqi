@@ -35,8 +35,25 @@
 // core call, off this actor — and only then opens the selected mode's pre-start
 // state. The destination it remembers lives no longer than that flow.
 
+import Foundation
 import MiniXiangqiCore
 import Observation
+
+/// The Settings defaults a new human-versus-AI game's setup opens with, stored
+/// under their archive names.
+extension FirstMoverChoice {
+    static let key = "defaults.firstMover"
+    static var stored: FirstMoverChoice {
+        UserDefaults.standard.string(forKey: key).flatMap(Self.init(name:)) ?? .humanFirst
+    }
+}
+
+extension AiLevel {
+    static let key = "defaults.aiLevel"
+    static var stored: AiLevel {
+        UserDefaults.standard.string(forKey: key).flatMap(Self.init(name:)) ?? .standard
+    }
+}
 
 /// The pre-start controls' values. A draft and nothing else: not autosaved,
 /// never written back to the Settings defaults, and gone as soon as the player
@@ -45,11 +62,10 @@ struct SetupDraft: Equatable {
     var firstMover: FirstMoverChoice
     var level: AiLevel
 
-    /// Afresh from the persistent defaults, which is what every entry to the
-    /// pre-start page gets. Read at the moment of use, like every preference.
+    /// Afresh from the Settings defaults, which is what every entry to the
+    /// pre-start page gets.
     static func fromDefaults() -> SetupDraft {
-        SetupDraft(firstMover: Preferences.defaultFirstMover(),
-                   level: Preferences.defaultAiLevel())
+        SetupDraft(firstMover: .stored, level: .stored)
     }
 
     /// The human's side, once a Random choice is drawn. Called only inside a
@@ -99,7 +115,6 @@ protocol NearbyRoom: AnyObject {
 @Observable
 final class PlayState {
     private let core: Core
-    private let rules: Rules
 
     /// The engine the pre-start flow prepares and the opponent searches with.
     /// The core, in the app; a stand-in in the tests that are about what the
@@ -264,22 +279,23 @@ final class PlayState {
     /// The platform's suspension signals, watched for as long as this lives.
     private var suspension: Suspension?
 
-    /// The seams are the two things a working core will not do on request: an
-    /// engine that refuses to prepare, and a store that refuses to commit. Both
-    /// default to the core itself, which is what the application always runs.
-    init(core: Core, engine: AIEngine? = nil, rules: Rules? = nil) {
+    /// The archive step of 保存并继续: the core's own, replaceable so a test
+    /// can hold it in flight without suspending over a live core.
+    @ObservationIgnored
+    var archiveActiveGame: (@escaping @MainActor (Result<UInt64, CoreError>) -> Void) -> Void
+
+    /// The engine is a seam because a working core will not refuse to prepare
+    /// on request; it defaults to the core itself.
+    init(core: Core, engine: AIEngine? = nil) {
         self.core = core
-        self.rules = rules ?? Self.rules(over: core)
         self.engine = engine ?? core
+        self.archiveActiveGame = { [core] in core.archiveActiveAndClear(completion: $0) }
     }
 
     /// Reads the launch's answer, once.
     func startIfNeeded(policy: MotionPolicy) {
         guard !started else { return }
         started = true
-        #if DEBUG
-        fileLaunchHistory()
-        #endif
         watchForSuspension()
         openAtLaunch(policy: policy)
     }
@@ -381,7 +397,7 @@ final class PlayState {
         if let mode = activeSummary?.mode, mode.isNetworked {
             giveUpNetworkedGame?(mode)
         }
-        rules.archiveActiveAndClear { [weak self] result in
+        archiveActiveGame { [weak self] result in
             guard let self, modeSwitch == .saving(selection) else { return }
             refreshActiveSummary()
             switch result {
@@ -497,8 +513,8 @@ final class PlayState {
     func enterBoard(policy: MotionPolicy) {
         guard page == .board, game == nil, startFailure == nil else { return }
         do {
-            if !rules.hasSession {
-                guard try rules.resumeActive() else {
+            if !core.hasSession {
+                guard try core.resumeActive() else {
                     // The store holds no active game to open. Nothing to show,
                     // and the home is where that is said.
                     activeSummary = nil
@@ -510,14 +526,14 @@ final class PlayState {
                 // and the home's card is what opens it. Asked of the game rather
                 // than of the summary because this is the answer that decides
                 // whether a session stays attached.
-                if try rules.configuration().mode.isNetworked {
+                if try core.configuration().mode.isNetworked {
                     core.endSession()
                     page = .home
                     refreshActiveSummary()
                     return
                 }
             }
-            adopt(try Game(rules: rules), policy: policy)
+            adopt(try Game(core: core), policy: policy)
             opponent?.begin()
         } catch {
             game = nil
@@ -742,8 +758,8 @@ final class PlayState {
                         token: Int) {
         do {
             core.endSession()
-            try rules.create(configuration)
-            adopt(try Game(rules: rules), policy: policy)
+            try core.create(configuration)
+            adopt(try Game(core: core), policy: policy)
             creating = false
             // A draft that has become a game is no longer a draft, and the
             // editor is not a page to come back to from the board: the way back
@@ -916,48 +932,8 @@ final class PlayState {
         // is the first of those moments. Release is not a saving act — the core
         // committed everything as it happened.
         core.endSession()
-        #if DEBUG
-        if openLaunchFixture(policy: policy) { return }
-        #endif
         refreshActiveSummary()
     }
-
-    #if DEBUG
-    /// The one launch that opens a board, and it is a test affordance rather
-    /// than product behaviour: `-mxq-replay` exists so a run can start at a
-    /// stated position instead of clicking its way to one, and the position is
-    /// the whole of what it is for. No release build compiles this, and nothing
-    /// a player can do reaches it.
-    ///
-    /// A launch line names its game as well as its moves. The Free Play game it
-    /// belongs to is created here, exactly as 开始对局 would create it; no debug
-    /// fixture gets a hidden default game. Answers whether this launch was the
-    /// fixture's — a line the core refuses is still the fixture's launch, and
-    /// says so on the failure screen.
-    private func openLaunchFixture(policy: MotionPolicy) -> Bool {
-        do {
-            guard let line = try Self.launchReplay() else { return false }
-            if try !core.activeGameExists() {
-                try rules.create(.freePlay(game: line.game))
-            }
-            if !rules.hasSession {
-                guard try rules.resumeActive() else { return false }
-            }
-            let fixture = try Game(rules: rules)
-            try fixture.replay(line.moves)
-            adopt(fixture, policy: policy)
-            page = .board
-            opponent?.begin()
-            return true
-        } catch {
-            game = nil
-            motion = nil
-            opponent = nil
-            startFailure = CoreError(wrapping: error)
-            return true
-        }
-    }
-    #endif
 
     /// Takes a game onto the screen: its motion, its opponent where it has one,
     /// and the wires between them.
@@ -994,18 +970,6 @@ final class PlayState {
         motion.boardAppeared()
     }
 
-    /// The seam the game speaks through: the core, unless a debug launch asked
-    /// for the refusing stand-in so the save-failure state can be produced on a
-    /// real screen.
-    private static func rules(over core: Core) -> Rules {
-        #if DEBUG
-        if DebugLaunch.contains("-mxq-refuse-saves") {
-            return RefusingRules(core, refuses: true)
-        }
-        #endif
-        return core
-    }
-
     // MARK: - Suspension
 
     /// docs/engine-integration.md, "Backgrounding and teardown":
@@ -1032,88 +996,6 @@ final class PlayState {
         }
     }
 
-    #if DEBUG
-    /// The line `-mxq-replay minixiangqi:a1a2,b7b5,…` names, played before
-    /// first display so a UI test can start from a position it would otherwise
-    /// have to click its way to. The game name is mandatory: a fixture is not
-    /// allowed to make Mini Xiangqi an implicit default. Debug only, and no
-    /// move of it bypasses the core.
-    private static func launchReplay() throws -> LaunchLine? {
-        guard let argument = DebugLaunch.argument(after: "-mxq-replay") else {
-            return nil
-        }
-        guard let line = LaunchLine(argument) else {
-            throw InvalidLaunchLine(argument: argument)
-        }
-        return line
-    }
-
-    /// The games `-mxq-history minixiangqi:a1a2,b7b5;gomoku-15:h8,i9,…` names,
-    /// each played and filed before the board opens, so that a screenshot of
-    /// the History list has a library to show and a UI test has records to act
-    /// on. Games are separated by `;`, every game name is mandatory, and plies
-    /// are separated by `,`.
-    ///
-    /// Each one goes through the same path a person's game does — created by its
-    /// own configuration, every ply committed by the core, the finished game
-    /// filed by its own terminal commit — so nothing seeded here is a record the
-    /// app could not have made. A line the core refuses stops the seeding rather
-    /// than filing a half-game, and the launch continues: the failure then shows
-    /// as a shorter list than the test asked for, where a test can see it.
-    private func fileLaunchHistory() {
-        let requested = (DebugLaunch.argument(after: "-mxq-history") ?? "")
-            .split(separator: ";")
-        let lines = requested.compactMap { LaunchLine($0) }
-        guard !lines.isEmpty, lines.count == requested.count else { return }
-        for line in lines {
-            core.endSession()
-            guard (try? core.create(.freePlay(game: line.game))) != nil,
-                  let game = try? Game(rules: core), (try? game.replay(line.moves)) != nil
-            else { return }
-            if game.evaluation.claimAvailable {
-                game.claimDraw()
-            } else if game.isFinished {
-                try? game.file()
-            }
-        }
-        core.endSession()
-    }
-
-    /// One explicit debug fixture line. Its game names are the data contract's
-    /// own spellings, so a fixture and the record it produces use one
-    /// vocabulary.
-    ///
-    /// **A game whose start is dealt names none of them**, and a line asking for
-    /// one is refused rather than dealt a start of its own: a fixture exists so
-    /// a run can begin at a *stated* position, and a line whose position was
-    /// drawn from the platform's randomness states nothing. Such a fixture would
-    /// have to carry the deal it was played from, and none does.
-    private struct LaunchLine {
-        var game: GameKind
-        var moves: [String]
-
-        init?(_ text: some StringProtocol) {
-            let parts = text.split(separator: ":", maxSplits: 1,
-                                   omittingEmptySubsequences: false)
-            guard parts.count == 2 else { return nil }
-            switch parts[0] {
-            case "minixiangqi": game = .miniXiangqi
-            case "xiangqi": game = .xiangqi
-            case "gomoku-15": game = .gomoku15
-            case "renju": game = .renju
-            default: return nil
-            }
-            moves = String(parts[1]).split(separator: ",").map(String.init)
-        }
-    }
-
-    private struct InvalidLaunchLine: Error, CustomStringConvertible {
-        var argument: String
-        var description: String {
-            "debug replay line must name a game this app carries: \(argument)"
-        }
-    }
-    #endif
 }
 
 // MARK: - The one active game, and the claim playing somebody has on it

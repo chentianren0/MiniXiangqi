@@ -31,6 +31,11 @@ final class PlayMotion {
     private let animator: MotionAnimator
     private let feedback: Feedback
 
+    /// Counts the board screen triggers its haptics on: every landing, and
+    /// every touch the game could not act on.
+    private(set) var landings = 0
+    private(set) var refusals = 0
+
     /// The travelling disc, and the arrival that ends it. Play holds its gate
     /// over this; the transit itself knows nothing about the gate.
     private let transits: TransitMotion
@@ -441,7 +446,7 @@ final class PlayMotion {
     /// that selects nothing, a tap on a finished board whose notice is already
     /// away — never for input it acted on.
     func acknowledge() {
-        feedback.perform(.acknowledgement)
+        refusals += 1
         animator.run(policy.fade(.easeOut(duration: Motion.beatRise))) { [self] in
             beatEmphasis = 1
         } completion: { [self] in
@@ -497,7 +502,7 @@ final class PlayMotion {
     /// stone that landed ended the game, which is the standing rule for every
     /// landing on every board.
     private func announcePlacement() {
-        feedback.perform(.landing)
+        landings += 1
         feedback.play(.ofTheLanding(nil, stone: true,
                                     finished: game.isFinished, inCheck: false))
     }
@@ -564,7 +569,7 @@ final class PlayMotion {
     /// the alignment pattern at every landing there is, while the sound is the
     /// one that says what this landing was.
     private func announceLanding() {
-        feedback.perform(.landing)
+        landings += 1
         feedback.play(.ofTheLanding(transit,
                                     finished: game.isFinished,
                                     inCheck: game.checkedGeneral != nil))
@@ -607,7 +612,7 @@ final class PlayMotion {
     /// than marking where it may not, and the lightest feedback answers the
     /// touch itself, ahead of anything drawn.
     private func answerIllegalTap() {
-        feedback.perform(.acknowledgement)
+        refusals += 1
         guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
             // Reduce Motion: the markers strengthen once — a single state
             // change, no pulse — and stay until the selection changes.

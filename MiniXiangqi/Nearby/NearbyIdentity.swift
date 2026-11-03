@@ -45,7 +45,7 @@ nonisolated enum NearbyIdentity {
     /// second identity for one install, which is exactly what this type exists
     /// to make impossible.
     @MainActor
-    static func own(in defaults: UserDefaults = Preferences.defaults) -> String {
+    static func own(in defaults: UserDefaults = .standard) -> String {
         if let stored = defaults.string(forKey: identifierKey), !stored.isEmpty {
             return stored
         }
@@ -71,7 +71,7 @@ nonisolated enum NearbyIdentity {
     /// stands.
     @MainActor
     static func linked(to pairing: PeerDeviceID,
-                       in defaults: UserDefaults = Preferences.defaults) -> PeerDeviceID? {
+                       in defaults: UserDefaults = .standard) -> PeerDeviceID? {
         guard let identifier = mapping(in: defaults)[pairing.rawValue] else { return nil }
         return peer(identifier)
     }
@@ -82,7 +82,7 @@ nonisolated enum NearbyIdentity {
     /// one.
     @MainActor
     static func link(_ pairing: PeerDeviceID, to identifier: String,
-                     in defaults: UserDefaults = Preferences.defaults) {
+                     in defaults: UserDefaults = .standard) {
         var mapped = mapping(in: defaults)
         guard mapped[pairing.rawValue] != identifier else { return }
         mapped[pairing.rawValue] = identifier
@@ -153,7 +153,7 @@ nonisolated enum NearbyIdentity {
     static func resolve(over exchange: any NearbyLinkageExchange,
                         pairing: PeerDeviceID?,
                         within window: Duration,
-                        in defaults: UserDefaults = Preferences.defaults) async -> PeerDeviceID? {
+                        in defaults: UserDefaults = .standard) async -> PeerDeviceID? {
         do {
             try await exchange.sendLinkage(own(in: defaults))
         } catch {

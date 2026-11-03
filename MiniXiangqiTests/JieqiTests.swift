@@ -1,21 +1,3 @@
-// Jieqi, as the app plays it: the deal it begins from, the face-down piece the
-// board carries, the reading the move list draws, and the surface that holds
-// what a capture disclosed.
-//
-// Every expectation here is the core's own answer read back. Nothing asserts a
-// rule: the deal is derived below the C interface, the legal moves are the
-// core's, and what stands face down is what the position record says stands face
-// down. What the suite pins is the app's side of it — that the record reaches
-// the board whole, that what a player is entitled to know is what a surface can
-// reach, and that the identity a face-down disc hides is nowhere a drawing or a
-// label could find it.
-//
-// The two openings played through here are legal whatever the deal turns out to
-// be, which is what makes them writable at all: a hidden piece moves as the
-// piece whose square it stands on, so `b3b4` is a cannon's step for Red and
-// `b8b1` is a cannon's shot for Black over the one screen that step left
-// standing — and neither depends on what either piece turns up as.
-
 import Foundation
 import MiniXiangqiCore
 import Testing
@@ -24,40 +6,22 @@ import Testing
 @Suite("Jieqi", .retiringItsCores)
 @MainActor
 struct JieqiTests {
-
     private static let board = GameKind.jieqi.board
 
     private static func square(_ name: String) -> Square {
         Square(name, on: board)!
     }
 
-    /// The two plies that take a face-down piece: the piece on Red's cannon
-    /// square steps up, and the piece on Black's takes Red's b1 over the screen
-    /// that step left standing. Both are the roles their squares give them, so
-    /// both are legal whatever the deal turns out to be.
     static let capturingLine = ["b3b4", "b8b1"]
 
-    /// The same two plies, and then a claimable repetition.
-    ///
-    /// The generals are the only pieces on this board whose identity is known
-    /// before they move, so they are what a repetition can be written out of:
-    /// each steps into its own palace centre and back, taking nothing and
-    /// revealing nothing, so the position after the capture stands again at the
-    /// end of every cycle. Three cycles put it well past the third occurrence,
-    /// and a game the app can file is what a record needs.
     static let claimableLine = capturingLine
         + (0..<3).flatMap { _ in ["e1e2", "e10e9", "e2e1", "e9e10"] }
 
-    /// A Free Play game, created the way the Play destination creates one: the
-    /// app draws the entropy, the core derives the deal, and the dealt start is
-    /// what the game is created from.
     private func dealtGame(on core: Core) throws -> Game {
         let deal = try core.deal(.jieqi)
         try core.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
-        return try Game(rules: core)
+        return try Game(core: core)
     }
-
-    // MARK: - The deal
 
     @Test("A dealt start is a position the game begins from, and the record holds it")
     func theDealIsWhereTheGameBegins() throws {
@@ -70,7 +34,6 @@ struct JieqiTests {
         let deal = try core.deal(.jieqi)
         #expect(core.setupVerdict(of: deal.startFEN, game: .jieqi) == .legal)
         #expect(core.isPlayable(deal.startFEN, game: .jieqi))
-        // The two derived values are the spelling every handshake value has.
         #expect(deal.commit.count == 64)
         #expect(deal.digest.count == 64)
         #expect(deal.commit.allSatisfy { $0.isHexDigit && !$0.isUppercase })
@@ -88,8 +51,6 @@ struct JieqiTests {
         }
     }
 
-    // MARK: - The board's vocabulary
-
     @Test("The dealt start reaches the board as face-down pieces of their squares' roles")
     func theBoardReadsTheDealtStart() throws {
         let core = try TestCores.fresh()
@@ -100,8 +61,6 @@ struct JieqiTests {
         #expect(!general.isFaceDown, "the two generals are the only pieces that start face up")
         #expect(!(try #require(game.placement[Self.square("e10")])).isFaceDown)
 
-        // A face-down piece carries the role its square gives it and never the
-        // identity the position holds under it.
         let corner = try #require(game.placement[Self.square("a1")])
         #expect(corner.isFaceDown)
         #expect(corner.side == .red)
@@ -140,12 +99,9 @@ struct JieqiTests {
         #expect(counted == [.chariot: 2, .horse: 2, .elephant: 2, .advisor: 2,
                             .cannon: 2, .soldier: 5],
                 "each side's fifteen face-down identities are that side's non-general pieces")
-        // And a face-up point has nothing concealed under it.
         #expect(game.placement.concealedIdentity(at: Self.square("e1")) == nil)
         #expect(game.placement.concealedIdentity(at: Self.square("e5")) == nil)
     }
-
-    // MARK: - The move list
 
     @Test("A face-down mover reads as its square's role, marked, with the reveal last")
     func theReadingMarksTheMoverAndSaysWhatItTurnedUp() throws {
@@ -165,8 +121,6 @@ struct JieqiTests {
         #expect(reading.traditional == reading.wxf,
                 "one rendering, whichever way the 记谱法 preference stands")
 
-        // Black's answer is the same shape from the other side's own file
-        // numbering, and it captures.
         game.tap(Self.square("b8"))
         game.tap(Self.square("b1"))
         #expect(game.moves == ["b3b4", "b8b1"])
@@ -177,8 +131,6 @@ struct JieqiTests {
 
     @Test("A revealed piece's move is the ordinary reading, with no mark and nothing disclosed")
     func aRevealedMoveReadsAsItAlwaysDid() {
-        // jq-mix-001's start position: one face-down piece on a chariot's
-        // square, and everything else revealed.
         let placement = Placement(fen: "3c5/9/2n2k3/9/2N6/9/9/9/9/C~2K5 w - - 0 1",
                                   game: .jieqi)
         #expect(placement[Self.square("c8")]?.isFaceDown == false)
@@ -188,14 +140,10 @@ struct JieqiTests {
         #expect(reading.wxf == "H3+4")
         #expect(reading.traditional == reading.wxf)
 
-        // And the face-down piece beside it is the role its square gives it —
-        // a chariot's square holding a cannon.
         #expect(placement[Self.square("a1")]?.kind == .chariot)
         #expect(placement[Self.square("a1")]?.isFaceDown == true)
         #expect(placement.concealedIdentity(at: Self.square("a1")) == .cannon)
     }
-
-    // MARK: - The captured surface
 
     @Test("A capture stands in the surface, and who may see it is the disclosure rule")
     func theCapturedSurfaceFollowsDisclosure() throws {
@@ -217,39 +165,29 @@ struct JieqiTests {
         #expect(taken.kind == identity, "and what it was is what the record held under it")
 
         let ply = game.moves.count
-        // Free Play: one person holds both hands, so every disclosure is theirs
-        // and nothing is ever a count.
         let free = game.captured.panel(of: .red, throughPly: ply, seenBy: nil,
                                        disclosed: false)
         #expect(free.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)])
         #expect(free.hidden == 0)
 
-        // Its owner learns only that a piece is gone.
         let owner = game.captured.panel(of: .red, throughPly: ply, seenBy: .red,
                                         disclosed: false)
         #expect(owner.pieces.isEmpty)
         #expect(owner.hidden == 1)
 
-        // Its capturer is shown it whole, because the capture disclosed it to
-        // them alone.
         let capturer = game.captured.panel(of: .red, throughPly: ply, seenBy: .black,
                                            disclosed: false)
         #expect(capturer.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)])
         #expect(capturer.hidden == 0)
 
-        // The end of the game discloses everything to both players, so the
-        // count resolves into the piece it was counting.
         let ended = game.captured.panel(of: .red, throughPly: ply, seenBy: .red,
                                         disclosed: true)
         #expect(ended.pieces == [.init(kind: identity, side: .red, wasFaceDown: true)],
                 "and the resolved loss still says it left face down")
         #expect(ended.hidden == 0)
 
-        // And the surface follows the walk: before the ply that took it, it
-        // holds nothing.
         #expect(game.captured.panel(of: .red, throughPly: 1, seenBy: nil,
                                     disclosed: false).pieces.isEmpty)
-        // Black has lost nothing at all.
         #expect(game.captured.panel(of: .black, throughPly: ply, seenBy: nil,
                                     disclosed: false) ==
                 CapturedPieces.Panel(side: .black, pieces: [], hidden: 0))
@@ -257,9 +195,6 @@ struct JieqiTests {
 
     @Test("The panel keeps which shown losses left face down, and open ones say not")
     func thePanelTellsOpenCapturesFromHiddenOnes() {
-        // Two of the same piece, one taken in the open and one taken face
-        // down: the surface that draws them apart needs the panel to keep
-        // exactly that bit, and their order of taking.
         var captured = CapturedPieces()
         captured.taken = [CapturedPiece(ply: 4, side: .red, kind: .horse,
                                         wasFaceDown: false),
@@ -296,8 +231,6 @@ struct JieqiTests {
         #expect(game.notation.isEmpty)
     }
 
-    // MARK: - What the board draws
-
     @Test("A revealing move travels as one disc carrying both faces")
     func theRevealRidesTheOneDisc() throws {
         let core = try TestCores.fresh()
@@ -306,8 +239,7 @@ struct JieqiTests {
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: false),
                                 animator: animator.animator,
-                                feedback: try FeedbackRecorder(
-                                    defaults: ScratchDefaults.make()).feedback)
+                                feedback: FeedbackRecorder().feedback)
 
         motion.tap(Self.square("b3"))
         motion.tap(Self.square("b4"))
@@ -324,7 +256,6 @@ struct JieqiTests {
         animator.completeAll()
         #expect(motion.transit == nil)
         #expect(motion.transitReveal == 0, "the reveal is over with the transition")
-        ScratchDefaults.clear()
     }
 
     @Test("An ordinary move carries no second face")
@@ -335,26 +266,18 @@ struct JieqiTests {
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: false),
                                 animator: animator.animator,
-                                feedback: try FeedbackRecorder(
-                                    defaults: ScratchDefaults.make()).feedback)
+                                feedback: FeedbackRecorder().feedback)
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
         #expect(motion.transit?.revealed == nil)
         animator.completeAll()
-        ScratchDefaults.clear()
     }
-
-    // MARK: - What the nearby board draws over the same deal
 
     @Test("A ply arriving from the other device travels as one disc carrying both faces")
     func aRemoteRevealRidesTheOneDisc() throws {
         let core = try TestCores.fresh()
         let play = try #require(nearbyBoard(on: core, plies: []))
 
-        // The other device's ply, arriving through the engine's publication —
-        // which is the whole of what a nearby move is here. Nothing about the
-        // identity came with it: the deal this device already holds is where
-        // the arriving face is read from.
         play.sync(with: dealtSession(plies: ["b3b4"]))
 
         let transit = try #require(play.transit)
@@ -371,8 +294,6 @@ struct JieqiTests {
         let core = try TestCores.fresh()
         let play = try #require(nearbyBoard(on: core, plies: ["b3b4"]))
 
-        // The two players agreed to take it back, which reaches this board as a
-        // session one ply shorter.
         play.sync(with: dealtSession(plies: []))
 
         let transit = try #require(play.transit)
@@ -396,8 +317,7 @@ struct JieqiTests {
                                            positions: core.nearbyPositions,
                                            interruption: .passing,
                                            animator: ManualAnimator().animator,
-                                           feedback: Feedback(perform: { _ in },
-                                                              play: { _ in })))
+                                           feedback: Feedback(play: { _ in })))
         session.plies = ["b1b2"]
         play.sync(with: session)
         #expect(play.transit?.revealed == nil)
@@ -417,8 +337,6 @@ struct JieqiTests {
                 "every hidden identity is disclosed by any ending, a resignation included")
     }
 
-    /// The corpus's own dealt session, as the engine publishes one: the deal it
-    /// derived and the plies it holds.
     private func dealtSession(plies: [String]) -> BoardGameSession {
         var session = BoardGameSession(id: "S", peer: PeerDeviceID("peer"),
                                        rulesID: GameKind.jieqi.rulesID,
@@ -435,17 +353,12 @@ struct JieqiTests {
         return session
     }
 
-    /// The nearby board over that session, drawing the core's own positions.
-    /// The animator runs bodies at once and parks the completions, so the
-    /// transition a case looks at is still standing when it looks.
     private func nearbyBoard(on core: Core, plies: [String]) -> NearbyPlay? {
         NearbyPlay(session: dealtSession(plies: plies), driver: FakeDriver(),
                    positions: core.nearbyPositions, interruption: .passing,
                    animator: ManualAnimator().animator,
-                   feedback: Feedback(perform: { _ in }, play: { _ in }))
+                   feedback: Feedback(play: { _ in }))
     }
-
-    // MARK: - What the game does not carry
 
     @Test("No engine plays it, so there is no hint to offer and no AI to play")
     func theCapabilitiesThatAreNotThere() throws {
@@ -470,14 +383,10 @@ struct JieqiTests {
         #expect(!game.searchExpected, "and no search is ever owed")
     }
 
-    // MARK: - The ending
-
     @Test("The end of the game discloses the deal, and nothing before it does")
     func theEndingDisclosesTheDeal() throws {
         let core = try TestCores.fresh()
         let game = try dealtGame(on: core)
-        // What the board is still concealing when the game ends, kept from
-        // before it does: the disclosure shows these and invents nothing.
         let hidden = Self.square("a1")
         let identity = try #require(game.placement.concealedIdentity(at: hidden))
 
@@ -493,12 +402,8 @@ struct JieqiTests {
         #expect(game.isFinished)
         #expect(game.disclosesTheDeal,
                 "every hidden identity is disclosed to both players by any ending")
-        // The position is the position — the record still holds the deal the
-        // way it always did, and what changed is what a player may be shown.
         #expect(game.placement[hidden]?.isFaceDown == true)
         #expect(game.placement.concealedIdentity(at: hidden) == identity)
-        // And the surface beside it resolves its count into the piece it was
-        // counting, for the player who lost it.
         let owner = game.captured.panel(of: .red, throughPly: game.moves.count,
                                         seenBy: .red, disclosed: game.disclosesTheDeal)
         #expect(owner.hidden == 0)
@@ -510,10 +415,6 @@ struct JieqiTests {
     @Test("Two deals are two games")
     func theDealIsDrawnAfresh() throws {
         let core = try TestCores.fresh()
-        // The entropy is drawn per deal, so two deals of the same core are two
-        // positions. Equal starts would mean the app dealt from a constant,
-        // which is the one thing this call must never do; that they differ is
-        // certain to within one chance in 15!².
         let first = try core.deal(.jieqi)
         let second = try core.deal(.jieqi)
         #expect(first.startFEN != second.startFEN)

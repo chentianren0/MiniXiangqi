@@ -228,8 +228,7 @@ private extension View {
     /// It belongs to the destination rather than to the board alone: a window
     /// that could be shrunk on one page and then walked to another is a window
     /// that clips the board, so every page carries the same number and the
-    /// minimum never changes underneath the player. `-mxq-no-minimum` takes it
-    /// off so a screenshot can show what the layout does below it.
+    /// minimum never changes underneath the player.
     ///
     /// **It is a window's floor, so it is macOS's.** What a minimum does is stop
     /// a resize; iOS and iPadOS have no resize to stop — the screen is the size
@@ -239,14 +238,8 @@ private extension View {
     /// stacked shape exists precisely so that it is not.
     func playContentFloor() -> some View {
         #if os(macOS)
-        #if DEBUG
-        let lifted = DebugLaunch.contains("-mxq-no-minimum")
-        return frame(minWidth: lifted ? nil : BoardLayout.minimumWidth,
-                     minHeight: lifted ? nil : BoardLayout.minimumHeight)
-        #else
         return frame(minWidth: BoardLayout.minimumWidth,
                      minHeight: BoardLayout.minimumHeight)
-        #endif
         #else
         return self
         #endif

@@ -1,30 +1,7 @@
-// The cores the unit suite plays on, and the seams it watches motion through.
-//
-// The animator and the feedback recorder are shared because play and replay
-// show a move the same way and are therefore tested the same way: a suite that
-// kept its own copy of either would be free to drift from the other's.
-//
-// The core is singleton-enforced — one live instance per process — and every
-// session test needs a store of its own, so the suite runs its cores through
-// one coordinator: asking for the next core shuts down the previous one, which
-// the singleton demands anyway, and hands back the real core over a scratch
-// directory nobody keeps. Nothing is mocked; a test core differs from the
-// app's only in where its store lives. The host app cooperates by presenting
-// nothing under a hosted unit run, so the one instance slot is always free and
-// the player's own store is never opened, let alone written.
-//
-// No core outlives the test that opened it: `.retiringItsCores` shuts one down
-// as its test ends, so a run reaches process exit with the slot empty. Exit is
-// not a teardown — a core whose engine thread is still running when the C++
-// statics under it are destroyed aborts a host that has already reported green
-// — and a suite that left its last core to the exit was asking exit to do a
-// job it does not have.
-//
-// Every suite here is @MainActor and every test body is synchronous, so no two
-// tests ever hold cores at once while they run. Retirement is the one thing
-// that happens outside a body, and so the one thing that has to check: a test
-// retires the core it opened only while that core is still the live one, and
-// does nothing at all once a later test has taken the slot.
+// The real core over scratch stores, one at a time: the core is a process-wide
+// singleton, so opening the next one shuts down the last, and `.retiringItsCores`
+// shuts each down as its test ends. A core still running at process exit
+// aborts the host after the run has reported green.
 
 import Foundation
 import MiniXiangqiCore
@@ -36,21 +13,11 @@ import Testing
 enum TestCores {
     private static var current: (core: Core, directory: URL)?
 
-    /// The real core over a fresh scratch store: the state every test starts
-    /// from unless it is about resuming one.
     static func fresh() throws -> Core {
         try open(at: scratchDirectory())
     }
 
-    /// The real core over the given store — the same call `fresh()` makes,
-    /// separated so a round-trip test can shut one core down and open the
-    /// next over the same directory, which is exactly what quitting and
-    /// relaunching the app does.
     static func open(at directory: URL) throws -> Core {
-        // A test that has made no promise to end its cores would leave its last
-        // one standing at process exit, and the host would abort after the run
-        // reported green. Said here, that is a failure with a name and a fix in
-        // it; left unsaid, it is a crash dialog nobody can trace back.
         if OpenedCores.running == nil {
             Issue.record("""
                 This test opened a core without `.retiringItsCores`. Add the \
@@ -65,18 +32,12 @@ enum TestCores {
         return core
     }
 
-    /// A place for a store, not yet a store: `open(at:)` makes it one.
     static func scratchDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("mxq-test-store-\(UUID().uuidString)",
                                     isDirectory: true)
     }
 
-    /// Shuts down the live test core, freeing the one instance slot. `open`
-    /// calls it for the next test and `.retiringItsCores` calls it for the test
-    /// that opened one, so nothing is ever left for process exit to reclaim.
-    /// The retired store is removed with its core — except the one a round trip
-    /// is about to resume from, which is the whole point of the trip.
     static func retire(keeping directory: URL? = nil) {
         guard let current else { return }
         current.core.shutdown()
@@ -86,64 +47,34 @@ enum TestCores {
         self.current = nil
     }
 
-    /// The end of one test's cores. It frees the slot only if what stands in it
-    /// is still what that test opened, so it is the backstop and never the
-    /// authority: a test that retired its own core — as the archive tests do,
-    /// because their answers arrive across a suspension they will not hold a
-    /// core through — finds nothing left to do here, and a test whose core a
-    /// later `open` already retired must not reach for a slot that by then
-    /// belongs to whatever test is running now.
     static func retire(_ opened: OpenedCores) {
         guard let core = opened.core, current?.core === core else { return }
         retire()
     }
 }
 
-/// The core the running test has open, which is how the test that opened one
-/// finds it again at the end. A box rather than a field on `TestCores` because
-/// it is per-test state, and `.retiringItsCores` — which makes one per test and
-/// carries it into the body as a task value — is the only thing here that knows
-/// where a test begins and ends.
 @MainActor
 final class OpenedCores {
     nonisolated init() {}
 
     fileprivate var core: Core?
 
-    /// The box belonging to the test the caller is running inside.
     static var running: OpenedCores? { RunningTest.opened }
 }
 
-/// The value `.retiringItsCores` carries into the body it wraps. A task value
-/// because that is what a test body inherits from the scope around it.
 private enum RunningTest {
     @TaskLocal static var opened: OpenedCores?
 }
 
-/// Ends a test's cores with the test.
-///
-/// The suite used to let the last core of a run stand, on the reading that
-/// process exit would reclaim it. It does not: the core's engine thread is
-/// still running when the C++ statics under it are destroyed, so the host
-/// aborts — `std::terminate` — after every test has reported and the run has
-/// printed green, and the owner is shown a crash dialog for a run that
-/// succeeded. So the test that opens a core is the one that shuts it down.
 struct RetiringCores: TestTrait, SuiteTrait, TestScoping {
-    /// Written on a suite, it holds for every test in it. What it promises is
-    /// about what a test does with a core, and every test in a suite that opens
-    /// them makes the same promise.
     var isRecursive: Bool { true }
 
-    /// Around each test and never around the suite: a suite-wide scope would
-    /// end cores between suites rather than between tests, which leaves exactly
-    /// the core this exists to shut down — the last one — standing longest.
     func scopeProvider(for test: Test, testCase: Test.Case?) -> Self? {
         testCase == nil ? nil : self
     }
 
-    // `@concurrent` on the body is the protocol's own signature, which this
-    // target's approachable-concurrency default would otherwise read as
-    // nonisolated-nonsending and fail to witness.
+    // `@concurrent` is the protocol's own signature, which this target's
+    // approachable-concurrency default would otherwise fail to witness.
     func provideScope(for test: Test, testCase: Test.Case?,
                       performing body: @concurrent @Sendable () async throws -> Void) async throws {
         let opened = OpenedCores()
@@ -158,34 +89,35 @@ struct RetiringCores: TestTrait, SuiteTrait, TestScoping {
 }
 
 extension Trait where Self == RetiringCores {
-    /// Every core this suite's tests open is shut down as the test that opened
-    /// it ends. Required of any suite that asks `TestCores` for one: without
-    /// it, the suite's last core reaches process exit alive and aborts the
-    /// host, and `TestCores.open` says so rather than let it happen quietly.
     static var retiringItsCores: Self { Self() }
 }
 
-/// A Free Play game, opened the way the app opens one.
-///
-/// Creation stopped being the first move's job when a pre-start state arrived in
-/// front of it: **开始对局** creates the game, and the first move is played onto
-/// a board that already exists. So a test that wants a board to play on asks for
-/// one here — created where the store holds nothing, resumed where it holds an
-/// active game, which is exactly the two cases the app itself has.
 @MainActor
-func openGame(on rules: Rules) throws -> Game {
-    if !rules.hasSession, try !rules.resumeActive() {
-        try rules.create(.freePlay(game: .miniXiangqi))
+func openGame(on core: Core) throws -> Game {
+    if !core.hasSession, try !core.resumeActive() {
+        try core.create(.freePlay(game: .miniXiangqi))
     }
-    return try Game(rules: rules)
+    return try Game(core: core)
+}
+
+private struct RefusedReplayMove: Error {
+    var text: String
+}
+
+extension Game {
+    func replay(_ line: [String]) throws {
+        for text in line {
+            guard let move = Move(text: text, on: kind.board), legalMoves.contains(move) else {
+                throw CoreError(wrapping: RefusedReplayMove(text: text))
+            }
+            play(move)
+            if let failure { throw failure }
+        }
+    }
 }
 
 // MARK: - What a search's answer looks like
 
-/// One search result, as the core's callback would deliver it. Shared by the
-/// two suites that watch a search answer — the AI's reply and the hint — for the
-/// reason the animator is shared: the two are answered by one machinery, and a
-/// second copy of this would be free to drift from it.
 @MainActor
 func searchResult(_ outcome: SearchOutcome, move: String, game: Game,
                   ticket: UInt64 = 1, revision: UInt64? = nil,
@@ -215,10 +147,6 @@ func searchResult(_ outcome: SearchOutcome, move: String, game: Game,
 
 // MARK: - The motion seams
 
-/// Runs animation bodies at once and parks their completions for the test to
-/// fire in order, exactly as the live animator fires them. It is what makes
-/// "during a transition" a state a test can stand in for as long as it likes,
-/// on either screen that shows one.
 @MainActor
 final class ManualAnimator {
     private(set) var pending: [() -> Void] = []
@@ -230,7 +158,6 @@ final class ManualAnimator {
         }
     }
 
-    /// Fires the oldest parked completion, as time passing would.
     func completeNext() {
         guard !pending.isEmpty else { return }
         pending.removeFirst()()
@@ -241,121 +168,21 @@ final class ManualAnimator {
     }
 }
 
-/// Records the two halves apart, because they are two decisions: every landing
-/// is felt the same way, and each one is heard according to what it was. A test
-/// that could only see one number could not tell a silenced sound from a missing
-/// landing.
 @MainActor
 final class FeedbackRecorder {
-    private(set) var events: [Feedback.Event] = []
     private(set) var sounds: [Feedback.Sound] = []
 
-    /// The defaults the two gates read. Never the standard ones: under a hosted
-    /// test bundle those are the app's own domain — the very domain the Settings
-    /// switches write — and a suite that read it would fall silent the day
-    /// somebody switched sound off in the app.
-    private let defaults: UserDefaults
-
-    init(defaults: UserDefaults) { self.defaults = defaults }
-
-    /// Composed the way the live feedback composes it — the app's own gates in
-    /// front of both halves — so that what these tests watch being silenced or
-    /// stilled is what the app silences and stills.
     var feedback: Feedback {
-        Feedback.gating(by: defaults) { [self] event in
-            events.append(event)
-        } play: { [self] sound in
-            sounds.append(sound)
-        }
+        Feedback { [self] sound in sounds.append(sound) }
     }
 }
 
-/// The preferences the Settings switches write, in a scratch domain of the
-/// suite's own. Cleared each time it is made, so no test inherits the state
-/// another left; a preference left unnamed is left absent, which is the state of
-/// a first launch and the one most tests want, since most of them are about
-/// something the board does rather than about a switch.
-@MainActor
-enum ScratchDefaults {
-    static let suiteName = "com.chentianren.MiniXiangqi.tests.preferences"
-
-    static func make(soundEnabled: Bool? = nil,
-                     hapticsEnabled: Bool? = nil,
-                     deleteConfirmation: Bool? = nil) throws -> UserDefaults {
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        clear()
-        if let soundEnabled { Preferences.sound.set(soundEnabled, in: defaults) }
-        if let hapticsEnabled { Preferences.haptics.set(hapticsEnabled, in: defaults) }
-        if let deleteConfirmation {
-            Preferences.deleteConfirmation.set(deleteConfirmation, in: defaults)
-        }
-        return defaults
-    }
-
-    static func clear() {
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-    }
-}
-
-// MARK: - Rendering a view to a PNG
-
-#if canImport(AppKit)
-import AppKit
-#else
-import UIKit
-#endif
-import SwiftUI
-
-/// The platform image `ImageRenderer` produces here. The two snapshot suites
-/// render the same views on both platforms and write the same PNGs; only the
-/// framework holding the pixels differs, and it differs in exactly two calls.
-#if canImport(AppKit)
-typealias PlatformImage = NSImage
-#else
-typealias PlatformImage = UIImage
-#endif
-
-/// One rendered view, as a platform image and as PNG bytes.
-@MainActor
-func renderPNG(_ view: some View, scale: CGFloat) -> (image: PlatformImage, png: Data)? {
-    let renderer = ImageRenderer(content: view)
-    renderer.scale = scale
-    #if canImport(AppKit)
-    guard let image = renderer.nsImage,
-          let tiff = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: tiff),
-          let png = bitmap.representation(using: .png, properties: [:])
-    else { return nil }
-    #else
-    guard let image = renderer.uiImage, let png = image.pngData() else { return nil }
-    #endif
-    return (image, png)
-}
-
-/// One game's frozen starting position, for the suites that draw a board from
-/// it.
-///
-/// Force-unwrapped deliberately: every game named through this freezes a start,
-/// and a game whose start is dealt has one for every deal and none to ask for —
-/// a suite reaching for it here would be asking a question that has no answer,
-/// which is a failure worth having at the line that asked.
 nonisolated func frozenStart(_ game: GameKind) -> String {
     Core.frozenStartFEN(for: game)!
 }
 
 // MARK: - The nearby driver, faked
 
-/// A driver that records instead of speaking, and refuses when the test says so.
-///
-/// Observable like the real one, because *when* it publishes is part of what is
-/// under test: the flow holds the board's session at every publication rather
-/// than at every redraw, and a fake that published silently could not tell the
-/// two apart.
-///
-/// Shared, because two suites ask different questions of one seam — what the
-/// flow does with a refusal, and what a dealt board draws over a real deal — and
-/// a second copy of it would be a second thing to keep in step with the
-/// protocol.
 @MainActor
 @Observable
 final class FakeDriver: NearbyDriving {
@@ -371,7 +198,6 @@ final class FakeDriver: NearbyDriving {
         var accepting: Bool
     }
 
-    /// One negotiation intent, as the driver received it.
     enum Intent: Equatable {
         case claim
         case offerDraw
@@ -383,11 +209,8 @@ final class FakeDriver: NearbyDriving {
     var sessions: [BoardGameSession] = []
     var declines: [NearbyDecline] = []
     var ownMoveRefusals = 0
-    /// What every intent answers with, where the test wants a refusal.
     var refuses: BoardGameRefusal?
-    /// The identifier the engine would mint for the next proposal.
     var mints = "S"
-    /// What the engine's own oracle would say about the claim.
     var claimStandsAnswer = false
 
     private(set) var proposals: [Proposal] = []
@@ -395,8 +218,6 @@ final class FakeDriver: NearbyDriving {
     private(set) var played: [String] = []
     private(set) var resigned: [String] = []
     private(set) var intents: [Intent] = []
-    /// The sessions `claimStands` was asked about, which is what proves the
-    /// affordance is the engine's answer rather than the position's.
     private(set) var claimsAsked: [String] = []
 
     func propose(to peer: PeerDeviceID, on connection: ConnectionID, rulesID: String,
@@ -404,8 +225,6 @@ final class FakeDriver: NearbyDriving {
         if let refuses { throw refuses }
         proposals.append(Proposal(peer: peer, connection: connection, rulesID: rulesID,
                                   proposerMoves: proposerMoves))
-        // The engine mints the identifier and holds the proposal it made, which
-        // is what the flow reads back to learn which session it is waiting on.
         var proposed = BoardGameSession(id: mints, peer: peer, rulesID: rulesID,
                                         rulesVersion: "1", proposerMoves: proposerMoves,
                                         proposer: .local)
@@ -458,8 +277,6 @@ final class FakeDriver: NearbyDriving {
         return claimStandsAnswer
     }
 
-    /// The interrupted game the library would give back, where a case has set
-    /// one up, and what it was asked.
     var stored: BoardGameSession?
     private(set) var resumedStored = 0
     private(set) var abandoned = 0
@@ -475,5 +292,27 @@ final class FakeDriver: NearbyDriving {
         abandoned += 1
         sessions.removeAll { $0.state != .proposed }
         stored = nil
+    }
+}
+
+// MARK: - 保存并继续, held in flight
+
+/// Holds PlayState's archive step open, so a test decides when it answers.
+@MainActor
+final class HeldArchive {
+    private(set) var requests = 0
+    private var parked: (@MainActor (Result<UInt64, CoreError>) -> Void)?
+
+    init(holding state: PlayState) {
+        state.archiveActiveGame = { [unowned self] completion in
+            requests += 1
+            parked = completion
+        }
+    }
+
+    func answer(_ result: Result<UInt64, CoreError>) {
+        let completion = parked
+        parked = nil
+        completion?(result)
     }
 }

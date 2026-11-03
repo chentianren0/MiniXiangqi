@@ -1,5 +1,3 @@
-// The explicit game axis at the board-model boundary.
-
 import Testing
 @testable import MiniXiangqi
 
@@ -86,9 +84,6 @@ struct BoardModelTests {
 
     @Test("A face-down piece is never a stone, kindless though both are")
     func faceDownIsNotAStone() {
-        // The one discriminator PieceDisc branches on: a kindless face-down
-        // piece — a captured hidden loss — must take the face-down body, not
-        // the placement games' stone with its own colour convention.
         #expect(!Piece(kind: nil, side: .red, isFaceDown: true).isStone)
         #expect(!Piece(kind: nil, side: .black, isFaceDown: true).isStone)
         #expect(Piece.stone(.red).isStone)

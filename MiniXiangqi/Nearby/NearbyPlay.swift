@@ -84,6 +84,11 @@ final class NearbyPlay {
     private let animator: MotionAnimator
     private let feedback: Feedback
 
+    /// Counts the board screen triggers its haptics on: every landing, and
+    /// every touch the game could not act on.
+    private(set) var landings = 0
+    private(set) var refusals = 0
+
     var policy: MotionPolicy
 
     /// The session as the engine last published it. The authority for whose turn
@@ -590,7 +595,7 @@ final class NearbyPlay {
         switch Game.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
                            sideToMove: evaluation.sideToMove, selected: selected,
                            acceptsInput: acceptsInput,
-                           confirmsPlacement: Preferences.placementConfirmation.value()) {
+                           confirmsPlacement: UserDefaults.standard.bool(forKey: "placementConfirmation.enabled")) {
         case .cancelSelection: cancelSelection()
         case .play(let move): commit(move)
         case .select: select(square)
@@ -812,7 +817,7 @@ final class NearbyPlay {
     /// replay use; `stone` is the one thing the arrival itself has to say, since
     /// a placed stone reaches its point with no transit to read it off.
     private func announceLanding(stone: Bool = false) {
-        feedback.perform(.landing)
+        landings += 1
         feedback.play(.ofTheLanding(transit, stone: stone,
                                     finished: end != nil || evaluation.isOver,
                                     inCheck: checkedGeneral != nil))
@@ -843,7 +848,7 @@ final class NearbyPlay {
     /// The illegal-tap answer: no board mark, the legal destinations strengthen,
     /// and the lightest feedback answers the touch.
     private func answerIllegalTap() {
-        feedback.perform(.acknowledgement)
+        refusals += 1
         guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
             markerEmphasis = 1
             return
@@ -861,7 +866,7 @@ final class NearbyPlay {
     /// board is most often the other player's turn, and the status line above it
     /// is already saying so.
     private func acknowledge() {
-        feedback.perform(.acknowledgement)
+        refusals += 1
         withAnimation(policy.fade(.easeOut(duration: Motion.beatRise))) {
             beatEmphasis = 1
         } completion: { [self] in

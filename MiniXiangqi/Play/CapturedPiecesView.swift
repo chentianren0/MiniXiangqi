@@ -42,7 +42,7 @@ struct CapturedPiecesView: View {
     /// The 棋子符号 preference, read here for the reason the board reads it:
     /// these are the board's own discs, and flipping the preference has to
     /// repaint them with it.
-    @AppStorage(PieceSymbols.key, store: Preferences.defaults) private var storedSymbols: String?
+    @AppStorage(PieceSymbols.key) private var symbols: PieceSymbols = .hanzi
 
     private var panels: [CapturedPieces.Panel] {
         [Side.red, .black].map {
@@ -93,7 +93,7 @@ struct CapturedPiecesView: View {
                 ForEach(Array(discs.enumerated()), id: \.offset) { _, disc in
                     PieceDisc(piece: disc.piece, pitch: pitch,
                               board: game.board, style: style,
-                              symbols: PieceSymbols.named(storedSymbols),
+                              symbols: symbols,
                               symbolOpacity: disc.arrival)
                 }
             }
