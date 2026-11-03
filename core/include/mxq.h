@@ -1,8 +1,7 @@
 /*
  * mxq.h — the C interface of the core: rules, the Jieqi deal, engine
  * preparation and search. The core is stateless: every rules question is asked
- * of a game, a start position and a complete move line, and the app owns the
- * game in play and the library.
+ * of a game, a start position and a complete move line.
  *
  * Conventions:
  *
@@ -13,7 +12,7 @@
  *   - Vocabularies are int32_t typedefs with named constants.
  *   - Booleans are uint8_t, 0 or 1. Strings are UTF-8 and NUL-terminated.
  *   - Moves are "<from><to>" in the movement games and one square in the
- *     placement games; positions are six-field FENs (docs/xiangqi-rules.md).
+ *     placement games; positions are six-field FENs.
  *   - The rules are a property of the game, never of a position: a Jieqi
  *     position with nothing face down is spelled exactly as a Xiangqi one, and
  *     Gomoku and Renju share a board.
@@ -135,7 +134,7 @@ enum {
     MXQ_GAME_KIND_JIEQI        = 4  /* 9x10, pieces dealt face down */
 };
 
-/* The state the rules give a line: the fixture state identifiers. */
+/* The state the rules give a line. */
 typedef int32_t MxqGameState;
 enum {
     MXQ_GAME_ONGOING        = 0,
@@ -164,8 +163,8 @@ enum {
 };
 
 /* Which setup rule a position breaks, as mxq_rules_validate_setup reports it:
- * the rules of docs/xiangqi-rules.md read as a set-up predicate, plus the
- * answers of the games that begin from one position or from a deal. */
+ * Xiangqi's setup predicate, plus the answers of the games that begin from one
+ * position or from a deal. */
 typedef int32_t MxqSetupRule;
 enum {
     MXQ_SETUP_RULE_NONE              = 0,

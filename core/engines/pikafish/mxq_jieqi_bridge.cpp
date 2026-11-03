@@ -1,6 +1,3 @@
-/* The Pikafish jieqi bridge. See mxq_jieqi_bridge.hpp for why it is its own
- * library and what the engine below it does not do for itself. */
-
 #include "mxq_jieqi_bridge.hpp"
 
 #include "bitboard.h"
@@ -15,55 +12,35 @@
 #include <mutex>
 #include <new>
 
-/* The vendored slice is compiled with its whole namespace renamed, so the
- * engine's own name for itself is PikafishJieqi here and Stockfish nowhere. The
- * alias is spelled out at every call site below rather than pulled in with a
- * using-directive, so that a reader of any one line can see which of the two
- * embedded Stockfish derivatives it reaches. */
+/* The slice's namespace is renamed; the alias is spelled at every call site so
+ * each line shows which of the two Stockfish derivatives it reaches. */
 namespace pf = PikafishJieqi;
 
 namespace mxq {
 namespace jieqi {
 namespace {
 
-/* ------------------------------------------------------------------------- */
-/* The board, the letters, and the standard array                            */
-/* ------------------------------------------------------------------------- */
-
 /*
- * The piece letters of the record form, lowercase, in the order the engine's own
- * piece vocabulary numbers them: rook, advisor, cannon, pawn, knight, bishop,
- * king. The two vocabularies spell the seven pieces with the same seven letters
- * — a chariot is a rook, a horse a knight, an elephant a bishop, a soldier a
- * pawn — so a letter needs no translation in either direction and only the
- * face-down mark does.
+ * The record's letters in the engine's piece order. The two vocabularies spell
+ * the seven pieces with the same letters, so only the face-down mark needs
+ * translating.
  */
 constexpr const char *kLettersLower = "racpnbk";
 
 constexpr size_t kLetterCount = 7;
 
 /*
- * How many of one identity a side may hold face down, and it is the dialect's
- * ceiling rather than the game's: the pool field spells one digit per identity,
- * so nine is what a record can hand the engine. What a deal actually gives a
- * side — two of each piece and five soldiers — is the dealt-start question and
- * is answered by the setup predicate, which is where a shape that is no deal
- * gets the answer that says so.
- *
- * The general is the one exception, and it is not a ceiling but an absence. A
- * face-down general is a piece the pool field cannot carry at all: the engine's
- * pool has no king entry, so such a record would hand it fifteen dark squares
- * against fourteen pooled identities, and revealing that piece would drive its
- * count below zero and stand a second general on the board.
+ * The dialect's ceiling on face-down pieces per identity, not the game's: the
+ * pool field spells one digit each. The setup predicate answers what a deal
+ * gives. A general is never face down: the engine's pool has no king entry, so
+ * revealing one would drive a count below zero and stand a second general.
  */
 constexpr int32_t kFaceDownMost[kLetterCount] = {9, 9, 9, 9, 9, 9, 0};
 
 /*
- * The standard array, in the record's own letters, rank 1 first — the same
- * order this file indexes a Record by, and the same array the engine keeps its
- * own copy of. The engine reads a face-down piece's colour and role off this
- * table rather than out of its FEN, which is why a face-down piece anywhere but
- * one of these squares is an out-of-bounds write there and a refusal here.
+ * The standard array, rank 1 first. The engine reads a face-down piece's
+ * colour and role off its own copy of this table, not the FEN, so a face-down
+ * piece anywhere else is an out-of-bounds write there and a refusal here.
  */
 constexpr const char *kHomeRanks[kRanks] = {
     "RNBAKABNR", /* rank 1 */
@@ -84,8 +61,7 @@ bool is_red_letter(char c) { return c >= 'A' && c <= 'Z'; }
 
 char to_lower(char c) { return is_red_letter(c) ? static_cast<char>(c - 'A' + 'a') : c; }
 
-/* The index of a letter in kLettersLower, or kLetterCount for a character that
- * is no piece of this game. */
+/* kLetterCount for a character that is no piece of this game. */
 size_t letter_index(char c) {
     const char lower = to_lower(c);
     for (size_t i = 0; i < kLetterCount; ++i) {
@@ -100,14 +76,8 @@ MxqColor side_of_letter(char c) {
     return is_red_letter(c) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
 }
 
-/*
- * The engine's Piece for one of our letters.
- *
- * The engine numbers its pieces ROOK=1 through KING=7 for White and the same
- * plus eight for Black, which is exactly kLettersLower's order offset by one.
- * It is arithmetic rather than a second table so that the two orders cannot
- * drift: kLettersLower is asserted against the engine's own enumerators below.
- */
+/* Arithmetic rather than a second table, so the orders cannot drift; the
+ * static_assert below pins kLettersLower to the engine's enumerators. */
 pf::Piece piece_of_letter(char c) {
     const size_t index = letter_index(c);
     assert(index < kLetterCount && "a letter that is no piece of this game");
@@ -121,24 +91,14 @@ static_assert(pf::W_ROOK == 1 && pf::W_ADVISOR == 2 && pf::W_CANNON == 3 &&
                   pf::W_KING == 7 && pf::B_ROOK == 9,
               "the letter order is the engine's piece order, offset by one");
 
-/*
- * The engine's square for one of ours, and the only place the two coordinate
- * systems meet.
- *
- * This contract's ranks run 1 to 10 from Red's back rank and the engine's run 0
- * to 9 from the same rank, so a square translates by arithmetic in both
- * directions and never by copying. Every square this bridge hands the engine
- * and every square it reads back passes through here or through square_text
- * below; a rank that looks right is the failure this note exists to prevent.
- */
+/* Our ranks run 1-10, the engine's 0-9, both from Red's back rank. Every square
+ * crossing the bridge goes through here or square_text. */
 pf::Square engine_square(int32_t file, int32_t rank) {
     assert(file >= 0 && file < kFiles && rank >= 0 && rank < kRanks &&
            "a point off this game's board");
     return static_cast<pf::Square>(rank * kFiles + file);
 }
 
-/* The same translation, the other way: the record's own text for an engine
- * square. */
 std::string square_text(pf::Square square) {
     const int32_t index = static_cast<int32_t>(square);
     std::string   out;
@@ -147,12 +107,8 @@ std::string square_text(pf::Square square) {
     return out;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Reading and writing the record form                                       */
-/* ------------------------------------------------------------------------- */
-
-/* The six fields, split on single spaces. False unless there are exactly six and
- * none is empty — which is also what refuses a doubled or a trailing space. */
+/* False unless there are exactly six non-empty fields, which also refuses a
+ * doubled or trailing space. */
 bool split_fields(const std::string &text, std::string out[6]) {
     size_t begin = 0;
     for (size_t field = 0; field < 6; ++field) {
@@ -174,12 +130,8 @@ bool split_fields(const std::string &text, std::string out[6]) {
 }
 
 /*
- * A counter field: decimal digits with no leading zero unless the value is
- * exactly "0". The length is bounded because the value is handed to an engine
- * that reads it into an int: a record is untrusted input, and a digit run long
- * enough to overflow one is refused here rather than wrapped there. Nine digits
- * is far past anything either counter can reach — the forty-move rule ends a
- * game at eighty — and is comfortably inside an int.
+ * No leading zero unless exactly "0". Nine digits at most so an untrusted run
+ * cannot overflow the engine's int; the forty-move rule ends a game at eighty.
  */
 bool read_counter(const std::string &field, uint32_t &out) {
     if (field.empty() || field.size() > 9) {
@@ -200,11 +152,6 @@ bool read_counter(const std::string &field, uint32_t &out) {
     return true;
 }
 
-/*
- * The board field into the grid: ten ranks highest first, nine points each, an
- * empty run written as a single digit, and a face-down piece written as its
- * identity letter followed by `~`.
- */
 bool read_board(const std::string &field, Record &out, std::string &detail) {
     for (int32_t rank = 0; rank < kRanks; ++rank) {
         for (int32_t file = 0; file < kFiles; ++file) {
@@ -213,7 +160,7 @@ bool read_board(const std::string &field, Record &out, std::string &detail) {
         }
     }
 
-    int32_t rank = kRanks - 1; /* the field's first rank is the highest */
+    int32_t rank = kRanks - 1;
     int32_t file = 0;
     for (size_t at = 0; at < field.size(); ++at) {
         const char c = field[at];
@@ -227,9 +174,8 @@ bool read_board(const std::string &field, Record &out, std::string &detail) {
             continue;
         }
         if (is_digit(c)) {
-            /* One digit is the whole of a run: nine files cannot spell a
-             * two-digit one, and a run of zero has no meaning. Both would be a
-             * second spelling of a position that has exactly one. */
+            /* Nine files cannot spell a two-digit run and a zero run means nothing;
+             * either would be a second spelling of one position. */
             if (c == '0' || file + (c - '0') > kFiles) {
                 detail = "an empty run runs past the rank it is in";
                 return false;
@@ -269,16 +215,10 @@ bool read_board(const std::string &field, Record &out, std::string &detail) {
 }
 
 /*
- * The walk both placement fields are written by: ten ranks highest first, nine
- * points each, empty points counted into a run and every occupied one handed to
- * `emit`.
- *
- * There are two placement fields — the record's, which spells identities, and
- * the engine dialect's, which spells face-down pieces `X` and `x` and keeps
- * the identities in a pool beside the board — and they must lay the same pieces
- * on the same squares in the same order or the position the engine is handed is
- * not the position the caller was answered about. One walk is what makes that
- * true by construction rather than by two loops agreeing.
+ * The one walk both placement fields are written by: the record's, which spells
+ * identities, and the engine dialect's, which spells face-down pieces `X`/`x`
+ * and pools the identities. Sharing it guarantees both lay the same pieces on
+ * the same squares.
  */
 template <typename Emit>
 std::string write_placement(const Record &record, Emit emit) {
@@ -306,9 +246,6 @@ std::string write_placement(const Record &record, Emit emit) {
     return out;
 }
 
-/* The board field of the record, without its five suffix fields: a face-down
- * piece is its identity letter followed by the mark that says the players do
- * not know it. */
 std::string write_board(const Record &record) {
     return write_placement(
         record, [&record](std::string &out, int32_t rank, int32_t file) {
@@ -319,11 +256,8 @@ std::string write_board(const Record &record) {
         });
 }
 
-/* Placement — including which pieces are face down — and side to move, which is
- * what docs/jieqi-rules.md makes position identity: "the two counters are
- * ignored". The hidden identities never change inside one game, so two
- * positions of one line with equal visible boards have equal records, and this
- * is that comparison either way. */
+/* Position identity is placement, face-down marks and side to move; the
+ * counters are ignored. Hidden identities never change within a game. */
 std::string identity_of(const Record &record) {
     return write_board(record) +
            (record.side_to_move == MXQ_COLOR_RED ? " w" : " b");
@@ -340,29 +274,16 @@ size_t occurrences_of(const std::vector<std::string> &identities,
     return n;
 }
 
-/* ------------------------------------------------------------------------- */
-/* The engine's dialect                                                      */
-/* ------------------------------------------------------------------------- */
-
 /*
- * The record composed into the engine's own five-field position: the placement
- * with a face-down piece written `X` for Red and `x` for Black, the side to
- * move, the remaining pool as twelve letter-and-count pairs in a fixed order
- * with the zero counts written out, and the two counters.
- *
- * The pool is the deal entering the engine. A face-down piece's identity is not
- * in the engine's placement at all — it reads the role off the square, which is
- * jieqi's own rule about how such a piece moves — so the pool is what says which
- * identities are still concealed, and it is derived here from the `~` marks the
- * record holds. Counts are single digits in this dialect and read_record has
- * already bounded each at what a side can hold, so every count is spellable.
+ * The engine's five-field position: face-down pieces as `X`/`x`, side to move,
+ * the remaining pool as twelve letter-count pairs with zeros written out, and
+ * the counters. The engine reads a face-down piece's role off its square, so
+ * the pool, tallied from the `~` marks, is how the deal enters it.
+ * read_record has bounded every count to one digit.
  */
 std::string dialect_of(const Record &record) {
     int32_t pool[kLetterCount][2] = {{0, 0}};
 
-    /* The same walk write_board takes, emitting the dialect's own two marks and
-     * tallying the pool as it goes: what the placement stops saying is exactly
-     * what the pool has to say instead. */
     std::string out = write_placement(
         record, [&record, &pool](std::string &out_field, int32_t rank,
                                  int32_t file) {
@@ -377,9 +298,7 @@ std::string dialect_of(const Record &record) {
 
     out += (record.side_to_move == MXQ_COLOR_RED ? " w " : " b ");
     for (int32_t side = 0; side < 2; ++side) {
-        /* The engine writes and reads this field as rook, advisor, cannon,
-         * pawn, knight, bishop — its own piece order, less the king — for White
-         * and then for Black. kLettersLower is that order. */
+        /* The engine's piece order less the king, White then Black. */
         for (size_t i = 0; i + 1 < kLetterCount; ++i) {
             const char letter = kLettersLower[i];
             out.push_back(side == 0 ? static_cast<char>(letter - 'a' + 'A')
@@ -393,21 +312,10 @@ std::string dialect_of(const Record &record) {
     return out;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Bootstrap                                                                 */
-/* ------------------------------------------------------------------------- */
-
 /*
- * The slice's whole bootstrap: the attack tables and the Zobrist keys, once.
- * Neither depends on the other and both must have run before the first position
- * is set, because setting one already reads the magic tables and the keys.
- *
- * There is no lock beyond this one, and that is the slice's own property rather
- * than an optimism: what these two fill is written once and read forever after,
- * so distinct positions are independent of each other once the bootstrap has
- * run. One position is not — adjudication is a non-const call on it and the move
- * machinery keeps a repetition filter inside it — and every position here is a
- * local of the call that made it.
+ * Attack tables and Zobrist keys, once, before the first position is set. They
+ * are read-only afterwards, so distinct positions are independent; a single
+ * Position is not thread-safe (rule_judge mutates it), and each is a local.
  */
 std::once_flag g_bootstrap;
 
@@ -416,36 +324,21 @@ void bootstrap() {
     pf::Position::init();
 }
 
-/* ------------------------------------------------------------------------- */
-/* Adjudication                                                              */
-/* ------------------------------------------------------------------------- */
-
 /*
- * The engine reports one side-to-move-relative Value, whether an ending fired,
- * and — since the fork's `report-the-rule` change — which rule produced it. The
- * contract wants a state and a reason:
+ * The engine reports a side-to-move-relative value and the rule that fired.
  *
- *  - checkmate and stalemate are the caller's questions and are asked first,
- *    from there being no legal move and from whether the side to move is in
- *    check. The engine's own adjudication reports neither.
- *  - the repetition class comes from the reported rule and is never inferred:
- *    one draw value stands for a threefold repetition, a mutual perpetual check
- *    and a mutual perpetual chase alike, and the reported rule is the whole of
- *    what separates them.
- *  - who lost a decisive repetition comes from the value, by the accepted rule
- *    that the violating side loses — never from which side happens to be to move
- *    at detection.
+ *  - Checkmate and stalemate are asked first; the engine reports neither.
+ *  - The repetition class comes from the reported rule: one draw value covers
+ *    threefold repetition, mutual perpetual check and mutual perpetual chase.
+ *  - The loser of a decisive repetition comes from the value (the violator
+ *    loses), never from who is to move at detection.
  *
- * The third occurrence is where an outcome attaches, and the `ply` argument is
- * what makes that so. rule_judge acts on a repetition when `++cnt == 2 ||
- * ply > i`: the second half of that is a search reading two folds as enough,
- * which is a search's own economy and not this game's rule, and a ply of zero is
- * what excludes it. What is left is the third occurrence — two earlier ones
- * inside the capture-free window — which is exactly where the rules contract
- * attaches an outcome, so no count is compared here to hold the report back.
+ * rule_judge acts on a repetition when `++cnt == 2 || ply > i`; the second
+ * clause is a search economy, and ply 0 excludes it, leaving the third
+ * occurrence, where the outcome attaches.
  *
- * rule_judge writes its value and its rule on a false return too — the two-fold
- * bound its own search reads — so nothing below is read unless it returned true.
+ * rule_judge writes value and rule on a false return too, so neither is read
+ * unless it returned true.
  */
 Adjudication adjudicate(pf::Position &pos,
                         const std::vector<std::string> &identities) {
@@ -457,9 +350,7 @@ Adjudication adjudicate(pf::Position &pos,
     const bool side_to_move_is_red = (pos.side_to_move() == pf::WHITE);
 
     if (pf::MoveList<pf::LEGAL>(pos).size() == 0) {
-        /* Both are a loss for the player who cannot move, per
-         * docs/jieqi-rules.md: "A position with no legal move is a loss for the
-         * player who cannot move. Stalemate is not a draw." */
+        /* Stalemate is a loss too, not a draw. */
         a.state = side_to_move_is_red ? MXQ_GAME_BLACK_WINS : MXQ_GAME_RED_WINS;
         a.reason = pos.checkers() ? MXQ_END_REASON_CHECKMATE
                                   : MXQ_END_REASON_STALEMATE;
@@ -473,20 +364,15 @@ Adjudication adjudicate(pf::Position &pos,
     }
 
     if (rule == pf::RULE_JUDGE_RULE40) {
-        /* Forty moves — eighty plies — without a capture, and only a capture
-         * resets the count: no piece's own move resets it, and a reveal does not
-         * either, irreversible though a reveal is. Automatic rather than
-         * claimable, so it is a committed draw and not MXQ_GAME_CLAIMABLE_DRAW,
-         * and its at_occurrence stays 0 because no position had to stand twice
-         * for it. */
+        /* Only a capture resets the count, not a reveal. Automatic, so a committed
+         * draw rather than a claimable one, and no position had to recur. */
         a.state = MXQ_GAME_DRAW;
         a.reason = MXQ_END_REASON_FORTY_MOVE_RULE;
         return a;
     }
 
-    /* The engine reports that an outcome attached, not where: a violation that
-     * was interrupted and resumed attaches at the fourth occurrence, not the
-     * third, so this is counted rather than assumed. */
+    /* The engine says that an outcome attached, not where: an interrupted and
+     * resumed violation attaches at the fourth occurrence, so count it. */
     a.at_occurrence =
         static_cast<uint32_t>(occurrences_of(identities, identities.back()));
 
@@ -505,22 +391,15 @@ Adjudication adjudicate(pf::Position &pos,
             a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
             break;
         default:
-            /* Unreachable: the rules above are the whole of what a drawn
-             * judgement can be, and RULE_JUDGE_NONE never accompanies a true
-             * return. It is left unnamed rather than folded into the neutral
-             * repetition — a rule this build does not know is not evidence that
-             * a repetition is claimable, and answering ONGOING is the honest end
-             * of that. The occurrence count goes with it, this being no outcome
-             * at all. */
+            /* Unreachable. An unknown rule is not evidence of a claimable repetition,
+             * so answer ONGOING with no occurrence. */
             a.at_occurrence = 0;
             break;
         }
         return a;
     }
 
-    /* A decisive repetition is automatic, not claim-gated. The loser is the
-     * violator, by the accepted rule that a violation is named by outcome and
-     * never by who is to move at detection. */
+    /* A decisive repetition is automatic, not claim-gated. */
     const bool side_to_move_wins = (value > pf::VALUE_DRAW);
     a.state = (side_to_move_is_red == side_to_move_wins) ? MXQ_GAME_RED_WINS
                                                          : MXQ_GAME_BLACK_WINS;
@@ -532,22 +411,14 @@ Adjudication adjudicate(pf::Position &pos,
         a.reason = MXQ_END_REASON_PERPETUAL_CHASE;
         break;
     default:
-        /* A plain repetition is drawn by construction — the chase detector
-         * returns a decisive value only where exactly one side chased, and then
-         * it reports a chase — so this arm names no rule rather than guessing
-         * one. A wrong reason is filed with the game forever, while an absent
-         * one is caught by a fixture. */
+        /* A plain repetition is always drawn (a decisive value comes only with a
+         * chase), so name no rule rather than guess: a wrong reason is stored with
+         * the game forever, a missing one is caught by a fixture. */
         break;
     }
     return a;
 }
 
-/* ------------------------------------------------------------------------- */
-/* One ply                                                                   */
-/* ------------------------------------------------------------------------- */
-
-/* One move of the record's own coordinates, read. False for anything that is
- * not two squares of this board and nothing else. */
 bool read_move(const std::string &text, int32_t &from_file, int32_t &from_rank,
                int32_t &to_file, int32_t &to_rank) {
     size_t at = 0;
@@ -557,10 +428,9 @@ bool read_move(const std::string &text, int32_t &from_file, int32_t &from_rank,
         }
         file = text[at] - 'a';
         ++at;
-        /* The whole digit run, never a prefix of it: stopping early would read
-         * "a1" out of "a10" and call the rest a second square. A file letter is
-         * never a digit, so the run ends exactly where the next square begins
-         * and no lookahead is needed. */
+        /* The whole digit run, so "a10" is not read as "a1" plus a stray "0". A
+         * file letter is never a digit, so the run ends where the next square
+         * begins. */
         if (at >= text.size() || !is_digit(text[at]) || text[at] == '0') {
             return false;
         }
@@ -580,10 +450,6 @@ bool read_move(const std::string &text, int32_t &from_file, int32_t &from_rank,
 }
 
 } /* namespace */
-
-/* ------------------------------------------------------------------------- */
-/* The interface                                                             */
-/* ------------------------------------------------------------------------- */
 
 char home_letter(int32_t file, int32_t rank) {
     assert(file >= 0 && file < kFiles && rank >= 0 && rank < kRanks &&
@@ -632,21 +498,10 @@ bool read_record(const char *fen, Record &out, std::string &detail) {
     }
     out.side_to_move = fields[1] == "w" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
 
-    /*
-     * Two counts, and both are what this entry owes the engine rather than
-     * anything about how the position is spelled.
-     *
-     * A game cannot be played on a board a side has no general on, and the
-     * engine keeps each general's square as state it sets when it reads the
-     * position: a board without one leaves that square pointing at a1 and every
-     * question about check reading a piece that is not there.
-     *
-     * And the pool the dialect carries is one digit per identity, with no entry
-     * at all for a general, so a face-down count past those is a record this
-     * bridge could not spell for the engine. Both are refusals of a position
-     * the game never reaches, and both are made here rather than left to be
-     * discovered as an out-of-bounds write.
-     */
+    /* The engine sets each general's square when it reads a position, so a
+     * board without one leaves it at a1; and the pool is one digit per
+     * identity with no general entry. Refuse both here rather than leave an
+     * out-of-bounds write. */
     int32_t generals[2] = {0, 0};
     int32_t face_down[kLetterCount][2] = {{0, 0}};
     for (int32_t rank = 0; rank < kRanks; ++rank) {
@@ -703,21 +558,15 @@ ReplayError replay(const char *start_fen, const char *const *moves,
     }
 
     try {
-        /* The state list must outlive every do_move: a Position holds a pointer
-         * into it, and the adjudication walks the chain back. A deque rather
-         * than a vector because reallocation would invalidate those pointers.
-         *
-         * Both it and the Position are on the heap, and the Position is there
-         * for a reason of its own: it carries a sixteen-kibibyte repetition
-         * filter, and rule_judge stands a second one of those on the stack for
-         * the length of a chase detection. One of the two on the stack is a
-         * cost the caller cannot see coming; two would be a deep replay's. */
+        /* A Position points into its state list and adjudication walks it back,
+         * so a deque: reallocation would invalidate the pointers. The Position is
+         * on the heap because it carries a 16 KiB repetition filter and rule_judge
+         * puts a second one on the stack during chase detection. */
         auto states = std::make_unique<std::deque<pf::StateInfo>>(1);
         auto pos = std::make_unique<pf::Position>();
         pos->set(dialect_of(record), &states->back());
 
-        /* Every position the game has stood in, the start included, so an
-         * occurrence count can be derived rather than assumed. */
+        /* Every position stood in, start included, for occurrence counts. */
         std::vector<std::string> identities;
         identities.reserve(move_count + 1);
         identities.push_back(identity_of(record));
@@ -739,11 +588,8 @@ ReplayError replay(const char *start_fen, const char *const *moves,
                 return ReplayError::IllegalMove;
             }
 
-            /* The engine's own legal list is what a move is checked against,
-             * and a move that is not in it stops the replay rather than being
-             * skipped: a silently shortened line answers about a position
-             * several plies from the one asked about, and looks exactly like an
-             * answer. */
+            /* An illegal move stops the replay rather than being skipped: a shortened
+             * line answers about the wrong position and looks like an answer. */
             const pf::Square from = engine_square(from_file, from_rank);
             const pf::Square to = engine_square(to_file, to_rank);
             pf::Move         move = pf::Move::none();
@@ -759,29 +605,18 @@ ReplayError replay(const char *start_fen, const char *const *moves,
                 return ReplayError::IllegalMove;
             }
 
-            /*
-             * The two identities this ply discloses, read from the record this
-             * bridge has been tracking and from nothing else. The engine would
-             * take a letter naming an enemy piece or an identity its pool has
-             * run out of, and plant it; nothing outside this core ever supplies
-             * one.
-             */
+            /* Revealed identities come only from the tracked record. */
             const char mover = record.letter[from_rank][from_file];
             const bool mover_down = record.down[from_rank][from_file];
             const char taken = record.letter[to_rank][to_file];
             const bool taken_down = record.down[to_rank][to_file];
 
             /*
-             * The ply, in the engine's two halves. do_move never touches the
-             * pool: a moving face-down piece flips through do_flip, which is
-             * what decrements the pool and rebuilds the check state do_move
-             * deliberately left empty for it, and a captured face-down piece
-             * leaves the board face down, so its identity leaves the pool
-             * through the accessor and never flips. It is the same pair of
-             * steps the engine's own unvendored entry takes, and the
-             * transposition table both entries take is left at its default of
-             * none, this bridge holding no table for the engine to prefetch
-             * into.
+             * do_move never touches the pool: a moving face-down piece flips through
+             * do_flip, which decrements the pool and rebuilds the check state do_move
+             * leaves empty for it; a captured face-down piece never flips, so its
+             * identity leaves the pool through the accessor. This is the engine's own
+             * sequence, without a transposition table.
              */
             states->emplace_back();
             pos->do_move(move, states->back());
@@ -792,9 +627,7 @@ ReplayError replay(const char *start_fen, const char *const *moves,
                 pos->rest_piece(piece_of_letter(taken))--;
             }
 
-            /* The record follows the same ply. A piece that was face down
-             * arrives face up: the flip is mandatory, capture or no capture, and
-             * there is no non-flipping alternative for the record to spell. */
+            /* The flip is mandatory, so the piece always arrives face up. */
             record.letter[to_rank][to_file] = mover;
             record.down[to_rank][to_file] = false;
             record.letter[from_rank][from_file] = kEmpty;
@@ -805,19 +638,15 @@ ReplayError replay(const char *start_fen, const char *const *moves,
             record.side_to_move = record.side_to_move == MXQ_COLOR_RED
                                       ? MXQ_COLOR_BLACK
                                       : MXQ_COLOR_RED;
-            /* The halfmove clock is read back from the engine rather than
-             * counted a second time here. It is the same counter rule_judge
-             * reads for the forty-move rule, so a record's fifth field and the
-             * outcome that field drives cannot disagree about the same line. */
+            /* Read back from the engine, the counter rule_judge uses for the forty-move
+             * rule, so the record and the outcome cannot disagree. */
             record.halfmove = static_cast<uint32_t>(pos->rule40_count());
 
             identities.push_back(identity_of(record));
         }
 
         out_fen = write_record(record);
-        /* Asked as a boolean rather than compared against 0: Bitboard is a
-         * 128-bit integer here, and its truth is the question — whether the side
-         * to move stands in check. */
+        /* Bitboard is a 128-bit integer; its truth is the question. */
         out_in_check = static_cast<bool>(pos->checkers());
         out_ply = static_cast<uint32_t>(move_count);
         out_adj = adjudicate(*pos, identities);
@@ -831,11 +660,8 @@ ReplayError replay(const char *start_fen, const char *const *moves,
         }
         return ReplayError::None;
     } catch (const std::bad_alloc &) {
-        /* docs/architecture.md forbids an exception crossing the core's
-         * boundary, and the slice itself allocates nothing: what can fail here
-         * is this bridge's own state chain on a machine with no memory for it,
-         * which is a resource the caller reports rather than an answer about the
-         * position. */
+        /* No exception crosses the core. The slice allocates nothing; only this
+         * bridge's state chain can run out of memory. */
         detail = "the jieqi rules authority could not allocate the state a "
                  "replay of this line needs";
         return ReplayError::Faulted;

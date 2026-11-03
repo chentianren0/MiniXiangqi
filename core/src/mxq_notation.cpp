@@ -1,5 +1,3 @@
-/* The square-and-move-text authority. See mxq_notation.hpp for the grammar. */
-
 #include "mxq_notation.hpp"
 
 #include <cassert>
@@ -9,18 +7,8 @@ namespace mxq {
 namespace notation {
 namespace {
 
-/* One row per game: the board, what a move of it is made of, the position it
- * starts from, and whether this build carries the game at all. The first three
- * are constants of the ruleset rather than of any core instance, which is why
- * they live beside the grammar that reads them rather than in the engine bridge
- * that plays them; the fourth is the build's, and it is a column rather than a
- * count of rows because the vocabulary is not contiguous — the games a build can
- * leave out do not sit at the end of it.
- *
- * start_fen is null for a game with no frozen start. Jieqi is that game and the
- * only one: it begins from a dealt start and from no other position, and there
- * is one of those per deal, so there is nothing for a constant to hold.
- * has_frozen_start below is what a caller asks before reading it. */
+/* One row per game, indexed by MxqGameKind. start_fen is null for a game with
+ * no frozen start. */
 struct GameRow {
     Board       board;
     MoveClass   move_class;
@@ -29,17 +17,10 @@ struct GameRow {
     bool        searched; /* the engine axis, not the ruleset: see searched() */
 };
 
-/* The empty 15x15 board, which is where both placement games begin and the only
- * position either of them has that is not reached by play. */
+/* The empty 15x15 board, where both placement games begin. */
 constexpr const char *kPlacementStart =
     "15/15/15/15/15/15/15/15/15/15/15/15/15/15/15 w - - 0 1";
 
-/* Whether this build carries the placement games: they are played on the second
- * engine, and a core compiled without it cannot answer a single question about
- * them. It is a value rather than a preprocessor fence around their rows,
- * because the rows must stay where the enumerators put them — Jieqi is the game
- * after them, and a table that dropped two rows would answer for Jieqi out of
- * Gomoku's. */
 constexpr bool kPlacementCarried = true;
 
 constexpr GameRow kGames[] = {
@@ -51,35 +32,21 @@ constexpr GameRow kGames[] = {
      "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
      true, true},
     /* MXQ_GAME_KIND_GOMOKU_15. Fifteen files spelled a..o with no letter
-     * skipped, which is what the renju world writes and what these two games
-     * therefore share. Whether a rendered board skips 'i' on its edge strip is a
-     * question about a drawing, and this is the spelling everything the core
-     * hands out uses. */
+     * skipped, as renju notation writes them. */
     {{'o', 15}, MoveClass::Placement, kPlacementStart, kPlacementCarried, true},
-    /* MXQ_GAME_KIND_RENJU. The same board and the same notation as Gomoku, and a
-     * different game: what Black may play and what wins differ, and neither is
-     * anything a position or a move text shows. */
+    /* MXQ_GAME_KIND_RENJU. Gomoku's board and notation; what Black may play and
+     * what wins differ, and no position or move text shows it. */
     {{'o', 15}, MoveClass::Placement, kPlacementStart, kPlacementCarried, true},
-    /* MXQ_GAME_KIND_JIEQI. Xiangqi's board and Xiangqi's move class exactly —
-     * one piece leaves a square and arrives at another, and the coordinate pair
-     * carries no reveal, the deal beside a game's moves being what makes every
-     * reveal derivable. What it has no row value for is a frozen start: the game
-     * begins from a dealt start and from no other position, so start_fen is
-     * null and mxq_rules_start_fen answers MXQ_ERR_ARG_RANGE. Nothing searches
-     * it either: its rules authority performs no search and carries no network,
-     * so the whole search facade refuses it permanently. */
+    /* MXQ_GAME_KIND_JIEQI. Xiangqi's board and move class; a move carries no
+     * reveal, since the deal makes every reveal derivable. No frozen start and
+     * no search. */
     {{'i', 10}, MoveClass::Movement, nullptr, true, false},
 };
 
 constexpr size_t kGameCount = sizeof(kGames) / sizeof(kGames[0]);
 
-/* The enumerators are the row indices, and both facts are asserted rather than
- * trusted: a game added to the vocabulary without a row here would otherwise
- * read one row past the table.
- *
- * The count is one number for every configuration, because every game the
- * vocabulary has now has a row: which of them a build carries is the `carried`
- * column, and known_game below is where that is read once. */
+/* A game added to the vocabulary without a row here would read past the
+ * table. */
 static_assert(MXQ_GAME_KIND_MINI_XIANGQI == 0 && MXQ_GAME_KIND_XIANGQI == 1 &&
                   MXQ_GAME_KIND_GOMOKU_15 == 2 && MXQ_GAME_KIND_RENJU == 3 &&
                   MXQ_GAME_KIND_JIEQI == 4,
@@ -93,9 +60,8 @@ const GameRow &row_of(MxqGameKind game) {
 
 bool is_digit(char c) { return c >= '0' && c <= '9'; }
 
-/* The two stone letters of a placement game's board field: the case is the side,
- * exactly as the xiangqi games' piece letters have it, and the letter names the
- * one kind of piece these games have. */
+/* The two stone letters of a placement game's board field: the case is the
+ * side, as in the xiangqi games. */
 constexpr char kFirstMoverStone = 'S';
 constexpr char kSecondMoverStone = 's';
 
@@ -108,20 +74,13 @@ int32_t file_count_of(const Board &board) {
  * the end. Returns the number of characters consumed, or 0 when the rank is not
  * one this encoding spells.
  *
- * A rank has exactly one spelling, and two mechanics between them are what make
- * that true rather than a rule written down beside them:
+ * A rank has exactly one spelling:
  *
  *   - the rank must total exactly the file count, so no prefix of one is a rank
  *     and no rank runs past its own board;
  *   - digit consumption is greedy, so two adjacent runs are not spellable at
- *     all. "1" then "14" is read as 114, which is past the file count and
- *     refused there — there is no input that reaches this loop as two runs in a
- *     row.
- *
- * The one spelling those two do not exclude is a run written with a leading
- * zero, and that is the test below: "07" and "7" would otherwise both be seven
- * empty points, and a position with two spellings is a position two documents
- * disagree about while meaning the same thing.
+ *     all: "1" then "14" is read as 114, past the file count;
+ *   - a run may not have a leading zero, so "07" is not a second "7".
  */
 size_t placement_rank_length(const Board &board, const char *text, size_t len) {
     const int32_t files = file_count_of(board);
@@ -155,9 +114,7 @@ size_t placement_rank_length(const Board &board, const char *text, size_t len) {
 }
 
 /* A field of a decimal counter: the whole of `text`, no leading zero unless the
- * value is exactly "0". The value itself is not read — nothing here needs it,
- * and the two counters of these games each have exactly one legal spelling
- * anyway. */
+ * value is exactly "0". */
 bool well_formed_counter(const std::string &text) {
     if (text.empty()) {
         return false;
@@ -170,9 +127,8 @@ bool well_formed_counter(const std::string &text) {
     return text.size() == 1 || text[0] != '0';
 }
 
-/* The six fields, split on single spaces. False unless there are exactly six and
- * none of them is empty — which is also what refuses a doubled or trailing
- * space. */
+/* The six fields, split on single spaces. False unless there are exactly six
+ * and none is empty, which also refuses a doubled or trailing space. */
 bool split_fields(const char *fen, std::string out[6]) {
     const std::string text(fen);
     size_t            begin = 0;
@@ -212,11 +168,8 @@ bool has_frozen_start(MxqGameKind game) {
 bool searched(MxqGameKind game) { return row_of(game).searched; }
 
 const char *start_fen(MxqGameKind game) {
-    /* Asked of a game that has one. A caller that cannot know asks
-     * has_frozen_start first, and the empty string here is what keeps a caller
-     * that did not from dereferencing null: no position record is empty, so
-     * every comparison against it is false, which is the answer a game with no
-     * frozen start owes a "is this it?" question. */
+    /* The empty string keeps a caller that did not ask has_frozen_start from
+     * dereferencing null, and compares unequal to every position. */
     const char *frozen = row_of(game).start_fen;
     assert(frozen != nullptr && "this game has no frozen start to report");
     return frozen != nullptr ? frozen : "";
@@ -231,19 +184,14 @@ size_t square_length(MxqGameKind game, const char *text, size_t len) {
         return 0;
     }
 
-    /* The whole digit run, never a prefix of it: a rank is bounded by the next
-     * file character or by the end of the text, so stopping early would read
-     * "a1" out of "a10" and call the rest a second square.
+    /* The whole digit run, never a prefix of it, so "a10" is not "a1" and a
+     * second square.
      *
-     * The accumulator is bounded inside the loop rather than after it, and the
-     * reason is that this text is untrusted: an imported game's move strings
-     * reach here from a file, and nothing bounds a string there short of a
-     * digit run long enough to overflow an int32_t. Signed overflow is
-     * undefined, and where it wrapped it would also invent spellings this
-     * notation says it does not have — a rank that came back into range modulo
-     * 2^32 would make "a4294967297" a square. Ranks only grow as digits are
-     * appended, so a run that has passed the last rank can never return to
-     * one, and stopping at that point is both the range test and the bound. */
+     * The accumulator is bounded inside the loop because the text is
+     * untrusted: a long digit run would overflow int32_t, and a wrapped rank
+     * could make "a4294967297" a square. A run past the last rank never
+     * returns to one, so stopping there is both the range test and the
+     * bound. */
     size_t digits = 0;
     int32_t rank = 0;
     while (1 + digits < len && is_digit(text[1 + digits])) {
@@ -254,13 +202,12 @@ size_t square_length(MxqGameKind game, const char *text, size_t len) {
         }
     }
     if (digits == 0 || text[1] == '0') {
-        /* No rank at all, or one spelled with a leading zero — which would give
-         * a second spelling of a square this notation has exactly one of. */
+        /* No rank at all, or a leading zero, which would be a second spelling
+         * of a square. */
         return 0;
     }
-    /* Both bounds hold here without a further test: the loop returned for
-     * anything above the last rank, and a run that begins with a digit other
-     * than '0' is at least 1. */
+    /* Both bounds hold: the loop returned for anything above the last rank,
+     * and a run that does not begin with '0' is at least 1. */
     return 1 + digits;
 }
 
@@ -269,8 +216,7 @@ bool well_formed_square(MxqGameKind game, const char *text) {
         return false;
     }
     const size_t len = std::strlen(text);
-    /* The empty string is not a square, and the length test is what says so:
-     * square_length answers 0 for it, and 0 == 0 would otherwise accept it. */
+    /* The length test refuses the empty string, for which 0 == 0. */
     return len != 0 && square_length(game, text, len) == len;
 }
 
@@ -286,10 +232,8 @@ bool well_formed_move(MxqGameKind game, const std::string &text) {
     if (from == 0) {
         return false;
     }
-    /* How many squares to demand is the game's answer, asked before the text is
-     * read any further. Reading it off the length instead would accept "a1a1" in
-     * a fifteen-file game, where both halves are squares of the board and the
-     * whole is not a move of it. */
+    /* How many squares to demand is the game's answer, never the text's
+     * length. */
     if (move_class_of(game) == MoveClass::Placement) {
         return from == text.size();
     }
@@ -381,12 +325,10 @@ std::string write_placement(MxqGameKind game, const MxqColor *cells,
     (void)cell_count;
 
     std::string out;
-    /* The board field at its widest is one character per point plus a separator
-     * between ranks; the suffixes are twelve more at 15x15, where a full board
-     * is 225 plies and the fullmove number runs to three digits. Reserving it is
-     * not an optimisation but a bound stated where the encoding is: this string
-     * is copied into MxqPosition.fen, whose capacity mxq.h derives from exactly
-     * this arithmetic. */
+    /* The board field at its widest is one character per point plus a
+     * separator between ranks; the suffixes are twelve more at 15x15, where the
+     * fullmove number runs to three digits. MXQ_FEN_CAP is derived from this
+     * bound. */
     out.reserve(static_cast<size_t>(files) * static_cast<size_t>(ranks) +
                 static_cast<size_t>(ranks) + 16u);
     for (int32_t rank = ranks; rank >= 1; --rank) {
@@ -415,9 +357,7 @@ std::string write_placement(MxqGameKind game, const MxqColor *cells,
     }
 
     /* Every counter derives from the ply count, because these games begin from
-     * one position and reach every other by play: the first mover has the even
-     * plies, a full move completes on every second one, and nothing a placement
-     * does could ever reset a halfmove clock. */
+     * one position and reach every other by play. */
     out += (ply_count % 2u == 0u) ? " w" : " b";
     out += " - - 0 ";
     out += std::to_string(ply_count / 2u + 1u);

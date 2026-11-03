@@ -33,8 +33,8 @@ extension Core {
             }
         }
 
-        /// The slice's MAX_MOVES was 128, below Jieqi's derived maximum of 175,
-        /// and a position past it wrote beyond the move list's storage.
+        /// More than 128 legal moves: the move list must hold Jieqi's derived
+        /// maximum of 175.
         @Test func aPositionPastTheOldMoveCapacity() throws {
             try withCore { core throws in
                 let fen = "3k5/9/3C5/6R2/5C3/2R6/9/1P~5P~1/4K4/P~7P~ w - - 0 1"

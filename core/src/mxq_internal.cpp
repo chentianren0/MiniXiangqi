@@ -9,7 +9,7 @@ namespace mxq {
 
 namespace {
 
-/* The version-1 prefix every value struct must at least carry. */
+/* The prefix every value struct must at least carry. */
 constexpr uint32_t kStructSizeField = static_cast<uint32_t>(sizeof(uint32_t));
 
 } /* namespace */
@@ -46,8 +46,8 @@ void fill(MxqError *err, MxqStatus status, const char *detail,
     }
     const uint32_t declared = err->struct_size;
     if (declared < kStructSizeField) {
-        /* The caller did not set struct_size. There is nothing safe to write
-         * beyond leaving it alone; the returned status is the contract. */
+        /* The caller did not set struct_size, so nothing is safe to write;
+         * the returned status still says what went wrong. */
         return;
     }
     const uint32_t known = static_cast<uint32_t>(sizeof(MxqError));
@@ -55,8 +55,8 @@ void fill(MxqError *err, MxqStatus status, const char *detail,
     std::memset(err, 0, writable);
     err->struct_size = writable;
 
-    /* Every field below is written only when the caller's declared size covers
-     * it, so an older frontend's smaller struct is never overrun. */
+    /* Each field is written only when the caller's declared size covers it,
+     * so a smaller struct is never overrun. */
     if (writable >= offsetof(MxqError, status) + sizeof(err->status)) {
         err->status = status;
     }

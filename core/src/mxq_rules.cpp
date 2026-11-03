@@ -1,8 +1,5 @@
-/* The rules facade.
- *
- * mxq_rules_start_fen is a constant of the ruleset and needs no engine. Of the
- * rest, four replay a history through a pinned fork and mxq_rules_deal derives
- * a dealt start. */
+/* The rules facade. mxq_rules_start_fen needs no engine; mxq_rules_deal derives
+ * a dealt start; the rest replay a history through an engine. */
 
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
@@ -30,7 +27,7 @@ namespace rules {
 
 namespace {
 
-/* The second bridge's replay refusals, in the shared vocabulary. */
+/* Rapfi's replay refusals, in the shared vocabulary. */
 ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     switch (rc) {
     case mxq::rapfi::ReplayError::None:
@@ -45,10 +42,8 @@ ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     return ReplayError::Faulted;
 }
 
-/* The third bridge's, in the same vocabulary. It has no NotInitialised: the
- * jieqi slice's whole bootstrap is two calls that cannot fail and that the
- * bridge makes for itself, so there is no configuration for a caller to have
- * skipped and no asset for one to be missing. */
+/* The Jieqi bridge's. It has no NotInitialised: its bootstrap cannot fail and
+ * the bridge runs it itself. */
 ReplayError from_jieqi(mxq::jieqi::ReplayError rc) {
     switch (rc) {
     case mxq::jieqi::ReplayError::None:
@@ -73,10 +68,8 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
                    size_t &first_illegal, std::string &detail) {
     assert(notation::known_game(game) && "a game outside the closed vocabulary");
     if (game == MXQ_GAME_KIND_JIEQI) {
-        /* The one movement game the first engine does not play. It is asked by
-         * name rather than by any property of the position, because a jieqi
-         * position with nothing left face down is spelled exactly as the
-         * xiangqi position it is not. */
+        /* Asked by name, because a Jieqi position with nothing face down is
+         * spelled exactly as a Xiangqi one. */
         mxq::jieqi::Adjudication hidden{MXQ_GAME_ONGOING, MXQ_END_REASON_NONE,
                                         0};
         const ReplayError rc = from_jieqi(mxq::jieqi::replay(
@@ -88,8 +81,7 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
         return rc;
     }
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
-        /* No check exists in these games, so the caller is told so rather than
-         * left with whatever it initialised the flag to. */
+        /* No check exists in these games. */
         out_in_check = false;
         mxq::rapfi::Adjudication placement{MXQ_GAME_ONGOING,
                                            MXQ_END_REASON_NONE};
@@ -119,19 +111,16 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
 bool validate_fen(MxqGameKind game, const char *fen, std::string &detail) {
     assert(notation::known_game(game) && "a game outside the closed vocabulary");
     if (game == MXQ_GAME_KIND_JIEQI) {
-        /* No engine is asked, and here that is a rule rather than a
-         * convenience: the engine this game is played on validates nothing at
-         * all — a malformed record is accepted and silently mangled, and a
-         * face-down piece spelled off its own start square is an out-of-bounds
-         * write — so the structural reading is the core's own and runs before
-         * anything reaches it. */
+        /* No engine is asked: Pikafish validates nothing — a malformed record
+         * is silently mangled, and a face-down piece off its own start square
+         * is an out-of-bounds write — so the structural reading is the core's
+         * own and runs before anything reaches it. */
         mxq::jieqi::Record record{};
         return mxq::jieqi::read_record(fen, record, detail);
     }
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
-        /* No engine is asked. The placement games' encoding is the core's own —
-         * their engine holds a board and has no notation for one — so the
-         * structural question is answered where the structure is defined. */
+        /* No engine is asked: Rapfi has no notation for a board, so the
+         * placement encoding is the core's own. */
         return notation::well_formed_placement(game, fen, detail);
     }
     return engine::validate_fen(engine::variant_of(game), fen, detail);
@@ -149,11 +138,7 @@ MxqStatus mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
     if (rc != MXQ_OK) {
         return rc;
     }
-    /* A game with no frozen start has nothing to report, and asking is a
-     * programming error by the same reachability rule a game outside the
-     * vocabulary meets: the caller owns the game axis and mxq.h states the
-     * absence. Jieqi is that game — it begins from a dealt start and from no
-     * other position, and whatever dealt the game holds the position. */
+    /* Jieqi has no frozen start; it begins from a deal. */
     if (!mxq::notation::has_frozen_start(game)) {
         assert(false && "this game has no frozen start to report");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
@@ -190,10 +175,8 @@ MxqStatus mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
         if (orc != MXQ_OK) {
             return orc;
         }
-        /* begin_out zeroes, and zero is MXQ_SETUP_RULE_NONE and an empty
-         * square — but not MXQ_COLOR_NONE, which is -1. Every field the caller
-         * can read is written before any return below, the structural refusal
-         * included. */
+        /* begin_out zeroes, but MXQ_COLOR_NONE is -1. Every field is written
+         * before any return below. */
         out_violation->side = MXQ_COLOR_NONE;
     }
 
@@ -204,13 +187,8 @@ MxqStatus mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
         break;
     case mxq::setup::Error::FenInvalid:
     case mxq::setup::Error::NotInitialised:
-        /* The same pairing replay_into makes of the same two conditions, and
-         * for the same reason: an engine that never came up cannot say what
-         * board a FEN is of, so the honest answer is the one about the FEN. It
-         * is unreachable through this surface — mxq_core_init fails whole when
-         * the engine does not initialise — so what the arm decides is not which
-         * code a caller sees but whether two entries reporting one condition
-         * report it alike. They do. */
+        /* Paired as replay_into pairs them: an engine that never came up
+         * cannot say what board a FEN is of. */
         mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
         return MXQ_ERR_RULES_INVALID_FEN;
     }
@@ -230,9 +208,8 @@ MxqStatus mxq_rules_validate_setup(MxqCore *core, MxqGameKind game,
 
 namespace {
 
-/* Replay once and fill whichever output shape the caller asked for. evaluate
- * and legal_moves differ only in what they report, and sharing the replay is
- * what keeps them from ever disagreeing about the same history. */
+/* Replay once and fill whichever output shape the caller asked for, so that
+ * evaluate and legal_moves never disagree about the same history. */
 MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
                       const char *const *moves, size_t move_count,
                       MxqPosition *out_position, MxqGameStatus *out_status,
@@ -293,15 +270,13 @@ MxqStatus replay_into(MxqCore *core, MxqGameKind game, const char *start_fen,
         mxq::fill_error(err, MXQ_ERR_RULES_INVALID_FEN, detail.c_str());
         return MXQ_ERR_RULES_INVALID_FEN;
     case mxq::rules::ReplayError::Faulted:
-        /* The engine could not be run at all, which is a resource this machine
-         * did not have rather than an answer about the position. */
+        /* A resource this machine did not have, not an answer about the
+         * position. */
         mxq::fill_error(err, MXQ_ERR_RESOURCE_ALLOCATION_FAILED, detail.c_str());
         return MXQ_ERR_RESOURCE_ALLOCATION_FAILED;
     }
 
-    /* One reading of the replayed position, for both output shapes. Read twice
-     * it would be right twice until one of the two stopped being written, which
-     * is a side to move that is Red because nothing set it. */
+    /* One reading of the replayed position, for both output shapes. */
     const MxqColor side_to_move =
         (fen.find(" w ") != std::string::npos) ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
 
@@ -355,9 +330,8 @@ MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
     }
 
     *out_count = legal.size();
-    /* Zero legal moves is checkmate or stalemate, and reporting it needs no
-     * buffer at all: a count of nothing fits in any capacity, including none.
-     * Only an actual overflow is an error. */
+    /* Zero legal moves needs no buffer; only an actual overflow is an
+     * error. */
     if (legal.empty()) {
         return MXQ_OK;
     }
@@ -385,10 +359,6 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
     if (rc != MXQ_OK) {
         return rc;
     }
-    /* One game is dealt. Asking any other for a deal is a programming error by
-     * the same reachability rule mxq_rules_start_fen's absent frozen start
-     * meets: the caller owns the game axis and mxq.h states which game this
-     * is. */
     if (game != MXQ_GAME_KIND_JIEQI) {
         assert(false && "this game has no deal");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
@@ -414,9 +384,7 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
         return rc;
     }
 
-    /* The shape both values are written in is checked where it is defined,
-     * which is inside the derivation: one spelling, one test, and the detail
-     * naming which of the two was not it. */
+    /* The derivation checks the shape of both values. */
     mxq::deal::Deal derived;
     std::string detail;
     if (!mxq::deal::derive(seed, nonce, derived, detail)) {
@@ -426,8 +394,7 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
         return MXQ_ERR_ARG_RANGE;
     }
 
-    /* The commitment cannot refuse a seed the derivation just accepted: both
-     * ask the one question about it. */
+    /* Cannot refuse a seed the derivation just accepted. */
     std::string commit;
     const bool bound = mxq::deal::commitment_of(seed, commit);
     assert(bound && "the seed the derivation read is the seed this binds");

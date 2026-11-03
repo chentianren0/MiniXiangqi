@@ -79,9 +79,8 @@ extension Core {
             }
         }
 
-        /// With the hashes gone, a damaged file is caught by what the engine
-        /// actually loaded: Fairy-Stockfish's effective network, Rapfi's
-        /// effective evaluator.
+        /// A damaged file is caught by what the engine actually loaded:
+        /// Fairy-Stockfish's effective network, Rapfi's effective evaluator.
         @Test func aTruncatedNetworkRefuses() throws {
             let assets = try scratchAssets([Self.rulesFile])
             defer { try? FileManager.default.removeItem(at: assets) }

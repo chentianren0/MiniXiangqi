@@ -26,20 +26,15 @@ MxqStatus engine_plan(const MxqEngineBudget *budget, MxqEnginePlan *out,
         return rc;
     }
 
-    /* Reserve the greater of MXQ_ENGINE_RESERVE_PERCENT of the fresh probe
-     * value or MXQ_ENGINE_MIN_RESERVE_BYTES. */
     uint64_t reserve = mxq::percent(budget->available_bytes,
                                     MXQ_ENGINE_RESERVE_PERCENT);
     if (reserve < MXQ_ENGINE_MIN_RESERVE_BYTES) {
         reserve = MXQ_ENGINE_MIN_RESERVE_BYTES;
     }
 
-    /* Usable available memory. */
     const uint64_t usable =
         budget->available_bytes > reserve ? budget->available_bytes - reserve : 0;
 
-    /* The byte budget: the minimum of the cap, half the device's physical
-     * memory, and the usable amount. */
     uint64_t bytes = static_cast<uint64_t>(MXQ_ENGINE_MAX_HASH_MIB) * kBytesPerMiB;
     const uint64_t half_physical =
         mxq::percent(budget->physical_bytes, MXQ_ENGINE_PHYSICAL_PERCENT);
@@ -50,9 +45,8 @@ MxqStatus engine_plan(const MxqEngineBudget *budget, MxqEnginePlan *out,
         bytes = usable;
     }
 
-    /* UCI Hash is an integer count of MiB; round down to the accepted
-     * granularity rather than to whole GiB, which would discard too much
-     * usable capacity. */
+    /* UCI Hash is a whole count of MiB; rounding to whole GiB would discard
+     * too much usable capacity. */
     const uint64_t mib =
         (bytes / kBytesPerMiB) / MXQ_ENGINE_HASH_GRANULARITY_MIB *
         MXQ_ENGINE_HASH_GRANULARITY_MIB;
@@ -66,8 +60,7 @@ MxqStatus engine_plan(const MxqEngineBudget *budget, MxqEnginePlan *out,
     out->usable_bytes = usable;
     out->budget_bytes = bytes;
 
-    /* Below the minimum the plan reports insufficiency; refusing is
-     * mxq_engine_prepare's job, and this function initialises nothing. */
+    /* Refusing an insufficient plan is mxq_engine_prepare's job. */
     return MXQ_OK;
 }
 
