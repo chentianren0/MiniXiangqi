@@ -98,9 +98,9 @@ struct HintTests {
     @Test("A nearby game is never offered a hint")
     func nearbyPlayIsNeverOfferedAHint() throws {
         let library = try TestLibraries.fresh()
-        try library.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
-                                 wire: NearbyWireSession(sessionID: "S", peerID: "P",
-                                                         proposedLocally: true))
+        _ = try library.createNetworked(.nearby(game: .miniXiangqi, localSide: .red),
+                                        id: UUID(), peer: "P")
+        _ = try library.resumeActive()
         let apparatus = try makeApparatus(over: library)
 
         #expect(!apparatus.hint.isOffered,

@@ -4,6 +4,7 @@
 
 import Foundation
 import MiniXiangqiCore
+import Security
 
 /// A failed call. `status` is the core's code where the core refused, and
 /// `detail` is a short English diagnostic for the log, never user-facing copy.
@@ -221,8 +222,8 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         GameConfiguration(game: game, mode: .freePlay, startFEN: startFEN)
     }
 
-    /// A game with the other device over the BoardGame protocol. `startFEN` is
-    /// the dealt start, which both devices derive from the handshake.
+    /// A game with a nearby device. `startFEN` is the dealt start, which both
+    /// devices derive from the proposal's seed.
     static func nearby(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .nearby, localSide: localSide,
@@ -425,39 +426,35 @@ final class Core {
 
     // MARK: - The deal
 
-    /// One deal: the dealt start a game of it begins from, the commitment the
-    /// seed binds to, and the deal's own digest.
+    /// One deal: the dealt start a game of it begins from.
     nonisolated struct Deal: Sendable, Hashable {
         var startFEN: String
-        var commit: String
-        var digest: String
     }
 
-    /// Deals one game of Jieqi from a 32-byte seed and nonce drawn from the
-    /// platform's cryptographic source. If they cannot be drawn, no game is
-    /// created; nothing weaker stands in.
-    func deal(_ game: GameKind) throws -> Deal {
+    /// Deals one game of Jieqi from a seed: one drawn here for a game on this
+    /// device, or the one a networked proposal carried, so both devices deal the
+    /// same game. The core's derivation takes two values; one seed fills both.
+    func deal(_ game: GameKind, seed: String? = nil) throws -> Deal {
+        let seed = try seed ?? Self.dealSeed()
         var deal = MxqDeal()
         deal.struct_size = UInt32(MemoryLayout<MxqDeal>.size)
         var err = freshError()
-        let seed = try Self.entropy()
-        let nonce = try Self.entropy()
         try check(seed.withCString { seed in
-            nonce.withCString { nonce in
-                mxq_rules_deal(handle, game.raw, seed, nonce, &deal, &err)
-            }
+            mxq_rules_deal(handle, game.raw, seed, seed, &deal, &err)
         }, err)
-        return Deal(startFEN: string(of: deal.start_fen, capacity: MXQ_FEN_CAP),
-                    commit: string(of: deal.commit, capacity: MXQ_DEAL_HEX_CAP),
-                    digest: string(of: deal.digest, capacity: MXQ_DEAL_HEX_CAP))
+        return Deal(startFEN: string(of: deal.start_fen, capacity: MXQ_FEN_CAP))
     }
 
-    private nonisolated static func entropy() throws -> String {
-        guard let value = DealHex.contribution() else {
+    /// Thirty-two bytes from the platform's cryptographic source, as the sixty-four
+    /// lowercase hexadecimal digits the core takes. If they cannot be drawn, no
+    /// game is dealt; nothing weaker stands in.
+    nonisolated static func dealSeed() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             throw CoreError(status: MxqStatus(MXQ_ERR_INTERNAL_INVARIANT),
                             detail: "the cryptographic source refused")
         }
-        return value
+        return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - The questions a position is asked

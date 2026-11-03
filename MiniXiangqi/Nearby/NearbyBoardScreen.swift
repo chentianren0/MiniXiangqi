@@ -1,47 +1,18 @@
-// The nearby board: the game two people are playing, on the board the app
-// already has.
+// The networked board: the game two people are playing, on the board the app
+// already has. It is the local game's screen in every visible respect and
+// differs where the game does: the turn is the engine's, the opponent is a
+// person, and the controls are the offers of whoever's turn it is.
 //
-// docs/interaction-design.md, "Layout shapes" and "Nearby play". It is the local
-// game's own screen in every visible respect — the same two arrangements, the
-// same turn status in the bar's centre or beside the board, the same board and
-// the same motion language, the same result notice in front of it — and it
-// differs only where the game itself differs: the turn belongs to the protocol
-// rather than to a search, the opponent is a person rather than the machine, and
-// the play controls are the ones a nearby game has, which is every mode's cluster
-// less the hint and with the negotiations of whoever's turn it is.
-//
-// **There is no connection chrome.** Where connections idle out between moves
-// by the radio's own design and the driver brings them back underneath, a board
-// that announced either would be announcing the weather. One quiet line appears
-// where the link is actually costing the player something — what they did has
-// not reached the other device, their own turn has been blocked past a real
-// stretch, or the link has gone somewhere it will not come back from — and what
-// it says is the transport's own answer to what an interruption means.
-//
-// **A game that goes away says why it went.** Three things take a session from
-// the peer it belongs to — the other device no longer holding it, a connection
-// closed on a violation, a fresh proposal retiring it — and each has one
-// sentence, in the same notice a result is announced in. Nothing else is said
-// about any of it, and nothing anywhere describes what the app did about it.
-//
-// The session is the engine's, not this screen's. Leaving the board is the
-// interruption the protocol already models, and the model below is a
-// presentation built when the board opens and let go of when it closes — which
-// is also what keeps a nearby move's sound with the board that is showing it.
-//
-// It is built wherever the play screen is, and for the same reason it looks like
-// it: a board two people are playing over is one screen, and what differs
-// between the ways their devices reach each other is underneath it rather than
-// on it. The two places it defers to the platform are the two the play screen
-// defers in — the destination bar it hides only where that bar stands across the
-// bottom, and the title style a navigation bar has.
+// There is no connection chrome; one quiet line appears where the link is
+// costing the player something. A game that goes away without a result says
+// why in the notice a result is announced in.
 
 import SwiftUI
 
 struct NearbyBoardScreen: View {
     let flow: NearbyFlow
 
-    /// The board's own model, built for the session the flow is showing.
+    /// The board's own model, built for the game the flow is showing.
     @State private var play: NearbyPlay?
     @State private var resignPresented = false
     @State private var claimPresented = false
@@ -59,12 +30,6 @@ struct NearbyBoardScreen: View {
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
     @State private var controlRow = BoardLayout.clusterRowHeight
 
-    /// Whether the save-failure capsule is up. Raised when the library refuses
-    /// a ply of this device's player's own, and transient: it answers the touch
-    /// and withdraws by itself. View state, and rightly so — it has a
-    /// four-second life and nothing to say to a screen that is not on show.
-    @State private var saveFailureShown = false
-
     @Environment(\.motionPolicy) private var policy
 
     #if os(iOS)
@@ -81,16 +46,6 @@ struct NearbyBoardScreen: View {
         Group {
             if let play {
                 layout(play)
-            } else {
-                // **The deal handshake, waiting.** A dealt game's board opens
-                // the moment the proposal is accepted — its session is dealing
-                // then, and until the handshake completes there is no start
-                // position and so no board to draw. It builds itself the moment
-                // the deal arrives, which is what the player sees: a board
-                // arriving a moment later than another game's would, with
-                // nothing to answer and nothing to read. Every other game
-                // reaches this screen with a position and never stands here.
-                ProgressView()
             }
         }
         // docs/interaction-design.md, "Navigation": a board screen hides the
@@ -100,71 +55,30 @@ struct NearbyBoardScreen: View {
         #if os(iOS)
         .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
         #endif
-        .task(id: flow.boardSessionID) { open() }
-        .onChange(of: flow.boardSession) { _, session in
-            // A session that went away under the board leaves the board where it
-            // is: the position is still worth looking at, and the notice in
-            // front of it says what became of the game.
-            guard let session else { return }
-            // A board opened on a session there was nothing to draw for yet —
-            // a dealt game whose handshake was still in flight — builds the
-            // moment there is. The deal is where its position comes from, and
-            // it arrives in its own message rather than with the acceptance.
-            guard let play else {
-                open()
-                return
-            }
-            play.sync(with: session)
-        }
-        .onChange(of: flow.boardVoid) { _, _ in wentAway() }
-        // The library refusing a move of the player's own. The count only
-        // grows, so a second refusal raises a second capsule rather than
-        // extending the first.
-        .onChange(of: flow.driver.ownMoveRefusals) { _, _ in
-            withAnimation(policy.fade(Motion.stateFadeAnimation)) {
-                saveFailureShown = true
-            }
+        .task(id: flow.boardGameID) { open() }
+        .onChange(of: flow.boardGame) { _, game in
+            guard let game else { return }
+            guard let play else { return open() }
+            play.sync(with: game)
         }
         .onChange(of: policy) { play?.policy = policy }
         // A board turned round stays turned round: the model is rebuilt on
         // every entry, so which way the player last had it is remembered where
         // the game is rather than where the page is.
         .onChange(of: play?.flipped) { _, flipped in
-            guard let flipped, let session = flow.boardSessionID else { return }
-            flow.setOrientation(flipped, of: session)
+            guard let flipped, let game = flow.boardGameID else { return }
+            flow.setOrientation(flipped, of: game)
         }
         .onDisappear { play?.close() }
     }
 
     private func open() {
         play?.close()
-        play = flow.boardSession.flatMap {
-            NearbyPlay(session: $0, driver: flow.driver, positions: flow.positions,
-                       interruption: flow.reach.interruption,
+        play = flow.boardGame.flatMap {
+            NearbyPlay(game: $0, engine: flow.engine, positions: flow.positions,
+                       interruption: flow.carrier.interruption,
                        flipped: flow.orientation(of: $0.id), policy: policy)
         }
-        wentAway()
-    }
-
-    /// The game went away under the board, if it did.
-    ///
-    /// The flow's last-held session is applied first, because the update that
-    /// took the session away can be the same one that ended it: two publications
-    /// land between two redraws and this view sees only the second. Applying it
-    /// is what makes the result win wherever there was one — so the void
-    /// sentence speaks only for a game that genuinely ended without a result.
-    private func wentAway() {
-        guard let void = flow.boardVoid else { return }
-        guard let play else {
-            // A board that never had a position to draw — a dealt game whose
-            // handshake died with its connection — has nothing to stand the
-            // notice in front of, and a spinner over nothing is not a state to
-            // leave anybody in. The room it was proposed from is where it goes.
-            flow.leaveBoard()
-            return
-        }
-        if let held = flow.boardHeld { play.sync(with: held) }
-        play.wentAway(void)
     }
 
     private func layout(_ play: NearbyPlay) -> some View {
@@ -184,8 +98,7 @@ struct NearbyBoardScreen: View {
         }
         // And 判和 is the local game's claim, presented the way the local game
         // presents it: the same confirmation, the same two answers, the same
-        // words. A claim here travels as a ply and the draw is the rules' own,
-        // which is exactly what it is on a board with nobody else at it.
+        // words.
         .alert("alert.claimDraw.title", isPresented: $claimPresented) {
             Button("control.keepPlaying", role: .cancel) { }
             Button("control.endAsDraw") { play.claimDraw() }
@@ -397,7 +310,7 @@ struct NearbyBoardScreen: View {
         TurnStatus(placement: placement,
                    game: play.game,
                    state: play.statusState,
-                   reason: play.end?.reason ?? play.evaluation.reason,
+                   reason: play.current.reason ?? play.evaluation.reason,
                    reasonText: play.reasonText,
                    sideToMove: play.evaluation.sideToMove,
                    inCheck: play.evaluation.inCheck,
@@ -414,7 +327,7 @@ struct NearbyBoardScreen: View {
     /// between 判和 and 可判和, in the same quiet register, in the same place.
     private func quietLines(_ play: NearbyPlay) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let asking = play.standingItem {
+            if let asking = play.standingOffer {
                 Text(Self.asked(asking))
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -432,29 +345,18 @@ struct NearbyBoardScreen: View {
                     .accessibilityIdentifier("nearby-connection")
             }
 
-            // The accepted brief save-failure feedback, in the place this
-            // board keeps its quiet lines: beneath the turn status, which is
-            // where the contract anchors it, and in the same shape the local
-            // board raises. What it reports here is not a move to try again —
-            // a nearby ply has already gone to the other device and stands —
-            // but that this device's own library did not keep it.
-            if saveFailureShown {
-                SaveFailureCapsule { saveFailureShown = false }
-                    .padding(.horizontal, 12)
-                    .transition(.opacity)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(policy.fade(Motion.stateFadeAnimation), value: play.isWaitingOnConnection)
-        .animation(policy.fade(Motion.stateFadeAnimation), value: play.standingItem)
+        .animation(policy.fade(Motion.stateFadeAnimation), value: play.standingOffer)
     }
 
     /// What the other player has asked for, in words. The item's own two kinds,
     /// so a third would not compile rather than reaching the screen unnamed.
-    private static func asked(_ kind: NegotiationItem.Kind) -> LocalizedStringKey {
+    private static func asked(_ kind: PeerOffer.Kind) -> LocalizedStringKey {
         switch kind {
-        case .drawOffer: "nearby.theyOfferDraw"
-        case .undoRequest: "nearby.theyAskUndo"
+        case .draw: "nearby.theyOfferDraw"
+        case .takeback: "nearby.theyAskUndo"
         }
     }
 
@@ -496,8 +398,8 @@ struct NearbyBoardScreen: View {
             // The notice waits for the landing: a result arrives with a move,
             // and the move has to finish being shown before an announcement
             // stands in front of it.
-            if let end = play.end, showsResult, !play.isCommitting {
-                NearbyNotice(title: Self.title(of: end.state, in: play.game),
+            if let state = play.endState, showsResult, !play.isCommitting {
+                NearbyNotice(title: Self.title(of: state, in: play.game),
                              detail: play.reasonText ?? "",
                              done: { flow.leaveBoard() },
                              close: { dismissResult() })
@@ -531,13 +433,13 @@ struct NearbyBoardScreen: View {
     }
 
     private var showsResult: Bool {
-        flow.dismissedResultOf != flow.boardSessionID
+        flow.dismissedResultOf != flow.boardGameID
     }
 
     private func dismissResult() {
-        guard let session = flow.boardSessionID else { return }
+        guard let game = flow.boardGameID else { return }
         withAnimation(policy.fade(Motion.stateFadeAnimation)) {
-            flow.dismissResult(of: session)
+            flow.dismissResult(of: game)
         }
     }
 
@@ -557,8 +459,8 @@ struct NearbyBoardScreen: View {
 
     /// The nearby cluster.
     ///
-    /// **The negotiations belong to whose turn it is**, because the protocol's
-    /// own do: an offer and a request are the off-turn peer's to open, a claim
+    /// **The offers belong to whose turn it is**, because the engine's do: an
+    /// offer and a takeback request are the off-turn player's to make, a claim
     /// is a turn action of the side to move, and an acceptance answers something
     /// that arrived on this device's turn. So off turn the cluster carries 提和
     /// and 悔棋, and on turn it carries 判和 — with 接受 in the claim's own place
@@ -582,7 +484,7 @@ struct NearbyBoardScreen: View {
     /// reading the wrong way up. What stays is everything two people need
     /// between them — 提和, which is meaningful precisely because the other side
     /// is a person, 悔棋, 接受, and 认输 — because none of those is a right the
-    /// game grants: they are the protocol's, and the protocol carries every game.
+    /// game grants: they are between the two players, in every game.
     private func controls(_ play: NearbyPlay, worded: Bool, carriesFlip: Bool) -> some View {
         let over = Self.scene(of: play) == .over
         return HStack(spacing: 8) {
@@ -626,7 +528,7 @@ struct NearbyBoardScreen: View {
     /// exactly what the local placement cluster says by leaving 判和 out.
     @ViewBuilder
     private func negotiations(_ play: NearbyPlay, worded: Bool) -> some View {
-        if let asking = play.standingItem {
+        if let asking = play.standingOffer {
             // Answering what the other player asked for. It follows something
             // the status line is already naming and is the player's own
             // deliberate answer to it, so nothing stands between the press and
@@ -766,15 +668,15 @@ struct NearbyBoardScreen: View {
     ///
     /// **The finished scene waits for the landing**, which is the guard the
     /// result notice in front of the board already keeps: the ply that ends the
-    /// game is still travelling when the session says it is over, and a cluster
+    /// game is still travelling when the engine says it is over, and a cluster
     /// that swapped there would swap ahead of the move that changed it. The
-    /// other three follow the session as it stands, having no landing of their
+    /// other three follow the game as it stands, having no landing of their
     /// own to wait for.
     private enum Scene: Equatable { case onTurn, offTurn, answering, over }
 
     private static func scene(of play: NearbyPlay) -> Scene {
         if play.isOver, !play.isCommitting { return .over }
-        if play.standingItem != nil { return .answering }
+        if play.standingOffer != nil { return .answering }
         return play.controller == .you ? .onTurn : .offTurn
     }
 
@@ -806,9 +708,9 @@ struct NearbyBoardScreen: View {
 ///
 /// Its actions are the ones a nearby game has. Every action the local notice
 /// carries is a filing act — 保存, 保存并开始新对局, 回放 — and a nearby game is
-/// filed by nobody: it goes into History the moment the two devices have
-/// settled on how it ended, because a result one player confirms and the other
-/// does not would be two libraries disagreeing about one game. What is left is
+/// filed by nobody: it goes into History on both devices the moment it ends,
+/// because a result one player confirms and the other does not would be two
+/// libraries disagreeing about one game. What is left is
 /// the way out, which is 完成. A fresh proposal is the rematch, so nothing here
 /// offers one.
 private struct NearbyNotice: View {

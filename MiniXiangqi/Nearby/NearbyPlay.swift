@@ -1,81 +1,25 @@
-// A nearby game as its board shows it: the position the session's plies
-// produce, the transitions between them, and the one ply this device may add.
+// A networked game as its board shows it: the position the game's moves
+// produce, the transitions between them, and the one move this device may add.
 //
-// It is the third consumer of the shared motion language, beside play and
-// replay, and it takes exactly what they take: TransitMotion for the travelling
-// disc, Motion for every duration, Feedback for what is heard and felt. Nothing
-// about a disc crossing a board is decided here — a nearby move is a move, and a
-// second copy of that would be a second thing to keep right.
-//
-// What is only true of a nearby board is the rest of this file. **A ply travels,
-// a ply taken back reverses, anything else cuts** — the rule replay already
-// states, and the honest one here: an opponent's move arrives as one ply and is
-// shown travelling, a retraction the two players agreed on is the board's own
-// Undo with a second person in it, while a reconnection that truncates or
-// resends a line is a change of position rather than a move, and nobody wants to
-// watch it replayed. **The turn is the protocol's**: the board accepts a tap
-// only while the session is in play and the ply is this device's, so a
-// connection that has idled out between moves locks the board quietly until the
-// driver has it back.
-//
-// **The negotiations are the engine's law, read.** Whether a draw may be
-// offered, whether a retraction may be asked for, what may be accepted, and
-// whether the claim stands are questions with one answer each, and it is the
-// engine's; every one of them is read off the session it publishes or asked of
-// the driver. Nothing is re-derived, and nothing is remembered: an offer the
-// engine voids because a ply landed on it disappears from this object at the
-// same instant, because this object never held it.
-//
-// **The session is not this object's.** It lives in the engine, above every
-// page, and this is a presentation of it that is built when the board opens and
-// let go of when it closes. That is also what keeps a nearby move's sound with
-// the board that is showing it: a move arriving while the player is somewhere
-// else in the app is drawn — silently — when they come back to it.
+// It takes the shared motion language exactly as play and replay do. A move
+// travels, a move taken back reverses, anything else cuts: a resume that
+// brings a different line is a change of position rather than a move. The
+// turn, the offers and the claim are the engine's, read off the game it
+// publishes.
 
 import Foundation
 import Observation
 import SwiftUI
 
-/// A finished nearby game, in the vocabulary the result surfaces already speak.
-nonisolated struct NearbyEnd: Equatable, Sendable {
-    var state: GameState
-    var reason: EndReason
-    /// Whether the two players agreed the draw between themselves.
-    var byAgreement: Bool
-
-    /// The protocol names movers and the core names the side that moves first,
-    /// which is what `Side.red` is in every game the app carries — the same
-    /// equation the rules oracle makes on its side, and the same reason neither
-    /// of them names a colour. What the first mover's stones or pieces are
-    /// called is the game's, and every surface asks `GameKind` for it.
-    init(_ end: BoardGameEnd) {
-        state = switch end.result {
-        case .moverWins(.first): .redWins
-        case .moverWins(.second): .blackWins
-        case .draw: .draw
-        }
-        reason = switch end.ending {
-        case .rulesDecided(let reason): reason
-        case .resignation, .bothResigned: .resignation
-        // An agreed draw is nothing the position decided, so the core has no
-        // word for it and this carries its own below.
-        case .agreedDraw: .none
-        }
-        byAgreement = end.ending == .agreedDraw
-    }
-}
-
 @MainActor
 @Observable
 final class NearbyPlay {
-    let sessionID: String
+    let gameID: UUID
     let game: GameKind
-    /// The position this session's game begins from, where its start is dealt
-    /// rather than frozen. It is fixed for the session's whole life — a deal is
-    /// what the game is being played over — and it never leaves this device.
-    private let dealtStart: String?
+    /// Where the moves are replayed from: the frozen start, or the deal.
+    private let start: String
 
-    private let driver: any NearbyDriving
+    private let engine: PeerEngine
     private let positions: any NearbyPositions
     /// What a link that has gone means here, which decides both when the one
     /// quiet line appears and what it says.
@@ -91,11 +35,11 @@ final class NearbyPlay {
 
     var policy: MotionPolicy
 
-    /// The session as the engine last published it. The authority for whose turn
-    /// it is, whether the game is bound to a connection, and how it ended.
-    private(set) var session: BoardGameSession
+    /// The game as the engine last published it: whose turn it is, whether the
+    /// devices are in touch, and how it ended.
+    private(set) var current: PeerGame
 
-    /// The plies the board is drawing, which trail the session's own by exactly
+    /// The moves the board is drawing, which trail the game's own by exactly
     /// the length of a transition.
     private(set) var shown: [String]
 
@@ -128,56 +72,48 @@ final class NearbyPlay {
 
     /// Whether the conclusion has been sounded. A result that arrives with no
     /// piece moving — a resignation, the peer's or this device's — has no
-    /// landing to sound at, so it sounds at the moment the session gains its
+    /// landing to sound at, so it sounds at the moment the game gains its
     /// end, once.
     private var soundedConclusion = false
 
     /// - Parameter flipped: which way round to draw the board, where the player
     ///   has already turned it. The orientation rule below is what answers when
     ///   they have not.
-    init?(session: BoardGameSession,
-          driver: any NearbyDriving,
+    init?(game current: PeerGame,
+          engine: PeerEngine,
           positions: any NearbyPositions,
           interruption: LinkInterruption,
           flipped: Bool? = nil,
           policy: MotionPolicy = MotionPolicy(reduceMotion: false),
           animator: MotionAnimator = .live,
           feedback: Feedback = .live) {
-        guard let game = GameKind(rulesID: session.rulesID),
-              let standing = positions.standing(of: game, from: session.dealtStart,
-                                                after: session.plies)
+        let game = current.kind
+        guard let standing = positions.standing(of: game, from: current.start,
+                                                after: current.moves)
         else { return nil }
 
-        self.sessionID = session.id
+        self.gameID = current.id
         self.game = game
-        self.dealtStart = session.dealtStart
-        self.session = session
-        self.driver = driver
+        self.start = current.start
+        self.current = current
+        self.engine = engine
         self.positions = positions
         self.interruption = interruption
         self.policy = policy
         self.feedback = feedback
         self.animator = animator
         self.transits = TransitMotion(animator: animator)
-        self.shown = session.plies
+        self.shown = current.moves
         self.evaluation = standing.evaluation
         self.placement = Placement(fen: standing.evaluation.fen, game: game)
-        // The accepted orientation rule, applied to the side this device is
-        // playing: your own pieces are at the bottom, and the first mover at the
-        // bottom is the unflipped board. Where it starts and not where it must
-        // stay — the flip control turns it over, and a board turned round stays
-        // turned round across leaving it, which is what the given value carries.
-        //
-        // A placement board has no orientation to have, which is why these games
-        // carry no flip control: stones say nothing a player could read the
-        // wrong way up. So it opens, and stays, as it is drawn — the same
-        // sentence the local board's own initialiser makes.
-        self.flipped = game.isPlacement ? false : (flipped ?? (session.localMover == .second))
-        self.captured = Self.captures(of: game, from: session.dealtStart,
-                                      after: session.plies, positions)
+        // Your own pieces at the bottom, until the player turns the board. A
+        // placement board has no orientation.
+        self.flipped = game.isPlacement ? false : (flipped ?? (current.localSide == .black))
+        self.captured = Self.captures(of: game, from: current.start,
+                                      after: current.moves, positions)
         adopt(standing)
         self.lastMove = shown.last.flatMap { Move(text: $0, on: game.board) }
-        soundedConclusion = session.end != nil
+        soundedConclusion = current.isOver
         // Unowned: the transit belongs to this object and cannot outlive it.
         transits.arrived = { [unowned self] in announceLanding() }
         transits.ended = { [unowned self] in pulseCheckIfNeeded() }
@@ -193,10 +129,7 @@ final class NearbyPlay {
     var transitReveal: Double { transits.reveal }
     var isCommitting: Bool { transits.isRunning }
 
-    /// Whether every hidden identity is now this player's to see. "When the game
-    /// ends, every hidden identity is disclosed to both players — by any
-    /// ending, a resignation and an agreed draw included", and a session that
-    /// went away without a result is an ending for this board too.
+    /// Every hidden identity is disclosed when the game ends, however it ends.
     var disclosesTheDeal: Bool { game.conceals && isOver }
 
     var destinations: Set<Square> {
@@ -208,17 +141,8 @@ final class NearbyPlay {
         Set(destinations.filter { placement[$0] != nil })
     }
 
-    /// The points the side to move may not play — Renju's, marked while Black is
-    /// to move. Asked of the one place that derives them, over this board's own
-    /// position: a nearby game sits on both sides of the board exactly as Free
-    /// Play does, so the marks appear and go with the turn.
-    ///
-    /// **A finished position is over for this purpose the instant the position
-    /// says so**, ahead of the session saying it — which is the local board's
-    /// own rule and matters more here, because this device lands its own ply
-    /// before the engine publishes what it decided. A finished position has no
-    /// legal moves at all, and a derivation that ran over one would read every
-    /// empty point on the board as forbidden.
+    /// Renju's forbidden points while Black is to move. A finished position has
+    /// no legal moves, so it is over here as soon as the position says so.
     var forbiddenPoints: Set<Square> {
         Game.forbiddenPoints(of: game, in: placement, legalMoves: legalMoves,
                              sideToMove: evaluation.sideToMove,
@@ -226,255 +150,155 @@ final class NearbyPlay {
     }
 
     var checkedGeneral: Square? {
-        guard evaluation.inCheck, end == nil else { return nil }
+        guard evaluation.inCheck, current.outcome == nil else { return nil }
         return placement.general(of: evaluation.sideToMove)
     }
 
-    /// How the game ended, if it has. The session's answer and never the
-    /// position's alone: a resignation is an outcome no position produces.
-    var end: NearbyEnd? { session.end.map(NearbyEnd.init) }
+    var voided: NearbyVoid? { current.voided }
 
-    /// Why the session went away, where it went away without a result. A void
-    /// session is gone from the engine, so nothing more will arrive for it and
-    /// nothing this board could ask of it would be answered.
-    private(set) var voided: NearbyVoid?
+    /// A result, or a game that went away without one.
+    var isOver: Bool { current.isOver }
 
-    /// Whether there is any more play in this board: a game with a result, or a
-    /// session that is not there any more.
-    var isOver: Bool { end != nil || voided != nil }
-
-    /// Bound, exchanged, free to play, and still held. The engine's own answer
-    /// with the one thing it cannot say added: a session it has parted with is
-    /// not in the list this board's copy came from.
-    private var isInPlay: Bool { voided == nil && session.isInPlay }
-
-    /// The game went away under the board. It says so and stops.
-    func wentAway(_ reason: NearbyVoid) {
-        guard voided == nil else { return }
-        voided = reason
-        selected = nil
-        stretch?.cancel()
-        stretch = nil
+    /// The result, as the status element and the notice name it.
+    var endState: GameState? {
+        switch current.outcome {
+        case .redWins: .redWins
+        case .blackWins: .blackWins
+        case .draw: .draw
+        case .none?, nil: nil
+        }
     }
 
-    /// What the status element describes. A finished game's result; otherwise
-    /// the position — with the claim standing only where the *engine* says it
-    /// stands for this device's player, which is not something a position
-    /// decides on its own.
+    /// A finished game's result; otherwise the position, with the claim
+    /// standing only where the engine says this player may make it.
     var statusState: GameState {
-        if let end { return end.state }
+        if let endState { return endState }
         guard evaluation.state == .claimableDraw else { return evaluation.state }
         return claimStands ? .claimableDraw : .ongoing
     }
 
-    /// The line under the result: the shared vocabulary for every ending. A
-    /// draw two players agreed is not a verdict on a position, and the core is
-    /// asked about positions, so the live board names it from the ending rather
-    /// than from an adjudication that reports none.
-    var reasonText: String? {
-        guard let end else { return nil }
-        return end.byAgreement ? String(localized: "reason.agreedDraw") : end.reason.text
-    }
+    var reasonText: String? { current.reason?.text }
 
-    /// Who owns the turn — this device's player, or the other one. It is the
-    /// protocol's answer, from the mover this device holds and the ply parity,
-    /// rather than anything derived from the board.
-    var controller: TurnStatus.Controller { session.isLocalTurn ? .you : .peer }
+    var controller: TurnStatus.Controller { current.localTurn ? .you : .peer }
 
-    /// Whose eyes this board is drawn for: this device's own player.
-    ///
-    /// It is what a nearby game adds to the captured surface. Free Play has one
-    /// person holding both hands and shows both panels whole; here the two
-    /// players' surfaces are not the same surface, and this device draws its
-    /// player's. The protocol names movers and the core names the side that
-    /// moves first, which is what `Side.red` is in every game the app carries —
-    /// the same equation `NearbyEnd` makes for a result.
-    var localSide: Side { session.localMover == .first ? .red : .black }
+    /// Whose eyes the captured surface is drawn for.
+    var localSide: Side { current.localSide }
 
-    /// Whether the board takes a tap: the game is on, the session is bound and
-    /// exchanged, and the ply is this device's.
-    var acceptsInput: Bool {
-        isInPlay && session.isLocalTurn && !isOver
-    }
+    var acceptsInput: Bool { current.inPlay && current.localTurn }
 
-    /// Whether 认输 is on offer. The engine's own law, read rather than
-    /// re-derived: a resignation is valid from either peer at any point of an
-    /// active session, and one made while the link is down is held and rides the
-    /// next resume rather than being refused.
-    var canResign: Bool { voided == nil && session.state == .active }
+    /// Resigning is open while the game goes on, connected or not.
+    var canResign: Bool { !isOver }
 
-    // MARK: - The negotiations
+    // MARK: - The offers
 
-    /// Whether 提和 may be pressed. The engine's `open` law, read: an offer is
-    /// the off-turn peer's, in a session that is bound and exchanged, and only
-    /// where nothing else stands.
     var canOfferDraw: Bool {
-        isInPlay && !session.isLocalTurn && session.item == nil
+        current.inPlay && !current.localTurn && current.offer == nil
     }
 
-    /// The `keep` a take-back asks for: the engine's count less one at the
-    /// moment of the request, which off turn is this device's own last ply.
-    private var undoKeep: Int { session.count - 1 }
+    var canRequestUndo: Bool { canOfferDraw && !current.moves.isEmpty }
 
-    /// Whether 悔棋 may be pressed — the same law, plus the range the engine
-    /// states for `keep`.
-    var canRequestUndo: Bool {
-        canOfferDraw && (0..<session.count).contains(undoKeep)
+    /// What the other player has offered, if anything stands.
+    var standingOffer: PeerOffer.Kind? {
+        guard current.inPlay, let offer = current.offer, offer.fromPeer else { return nil }
+        return offer.kind
     }
 
-    /// What the other player has standing for this device to answer, if
-    /// anything. It is the engine's own item: it appears when the engine
-    /// records one and goes when the engine voids one — a landing ply, a
-    /// resume — with nothing held here to go stale.
-    var standingItem: NegotiationItem.Kind? {
-        guard isInPlay, let item = session.item, item.opener == .peer else { return nil }
-        return item.kind
-    }
+    var claimStands: Bool { current.claimable }
 
-    /// Whether the claimed draw stands for this device's player. The driver's
-    /// answer, which is the rules oracle the engine itself asks when the claim
-    /// is played — never the position's `claimAvailable` alone, which knows
-    /// nothing about whose turn it is in a session.
-    var claimStands: Bool { voided == nil && driver.claimStands(in: session) }
-
-    /// 提和. Nothing is drawn for it: an offer is a thing the other player now
-    /// has, and this device's side of it is the control going quiet.
     func offerDraw() {
-        guard canOfferDraw else { return }
-        try? driver.offerDraw(in: sessionID)
+        engine.offer(.draw)
     }
 
-    /// 悔棋 — asking for this device's own last ply back. The count is read at
-    /// the moment of the request, and the engine owns whether it is valid.
     func requestUndo() {
-        guard canRequestUndo else { return }
-        try? driver.requestUndo(keeping: undoKeep, in: sessionID)
+        engine.offer(.takeback)
     }
 
-    /// 接受, for whichever of the two the other player has standing. The
-    /// engine's own item decides what accepting means, so this asks it rather
-    /// than being told: an accepted draw becomes the session's result, and an
-    /// accepted retraction becomes a shorter line, both through the ordinary
-    /// publication.
     func accept() {
-        switch standingItem {
-        case .drawOffer: try? driver.acceptDraw(in: sessionID)
-        case .undoRequest: try? driver.acceptUndo(in: sessionID)
-        case nil: return
-        }
+        engine.acceptOffer()
     }
 
-    /// 判和. It is a ply like any other and travels as one, and the draw it
-    /// produces is the rules' own rather than an agreement.
     func claimDraw() {
-        guard claimStands else { return }
-        try? driver.claim(in: sessionID)
+        engine.claimDraw()
     }
 
-    /// Whether to say anything at all about the connection.
-    ///
-    /// **In ordinary play there is no connection chrome.** Where connections
-    /// idle out between moves by the radio's own design and the driver brings
-    /// them back beneath the game, a board that reported either would be
-    /// reporting weather. What is worth one quiet line there is the case where
-    /// the link is actually costing the player something: what they did is
-    /// waiting to reach the other device, or their own turn has been blocked
-    /// long enough that the silence needs explaining. It withdraws by itself
-    /// the moment the link is back.
-    ///
-    /// **Where nothing will bring the link back, there is no weather.** A link
-    /// that is gone for good is not a wait the player can sit out, so it is
-    /// said as soon as it happens and whosever turn it is: what the line
-    /// carries then is what has become of the game rather than how long it has
-    /// been quiet, and the way out of the board is where it always is.
+    /// Whether to say anything about the connection. Nothing in ordinary play;
+    /// one quiet line where the link is costing the player something: an
+    /// ending of theirs has not arrived, the link will not come back by itself,
+    /// or their own turn has waited long enough to need explaining.
     var isWaitingOnConnection: Bool {
-        // A session that went away is not waiting for anything, and the notice
-        // in front of the board has already said what became of it.
         guard voided == nil, !isLinked else { return false }
-        // A terminal this device took that the other one has not answered for.
-        // The engine holds it and it rides the next resume, which is the one
-        // thing the player has done that has demonstrably not arrived. Once the
-        // exchange has settled it there is nothing owed, and a link that idles
-        // out afterwards is a finished board's own quiet.
-        if !session.settled, session.localTerminal != nil { return true }
-        guard session.state == .active else { return false }
+        if current.undelivered { return true }
+        guard current.outcome == nil else { return false }
         switch interruption {
         case .lasting: return true
-        case .passing: return session.isLocalTurn && blocked
+        case .passing: return current.localTurn && blocked
         }
     }
 
-    /// The sentence that line carries, as its key.
     var interruptionKey: String { interruption.messageKey }
 
-    /// Whether the session is bound to a connection at all, which is the whole
-    /// of what "the two devices are talking" means here.
-    private var isLinked: Bool { session.connection != nil }
+    private var isLinked: Bool { current.linked }
 
-    /// Whether the player's own turn has been blocked long enough to be worth
-    /// saying: the stretch has passed, or they have already reached for the
-    /// board and found it locked.
+    /// The player's own turn has been blocked past the stretch, or they reached
+    /// for the board and found it locked.
     private var blocked: Bool { blockedLongEnough || reachedForABlockedBoard }
 
     private var blockedLongEnough = false
     private var reachedForABlockedBoard = false
     private var stretch: Task<Void, Never>?
 
-    /// How long an interruption on this device's own turn stays invisible.
-    ///
-    /// A re-dial takes a few seconds, and an idle-out is measured in tens of
-    /// them, so this is well past both: nothing routine reaches it, and a link
-    /// that has not come back by now is a silence the player is already
-    /// wondering about.
+    /// Well past a reconnection, so nothing routine reaches it.
     private static let connectionStretch = Duration.seconds(20)
 
-    // MARK: - The session moving underneath
+    // MARK: - The game moving underneath
 
-    /// The engine published. One added ply travels and one ply taken back
-    /// reverses; anything else — a longer truncation, a resend, a line that came
-    /// back different after a reconnection — arrives as the position it is.
-    func sync(with session: BoardGameSession) {
-        let ended = self.session.end == nil && session.end != nil
+    /// The engine published. One added move travels and one taken back
+    /// reverses; anything else arrives as the position it is.
+    func sync(with game: PeerGame) {
+        let ended = !current.isOver && game.isOver
         let wasLinked = isLinked
-        self.session = session
+        current = game
         if isLinked != wasLinked { watchTheLink() }
-        defer { if ended { soundConclusionIfNeeded() } }
+        if ended {
+            selected = nil
+            soundConclusionIfNeeded()
+        }
+        let plies = game.moves
 
-        guard session.plies != shown else { return }
+        guard plies != shown else { return }
         guard !transits.isRunning,
-              let standing = positions.standing(of: game, from: dealtStart,
-                                                after: session.plies)
+              let standing = positions.standing(of: self.game, from: start, after: plies)
         else {
-            cut(to: session.plies)
+            cut(to: plies)
             return
         }
 
-        if session.plies.count == shown.count + 1, session.plies.dropLast() == shown,
-           let text = session.plies.last, let move = Move(text: text, on: game.board) {
+        if plies.count == shown.count + 1, plies.dropLast() == shown,
+           let text = plies.last, let move = Move(text: text, on: self.game.board) {
             // A ply with no origin is a stone, which came from off the board and
             // has nothing to cross it: it appears on its point with the
             // position, which is what a placed stone does.
             guard let origin = move.from else {
-                return place(session.plies, standing, lastMove: move)
+                return place(plies, standing, lastMove: move)
             }
             if let piece = placement[origin] {
-                return advance(move, piece, to: session.plies, standing)
+                return advance(move, piece, to: plies, standing)
             }
         }
-        if shown.count == session.plies.count + 1, shown.dropLast() == session.plies,
-           let text = shown.last, let move = Move(text: text, on: game.board) {
+        if shown.count == plies.count + 1, shown.dropLast() == plies,
+           let text = shown.last, let move = Move(text: text, on: self.game.board) {
             // And a stone taken back goes back off the board rather than home,
             // so the same nothing travels.
             guard move.from != nil else {
-                return place(session.plies, standing,
-                             lastMove: session.plies.last
-                                 .flatMap { Move(text: $0, on: game.board) })
+                return place(plies, standing,
+                             lastMove: plies.last
+                                 .flatMap { Move(text: $0, on: self.game.board) })
             }
             if let mover = placement[move.to] {
-                return reverse(move, mover, to: session.plies, standing)
+                return reverse(move, mover, to: plies, standing)
             }
         }
-        cut(to: session.plies)
+        cut(to: plies)
     }
 
     /// A ply arriving, shown crossing the board.
@@ -565,7 +389,7 @@ final class NearbyPlay {
     /// nothing sounds: a board catching up with a line it was away from is not a
     /// move being made.
     private func cut(to plies: [String]) {
-        guard let standing = positions.standing(of: game, from: dealtStart, after: plies)
+        guard let standing = positions.standing(of: game, from: start, after: plies)
         else { return }
         transits.cut()
         animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
@@ -585,7 +409,7 @@ final class NearbyPlay {
         // Reaching for the board on your own turn and finding it locked is the
         // moment the link stops being the app's business and starts being
         // yours, so the line that explains it does not wait out the stretch.
-        if session.state == .active, session.isLocalTurn, !isLinked {
+        if !isOver, current.localTurn, !isLinked {
             reachedForABlockedBoard = true
         }
         // The board's whole grammar, asked in one place for both boards — the
@@ -619,16 +443,14 @@ final class NearbyPlay {
         } completion: { }
     }
 
-    /// This device's own ply: sent by the driver inside the transition that
+    /// This device's own move: sent by the engine inside the transition that
     /// draws it, exactly as a local game commits inside its own.
     ///
-    /// A ply the engine refuses did not happen, and nothing is drawn for it. The
-    /// refusals reachable from here are all the same situation — the connection
-    /// went away between the tap and the send — and the connection line already
-    /// says so, quietly, which is the whole of what this stage's presentation
-    /// owes an idle radio.
+    /// A move the engine refuses did not happen, and nothing is drawn for it.
+    /// The refusals reachable from here are the connection going away between
+    /// the tap and the send, which the connection line already says.
     private func commit(_ move: Move) {
-        guard let standing = positions.standing(of: game, from: dealtStart,
+        guard let standing = positions.standing(of: game, from: start,
                                                 after: shown + [move.text])
         else { return }
         // **Whether this is a stone is one question, asked the one way**: a ply
@@ -636,11 +458,11 @@ final class NearbyPlay {
         // and never for a movement one. `sync` discriminates on exactly this, and
         // two sites answering it differently would be two answers to have.
         //
-        // A stone of this device's player's own: the driver is asked first,
+        // A stone of this device's player's own: the engine is asked first,
         // exactly as it is below, and a ply it refuses is a ply that did not
         // happen — nothing is sent and nothing is drawn.
         guard let origin = move.from else {
-            guard (try? driver.play(move.text, in: sessionID)) != nil else { return }
+            guard engine.play(move.text) else { return }
             place(shown + [move.text], standing, lastMove: move)
             return
         }
@@ -657,7 +479,7 @@ final class NearbyPlay {
         markerEmphasis = 0
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: captured != nil && !policy.reduceMotion) { [self] in
-            guard (try? driver.play(move.text, in: sessionID)) != nil else { return nil }
+            guard engine.play(move.text) else { return nil }
             land(shown + [move.text], standing, lastMove: move)
             return Transit(kind: .move, move: move, piece: piece,
                            fading: captured.map { ($0, move.to) },
@@ -670,12 +492,12 @@ final class NearbyPlay {
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
     }
 
-    /// 认输. The engine records the terminal and sends it; the result that
-    /// follows is the session's, and it arrives here through the ordinary
+    /// 认输. The engine records the ending and sends it; the result that
+    /// follows is the game's, and it arrives here through the ordinary
     /// publication like every other change.
     func resign() {
         guard canResign else { return }
-        try? driver.resign(in: sessionID)
+        engine.resign()
     }
 
     /// Applied at once between transitions, deferred across none: this board
@@ -748,7 +570,7 @@ final class NearbyPlay {
     /// added took whatever stood on its destination, a line that got shorter
     /// gives back what its retracted plies took, and anything else — a resend, a
     /// line that came back different after a reconnection — is the whole line
-    /// read again. It is the local game's own bookkeeping over a session's plies
+    /// read again. It is the local game's own bookkeeping over a networked line
     /// instead of a store's: appended as a ply lands, dropped as a retraction
     /// lands, read whole where neither is what happened.
     ///
@@ -769,7 +591,7 @@ final class NearbyPlay {
             captured.removePlies(from: plies.count)
             return
         }
-        captured = Self.captures(of: game, from: dealtStart, after: plies, positions)
+        captured = Self.captures(of: game, from: start, after: plies, positions)
     }
 
     /// A whole line read back: what every ply of it took.
@@ -785,11 +607,11 @@ final class NearbyPlay {
     /// stops. A line this board cannot read fails whole rather than partly, and
     /// answers with an empty surface: one missing a capture would be a surface
     /// quietly saying something else about the game.
-    private static func captures(of game: GameKind, from start: String?,
+    private static func captures(of game: GameKind, from start: String,
                                  after plies: [String],
                                  _ positions: any NearbyPositions) -> CapturedPieces {
         guard game.conceals else { return CapturedPieces() }
-        let played = Array(plies.prefix { $0 != TurnAction.claim })
+        let played = plies
         let read = try? CapturedPieces.line(for: played, on: game) { ply in
             guard let standing = positions.standing(of: game, from: start,
                                                     after: Array(played.prefix(ply)))
@@ -819,9 +641,9 @@ final class NearbyPlay {
     private func announceLanding(stone: Bool = false) {
         landings += 1
         feedback.play(.ofTheLanding(transit, stone: stone,
-                                    finished: end != nil || evaluation.isOver,
+                                    finished: current.outcome != nil || evaluation.isOver,
                                     inCheck: checkedGeneral != nil))
-        soundedConclusion = soundedConclusion || end != nil || evaluation.isOver
+        soundedConclusion = soundedConclusion || current.outcome != nil || evaluation.isOver
     }
 
     /// A result that arrived with nothing moving — a resignation on either

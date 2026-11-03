@@ -29,7 +29,6 @@ import Observation
 @Observable
 final class OnlineParty: NSObject {
     @ObservationIgnored private let transport: OnlineTransport
-    @ObservationIgnored private let log: NearbyLog
 
     /// The code a friend can join this game by, once Game Center has minted
     /// one. Nothing until it has, and nothing at all where the activity this
@@ -40,6 +39,11 @@ final class OnlineParty: NSObject {
     /// this surface has to wait for, because joining is a round trip through
     /// Game Center rather than something this device decides.
     private(set) var isJoining = false
+
+    /// Whether this device came to the other one: it joined their code or
+    /// accepted their invitation. The device that brought the friend proposes;
+    /// this one waits for its proposal.
+    @ObservationIgnored private(set) var joinedTheFriend = false
 
     /// The game the surface now up was raised for, and the party started for
     /// it. The activity is Game Center's own object: it is what mints the code
@@ -57,16 +61,15 @@ final class OnlineParty: NSObject {
     /// the whole of the caching this needs.
     @ObservationIgnored private var definitions: [String: GKGameActivityDefinition] = [:]
 
-    init(transport: OnlineTransport, log: NearbyLog) {
+    init(transport: OnlineTransport) {
         self.transport = transport
-        self.log = log
         super.init()
     }
 
     /// The activity each game is played under, by the identifiers App Store
     /// Connect carries. They are Game Center's own names for the games and are
     /// therefore written here verbatim rather than derived from anything: a
-    /// `rules_id` is the protocol's vocabulary and these are the service's, and
+    /// `GameKind`'s raw values are the app's and these are the service's, and
     /// they agree for four of the five by coincidence rather than by rule.
     static func activityID(of game: GameKind) -> String {
         switch game {
@@ -122,6 +125,7 @@ final class OnlineParty: NSObject {
     func open(_ game: GameKind) {
         close()
         self.game = game
+        joinedTheFriend = false
         waiting = Task { [weak self] in await self?.offer(game) }
     }
 
@@ -129,8 +133,8 @@ final class OnlineParty: NSObject {
     /// any more is a code nobody can say — and so does the looking.
     ///
     /// **The match it may already have found is untouched.** A connection
-    /// belongs to the peer rather than to a page, exactly as a session does,
-    /// and the game standing over it is the flow's.
+    /// belongs to the peer rather than to a page, and the game standing over it
+    /// is the flow's.
     func close() {
         waiting?.cancel()
         waiting = nil
@@ -147,7 +151,7 @@ final class OnlineParty: NSObject {
         guard let definition = await definition(of: game) else { return }
         let (started, refusal) = await Self.started(definition, joining: nil)
         guard let activity = started else {
-            log.note("Game Center would not start the party: \(refusal ?? "").")
+            NearbyLogger.note("Game Center would not start the party: \(refusal ?? "").")
             return
         }
         guard !Task.isCancelled else { return Self.end(activity) }
@@ -166,6 +170,7 @@ final class OnlineParty: NSObject {
         close()
         self.game = game
         isJoining = true
+        joinedTheFriend = true
         waiting = Task { [weak self] in await self?.take(up: code, in: game) }
     }
 
@@ -194,7 +199,7 @@ final class OnlineParty: NSObject {
         guard let definition = await definition(of: game) else { return }
         let (started, refusal) = await Self.started(definition, joining: code)
         guard let activity = started else {
-            log.note("Game Center would not join that party: \(refusal ?? "").")
+            NearbyLogger.note("Game Center would not join that party: \(refusal ?? "").")
             return
         }
         guard !Task.isCancelled else { return Self.end(activity) }
@@ -251,11 +256,12 @@ final class OnlineParty: NSObject {
         guard let request = matchRequest(),
               let controller = GKMatchmakerViewController(matchRequest: request)
         else {
-            log.note("Game Center would not open its invitation screen.")
+            NearbyLogger.note("Game Center would not open its invitation screen.")
             return
         }
         controller.matchmakerDelegate = self
         controller.matchmakingMode = .inviteOnly
+        joinedTheFriend = false
         OnlineSystemSurface.present(controller)
     }
 
@@ -282,7 +288,7 @@ final class OnlineParty: NSObject {
             guard !Task.isCancelled else { return match.disconnect() }
             arrived(match)
         } catch {
-            log.note("Game Center found nobody for the party: \(error).")
+            NearbyLogger.note("Game Center found nobody for the party: \(error).")
         }
     }
 
@@ -309,13 +315,13 @@ final class OnlineParty: NSObject {
             guard let loaded = try await GKGameActivityDefinition
                 .loadGameActivityDefinitions(IDs: [id]).first
             else {
-                log.note("Game Center holds no activity called \(id).")
+                NearbyLogger.note("Game Center holds no activity called \(id).")
                 return nil
             }
             definitions[id] = loaded
             return loaded
         } catch {
-            log.note("Game Center would not answer for the activity \(id): \(error).")
+            NearbyLogger.note("Game Center would not answer for the activity \(id): \(error).")
             return nil
         }
     }
@@ -345,7 +351,7 @@ extension OnlineParty: GKMatchmakerViewControllerDelegate {
         _ viewController: GKMatchmakerViewController, didFailWithError error: any Error
     ) {
         MainActor.assumeIsolated {
-            log.note("Game Center's invitation screen failed: \(error).")
+            NearbyLogger.note("Game Center's invitation screen failed: \(error).")
             OnlineSystemSurface.dismiss(viewController)
         }
     }
@@ -379,10 +385,11 @@ extension OnlineParty: GKLocalPlayerListener {
         nonisolated(unsafe) let invite = invite
         MainActor.assumeIsolated {
             guard let controller = GKMatchmakerViewController(invite: invite) else {
-                log.note("Game Center would not open the accepted invitation.")
+                NearbyLogger.note("Game Center would not open the accepted invitation.")
                 return
             }
             controller.matchmakerDelegate = self
+            joinedTheFriend = true
             OnlineSystemSurface.present(controller)
         }
     }
@@ -396,6 +403,7 @@ extension OnlineParty: GKLocalPlayerListener {
     nonisolated func player(_ player: GKPlayer, wantsToPlay activity: GKGameActivity,
                             completionHandler: @escaping @Sendable (Bool) -> Void) {
         MainActor.assumeIsolated {
+            joinedTheFriend = true
             takeUp(activity, answering: completionHandler)
         }
     }
@@ -408,7 +416,7 @@ extension OnlineParty: GKLocalPlayerListener {
                 arrived(try await activity.findMatch())
                 answer(true)
             } catch {
-                log.note("Game Center found nobody for that party: \(error).")
+                NearbyLogger.note("Game Center found nobody for that party: \(error).")
                 answer(false)
             }
         }

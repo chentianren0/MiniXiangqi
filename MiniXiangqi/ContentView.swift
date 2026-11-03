@@ -93,14 +93,10 @@ private struct Destinations: View {
     /// screen is visible in that same list.
     @State private var library: HistoryLibrary
 
-    /// Created once with the window: a nearby session belongs to the peer, so
-    /// its engine has to outlive every page and destination. Nil where the
-    /// platform has no nearby play (the Mac); the surfaces draw nothing for
-    /// nil, so they are declared on every platform.
-    @State private var nearby: NearbyFlow?
-
-    /// Online play exists on every platform; whether it is offered depends on
-    /// the player's account, which the flow answers for itself.
+    /// Created once with the window: a networked game's engine outlives every
+    /// page and destination. Online is offered where the player's Game Center
+    /// account could carry a game, which the flow answers for itself.
+    @State private var nearby: NearbyFlow
     @State private var online: NearbyFlow
     @State private var party: OnlineParty
 
@@ -116,9 +112,7 @@ private struct Destinations: View {
         self.gameCenter = gameCenter
         _play = State(initialValue: PlayState(library: games))
         _library = State(initialValue: HistoryLibrary(library: games))
-        #if os(iOS)
         _nearby = State(initialValue: Self.nearbyFlow(over: games))
-        #endif
         let online = Self.onlinePlay(over: games, gameCenter: gameCenter)
         _online = State(initialValue: online.flow)
         _party = State(initialValue: online.party)
@@ -126,50 +120,25 @@ private struct Destinations: View {
 
     /// Every way this device can reach another one, in the order their rows
     /// stand on the Play home.
-    private var flows: [NearbyFlow] { [nearby, online].compactMap { $0 } }
+    private var flows: [NearbyFlow] { [nearby, online] }
 
-    #if os(iOS)
-    /// The nearby stack: one log, the record, the protocol engine's driver and
-    /// the transport under it, and the flow the surfaces read. Gated to iOS
-    /// because the radio and the system's pairing live in the transport.
     private static func nearbyFlow(over library: GameLibrary) -> NearbyFlow {
-        let core = library.core
-        let log = NearbyLog()
-        // Created with the driver because a ply can land while the board is
-        // down, and every engine input goes through the driver.
-        let record = NearbyRecord(library: library, rules: core.boardGameRules,
-                                  log: log, mode: .nearby)
-        let driver = NearbyDriver(rules: core.boardGameRules, log: log,
-                                  record: record)
-        let transport = NearbyTransport(driver: driver, log: log)
-        return NearbyFlow(driver: driver, reach: transport,
-                          positions: core.nearbyPositions, mode: .nearby,
-                          availability: { NearbyFlow.isAvailableHere })
+        let engine = PeerEngine(mode: .nearby, library: library)
+        return NearbyFlow(engine: engine, carrier: NearbyNetwork(engine: engine),
+                          positions: library.core.nearbyPositions, availability: { true })
     }
-    #endif
 
-    /// The online stack, layer for layer the nearby one with another transport
-    /// and mode. Assembled on every platform: GameKit reaches the Mac too.
     private static func onlinePlay(over library: GameLibrary,
                                    gameCenter: GameCenterAvailability)
         -> (flow: NearbyFlow, party: OnlineParty) {
-        let core = library.core
-        let log = NearbyLog()
-        let record = NearbyRecord(library: library, rules: core.boardGameRules,
-                                  log: log, mode: .online)
-        let driver = NearbyDriver(rules: core.boardGameRules, log: log,
-                                  record: record)
-        let transport = OnlineTransport(driver: driver, log: log)
-        let flow = NearbyFlow(driver: driver, reach: transport,
-                              positions: core.nearbyPositions, mode: .online,
-                              availability: { Self.onlineStands(gameCenter) })
-        return (flow, OnlineParty(transport: transport, log: log))
-    }
-
-    /// Asked at every draw, so a sign-out or a restriction takes the online
-    /// rows away under the reader.
-    private static func onlineStands(_ gameCenter: GameCenterAvailability) -> Bool {
-        return gameCenter.isAvailable
+        let engine = PeerEngine(mode: .online, library: library)
+        let transport = OnlineTransport(engine: engine)
+        let flow = NearbyFlow(engine: engine, carrier: transport,
+                              positions: library.core.nearbyPositions,
+                              availability: { gameCenter.isAvailable })
+        let party = OnlineParty(transport: transport)
+        flow.proposesOnArrival = { [weak party] in party?.joinedTheFriend == false }
+        return (flow, party)
     }
 
     private var container: some View {
@@ -212,8 +181,7 @@ private struct Destinations: View {
                 }
             }
             // Coming back to the front takes up what a suspension put down: the
-            // radio's publisher and browser and the system's pairing snapshots.
-            // Game Center is asked again because a restriction applied in the
+            // listener and the browser. Game Center is asked again because a restriction applied in the
             // background arrives with no notification. Only `.active` is read:
             // engine teardown follows the platform's suspension and memory
             // signals (`Suspension`), never a change of visibility.
@@ -233,7 +201,7 @@ private struct Destinations: View {
     /// What playing somebody on another device hangs above the container
     /// rather than inside a destination.
     private func playingSomebody(_ content: some View) -> some View {
-        publications(surfaces(presentations(content)))
+        surfaces(presentations(content))
     }
 
     /// The three presentations that are not a page.
@@ -242,33 +210,22 @@ private struct Destinations: View {
         // The propose surface, the consent prompt an invitation raises, and the
         // refusal that answers one this device sent sit above the container: an
         // invitation arrives when it arrives, and a refusal may answer a surface
-        // the player already put away. With no flow every binding is false, so
-        // a platform without nearby play presents none of them.
+        // the player already put away.
         .sheet(isPresented: proposing) {
             if let game = online.proposing {
                 OnlineProposeSheet(flow: online, game: game, party: party)
-            } else if let nearby, let game = nearby.proposing {
+            } else if let game = nearby.proposing {
                 NearbyProposeSheet(flow: nearby, game: game)
             }
         }
         .nearbyAnswers(flows) { destination = .play }
     }
 
-    /// The engine publishes once per input; this is where a flow reads what
-    /// moved.
-    private func publications(_ content: some View) -> some View {
-        content
-        .onChange(of: nearby?.driver.sessions) { nearby?.sessionsChanged() }
-        .onChange(of: nearby?.driver.declines.count) { nearby?.sessionsChanged() }
-        .onChange(of: online.driver.sessions) { online.sessionsChanged() }
-        .onChange(of: online.driver.declines.count) { online.sessionsChanged() }
-    }
-
     private func surfaces(_ content: some View) -> some View {
         content
         // A friend the player already chose has arrived: propose, with nothing
-        // left for them to press.
-        .onChange(of: online.peers) { online.roomChanged() }
+        // left for them to press, or go back into the game they were playing.
+        .onChange(of: online.engine.connected) { online.roomChanged() }
         // The party lives exactly as long as the surface offering it: opening
         // it mints the code a friend joins by.
         .onChange(of: online.proposing) { _, game in
@@ -287,7 +244,7 @@ private struct Destinations: View {
             }
             for flow in flows {
                 flow.room = play
-                flow.libraryChanged = { [weak play] in play?.activeGameChanged() }
+                flow.engine.libraryChanged = { [weak play] in play?.activeGameChanged() }
             }
             // An invitation is accepted in Game Center's own surfaces at a
             // moment no screen chose, so the listener lives with the window.
@@ -313,7 +270,7 @@ private struct Destinations: View {
     }
 
     private var boardIsUp: Bool {
-        flows.contains { $0.boardSessionID != nil }
+        flows.contains { $0.boardGameID != nil }
     }
 
 }

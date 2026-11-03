@@ -35,9 +35,9 @@ struct JieqiTests {
         let deal = try core.deal(.jieqi)
         #expect(core.setupVerdict(of: deal.startFEN, game: .jieqi) == .legal)
         #expect(core.isPlayable(deal.startFEN, game: .jieqi))
-        #expect(deal.commit.count == 64)
-        #expect(deal.digest.count == 64)
-        #expect(deal.commit.allSatisfy { $0.isHexDigit && !$0.isUppercase })
+        let seed = String(repeating: "5a", count: 32)
+        #expect(try core.deal(.jieqi, seed: seed) == core.deal(.jieqi, seed: seed),
+                "one seed deals one game, which is how two devices deal the same one")
 
         try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
         #expect(try library.configuration().startFEN == deal.startFEN,
@@ -277,9 +277,9 @@ struct JieqiTests {
     @Test("A ply arriving from the other device travels as one disc carrying both faces")
     func aRemoteRevealRidesTheOneDisc() throws {
         let core = try TestCores.fresh()
-        let play = try #require(nearbyBoard(on: core, plies: []))
+        let play = try #require(try nearbyBoard(on: core, plies: []))
 
-        play.sync(with: dealtSession(plies: ["b3b4"]))
+        play.sync(with: try dealtGame(on: core, plies: ["b3b4"]))
 
         let transit = try #require(play.transit)
         #expect(transit.piece.isFaceDown, "it left the board face down")
@@ -293,9 +293,9 @@ struct JieqiTests {
     @Test("An agreed retraction on a nearby board returns the concealment it drew")
     func aNearbyRetractionReturnsConcealment() throws {
         let core = try TestCores.fresh()
-        let play = try #require(nearbyBoard(on: core, plies: ["b3b4"]))
+        let play = try #require(try nearbyBoard(on: core, plies: ["b3b4"]))
 
-        play.sync(with: dealtSession(plies: []))
+        play.sync(with: try dealtGame(on: core, plies: []))
 
         let transit = try #require(play.transit)
         #expect(transit.kind == .undo)
@@ -309,18 +309,14 @@ struct JieqiTests {
     @Test("An ordinary nearby ply of an undealt game carries no second face")
     func nothingElseRevealsOnANearbyBoard() throws {
         let core = try TestCores.fresh()
-        var session = BoardGameSession(id: "S", peer: PeerDeviceID("peer"),
-                                       rulesID: GameKind.miniXiangqi.rulesID,
-                                       rulesVersion: "1", proposerMoves: .first,
-                                       proposer: .local)
-        session.accepted = true
-        let play = try #require(NearbyPlay(session: session, driver: FakeDriver(),
+        var game = Self.peerGame(.miniXiangqi, start: frozenStart(.miniXiangqi), moves: [])
+        let play = try #require(NearbyPlay(game: game, engine: Self.engine(on: core),
                                            positions: core.nearbyPositions,
                                            interruption: .passing,
                                            animator: ManualAnimator().animator,
                                            feedback: Feedback(play: { _ in })))
-        session.plies = ["b1b2"]
-        play.sync(with: session)
+        game.moves = ["b1b2"]
+        play.sync(with: game)
         #expect(play.transit?.revealed == nil)
         #expect(play.transitReveal == 0)
     }
@@ -328,34 +324,37 @@ struct JieqiTests {
     @Test("A nearby dealt game discloses its deal at its ending and not before")
     func theNearbyEndingDiscloses() throws {
         let core = try TestCores.fresh()
-        let play = try #require(nearbyBoard(on: core, plies: []))
+        let play = try #require(try nearbyBoard(on: core, plies: []))
         #expect(!play.disclosesTheDeal, "an ongoing game discloses nothing")
 
-        var ended = dealtSession(plies: [])
-        ended.peerTerminal = .resign
+        var ended = try dealtGame(on: core, plies: [])
+        ended.outcome = .redWins
+        ended.reason = .resignation
         play.sync(with: ended)
         #expect(play.disclosesTheDeal,
                 "every hidden identity is disclosed by any ending, a resignation included")
     }
 
-    private func dealtSession(plies: [String]) -> BoardGameSession {
-        var session = BoardGameSession(id: "S", peer: PeerDeviceID("peer"),
-                                       rulesID: GameKind.jieqi.rulesID,
-                                       rulesVersion: "1", proposerMoves: .first,
-                                       proposer: .local)
-        session.accepted = true
-        session.handshake = .dealt(
-            BoardGameDeal(commit: BoardGameRulesTests.commit,
-                          nonce: BoardGameRulesTests.nonce,
-                          seed: BoardGameRulesTests.seed,
-                          digest: BoardGameRulesTests.digest,
-                          start: BoardGameRulesTests.dealtStart))
-        session.plies = plies
-        return session
+    private static let seed = String(repeating: "5a", count: 32)
+
+    private func dealtGame(on core: Core, plies: [String]) throws -> PeerGame {
+        Self.peerGame(.jieqi, start: try core.deal(.jieqi, seed: Self.seed).startFEN,
+                      moves: plies)
     }
 
-    private func nearbyBoard(on core: Core, plies: [String]) -> NearbyPlay? {
-        NearbyPlay(session: dealtSession(plies: plies), driver: FakeDriver(),
+    private static func peerGame(_ kind: GameKind, start: String, moves: [String]) -> PeerGame {
+        PeerGame(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, kind: kind,
+                 localSide: .red, start: start, moves: moves, linked: true, inPlay: true,
+                 localTurn: moves.count.isMultiple(of: 2), claimable: false,
+                 undelivered: false)
+    }
+
+    private static func engine(on core: Core) -> PeerEngine {
+        PeerEngine(mode: .nearby, library: TestLibraries.another(over: core))
+    }
+
+    private func nearbyBoard(on core: Core, plies: [String]) throws -> NearbyPlay? {
+        NearbyPlay(game: try dealtGame(on: core, plies: plies), engine: Self.engine(on: core),
                    positions: core.nearbyPositions, interruption: .passing,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(play: { _ in }))
@@ -419,7 +418,5 @@ struct JieqiTests {
         let first = try core.deal(.jieqi)
         let second = try core.deal(.jieqi)
         #expect(first.startFEN != second.startFEN)
-        #expect(first.commit != second.commit)
-        #expect(first.digest != second.digest)
     }
 }

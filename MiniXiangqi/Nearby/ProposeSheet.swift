@@ -19,9 +19,9 @@ import SwiftUI
 struct ProposeSheet<Connection: View>: View {
     let flow: NearbyFlow
     let game: GameKind
-    /// How the other player is reached — the room and the pairing where the
-    /// devices find each other locally, the invitation and the party code where
-    /// Game Center carries them.
+    /// How the other player is reached — the devices in the room where they
+    /// find each other locally, the invitation and the party code where Game
+    /// Center carries them.
     @ViewBuilder var connection: () -> Connection
 
     var body: some View {
@@ -51,14 +51,14 @@ struct ProposeSheet<Connection: View>: View {
         }
     }
 
-    /// Which mover this device takes. The proposer chooses, and the other
-    /// device takes what is left — which is why the second option names the
-    /// other player rather than a colour.
+    /// Which side this device takes: the first mover, or the other. The
+    /// second option names the other player rather than a colour, because what
+    /// the first mover is called is the game's.
     private var side: some View {
         Section {
-            Picker("setup.firstMover", selection: proposerMoves) {
-                Text("setup.iMoveFirst").tag(Mover.first)
-                Text("nearby.theyMoveFirst").tag(Mover.second)
+            Picker("setup.firstMover", selection: proposerSide) {
+                Text("setup.iMoveFirst").tag(Side.red)
+                Text("nearby.theyMoveFirst").tag(Side.black)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -68,7 +68,7 @@ struct ProposeSheet<Connection: View>: View {
         }
     }
 
-    private var proposerMoves: Binding<Mover> {
-        Binding(get: { flow.proposerMoves }, set: { flow.proposerMoves = $0 })
+    private var proposerSide: Binding<Side> {
+        Binding(get: { flow.proposerSide }, set: { flow.proposerSide = $0 })
     }
 }

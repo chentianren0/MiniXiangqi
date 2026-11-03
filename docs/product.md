@@ -19,7 +19,7 @@ The product decisions behind Star River. Rules live in the rules docs and file f
   - Setup starts from the Settings defaults; changing them for one game does not change Settings.
 - **Free Play**: one person moves both sides.
 - **Custom Scene** (自定排局), Xiangqi only: compose a position, pick who moves first, and play it as Free Play.
-- **Nearby Play**: two people, two iPhones or iPads, no Internet.
+- **Nearby Play**: two people on two devices close together — iPhone, iPad or Mac — over the same network or peer-to-peer Wi-Fi, no Internet.
 - **Online Play**: two friends at any distance over Game Center, on iPhone, iPad and Mac. A Game Center invitation or a party code brings them together; there is no matchmaking with strangers.
 - A **hint** shows the engine's suggested move on request, in Human versus AI and Free Play only, and not in Jieqi. It plays nothing and is not recorded.
 - **Resign** is available in Human versus AI, Nearby Play and Online Play, after a confirmation.

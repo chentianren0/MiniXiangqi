@@ -61,10 +61,11 @@ protocol NearbyRoom: AnyObject {
     /// per mode: an online game standing is not one the nearby row may walk into.
     func standingGame(in mode: PlayMode) -> GameKind?
 
-    /// `then` runs once the slot is free: at once, or after 保存并继续. It does
-    /// not run if the player cancels or the archive is refused.
+    /// `then` runs once the slot is free: at once, or after 保存并继续.
+    /// `otherwise` runs instead if the player cancels or the archive is refused.
     func makeRoom(for game: GameKind, in mode: PlayMode,
-                  then: @escaping @MainActor () -> Void)
+                  then: @escaping @MainActor () -> Void,
+                  otherwise: @escaping @MainActor () -> Void)
 }
 
 @Observable
@@ -149,10 +150,12 @@ final class PlayState {
     /// Where a surface asked for the room rather than a mode row: a nearby
     /// proposal, or the Custom Scene editor. Discarded with the flow.
     private var pendingOpening: (@MainActor () -> Void)?
+    /// What that surface does if the room is not made after all.
+    private var pendingCancel: (@MainActor () -> Void)?
 
-    /// Called before any path takes the active game away, so the wire session
-    /// held above this object goes with the game rather than writing to one
-    /// that is gone. Nil where no such layer exists.
+    /// Called before any path takes the active game away, so the networked
+    /// engine lets go of the game rather than writing to one that is gone. Nil
+    /// where no such layer exists.
     var giveUpNetworkedGame: (@MainActor (PlayMode) -> Void)?
 
     /// 开始对局 cannot be invoked again while this is true.
@@ -229,6 +232,7 @@ final class PlayState {
         if case .confirming = modeSwitch {
             modeSwitch = nil
             pendingOpening = nil
+            cancelPending()
         }
     }
 
@@ -239,7 +243,14 @@ final class PlayState {
         if case .failed = modeSwitch {
             modeSwitch = nil
             pendingOpening = nil
+            cancelPending()
         }
+    }
+
+    private func cancelPending() {
+        let cancel = pendingCancel
+        pendingCancel = nil
+        cancel?()
     }
 
     /// An ongoing game or an unclaimed claimable repetition is filed as ended
@@ -249,8 +260,8 @@ final class PlayState {
         guard let selection = modeSwitch?.selection, activeSummary != nil else { return }
         guard modeSwitch != .saving(selection) else { return }
         modeSwitch = .saving(selection)
-        // Given up before the filing, so the session does not keep writing to a
-        // game that is gone.
+        // Given up before the filing, so the networked engine does not keep
+        // writing to a game that is gone.
         if let mode = activeSummary?.mode, mode.isNetworked {
             giveUpNetworkedGame?(mode)
         }
@@ -260,6 +271,7 @@ final class PlayState {
             switch result {
             case .success:
                 modeSwitch = nil
+                pendingCancel = nil
                 if let opening = pendingOpening {
                     pendingOpening = nil
                     opening()
@@ -276,7 +288,7 @@ final class PlayState {
     /// home, and this guard makes `modeSwitch != nil` imply `page == .home`.
     func resume(policy: MotionPolicy) {
         guard page == .home, modeSwitch == nil, let summary = activeSummary else { return }
-        // A networked game is continued on its own board, over its session.
+        // A networked game is continued on its own board, over its engine.
         if summary.mode.isNetworked {
             resumeNetworkedGame?(summary.mode, summary.game)
             return
@@ -687,8 +699,9 @@ extension PlayState: NearbyRoom {
     /// through the same confirmation. The board is left before the asking,
     /// because both of that flow's alerts belong to the home.
     func makeRoom(for game: GameKind, in mode: PlayMode,
-                  then opening: @escaping @MainActor () -> Void) {
-        guard modeSwitch == nil else { return }
+                  then opening: @escaping @MainActor () -> Void,
+                  otherwise: @escaping @MainActor () -> Void) {
+        guard modeSwitch == nil else { return otherwise() }
         if page == .board {
             leaveBoard()
             page = .home
@@ -698,6 +711,7 @@ extension PlayState: NearbyRoom {
             return
         }
         pendingOpening = opening
+        pendingCancel = otherwise
         modeSwitch = .confirming(PlaySelection(game: game, mode: mode))
     }
 }

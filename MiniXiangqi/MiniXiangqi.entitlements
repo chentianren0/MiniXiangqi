@@ -2,10 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   macOS signs with this file. iPhone and iPad sign with
-  MiniXiangqi-iOS.entitlements — this file plus Wi-Fi Aware, less
-  com.apple.security.network.client, whose own comment below says why it stays
-  here. So a key added here is added there too, unless it is one the Mac's
-  sandbox alone gives meaning to.
+  MiniXiangqi-iOS.entitlements — this file less the two network keys, whose own
+  comment below says why they stay here. So a key added here is added there too,
+  unless it is one the Mac's sandbox alone gives meaning to.
 
   Neither file writes com.apple.security.app-sandbox, and neither needs to: on
   the Mac the project's ENABLE_APP_SANDBOX is the switch, and iPhone and iPad
@@ -34,11 +33,14 @@
 	<key>com.apple.security.hardened-process.platform-restrictions-string</key>
 	<string>2</string>
 	<!--
-	  Game Center reaches Apple's servers and the other player from inside the
-	  Mac's sandbox. iPhone and iPad have no such gate, which is why this one key
-	  does not travel to the file beside it.
+	  Game Center and Nearby Play reach the other player from inside the Mac's
+	  sandbox, and Nearby's Bonjour listener accepts their connection. iPhone and
+	  iPad have no such gates, which is why these keys do not travel to the file
+	  beside it.
 	-->
 	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
 	<true/>
 </dict>
 </plist>
