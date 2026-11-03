@@ -23,4 +23,4 @@ An import decodes the file, refuses a start the game's setup rules do not allow,
 
 ## Not in the file
 
-Whether a record is pinned, whether it was imported, the side this device played in a networked game, and what an unfinished networked game needs to resume stay in the library on this device. A game file carries no per-move timing, comments, undo counts or engine identifiers. Files written by the 3.x app are not read.
+A game file carries the game and nothing of the device it was played on: not whether the record is pinned or imported, nor, for a networked game, which side this device played, who the other device was or the takebacks the players agreed. It carries no per-move timing, comments, undo counts or engine identifiers. Files written by the 3.x app are not read.

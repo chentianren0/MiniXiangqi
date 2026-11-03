@@ -46,14 +46,9 @@ final class NearbyPlay {
     private(set) var placement: Placement
     private(set) var legalMoves: [Move] = []
     private(set) var lastMove: Move?
-    /// What this game has taken off the board, as far as the board is drawing
-    /// it. **Jieqi displays them, because there the reasoning does not hold:
-    /// what a capture takes off the board is knowledge, and knowledge is that
-    /// game's material.** Empty in every other game, which displays none.
+    /// What the drawn line has captured, kept in Jieqi alone, where a capture
+    /// discloses a hidden piece; empty in every other game.
     private(set) var captured = CapturedPieces()
-    /// The core's evaluation of the drawn position: whose turn it is on the
-    /// board, whether that side is in check, and what the position itself
-    /// decides.
     private(set) var evaluation: Evaluation
 
     var selected: Square?
@@ -63,22 +58,18 @@ final class NearbyPlay {
     private(set) var markerEmphasis: Double = 0
     private(set) var beatEmphasis: Double = 0
 
-    /// Whether the board is turning round. A flip is presentational, but it
-    /// holds board input for its 350 ms for the reason play's does: the tap
-    /// targets stand where the board is turning *to* while the canvas is still
+    /// Whether the board is turning round. Input waits for it, because the tap
+    /// targets stand where the board is turning to while the canvas is still
     /// part way round.
     private(set) var isFlipping = false
     private var flipGeneration = 0
 
     /// Whether the conclusion has been sounded. A result that arrives with no
-    /// piece moving — a resignation, the peer's or this device's — has no
-    /// landing to sound at, so it sounds at the moment the game gains its
-    /// end, once.
+    /// piece moving, such as a resignation, has no landing to sound at.
     private var soundedConclusion = false
 
-    /// - Parameter flipped: which way round to draw the board, where the player
-    ///   has already turned it. The orientation rule below is what answers when
-    ///   they have not.
+    /// - Parameter flipped: which way round the player last turned the board,
+    ///   if they did.
     init?(game current: PeerGame,
           engine: PeerEngine,
           positions: any NearbyPositions,
@@ -305,11 +296,9 @@ final class NearbyPlay {
     private func advance(_ move: Move, _ piece: Piece, to plies: [String],
                          _ standing: NearbyStanding) {
         let captured = placement[move.to]
-        // What the ply turned up, read off the position it produced — which is
-        // the deal this device already holds, derived rather than disclosed:
-        // nothing about the identity travelled with the move. It is the same
-        // sentence the local board makes, and deliberately, because a reveal
-        // arriving from the other device is the same event as one made here.
+        // What the ply turned up, read off the position it produced: the deal
+        // is on this device already, and nothing about the identity travels
+        // with the move.
         let arrived = piece.isFaceDown
             ? Placement(fen: standing.evaluation.fen, game: game)[move.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
@@ -330,22 +319,15 @@ final class NearbyPlay {
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
     }
 
-    /// One ply taken back, drawn the way this board's own Undo draws one: the
-    /// mover travels home and whatever it took reappears as it goes. The same
-    /// motion because it is the same act — a retraction two players agreed on is
-    /// an Undo with a second person in it.
+    /// One ply taken back, drawn as the local board's Undo draws one: the mover
+    /// travels home and whatever it took reappears as it goes.
     private func reverse(_ move: Move, _ mover: Piece, to plies: [String],
                          _ standing: NearbyStanding) {
         guard let origin = move.from else { return }
-        // What the ply took, and what it had turned up, are both read off the
-        // position it is going back to — the core's answer rather than a
-        // placement worked out here.
         let before = Placement(fen: standing.evaluation.fen, game: game)
         let restored = before[move.to]
-        // **A retraction returns the position's concealment**, so a ply that
-        // revealed a piece puts it back face down where it came from. The face
-        // the disc arrives home with is the one standing at the origin again,
-        // and it is nil wherever nothing was turned back over.
+        // A takeback conceals again: a piece the ply revealed goes home face
+        // down.
         let returned = before[origin].flatMap { $0.isFaceDown ? $0 : nil }
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
@@ -355,28 +337,13 @@ final class NearbyPlay {
                            piece: mover, fading: restored.map { ($0, move.to) },
                            revealed: returned)
         }
-        // The restored piece returns as the mover departs, inside the travel, so
-        // the reversal stays within one ply's time.
         guard !policy.reduceMotion else { return }
-        // The identity goes as the disc returns home, on the same schedule a
-        // reveal arrives on.
         transits.raiseReveal(Motion.revealAnimation(travel: travel))
         transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
-    /// One stone put down or taken back, on either device.
-    ///
-    /// **Nothing travels, because nothing travelled to arrive.** A stone comes
-    /// from off the board and goes back there, so there is no disc to carry and
-    /// no committing transition to hold a gate for: the position changes over
-    /// the ordinary state fade and the board is immediately the board again. It
-    /// is the local board's own placement transition, in the one thing that
-    /// differs here — the ply may be the other player's, and a stone the two
-    /// players agreed to take back is drawn exactly as one going down is,
-    /// because a retraction on this board is an Undo with a second person in it.
-    ///
-    /// The landing is the change, so the feedback fires with it rather than
-    /// waiting for an arrival that never comes.
+    /// One stone put down or taken back, on either device. Nothing travels, so
+    /// the position changes over the state fade and the feedback fires at once.
     private func place(_ plies: [String], _ standing: NearbyStanding, lastMove move: Move?) {
         markerEmphasis = 0
         animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
@@ -386,8 +353,7 @@ final class NearbyPlay {
     }
 
     /// The position, arrived at rather than travelled to. Nothing lands, so
-    /// nothing sounds: a board catching up with a line it was away from is not a
-    /// move being made.
+    /// nothing sounds.
     private func cut(to plies: [String]) {
         guard let standing = positions.standing(of: game, from: start, after: plies)
         else { return }
@@ -401,21 +367,15 @@ final class NearbyPlay {
 
     // MARK: - Input
 
-    /// A tap on a point. What it means is the board's question and is asked in
-    /// one place for both boards; what is added here is the motion that carries
-    /// it out.
     func tap(_ square: Square) {
         guard !isCommitting, !isFlipping else { return }
-        // Reaching for the board on your own turn and finding it locked is the
-        // moment the link stops being the app's business and starts being
-        // yours, so the line that explains it does not wait out the stretch.
+        // A player who reaches for a board locked by the link on their own
+        // turn sees the connection line at once, without waiting out the
+        // stretch.
         if !isOver, current.localTurn, !isLinked {
             reachedForABlockedBoard = true
         }
-        // The board's whole grammar, asked in one place for both boards — the
-        // optional pending-stone confirmation included. It is the board's own
-        // rather than a mode's: a player who asked to confirm their stones asked
-        // it of the board they place them on, and a nearby board is that board.
+        // Confirm Before Placing applies here as on the local board.
         switch Game.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
                            sideToMove: evaluation.sideToMove, selected: selected,
                            acceptsInput: acceptsInput,
@@ -443,36 +403,22 @@ final class NearbyPlay {
         } completion: { }
     }
 
-    /// This device's own move: sent by the engine inside the transition that
-    /// draws it, exactly as a local game commits inside its own.
-    ///
-    /// A move the engine refuses did not happen, and nothing is drawn for it.
-    /// The refusals reachable from here are the connection going away between
-    /// the tap and the send, which the connection line already says.
+    /// This device's own move, sent by the engine inside the transition that
+    /// draws it. A move the engine refuses is not drawn: from here that is the
+    /// connection going away between the tap and the send, which the
+    /// connection line already says.
     private func commit(_ move: Move) {
         guard let standing = positions.standing(of: game, from: start,
                                                 after: shown + [move.text])
         else { return }
-        // **Whether this is a stone is one question, asked the one way**: a ply
-        // with no origin, which is what the parser answers for a placement board
-        // and never for a movement one. `sync` discriminates on exactly this, and
-        // two sites answering it differently would be two answers to have.
-        //
-        // A stone of this device's player's own: the engine is asked first,
-        // exactly as it is below, and a ply it refuses is a ply that did not
-        // happen — nothing is sent and nothing is drawn.
+        // A stone, as `sync` tells one: a ply with no origin.
         guard let origin = move.from else {
             guard engine.play(move.text) else { return }
             place(shown + [move.text], standing, lastMove: move)
             return
         }
-        // A move whose origin carries nothing is not a move this board can draw,
-        // and it is not a stone either.
         guard let piece = placement[origin] else { return }
         let captured = placement[move.to]
-        // This device's own ply turns a face up on this device exactly as the
-        // other device's does, and from the same source: the position the ply
-        // produced, which the deal already held.
         let arrived = piece.isFaceDown
             ? Placement(fen: standing.evaluation.fen, game: game)[move.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.board)
@@ -492,9 +438,8 @@ final class NearbyPlay {
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
     }
 
-    /// 认输. The engine records the ending and sends it; the result that
-    /// follows is the game's, and it arrives here through the ordinary
-    /// publication like every other change.
+    /// The result arrives through the engine's publication like every other
+    /// change.
     func resign() {
         guard canResign else { return }
         engine.resign()
@@ -536,8 +481,7 @@ final class NearbyPlay {
             return
         }
         // A link that is not coming back has nothing to wait out: the line is
-        // already up, and a timer whose answer nothing reads is a timer to
-        // explain later.
+        // already up.
         guard interruption == .passing, !blockedLongEnough else { return }
         stretch = Task { [weak self] in
             try? await Task.sleep(for: Self.connectionStretch)
@@ -564,19 +508,10 @@ final class NearbyPlay {
         selected = nil
     }
 
-    /// What the arriving line took, kept up as the line moves.
-    ///
-    /// The same three cases the board itself draws, and in the same order: a ply
-    /// added took whatever stood on its destination, a line that got shorter
-    /// gives back what its retracted plies took, and anything else — a resend, a
-    /// line that came back different after a reconnection — is the whole line
-    /// read again. It is the local game's own bookkeeping over a networked line
-    /// instead of a store's: appended as a ply lands, dropped as a retraction
-    /// lands, read whole where neither is what happened.
-    ///
-    /// The position it reads is the one the ply was played into, which is the
-    /// board's own before it adopts the new one — a face-down victim's identity
-    /// stands there, and that is what the capture disclosed to whoever made it.
+    /// What the arriving line took: a ply added took what stood on its
+    /// destination in the position before it, where a face-down victim's
+    /// identity stands; a shorter line gives back what its retracted plies
+    /// took; any other line is read again whole.
     private func take(_ plies: [String], leaving before: Placement) {
         guard game.conceals else { return }
         if plies.count == shown.count + 1, plies.dropLast() == shown {
@@ -594,19 +529,8 @@ final class NearbyPlay {
         captured = Self.captures(of: game, from: start, after: plies, positions)
     }
 
-    /// A whole line read back: what every ply of it took.
-    ///
-    /// Walked over the positions the core replays, exactly as the local game's
-    /// stored line and a record's replay are walked, so a nearby board and the
-    /// record it becomes answer with one surface. It is asked only of a game
-    /// that conceals — every other displays nothing, and the walk is what that
-    /// costs.
-    ///
-    /// **A claim takes nothing**: it moves no piece and can only be a line's
-    /// last ply, so the walk stops where the core's own replay of the line
-    /// stops. A line this board cannot read fails whole rather than partly, and
-    /// answers with an empty surface: one missing a capture would be a surface
-    /// quietly saying something else about the game.
+    /// What every ply of a whole line took. A line the core will not replay
+    /// answers with nothing rather than with a surface missing a capture.
     private static func captures(of game: GameKind, from start: String,
                                  after plies: [String],
                                  _ positions: any NearbyPositions) -> CapturedPieces {
@@ -621,9 +545,8 @@ final class NearbyPlay {
         return read ?? CapturedPieces()
     }
 
-    /// A position the core would not replay, which the walk above cannot go on
-    /// without. It is a bug above the core rather than a state to design for:
-    /// the engine holds only plies its own oracle accepted.
+    /// A position the core would not replay. The engine holds only moves the
+    /// core accepted, so this is a bug rather than a state to design for.
     private struct UnreplayableLine: Error {
         var ply: Int
     }
@@ -634,10 +557,8 @@ final class NearbyPlay {
         legalMoves = standing.legalMoves.compactMap { Move(text: $0, on: game.board) }
     }
 
-    /// The disc has met the board — or the stone has. One sound per landing,
-    /// chosen by what the arrived position means, through the same seam play and
-    /// replay use; `stone` is the one thing the arrival itself has to say, since
-    /// a placed stone reaches its point with no transit to read it off.
+    /// One sound per landing, chosen by what the arrived position means.
+    /// `stone` says what a placed stone cannot: it arrives with no transit.
     private func announceLanding(stone: Bool = false) {
         landings += 1
         feedback.play(.ofTheLanding(transit, stone: stone,
@@ -646,9 +567,7 @@ final class NearbyPlay {
         soundedConclusion = soundedConclusion || current.outcome != nil || evaluation.isOver
     }
 
-    /// A result that arrived with nothing moving — a resignation on either
-    /// device — sounds at the moment the game ends, which is the same rule the
-    /// claimed draw follows during play.
+    /// A result that arrived with nothing moving sounds when the game ends.
     private func soundConclusionIfNeeded() {
         guard !soundedConclusion, !transits.isRunning else { return }
         soundedConclusion = true
@@ -684,9 +603,7 @@ final class NearbyPlay {
         }
     }
 
-    /// The acknowledgment beat, for input the game cannot accept — which on this
-    /// board is most often the other player's turn, and the status line above it
-    /// is already saying so.
+    /// The acknowledgment beat, for input the game cannot accept.
     private func acknowledge() {
         refusals += 1
         withAnimation(policy.fade(.easeOut(duration: Motion.beatRise))) {

@@ -1,8 +1,5 @@
-// Reaching somebody nearby, and answering somebody who offered a game.
-//
-// The sheet is raised by a game's own Nearby row: the side is the shared
-// frame's, and what this adds is the devices in the room and the invitation to
-// one of them.
+// Reaching somebody nearby: the devices in the room and the invitation to one
+// of them. Also the consent prompt and the refusal, shared by both modes.
 
 import SwiftUI
 

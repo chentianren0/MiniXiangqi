@@ -19,18 +19,28 @@ The product decisions behind Star River. Rules live in the rules docs and file f
   - Setup starts from the Settings defaults; changing them for one game does not change Settings.
 - **Free Play**: one person moves both sides.
 - **Custom Scene** (自定排局), Xiangqi only: compose a position, pick who moves first, and play it as Free Play.
-- **Nearby Play**: two people on two devices close together — iPhone, iPad or Mac — over the same network or peer-to-peer Wi-Fi, no Internet.
-- **Online Play**: two friends at any distance over Game Center, on iPhone, iPad and Mac. A Game Center invitation or a party code brings them together; there is no matchmaking with strangers.
+- **Nearby Play**: two people on two devices close together — iPhone, iPad or Mac. The devices find each other over the local network or peer-to-peer Wi-Fi, with no Internet and no pairing. A device is listed by its kind and a short tag, never by its name.
+- **Online Play**: two friends at any distance over Game Center, on iPhone, iPad and Mac. A Game Center invitation or a party code brings them together; there is no matchmaking with strangers. The row is absent where Game Center cannot carry a game: nobody signed in, or multiplayer restricted by Screen Time.
 - A **hint** shows the engine's suggested move on request, in Human versus AI and Free Play only, and not in Jieqi. It plays nothing and is not recorded.
 - **Resign** is available in Human versus AI, Nearby Play and Online Play, after a confirmation.
 
 ## Playing a game
 
 - Captured pieces are not displayed during play, Jieqi excepted.
-- Undo can be repeated during a live game. There is no redo. A natural result stays undoable until the player confirms it.
+- In Human versus AI and Free Play, undo can be repeated during a live game. There is no redo. A natural result stays undoable until the player confirms it.
 - There is one active game across all games. It is saved automatically and resumes after the app reopens.
 - Starting another game first asks to save the active one to History. An unfinished game is saved as ended early, not as a loss; a game with a result is saved with that result.
 - A threefold repetition makes a draw available but does not end the game.
+
+## Playing somebody on another device
+
+- Nearby Play and Online Play are one game in everything but how the devices reach each other.
+- One player proposes from a game's row, choosing their side; the other accepts or declines in a prompt. A Jieqi game is dealt the same on both devices. Online, the device that sent the invitation or made the party code proposes as soon as the friend arrives.
+- The player not to move may offer a draw or ask to take back their last move. One offer stands at a time; the other player accepts it, or declines it by moving.
+- Either player may resign at any time, connected or not.
+- A dropped connection pauses the game where it stood. Nearby devices find each other again by themselves; Online, the two invite each other again. An ending chosen while apart reaches the other device when they reconnect.
+- A game ends the same way on both devices, even when an ending crossed a move or the other player's ending, and goes into History on both without a confirmation.
+- Starting another game ends the one in play early on both devices, as does a proposal from the other player.
 
 ## History
 
