@@ -43,16 +43,18 @@ let hardening: [CXXSetting] = [
     .unsafeFlags(["-ftyped-memory-operations", "-ftyped-cxx-new-delete", "-ftyped-cxx-delete"]),
 ]
 
-// The rest of Enhanced Security, for the targets no search runs through: stack
-// zero-init costs the searching engines 5 to 13 percent of their speed.
+// For the targets no search runs through: Enhanced Security's stack zero-init,
+// which costs the searching engines 5 to 13 percent of their speed, and the
+// warnings the app's settings hold C and C++ to.
 let enhancedSecurity: [CXXSetting] = [.unsafeFlags([
     "-ftrivial-auto-var-init=zero",
-    "-Werror=return-type", "-Wconditional-uninitialized", "-Wimplicit-fallthrough",
-    "-Wshorten-64-to-32", "-Wshadow", "-Wempty-body",
+    // The app's warning settings, and Apple's security catalog's fallthrough.
+    "-Werror=return-type", "-Wconditional-uninitialized", "-Wshorten-64-to-32",
+    "-Wimplicit-fallthrough",
     // ENABLE_SECURITY_COMPILER_WARNINGS
-    "-Wbuiltin-memcpy-chk-size", "-Wformat-nonliteral", "-Warray-bounds",
-    "-Warray-bounds-pointer-arithmetic", "-Wsuspicious-memaccess", "-Wsizeof-array-div",
-    "-Wsizeof-pointer-div", "-Wreturn-stack-address",
+    "-Wshadow", "-Wempty-body", "-Wbuiltin-memcpy-chk-size", "-Wformat-nonliteral",
+    "-Warray-bounds", "-Warray-bounds-pointer-arithmetic", "-Wsuspicious-memaccess",
+    "-Wsizeof-array-div", "-Wsizeof-pointer-div", "-Wreturn-stack-address",
 ])]
 
 // The engines are C++17 and the facade is C++20; the engines' headers do
