@@ -15,15 +15,13 @@ extension Core {
              "b~a~p~r~kn~p~a~p~/9/1b~5c~1/r~1c~1p~1p~1n~/9/9/P~1C~1A~1R~1P~/1N~5B~1/9/N~P~A~P~KB~C~P~R~ w - - 0 1"),
         ])
         func theDerivationMatchesItsVectors(seed: String, startFEN: String) throws {
-            try withCore { core throws in
-                var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
-                var length = 0
-                var err = freshError()
-                let status = mxq_rules_deal(core, MxqGameKind(MXQ_GAME_KIND_JIEQI), seed,
-                                            &buffer, buffer.count, &length, &err)
-                try #require(status == MXQ_OK, "\(describe(status, err))")
-                #expect(string(buffer) == startFEN)
-            }
+            var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
+            var length = 0
+            var err = freshError()
+            let status = mxq_rules_deal(MxqGameKind(MXQ_GAME_KIND_JIEQI), seed,
+                                        &buffer, buffer.count, &length, &err)
+            try #require(status == MXQ_OK, "\(describe(status, err))")
+            #expect(string(buffer) == startFEN)
         }
     }
 }

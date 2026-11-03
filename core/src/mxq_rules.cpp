@@ -348,14 +348,9 @@ MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
     return MXQ_OK;
 }
 
-MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game, const char *seed,
-                         char *out, size_t cap, size_t *out_len,
-                         MxqError *err) {
-    MxqStatus rc = mxq::require_core(core, err);
-    if (rc != MXQ_OK) {
-        return rc;
-    }
-    rc = mxq::require_game(game, err);
+MxqStatus mxq_rules_deal(MxqGameKind game, const char *seed, char *out,
+                         size_t cap, size_t *out_len, MxqError *err) {
+    const MxqStatus rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -375,7 +370,6 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game, const char *seed,
     mxq::deal::Deal derived;
     std::string detail;
     if (!mxq::deal::derive(seed, derived, detail)) {
-        assert(false && "a seed is sixty-four lowercase hexadecimal digits");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE, detail.c_str());
         return MXQ_ERR_ARG_RANGE;
     }

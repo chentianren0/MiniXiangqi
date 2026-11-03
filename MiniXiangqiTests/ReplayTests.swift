@@ -14,12 +14,11 @@ struct ReplayTests {
     /// game's own notation and positions to check the replay against, and the
     /// library, which must outlive the record.
     private func replay(of line: [String],
-                        configuration: (Core) throws -> GameConfiguration
-                            = { _ in .freePlay(game: .miniXiangqi) }) throws
+                        configuration: GameConfiguration = .freePlay(game: .miniXiangqi)) throws
         -> (replay: Replay, animator: ManualAnimator, notation: [MoveReading], fens: [String],
             library: GameLibrary) {
         let library = try TestLibraries.fresh()
-        try library.create(try configuration(library.core))
+        try library.create(configuration)
         let played = try Game(library: library)
         try played.replay(line)
         let notation = played.notation
@@ -42,7 +41,7 @@ struct ReplayTests {
     func aDealtRecordReplaysItsRevealsAndItsEnding() throws {
         let (replay, animator, _, fens, library) = try replay(
             of: JieqiTests.claimableLine,
-            configuration: { try .freePlay(game: .jieqi, startFEN: $0.deal(.jieqi).startFEN) })
+            configuration: .freePlay(game: .jieqi, startFEN: Core.deal(.jieqi).startFEN))
         defer { replay.close(); _ = library }
         let board = GameKind.jieqi.board
         let square = { (name: String) in Square(name, on: board)! }
@@ -119,7 +118,7 @@ struct ReplayTests {
     func aComposedStartReplaysBlackFirst() throws {
         let (replay, animator, _, fens, library) = try replay(
             of: Self.blackFirstLine,
-            configuration: { _ in .freePlay(game: .xiangqi, startFEN: Self.blackFirst) })
+            configuration: .freePlay(game: .xiangqi, startFEN: Self.blackFirst))
         defer { replay.close(); _ = library }
 
         #expect(replay.record.setup == Self.blackFirst)

@@ -18,7 +18,7 @@ struct JieqiTests {
         + (0..<3).flatMap { _ in ["e1e2", "e10e9", "e2e1", "e9e10"] }
 
     private func dealtGame(on library: GameLibrary) throws -> Game {
-        let deal = try library.core.deal(.jieqi)
+        let deal = try Core.deal(.jieqi)
         try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
         return try Game(library: library)
     }
@@ -32,11 +32,11 @@ struct JieqiTests {
                 "there is no frozen start to report: there is one for every deal")
         #expect(Core.frozenStartFEN(for: .xiangqi) != nil)
 
-        let deal = try core.deal(.jieqi)
+        let deal = try Core.deal(.jieqi)
         #expect(core.setupVerdict(of: deal.startFEN, game: .jieqi) == .legal)
         #expect(core.isPlayable(deal.startFEN, game: .jieqi))
         let seed = String(repeating: "5a", count: 32)
-        #expect(try core.deal(.jieqi, seed: seed) == core.deal(.jieqi, seed: seed),
+        #expect(try Core.deal(.jieqi, seed: seed) == Core.deal(.jieqi, seed: seed),
                 "one seed deals one game, which is how two devices deal the same one")
 
         try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
@@ -46,9 +46,8 @@ struct JieqiTests {
 
     @Test("Only the dealt game deals, and every other game refuses")
     func onlyOneGameIsDealt() throws {
-        let core = try TestCores.fresh()
         for game in GameKind.allCases where game != .jieqi {
-            #expect(throws: CoreError.self) { try core.deal(game) }
+            #expect(throws: CoreError.self) { try Core.deal(game) }
         }
     }
 
@@ -279,7 +278,7 @@ struct JieqiTests {
         let core = try TestCores.fresh()
         let play = try #require(try nearbyBoard(on: core, plies: []))
 
-        play.sync(with: try dealtGame(on: core, plies: ["b3b4"]))
+        play.sync(with: try dealtGame(plies: ["b3b4"]))
 
         let transit = try #require(play.transit)
         #expect(transit.piece.isFaceDown, "it left the board face down")
@@ -295,7 +294,7 @@ struct JieqiTests {
         let core = try TestCores.fresh()
         let play = try #require(try nearbyBoard(on: core, plies: ["b3b4"]))
 
-        play.sync(with: try dealtGame(on: core, plies: []))
+        play.sync(with: try dealtGame(plies: []))
 
         let transit = try #require(play.transit)
         #expect(transit.kind == .undo)
@@ -327,7 +326,7 @@ struct JieqiTests {
         let play = try #require(try nearbyBoard(on: core, plies: []))
         #expect(!play.disclosesTheDeal, "an ongoing game discloses nothing")
 
-        var ended = try dealtGame(on: core, plies: [])
+        var ended = try dealtGame(plies: [])
         ended.outcome = .redWins
         ended.reason = .resignation
         play.sync(with: ended)
@@ -337,8 +336,8 @@ struct JieqiTests {
 
     private static let seed = String(repeating: "5a", count: 32)
 
-    private func dealtGame(on core: Core, plies: [String]) throws -> PeerGame {
-        Self.peerGame(.jieqi, start: try core.deal(.jieqi, seed: Self.seed).startFEN,
+    private func dealtGame(plies: [String]) throws -> PeerGame {
+        Self.peerGame(.jieqi, start: try Core.deal(.jieqi, seed: Self.seed).startFEN,
                       moves: plies)
     }
 
@@ -354,7 +353,7 @@ struct JieqiTests {
     }
 
     private func nearbyBoard(on core: Core, plies: [String]) throws -> NearbyPlay? {
-        NearbyPlay(game: try dealtGame(on: core, plies: plies), engine: Self.engine(on: core),
+        NearbyPlay(game: try dealtGame(plies: plies), engine: Self.engine(on: core),
                    positions: core.nearbyPositions, interruption: .passing,
                    animator: ManualAnimator().animator,
                    feedback: Feedback(play: { _ in }))
@@ -414,9 +413,8 @@ struct JieqiTests {
 
     @Test("Two deals are two games")
     func theDealIsDrawnAfresh() throws {
-        let core = try TestCores.fresh()
-        let first = try core.deal(.jieqi)
-        let second = try core.deal(.jieqi)
+        let first = try Core.deal(.jieqi)
+        let second = try Core.deal(.jieqi)
         #expect(first.startFEN != second.startFEN)
     }
 }

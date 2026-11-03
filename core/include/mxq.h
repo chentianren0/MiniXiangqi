@@ -308,8 +308,8 @@ typedef struct MxqSearchResult {
 /* Delivered on the core's engine thread, exactly once per started search. It
  * must copy the result, which is valid only during the call, and return.
  * Inside it every function that takes an MxqCore, and mxq_core_init, returns
- * MXQ_ERR_ARG_REENTRANT; mxq_rules_start_fen and mxq_engine_profile_id answer
- * as they do anywhere. */
+ * MXQ_ERR_ARG_REENTRANT; mxq_rules_start_fen, mxq_rules_deal and
+ * mxq_engine_profile_id answer as they do anywhere. */
 typedef void (*MxqSearchCallback)(const MxqSearchResult *result,
                                   void *user_data);
 
@@ -379,11 +379,11 @@ MXQ_API MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
 
 /* The Jieqi start a seed deals, and its length. The seed is sixty-four
  * lowercase hexadecimal digits; the same seed deals the same game on every
- * device, and the caller draws it from a cryptographic source. Any other game
- * is MXQ_ERR_ARG_RANGE. */
-MXQ_API MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
-                                 const char *seed, char *out, size_t cap,
-                                 size_t *out_len, MxqError *err);
+ * device, and the caller draws it from a cryptographic source. A seed of
+ * another shape, which may arrive from another device, is MXQ_ERR_ARG_RANGE
+ * without asserting; any other game is MXQ_ERR_ARG_RANGE. Needs no core. */
+MXQ_API MxqStatus mxq_rules_deal(MxqGameKind game, const char *seed, char *out,
+                                 size_t cap, size_t *out_len, MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Engines                                                                   */

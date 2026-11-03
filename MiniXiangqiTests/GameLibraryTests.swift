@@ -73,7 +73,7 @@ struct GameLibraryTests {
     @Test("A dealt game round-trips through export and import, its deal as its start")
     func aDealtGameRoundTrips() throws {
         let library = try TestLibraries.fresh()
-        let deal = try library.core.deal(.jieqi)
+        let deal = try Core.deal(.jieqi)
         try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
         let game = try Game(library: library)
         try game.replay(JieqiTests.claimableLine)

@@ -434,12 +434,12 @@ final class Core {
     /// Deals one game of Jieqi from a seed: one drawn here for a game on this
     /// device, or the one a networked proposal carried, so both devices deal the
     /// same game.
-    func deal(_ game: GameKind, seed: String? = nil) throws -> Deal {
-        let seed = try seed ?? Self.dealSeed()
+    nonisolated static func deal(_ game: GameKind, seed: String? = nil) throws -> Deal {
+        let seed = try seed ?? dealSeed()
         var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
         var length = 0
         var err = freshError()
-        try check(mxq_rules_deal(handle, game.raw, seed, &buffer, buffer.count, &length, &err), err)
+        try check(mxq_rules_deal(game.raw, seed, &buffer, buffer.count, &length, &err), err)
         return Deal(startFEN: String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
                                      as: UTF8.self))
     }
