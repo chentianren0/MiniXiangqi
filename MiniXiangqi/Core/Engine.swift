@@ -39,7 +39,6 @@ nonisolated struct EngineBudget: Sendable, Equatable {
                      physicalBytes: physicalMemory())
     }
 
-    /// The device's physical memory.
     private static func physicalMemory() -> UInt64 {
         var bytes: UInt64 = 0
         var size = MemoryLayout<UInt64>.size

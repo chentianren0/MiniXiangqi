@@ -5,10 +5,11 @@
 // game: every position, every verdict and every reading is the core's replay of
 // them from the record's start.
 //
-// A game file is the record encoded as JSON. It carries the game's own facts
-// and none of the library's: whether it is pinned, whether it was imported,
-// which side this device's player took and what a networked game needs to
-// resume stay on this device.
+// A game file is the record encoded as JSON, as docs/game-data.md specifies;
+// the two change together. It carries the game's own facts and none of the
+// library's: whether it is pinned, whether it was imported, which side this
+// device's player took and what a networked game needs to resume stay on this
+// device.
 
 import Foundation
 import SwiftData

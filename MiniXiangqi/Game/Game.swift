@@ -223,7 +223,6 @@ final class Game {
 
     var canUndo: Bool { undoPlies > 0 }
 
-    /// Which side made ply `index`.
     func mover(ofPly index: Int) -> Side {
         index % 2 == 0 ? firstMover : firstMover.opponent
     }
