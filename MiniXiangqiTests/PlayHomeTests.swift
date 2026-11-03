@@ -117,10 +117,8 @@ struct PlayHomeTests {
     @Test("A nearby active game is never opened on the local board")
     func theLocalBoardRefusesANearbyGame() throws {
         let library = try TestLibraries.fresh()
-        try library.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
-                                 wire: NearbyWireSession(sessionID: "S", peerID: "P",
-                                                         proposedLocally: true))
-        library.endSession()
+        _ = try library.createNetworked(.nearby(game: .miniXiangqi, localSide: .red),
+                                        id: UUID(), peer: "P")
         let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         var resumed: [GameKind] = []

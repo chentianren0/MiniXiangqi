@@ -9,6 +9,8 @@
 // and none of the library's: whether it is pinned, whether it was imported,
 // which side this device's player took and what a networked game needs to
 // resume stay on this device.
+//
+// A networked game has the same id on both devices: the proposer mints it.
 
 import Foundation
 import SwiftData
@@ -35,8 +37,18 @@ final class GameRecord {
     var imported: Bool
     /// The side this device's player took, in a networked game played here.
     var localSide: Side?
-    /// What a networked game in play needs to resume over the protocol.
-    @Attribute(.codable) var wire: NearbyWireSession?
+    /// The other device in a networked game: its install's id on Nearby, the
+    /// Game Center player id on Online.
+    var peer: String?
+    /// The line length each accepted takeback kept, in order.
+    var takebacks: [Int] = []
+    /// The moves on the board when a player chose the ending, which can be
+    /// more than this device holds until the last of them arrives. Nil for a
+    /// result the rules decided.
+    var chosenAt: Int?
+    /// An ending this device's player chose, or a give-up, written before it
+    /// was sent, that the other device has not yet answered for.
+    var endingUndelivered = false
 
     init(_ configuration: GameConfiguration, id: UUID = UUID(), startedAt: Date = .now) {
         self.id = id
@@ -77,7 +89,6 @@ final class GameRecord {
         result = outcome
         self.reason = reason
         endedAt = date
-        wire = nil
     }
 
     // MARK: - The game file
@@ -168,68 +179,3 @@ final class GameRecord {
 }
 
 extension GameRecord: Codable {}
-
-// MARK: - The wire session a networked game is played over
-
-/// The terminal this device has sent for its session.
-nonisolated enum WireTerminal: String, Codable, Sendable, Equatable {
-    case resign, acceptDraw
-}
-
-/// What a networked game in play keeps of the BoardGame session it is played
-/// over, so it can be resumed after a relaunch. It is the protocol's own
-/// bookkeeping and every value of it is device-local, so it is in no game file.
-/// The mover is not here: that is the record's `localSide`.
-nonisolated struct NearbyWireSession: Codable, Equatable, Sendable {
-    /// The identifier the proposer minted, compared byte-wise on the wire.
-    var sessionID: String
-    /// The paired device on the other end, as the transport names it.
-    var peerID: String
-    /// Which peer proposed, which decides the connection a resume exchange
-    /// completes on.
-    var proposedLocally: Bool
-    /// Accepted retractions, and the surviving count of the last one.
-    var undos: Int
-    var keep: Int
-    /// The terminal this device has sent, where it has sent one.
-    var sentEnd: WireTerminal?
-    /// Whether the session's last ply is the claim turn action, which the move
-    /// line does not record: a session that resumed a ply short of its opponent
-    /// would be sent that ply back on a turn that is not the sender's.
-    var claimed: Bool
-    /// The four values a dealt session's handshake produced, for Jieqi and no
-    /// other game.
-    var deal: Deal?
-
-    /// What a dealt session keeps of its handshake. The deal itself is derived
-    /// from the seed and the nonce again whenever it is needed, and where it is
-    /// recorded is the game's own setup.
-    nonisolated struct Deal: Codable, Equatable, Sendable {
-        var commit: String
-        var nonce: String
-        var seed: String
-        var digest: String
-    }
-
-    init(sessionID: String, peerID: String, proposedLocally: Bool,
-         undos: Int = 0, keep: Int = 0, sentEnd: WireTerminal? = nil,
-         claimed: Bool = false, deal: Deal? = nil) {
-        self.sessionID = sessionID
-        self.peerID = peerID
-        self.proposedLocally = proposedLocally
-        self.undos = undos
-        self.keep = keep
-        self.sentEnd = sentEnd
-        self.claimed = claimed
-        self.deal = deal
-    }
-}
-
-/// The end two networked players declared to each other. A rules-decided end is
-/// not one of these: the board already knows that verdict.
-nonisolated enum NearbyEnding: Equatable, Sendable {
-    /// One player resigned; the side named is the one that did.
-    case resignation(Side)
-    case mutualResignation
-    case agreedDraw
-}

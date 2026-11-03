@@ -16,7 +16,7 @@ struct PlayDestination: View {
     /// both performs it.
     var replay: (UUID) -> Void
 
-    /// The peer session behind a nearby or online board outlives every page, so
+    /// The engine behind a nearby or online board outlives every page, so
     /// leaving this destination never touches it.
     var nearby: NearbyFlow?
     var online: NearbyFlow?
@@ -99,7 +99,7 @@ struct PlayDestination: View {
     /// It asks the flows rather than the platform: with no flow, or one that
     /// never opens a board, the local page is drawn without a gate.
     private var board: NearbyFlow? {
-        [nearby, online].compactMap { $0 }.first { $0.boardSessionID != nil }
+        [nearby, online].compactMap { $0 }.first { $0.boardGameID != nil }
     }
 
     @ViewBuilder

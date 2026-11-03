@@ -287,8 +287,8 @@ final class Game {
     }
 
     /// The same question asked of a position rather than of this game, written
-    /// once because there are two boards: a nearby game's position and turn
-    /// come from the protocol rather than the library.
+    /// once because there are two boards: a networked game's position and turn
+    /// come from its engine rather than this object.
     static func effect(ofTapAt square: Square, in placement: Placement,
                        legalMoves: [Move], sideToMove: Side, selected: Square?,
                        acceptsInput: Bool,

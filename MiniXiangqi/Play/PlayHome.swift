@@ -9,7 +9,6 @@ import SwiftUI
 struct PlayHome: View {
     let play: PlayState
 
-    /// Nil on a Mac, which never offers nearby play.
     var nearby: NearbyFlow?
 
     /// Its availability is the player's Game Center, not the build's, so it is
@@ -100,8 +99,8 @@ struct PlayHome: View {
             Text(GameKind.miniXiangqi.localizedName)
         }
 
-        // No Human versus AI row: Jieqi has no AI. The peer's handshake settles
-        // the deal before the first move, so nearby and online play carry it.
+        // No Human versus AI row: Jieqi has no AI. A proposal carries the seed
+        // both devices deal from, so nearby and online play carry it.
         Section {
             entry(PlaySelection(game: .jieqi, mode: .freePlay),
                   "mode.freePlay", "mode-jieqi-free-play")
@@ -145,9 +144,8 @@ struct PlayHome: View {
     /// could be carried, and is otherwise absent rather than disabled: a row
     /// that can never be pressed is a promise nobody can keep.
     ///
-    /// A Mac has no nearby flow to ask, so no platform gate is needed, and the
-    /// online answer can change under the reader. Where a game is already going
-    /// in this game and mode, the flow leads the row back into it.
+    /// The online answer can change under the reader. Where a game is already
+    /// going in this game and mode, the flow leads the row back into it.
     @ViewBuilder
     private func reachEntry(_ flow: NearbyFlow?, _ title: LocalizedStringKey,
                             _ game: GameKind, _ identifier: String) -> some View {

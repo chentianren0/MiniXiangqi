@@ -2218,23 +2218,6 @@
         }
       }
     },
-    "nearby.discoverable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Make This Device Discoverable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "让这台设备可被发现"
-          }
-        }
-      }
-    },
     "nearby.ended.disagreement": {
       "extractionState": "manual",
       "localizations": {
@@ -2286,23 +2269,6 @@
         }
       }
     },
-    "nearby.findDevice": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Find a Device"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "查找设备"
-          }
-        }
-      }
-    },
     "nearby.invite": {
       "extractionState": "manual",
       "localizations": {
@@ -2320,74 +2286,6 @@
         }
       }
     },
-    "nearby.pairing": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pairing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "配对"
-          }
-        }
-      }
-    },
-    "nearby.pairing.footer": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Two devices only need to be paired once."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "两台设备只需配对一次。"
-          }
-        }
-      }
-    },
-    "nearby.pairing.unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This device can't pair"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台设备无法配对"
-          }
-        }
-      }
-    },
-    "nearby.refusal.alreadyPlaying": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You already have a game with this device."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你和对方已经有一局对弈了。"
-          }
-        }
-      }
-    },
     "nearby.refusal.busy": {
       "extractionState": "manual",
       "localizations": {
@@ -2401,23 +2299,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "对方正在进行另一局对弈。"
-          }
-        }
-      }
-    },
-    "nearby.refusal.dealMismatch": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The two devices no longer have the same game."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "两台设备上的对局已经不是同一局了。"
           }
         }
       }
@@ -2452,57 +2333,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "现在无法开始对局。请重试。"
-          }
-        }
-      }
-    },
-    "nearby.refusal.rulesMismatch": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The two devices read the rules differently. Update both to the latest version and try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "两台设备对规则的解读不同。请都更新到最新版本后再试。"
-          }
-        }
-      }
-    },
-    "nearby.refusal.settling": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The last game hasn't finished yet. Please try again in a moment."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一局还没有结束。请稍后再试。"
-          }
-        }
-      }
-    },
-    "nearby.refusal.unknownGame": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Their app doesn't play this game."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对方的 App 不下这个游戏。"
           }
         }
       }

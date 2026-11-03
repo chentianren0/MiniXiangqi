@@ -8,43 +8,13 @@
 // of the records that have one, pinned first and then newest.
 //
 // A surface that is playing the game in play holds it here — `resumeActive()`,
-// `create`, `endSession()` — and while one does, no other surface may take it:
-// the local board and a networked game must never both write the one game.
+// `create`, `endSession()` — and while one does, no other surface may take it.
+// A networked game is never held: its engine writes it by id through `change`,
+// and the local board does not open it.
 
 import Foundation
 import MiniXiangqiCore
 import SwiftData
-
-/// The library, as the nearby layer needs it: the game in play, plus the calls
-/// that exist only for a game two devices play.
-protocol NearbyLibrary: AnyObject {
-    var hasSession: Bool { get }
-    func resumeActive() throws -> Bool
-    func moveHistory() throws -> [String]
-    func apply(_ move: String) throws
-    func claimDraw() throws -> UUID
-    func confirmResult() throws -> UUID
-    func archiveActiveAndClear(
-        completion: @escaping @MainActor (Result<UUID, CoreError>) -> Void)
-    /// Let go of the game in play without ending it. The next resume reads it
-    /// back.
-    func endSession()
-    /// What the library says about the game in play, holding nothing.
-    func activeGameSummary() throws -> ActiveGameSummary?
-    /// Create the networked game with the wire session it is played over.
-    func createNearby(_ configuration: GameConfiguration,
-                      wire: NearbyWireSession) throws
-    /// The wire session the held game carries, where it carries one.
-    func nearbyWireSession() throws -> NearbyWireSession?
-    /// Rewrite it. For the one change the move line does not share: a terminal
-    /// this device sent, which ends nothing until the exchange settles it.
-    func setNearbyWireSession(_ wire: NearbyWireSession) throws
-    /// The negotiated retraction: the surviving line and the counts that
-    /// produced it, in one save.
-    func retractNearby(to keep: Int, wire: NearbyWireSession) throws
-    /// End the game as the two players declared.
-    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UUID
-}
 
 /// The game in play as the library describes it, with nothing held: the Play
 /// home's card and the save-and-continue confirmation read this.
@@ -94,7 +64,7 @@ nonisolated enum LibraryRefusal: Error {
 }
 
 @MainActor
-final class GameLibrary: NearbyLibrary {
+final class GameLibrary {
     let core: Core
     let container: ModelContainer
     private var context: ModelContext { container.mainContext }
@@ -164,18 +134,12 @@ final class GameLibrary: NearbyLibrary {
     /// Creates the game in play and holds it. The library has one game in play,
     /// so creating one while another stands is refused.
     func create(_ configuration: GameConfiguration) throws {
-        try create(configuration, wire: nil)
-    }
-
-    func createNearby(_ configuration: GameConfiguration, wire: NearbyWireSession) throws {
-        try create(configuration, wire: wire)
-    }
-
-    private func create(_ configuration: GameConfiguration, wire: NearbyWireSession?) throws {
         precondition(attached == nil, "created a game over a game")
+        attached = try insert(GameRecord(configuration))
+    }
+
+    private func insert(_ record: GameRecord) throws -> GameRecord {
         guard try activeRecord() == nil else { throw LibraryRefusal.gameInPlayExists }
-        let record = GameRecord(configuration)
-        record.wire = wire
         // A start the rules will not begin from is refused before anything is
         // saved: the setup predicate first, so the engine never sees a position
         // offering the capture of a general, then the start's own verdict.
@@ -188,7 +152,7 @@ final class GameLibrary: NearbyLibrary {
         }
         context.insert(record)
         try save()
-        attached = record
+        return record
     }
 
     private func held() throws -> GameRecord {
@@ -296,38 +260,32 @@ final class GameLibrary: NearbyLibrary {
 
     // MARK: - A game two devices play
 
-    func nearbyWireSession() throws -> NearbyWireSession? {
-        try held().wire
+    /// Creates the networked game in play under the id both devices share. It
+    /// is not held: the networked engine writes it through `change`.
+    func createNetworked(_ configuration: GameConfiguration, id: UUID,
+                         peer: String) throws -> GameRecord {
+        let record = GameRecord(configuration, id: id)
+        record.peer = peer
+        return try insert(record)
     }
 
-    func setNearbyWireSession(_ wire: NearbyWireSession) throws {
-        let record = try held()
-        guard record.mode.isNetworked else { throw LibraryRefusal.unavailable }
-        record.wire = wire
-        try save()
+    /// The finished networked games whose ending has not yet reached the
+    /// other device: all of this mode's, or those with one peer.
+    func undelivered(in mode: PlayMode, with peer: String? = nil) throws -> [GameRecord] {
+        try context.fetch(FetchDescriptor<GameRecord>(predicate: #Predicate {
+            $0.endingUndelivered
+        })).filter { $0.mode == mode && (peer == nil || $0.peer == peer) }
     }
 
-    func retractNearby(to keep: Int, wire: NearbyWireSession) throws {
-        let record = try held()
-        guard record.mode.isNetworked, keep >= 0, keep < record.moves.count else {
-            throw LibraryRefusal.unavailable
+    /// Changes a record and saves, or puts it back as it was.
+    func change(_ record: GameRecord, _ body: (GameRecord) throws -> Void) throws {
+        do {
+            try body(record)
+        } catch {
+            context.rollback()
+            throw error
         }
-        record.moves.removeLast(record.moves.count - keep)
-        record.wire = wire
         try save()
-    }
-
-    /// An end the rules decided outranks one the players declared, so a line
-    /// with a result of its own is refused.
-    func commitNearbyEnd(_ ending: NearbyEnding) throws -> UUID {
-        let record = try held()
-        guard record.mode.isNetworked else { throw LibraryRefusal.unavailable }
-        guard try !evaluation().isOver else { throw LibraryRefusal.gameIsOver }
-        switch ending {
-        case .resignation(let side): return try end(.win(for: side.opponent), .resignation)
-        case .mutualResignation: return try end(.draw, .mutualResignation)
-        case .agreedDraw: return try end(.draw, .agreedDraw)
-        }
     }
 
     // MARK: - History
