@@ -1,12 +1,9 @@
 // The machine on the other side of the board.
 //
-// docs/engine-integration.md, "Search lifecycle", and docs/core-interface.md,
-// "Search facade": search runs away from the UI thread — on the core's own
-// engine thread, which is what "away" means here — a result is never what
-// commits a move, and every result is checked against the current game and
-// position revision *twice*, once by the core before delivery and once by the
-// frontend before applying, because neither check alone covers both race
-// directions. This file is where the frontend's half of that lives.
+// Search runs away from the UI thread — on the core's own engine thread — and a
+// result is never what commits a move. The core keeps no game, so whether a
+// result still answers the game's line is this file's question: every result is
+// checked against the game's revision before its move is played.
 //
 // docs/interaction-design.md, "Motion and visual effects": the AI's move has a
 // floor, not a delay. Its piece departs at the later of the search returning and
@@ -127,8 +124,8 @@ final class Opponent {
     /// Stops the machine thinking, because what it is thinking about is about to
     /// stop being true — an Undo, a claim, a resignation. Cancellation is a
     /// correctness requirement and not only a promptness one: a cancellation
-    /// that follows no mutation leaves the position revision matching, so the
-    /// cancelled rung is the only one that would reject the late result.
+    /// that follows no change leaves the revision matching, so the cancelled
+    /// rung is the only one that would reject the late result.
     func cancelSearch() {
         attempt += 1
         if let ticket { engine.cancelSearch(ticket) }
@@ -243,10 +240,11 @@ final class Opponent {
         guard movetime > 0 else { return }
         attempt += 1
         let token = attempt
+        let revision = game.revision
         do {
-            ticket = try engine.startSearch(movetimeMilliseconds: movetime) {
+            ticket = try engine.startSearch(game.searchLine, movetimeMilliseconds: movetime) {
                 [weak self] result in
-                self?.received(result, from: token)
+                self?.received(result, from: token, at: revision)
             }
         } catch {
             // The readiness refusals have one answer: the engine was torn down
@@ -293,19 +291,16 @@ final class Opponent {
 
     /// A search has answered. On the main actor, having been copied out of core
     /// storage on the engine thread as the callback contract requires.
-    private func received(_ result: SearchResult, from token: Int) {
+    private func received(_ result: SearchResult, from token: Int, at revision: Int) {
         guard token == attempt, result.ticket == ticket else { return }
         ticket = nil
         activity = .idle
 
         switch result.outcome {
         case .move:
-            // The frontend's own staleness comparison, which the interface
-            // requires in addition to the core's: the core compares before
-            // delivery and this compares before applying, and neither alone
-            // covers both race directions.
-            guard result.gameID == game.identity,
-                  result.positionRevision == game.evaluation.positionRevision else { return }
+            // A reply to a line the game has left is about a position nobody
+            // is at any more.
+            guard revision == game.revision else { return }
             guard let move = Move(text: result.move, on: game.kind.board) else {
                 // A `.move` result is promised to carry this game's canonical
                 // notation. If the presentation binding cannot read it, the AI
@@ -323,9 +318,8 @@ final class Opponent {
             let now = timer.now()
             replyDue = playerArrival.map { max(now, $0 + Motion.replyFloor) } ?? now
             deliver()
-        case .cancelled, .stale:
-            // Whoever cancelled decides what happens next, and a stale result
-            // is one the position has already left behind. Nothing here.
+        case .cancelled:
+            // Whoever cancelled decides what happens next. Nothing here.
             break
         case .malformed, .illegal, .failed:
             // The engine was torn down under the search — the suspension path,

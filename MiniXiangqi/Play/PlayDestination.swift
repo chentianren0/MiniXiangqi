@@ -41,7 +41,7 @@ struct PlayDestination: View {
     /// Opens one History record's replay. The screen it opens on is not in this
     /// destination, so the container above both is what performs it; 回放 on a
     /// recorded result is the only thing that asks.
-    var replay: (UInt64) -> Void
+    var replay: (UUID) -> Void
 
     /// The ways this device can play somebody on another device, where it has
     /// them. Their board is a page over this destination like the other two,

@@ -64,66 +64,16 @@ nonisolated struct CoreNearbyPositions: NearbyPositions, @unchecked Sendable {
         // draw the position it was claimed in.
         let played = Array(plies.prefix { $0 != TurnAction.claim })
 
-        var position = MxqPosition()
-        position.struct_size = UInt32(MemoryLayout<MxqPosition>.size)
-        var status = MxqGameStatus()
-        status.struct_size = UInt32(MemoryLayout<MxqGameStatus>.size)
-        // The one buffer bound this app has, which `Core` derives from the
-        // widest board it carries. It is the same constant an attached session's
-        // own call sizes by, because it is the same question asked of the same
-        // core.
-        //
-        // **An undersized buffer here takes the board away rather than
-        // shortening it.** A short cap is answered with
-        // `MXQ_ERR_ARG_BUFFER_TOO_SMALL` — routine, and the whole reason the
-        // count comes back separately — so the call below fails its `== MXQ_OK`,
-        // this answers nil, `NearbyPlay.init?` fails, and the board does not
-        // open at all. That is what makes the bound load-bearing rather than
-        // generous: at the old 128 a nearby placement game would have been
-        // unopenable until something like a hundred stones were down.
-        var moves = [MxqMove](repeating: MxqMove(), count: Core.legalMoveCapacity)
-        var count = 0
-
         // A game whose start is dealt rather than frozen has no position for a
         // ply list alone to be replayed from: its session's own deal is the
         // start, and it is passed in. Nil where a dealt game arrives without
         // one, which is the same answer this returns for a line the core would
         // not replay — the board does not open.
-        guard let start = start ?? Core.frozenStartFEN(for: game) else { return nil }
-        let answered: Bool = start.withCString { startFEN in
-            withMoveArray(played) { texts, given in
-                guard mxq_rules_evaluate(core, game.raw, startFEN, texts, given,
-                                         &position, &status, nil, nil) == MXQ_OK
-                else { return false }
-                return mxq_rules_legal_moves(core, game.raw, startFEN, texts, given,
-                                             &moves, moves.count, &count, nil) == MXQ_OK
-            }
-        }
-        guard answered,
-              let evaluation = try? Core.evaluation(position: position, status: status)
+        guard let start = start ?? Core.frozenStartFEN(for: game),
+              let evaluation = try? Core.evaluate(core, game, from: start, moves: played),
+              let legalMoves = try? Core.legalMoves(core, game, from: start, moves: played)
         else { return nil }
-        return NearbyStanding(
-            evaluation: evaluation,
-            legalMoves: moves.prefix(count).map {
-                string(of: $0.text, capacity: MXQ_MOVE_TEXT_CAP)
-            })
-    }
-
-    /// The move list as the C array of NUL-terminated strings the facade takes.
-    /// Copied rather than borrowed from the Swift strings: `withCString` lends
-    /// one buffer per call and nesting it over a whole game would be a recursion
-    /// the length of the line.
-    private func withMoveArray<Result>(
-        _ moves: [String],
-        _ body: (UnsafePointer<UnsafePointer<CChar>?>?, Int) -> Result
-    ) -> Result {
-        var copies = moves.map { strdup($0) }
-        defer { copies.forEach { free($0) } }
-        return copies.withUnsafeMutableBufferPointer { buffer in
-            buffer.withMemoryRebound(to: UnsafePointer<CChar>?.self) { texts in
-                body(texts.baseAddress, moves.count)
-            }
-        }
+        return NearbyStanding(evaluation: evaluation, legalMoves: legalMoves)
     }
 }
 

@@ -19,23 +19,6 @@
         }
       }
     },
-    "about.acknowledgements.data.footer": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SQLite is in the public domain."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SQLite 属于公有领域。"
-          }
-        }
-      }
-    },
     "about.acknowledgements.engines.footer": {
       "extractionState": "manual",
       "localizations": {
@@ -134,23 +117,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "五子棋与连珠网络，由 Rapfi 开发者训练"
-          }
-        }
-      }
-    },
-    "about.acknowledgements.sqlite": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The History database"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史数据库"
           }
         }
       }
@@ -523,88 +489,19 @@
         }
       }
     },
-    "alert.importConflict.message": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "It is the same game as one in History, but its contents differ. History is unchanged. To use this file, delete that game from History first."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它和历史中的一盘棋是同一局，但内容不同。历史没有改变。如果要用这个文件，请先删除历史中的那一盘。"
-          }
-        }
-      }
-    },
-    "alert.importConflict.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This File Conflicts with a Game in History"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个文件和历史中的一盘棋冲突"
-          }
-        }
-      }
-    },
-    "alert.importDamagedRecord.message": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The record in History matching this file is damaged, so it can't be compared or imported. To use this file, delete that game from History first."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个文件对应的历史记录已损坏，无法比较或导入。如果要用这个文件，请先删除历史中的那一盘。"
-          }
-        }
-      }
-    },
-    "alert.importDamagedRecord.title": {
-      "comment": "The one import answer that is about the library rather than about the file, and the only one that may say damaged.",
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A Game in History Is Damaged"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史中有一盘损坏的棋"
-          }
-        }
-      }
-    },
     "alert.importDuplicate.message": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The game in this file is identical to one already in History, so it wasn't added again."
+            "value": "This game is already in History, so it wasn't added again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "文件里的对局和历史中的一盘完全相同，所以没有重复添加。"
+            "value": "这盘棋已经在历史里，所以没有重复添加。"
           }
         }
       }
@@ -626,37 +523,37 @@
         }
       }
     },
-    "alert.importIllegalStart.message": {
+    "alert.importIllegalGame.message": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The file is readable, but the game in it begins from a position these rules don't allow, so it can't be imported. History is unchanged."
+            "value": "The file is readable, but the game in it begins from a position these rules don't allow or has a move they don't, so it can't be imported. History is unchanged."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "文件可以读取，但里面的对局从一个规则不允许的局面开始，所以无法导入。历史没有改变。"
+            "value": "文件可以读取，但里面的对局从一个规则不允许的局面开始，或者有规则不允许的着法，所以无法导入。历史没有改变。"
           }
         }
       }
     },
-    "alert.importIllegalStart.title": {
+    "alert.importIllegalGame.title": {
       "comment": "The one import answer that is about the rules rather than about the file or the library: nothing here means damaged, and nothing about the file is worth retrying.",
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This Game Starts from a Position the Rules Don't Allow"
+            "value": "This Game Breaks the Rules"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这盘棋的起始局面不合规则"
+            "value": "这盘棋不合规则"
           }
         }
       }

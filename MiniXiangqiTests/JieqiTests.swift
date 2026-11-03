@@ -17,15 +17,16 @@ struct JieqiTests {
     static let claimableLine = capturingLine
         + (0..<3).flatMap { _ in ["e1e2", "e10e9", "e2e1", "e9e10"] }
 
-    private func dealtGame(on core: Core) throws -> Game {
-        let deal = try core.deal(.jieqi)
-        try core.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
-        return try Game(core: core)
+    private func dealtGame(on library: GameLibrary) throws -> Game {
+        let deal = try library.core.deal(.jieqi)
+        try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
+        return try Game(library: library)
     }
 
     @Test("A dealt start is a position the game begins from, and the record holds it")
     func theDealIsWhereTheGameBegins() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
+        let core = library.core
 
         #expect(Core.frozenStartFEN(for: .jieqi) == nil,
                 "there is no frozen start to report: there is one for every deal")
@@ -38,8 +39,8 @@ struct JieqiTests {
         #expect(deal.digest.count == 64)
         #expect(deal.commit.allSatisfy { $0.isHexDigit && !$0.isUppercase })
 
-        try core.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
-        #expect(try core.configuration().startFEN == deal.startFEN,
+        try library.create(.freePlay(game: .jieqi, startFEN: deal.startFEN))
+        #expect(try library.configuration().startFEN == deal.startFEN,
                 "a dealt start reads back spelled out: it is where this game began")
     }
 
@@ -53,8 +54,8 @@ struct JieqiTests {
 
     @Test("The dealt start reaches the board as face-down pieces of their squares' roles")
     func theBoardReadsTheDealtStart() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
 
         let general = try #require(game.placement[Self.square("e1")])
         #expect(general.kind == .general)
@@ -83,8 +84,8 @@ struct JieqiTests {
 
     @Test("What the record holds under the discs is one side's fifteen pieces, and is not the discs")
     func theConcealedIdentitiesAreTheSidesOwnPieces() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
 
         var counted: [PieceKind: Int] = [:]
         for rank in 0..<Self.board.rankCount {
@@ -105,8 +106,8 @@ struct JieqiTests {
 
     @Test("A face-down mover reads as its square's role, marked, with the reveal last")
     func theReadingMarksTheMoverAndSaysWhatItTurnedUp() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
 
         game.tap(Self.square("b3"))
         game.tap(Self.square("b4"))
@@ -147,8 +148,8 @@ struct JieqiTests {
 
     @Test("A capture stands in the surface, and who may see it is the disclosure rule")
     func theCapturedSurfaceFollowsDisclosure() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
         let identity = try #require(game.placement.concealedIdentity(at: Self.square("b1")))
 
         #expect(game.captured.isEmpty, "nothing has been taken yet")
@@ -209,8 +210,8 @@ struct JieqiTests {
 
     @Test("A retraction returns the concealment, and takes back what the ply took")
     func retractionReturnsBoth() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
 
         game.tap(Self.square("b3"))
         game.tap(Self.square("b4"))
@@ -233,8 +234,8 @@ struct JieqiTests {
 
     @Test("A revealing move travels as one disc carrying both faces")
     func theRevealRidesTheOneDisc() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: false),
@@ -260,9 +261,9 @@ struct JieqiTests {
 
     @Test("An ordinary move carries no second face")
     func nothingElseReveals() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
         let animator = ManualAnimator()
-        let game = try openGame(on: core)
+        let game = try openGame(on: library)
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: false),
                                 animator: animator.animator,
@@ -365,8 +366,8 @@ struct JieqiTests {
         #expect(!Core.isPlayedByAnEngine(.jieqi))
         #expect(GameKind.allCases.filter { !Core.isPlayedByAnEngine($0) } == [.jieqi])
 
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core, engine: TestEngine())
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library, engine: TestEngine())
         state.choose(PlaySelection(game: .jieqi, mode: .freePlay))
         #expect(state.page == .setup(PlaySelection(game: .jieqi, mode: .freePlay)))
         #expect(!state.preview.isEmpty,
@@ -385,8 +386,8 @@ struct JieqiTests {
 
     @Test("The end of the game discloses the deal, and nothing before it does")
     func theEndingDisclosesTheDeal() throws {
-        let core = try TestCores.fresh()
-        let game = try dealtGame(on: core)
+        let library = try TestLibraries.fresh()
+        let game = try dealtGame(on: library)
         let hidden = Self.square("a1")
         let identity = try #require(game.placement.concealedIdentity(at: hidden))
 

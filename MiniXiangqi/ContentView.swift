@@ -63,12 +63,12 @@ struct ContentView: View {
     var body: some View {
         #if DEBUG
         if Self.isHostingUnitTests {
-            // The unit suite builds cores of its own against scratch stores,
-            // and the core is singleton-enforced: a host app that opened the
-            // player's real store at launch would both occupy the one slot
-            // those cores need and put test traffic where the kept games
-            // live. So under a hosted unit run the app presents nothing and
-            // touches nothing.
+            // The unit suite builds cores and libraries of its own, and the
+            // core is singleton-enforced: a host app that opened its core and
+            // the player's library at launch would both occupy the one slot
+            // those cores need and put test traffic where the kept games live.
+            // So under a hosted unit run the app presents nothing and touches
+            // nothing.
             Color.clear
         } else {
             screen
@@ -80,18 +80,31 @@ struct ContentView: View {
 
     @ViewBuilder
     private var screen: some View {
-        switch Core.shared {
-        case .success(let core):
-            Destinations(core: core, gameCenter: gameCenter)
+        switch Self.library {
+        case .success(let library):
+            Destinations(library: library, gameCenter: gameCenter)
         case .failure(let error):
-            // A core that will not start is a packaging failure, and saying so
-            // plainly beats an empty board that silently does nothing. The
-            // description beneath it is the core's own diagnostic text: not
+            // A core or a library that will not open is a packaging failure,
+            // and saying so plainly beats an empty board that silently does
+            // nothing. The description beneath it is diagnostic text: not
             // copy, and not localized.
             ContentUnavailableView("failure.coreDidNotStart", systemImage: "exclamationmark.triangle",
                                    description: Text(verbatim: error.description).monospaced())
         }
     }
+
+    /// The core and the library over it, opened once for the app.
+    private static let library: Result<GameLibrary, CoreError> = {
+        do {
+            let core = try Core.shared.get()
+            let url = GameLibrary.appStoreURL()
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            return .success(GameLibrary(core: core, container: try GameLibrary.container(at: url)))
+        } catch {
+            return .failure(CoreError(wrapping: error))
+        }
+    }()
 
     #if DEBUG
     /// Whether this process is the unit suite's host. The test bundle is
@@ -106,7 +119,6 @@ struct ContentView: View {
 
 /// The container, and the one game beneath it.
 private struct Destinations: View {
-    private let core: Core
 
     /// Created once, with the window, and outliving every switch between the
     /// destinations inside it.
@@ -119,7 +131,7 @@ private struct Destinations: View {
     /// the same reason the game does — a destination is rebuilt on every visit,
     /// and a request made in one has to survive the switch to the other.
     @State private var destination: Destination = .play
-    @State private var pendingReplay: UInt64?
+    @State private var pendingReplay: UUID?
 
     /// The library, created once with the window for the same reason the game
     /// is: a destination rebuilt on every visit would otherwise rebuild it too,
@@ -161,15 +173,14 @@ private struct Destinations: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    init(core: Core, gameCenter: GameCenterAvailability) {
-        self.core = core
+    init(library games: GameLibrary, gameCenter: GameCenterAvailability) {
         self.gameCenter = gameCenter
-        _play = State(initialValue: PlayState(core: core))
-        _library = State(initialValue: HistoryLibrary(store: core.history))
+        _play = State(initialValue: PlayState(library: games))
+        _library = State(initialValue: HistoryLibrary(library: games))
         #if os(iOS)
-        _nearby = State(initialValue: Self.nearbyFlow(over: core))
+        _nearby = State(initialValue: Self.nearbyFlow(over: games))
         #endif
-        let online = Self.onlinePlay(over: core, gameCenter: gameCenter)
+        let online = Self.onlinePlay(over: games, gameCenter: gameCenter)
         _online = State(initialValue: online.flow)
         _party = State(initialValue: online.party)
     }
@@ -190,12 +201,13 @@ private struct Destinations: View {
     /// transport and nowhere above it. So the stack is assembled where it can
     /// be, and everything the assembly is handed to is written once for every
     /// platform.
-    private static func nearbyFlow(over core: Core) -> NearbyFlow {
+    private static func nearbyFlow(over library: GameLibrary) -> NearbyFlow {
+        let core = library.core
         let log = NearbyLog()
-        // The library is the store's memory of the game: created with the
+        // The record is the library's memory of the game: created with the
         // driver, because a ply can land while the board is down and the
         // driver is what every engine input funnels through.
-        let record = NearbyRecord(library: core, rules: core.boardGameRules,
+        let record = NearbyRecord(library: library, rules: core.boardGameRules,
                                   log: log, mode: .nearby)
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: record)
@@ -207,7 +219,7 @@ private struct Destinations: View {
     #endif
 
     /// The online stack, layer for layer the same as the one above it: one log,
-    /// the store's memory of the game, the protocol engine's driver over it, a
+    /// the library's memory of the game, the protocol engine's driver over it, a
     /// transport under that, and the flow the surfaces read. What differs is
     /// the transport and the mode a game is recorded in, which is the whole of
     /// what differs between the two ways of reaching another device.
@@ -216,11 +228,12 @@ private struct Destinations: View {
     /// one: GameKit reaches the Mac exactly as it reaches iPhone and iPad, and
     /// whether a game can be carried at all is the player's own account rather
     /// than anything a build knows.
-    private static func onlinePlay(over core: Core,
+    private static func onlinePlay(over library: GameLibrary,
                                    gameCenter: GameCenterAvailability)
         -> (flow: NearbyFlow, party: OnlineParty) {
+        let core = library.core
         let log = NearbyLog()
-        let record = NearbyRecord(library: core, rules: core.boardGameRules,
+        let record = NearbyRecord(library: library, rules: core.boardGameRules,
                                   log: log, mode: .online)
         let driver = NearbyDriver(rules: core.boardGameRules, log: log,
                                   record: record)

@@ -51,7 +51,7 @@ struct PlayScreen: View {
     /// Opens one History record's replay. The screen it opens on is not this
     /// one, so the container above both is what performs it; 回放 on a recorded
     /// result is the only thing that asks.
-    var replay: (UInt64) -> Void
+    var replay: (UUID) -> Void
 
     @State private var claimPresented = false
     @State private var resignPresented = false

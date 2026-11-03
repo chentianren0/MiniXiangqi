@@ -256,8 +256,8 @@ final class PlayMotion {
     }
 
     /// Takes back one decision, which in human-versus-AI play is a whole
-    /// exchange rather than half of one. How many plies that is, is the core's
-    /// answer — `undo_plies`, 1 or 2 — and it is consumed rather than derived.
+    /// exchange rather than half of one. How many plies that is, is the game's
+    /// answer — `Game.undoPlies`, 1 or 2 — and it is consumed rather than derived.
     ///
     /// A cycle rewinds in one gesture: both discs travel back together, and
     /// whatever either of them took reappears as they go. One action, one
@@ -267,7 +267,7 @@ final class PlayMotion {
     func undo() {
         guard canUndo else { return }
         guard !game.kind.isPlacement else { return undoPlacements() }
-        let plies = max(game.evaluation.undoPlies, 1)
+        let plies = max(game.undoPlies, 1)
         var played: [Move] = []
         for text in game.moves.suffix(plies) {
             guard let move = Move(text: text, on: game.kind.board) else {

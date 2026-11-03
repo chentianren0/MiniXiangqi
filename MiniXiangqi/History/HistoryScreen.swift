@@ -1,7 +1,7 @@
 // The History destination: every game the player has filed, and nothing else.
 //
 // docs/interaction-design.md, "History library": pinned records appear before
-// unpinned ones, each group newest first. That order is the core's guarantee
+// unpinned ones, each group newest first. That order is the library's query
 // and this screen never re-sorts it — the two sections are the pinned prefix
 // and the rest, which is what makes pinned-ness legible as ordering rather than
 // as a badge, and what makes a pin that failed visible as a row that did not
@@ -22,7 +22,6 @@
 // can answer *is* an alert, because every one of those is a thing that did not
 // happen.
 
-import MiniXiangqiCore
 import SwiftUI
 
 struct HistoryScreen: View {
@@ -32,7 +31,7 @@ struct HistoryScreen: View {
     /// game is: the container tears one destination's content down and rebuilds
     /// it on every visit, so a library created in here would be a *different*
     /// library on every visit, each with its own copy of the list. That is
-    /// merely wasteful until something writes to the store while another copy
+    /// merely wasteful until something writes to the library while another copy
     /// is on screen — an import is exactly that — at which point one copy holds
     /// the new record and the one being looked at does not.
     let library: HistoryLibrary
@@ -40,13 +39,13 @@ struct HistoryScreen: View {
     /// A record another destination asked to be shown — the just-recorded
     /// game's 回放. It is resolved against the loaded list rather than pushed
     /// blind, because the destination takes a record and not an identifier.
-    @Binding var pendingReplay: UInt64?
+    @Binding var pendingReplay: UUID?
 
-    @State private var path: [RecordSummary] = []
+    @State private var path: [GameRecord] = []
 
     /// The record a deletion is about — while its confirmation is up, and
     /// afterwards while a refused deletion offers its retry.
-    @State private var deleting: RecordSummary?
+    @State private var deleting: GameRecord?
     @State private var confirmingDeletion = false
     @AppStorage("deleteConfirmation.enabled") private var confirmsDeletion = true
 
@@ -62,7 +61,7 @@ struct HistoryScreen: View {
         NavigationStack(path: $path) {
             content
                 .navigationTitle("nav.history")
-                .navigationDestination(for: RecordSummary.self) { record in
+                .navigationDestination(for: GameRecord.self) { record in
                     ReplayScreen(record: record, library: library)
                 }
                 .toolbar {
@@ -78,17 +77,16 @@ struct HistoryScreen: View {
         .environment(\.motionPolicy, policy)
         .onAppear {
             // Filing a game happens on the other destination, so coming back
-            // here is exactly when the list may have changed underneath. The
-            // library revision is what says whether it did.
-            library.loadIfChanged()
+            // here is exactly when the list may have changed underneath.
+            library.load()
             showPendingReplay()
         }
         .onChange(of: pendingReplay) { _, _ in showPendingReplay() }
         // One file at a time is the accepted rule, and the picker is the
         // cheapest place to keep it: a player never selects five games and then
         // has four of them refused. The allowed type is the declared one, so
-        // the in-band check the core makes is a second line of defence rather
-        // than the only one.
+        // the library's own check of the file is a second line of defence
+        // rather than the only one.
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: [.miniXiangqiGame],
                       allowsMultipleSelection: false) { result in
@@ -113,7 +111,7 @@ struct HistoryScreen: View {
             } message: {
                 Text("alert.deleteGame.message")
             }
-            // A deletion the store refused: the record is still there, and the
+            // A deletion the library refused: the record is still there, and the
             // retry is the same deletion. Same shape as every other "could not
             // do it, nothing changed, try again" in the app.
             .alert("alert.deleteFailed.title",
@@ -148,8 +146,8 @@ struct HistoryScreen: View {
         if let failure = library.failure, library.records.isEmpty {
             // A library that cannot be read is worth saying so about: an empty
             // list here would be a claim about the player's games that this
-            // screen has no evidence for. The description is the core's own
-            // diagnostic text — not copy, and not localized.
+            // screen has no evidence for. The description is diagnostic text —
+            // not copy, and not localized.
             ContentUnavailableView("failure.historyDidNotLoad",
                                    systemImage: "exclamationmark.triangle",
                                    description: Text(verbatim: failure.description).monospaced())
@@ -200,13 +198,13 @@ struct HistoryScreen: View {
         }
     }
 
-    private func rows(_ records: ArraySlice<RecordSummary>) -> some View {
+    private func rows(_ records: ArraySlice<GameRecord>) -> some View {
         ForEach(records) { record in
             NavigationLink(value: record) {
                 row(record)
             }
             // Addressed by position, because position is the thing the
-            // ordering rule is about: `history-row-0` is whatever the core
+            // ordering rule is about: `history-row-0` is whatever the query
             // put first.
             .accessibilityIdentifier("history-row-\(library.records.firstIndex(of: record) ?? 0)")
             .listRowBackground(library.importedRecord == record.id
@@ -244,7 +242,7 @@ struct HistoryScreen: View {
         }
     }
 
-    private func row(_ record: RecordSummary) -> some View {
+    private func row(_ record: GameRecord) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(record.whenText)
             // Every token in this line is contract-required row content, so it
@@ -260,7 +258,7 @@ struct HistoryScreen: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func pinButton(_ record: RecordSummary) -> some View {
+    private func pinButton(_ record: GameRecord) -> some View {
         Button(record.pinned ? "control.unpin" : "control.pin",
                systemImage: record.pinned ? "pin.slash" : "pin") {
             library.setPinned(!record.pinned, on: record)
@@ -271,8 +269,8 @@ struct HistoryScreen: View {
     /// inside the transfer representation, when a service asks for the file, so
     /// presenting this costs nothing and no work is done for a share sheet the
     /// player dismisses.
-    private func shareButton(_ record: RecordSummary) -> some View {
-        ShareLink(item: GameFile(record: record, store: library.store),
+    private func shareButton(_ record: GameRecord) -> some View {
+        ShareLink(item: GameFile(record: record, in: library.library),
                   preview: SharePreview(record.metadataLine)) {
             Label("control.share", systemImage: "square.and.arrow.up")
         }
@@ -280,11 +278,11 @@ struct HistoryScreen: View {
 
     /// Deletes the record, asking first where the preference says to ask.
     ///
-    /// The record is held either way, because the deletion that a store refuses
+    /// The record is held either way, because the deletion that a library refuses
     /// offers to be retried and the retry has to name the same record — that
     /// alert is about a deletion that did not happen and is not the confirmation
     /// this switch governs.
-    private func confirmDeletion(of record: RecordSummary) {
+    private func confirmDeletion(of record: GameRecord) {
         deleting = record
         if confirmsDeletion {
             confirmingDeletion = true
@@ -295,29 +293,28 @@ struct HistoryScreen: View {
 
     // MARK: - Import
 
-    /// Reads the chosen file and hands it to the core, which decides everything
-    /// about it. The bytes are read inside the security scope the picker
+    /// Reads the chosen file and hands it to the library, which decides
+    /// everything about it. The bytes are read inside the security scope the picker
     /// granted, and nothing about the file is kept afterwards — no bookmark, no
     /// reference, no second look. It is untrusted input that has been copied
     /// once and let go.
     private func open(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        // The 1 MiB bound is the core's, and the core is what enforces it; this
-        // only declines to allocate what it is about to be refused for. A file
-        // whose size cannot be read at all is carried on and let the core
-        // answer, because not knowing a size is not the same as knowing a bad
-        // one.
+        // A game file is a few kilobytes, so a file over a mebibyte is not one,
+        // and is refused before it is read. A file whose size cannot be read at
+        // all is carried on and let the library answer, because not knowing a
+        // size is not the same as knowing a bad one.
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
         guard size.map({ $0 <= Self.importByteLimit }) ?? true,
               let bytes = try? Data(contentsOf: url) else {
             library.reportUnreadableFile()
             return
         }
-        Task { await library.importGame(bytes) }
+        library.importGame(bytes)
     }
 
-    /// The accepted per-file import bound of docs/game-data.md, in bytes.
+    /// The largest file an import reads, in bytes.
     private static let importByteLimit = 1024 * 1024
 
     @ViewBuilder
@@ -329,13 +326,10 @@ struct HistoryScreen: View {
             Button("control.ok", role: .cancel) { }
         case .saveFailed(let bytes):
             Button("control.cancel", role: .cancel) { }
-            Button("control.tryAgain") { Task { await library.importGame(bytes) } }
-        // A damaged record and a file whose game the rules refuse join the
-        // three that offer only acknowledgement, and for the same reason each
-        // of them does: there is no action the app can put behind a button that
-        // would change the answer. The route out of one of these is in its
-        // message, as the conflict's is.
-        case .conflict, .unreadable, .newerVersion, .damagedRecord, .illegalStart:
+            Button("control.tryAgain") { library.importGame(bytes) }
+        // These offer only acknowledgement: there is no action the app can put
+        // behind a button that would change the answer.
+        case .unreadable, .newerVersion, .illegalGame:
             Button("control.ok", role: .cancel) { }
         }
     }

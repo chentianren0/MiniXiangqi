@@ -48,11 +48,21 @@ extension Core {
                     #expect(try engineQuery(core).state == MXQ_ENGINE_STATE_UNINITIALIZED)
                 }
 
-                budget.available_bytes = 384 << 20
-                var plan = MxqEnginePlan()
-                plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
-                #expect(mxq_engine_prepare(core, MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI), &budget, &plan, nil) == MXQ_OK)
-                #expect(plan.hash_mib == 256)
+                func prepared(availableMiB: UInt64, physicalGiB: UInt64 = 16) -> MxqEnginePlan {
+                    var budget = ampleBudget()
+                    budget.available_bytes = availableMiB << 20
+                    budget.physical_bytes = physicalGiB << 30
+                    var plan = MxqEnginePlan()
+                    plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
+                    #expect(mxq_engine_prepare(core, MxqGameKind(MXQ_GAME_KIND_MINI_XIANGQI), &budget, &plan, nil) == MXQ_OK)
+                    return plan
+                }
+                #expect(prepared(availableMiB: 384).hash_mib == 256, "exactly enough")
+                let small = prepared(availableMiB: 512)
+                #expect(small.reserve_bytes == 128 << 20, "128 MiB beats a fifth of 512")
+                #expect(small.usable_bytes == 384 << 20)
+                #expect(small.hash_mib == 384)
+                #expect(prepared(availableMiB: 8 << 10, physicalGiB: 2).hash_mib == 1024, "half of 2 GiB")
             }
         }
 

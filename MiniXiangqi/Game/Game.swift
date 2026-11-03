@@ -1,24 +1,32 @@
 // A game in progress, as the screen needs it.
 //
-// Every rule question — what is legal, whether a side is in check, whether the
-// game is over and why, whether Undo is on offer — is answered by the core,
-// which since the move onto sessions also owns the game itself: the moves, the
-// commit of every accepted one, and the History record a finished game becomes.
-// What lives here is the screen's own reading of that session — the placement,
-// the selection, the notation, the orientation — refreshed from the core after
+// The game is its GameRecord in the library: the moves, saved as each is
+// played, and the result a finished game is filed with. Every rule question —
+// what is legal, whether a side is in check, whether the game is over and why —
+// is the core's replay of those moves. What lives here is the game's own policy
+// above the rules — how much one Undo takes back, whose turn owes the AI a
+// search, when resignation is on offer — and the screen's reading of the game:
+// the placement, the selection, the notation, the orientation, refreshed after
 // every change rather than maintained as a second truth.
 
 import Foundation
-import MiniXiangqiCore
 import Observation
 
 @Observable
 final class Game {
+    private let library: GameLibrary
     private let core: Core
 
-    /// The retained line, as the core holds it: read back after every
-    /// mutation, never maintained as a second copy.
+    /// The position the moves are replayed from.
+    let start: String
+
+    /// The record's line, read back after every mutation.
     private(set) var moves: [String] = []
+
+    /// Bumped by every change to the line or the result. A search answers the
+    /// line it was asked about, so a result whose revision is not this one is
+    /// about a position the game has left.
+    private(set) var revision = 0
 
     private(set) var evaluation: Evaluation
     private(set) var placement: Placement
@@ -56,14 +64,9 @@ final class Game {
     /// there is nothing to tell them and nothing for them to do.
     private(set) var opponentFailure: CoreError?
 
-    /// The created game's frozen configuration. Which game, mode, resolved
-    /// human side, level and thinking time are decided once, at creation, and
-    /// never re-derived above the interface.
+    /// The created game's configuration. Which game, mode, resolved human side
+    /// and level are decided once, at creation.
     private(set) var configuration: GameConfiguration
-
-    /// The session's stable identity, frozen at creation. Half of the pair a
-    /// search result is checked against before its move is applied.
-    private(set) var identity: String
 
     /// Whose move ply 0 is — the start position's own side, read from the core
     /// once. A game composed in the Custom Scene editor may open with Black, so
@@ -75,58 +78,53 @@ final class Game {
     /// transient capsule, a refused terminal commit is the blocking retry.
     private(set) var filingFailure: CoreError?
 
-    /// Whether the player's draw claim has been committed. The claim is the
-    /// player's, not the core's — but committing it is the core's, so this is
-    /// true exactly when `claimDraw` returned with the game filed. A resumed
-    /// game is never a claimed one: the claim archived it.
+    /// Whether the player's draw claim has been filed. A resumed game is never
+    /// a claimed one: the claim filed it.
     private(set) var claimedDraw = false
 
-    /// Whether the player conceded. Like a claimed draw, this is an outcome no
-    /// position produces: the position the session still answers for is
-    /// ongoing, and the result is the store's. A resumed game is never a
-    /// resigned one, for the same reason — resigning archived it.
+    /// Whether the player conceded. Like a claimed draw, this is a result no
+    /// position produces: the position is still ongoing, and the result is the
+    /// record's. A resumed game is never a resigned one, for the same reason.
     private(set) var resigned = false
 
-    /// The History record the terminal commit created, once one has.
-    private(set) var filedRecordID: UInt64?
+    /// The History record the game became, once it is filed.
+    private(set) var filedRecordID: UUID?
 
     var selected: Square?
     var flipped = false
 
-    /// Opens the game the session holds.
-    ///
-    /// A `Game` is a real attached session, never the absence of one. The
-    /// creation flow attaches before calling this initializer, and the launch
-    /// flow explicitly resumes before calling it. Keeping those two acts above
-    /// this type leaves no default game, starting position, configuration or
-    /// identity for an absent session to invent.
-    init(core: Core) throws {
-        guard core.hasSession else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
-                            detail: "Game requires an attached session")
+    /// Opens the game in play the library holds. Creating or resuming it is
+    /// the caller's act, so there is no default game for an absent one to
+    /// invent.
+    init(library: GameLibrary) throws {
+        guard let record = library.attached else {
+            throw CoreError(wrapping: LibraryRefusal.noGameInPlay)
         }
-        let configuration = try core.configuration()
-        let identity = try core.gameID()
-        let moves = try core.moveHistory()
-        let notation = try Self.notation(reading: moves, game: configuration.game,
-                                         from: core)
-        let lastMove = try moves.last.map {
-            try Self.move(reading: $0, on: configuration.game.board)
+        let core = library.core
+        let configuration = record.configuration
+        let game = configuration.game
+        let start = record.start
+        let moves = record.moves
+        let position = { (ply: Int) in
+            Placement(fen: try core.evaluate(game, from: start, moves: Array(moves.prefix(ply))).fen,
+                      game: game)
         }
-        let captured = try Self.captured(reading: moves, game: configuration.game,
-                                         from: core)
-        let evaluation = try core.evaluation()
-        let firstMover = try core.firstMover()
+        let notation = try Self.notation(reading: moves, game: game, at: position)
+        let lastMove = try moves.last.map { try Self.move(reading: $0, on: game.board) }
+        let captured = try Self.captured(reading: moves, game: game, at: position)
+        let evaluation = try core.evaluate(game, from: start, moves: moves)
+        let firstMover = try core.evaluate(game, from: start, moves: []).sideToMove
+        self.library = library
         self.core = core
+        self.start = start
         self.moves = moves
         self.notation = notation
         self.captured = captured
         self.lastMove = lastMove
         self.evaluation = evaluation
         self.configuration = configuration
-        self.identity = identity
         self.firstMover = firstMover
-        self.placement = Placement(fen: evaluation.fen, game: configuration.game)
+        self.placement = Placement(fen: evaluation.fen, game: game)
         // The accepted orientation rule, applied once: in human-versus-AI play
         // the human's own side is at the bottom, and Red at the bottom is the
         // unflipped board. Free Play opens unflipped and keeps its flip control.
@@ -134,7 +132,7 @@ final class Game {
         // A placement board has no orientation to have: stones carry nothing a
         // player could read the wrong way up, which is why these games drop the
         // flip control altogether — so it opens, and stays, as it is drawn.
-        self.flipped = !configuration.game.isPlacement && configuration.humanSide == .black
+        self.flipped = !game.isPlacement && configuration.humanSide == .black
         refreshLegalMoves()
     }
 
@@ -142,11 +140,9 @@ final class Game {
     /// record's replay gets, so a relaunch and a replay say the same words
     /// about the same game.
     private static func notation(reading moves: [String], game: GameKind,
-                                 from core: Core) throws -> [MoveReading] {
+                                 at position: (Int) throws -> Placement) throws -> [MoveReading] {
         do {
-            return try MoveReading.line(for: moves, on: game) {
-                Placement(fen: try core.fen(atPly: $0), game: game)
-            }
+            return try MoveReading.line(for: moves, on: game, placementAt: position)
         } catch {
             throw CoreError(wrapping: error)
         }
@@ -157,11 +153,9 @@ final class Game {
     /// replayed record's are one answer. Nothing at all for a game that
     /// displays no captured pieces, which is every game but Jieqi.
     private static func captured(reading moves: [String], game: GameKind,
-                                 from core: Core) throws -> CapturedPieces {
+                                 at position: (Int) throws -> Placement) throws -> CapturedPieces {
         do {
-            return try CapturedPieces.line(for: moves, on: game) {
-                Placement(fen: try core.fen(atPly: $0), game: game)
-            }
+            return try CapturedPieces.line(for: moves, on: game, placementAt: position)
         } catch {
             throw CoreError(wrapping: error)
         }
@@ -238,8 +232,8 @@ final class Game {
     var isFinished: Bool { evaluation.isOver || claimedDraw || resigned }
 
     /// The result to present. A claimed draw is a draw and a resignation is the
-    /// opponent's win, whatever the session still calls the position — the
-    /// committed outcome is the store's, and the act is what committed it.
+    /// opponent's win, whatever the rules still call the position — the result
+    /// is the record's, and the act is what filed it.
     var presentedState: GameState {
         if claimedDraw { return .draw }
         if resigned { return humanSide == .red ? .blackWins : .redWins }
@@ -252,10 +246,31 @@ final class Game {
     /// core reports no reason, and the reason is the act.
     var presentedReason: EndReason { resigned ? .resignation : evaluation.reason }
 
-    /// The core's own answer, which already says everything this used to work
-    /// out: a natural result stays undoable while its presentation is
-    /// unconfirmed, and a claimed draw — an archived session — offers nothing.
-    var canUndo: Bool { evaluation.undoAvailable }
+    /// How many plies one Undo takes back: 1 or 2, by the decision-cycle rule,
+    /// and 0 where there is nothing to take back.
+    ///
+    /// Free Play takes back one ply, down to the start. Human-versus-AI play
+    /// proceeds by the human's decisions: with the human's own move last, that
+    /// move is what an Undo takes back; with the AI's reply last, the reply and
+    /// the move that triggered it come off together. An AI-first game after the
+    /// AI's opening move has no decision of the human's to return to. A
+    /// networked game has no unilateral undo — a retraction there is the two
+    /// players' agreement — and a filed game has nothing left to take back. A
+    /// result the rules decided stays undoable until it is filed.
+    var undoPlies: Int {
+        guard filedRecordID == nil, !moves.isEmpty, !mode.isNetworked else { return 0 }
+        guard isHumanVersusAI, let humanSide else { return 1 }
+        if mover(ofPly: moves.count - 1) == humanSide { return 1 }
+        return moves.count >= 2 ? 2 : 0
+    }
+
+    var canUndo: Bool { undoPlies > 0 }
+
+    /// Which side made ply `index`: the start's side to move, and the other in
+    /// turn.
+    func mover(ofPly index: Int) -> Side {
+        index % 2 == 0 ? firstMover : firstMover.opponent
+    }
 
     /// Whether the deal this game conceals is disclosed now.
     ///
@@ -281,13 +296,18 @@ final class Game {
     /// none: the same person controls both.
     var humanSide: Side? { isHumanVersusAI ? configuration.humanSide : nil }
 
-    /// Whether the AI owes a move here. The core's own flag, and the whole
-    /// definition of "a search is owed": nothing above the interface works it
-    /// out from the mode and the side to move.
-    var searchExpected: Bool { evaluation.searchExpected && !isFinished }
+    /// Whether the AI owes a move here: a human-versus-AI game that is still
+    /// running, with the AI's side to move.
+    var searchExpected: Bool {
+        isHumanVersusAI && !isFinished && evaluation.sideToMove != humanSide
+    }
 
-    /// Whether 认输 is on offer, which is exactly when the core will accept it.
-    var canResign: Bool { evaluation.resignAvailable }
+    /// Whether 认输 is on offer: a human-versus-AI game with no result of its
+    /// own. A claimable repetition is not a result.
+    var canResign: Bool { isHumanVersusAI && filedRecordID == nil && !evaluation.isOver }
+
+    /// The line the AI and the hint search.
+    var searchLine: SearchLine { SearchLine(game: kind, start: start, moves: moves) }
 
     // MARK: - Input
 
@@ -333,8 +353,8 @@ final class Game {
     /// legal, and whether this board is accepting input at all.
     ///
     /// It is written once because there are two boards now. A nearby game's
-    /// position comes from the session-free rules facade rather than from an
-    /// attached session, and whose turn it is comes from the protocol rather
+    /// position comes from the protocol engine's plies rather than from the
+    /// library, and whose turn it is comes from the protocol rather
     /// than from a search being expected — but *what a tap means* is the same
     /// question about the same board, and a second copy of it would be a second
     /// place for the two to disagree. Nothing here decides a rule: the legal
@@ -404,21 +424,21 @@ final class Game {
         }
     }
 
-    /// Takes back one decision. The core commits the shortened game before
+    /// Takes back one decision. The library saves the shortened game before
     /// returning, so an Undo it cannot complete does not happen: the game
-    /// stays exactly at the pre-action committed state and the failure is
-    /// recorded.
+    /// stays exactly as it was saved and the failure is recorded.
     func undo() {
         failure = nil
         opponentFailure = nil
         guard canUndo else { return }
         do {
-            _ = try core.undo()
-            moves = try core.moveHistory()
+            try library.undo(undoPlies)
+            moves = try library.moveHistory()
+            revision += 1
             // Cut to the line rather than shortened by the count, so a reading
             // that has fallen behind is repaired instead of compounded: the
-            // core's line is what a game's readings are of, and after a refused
-            // read there can be a ply committed with no reading beside it.
+            // saved line is what a game's readings are of, and after a refused
+            // read there can be a ply saved with no reading beside it.
             notation = Array(notation.prefix(moves.count))
             // A retraction returns whatever those plies took, exactly as it
             // returns the position they produced.
@@ -435,20 +455,21 @@ final class Game {
         }
     }
 
-    /// Ends the game as a draw on the repetition the core is offering, which
-    /// is the terminal commit: the record is in History when it succeeds. Only
-    /// the core decides whether the claim exists; this decides nothing but
-    /// that the player took it — and a commit the store refused leaves the
-    /// game running and claimable exactly as it stood.
+    /// Ends the game as a draw on the repetition the rules are offering, which
+    /// files it: the record is in History when it succeeds. Only the rules
+    /// decide whether the claim exists; this decides nothing but that the
+    /// player took it — and a filing the library refused leaves the game
+    /// running and claimable exactly as it stood.
     func claimDraw() {
         filingFailure = nil
         guard evaluation.claimAvailable, !claimedDraw else { return }
         do {
-            filedRecordID = try core.claimDraw()
+            filedRecordID = try library.claimDraw()
             claimedDraw = true
             selected = nil
-            // The archived session still answers every query; what changes is
-            // the affordances, which now all read 0.
+            revision += 1
+            // The position is unchanged; what changes is the affordances, which
+            // a filed game no longer offers.
             try refresh()
             refreshLegalMoves()
         } catch {
@@ -456,19 +477,17 @@ final class Game {
         }
     }
 
-    /// Concedes the game. The third terminal commit: the record is in History
-    /// when it succeeds, the loss recorded against the human's own side. Only
-    /// the core decides whether resignation is on offer, and a commit the store
-    /// refused leaves the game running exactly as it stood.
+    /// Concedes the game, which files it: the record is in History when it
+    /// succeeds, the loss recorded against the human's own side. A filing the
+    /// library refused leaves the game running exactly as it stood.
     func resign() {
         filingFailure = nil
         guard canResign, filedRecordID == nil else { return }
         do {
-            filedRecordID = try core.resign()
+            filedRecordID = try library.resign()
             resigned = true
             selected = nil
-            // The archived session still answers every query; what changes is
-            // the affordances, which now all read 0.
+            revision += 1
             try refresh()
             refreshLegalMoves()
         } catch {
@@ -482,34 +501,33 @@ final class Game {
     /// reply took from it — is read off the position *between* the two moves,
     /// which is this.
     func placement(atPly ply: Int) -> Placement? {
-        guard let fen = try? core.fen(atPly: ply) else { return nil }
-        return Placement(fen: fen, game: kind)
+        guard let position = try? core.evaluate(kind, from: start,
+                                                moves: Array(moves.prefix(ply))) else { return nil }
+        return Placement(fen: position.fen, game: kind)
     }
 
     /// Files the finished game in History: what the notice's 保存 does on its
-    /// own, and what 开始新对局 does before anything resets. An unconfirmed
-    /// natural result is committed as what it is; a game that is already a
-    /// record — filed by a claim, or by a 保存 the player has already pressed —
-    /// is not filed a second time, and asking the archived session to confirm
-    /// again would be asking for a refusal the app would then have to explain.
-    /// A refusal of the real thing leaves the game exactly as it stood, active
-    /// and resumable.
+    /// own, and what 开始新对局 does before anything resets. A result the rules
+    /// decided is filed as what it is; a game that is already a record — filed
+    /// by a claim, or by a 保存 the player has already pressed — is not filed a
+    /// second time. A refusal leaves the game exactly as it stood, in play and
+    /// resumable.
     func file() throws {
         assert(isFinished, "only a finished game is filed here")
         filingFailure = nil
         guard filedRecordID == nil else { return }
         do {
-            filedRecordID = try core.confirmResult()
+            filedRecordID = try library.confirmResult()
+            revision += 1
         } catch {
             let failure = CoreError(wrapping: error)
             filingFailure = failure
             throw failure
         }
-        // The archived session still answers every query, and what changes is
-        // the affordances: a filed game has nothing left to take back, so the
-        // controls stop offering it. The result itself is untouched — the state
-        // the core reports is still the position's own verdict. A read that
-        // fails out here is the ordinary refused-read state rather than a
+        // What changes is the affordances: a filed game has nothing left to
+        // take back, so the controls stop offering it. The result itself is
+        // untouched — the state is still the position's own verdict. A read
+        // that fails out here is the ordinary refused-read state rather than a
         // refused filing: the record exists either way.
         do {
             try refresh()
@@ -521,8 +539,8 @@ final class Game {
 
     /// The opponent's reply, played through the same legal-move boundary a
     /// person's move goes through. A search result is never what commits a
-    /// move: this is, and the core refuses it exactly as it would refuse a bad
-    /// move of the player's own.
+    /// move: this is, and the library refuses it exactly as it would refuse a
+    /// bad move of the player's own.
     func playOpponent(_ move: Move) {
         play(move, byOpponent: true)
     }
@@ -536,8 +554,9 @@ final class Game {
         let before = placement
         let ply = moves.count
         do {
-            try core.apply(move.text)
-            moves = try core.moveHistory()
+            try library.apply(move.text)
+            moves = try library.moveHistory()
+            revision += 1
             try refresh()
             notation.append(MoveReading(of: move, in: before, after: placement))
             // What the ply took, read off the position it was played into —
@@ -552,8 +571,8 @@ final class Game {
             refreshLegalMoves()
         } catch {
             let refusal = CoreError(wrapping: error)
-            // A refused save leaves the game exactly at the pre-mutation state
-            // either way. Which of the two it is recorded as decides what the
+            // A refused save leaves the game exactly as it was saved either
+            // way. Which of the two it is recorded as decides what the
             // screen says: the player's own move raises the capsule, and the
             // AI's reply raises nothing, because the retry is the app's.
             if byOpponent { opponentFailure = refusal } else { failure = refusal }
@@ -561,15 +580,15 @@ final class Game {
     }
 
     /// The projection: the position and state are the core's answers for the
-    /// committed game, asked again after every change.
+    /// saved line, asked again after every change.
     private func refresh() throws {
-        evaluation = try core.evaluation()
+        evaluation = try core.evaluate(kind, from: start, moves: moves)
         placement = Placement(fen: evaluation.fen, game: kind)
     }
 
     private func refreshLegalMoves() {
         do {
-            legalMoves = try core.legalMoves().map {
+            legalMoves = try core.legalMoves(kind, from: start, moves: moves).map {
                 try Self.move(reading: $0, on: kind.board)
             }
         } catch {

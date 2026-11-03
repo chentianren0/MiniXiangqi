@@ -13,17 +13,15 @@
 // result. The three state classes below are the whole of what differs.
 //
 // **Every fact is read, not worked out.** The mode and the human side come from
-// the configuration frozen at creation; the state, the reason, the claim and the
-// ply count come from the core's own status for the committed game. Nothing here
-// decides what state a game is in.
+// the record; the state, the reason, the claim and whose turn it is come from
+// the core's replay of its moves. Nothing here decides what state a game is in.
 //
-// **It is read without a session.** `Core.activeGameSummary` is
-// `mxq_store_active_summary`, which the C interface built for this surface and
-// the save-and-continue confirmation — the live game belongs to the board, and
-// the home has no business holding one to describe it. Whose turn it is comes
-// with it, on the status the same call reports: a game begun from a composed
-// position may have Black making ply 0, so a side worked out from the ply
-// count would name the wrong one.
+// **It is read holding nothing.** `GameLibrary.activeGameSummary` serves this
+// surface and the save-and-continue confirmation — the live game belongs to the
+// board, and the home has no business holding one to describe it. Whose turn it
+// is comes from the position: a game begun from a composed position may have
+// Black making ply 0, so a side worked out from the ply count would name the
+// wrong one.
 
 import Foundation
 

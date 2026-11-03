@@ -1460,15 +1460,9 @@ private nonisolated struct FakePositions: NearbyPositions {
                                        ? .red : .black,
                                    inCheck: false,
                                    plyCount: plies.count,
-                                   positionRevision: UInt64(plies.count),
                                    state: .ongoing,
                                    reason: .none,
-                                   atOccurrence: 0,
-                                   claimAvailable: false,
-                                   undoAvailable: false,
-                                   undoPlies: 0,
-                                   resignAvailable: false,
-                                   searchExpected: false),
+                                   atOccurrence: 0),
             legalMoves: [])
     }
 }
@@ -1481,7 +1475,6 @@ private nonisolated struct ClaimablePositions: NearbyPositions {
                   after plies: [String]) -> NearbyStanding? {
         guard var standing = FakePositions().standing(of: game, from: start, after: plies) else { return nil }
         standing.evaluation.state = .claimableDraw
-        standing.evaluation.claimAvailable = true
         return standing
     }
 }

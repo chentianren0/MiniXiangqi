@@ -1,3 +1,4 @@
+import Foundation
 import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
@@ -11,10 +12,10 @@ struct PlayHomeTests {
     private static let xiangqiAI = PlaySelection(game: .xiangqi, mode: .humanVersusAI)
 
     /// A state on the home over an active Free Play game, its archive held.
-    private func stateOverAGame(_ core: Core) throws -> (PlayState, HeldArchive) {
-        let state = PlayState(core: core)
+    private func stateOverAGame(_ library: GameLibrary) throws -> (PlayState, HeldArchive) {
+        let state = PlayState(library: library)
         let archive = HeldArchive(holding: state)
-        try core.create(.freePlay(game: .miniXiangqi))
+        try library.create(.freePlay(game: .miniXiangqi))
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .home)
         return (state, archive)
@@ -22,7 +23,7 @@ struct PlayHomeTests {
 
     @Test("With no game a mode entry opens its pre-start page")
     func aModeEntryWithNoGameOpensTheSetup() throws {
-        let state = PlayState(core: try TestCores.fresh())
+        let state = PlayState(library: try TestLibraries.fresh())
         state.choose(Self.miniFreePlay)
         #expect(state.page == .setup(Self.miniFreePlay))
         #expect(state.modeSwitch == nil)
@@ -30,8 +31,8 @@ struct PlayHomeTests {
 
     @Test("With a game a mode entry confirms instead of navigating")
     func aModeEntryWithAGameConfirms() throws {
-        let core = try TestCores.fresh()
-        let (state, archive) = try stateOverAGame(core)
+        let library = try TestLibraries.fresh()
+        let (state, archive) = try stateOverAGame(library)
 
         state.choose(Self.miniAI)
         #expect(state.modeSwitch == .confirming(Self.miniAI))
@@ -40,13 +41,13 @@ struct PlayHomeTests {
 
         state.dismissConfirmation()
         #expect(state.modeSwitch == nil)
-        #expect(try core.activeGameExists())
-        #expect(try core.historyCount() == 0, "cancelling files nothing")
+        #expect(try library.activeGameExists())
+        #expect(try library.historyCount() == 0, "cancelling files nothing")
     }
 
     @Test("保存并继续 archives before it navigates, and keeps the chosen game and mode")
     func saveAndContinueArchivesThenOpensTheSelection() throws {
-        let (state, archive) = try stateOverAGame(try TestCores.fresh())
+        let (state, archive) = try stateOverAGame(try TestLibraries.fresh())
 
         state.choose(Self.xiangqiAI)
         state.saveAndContinue()
@@ -56,70 +57,71 @@ struct PlayHomeTests {
         state.dismissConfirmation()
         #expect(state.modeSwitch == .saving(Self.xiangqiAI), "dismissing the alert keeps the archive")
 
-        archive.answer(.success(1))
+        archive.answer(.success(UUID()))
         #expect(state.page == .setup(Self.xiangqiAI))
         #expect(state.modeSwitch == nil)
     }
 
     @Test("A refused archive keeps the game, and 重试 asks again")
     func aRefusedArchiveKeepsTheGame() throws {
-        let core = try TestCores.fresh()
-        let (state, archive) = try stateOverAGame(core)
+        let library = try TestLibraries.fresh()
+        let (state, archive) = try stateOverAGame(library)
 
         state.choose(Self.miniAI)
         state.saveAndContinue()
-        archive.answer(.failure(CoreError(status: MxqStatus(MXQ_ERR_STORE_IO), detail: "refused")))
+        archive.answer(.failure(CoreError(wrapping: LibraryRefusal.unavailable)))
         #expect(state.modeSwitch == .failed(Self.miniAI))
         #expect(state.page == .home)
-        #expect(try core.activeGameExists())
+        #expect(try library.activeGameExists())
 
         state.saveAndContinue()
         #expect(archive.requests == 2)
-        archive.answer(.success(1))
+        archive.answer(.success(UUID()))
         #expect(state.page == .setup(Self.miniAI))
     }
 
     @Test("An archive still in flight is asked for once, however often it is pressed")
     func anArchiveInFlightIsNotStartedTwice() throws {
-        let (state, archive) = try stateOverAGame(try TestCores.fresh())
+        let (state, archive) = try stateOverAGame(try TestLibraries.fresh())
         state.choose(Self.miniFreePlay)
         state.saveAndContinue()
         state.saveAndContinue()
         state.saveAndContinue()
         #expect(archive.requests == 1)
-        archive.answer(.success(1))
+        archive.answer(.success(UUID()))
         #expect(state.page == .setup(Self.miniFreePlay))
     }
 
-    @Test("The real archive files the game and leaves no active game")
+    @Test("The real archive files the game and leaves no game in play")
     func theRealArchiveFilesTheGame() async throws {
-        let directory = TestCores.scratchDirectory()
-        let core = try TestCores.open(at: directory)
-        try core.create(.freePlay(game: .miniXiangqi))
-        let game = try Game(core: core)
+        let url = TestLibraries.scratchURL()
+        let library = try TestLibraries.open(at: url)
+        try library.create(.freePlay(game: .miniXiangqi))
+        let game = try Game(library: library)
         try game.replay(["b1b3", "b7b6"])
 
         let answer = ArchiveAnswer()
-        core.archiveActiveAndClear { answer.record($0) }
-        // Shut down before suspending, so no other test can take the core
-        // slot while this one waits; the shutdown drains the archive queue.
-        TestCores.retire(keeping: directory)
+        library.archiveActiveAndClear { answer.record($0) }
         await answer.arrive()
-        #expect(try answer.result?.get() != nil)
+        let filed = try #require(try answer.result?.get())
 
-        let reopened = try TestCores.open(at: directory)
+        let reopened = try TestLibraries.open(at: url, core: library.core)
         #expect(try !reopened.activeGameExists())
         #expect(try reopened.historyCount() == 1)
+        let record = try #require(try reopened.record(filed))
+        #expect(record.result == Outcome.none)
+        #expect(record.reason == EndReason.endedEarly, "an ordinary ongoing game is filed as ended early")
+        #expect(record.moves == ["b1b3", "b7b6"])
     }
 
     @Test("A nearby active game is never opened on the local board")
     func theLocalBoardRefusesANearbyGame() throws {
-        let core = try TestCores.fresh()
-        try core.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
-                              wire: NearbyWireSession(sessionID: "S", peerID: "P",
-                                                      proposedLocally: true))
-        core.endSession()
-        let state = PlayState(core: core)
+        let library = try TestLibraries.fresh()
+        try library.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
+                                 wire: NearbyWireSession(sessionID: "S", peerID: "P",
+                                                         proposedLocally: true))
+        library.endSession()
+        let state = PlayState(library: library)
         state.startIfNeeded(policy: MotionPolicy(reduceMotion: true))
         var resumed: [GameKind] = []
         state.resumeNetworkedGame = { _, game in resumed.append(game) }
@@ -129,7 +131,7 @@ struct PlayHomeTests {
         #expect(resumed == [.miniXiangqi], "the card hands it to its own board")
         #expect(state.game == nil)
         #expect(state.page == .home)
-        #expect(!core.hasSession)
+        #expect(!library.hasSession)
         #expect(state.activeSummary?.mode == .nearby)
     }
 }
@@ -137,9 +139,9 @@ struct PlayHomeTests {
 /// Where an archive's answer lands, a main-actor turn after it was asked for.
 @MainActor
 final class ArchiveAnswer {
-    private(set) var result: Result<UInt64, CoreError>?
+    private(set) var result: Result<UUID, CoreError>?
 
-    func record(_ result: Result<UInt64, CoreError>) { self.result = result }
+    func record(_ result: Result<UUID, CoreError>) { self.result = result }
 
     func arrive(within timeout: Duration = .seconds(5)) async {
         let deadline = ContinuousClock.now.advanced(by: timeout)

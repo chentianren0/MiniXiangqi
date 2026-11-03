@@ -26,14 +26,14 @@ struct HintTests {
     private func makeApparatus(_ configuration: GameConfiguration,
                                engine: TestEngine = TestEngine(),
                                reduceMotion: Bool = false) throws -> Apparatus {
-        let core = try TestCores.fresh()
-        try core.create(configuration)
-        return try makeApparatus(over: core, engine: engine, reduceMotion: reduceMotion)
+        let library = try TestLibraries.fresh()
+        try library.create(configuration)
+        return try makeApparatus(over: library, engine: engine, reduceMotion: reduceMotion)
     }
 
-    private func makeApparatus(over core: Core, engine: TestEngine = TestEngine(),
+    private func makeApparatus(over library: GameLibrary, engine: TestEngine = TestEngine(),
                                reduceMotion: Bool = false) throws -> Apparatus {
-        let game = try Game(core: core)
+        let game = try Game(library: library)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: reduceMotion),
@@ -55,8 +55,7 @@ struct HintTests {
 
     private func humanVersusAI(level: AiLevel = .fast, humanSide: Side = .red)
         -> GameConfiguration {
-        .humanVersusAI(game: .miniXiangqi, humanSide: humanSide, level: level,
-                       choice: humanSide == .red ? .humanFirst : .aiFirst)
+        .humanVersusAI(game: .miniXiangqi, humanSide: humanSide, level: level)
     }
 
     private func play(_ from: String, _ to: String, _ apparatus: Apparatus) {
@@ -75,7 +74,7 @@ struct HintTests {
         #expect(!apparatus.hint.isOffered,
                 "and the machine's turn is not the player's to be advised on")
 
-        apparatus.engine.answer(searchResult(.move, move: "a6a5", game: apparatus.game))
+        apparatus.engine.answer(searchResult(.move, move: "a6a5"))
         apparatus.clock.advance(by: 5)
         apparatus.animator.completeAll()
         #expect(apparatus.hint.isOffered, "the turn came back, and so did the offer")
@@ -98,11 +97,11 @@ struct HintTests {
 
     @Test("A nearby game is never offered a hint")
     func nearbyPlayIsNeverOfferedAHint() throws {
-        let core = try TestCores.fresh()
-        try core.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
-                              wire: NearbyWireSession(sessionID: "S", peerID: "P",
-                                                      proposedLocally: true))
-        let apparatus = try makeApparatus(over: core)
+        let library = try TestLibraries.fresh()
+        try library.createNearby(.nearby(game: .miniXiangqi, localSide: .red),
+                                 wire: NearbyWireSession(sessionID: "S", peerID: "P",
+                                                         proposedLocally: true))
+        let apparatus = try makeApparatus(over: library)
 
         #expect(!apparatus.hint.isOffered,
                 """
@@ -116,9 +115,9 @@ struct HintTests {
 
     @Test("A claimable repetition nobody has claimed has its hint like any other position")
     func aClaimableRepetitionIsOfferedAHint() throws {
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .miniXiangqi))
-        let apparatus = try makeApparatus(over: core)
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .miniXiangqi))
+        let apparatus = try makeApparatus(over: library)
         try apparatus.game.replay(Self.shuffleLine)
         apparatus.engine.markReady(for: .miniXiangqi)
 
@@ -131,7 +130,7 @@ struct HintTests {
         #expect(apparatus.engine.startedHintSearches == 1,
                 "a standing offer to end the game is not a reason to refuse advice about it")
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b2", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b2"))
         #expect(apparatus.motion.suggested == point("b2"), "and the suggestion arrives")
     }
 
@@ -216,7 +215,7 @@ struct HintTests {
         apparatus.engine.markReady(for: .miniXiangqi)
         apparatus.hint.request()
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
 
         #expect(apparatus.game.selected == point("b1"),
                 "the suggested piece is taken up exactly as a tap takes one up")
@@ -248,7 +247,7 @@ struct HintTests {
         apparatus.engine.markReady(for: .gomoku15)
         apparatus.hint.request()
 
-        apparatus.engine.answerHint(searchResult(.move, move: "h8", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "h8"))
 
         #expect(apparatus.game.selected == suggested,
                 "the mark is the game's own pending state, not a second mechanism")
@@ -274,7 +273,7 @@ struct HintTests {
         apparatus.engine.markReady(for: .miniXiangqi)
         apparatus.hint.request()
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
 
         #expect(apparatus.game.selected == point("b1"), "the piece is still held")
         #expect(apparatus.motion.suggested == point("b4"))
@@ -289,7 +288,7 @@ struct HintTests {
         let apparatus = try makeApparatus(humanVersusAI())
         apparatus.engine.markReady(for: .miniXiangqi)
         apparatus.hint.request()
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
         #expect(apparatus.motion.suggested == point("b4"))
 
         apparatus.motion.tap(point("a1"))
@@ -310,7 +309,7 @@ struct HintTests {
         let apparatus = try makeApparatus(.freePlay(game: .miniXiangqi))
         apparatus.engine.markReady(for: .miniXiangqi)
         apparatus.hint.request()
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
         apparatus.motion.cancelSelection()
 
         apparatus.hint.request()
@@ -328,25 +327,19 @@ struct HintTests {
                 "a position the game has left has no answer to reuse")
     }
 
-    @Test("An answer from another position or another game shows nothing")
+    @Test("An answer about a line the game has left shows nothing")
     func aStaleAnswerShowsNothing() throws {
         let apparatus = try makeApparatus(.freePlay(game: .miniXiangqi))
         apparatus.engine.markReady(for: .miniXiangqi)
 
         apparatus.hint.request()
-        apparatus.engine.answerHint(
-            searchResult(.move, move: "b1b4", game: apparatus.game,
-                         revision: apparatus.game.evaluation.positionRevision + 1))
-        #expect(apparatus.motion.suggested == nil, "a revision the position has left behind")
+        // The line moves under the search, and nobody tells the hint.
+        apparatus.game.play(Move(text: "b1b4", on: Self.board)!)
+        apparatus.engine.answerHint(searchResult(.move, move: "a6a5"))
+        #expect(apparatus.motion.suggested == nil, "a revision the game has left behind")
 
         apparatus.hint.request()
-        apparatus.engine.answerHint(
-            searchResult(.move, move: "b1b4", game: apparatus.game, ticket: 2,
-                         identity: "00000000-0000-7000-8000-000000000000"))
-        #expect(apparatus.motion.suggested == nil, "and an identity that is not this game's")
-
-        apparatus.hint.request()
-        #expect(apparatus.engine.startedHintSearches == 3)
+        #expect(apparatus.engine.startedHintSearches == 2)
     }
 
     @Test("Activity shows only once a hint search has run long enough to be worth showing")
@@ -361,15 +354,15 @@ struct HintTests {
         apparatus.clock.advance(by: 0.1)
         #expect(apparatus.hint.activity == .thinking, "and past the threshold it does")
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
         #expect(apparatus.hint.activity == .idle, "the indicator is gone with the answer")
     }
 
     @Test("The player's own commit cancels the hint before the reply is asked for")
     func theCommitCancelsTheHintBeforeTheReply() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
         let engine = TestEngine()
-        let state = PlayState(core: core, engine: engine)
+        let state = PlayState(library: library, engine: engine)
         state.choose(PlaySelection(game: .miniXiangqi, mode: .humanVersusAI))
         state.draft = SetupDraft(firstMover: .humanFirst, level: .fast)
         state.startGame(policy: MotionPolicy(reduceMotion: true))
@@ -401,7 +394,7 @@ struct HintTests {
         apparatus.engine.markReady(for: .miniXiangqi)
         play("b1", "b4", apparatus)
         apparatus.hint.request()
-        apparatus.engine.answerHint(searchResult(.move, move: "a6a5", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "a6a5"))
         #expect(apparatus.motion.suggested == point("a5"))
 
         apparatus.hint.cancel()
@@ -434,7 +427,7 @@ struct HintTests {
         #expect(apparatus.hint.activity == .idle)
         #expect(apparatus.motion.suggested == nil)
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
         #expect(apparatus.motion.suggested == nil)
     }
 
@@ -455,7 +448,7 @@ struct HintTests {
         #expect(apparatus.hint.activity == .idle)
         #expect(apparatus.motion.suggested == nil)
 
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
+        apparatus.engine.answerHint(searchResult(.move, move: "b1b4"))
         #expect(apparatus.motion.suggested == nil)
 
         apparatus.hint.request()
@@ -465,9 +458,9 @@ struct HintTests {
 
     @Test("Leaving the board puts the hint down and releases the engine it prepared")
     func leavingTheBoardReleasesAFreePlayEngine() throws {
-        let core = try TestCores.fresh()
+        let library = try TestLibraries.fresh()
         let engine = TestEngine()
-        let state = PlayState(core: core, engine: engine)
+        let state = PlayState(library: library, engine: engine)
         state.choose(PlaySelection(game: .miniXiangqi, mode: .freePlay))
         state.startGame(policy: MotionPolicy(reduceMotion: true))
         #expect(state.page == .board)
@@ -485,24 +478,6 @@ struct HintTests {
         #expect(engine.cancelAlls == 1)
         #expect(engine.teardowns == 1,
                 "and the table a hint prepared is released like any other")
-    }
-
-    @Test("A hint refused for a search still retiring is asked again")
-    func anOutstandingSearchRefusalIsAskedAgain() throws {
-        let apparatus = try makeApparatus(humanVersusAI())
-        apparatus.engine.markReady(for: .miniXiangqi)
-        apparatus.engine.hintStartRefusal =
-            CoreError(status: MxqStatus(MXQ_ERR_STATE_SEARCH_IN_PROGRESS),
-                      detail: "a search is outstanding")
-
-        apparatus.hint.request()
-        #expect(apparatus.engine.startedHintSearches == 0, "refused, for now")
-
-        apparatus.clock.advance(by: 0.1)
-        #expect(apparatus.engine.startedHintSearches == 1, "and asked again once")
-
-        apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
-        #expect(apparatus.motion.suggested == point("b4"))
     }
 
     @Test("A readiness refusal prepares the game and asks again")

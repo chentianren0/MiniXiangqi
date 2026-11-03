@@ -1,22 +1,17 @@
 // The Swift veneer over the core's search facade, and the platform memory
 // probe the Hash budget is computed from.
 //
-// docs/engine-integration.md, "AI difficulty profiles": the frontend supplies a
-// fresh available-memory value at each calculation, and the arithmetic on top of
-// it belongs to the core — `mxq_engine_plan` implements it and is pure, so the
-// only thing this file decides is what the two numbers are on this platform.
-// On macOS they are `host_statistics64` with `HOST_VM_INFO64`, taking free,
-// inactive and purgeable pages, and `sysctlbyname("hw.memsize")`; on iOS and
-// iPadOS, `os_proc_available_memory()` against the same physical figure.
+// The frontend supplies a fresh available-memory value at each preparation, and
+// the arithmetic on top of it belongs to the core, so the only thing this file
+// decides is what the two numbers are on this platform. On macOS they are
+// `host_statistics64` with `HOST_VM_INFO64`, taking free, inactive and
+// purgeable pages, and `sysctlbyname("hw.memsize")`; on iOS and iPadOS,
+// `os_proc_available_memory()` against the same physical figure.
 //
-// docs/core-interface.md's threading table puts `mxq_engine_prepare` and
-// `mxq_engine_teardown` on a non-UI thread, blocking, with their work marshalled
-// onto the core's engine thread. They are the two calls in this app that are
-// genuinely expensive — a prepare allocates the transposition table and loads
-// the network — so they run on a serial dispatch queue of this file's own rather
-// than on the cooperative pool, which is what the contract's "blocking calls on
-// a dedicated serial executor" asks for. Everything else in the facade is
-// non-blocking and stays where its caller is.
+// `mxq_engine_prepare` and `mxq_engine_teardown` block — a prepare allocates the
+// transposition table and loads the network — so they run on a serial dispatch
+// queue of this file's own rather than on the cooperative pool. Everything else
+// in the facade is non-blocking and stays where its caller is.
 
 import Foundation
 import MiniXiangqiCore
@@ -111,8 +106,8 @@ nonisolated struct EngineBudget: Sendable, Equatable {
     #endif
 }
 
-/// What the accepted arithmetic yields, reported back so a test can read every
-/// boundary and a log can name the applied values.
+/// The plan a preparation applied, reported back so a log can name the applied
+/// values.
 nonisolated struct EnginePlan: Sendable, Equatable {
     var threads: Int
     var hashMiB: Int
@@ -120,6 +115,16 @@ nonisolated struct EnginePlan: Sendable, Equatable {
     var reserveBytes: UInt64
     var usableBytes: UInt64
     var budgetBytes: UInt64
+
+    init(threads: Int, hashMiB: Int, sufficient: Bool, reserveBytes: UInt64,
+         usableBytes: UInt64, budgetBytes: UInt64) {
+        self.threads = threads
+        self.hashMiB = hashMiB
+        self.sufficient = sufficient
+        self.reserveBytes = reserveBytes
+        self.usableBytes = usableBytes
+        self.budgetBytes = budgetBytes
+    }
 
     init(_ plan: MxqEnginePlan) {
         threads = Int(plan.threads)
@@ -165,13 +170,12 @@ nonisolated enum EngineState: Sendable {
 
 /// The rejection ladder's rungs, in the order the core applies them.
 nonisolated enum SearchOutcome: Sendable {
-    case move, cancelled, stale, malformed, illegal, failed
+    case move, cancelled, malformed, illegal, failed
 
     init(_ outcome: MxqSearchOutcome) {
         switch outcome {
         case MxqSearchOutcome(MXQ_SEARCH_MOVE): self = .move
         case MxqSearchOutcome(MXQ_SEARCH_CANCELLED): self = .cancelled
-        case MxqSearchOutcome(MXQ_SEARCH_STALE): self = .stale
         case MxqSearchOutcome(MXQ_SEARCH_MALFORMED): self = .malformed
         case MxqSearchOutcome(MXQ_SEARCH_ILLEGAL): self = .illegal
         default: self = .failed
@@ -179,18 +183,21 @@ nonisolated enum SearchOutcome: Sendable {
     }
 }
 
+/// The line a search is asked about: a game, the position it began from, and
+/// the moves since. The core keeps no game, so this is the whole question.
+nonisolated struct SearchLine: Sendable, Equatable {
+    var game: GameKind
+    var start: String
+    var moves: [String]
+}
+
 /// One search's inert answer, copied out of core storage inside the callback
 /// and carried to the main actor. Applying the move is a separate explicit act;
-/// nothing here commits anything.
+/// nothing here commits anything, and whether the line it answers is still the
+/// game's is the asker's question.
 nonisolated struct SearchResult: Sendable {
     var outcome: SearchOutcome
     var ticket: UInt64
-    /// The identity the search started from. The frontend compares this pair
-    /// against the live session before applying — the second of the two
-    /// staleness comparisons the interface requires, because neither check
-    /// alone covers both race directions.
-    var gameID: String
-    var positionRevision: UInt64
     var move: String
     var status: MxqStatus
     var nodes: UInt64
@@ -201,8 +208,6 @@ nonisolated struct SearchResult: Sendable {
     init(_ result: MxqSearchResult) {
         outcome = SearchOutcome(result.outcome)
         ticket = result.ticket
-        gameID = string(of: result.game_id, capacity: MXQ_GAME_ID_CAP)
-        positionRevision = result.position_revision
         move = string(of: result.move.text, capacity: MXQ_MOVE_TEXT_CAP)
         status = result.status
         nodes = result.nodes
@@ -247,21 +252,17 @@ protocol AIEngine: AnyObject {
     /// it is asked to, rather than returning.
     func teardownEngine(then next: (@MainActor () -> Void)?)
 
-    /// Starts a search over the attached session and returns its ticket. The
-    /// completion is delivered on the main actor, having copied the result out
-    /// of core storage on the engine thread as the callback contract requires.
-    func startSearch(movetimeMilliseconds: UInt32,
+    /// Starts the AI's search of the position at the end of `line` and returns
+    /// its ticket. The completion is delivered on the main actor, having copied
+    /// the result out of core storage on the engine thread as the callback
+    /// contract requires.
+    func startSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
 
-    /// Starts a hint search over the attached session and returns its ticket.
-    ///
-    /// The same shape as `startSearch` in every respect the frontend can see —
-    /// one ticket, one completion on the main actor, the same cancellation —
-    /// and it differs in what the thinking time *is*: `mxq_search_start_hint`
-    /// takes it as a value rather than cross-checking it against the session's
-    /// frozen one, which is why a Free Play game, freezing none, can be asked
-    /// for a hint at all.
-    func startHintSearch(movetimeMilliseconds: UInt32,
+    /// Starts a hint's search. To the core it is the same search; the seam
+    /// keeps the two apart so the reply loop and the hint can be driven each on
+    /// its own.
+    func startHintSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                          completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
 
     /// Cancels one search. Its completion still arrives, carrying `cancelled`.
@@ -282,17 +283,6 @@ protocol AIEngine: AnyObject {
 
 extension Core: AIEngine {
 
-    /// The pure plan, for the boundaries a test reads without an engine.
-    /// Callable before `mxq_core_init`, which is why it is static.
-    nonisolated static func plan(for budget: EngineBudget) throws -> EnginePlan {
-        var raw = budget.raw
-        var plan = MxqEnginePlan()
-        plan.struct_size = UInt32(MemoryLayout<MxqEnginePlan>.size)
-        var err = freshError()
-        try check(mxq_engine_plan(&raw, &plan, &err), err)
-        return EnginePlan(plan)
-    }
-
     func memoryBudget() -> EngineBudget { .probe() }
 
     func engineIsReady(for game: GameKind) -> Bool {
@@ -301,10 +291,6 @@ extension Core: AIEngine {
             return false
         }
         return query.profileID == expectedProfileID
-    }
-
-    func engineState() throws -> EngineState {
-        try engineQuery().state
     }
 
     func engineQuery() throws -> (state: EngineState, profileID: String) {
@@ -375,46 +361,16 @@ extension Core: AIEngine {
         }
     }
 
-    func startSearch(movetimeMilliseconds: UInt32,
+    func startSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
-        let session = try attachedSession()
-        var request = MxqSearchRequest()
-        request.struct_size = UInt32(MemoryLayout<MxqSearchRequest>.size)
-        request.movetime_ms = movetimeMilliseconds
-        return try startSearch(delivering: completion) { delivery, ticket, err in
-            mxq_search_start(handle, session, &request,
-                             mxqSearchTrampoline, delivery, &ticket, &err)
-        }
-    }
-
-    func startHintSearch(movetimeMilliseconds: UInt32,
-                         completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
-        let session = try attachedSession()
-        return try startSearch(delivering: completion) { delivery, ticket, err in
-            mxq_search_start_hint(handle, session, movetimeMilliseconds,
-                                  mxqSearchTrampoline, delivery, &ticket, &err)
-        }
-    }
-
-    /// The boxing both search entries do, in one place: what differs between
-    /// them is the entry called, and everything around the call — the retain
-    /// the callback consumes, the release a refused start owes, the ticket — is
-    /// the same on either.
-    ///
-    /// The standard non-capturing trampoline: the closure is boxed, the box is
-    /// passed as `user_data` at +1, and the callback consumes exactly one
-    /// retain. The engine thread's whole job inside it is to copy the result
-    /// and hand it on, which is what the callback contract requires — every
-    /// core call but the status and blob helpers answers `REENTRANT` there, and
-    /// blocking would deadlock the thread the search runs on.
-    private func startSearch(
-        delivering completion: @escaping @MainActor (SearchResult) -> Void,
-        by start: (UnsafeMutableRawPointer, inout UInt64, inout MxqError) -> MxqStatus
-    ) throws -> UInt64 {
         let delivery = Unmanaged.passRetained(SearchDelivery(completion)).toOpaque()
         var ticket: UInt64 = 0
         var err = freshError()
-        let status = start(delivery, &ticket, &err)
+        let status = withCStrings(line.moves) { texts in
+            mxq_search_start(handle, line.game.raw, line.start, texts, line.moves.count,
+                             movetimeMilliseconds, mxqSearchTrampoline, delivery,
+                             &ticket, &err)
+        }
         guard status == MXQ_OK else {
             // No callback will fire for a search that never started, so the
             // box is this side's to release.
@@ -423,6 +379,11 @@ extension Core: AIEngine {
             return 0
         }
         return ticket
+    }
+
+    func startHintSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
+                         completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64 {
+        try startSearch(line, movetimeMilliseconds: movetimeMilliseconds, completion: completion)
     }
 
     func cancelSearch(_ ticket: UInt64) {
@@ -456,7 +417,9 @@ private nonisolated func mxqSearchTrampoline(_ result: UnsafePointer<MxqSearchRe
     guard let userData else { return }
     // Consumes the retain `mxq_search_start` was handed. Exactly one callback
     // fires per started search — a cancelled one still answers — so this is the
-    // one place the box is released.
+    // one place the box is released. The engine thread's whole job here is to
+    // copy the result and hand it on: blocking would deadlock the thread the
+    // search runs on.
     let box = Unmanaged<SearchDelivery>.fromOpaque(userData).takeRetainedValue()
     guard let result else { return }
     box.deliver(SearchResult(result.pointee))
@@ -486,9 +449,8 @@ private nonisolated final class SearchDelivery: @unchecked Sendable {
 /// `mxq_engine_prepare` and `mxq_engine_teardown` over the core handle, off
 /// every actor.
 ///
-/// A `Sendable` value over the handle for the same reason `HistoryStore` is one:
-/// it holds no Swift state to race on, and the core marshals the work onto its
-/// own engine thread. The queue is serial because these calls are, and it is a
+/// A `Sendable` value over the handle: it holds no Swift state to race on, and
+/// the core marshals the work onto its own engine thread. The queue is serial because these calls are, and it is a
 /// dispatch queue rather than the cooperative pool because they block for as
 /// long as allocating gigabytes takes.
 ///

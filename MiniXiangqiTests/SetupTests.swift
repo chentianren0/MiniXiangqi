@@ -11,10 +11,10 @@ struct SetupTests {
     private static let miniFreePlay = PlaySelection(game: .miniXiangqi,
                                                     mode: .freePlay)
 
-    private func makeState(engine: TestEngine = TestEngine()) throws -> (PlayState, Core, TestEngine) {
-        let core = try TestCores.fresh()
-        let state = PlayState(core: core, engine: engine)
-        return (state, core, engine)
+    private func makeState(engine: TestEngine = TestEngine()) throws -> (PlayState, GameLibrary, TestEngine) {
+        let library = try TestLibraries.fresh()
+        let state = PlayState(library: library, engine: engine)
+        return (state, library, engine)
     }
 
     @Test("随机 previews Red and resolves only when it is drawn")
@@ -36,7 +36,7 @@ struct SetupTests {
 
     @Test("开始对局 prepares, resolves, creates, and then searches")
     func theOrderingRunsInOrder() throws {
-        let (state, core, engine) = try makeState()
+        let (state, library, engine) = try makeState()
         state.choose(Self.miniAI)
         state.draft = SetupDraft(firstMover: .aiFirst, level: .deep)
         #expect(state.page == .setup(Self.miniAI))
@@ -51,9 +51,9 @@ struct SetupTests {
         #expect(game.kind == .miniXiangqi)
         #expect(game.configuration.humanSide == .black, "AI 先手 resolved the human as Black")
         #expect(game.configuration.aiLevel == .deep)
-        #expect(game.configuration.movetimeMilliseconds == 5000, "frozen with the game")
+        #expect(game.configuration.movetimeMilliseconds == 5000, "the level's thinking time")
         #expect(game.flipped, "the human's own side is at the bottom")
-        #expect(try core.activeGameExists())
+        #expect(try library.activeGameExists())
         #expect(engine.startedSearches == 1, "the resolved first mover is the AI, so it searches")
         #expect(engine.lastMovetime == 5000)
     }
@@ -63,7 +63,7 @@ struct SetupTests {
         let engine = TestEngine()
         engine.preparationRefusal = CoreError(status: MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY),
                                               detail: "not enough")
-        let (state, core, _) = try makeState(engine: engine)
+        let (state, library, _) = try makeState(engine: engine)
         state.choose(Self.miniAI)
 
         state.startGame(policy: MotionPolicy(reduceMotion: true))
@@ -73,7 +73,7 @@ struct SetupTests {
         #expect(state.page == .setup(Self.miniAI), "the page and the draft stay")
         #expect(!state.creating, "and 开始对局 is on offer again")
         #expect(state.game == nil)
-        #expect(try !core.activeGameExists(), "nothing was created")
+        #expect(try !library.activeGameExists(), "nothing was created")
         #expect(engine.startedSearches == 0)
 
         state.draft = SetupDraft(firstMover: .aiFirst, level: .deep)
@@ -110,7 +110,7 @@ struct SetupTests {
     func leavingInvalidatesTheAttempt() throws {
         let engine = TestEngine()
         engine.holdsPreparation = true
-        let (state, core, _) = try makeState(engine: engine)
+        let (state, library, _) = try makeState(engine: engine)
         state.choose(Self.miniAI)
         state.draft = SetupDraft(firstMover: .aiFirst, level: .deep)
 
@@ -125,7 +125,7 @@ struct SetupTests {
 
         #expect(state.game == nil, "a late completion creates no game")
         #expect(state.page == .home)
-        #expect(try !core.activeGameExists())
+        #expect(try !library.activeGameExists())
         #expect(engine.teardowns == 1, "and anything prepared for it is released")
 
         state.choose(Self.miniAI)
@@ -135,10 +135,10 @@ struct SetupTests {
     @Test("A persistence failure releases the prepared engine and creates nothing")
     func aFailedCreateReleasesTheEngine() throws {
         let engine = TestEngine()
-        let core = try TestCores.fresh()
-        try core.create(.freePlay(game: .miniXiangqi))
-        core.endSession()
-        let state = PlayState(core: core, engine: engine)
+        let library = try TestLibraries.fresh()
+        try library.create(.freePlay(game: .miniXiangqi))
+        library.endSession()
+        let state = PlayState(library: library, engine: engine)
         state.choose(Self.miniAI)
 
         state.startGame(policy: MotionPolicy(reduceMotion: true))
@@ -154,7 +154,7 @@ struct SetupTests {
 
     @Test("Free Play creates without an engine at all")
     func freePlayPreparesNothing() throws {
-        let (state, core, engine) = try makeState()
+        let (state, library, engine) = try makeState()
         state.choose(Self.miniFreePlay)
         state.startGame(policy: MotionPolicy(reduceMotion: true))
 
@@ -163,12 +163,12 @@ struct SetupTests {
         #expect(state.game?.kind == .miniXiangqi)
         #expect(state.game?.mode == .freePlay)
         #expect(state.game?.humanSide == nil)
-        #expect(try core.activeGameExists())
+        #expect(try library.activeGameExists())
     }
 
-    @Test("Free Play creation carries Xiangqi through to the core session")
+    @Test("Free Play creation carries Xiangqi through to the record")
     func xiangqiFreePlayCarriesTheSelection() throws {
-        let (state, core, engine) = try makeState()
+        let (state, library, engine) = try makeState()
         let selection = PlaySelection(game: .xiangqi, mode: .freePlay)
         state.choose(selection)
 
@@ -176,7 +176,7 @@ struct SetupTests {
 
         #expect(engine.preparations == 0)
         #expect(state.game?.kind == .xiangqi)
-        #expect(try core.configuration().game == .xiangqi,
+        #expect(try library.configuration().game == .xiangqi,
                 "the selected game, not a hidden Mini default, reaches creation")
     }
 
@@ -185,7 +185,7 @@ struct SetupTests {
         let engine = TestEngine()
         engine.preparationRefusal = CoreError(status: MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY),
                                               detail: "not enough")
-        let (state, core, _) = try makeState(engine: engine)
+        let (state, library, _) = try makeState(engine: engine)
         let selection = PlaySelection(game: .xiangqi, mode: .humanVersusAI)
         state.choose(selection)
 
@@ -194,7 +194,7 @@ struct SetupTests {
         #expect(engine.lastPreparedGame == .xiangqi)
         #expect(state.page == .setup(selection))
         #expect(state.game == nil)
-        #expect(try !core.activeGameExists())
+        #expect(try !library.activeGameExists())
     }
 
     @Test("Every played game's readiness profile reaches Swift, and each is its own")
@@ -217,47 +217,5 @@ struct SetupTests {
                 "Jieqi is the one game no engine here plays")
         #expect(throws: CoreError.self) { try core.engineProfileID(for: .jieqi) }
         #expect(!core.engineIsReady(for: .jieqi))
-    }
-
-    @Test("The probe's values reach the accepted arithmetic, at every boundary")
-    func theBudgetPlumbingIsTheAcceptedArithmetic() throws {
-        let mib: UInt64 = 1 << 20
-
-        let empty = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
-                                                    availableBytes: 0,
-                                                    physicalBytes: 16 << 30))
-        #expect(!empty.sufficient)
-        #expect(empty.hashMiB == 0)
-
-        let small = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
-                                                    availableBytes: 512 * mib,
-                                                    physicalBytes: 16 << 30))
-        #expect(small.reserveBytes == 128 * mib, "128 MiB beats 20% of 512")
-        #expect(small.usableBytes == 384 * mib)
-        #expect(small.hashMiB == 384, "already a multiple of 64")
-        #expect(small.sufficient)
-
-        let below = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
-                                                    availableBytes: 380 * mib,
-                                                    physicalBytes: 16 << 30))
-        #expect(below.hashMiB == 192, "252 MiB rounds down to 192")
-        #expect(!below.sufficient, "and below 256 the engine is not initialised")
-
-        let exact = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
-                                                    availableBytes: 384 * mib,
-                                                    physicalBytes: 16 << 30))
-        #expect(exact.hashMiB == 256)
-        #expect(exact.sufficient)
-
-        let physicalBound = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
-                                                            availableBytes: 8 << 30,
-                                                            physicalBytes: 2 << 30))
-        #expect(physicalBound.hashMiB == 1024, "50% of 2 GiB")
-
-        let huge = try Core.plan(for: EngineBudget(activeProcessorCount: 16,
-                                                   availableBytes: 200 << 30,
-                                                   physicalBytes: 512 << 30))
-        #expect(huge.hashMiB == 4096, "the accepted cap")
-        #expect(huge.threads == 16, "Threads is the processor count the frontend reported")
     }
 }

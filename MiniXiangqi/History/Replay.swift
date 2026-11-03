@@ -4,11 +4,10 @@
 // initial position, the board is read-only, and the controls provide jump to
 // beginning, one move back, play or pause, one move forward, and jump to end.
 //
-// The walk is the core's. Nothing here applies a move or maintains a position:
-// every ply asks `mxq_game_position_at` what the position *was*, on a detached
-// read-only session that refuses mutation by construction. So there is no
-// second copy of the game to drift from the recorded one, and no rule above the
-// interface deciding what a replayed board may do.
+// The walk is the core's. Every position is the core's replay of the record's
+// moves, asked once when the replay opens, so there is no second copy of the
+// game to drift from the recorded one, and no rule above the interface deciding
+// what a replayed board may do: the board is read-only.
 //
 // A step is *shown* the way play shows a move — the same distance-scaled
 // travel, the same disc giving way to a capture, the same landing sounding
@@ -20,9 +19,17 @@
 import Foundation
 import Observation
 
+/// The position at one ply of a replayed game.
+nonisolated struct ReplayPosition: Sendable {
+    var fen: String
+    var sideToMove: Side
+    var inCheck: Bool
+}
+
 @Observable
 final class Replay {
-    let record: RecordSummary
+    let record: GameRecord
+    let game: GameKind
 
     /// The recorded line in canonical notation, and the same line as the player
     /// reads it — recomputed exactly as a resumed active game's is, through the
@@ -46,8 +53,7 @@ final class Replay {
     /// final one.
     private(set) var ply = 0
 
-    /// Whose ply 0 was — the side the record's own start position had to move,
-    /// read from the core once. A record whose game began from a composed
+    /// Whose ply 0 was — the side the record's own start position had to move. A record whose game began from a composed
     /// position may open with Black, and the move list pairs and numbers from
     /// this rather than from a parity.
     let firstMover: Side
@@ -69,7 +75,7 @@ final class Replay {
     /// it carries no flip control in play, in nearby play, or here. The
     /// question is the play cluster's own, asked of the record's game rather
     /// than of anything this screen holds.
-    var carriesFlip: Bool { !record.game.isPlacement }
+    var carriesFlip: Bool { !game.isPlacement }
 
     private(set) var autoplaying = false
     private var playback: Task<Void, Never>?
@@ -86,7 +92,8 @@ final class Replay {
     /// The count the replay screen triggers its landing haptic on.
     private(set) var landings = 0
 
-    private let session: ReplaySession
+    /// Every position of the record, the start first.
+    private let positions: [ReplayPosition]
 
     /// One speed, which is what a first replay screen needs. The accepted
     /// 0.5×/1×/2× set waits for someone to want it: a speed control is three
@@ -108,33 +115,41 @@ final class Replay {
         .seconds(travel) + settle
     }
 
-    init(record: RecordSummary,
-         session: ReplaySession,
+    init(record: GameRecord,
+         core: Core,
          policy: MotionPolicy = MotionPolicy(reduceMotion: false),
          animator: MotionAnimator = .live,
          feedback: Feedback = .live) throws {
+        let game = record.kind
+        let moves = record.moves
+        let start = record.start
+        let positions = try (0...moves.count).map { ply in
+            let evaluation = try core.evaluate(game, from: start, moves: Array(moves.prefix(ply)))
+            return ReplayPosition(fen: evaluation.fen, sideToMove: evaluation.sideToMove,
+                                  inCheck: evaluation.inCheck)
+        }
         self.record = record
-        self.session = session
+        self.game = game
+        self.positions = positions
         self.policy = policy
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
-        self.moves = try session.moves()
-        self.notation = try MoveReading.line(for: moves, on: record.game) {
-            Placement(fen: try session.position(atPly: $0).fen, game: record.game)
+        self.moves = moves
+        self.notation = try MoveReading.line(for: moves, on: game) {
+            Placement(fen: positions[$0].fen, game: game)
         }
-        self.captured = try CapturedPieces.line(for: moves, on: record.game) {
-            Placement(fen: try session.position(atPly: $0).fen, game: record.game)
+        self.captured = try CapturedPieces.line(for: moves, on: game) {
+            Placement(fen: positions[$0].fen, game: game)
         }
-        let start = try session.position(atPly: 0)
-        self.position = start
-        self.placement = Placement(fen: start.fen, game: record.game)
+        self.position = positions[0]
+        self.placement = Placement(fen: positions[0].fen, game: game)
         // The start position's own side to move, which is whose ply 0 was.
-        self.firstMover = start.sideToMove
+        self.firstMover = positions[0].sideToMove
         // The accepted history orientation: the human's own side at the bottom
         // where there was a human side, Red at the bottom otherwise — and a
         // board with no orientation opens as it is drawn, which is what the
         // play screen's own game does with the same question.
-        self.flipped = !record.game.isPlacement && record.humanSide == .black
+        self.flipped = !game.isPlacement && record.humanSide == .black
         // Unowned: the transit belongs to this object and cannot outlive it.
         transits.arrived = { [unowned self] in announceLanding() }
     }
@@ -144,7 +159,7 @@ final class Replay {
     /// The brackets always mark the move that produced the position on screen,
     /// so they follow the walk and the initial position carries none.
     var lastMove: Move? {
-        ply > 0 ? Move(text: moves[ply - 1], on: record.game.board) : nil
+        ply > 0 ? Move(text: moves[ply - 1], on: game.board) : nil
     }
 
     /// The checked general, so the board can ring it. In replay no piece is
@@ -169,11 +184,10 @@ final class Replay {
 
     /// Whether the position on screen is where the game ended. The record's
     /// last ply is where it stopped; whether it *concluded* there is the
-    /// record's own committed outcome — the core's adjudication as it was
-    /// filed, read back rather than re-derived here. A game that was ended
-    /// early stopped without a result, so its last ply is a landing like any
-    /// other.
-    var isFinalPosition: Bool { isAtEnd && record.outcome != .none }
+    /// record's own result, read back rather than re-derived here. A game that
+    /// was ended early stopped without a result, so its last ply is a landing
+    /// like any other.
+    var isFinalPosition: Bool { isAtEnd && (record.result ?? .none) != .none }
 
     /// Whether the deal this record conceals is disclosed at the position on
     /// screen.
@@ -189,7 +203,7 @@ final class Replay {
     /// The captured surface beside the board is not asked this: a record is a
     /// game already over whichever ply it is showing, so what it took is shown
     /// disclosed throughout.
-    var disclosesTheDeal: Bool { record.game.conceals && isFinalPosition }
+    var disclosesTheDeal: Bool { game.conceals && isFinalPosition }
 
     // MARK: - The transport
 
@@ -284,7 +298,7 @@ final class Replay {
         guard target != ply else { return 0 }
         let forward = target > ply
         guard abs(target - ply) == 1, !transits.isRunning,
-              let played = Move(text: moves[min(ply, target)], on: record.game.board),
+              let played = Move(text: moves[min(ply, target)], on: game.board),
               // A placement has no origin and nothing travels: the stone is on
               // the point or it is not, so a step through one walks rather than
               // draws, which is the same answer a jump gets.
@@ -303,11 +317,11 @@ final class Replay {
         // called `captured` and a step's own victim is not that list.
         let victim = forward ? placement[played.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: played),
-                                   on: record.game.board)
+                                   on: game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: victim != nil && !policy.reduceMotion) { [self] in
-            // A ply the session will not answer for leaves the board exactly
-            // where it was, with nothing travelling.
+            // A ply out of range leaves the board exactly where it was, with
+            // nothing travelling.
             guard walk(to: target) else { return nil }
             // The face the disc arrives with, where the step turns a piece up
             // or turns one back over — read off the position the step walked
@@ -349,13 +363,13 @@ final class Replay {
         return policy.reduceMotion ? Motion.crossfade : travel
     }
 
-    /// The position at one ply, asked of the core. Answers whether it came.
+    /// The position at one ply. Answers whether there is one.
     @discardableResult
     private func walk(to target: Int) -> Bool {
-        guard let position = try? session.position(atPly: target) else { return false }
+        guard positions.indices.contains(target) else { return false }
         ply = target
-        self.position = position
-        placement = Placement(fen: position.fen, game: record.game)
+        position = positions[target]
+        placement = Placement(fen: position.fen, game: game)
         return true
     }
 
@@ -382,11 +396,9 @@ final class Replay {
 
     // MARK: - Lifetime
 
-    /// Releases the detached session. The screen calls this as it closes: the
-    /// core is holding a session open for this screen and nothing else will.
+    /// Stops the walk. The screen calls this as it closes.
     func close() {
         pause()
         transits.cut()
-        session.close()
     }
 }

@@ -101,22 +101,9 @@ nonisolated protocol BoardGameRules: Sendable {
 /// Knowing a name is not the same as playing the game: which of these this peer
 /// carries over the wire is `version(of:)`'s answer below.
 nonisolated extension GameKind {
-    var rulesID: String {
-        switch self {
-        case .miniXiangqi: "minixiangqi"
-        case .xiangqi: "xiangqi"
-        case .gomoku15: "gomoku-15"
-        case .renju: "renju"
-        case .jieqi: "jieqi"
-        }
-    }
+    var rulesID: String { rawValue }
 
-    init?(rulesID: String) {
-        guard let match = Self.allCases.first(where: { $0.rulesID == rulesID }) else {
-            return nil
-        }
-        self = match
-    }
+    init?(rulesID: String) { self.init(rawValue: rulesID) }
 }
 
 /// The core's answers, over the session-free rules facade.
