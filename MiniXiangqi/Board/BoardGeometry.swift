@@ -1,16 +1,5 @@
-// Every board dimension as a multiple of the cell pitch `p`.
-//
-// Nothing on the board is a fixed point value, so the board scales from its
-// floor to a large window without any dimension being re-tuned and without the
-// relationships between them changing.
-//
-// This is where the accepted values are encoded. docs/interaction-design.md
-// fixes the *relationships* and the gates — a marker stays inside its own cell,
-// a style's decoration stays inside the disc, the contrast ratios each ink must
-// reach, the two pitch floors, and the shared maximum-width footprint. The
-// geometry and style suites measure those gates against boards that render.
-// The two games share the same board-width footprint; their pitches differ
-// because one has seven files and the other nine.
+// Every board dimension is a multiple of the cell pitch `p`, so the board
+// scales without re-tuning and its proportions never change.
 
 import CoreGraphics
 
@@ -20,17 +9,10 @@ struct BoardGeometry {
     /// The distance between two adjacent points.
     var pitch: CGFloat
 
-    /// The accepted shared approximate width range. Each game's pitch remains
-    /// a whole point so every derived dimension stays on stable pixel bounds:
-    /// Mini Xiangqi is 44...102, Xiangqi is 34...79, and the two placement
-    /// boards are 20...47.
-    ///
-    /// **The placement games take the smaller floor the same formula gives
-    /// them**, rather than a floor of their own: the width band is the shared
-    /// footprint, and fifteen files divide it into twenty. A stone carries no
-    /// symbol, so what the smaller cell costs is tap-target size and not
-    /// legibility — which is the trade the accepted decision names, and which is
-    /// ratified against a rendered board rather than argued here.
+    /// Pitches stay whole points so every derived dimension sits on stable
+    /// pixel bounds. The placement games take the smaller floor this gives
+    /// them: a stone carries no symbol, so a smaller cell costs tap-target size
+    /// rather than legibility.
     static let minimumCoreWidth: CGFloat = 308
     static let maximumCoreWidth: CGFloat = 714
 
@@ -62,8 +44,8 @@ struct BoardGeometry {
                height: CGFloat(board.rankCount) * pitch)
     }
 
-    /// `0.026 p`, clamped to between 0.80 and 1.60 points, so the lines never
-    /// coarsen as the board grows. The palace diagonals match it exactly.
+    /// Clamped so the lines never coarsen as the board grows. The palace
+    /// diagonals match it.
     var gridStroke: CGFloat { min(max(0.026 * pitch, 0.80), 1.60) }
 
     // MARK: - Pieces
@@ -71,33 +53,22 @@ struct BoardGeometry {
     var discDiameter: CGFloat { 0.80 * pitch }
     var symbolSize: CGFloat { 0.50 * pitch }
 
-    /// A stone is wider than a disc for its cell, as a real set's is: stones sit
-    /// nearly edge to edge on a Go board, and the space a disc leaves round
-    /// itself is where a character needs air. Still inside its own cell, so
-    /// neighbouring stones never overlap.
+    /// Wider than a disc, as stones sit nearly edge to edge on a Go board, but
+    /// inside its cell, so neighbouring stones never overlap.
     var stoneDiameter: CGFloat { 0.88 * pitch }
 
-    /// A printed star point: a small filled dot in the grid's own ink, part of
-    /// the board rather than a marker on it.
+    /// Part of the board, in the grid's ink, rather than a marker on it.
     var starPointRadius: CGFloat { 0.055 * pitch }
 
     /// A style's own rings and edge strokes live at or inside `0.40 p`.
     var styleDecorationLimit: CGFloat { 0.40 * pitch }
 
-    /// The centre-line radius of any round body's edge stroke: the stroke is
-    /// drawn inside the body's own edge rather than centred on it, so a heavy
-    /// edge grows inward instead of past the body it draws.
-    ///
-    /// Written of a body rather than of the disc because there are two of them
-    /// now, and one home is what keeps a stone's edge from being placed by a
-    /// second, subtly different arithmetic.
+    /// The stroke is drawn inside the body's edge rather than centred on it,
+    /// so a heavy edge grows inward instead of past the body.
     func edgeRadius(body: CGFloat, stroke: CGFloat) -> CGFloat {
         body / 2 - stroke / 2
     }
 
-    /// The same, for the disc — whose heavy edge, 传统's Black one, is what the
-    /// rule was written for: inside the style-decoration limit, and clear of
-    /// the band markers occupy.
     func discEdgeRadius(stroke: CGFloat) -> CGFloat {
         edgeRadius(body: discDiameter, stroke: stroke)
     }
@@ -121,8 +92,7 @@ struct BoardGeometry {
     var destinationDotDiameter: CGFloat { 0.22 * pitch }
 
     var captureRingStroke: CGFloat { 0.055 * pitch }
-    /// Outer edge exactly at the cell boundary, so the centre line sits half a
-    /// stroke inside it — at whatever stroke it is drawn with.
+    /// Outer edge exactly at the cell boundary.
     func captureRingRadius(stroke: CGFloat) -> CGFloat { markerOuterLimit - stroke / 2 }
     /// Twelve dashes of 18 degrees separated by 12-degree gaps. Fixing the
     /// count rather than a length keeps the pattern identical at every pitch.
@@ -135,100 +105,72 @@ struct BoardGeometry {
 
     var lastMoveArm: CGFloat { 0.13 * pitch }
     var lastMoveStroke: CGFloat { 0.045 * pitch }
-    /// The origin's brackets: the destination's shape, ink, inset, and
-    /// containment, at 0.6 of the weight. The pair marks one move, so it should
-    /// say which way the move went and not only which two points it touched,
-    /// and weight is what can say it — a paler ink cannot, because record ink
-    /// has a contrast floor to hold, which BoardStyleTests measures, and
-    /// Increase Contrast promotes the ink while leaving weight alone. The
-    /// factor is settled against a rendered board: at 0.6 the origin reads as
-    /// the same marker, softer, and it is also where the softening runs out of
-    /// room — at the 44-point floor it comes to `1.19` points against a grid
-    /// line of `1.14`, and a marker that draws lighter than the board's own
-    /// lines has stopped being a marker.
+    /// The destination's brackets at 0.6 of the weight, so the pair says which
+    /// way the move went. Weight rather than a paler ink: record ink has a
+    /// contrast floor, and Increase Contrast promotes ink but not weight. 0.6 is
+    /// as soft as it goes: at the 44-point floor it is 1.19 points against a
+    /// grid line of 1.14.
     var lastMoveOriginStroke: CGFloat { 0.6 * lastMoveStroke }
     var lastMoveInset: CGFloat { 0.05 * pitch }
 
     var hoverSide: CGFloat { 0.90 * pitch }
     var hoverCornerRadius: CGFloat { 0.12 * pitch }
 
-    /// The cross on a point the side to move may not play. Half its diagonal,
-    /// so the arms reach `0.22 p √2 ≈ 0.31 p` from the centre and the whole mark
-    /// stays well inside its cell.
+    /// Half the cross's diagonal, so the arms reach about 0.31 p from the
+    /// centre.
     var forbiddenArm: CGFloat { 0.22 * pitch }
     var forbiddenStroke: CGFloat { 0.045 * pitch }
 
     // MARK: - The hint halo
 
-    // The suggested point carries a wash of active ink at low opacity, drawn
-    // beneath the pieces exactly where the pointer hover fill is drawn. It is
-    // emphasis rather than state — the strengthened marker and the muted rest
-    // of the set are what say which destination the engine chose — which is why
-    // it is the one mark on the board drawn below record strength and holds no
-    // contrast floor of its own. What bounds it instead is the cell it must
-    // stay inside and the ratio the marker standing *on* it must still reach;
-    // BoardStyleTests measures that composite rather than trusting these
-    // numbers.
+    // The hint halo is emphasis rather than state, so it is the one mark drawn
+    // below record strength and holds no contrast floor of its own. It must
+    // stay inside the cell, and the marker standing on it must still reach its
+    // ratio.
 
-    /// The halo an empty suggested point carries, outermost first: filled
-    /// circles of active ink whose overlap makes one soft wash that fades
-    /// outward. Radii as multiples of the pitch, all inside the cell, since an
-    /// empty point has its whole cell free.
+    /// Outermost first; the overlapping circles make one wash that fades
+    /// outward. Radii as multiples of the pitch.
     static let haloWashes: [(radius: CGFloat, opacity: Double)] = [
         (0.47, 0.08), (0.38, 0.09), (0.29, 0.10)]
 
-    /// What the stack comes to where every wash overlaps — the ground the
-    /// suggested point's own dot stands on, and therefore the composite the
-    /// dot's active ink is measured against.
+    /// The opacity where every wash overlaps: the ground the suggested dot's
+    /// active ink is measured against.
     static var haloPeakOpacity: Double {
         haloWashes.reduce(0) { $0 + $1.opacity - $0 * $1.opacity }
     }
 
-    /// On an occupied point the cell is the disc's, so the wash takes the
-    /// marker band instead: one stroked circle behind the dashed capture ring,
-    /// filling the gaps between its dashes. Its inner edge falls at `0.41 p`, a
-    /// hair inside the `0.42 p` floor — that floor keeps *marker* ink off a
-    /// disc, and this is emphasis drawn beneath the pieces rather than a marker
-    /// on the disc's face, which it clears in any case: the face ends at
-    /// `0.40 p`. Its outer edge stays inside the cell.
+    /// On an occupied point the wash takes the marker band, behind the dashed
+    /// capture ring. Its inner edge at 0.41 p crosses the 0.42 p marker floor,
+    /// which is sound: it is emphasis beneath the pieces, and it still clears
+    /// the disc face at 0.40 p.
     var haloBandRadius: CGFloat { 0.45 * pitch }
     var haloBandStroke: CGFloat { 0.08 * pitch }
     static let haloBandOpacity: Double = 0.22
 
     // MARK: - Markers under emphasis
 
-    // Two markers swell: the check rings' one-time pulse as they appear, and
-    // the legal destinations' answer to an illegal tap. Both put extra ink on
-    // an occupied point, so both are bounded by the same two limits, and how
-    // far each may grow is decided here — beside the limits it may not cross,
-    // rather than in the canvas that draws it. MotionTests pins the peaks
-    // against the limits by asking these, so no test re-derives them.
+    // Both swelling markers put extra ink on an occupied point, so how far each
+    // may grow is decided here, beside the limits it may not cross.
 
-    /// The strengthened destination dot. It marks an *empty* point, where only
-    /// the cell bounds it, so it grows in every direction.
+    /// It marks an empty point, where only the cell bounds it, so it grows in
+    /// every direction.
     func destinationDotDiameter(emphasis: Double) -> CGFloat {
         destinationDotDiameter * (1 + Motion.markerDotGain * emphasis)
     }
 
-    /// The strengthened capture ring's stroke. The ring's outer edge stays at
-    /// the cell boundary, so the extra weight grows inward, towards the disc
-    /// it surrounds — and stops short of `markerInnerLimit`.
+    /// The outer edge stays at the cell boundary, so extra weight grows inward
+    /// and stops short of `markerInnerLimit`.
     func captureRingStroke(emphasis: Double) -> CGFloat {
         captureRingStroke * (1 + Motion.markerRingGain * emphasis)
     }
 
-    /// The check rings' stroke at `emphasis` of their one-time swell.
     func checkRingStroke(emphasis: Double) -> CGFloat {
         checkRingStroke * (1 + Motion.checkPulseGain * emphasis)
     }
 
-    /// The two rings' centre-line radii at `emphasis` of the swell. At rest
-    /// the inner ring's inner edge lies exactly on `markerInnerLimit` and the
-    /// outer ring's outer edge exactly on `markerOuterLimit`; the swell pins
-    /// both and grows the strokes into the gap between the rings, which is the
-    /// only room the band has. Growing each ring inward from its own outer
-    /// edge — the obvious reading of "the weight grows inward" — would carry
-    /// the inner ring across the floor and onto the general it rings.
+    /// At rest the rings' edges lie exactly on the two marker limits, so the
+    /// swell pins both and grows the strokes into the gap between them.
+    /// Growing each ring inward would carry the inner ring onto the general.
     func checkRingRadii(emphasis: Double) -> (inner: CGFloat, outer: CGFloat) {
         let grown = (checkRingStroke(emphasis: emphasis) - checkRingStroke) / 2
         return (inner: checkRingInnerRadius + grown,
@@ -237,14 +179,9 @@ struct BoardGeometry {
 
     // MARK: - The edge coordinates
 
-    /// How a board labels its edges, which follows from how it is played.
-    ///
-    /// The xiangqi boards carry a **file numeral strip above and below**, each
-    /// showing the numbers of the player it faces, in the script the 记谱法
-    /// preference selects. The placement games carry **Go-style coordinates**
-    /// instead: letters along the bottom and numbers up the side, the one
-    /// convention those games have, which the Notation preference does not
-    /// reach.
+    /// Xiangqi boards carry a file numeral strip above and below, each in the
+    /// numbers of the player it faces. Placement games carry Go-style
+    /// coordinates, which the 记谱法 preference does not reach.
     enum Coordinates { case fileNumerals, goStyle }
 
     var coordinates: Coordinates {
@@ -254,25 +191,17 @@ struct BoardGeometry {
         }
     }
 
-    /// `0.32 p`, rounded to the nearest point and clamped to between 13 and 20.
     var numeralSize: CGFloat { min(max((0.32 * pitch).rounded(), 13), 20) }
-    /// `0.08 p + 0.887 s`: the first term is clear space between the board's
-    /// outer line and the tallest numeral.
+    /// The first term is clear space between the board's outer line and the
+    /// tallest numeral.
     var stripHeight: CGFloat { (0.08 * pitch + 0.887 * numeralSize).rounded() }
 
-    /// The width of a strip that runs *up* a side rather than across an edge.
-    /// The same clear space, and room for the widest label a side carries: two
-    /// digits, at `1.25 s` for the pair.
+    /// A strip running up a side: the same clear space, and room for two
+    /// digits at `1.25 s` for the pair.
     var stripWidth: CGFloat { (0.08 * pitch + 1.25 * numeralSize).rounded() }
 
-    /// The board core together with its coordinate strips — the rectangle no
-    /// glass surface may intersect.
-    ///
-    /// The two conventions spend the room differently: file numerals take a
-    /// strip off the height at each end, and Go-style coordinates take one off
-    /// the height and one off the width. Everything that fits a board asks this
-    /// rather than the core, so neither has to know which convention it is
-    /// fitting.
+    /// The board core with its coordinate strips: the rectangle no glass
+    /// surface may intersect. Anything that fits a board asks this, not the core.
     var blockSize: CGSize {
         switch coordinates {
         case .fileNumerals:
@@ -294,18 +223,12 @@ struct BoardGeometry {
                        y: margin + CGFloat(rank) * pitch)
     }
 
-    /// The centre of a point partway through the board flip, `flip` from 0 to
-    /// 1 with Red at the bottom at 0.
+    /// `flip` runs from 0 to 1, Red at the bottom at 0.
     ///
-    /// The flipped board is the unflipped board rotated half a turn about its
-    /// centre, so the flip carries every point along a concentric arc instead
-    /// of interpolating every point through the centre along a straight line.
-    /// The rotation alone would swing the corner points beyond the core on the
-    /// diagonals, so the whole position is scaled to keep the rotating rectangle
-    /// inside its own bounds. That scale preserves distinct point centres and
-    /// keeps every disc inside the core, but can bring adjacent discs over one
-    /// another briefly. Positions rotate; characters and icons stay upright
-    /// throughout.
+    /// Points travel concentric arcs rather than straight lines through the
+    /// centre. The rotating rectangle is scaled to stay inside its own bounds,
+    /// which can briefly bring adjacent discs over one another. Characters and
+    /// icons stay upright.
     func center(of square: Square, flip: Double) -> CGPoint {
         guard flip != 0 else { return center(of: square, flipped: false) }
         guard flip != 1 else { return center(of: square, flipped: true) }
@@ -321,9 +244,8 @@ struct BoardGeometry {
                        y: mid.y + (dx * sin(angle) + dy * cos(angle)) * squeeze)
     }
 
-    /// The point a tap at `location` addresses, or nil when the tap fell
-    /// outside every cell — the half-cell margin means every location inside
-    /// the board core belongs to exactly one point.
+    /// Nil outside every cell. The half-cell margin gives every location in the
+    /// core exactly one point.
     func square(at location: CGPoint, flipped: Bool) -> Square? {
         let column = Int(((location.x - margin) / pitch).rounded())
         let row = Int(((location.y - margin) / pitch).rounded())
@@ -338,17 +260,10 @@ struct BoardGeometry {
     /// The largest pitch whose board block fits `size`, or nil when even the
     /// floor does not fit.
     ///
-    /// `floor` is the board's accepted interactive floor by default. A pre-start
-    /// preview passes a lower one: the floor exists to protect interaction, and
-    /// a preview has none to protect, so it yields space to the setup controls
-    /// whenever they need it.
-    ///
-    /// Both of the block's dimensions are asked about, because a block is not
-    /// always as wide as its core: a Go-style board carries a strip up its side,
-    /// and the pitch the width alone suggests can be one too large for it. A
-    /// board whose coordinates cost only height is unaffected — its block is
-    /// exactly its core wide, so the first candidate already fits the width by
-    /// construction.
+    /// A pre-start preview passes a lower `floor`: the floor protects
+    /// interaction, which a preview has none of. Both dimensions are checked
+    /// because a Go-style board's side strip can make the pitch the width
+    /// suggests one too large.
     static func fitting(_ size: CGSize, board: BoardDefinition,
                         floor: CGFloat? = nil) -> BoardGeometry? {
         let floor = floor ?? minimumPitch(for: board)

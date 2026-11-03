@@ -5,10 +5,10 @@
 // game: every position, every verdict and every reading is the core's replay of
 // them from the record's start.
 //
-// A game file is the record encoded as JSON (docs/game-data.md). It carries the
-// game's own facts and none of the library's: whether it is pinned, whether it
-// was imported, which side this device's player took and what a networked game
-// needs to resume stay on this device.
+// A game file is the record encoded as JSON. It carries the game's own facts
+// and none of the library's: whether it is pinned, whether it was imported,
+// which side this device's player took and what a networked game needs to
+// resume stay on this device.
 
 import Foundation
 import SwiftData
@@ -73,7 +73,6 @@ final class GameRecord {
 
     var isFinished: Bool { result != nil }
 
-    /// Ends the game.
     func end(_ outcome: Outcome, _ reason: EndReason, at date: Date = .now) {
         result = outcome
         self.reason = reason
@@ -186,8 +185,8 @@ nonisolated struct NearbyWireSession: Codable, Equatable, Sendable {
     var sessionID: String
     /// The paired device on the other end, as the transport names it.
     var peerID: String
-    /// Which peer proposed — the one asymmetry a session has, and the one that
-    /// decides which connection a resume exchange completes on.
+    /// Which peer proposed, which decides the connection a resume exchange
+    /// completes on.
     var proposedLocally: Bool
     /// Accepted retractions, and the surviving count of the last one.
     var undos: Int

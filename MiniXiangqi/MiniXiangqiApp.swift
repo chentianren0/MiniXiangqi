@@ -1,18 +1,11 @@
-// The app and its one scene.
-//
-// docs/interaction-design.md's navigation exclusions have always excluded
-// multiple main windows, and with games persisted the exclusion stopped being
-// a taste question: two windows would be two boards over the one game in
-// play, writing over each other with no diagnosis at all. On macOS the scene
-// is therefore a `Window` — no File → New Window, by construction. iOS keeps
-// `WindowGroup`, whose single-scene default already conforms.
+// One window: two would be two boards writing over the one game in play. On
+// macOS the scene is a `Window`, so there is no File → New Window; iOS keeps
+// `WindowGroup`, which is single-scene by default.
 
 import SwiftUI
 
-/// Termination, answered with the core's deterministic teardown: join the
-/// engine thread rather than relying on process exit. Best effort — every move
-/// was saved as it was played, so a quit that never reaches this loses
-/// nothing.
+/// Joins the engine thread at termination rather than relying on process
+/// exit. Best effort: every move was saved as it was played.
 private final class AppDelegate: NSObject {
     fileprivate func shutdownCore() {
         Core.shutdownSharedIfLive()
@@ -37,15 +30,9 @@ struct MiniXiangqiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     #endif
 
-    /// Game Center's sign-in, and whether online play is on offer once it has
-    /// answered.
-    ///
-    /// **It is started here because it is a launch errand rather than a
-    /// screen's**: the answer gates whether a row exists at all, so it has to be
-    /// asked before anything draws, and asking it twice would be two sign-ins.
-    /// The scene owns it for the same reason it owns the window — one app, one
-    /// account, one answer — and hands it down, because the answer moves while
-    /// the app is running and the row has to move with it.
+    /// Game Center's sign-in, started at launch: whether online play is on
+    /// offer decides whether a row exists before anything draws, and asking
+    /// twice would be two sign-ins.
     @State private var gameCenter = GameCenterAvailability()
 
     /// The window's title is the app's own name: a proper noun, not copy, so

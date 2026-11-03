@@ -1,30 +1,5 @@
-// A History record, read back.
-//
-// docs/interaction-design.md, "History replay": the board is read-only —
-// replay offers no move input, no Undo, and no way to start a game from the
-// displayed position — so this screen hands `BoardView` a position, the two
-// states that are facts about it, and the step it is drawing, and nothing
-// else. There is no selection, no legal destination, and no held piece
-// anywhere in it, which is why the check rings alone carry check here: they
-// are never hidden, because nothing is ever in the player's hand.
-//
-// The step is drawn by the same canvas that draws a played move, from the same
-// transit state, and reports its arrival on the same two wires: a replayed
-// game moves like a game.
-//
-// The same side-by-side shape play uses, with a different panel in it: what the
-// game was, where in it the board is, the list, and the transport.
-//
-// **The header is the top of the page in both shapes.** Beside the board it is
-// the first thing in the panel, which is already the top; beneath the board it
-// is above the board rather than under it, which is where the play screen puts
-// its own status and what the contract's stacked arrangement describes. The
-// owner asked for exactly that from the iPhone (2026-07-30): the result line
-// goes to the top of the page and the room it leaves goes to the move list.
-//
-// **The room it leaves is shared, and the share leans to the board**, which is
-// the owner's second look at the same screen (2026-07-31): the first round gave
-// the whole of it to the list and the board paid three points of pitch for it.
+// The board is read-only: no move input, no Undo, no way to start a game from
+// the shown position, and no held piece, so the check rings alone carry check.
 
 import SwiftUI
 
@@ -37,25 +12,20 @@ struct ReplayScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
-    /// The captured sheet's own width, measured as the play screen measures
-    /// its own: a GeometryReader at a sheet's root has no ideal size, and on
-    /// macOS the sheet takes exactly its content's ideal.
+    /// Measured as the play screen measures its own: a GeometryReader at a
+    /// sheet's root has no ideal size, and on macOS the sheet takes exactly its
+    /// content's ideal.
     @State private var capturedWidth: CGFloat = 0
 
-    /// What the header above the board actually came to, measured rather than
-    /// assumed — the same thing the play screen does with its turn status, and
-    /// for the same reason: at an accessibility text size it is taller than any
-    /// constant here, and the board is sized around what it really is. It
-    /// starts at the height the default text size comes to, so the first frame
-    /// is already the right size, and nothing it measures depends on the board.
+    /// Measured rather than assumed: at an accessibility text size the header is
+    /// taller than any constant. Starts at the default text size's height so the
+    /// first frame is right; nothing it measures depends on the board.
     @State private var headerHeight: CGFloat = 69
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     #if os(iOS)
-    /// Whether the navigation container is presenting as a bar across the
-    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
     @Environment(\.horizontalSizeClass) private var widthClass
     #endif
 
@@ -66,8 +36,7 @@ struct ReplayScreen: View {
             if let replay {
                 layout(replay)
             } else if let failure {
-                // The description under the title is the core's own diagnostic
-                // text: not copy, and not localized.
+                // The core's diagnostic text, not localized.
                 ContentUnavailableView("failure.gameDidNotStart",
                                        systemImage: "exclamationmark.triangle",
                                        description: Text(verbatim: failure.description).monospaced())
@@ -76,23 +45,16 @@ struct ReplayScreen: View {
             }
         }
         .environment(\.motionPolicy, policy)
-        // The record's own instant names the screen: the destination is already
-        // named by the back control beside it, and what a reader wants there is
-        // which game this is. The words are the system's date formatting rather
-        // than copy, so they are verbatim.
+        // The back control already names the destination, so the title says
+        // which game this is. System date formatting, so verbatim.
         .navigationTitle(Text(verbatim: record.whenText))
-        // A page walked into from the list is titled beside the control that
-        // walks back out, which is what iOS does with a pushed page — and what
-        // the board on a phone can afford, since a large title is most of the
-        // height the stacked shape spends on the board.
+        // Inline: a large title is most of the height the stacked shape spends
+        // on the board.
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        // docs/interaction-design.md, "Navigation": a board screen hides the
-        // destination bar where that bar is a bar across the bottom, and this
-        // is one of the two. It is the owner's own recommendation from the
-        // device pass (2026-07-31), made for this screen first: the bar's rows
-        // are worth more to the page than the bar is under it.
+        // A board screen hides the destination bar where it is a bar across the
+        // bottom: its rows are worth more to the page.
         #if os(iOS)
         .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
         #endif
@@ -103,16 +65,11 @@ struct ReplayScreen: View {
             case .failure(let error): failure = error
             }
         }
-        // Reduce Motion switched under a walk takes effect on the next step,
-        // exactly as it does on the play screen.
         .onChange(of: policy) { _, updated in replay?.policy = updated }
         .onDisappear {
             replay?.close()
             replay = nil
         }
-        // The app leaving the foreground pauses playback, as the accepted
-        // behaviour asks: a game walking itself forward behind another app is
-        // a game nobody is watching.
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { replay?.pause() }
         }
@@ -132,47 +89,21 @@ struct ReplayScreen: View {
                 stacked(replay, in: proxy.size)
             }
         }
-        // The sheet is the screen's rather than the stacked branch's, for the
-        // play screen's reason: a sheet declared inside one branch alone is a
-        // sheet re-presented every time the layout comes back to that branch.
+        // Declared here rather than in the stacked branch: a sheet inside one
+        // branch is re-presented every time the layout returns to that branch.
         .sheet(isPresented: $capturedShown) { capturedSheet(replay) }
         #if os(macOS)
         .frame(minWidth: BoardLayout.minimumWidth, minHeight: BoardLayout.minimumHeight)
         #endif
     }
 
-    /// The header above the board, the board, the panel beneath it.
+    /// The header above the board, the board, the panel beneath it. Replay keeps
+    /// its move list on screen in this shape too, so the chrome tightens instead.
     ///
-    /// The same three-part arrangement the play screen takes in this shape —
-    /// what is true of the game above the board, the board, the controls below
-    /// it — which is what the contract's stacked arrangement describes. The
-    /// header used to be the first section *inside* the panel; moving it above
-    /// the board is the owner's own iPhone feedback (2026-07-30), and the room
-    /// that move frees is **shared, leaning to the board** — the owner's second
-    /// look at the same screen (2026-07-31), after a first round that gave the
-    /// whole of it to the list and charged the board three points of pitch for
-    /// it. Two things pay the board back: the panel asks for less beneath the
-    /// board than it does beside it, and the header claims no air below itself
-    /// here, because the board's own allowance is already that air.
-    ///
-    /// Replay is the exception to the on-demand move list: its accepted
-    /// behaviour needs the list to indicate the shown move and to let one be
-    /// selected, so in this shape the list is on screen too and the
-    /// surrounding chrome is what tightens to make room.
-    ///
-    /// The chrome's height is what it is *granted* rather than what it asks
-    /// for, and the header is inside that grant rather than beside it: header
-    /// plus panel is exactly the chrome the board is sized around, so the board
-    /// cannot be drawn over either of them. A fixed block taken whole out of a
-    /// short space would leave the board a slot its own floor does not fit in,
-    /// which is a board drawn over the panel rather than a smaller one.
-    /// `BoardLayout.stackedChrome(in:game:asking:)` reserves the board's floor first
-    /// and hands the chrome the rest, on every platform: the reachable Mac
-    /// windows that take this shape start at 535 points of content height, and
-    /// an iPadOS window is sized by the system with no floor of the app's to
-    /// stop it. Where the grant is short the panel is what gives way, because
-    /// the header is a fact about the game and the list below it is what can be
-    /// read a row at a time.
+    /// The header is inside the chrome's grant rather than beside it, so the
+    /// board cannot be drawn over either. `stackedChrome` reserves the board's
+    /// floor first and hands the chrome the rest; where the grant is short the
+    /// panel gives way, since the list can be read a row at a time.
     private func stacked(_ replay: Replay, in size: CGSize) -> some View {
         let chrome = BoardLayout.stackedChrome(in: size, game: record.kind,
                                                asking: headerHeight + panelHeight)
@@ -182,9 +113,8 @@ struct ReplayScreen: View {
             headerBlock(replay, airBelow: 0)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { headerHeight = $0 }
 
-            // A stacked board screen, so the same full-width fitting and the
-            // same surface behind it: where the width is what sized this board,
-            // it meets the glass rather than leaving a sliver of page beside it.
+            // Where the width sized the board, its surface meets the glass
+            // rather than leaving a sliver of page beside it.
             board(replay, geometry,
                   bleed: BoardLayout.surfaceBleed(in: size.width, board: geometry))
 
@@ -192,11 +122,8 @@ struct ReplayScreen: View {
                 .frame(height: max(0, chrome - headerHeight))
         }
         .toolbar {
-            // The captured-pieces surface, in the game that has one, reached
-            // rather than resident in this shape — the contract's own stacked
-            // answer, applied here on the owner's device pass (2026-08-17):
-            // the list is what replay keeps on screen, and the board's floor
-            // and the list's room both come before a third resident block.
+            // Reached rather than resident in this shape: the board's floor and
+            // the list's room come before a third resident block.
             if record.kind.conceals {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -210,32 +137,13 @@ struct ReplayScreen: View {
         }
     }
 
-    /// What the panel beneath the board asks for: the list and the transport,
-    /// in the height the transport needs plus room for four rows of the game.
-    ///
-    /// **This is the one number the owner's buy-back decision moves**
-    /// (2026-07-31), and it is settled against rendered screens rather than
-    /// reasoned about here. The panel used to ask beneath the board for exactly
-    /// what it asks beside it, and on a phone that ask is refused anyway — the
-    /// grant below is the whole of what is left once a floor-sized board is
-    /// reserved, so asking for more than the phone has just pins the board on
-    /// its floor. Asking for less is what hands the board its pitch back, and
-    /// every point of it costs the list a point of the same height, so the
-    /// number is exactly where the two stop: **200** leaves a 402-point iPhone
-    /// a 52-point pitch under the full-width fitting, and is the smallest ask
-    /// that still draws the seven-ply game's fourth row whole beneath it. What
-    /// binds this board is that height rather than the width — the panel is
-    /// granted its room before the board is fitted — so the full-width pitches
-    /// the play board reaches are not this screen's. Beside the
-    /// board there is no such contest and the panel is the width it always was.
+    /// The panel's ask beneath the board, settled against rendered screens. On
+    /// a phone every point of it comes out of the board's pitch; 200 is the
+    /// smallest ask that still draws a fourth row of moves whole.
     private var panelHeight: CGFloat { 200 }
 
     private func board(_ replay: Replay, _ geometry: BoardGeometry,
                        bleed: CGFloat = 0) -> some View {
-        // The ending discloses the deal, so the position the game ended in
-        // shows every identity it was still concealing — and a walk back out of
-        // it shows the game as it was played, which is what the record holds at
-        // that ply. One settle, by opacity, as on the board that played it.
         let disclosure: Double = replay.disclosesTheDeal ? 1 : 0
         return BoardView(geometry: geometry,
                   placement: replay.placement,
@@ -255,17 +163,10 @@ struct ReplayScreen: View {
             .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
-    /// The panel, beside the board or beneath it. `edge` is the window edge its
-    /// material runs to — the top beside the board, where the title bar draws
-    /// over it, and the bottom beneath the board, which is the edge this shape
-    /// puts it on.
-    ///
-    /// `beside` is what the two shapes disagree about: beside the board the
-    /// panel's own top *is* the top of the page, so the header is in it, and
-    /// the captured surface is a resident section under it. Beneath the board
-    /// the header is above the board instead, the captured surface is reached
-    /// from the toolbar as the play screen reaches it, and the panel begins at
-    /// the list.
+    /// `edge` is the window edge its material runs to. Beside the board the
+    /// panel's top is the page's top, so the header and a resident captured
+    /// section are in it; beneath the board the header sits above the board and
+    /// the captured surface is reached from the toolbar.
     private func panel(_ replay: Replay, beside: Bool, edge: Edge.Set) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if beside {
@@ -274,16 +175,9 @@ struct ReplayScreen: View {
                 Divider()
             }
 
-            // The captured-pieces surface, in the game that has one, resident
-            // where the panel stands beside the board. **A record is a game
-            // already over**, so what it shows is the disclosed surface both
-            // players read the same — and it follows the walk, so it shows
-            // what had been taken by the position on screen.
             if beside && replay.game.conceals {
-                // The section extends with its rows rather than scrolling in a
-                // grant: the list below keeps its own scroll, and a section
-                // sized by its content is what the panel's other residents
-                // already are (owner device pass, 2026-08-17).
+                // Sized by its rows rather than scrolling: the list below keeps
+                // its own scroll.
                 captured(replay)
                     .padding(.horizontal, BoardLayout.panelInset)
                     .padding(.vertical, 8)
@@ -291,10 +185,8 @@ struct ReplayScreen: View {
                 Divider()
             }
 
-            // Replay is the exception to the on-demand move list: its accepted
-            // behaviour needs the list to indicate the shown move and to let
-            // one be selected, so the list is part of the screen rather than
-            // something reached from it.
+            // Resident rather than on demand: replay's list marks the shown
+            // move and lets one be selected.
             MoveList(notation: replay.notation,
                      firstMover: replay.firstMover,
                      currentMove: replay.ply > 0 ? replay.ply - 1 : nil,
@@ -326,8 +218,6 @@ struct ReplayScreen: View {
         }
     }
 
-    /// The disclosed surface, as replay draws it wherever it stands — a record
-    /// is a game already over, and it follows the walk.
     private func captured(_ replay: Replay,
                           pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: replay.captured,
@@ -338,13 +228,9 @@ struct ReplayScreen: View {
                            pitch: pitch)
     }
 
-    /// The same disclosed surface on the phone's own transient, presented as
-    /// the play screen presents it in this shape — and following the walk, as
-    /// the resident section does.
     private func capturedSheet(_ replay: Replay) -> some View {
         NavigationStack {
-            // Board-sized discs: the pitch a board of the sheet's own width
-            // would carry.
+            // The pitch a board of the sheet's own width would carry.
             ScrollView {
                 captured(replay,
                          pitch: BoardLayout.capturedSheetPitch(in: capturedWidth,
@@ -369,30 +255,12 @@ struct ReplayScreen: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// The header with the air around it: the one leading edge both shapes use,
-    /// and the air above it that both shapes use too.
+    /// The insets the play screen's turn status comes to (16 beside, 20 above),
+    /// stated directly since this header has no background padding of its own,
+    /// so a game's and a record's first lines start at the same place.
     ///
-    /// They are the play screen's turn-status insets, arrived at from the other
-    /// side: that element carries 12 points of its own padding — it has a
-    /// background to fill — and the screen adds `panelInset - 12` beside it and
-    /// 8 above and below, which comes to 16 and 20. This header has no
-    /// background and therefore no padding of its own, so it states the same
-    /// two numbers directly. The first line of a game and the first line of a
-    /// record then start at the same place, which is what a reader walking
-    /// between the two screens sees; what follows differs because a status line
-    /// and a record's metadata are different sentences, not because the air
-    /// around them was chosen twice.
-    ///
-    /// `airBelow` is the one inset the two shapes disagree about, because what
-    /// follows the header differs: beside the board a `Divider` follows and the
-    /// header states its own 20-point gap to it, as it states the gap above.
-    /// Beneath the board the **board's own allowance** follows —
-    /// `BoardLayout.boardPadding`, 24 points of air already reserved above the
-    /// block — and a gap stated here as well would be a second one drawn on top
-    /// of the first. It would also be a gap the board paid for: beneath the
-    /// board the header sits inside the chrome the board is sized around, so
-    /// every point of air here is a point of board. That is the half of the
-    /// owner's buy-back (2026-07-31) that the panel's own ask does not reach.
+    /// Beneath the board `airBelow` is 0: the board's own allowance already
+    /// follows, and any air here would come out of the board.
     private func headerBlock(_ replay: Replay, airBelow: CGFloat) -> some View {
         header(replay)
             .padding(.horizontal, BoardLayout.panelInset)
@@ -400,15 +268,8 @@ struct ReplayScreen: View {
             .padding(.bottom, airBelow)
     }
 
-    /// What the game was, and where in it the board is.
-    ///
-    /// Replay has no side-to-move line: describing a finished game's position
-    /// as somebody's turn would be describing a game that is not being played.
-    /// What stands in that place is the record's own metadata — the same line
-    /// the History row carries — and the progress through it. The pair reads
-    /// down the page's own leading edge, as every other block on this screen
-    /// does; the title above it is the platform's and is centred or leading by
-    /// the platform's own rule, not by this screen's.
+    /// Replay has no side-to-move line: a finished game is nobody's turn. The
+    /// record's metadata and the progress stand in its place.
     private func header(_ replay: Replay) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(String(format: String(localized: "replay.progress"),

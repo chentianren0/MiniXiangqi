@@ -1,20 +1,9 @@
-// The board: a grid of *points*, never a checkerboard of squares.
-//
-// Everything is drawn from BoardGeometry, so the board scales without any
-// dimension being re-tuned. The picture itself is BoardCanvas, which carries
-// the accepted layering and every motion phase; this view supplies what
-// surrounds the picture — the numeral strips, and the invisible grid of tap
-// targets that gives the points names — and assembles the canvas's phase
-// targets from the game and motion state it is handed.
+// The board is a grid of points, never a checkerboard of squares.
 
 import SwiftUI
 
-/// A piece offered to a point that would not take it, and how far through the
-/// board's answer the refusal has come — 0 as it is offered, 1 once it has
-/// gone.
-///
-/// Which points refuse which pieces is not asked here and is not asked
-/// anywhere above the core: this carries the answer, not the rule.
+/// `shake` runs from 0 as the piece is offered to 1 once it has gone. This
+/// carries the core's answer, not the rule.
 struct RefusedPlacement: Equatable {
     var square: Square
     var piece: Piece
@@ -31,100 +20,65 @@ struct BoardView: View {
     var selected: Square?
     var destinations: Set<Square> = []
     var captures: Set<Square> = []
-    /// The points the side to move may not play, where the game has any.
     var forbidden: Set<Square> = []
-    /// The destination a shown hint suggests, where one is shown. It is one of
-    /// the held piece's own destinations and is drawn as one; what it gains is
-    /// the strengthening below and, for a screen reader, a state token beside
-    /// the others.
+    /// One of the held piece's destinations, drawn as one; it gains the
+    /// strengthening below and a screen-reader token.
     var suggested: Square?
     var lastMove: Move?
     var checkedGeneral: Square?
 
-    /// The points whose discs stand at rest on a board being **composed**, and
-    /// the point whose disc is leaving one. Together they are what makes a
-    /// placement scale in and a removal scale out: a point nobody has mentioned
-    /// interpolates from nothing, and the point that is leaving is named until
-    /// its disc has gone, so it never snaps back to full size on the way out.
-    ///
-    /// A board that is played hands neither, and every disc on it is drawn at
-    /// full size — which is what a board with no palette beside it means by a
-    /// piece being where it is.
+    /// Only a board being composed hands these. A point nobody names scales in
+    /// from nothing, and the leaving point stays named until its disc has gone,
+    /// so it never snaps back to full size. A played board draws every disc at
+    /// full size.
     var settled: Set<Square> = []
     var leaving: Square?
 
-    /// A piece offered to a point and refused, with how far through its answer
-    /// the refusal has come. Only the board being composed carries one: it is
-    /// the editor's answer to a point the core reports as no place for that
-    /// piece, and a board being played refuses a *move*, which the markers
-    /// already answer.
+    /// Only the board being composed carries one; a played board refuses a
+    /// move, which the markers already answer.
     var refused: RefusedPlacement?
 
-    /// The running committing transition and the emphasis phases, from
-    /// PlayMotion. A static board — a snapshot, a preview — leaves them at
-    /// rest and draws exactly the states it was given.
+    /// A static board, a snapshot or a preview, leaves them at rest.
     var transit: Transit?
-    /// The second disc of a paired transition — the two plies of a decision
-    /// cycle rewinding together.
+    /// The second disc of a paired transition: two plies rewinding together.
     var companion: Transit?
     var transitFade: Double = 0
-    /// How far the arriving face has come up on the travelling disc — a Jieqi
-    /// reveal. Zero on every board that turns nothing up.
+    /// A Jieqi reveal on the travelling disc.
     var transitReveal: Double = 0
-    /// How far the whole deal has come up — the end of a Jieqi game, which
-    /// discloses to both players every identity the position still conceals.
-    /// Zero on every board that conceals nothing, and on one whose game is
-    /// still going.
+    /// The end of a Jieqi game, which discloses every concealed identity to
+    /// both players.
     var disclosure: Double = 0
     var checkEmphasis: Double = 0
     var markerEmphasis: Double = 0
-    /// How strongly the suggested destination is drawn — the hint's own
-    /// emphasis, which arrives with a swell in full motion and at once under
-    /// Reduce Motion. It carries the muting and the halo with it: all three are
-    /// the one suggestion, so all three ride the one phase.
+    /// It carries the muting and the halo too: all three are one suggestion,
+    /// so they ride one phase.
     var hintEmphasis: Double = 0
     var policy = MotionPolicy(reduceMotion: false)
 
-    /// When the running dash drift began, or nil when none is running. The
-    /// dashes turn from where they are drawn at rest rather than from wherever
-    /// a shared clock happens to stand, so a suggestion shown on a capture ring
-    /// already on the board sets it turning instead of jolting it.
+    /// The dashes turn from where they rest rather than from a shared clock, so
+    /// a suggestion on a ring already shown sets it turning without a jolt.
     @State private var driftStart: Date?
 
     var style: BoardStyle = .traditional
 
-    /// How far the style's board surface runs past the block on each side.
-    ///
-    /// docs/interaction-design.md, "Layout shapes": a stacked board screen is
-    /// fitted to the full width, and the surface runs to the screen edges
-    /// beneath the numeral strips so the board meets the glass rather than
-    /// leaving the whole-point pitch's remainder showing page. How many points
-    /// that is belongs to the layout — `BoardLayout.surfaceBleed(in:board:)` —
-    /// and every other board is drawn with none, which is the board's own width
-    /// and nothing beside it.
+    /// Non-zero only on a stacked board screen; see
+    /// `BoardLayout.surfaceBleed(in:board:)`.
     var surfaceBleed: CGFloat = 0
 
     var onTap: (Square) -> Void = { _ in }
 
-    /// The 棋子符号 preference, read here because this is the one place every
-    /// board comes from — play, replay, and any snapshot alike — so the switch
-    /// reaches all of them without either screen having to know about it.
+    /// Read here because every board, in play, replay or a snapshot, comes
+    /// through this view.
     @AppStorage(PieceSymbols.key) private var symbols: PieceSymbols = .hanzi
 
-    /// The 记谱法 preference, which the strips follow: the strips exist so a
-    /// player can map the move list to the board, so a WXF list beside a 一二三
-    /// edge would break the very mapping they are for. Read here so that
-    /// changing the preference re-renders them live — and unchosen, it is the
-    /// interface language's own reading, so the strips and the list agree from
-    /// the first launch in either language.
+    /// The strips follow it: they map the move list to the board, so they must
+    /// be in the list's script.
     @AppStorage(NotationStyle.key)
     private var notationStyle: NotationStyle = .resolvedForInterfaceLanguage
 
-    /// The arrival wires, each fired on the frame its animation reaches its
-    /// target — see ArrivalReporter for why the transaction completion alone
-    /// cannot be trusted with a gate. Two belong to a committing transition;
-    /// the third says the board has finished turning round, which is when the
-    /// points below are back under the discs above them.
+    /// Each fires on the frame its animation reaches its target; see
+    /// ArrivalReporter for why a transaction completion cannot gate. The flip's
+    /// says the points are back under their discs.
     var onTravelArrival: () -> Void = { }
     var onFadeArrival: () -> Void = { }
     var onFlipArrival: () -> Void = { }
@@ -134,17 +88,13 @@ struct BoardView: View {
     var body: some View {
         block
         .frame(width: geometry.blockSize.width, height: geometry.blockSize.height)
-        // The surface behind the whole block, which is what runs past it where
-        // the layout asks. The core and the strips carry their own fill too, so
-        // this changes nothing at all where the bleed is none.
+        // The core and the strips carry their own fill, so this shows only
+        // where the surface bleeds past the block.
         .background {
             style.boardSurface.padding(.horizontal, -surfaceBleed)
         }
     }
 
-    /// The board and whatever labels its edges, laid out the way its own
-    /// convention asks: file numerals above and below, or Go-style letters
-    /// beneath with numbers up the leading side.
     @ViewBuilder
     private var block: some View {
         switch geometry.coordinates {
@@ -171,14 +121,8 @@ struct BoardView: View {
     // MARK: - The board core
 
     private var core: some View {
-        // Every other thing the board draws changes inside a transaction and is
-        // interpolated as a phase. The drift is the exception — it turns for as
-        // long as a suggestion stands rather than from one state to another —
-        // so it is driven by the clock instead, on a schedule that ticks only
-        // while it is running and is paused for every other moment of a game.
-        // It ticks at the display's own rate, uncapped: motion never limits
-        // its frame rate, and what bounds the drift's cost is the pause, not
-        // the tick.
+        // The drift is the one motion that runs continuously rather than between
+        // states, so the clock drives it, ticking only while it runs.
         TimelineView(.animation(paused: !driftsDashes)) { context in
             canvas(dashDrift: drift(at: context.date))
         }
@@ -195,18 +139,10 @@ struct BoardView: View {
         }
     }
 
-    /// The refused disc, over the point it was offered to: the piece the player
-    /// is holding, drawn where they aimed it, shaking off and going.
-    ///
-    /// It is drawn over the core rather than into the canvas because it is not
-    /// part of the position — nothing landed — and because what it does is
-    /// move, which is the one thing the canvas's phases are not for. It takes
-    /// no input: the point beneath it is still the point, and a second tap on
-    /// it is a second attempt.
-    ///
-    /// Under Reduce Motion it does not move. The disc still appears at the
-    /// point and still goes, because opacity is not motion and the state has to
-    /// arrive either way; what disappears is the shake.
+    /// Over the core rather than in the canvas: nothing landed, and it moves,
+    /// which the canvas's phases are not for. It takes no input, so a second
+    /// tap on the point is a second attempt. Under Reduce Motion it fades
+    /// without shaking.
     @ViewBuilder
     private var refusal: some View {
         if let refused {
@@ -248,8 +184,7 @@ struct BoardView: View {
                                         settled: settlePhases))
     }
 
-    /// Every settled point at rest and the leaving point at nothing. Empty on
-    /// every board that is played, which is what leaves its discs at full size.
+    /// Empty on a played board, which leaves its discs at full size.
     private var settlePhases: SquarePhases {
         guard !settled.isEmpty || leaving != nil else { return SquarePhases() }
         var values = Dictionary(uniqueKeysWithValues: settled.map { ($0, 1.0) })
@@ -257,49 +192,22 @@ struct BoardView: View {
         return SquarePhases(values)
     }
 
-    /// Whether the board's one continuous motion is running: a suggested
-    /// capture's dashes turn for as long as the suggestion stands, and stop the
-    /// instant anything takes it off the board. A rotation is motion, so under
-    /// Reduce Motion they hold still and the suggestion is said by the marks
-    /// that do not move.
+    /// A rotation is motion, so under Reduce Motion the dashes hold still.
     var driftsDashes: Bool {
         guard let suggested, !policy.reduceMotion else { return false }
         return captures.contains(suggested)
     }
 
-    /// How far the dashes have turned by `date`, from the instant the drift
-    /// began. At rest, and for every ring but the suggested one, they are drawn
-    /// exactly where the pattern places them.
     private func drift(at date: Date) -> Double {
         guard driftsDashes, let driftStart else { return 0 }
         return Motion.dashDrift(elapsed: date.timeIntervalSince(driftStart))
     }
 
-    /// One element per point, over the drawn board.
-    ///
-    /// The board is drawn as a single canvas, which is right — it is one
-    /// picture, not a view per point — but a picture has no points a pointer
-    /// can hit or a screen reader can name. This grid supplies both: it is what
-    /// makes a tap land on a point rather than at a coordinate, and what lets
-    /// someone who cannot see the board hear where the pieces are.
-    ///
-    /// Each element is placed at the same centre the canvas draws that point
-    /// at, from the same function, rather than laid out by a stack that happens
-    /// to divide the board evenly. A stack invites a stray inset — an earlier
-    /// version had one, and it silently shifted every point by a fraction of a
-    /// cell while remaining perfectly self-consistent, so clicking by name
-    /// still worked and no test could see it. Sharing the geometry is what
-    /// makes the two agree at every orientation the board settles in.
-    ///
-    /// They disagree in exactly one window: these elements jump to the flipped
-    /// positions when the flip begins, while the canvas carries each disc
-    /// along the arc of the rotation. For those 350 ms a point's element is
-    /// not under its drawn disc, so PlayMotion discards board input for the
-    /// length of the flip rather than committing a move the player did not
-    /// aim. What is accepted with it is that a screen reader's frames drift
-    /// for the same 350 ms: the labels stay true throughout — they are read
-    /// from the position, which a flip does not touch — and the frames are
-    /// right again the moment the board is.
+    /// The canvas has no points a pointer can hit or a screen reader can name;
+    /// this grid supplies both. Each element is placed by the canvas's own
+    /// centre function rather than by a stack, whose stray inset would shift
+    /// every point invisibly. During a flip the elements jump while the discs
+    /// travel the arc, so PlayMotion discards board input for the flip.
     private var points: some View {
         ZStack {
             ForEach(0..<geometry.board.squareCount, id: \.self) { index in
@@ -321,43 +229,29 @@ struct BoardView: View {
     }
 
     /// What a screen reader says about a point: its name, what stands there,
-    /// and any state that is on it.
-    ///
-    /// The point's name is a coordinate and is the same in every language. The
-    /// piece is named by `PieceKind.name(for:)`, which is where the two
-    /// languages part company — Chinese says the character on the disc, English
-    /// says the piece's name — so `b1 红 炮 已选择` is `b1 Red Cannon Selected`.
+    /// and any state on it.
     private func describe(_ square: Square) -> String {
         var parts = [square.name]
         if let piece = placement[square] {
             parts.append(placement.game.sideName(piece.side))
-            // **A face-down piece is announced by its side and as face down**,
-            // and by nothing else — docs/interaction-design.md, "The Jieqi
-            // board": never by the identity the position holds under it, and
-            // not by the role its square gives it either, which is a fact about
-            // how it moves rather than about what stands there. So the reading
-            // order is unchanged and the vocabulary gains one word.
-            //
-            // **The ending takes that word away**, because it takes the
-            // concealment away: a game that has ended has disclosed every
-            // identity to both players, and what the disc shows is what the
-            // point is described as.
+            // A face-down piece is announced by its side and as face down only:
+            // not by its identity, nor by its role. Once the game's end has
+            // disclosed it, it is named.
             if piece.isFaceDown, disclosure > 0,
                let identity = placement.concealedIdentity(at: square) {
                 parts.append(identity.name(for: piece.side))
             } else if piece.isFaceDown {
                 parts.append(String(localized: "board.a11y.faceDown"))
             } else if let kind = piece.kind {
-                // A stone has no kind and therefore no name of its own: what it
-                // is has already been said by the side beside it.
+                // A stone's side has already said what it is.
                 parts.append(kind.name(for: piece.side))
             }
         } else {
             parts.append(String(localized: "board.a11y.empty"))
         }
         if square == selected {
-            // The same state under two names, because it is two states: a piece
-            // taken up, and a point marked for a stone that is not down yet.
+            // Two names for two states: a piece taken up, and a point marked
+            // for a stone not yet down.
             parts.append(geometry.board.play == .placement
                          ? String(localized: "board.a11y.pending")
                          : String(localized: "board.a11y.selected"))
@@ -365,60 +259,33 @@ struct BoardView: View {
         if forbidden.contains(square) { parts.append(String(localized: "board.a11y.forbidden")) }
         if captures.contains(square) { parts.append(String(localized: "board.a11y.capture")) }
         else if destinations.contains(square) { parts.append(String(localized: "board.a11y.legalMove")) }
-        // A suggested point is a legal destination first and a suggestion
-        // second, so its token joins the vocabulary rather than replacing any
-        // of it.
+        // A suggested point is a legal destination first, so its token is added
+        // rather than replacing one.
         if square == suggested { parts.append(String(localized: "board.a11y.suggested")) }
         if square == checkedGeneral { parts.append(String(localized: "board.a11y.inCheck")) }
         return parts.joined(separator: " ")
     }
 
-    /// What a screen reader is told when a suggestion appears, composed from
-    /// the same vocabulary a point's own description is composed from: the
-    /// side, the piece, and the two point names. `Suggestion: Red Cannon b1 to
-    /// b5`, and its Chinese counterpart.
-    ///
-    /// The parts are joined by a format string rather than by interpolation,
-    /// because what stands between them is copy — a colon and spaces in
-    /// English, an ideographic colon and no space between side and piece in
-    /// Chinese — and a separator hard-coded here would be one language's
-    /// punctuation wrapped around the other language's words.
-    ///
-    /// The piece is taken apart by the caller rather than passed whole, so that
-    /// this cannot be reached for a stone: a stone has no kind, and a hint that
-    /// composed one out of the empty-point word would read *Black Empty h8 to
-    /// h8*. The board that places has its own announcement below.
+    /// A format string, because the punctuation between the parts is copy that
+    /// differs by language. The piece comes apart so a stone can never reach
+    /// this.
     static func hintAnnouncement(game: GameKind, side: Side, kind: PieceKind,
                                  from: Square, to: Square) -> String {
         String(format: String(localized: "board.a11y.hint.announcement"),
                game.sideName(side), kind.name(for: side), from.name, to.name)
     }
 
-    /// What a screen reader is told when a suggestion appears on a board that
-    /// places rather than moves: **the point, in the game's own coordinates**.
-    ///
-    /// There is no piece to name — a stone is not one, and which side is putting
-    /// it down is what the turn status says — and there is no journey to
-    /// describe. The suggestion is a point, the mark standing on it is what the
-    /// player acts on, and the point carries its own 建议 token for whoever
-    /// navigates to it.
+    /// On a placement board there is no piece to name and no journey, so only
+    /// the point is said.
     static func hintAnnouncement(point: Square) -> String {
         String(format: String(localized: "board.a11y.hint.point"), point.name)
     }
 
     // MARK: - Go-style coordinates
 
-    /// The letters along the bottom edge, `a` at the leading end.
-    ///
-    /// A coordinate is absolute, so an orientation re-orders the labels and
-    /// never renames them — and these are the coordinates the core itself
-    /// spells, letter for letter, with no letter skipped: the move list beside
-    /// the board reads `h8`, and an edge that had left `i` out would send a
-    /// reader to the wrong line.
-    ///
-    /// The 记谱法 preference is not consulted anywhere in this pair. These games
-    /// have one convention of their own, and a xiangqi reading has nothing to
-    /// say about a board with no files to number from a player's own right.
+    /// No letter is skipped, matching the core's spelling: the list reads `h8`,
+    /// and an edge without `i` would send a reader to the wrong line. The 记谱法
+    /// preference does not apply.
     private var fileLetterStrip: some View {
         HStack(spacing: 0) {
             ForEach(0..<geometry.board.fileCount, id: \.self) { column in
@@ -460,14 +327,9 @@ struct BoardView: View {
 
     // MARK: - File numerals
 
-    /// One strip per side, showing the numerals of the player it faces —
-    /// Chinese for Red and Arabic for Black under the traditional reading,
-    /// Arabic for both under WXF — following the board's orientation.
-    /// A numeral cannot glide into a different numeral, so while the pieces
-    /// re-lay themselves in a flip the strip crossfades in place: both
-    /// orientations' renderings stand in the one strip and trade opacity in
-    /// the flip's own transaction — under Reduce Motion exactly as in full
-    /// motion, since opacity is not motion.
+    /// One strip per side, in the numerals of the player it faces. A numeral
+    /// cannot glide into another, so in a flip both orientations stand in the
+    /// strip and crossfade, under Reduce Motion too: opacity is not motion.
     private func numeralStrip(atTop: Bool) -> some View {
         let isRed = atTop ? flipped : !flipped
         return ZStack {
@@ -486,8 +348,7 @@ struct BoardView: View {
             .joined(separator: " "))
     }
 
-    /// The strip at one physical position, rendered for one orientation:
-    /// the top faces Red exactly when the board is flipped.
+    /// The top faces Red exactly when the board is flipped.
     private func stripContent(atTop: Bool, orientationFlipped: Bool) -> some View {
         let isRed = atTop ? orientationFlipped : !orientationFlipped
         return HStack(spacing: 0) {
@@ -502,13 +363,8 @@ struct BoardView: View {
         }
     }
 
-    /// Files are numbered from each player's own right: Red's right is the
-    /// board's final file,
-    /// Black's is file a. Which way each edge counts is the board's, not the
-    /// notation's, and never changes; the script does. The traditional reading
-    /// writes Red's numbers in Chinese numerals and Black's in Arabic, and WXF
-    /// writes both sides' in Arabic, so under WXF Red's edge changes script and
-    /// nothing else.
+    /// Each edge counts from its player's own right, whatever the notation;
+    /// only the script follows the 记谱法 preference.
     private func numeral(file: Int, forRedPlayer isRed: Bool) -> String {
         let index = isRed ? geometry.board.fileCount - 1 - file : file
         return isChinese(forRedPlayer: isRed)
@@ -516,14 +372,9 @@ struct BoardView: View {
             : String(index + 1)
     }
 
-    /// Whether a strip is written in Chinese numerals, which only Red's is and
-    /// only under the traditional reading.
-    ///
-    /// It settles the weight as well as the script. Chinese numerals carry more
-    /// strokes than digits do at the same weight, so the digits are set one step
-    /// heavier for the two edges to read as equal in weight — the accepted
-    /// requirement — and that compensation belongs to the script rather than to
-    /// the side: two Arabic edges at different weights would read as unequal.
+    /// Chinese numerals carry more strokes, so the Arabic digits are set one
+    /// step heavier to read as equal; the compensation follows the script, not
+    /// the side.
     private func isChinese(forRedPlayer isRed: Bool) -> Bool {
         isRed && notationStyle == .traditional
     }

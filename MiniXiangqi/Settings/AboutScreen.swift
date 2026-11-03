@@ -1,23 +1,5 @@
-// 关于: what this build is, and what it is licensed under.
-//
-// docs/interaction-design.md, "Navigation": Settings contains an About page
-// stating the application's licence and its version. It is the same page on
-// every Apple platform, reached the same way — a row at the foot of Settings —
-// because what it says is the same everywhere and a second arrangement of the
-// same facts would be two pages to keep in step. macOS keeps the system's own
-// About box in the app menu as well; that one is the platform's and this one is
-// the application's, and they do not have to be the same thing.
-//
-// **It is the Settings screen's own vocabulary and nothing new**: one grouped
-// `Form`, rows that are a label and a value, and one footer where a sentence is
-// owed. The facts themselves are read from the bundle by `About`, which is why
-// nothing on this page is a literal.
-//
-// **And the work it is built on.** The licence group's third row opens the
-// Acknowledgements page, which names the open-source components the application
-// embeds — each one, what it does here, and its home — because a free-software
-// application says what it is made of. No diagnostics: the page exists for the
-// licence, the release it identifies, and the work under both.
+// macOS also keeps the system's About box in the app menu; that one is the
+// platform's, this page is the app's, and they need not match.
 
 import SwiftUI
 
@@ -30,19 +12,11 @@ struct AboutScreen: View {
         }
         .formStyle(.grouped)
         .navigationTitle("about.title")
-        // A page walked into from a destination's root is titled beside the
-        // control that walks back out, per docs/interaction-design.md
-        // § Navigation — the same answer the replay screen gives, and the
-        // platform's own for a pushed page.
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
     }
 
-    /// What this build is: the name it ships under, the release, and the build
-    /// within that release. Three rows of a label and a value, which is the
-    /// platform's own way of stating a fact that cannot be changed from here —
-    /// and the shape every row on the Settings screen already takes.
     private var identity: some View {
         Section {
             LabeledContent("about.name") { Text(verbatim: About.displayName) }
@@ -54,15 +28,8 @@ struct AboutScreen: View {
         }
     }
 
-    /// The licence, its full text, the source it is a licence about, and the
-    /// open-source work that arrived under the same terms.
-    ///
-    /// The three rows are one group because the later ones exist on account of
-    /// the first: GPLv3 is a licence about source, so the address is part of
-    /// what the statement beneath them says rather than a separate offer, and
-    /// the acknowledgements name the work that licence was accepted for. The
-    /// statement is a footer because that is what a sentence of explanation is
-    /// on this screen — the two footers in Settings are the same shape.
+    /// One group because the later rows exist on account of the first: GPLv3 is
+    /// a licence about source.
     private var licence: some View {
         Section {
             NavigationLink("about.license") { LicenseScreen() }
@@ -78,19 +45,12 @@ struct AboutScreen: View {
     }
 }
 
-/// The licence itself, read-only.
+/// Monospaced because the plain-text document aligns columns. Not localized: a
+/// translation would not be the licence.
 ///
-/// The document is shown as it is written — the GPL's own English, its own line
-/// breaks, in a monospaced face because it is a plain-text document laid out in
-/// columns and a proportional face would misalign what it aligns. It is not
-/// copy and is not localized: the licence is one document in one language, and a
-/// translation of it would not be the licence.
-///
-/// **Paragraph by paragraph rather than as one block of text.** Thirty-five
-/// kilobytes in a single `Text` is one accessibility element a screen reader
-/// cannot move around inside, and one layout pass for the whole document before
-/// anything appears. Split on the blank lines the document already has, each
-/// paragraph keeps its own line breaks exactly, so what is drawn is unchanged.
+/// Paragraph by paragraph: one 35 KB `Text` is one accessibility element a
+/// screen reader cannot move around inside, and one layout pass for the whole
+/// document before anything appears.
 struct LicenseScreen: View {
 
     var body: some View {
@@ -103,8 +63,7 @@ struct LicenseScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            // The one leading edge every text block on a page begins on, per
-            // docs/interaction-design.md § Navigation.
+            // The leading edge every text block on a page begins on.
             .padding(16)
         }
         .textSelection(.enabled)
@@ -115,19 +74,8 @@ struct LicenseScreen: View {
     }
 }
 
-/// The open-source work the application embeds, named.
-///
-/// docs/interaction-design.md, "Navigation": the About page names the
-/// open-source components the application is built on — each one, what it does
-/// here, its licence, and a link to its home. The components are the engines
-/// under core/engines, whose READMEs name their sources, and the networks under
-/// core/assets; the addresses are spelled here for the reason
-/// `About.repository` is, so a URL that failed to parse would be a typo in its
-/// own line rather than a state the running application can reach.
-///
-/// Two groups by what the components are — the engines and the networks they
-/// play with — each footer carrying its group's licence, because the licences
-/// differ by group and a sentence per row would say each one again and again.
+/// Each footer carries its group's licence, since the licences differ by group.
+/// The addresses are force-unwrapped for the reason `About.repository` is.
 struct AcknowledgementsScreen: View {
 
     var body: some View {
@@ -163,9 +111,7 @@ struct AcknowledgementsScreen: View {
         #endif
     }
 
-    /// One component: its own name, what it does in this application, and a
-    /// link out to where it lives. The name is verbatim — a project's name is
-    /// not copy — and the row is the link, the way the source row on About is.
+    /// The name is verbatim: a project's name is not copy.
     private func row(_ name: String, _ role: LocalizedStringKey,
                      _ address: String, id: String) -> some View {
         Link(destination: URL(string: address)!) {

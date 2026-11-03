@@ -1,37 +1,21 @@
-// Before there is a game: one mode's pre-start page.
-//
-// docs/interaction-design.md, "Starting and configuring a game": the pre-start
-// state is not an active game. It shows the initial board as a noninteractive
-// preview and no side-to-move status; human-versus-AI adds a **本局设置** group
-// of 我先手 / AI 先手 / 随机 plus **AI 等级**, initialized afresh from the
-// Settings defaults on every entry and held only as an in-memory draft; Free
-// Play adds no group at all, only the sentence that says what Free Play is.
-// **开始对局** is what creates the game, and while creation is in progress it
-// cannot be invoked again.
-//
-// The preview board stays here, where it always was. What left is the mode
-// chooser that used to stand in front of it: choosing what to play is the Play
-// home's, and this page is reached having already chosen.
-//
-// 随机 remains unresolved here and previews Red at the bottom. Only a successful
-// creation flips the board, and only when Random resolved to AI 先手 — which is
-// why the preview reads the draft's own preview rule rather than a resolved
-// side that does not exist yet.
+// The pre-start page is not an active game: the board is a noninteractive
+// preview with no turn status, and the human-versus-AI settings are an
+// in-memory draft, fresh from the Settings defaults on every entry. 随机 stays
+// unresolved and previews Red at the bottom; only a successful creation that
+// resolves it to AI 先手 flips the board.
 
 import SwiftUI
 
 struct SetupScreen: View {
     let play: PlayState
-    /// Which game and mode this pre-start page will create.
     var selection: PlaySelection
 
     private var mode: PlayMode { selection.mode }
 
     @Environment(\.motionPolicy) private var policy
 
-    /// What the setup controls came to under the preview, in the stacked shape.
-    /// They take the space they need first — the preview has no floor to
-    /// protect — so the number is measured rather than allowed for.
+    /// Measured: in the stacked shape the controls take what they need first,
+    /// since the preview has no floor to protect.
     @State private var controlsHeight = BoardLayout.stackedChromeHeight
 
     var body: some View {
@@ -45,10 +29,6 @@ struct SetupScreen: View {
                         .frame(width: BoardLayout.panelWidth)
                 }
             case .stacked:
-                // The preview above, the controls below, in the same order the
-                // play screen puts the board and its cluster. The preview
-                // yields: it has no touch targets to protect, so the controls
-                // take what they need and it fits into what is left.
                 VStack(spacing: 0) {
                     preview(BoardLayout.stackedPreviewGeometry(in: proxy.size,
                                                                game: selection.game,
@@ -62,9 +42,8 @@ struct SetupScreen: View {
         }
     }
 
-    /// The board this page previews, which is the position the state made when
-    /// the page was entered: a game's frozen start, or — for a game whose start
-    /// is dealt — a deal of its own, every deal looking the same from outside.
+    /// The position made when the page was entered: the frozen start, or for a
+    /// dealt game a deal of its own.
     private func preview(_ geometry: BoardGeometry) -> some View {
         BoardView(geometry: geometry,
                   placement: Placement(fen: play.preview, game: selection.game),
@@ -80,29 +59,22 @@ struct SetupScreen: View {
                   onTravelArrival: { },
                   onFadeArrival: { },
                   onFlipArrival: { })
-            // A preview has nothing to interact with, and saying so is what
-            // keeps a screen reader from offering forty-nine or ninety points
-            // that answer to nothing.
+            // Hidden so that a screen reader does not offer points that answer
+            // to nothing.
             .accessibilityHidden(true)
             .allowsHitTesting(false)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The human's side is at the bottom, and 随机 previews Red until it is
-    /// resolved. Red at the bottom is the unflipped board — and a placement
-    /// board has no orientation at all, so it previews as it will be played.
+    /// 随机 previews Red until it is resolved. A placement board has no
+    /// orientation, so it previews as it will be played.
     private var previewsFlipped: Bool {
         mode == .humanVersusAI && !selection.game.isPlacement
             && play.draft.previewsHumanAsBlack
     }
 
-    /// The setup controls, beside the preview or beneath it.
-    ///
-    /// Beside it they fill the height and read from the top, as a panel does.
-    /// Beneath it they take exactly what they need and no more, because every
-    /// point they do not take is a point the preview above them keeps — and the
-    /// material then runs to the bottom edge rather than to the top, since that
-    /// is the edge this shape puts them on.
+    /// Beneath the preview the controls take only what they need, so the
+    /// preview keeps the rest, and their material runs to the bottom edge.
     @ViewBuilder
     private func panel(fillingHeight: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -112,9 +84,8 @@ struct SetupScreen: View {
 
             switch mode {
             case .humanVersusAI: humanVersusAISetup
-            // Networked play reaches its opponent through the propose sheet
-            // rather than through this page, so it has no pre-start state here
-            // and shows what Free Play does: the game's name and nothing to set.
+            // Networked play reaches its opponent through the propose sheet, so
+            // it has no pre-start state of its own here.
             case .freePlay, .nearby, .online: freePlaySetup
             }
             if fillingHeight { Spacer(minLength: 0) }
@@ -127,11 +98,9 @@ struct SetupScreen: View {
                 .fill(.regularMaterial)
                 .ignoresSafeArea(.container, edges: fillingHeight ? .top : .bottom)
         }
-        // One alert, two failures. They are exclusive by construction — a
-        // creation fails at one gate or the other — and one presentation is
-        // what keeps them exclusive on screen too. 取消 dismisses without
-        // leaving the page, so the draft is still there and 开始对局 is on
-        // offer again; 重试 repeats the whole attempt, probe and all.
+        // One alert for two failures, which are exclusive: a creation fails at
+        // one gate or the other. 取消 keeps the draft on the page; 重试 repeats
+        // the whole attempt, memory probe and all.
         .alert(Text(failure.title), isPresented: presentingFailure) {
             Button("control.cancel", role: .cancel) { play.dismissCreationFailure() }
             Button("control.tryAgain") { start() }
@@ -140,16 +109,13 @@ struct SetupScreen: View {
         }
     }
 
-    /// What the last failed attempt says. The insufficient-memory pair is the
-    /// accepted notice; the other is the creation that could not be persisted,
-    /// which cannot borrow 无法保存对局's promise that the current game is
-    /// unchanged, there being no current game to keep.
+    /// The not-saved message cannot borrow 无法保存对局's promise that the
+    /// current game is unchanged: there is no current game.
     private var failure: (title: LocalizedStringResource, message: LocalizedStringResource) {
         switch play.creationFailure {
         case .notSaved: ("alert.gameNotStarted.title", "alert.gameNotStarted.message")
-        // The AI case is also what an absent failure reads as: the alert is not
-        // up, so its words are never seen, and a nil-safe default beats an
-        // optional that every branch would have to unwrap.
+        // Also what nil reads as: the alert is not up then, so its words are
+        // never seen.
         case .aiUnavailable, nil: ("alert.aiUnavailable.title", "alert.aiUnavailable.message")
         }
     }
@@ -184,15 +150,9 @@ struct SetupScreen: View {
         }
     }
 
-    /// **AI 等级**, and the one control on this page whose label the two
-    /// platforms do not present the same way.
-    ///
-    /// A menu picker outside a form shows its label on macOS and swallows it on
-    /// iOS, where the row is expected to be a form row that carries the label
-    /// itself. This page is a panel rather than a form on either platform, so
-    /// iOS is given the pairing explicitly: 标准 alone says nothing about what
-    /// it is the standard *of*, and a level nobody can name is a level nobody
-    /// can choose. macOS keeps the picker's own label, unchanged.
+    /// A menu picker outside a form shows its label on macOS but swallows it on
+    /// iOS, so iOS is given the label explicitly: 标准 alone does not say what
+    /// it is the standard of.
     @ViewBuilder
     private var levelPicker: some View {
         let picker = Picker("setup.aiLevel", selection: level) {
@@ -213,10 +173,8 @@ struct SetupScreen: View {
         #endif
     }
 
-    /// Free Play's one sentence, which names the two sides this game has. The
-    /// sides are the game's own vocabulary — Red and Black on a xiangqi board,
-    /// Black and White on a placement one — and which of them moves first is the
-    /// same fact in both, said in each game's words.
+    /// Names the game's own sides: Red and Black on a xiangqi board, Black and
+    /// White on a placement one.
     private var freePlaySetup: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(selection.game.isPlacement
@@ -229,9 +187,8 @@ struct SetupScreen: View {
         }
     }
 
-    /// The one obvious next action, and therefore the one thing on this page
-    /// the tint rule allows. It cannot be invoked again while creation is in
-    /// progress, and a failure re-enables it with the draft untouched.
+    /// The page's one tinted control, as its one obvious next action. Disabled
+    /// while creating; a failure re-enables it with the draft untouched.
     private var startControl: some View {
         Button("control.startGame") { start() }
             .buttonStyle(.glassProminent)

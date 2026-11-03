@@ -1,78 +1,46 @@
-// One coherent description of the current play state, near the board.
-//
-// docs/interaction-design.md, "Turn status": the primary line always identifies
-// the side to move; a 将军 token accompanies it while that side is in check;
-// Free Play carries no human-or-AI controller label, because the same person
-// controls both sides. The design adds no separate instruction such as "your
-// turn", and turn ownership is never carried by colour alone.
-//
-// **Where the element stands follows the layout shape**, and it keeps its
-// duties wherever it stands. Beside the board it is the panel's first section;
-// in the stacked shape it is the page's bar centre, in the title's place, which
-// a board page does not spend on a name. The two forms say the same things at
-// the room each has: the description and the acknowledgment beat on its own
-// background in both, and in the bar nothing else — the lines a bar centre
-// cannot hold hang beneath it, hung by the screen that knows what is under the
-// bar. At an accessibility text size the bar cannot hold the element at all and
-// the screen puts it back above the board.
-//
-// It carries nothing of the hint. The control, its activity and its disabling
-// are the play-control cluster's, per "Hints".
+// The primary line always names the side to move; there is no separate "your
+// turn", and turn ownership is never carried by colour alone. Beside the board
+// it is the panel's first section; in the stacked shape it takes the bar's
+// title place, and the screen hangs whatever the bar cannot hold beneath it.
 
 import SwiftUI
 
 struct TurnStatus: View {
-    /// Where the element stands, which is the whole of what the two forms
-    /// differ by: the room each has, and therefore what the element draws
-    /// itself and what it leaves to the screen around it.
     enum Placement {
-        /// The measured chrome above the board, and the panel's first section.
         case block
-        /// The page's bar centre, in the title's place.
         case bar
     }
 
     var placement: Placement = .block
 
-    /// Which game this is a status for, because what its two sides are called
-    /// is the game's — 红方 and 黑方 on a xiangqi board, 黑方 and 白方 on a
-    /// placement one. The side itself is the core's answer either way.
+    /// What the two sides are called is the game's: 红方 and 黑方 on a xiangqi
+    /// board, 黑方 and 白方 on a placement one.
     var game: GameKind
     var state: GameState
     var reason: EndReason
 
-    /// The reason line, where the caller has words the shared vocabulary does
-    /// not. A nearby game can end by the two players agreeing a draw, which is
-    /// not a verdict on a position and therefore not something the core — whose
-    /// vocabulary `EndReason` is — has a word for. Everything else reads its
-    /// reason, as it always did.
+    /// Words the shared vocabulary lacks: a nearby game can end by agreement,
+    /// which is not a verdict on a position, so the core has no word for it.
     var reasonText: String?
 
     var sideToMove: Side
     var inCheck: Bool
 
-    /// Who controls the side to move, in human-versus-AI play. Free Play omits
-    /// it, because the same person controls both sides.
+    /// Free Play omits it, because the same person controls both sides.
     var controller: Controller?
 
-    /// What the AI activity slot is carrying. Issue #71's decision 3: a small
-    /// system activity indicator beside the AI controller label, appearing only
-    /// once a search has run long enough to be worth showing, never replacing
-    /// the side-to-move line, and carrying no material at all — it is present
-    /// for a large share of every human-versus-AI game, and a persistent glass
-    /// surface beside the board would be exactly the gratuitous application the
-    /// platform's own guidance warns against.
+    /// The indicator appears only once a search has run long enough to be worth
+    /// showing, and carries no glass: it is present for much of every
+    /// human-versus-AI game.
     var activity: Opponent.Activity = .idle
 
-    /// The inline retry the stalled slot carries, per decision 2. The alert has
-    /// already been answered with 稍后 by the time this shows. In the bar the
-    /// slot hangs beneath the element instead, so the screen passes none.
+    /// The alert has already been answered with 稍后 by the time this shows. In
+    /// the bar the slot hangs beneath the element instead, so the screen passes
+    /// none.
     var retry: (() -> Void)?
 
-    /// Who controls the side to move, where the answer is not "the person
-    /// holding this device". Free Play has none — the same person controls both
-    /// sides — and the other two name what is on the other side of the turn: the
-    /// machine, or the person at the other device.
+    /// Who is on the other side of the turn, where it is not the person holding
+    /// this device.
     enum Controller {
         case you, ai, peer
 
@@ -85,13 +53,10 @@ struct TurnStatus: View {
         }
     }
 
-    /// The acknowledgment beat's progress, 0 to 1 — how far through the beat
-    /// this is, not how dark it gets; `Motion.beatPeakOpacity` is what full
-    /// emphasis comes to. Input the game cannot accept is answered here, where
-    /// the reason is already on screen, rather than on the board. The
-    /// background rises to full emphasis and falls back — opacity only, no
-    /// movement, so Reduce Motion changes nothing — in neutral primary,
-    /// because tint on the play screen belongs to the sides.
+    /// The acknowledgment beat's progress, 0 to 1 — how far through the beat,
+    /// not how dark; `Motion.beatPeakOpacity` is full emphasis. Opacity only, so
+    /// Reduce Motion changes nothing, and neutral because tint on the play
+    /// screen belongs to the sides.
     var beatEmphasis: Double = 0
 
     @ViewBuilder
@@ -102,8 +67,6 @@ struct TurnStatus: View {
         }
     }
 
-    /// The element as a block: the description, the stalled slot beneath it,
-    /// and the beat over the whole.
     private var block: some View {
         VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 6) {
@@ -114,10 +77,8 @@ struct TurnStatus: View {
             .accessibilityIdentifier("turn-status")
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // The stalled slot: the AI cannot start right now, the game is
-            // saved, and the retry lives where things about the game live. It
-            // stays *outside* the combined element above, because a control
-            // folded into one is a control a screen reader cannot reach.
+            // Outside the combined element above, because a control folded into
+            // one is a control a screen reader cannot reach.
             if activity == .stalled, let retry {
                 StalledSlot(retry: retry)
             }
@@ -129,14 +90,8 @@ struct TurnStatus: View {
         .background { beat(cornerRadius: 10) }
     }
 
-    /// The element in the bar's centre: the same description at the weights a
-    /// title and its subtitle take, and nothing else.
-    ///
-    /// Beside where the centre holds both lines, and over two lines where it
-    /// does not — the degradation the play controls make for the same reason,
-    /// and the one a bar's own title and subtitle already read as. Each line
-    /// stays a single line either way: a status that wrapped would push the
-    /// bar down over the board it is about.
+    /// Each line stays a single line: a status that wrapped would push the bar
+    /// down over the board.
     private var bar: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 6) {
@@ -156,14 +111,12 @@ struct TurnStatus: View {
         .background { beat(cornerRadius: 8) }
     }
 
-    /// Whose turn it is, at the weight the form gives its first line.
     private func primaryText(_ font: Font) -> some View {
         Text(primaryLine)
             .font(font)
             .contentTransition(.identity)
     }
 
-    /// What else is true of the turn, and the AI's activity riding beside it.
     @ViewBuilder
     private func secondaryText(_ font: Font) -> some View {
         if let secondary {
@@ -172,11 +125,7 @@ struct TurnStatus: View {
                     .font(font)
                     .foregroundStyle(.secondary)
 
-                // The indicator sits beside the controller label, which is
-                // the head of this line. The system's own, at its smallest,
-                // drawn directly like everything else the status says — and
-                // carrying no material at all, which is the one thing this
-                // indicator is not allowed.
+                // No material on the indicator.
                 if activity == .thinking {
                     ProgressView()
                         .controlSize(.small)
@@ -187,9 +136,8 @@ struct TurnStatus: View {
         }
     }
 
-    /// The acknowledgment beat's own background. Input the game cannot accept
-    /// is answered on the element wherever the element stands, which in the bar
-    /// is the bar's centre rising and falling rather than the page's.
+    /// In the bar the beat is the bar's centre rising and falling, not the
+    /// page's.
     private func beat(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Color.primary.opacity(Motion.beatPeakOpacity * beatEmphasis))
@@ -205,29 +153,19 @@ struct TurnStatus: View {
         }
     }
 
-    /// Whose turn it is, and the check token where there is one.
-    ///
-    /// The token accompanies the side-to-move line rather than replacing it:
-    /// whose turn it is remains true while they are in check. The two are
-    /// joined by a format string rather than by concatenation, because what
-    /// stands between them is copy — an ideographic space in Chinese, an
-    /// ordinary one in English — and a separator hard-coded here would be one
-    /// language's punctuation wrapped around the other language's words.
+    /// The check token accompanies the side-to-move line rather than replacing
+    /// it. Joined by a format string because the separator is copy (an
+    /// ideographic space in Chinese).
     private var sideToMoveLine: String {
         let side = game.sideToMoveText(sideToMove)
-        // The placement games have no check to be in, and the core says so: it
-        // reports `in_check` as 0 there. So the token needs no gate of its own —
-        // it never has anything to accompany.
+        // The core reports `in_check` as 0 in the placement games, so the token
+        // needs no gate of its own.
         guard inCheck else { return side }
         return String(format: String(localized: "status.sideToMove.checked"),
                       side, String(localized: "status.check"))
     }
 
-    /// The second line: who owns the turn, and what else is true of the game.
-    ///
-    /// The two are joined by the accepted metadata format rather than by
-    /// concatenation, and applied repeatedly rather than once per line length,
-    /// exactly as the metadata lines elsewhere are composed.
+    /// Who owns the turn, and what else is true of the game.
     private var secondary: String? {
         let words = reasonText ?? reason.text
         let claimOrReason: String? = switch state {
@@ -236,8 +174,7 @@ struct TurnStatus: View {
                                     String(localized: "status.drawAvailable"), words)
         default: words.isEmpty ? nil : words
         }
-        // The controller label belongs to a turn, so it stops when the turn
-        // does: a finished game is nobody's to move.
+        // A finished game is nobody's to move.
         let owner = state.isOver ? nil : controller?.text
         return switch (owner, claimOrReason) {
         case (let owner?, let rest?): String(format: String(localized: "metadata.join"),
@@ -250,13 +187,8 @@ struct TurnStatus: View {
 }
 
 extension TurnStatus {
-    /// The stalled state: the AI could not be prepared mid-game, the player
-    /// answered 稍后, and the game is saved. Issue #71's decision 2 puts it in
-    /// the turn status's own activity slot with an inline 重试 beside it.
-    ///
-    /// It is a type of its own because it stands in two places for one reason:
-    /// inside the element where the element is a block, and beneath the bar
-    /// where the element is in it. Same words, same identifiers, same act.
+    /// The AI could not be prepared mid-game, the player answered 稍后, and the
+    /// game is saved. It stands inside the block, or beneath the bar.
     struct StalledSlot: View {
         var retry: () -> Void
 
@@ -271,15 +203,8 @@ extension TurnStatus {
             }
         }
 
-        /// 重试, in each platform's own inline-action weight.
-        ///
-        /// It sits inside a sentence about the game rather than in a control
-        /// cluster, so it takes the style the platform gives an action written
-        /// into text: AppKit's link style on macOS, which UIKit has no
-        /// counterpart for, and the borderless style on iOS and iPadOS, which
-        /// is the accent-tinted text button the platform puts beside a line of
-        /// prose. Same control, same identifier, same words; only the weight is
-        /// the platform's.
+    /// An action written into text: the link style on macOS, which UIKit lacks,
+    /// and borderless on iOS.
         @ViewBuilder
         private var inlineRetry: some View {
             #if os(macOS)
@@ -292,9 +217,7 @@ extension TurnStatus {
 }
 
 extension EndReason {
-    /// How a result reads. One home for the vocabulary, because the status line
-    /// and the result notice say the same thing about the same position and a
-    /// second copy of these strings is a second thing to keep in step.
+    /// Shared by the status line and the result notice.
     var text: String {
         switch self {
         case .checkmate: String(localized: "reason.checkmate")
@@ -312,7 +235,6 @@ extension EndReason {
         case .mutualResignation: String(localized: "reason.mutualResignation")
         case .fiveInARow: String(localized: "reason.fiveInARow")
         case .boardFull: String(localized: "reason.boardFull")
-        // No reason is no words, in every language.
         case .none: ""
         }
     }

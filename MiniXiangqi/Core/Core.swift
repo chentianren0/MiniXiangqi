@@ -1,11 +1,6 @@
-// The Swift veneer over the core's C interface.
-//
-// Everything above this file speaks Swift; everything below it speaks `mxq_`.
-// The veneer converts types and raises errors, and it decides no rule: what is
-// legal, what a line's verdict is and what a deal deals are the core's answers.
-// The core is stateless, so every question here is asked of a game, a start and
-// a move line, and the game itself — its moves, its result, the library it is
-// filed in — is the app's, in GameRecord.
+// The Swift veneer over the core's C interface. It converts types and raises
+// errors and decides no rule. The core is stateless: every question is asked
+// of a game, a start and a move line, and the game itself is GameRecord.
 
 import Foundation
 import MiniXiangqiCore
@@ -13,18 +8,16 @@ import MiniXiangqiCore
 /// A failed call. `status` is the core's code where the core refused, and
 /// `detail` is a short English diagnostic for the log, never user-facing copy.
 ///
-/// Nonisolated, as every type in this file that is pure data is: the target
-/// defaults declarations to the main actor, which is right for a view and
-/// wrong for a value that crosses actors.
+/// Pure-data types in this file are nonisolated because the target defaults
+/// declarations to the main actor.
 nonisolated struct CoreError: Error, Equatable, CustomStringConvertible {
     var status: MxqStatus
     var detail: String
 
     var description: String { "mxq status \(status): \(detail)" }
 
-    /// Any error, as one the app can show. The C vocabulary stops here, so
-    /// nothing above this file has to import the core's module to report a
-    /// failure that did not come from it.
+    /// Any error as a `CoreError`, so nothing above this file has to import
+    /// the core's module to report one.
     init(wrapping error: Error) {
         if let error = error as? CoreError {
             self = error
@@ -41,8 +34,7 @@ nonisolated struct CoreError: Error, Equatable, CustomStringConvertible {
 }
 
 /// The side that moves first and the other, in every game. The placement games
-/// call the first mover's stones black, so `red` is the black stone there: what
-/// a side is drawn and called is the surface's.
+/// call the first mover's stones black, so `red` is the black stone there.
 nonisolated enum Side: String, Codable, Sendable {
     case red, black
 
@@ -57,7 +49,7 @@ nonisolated enum Side: String, Codable, Sendable {
     var opponent: Side { self == .red ? .black : .red }
 }
 
-/// The rules' verdict on a line: the fixture state identifiers.
+/// The rules' verdict on a line.
 nonisolated enum GameState: Sendable {
     case ongoing, claimableDraw, redWins, blackWins, draw
 
@@ -104,10 +96,9 @@ nonisolated enum PlayMode: String, Codable, Sendable {
     case freePlay = "free-play"
     case nearby, online
 
-    /// One game played by two devices over the BoardGame protocol. The two
-    /// networked modes differ in how the two devices reached each other and in
-    /// nothing else, so every rule that turns on there being a player on the
-    /// other end asks this rather than naming a mode.
+    /// The two networked modes differ only in how the devices reached each
+    /// other, so a rule about a player on the other end asks this rather than
+    /// naming a mode.
     var isNetworked: Bool {
         switch self {
         case .nearby, .online: true
@@ -135,14 +126,9 @@ nonisolated enum GameKind: String, Codable, Sendable, Hashable, CaseIterable {
         }
     }
 
-    /// Whether a game of this ruleset conceals identities — the one game whose
-    /// position holds facts a player is not entitled to, and therefore the one
-    /// the surfaces ask about before they draw or name what stands on a point.
-    ///
-    /// Asked as a question about the game rather than about a position, exactly
-    /// as `isPlacement` is: a Jieqi position with nothing left face down is
-    /// spelled exactly as the Xiangqi position it is not, so nothing above this
-    /// interface may read the ruleset off a board.
+    /// Whether the ruleset hides identities. Asked of the game, never read off
+    /// a board: a Jieqi position with nothing face down is spelled exactly as
+    /// a Xiangqi position.
     var conceals: Bool { self == .jieqi }
 }
 
@@ -156,12 +142,10 @@ nonisolated enum EndReason: String, Codable, Sendable {
     case fiftyMoveRule = "fifty-move-rule"
     case resignation
     case endedEarly = "ended-early"
-    /// The dealt game's own no-capture draw. Forty is Jieqi's own number, so
-    /// this is a reason of its own rather than Xiangqi's fifty under another
-    /// name.
+    /// Jieqi's no-capture draw, a reason of its own rather than Xiangqi's
+    /// fifty under another name.
     case fortyMoveRule = "forty-move-rule"
-    /// The two ends two players declare to each other, and networked play's
-    /// alone.
+    /// The two ends two players declare to each other, in networked play only.
     case agreedDraw = "agreed-draw"
     case mutualResignation = "mutual-resignation"
     /// The placement games' two, and theirs alone.
@@ -189,8 +173,6 @@ nonisolated enum EndReason: String, Codable, Sendable {
 nonisolated enum AiLevel: String, Codable, Sendable, Hashable, CaseIterable {
     case fast, standard, deep
 
-    /// The thinking time of each level, which every search of a game at that
-    /// level runs for.
     var movetimeMilliseconds: UInt32 {
         switch self {
         case .fast: 1000
@@ -240,20 +222,15 @@ nonisolated struct GameConfiguration: Sendable, Hashable {
         GameConfiguration(game: game, mode: .freePlay, startFEN: startFEN)
     }
 
-    /// A game played with the other device over the BoardGame protocol, the two
-    /// having found each other where they are.
-    ///
-    /// - Parameter startFEN: the dealt start, for the one game whose start is
-    ///   dealt. Nobody composed it: the two devices arrive at the same one by
-    ///   deriving it from the handshake.
+    /// A game with the other device over the BoardGame protocol. `startFEN` is
+    /// the dealt start, which both devices derive from the handshake.
     static func nearby(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .nearby, localSide: localSide,
                           startFEN: startFEN)
     }
 
-    /// The same game, the two devices having reached each other at any
-    /// distance.
+    /// The same game, the two devices having reached each other at a distance.
     static func online(game: GameKind, localSide: Side,
                        startFEN: String? = nil) -> GameConfiguration {
         GameConfiguration(game: game, mode: .online, localSide: localSide,
@@ -385,18 +362,15 @@ final class Core {
         }
     }()
 
-    /// Best-effort teardown at termination: join the engine thread rather than
-    /// relying on process exit.
+    /// Best-effort teardown at termination.
     static func shutdownSharedIfLive() {
         guard sharedWasCreated, case .success(let core) = shared else { return }
         core.shutdown()
     }
 
     init() throws {
-        // The variant configuration and the networks, opened from the sealed
-        // copies the bundle carries. Assets that are missing or do not open
-        // are a packaging failure and surface here rather than at the first
-        // move.
+        // Missing or unopenable assets are a packaging failure, surfaced here
+        // rather than at the first move.
         let assets: String
         do {
             assets = try EngineAssets.directory().path
@@ -419,10 +393,9 @@ final class Core {
         self.handle = handle
     }
 
-    /// Deterministic teardown. The engine queue is drained first: it is the
-    /// one thread this app puts inside the core, a prepare or a teardown can
-    /// still be running on it when the player quits, and a core handle that is
-    /// no longer the live instance is a caller error the core asserts on.
+    /// Drains the engine queue first: a prepare or teardown can still be
+    /// running there when the player quits, and the core asserts on a handle
+    /// that is no longer the live instance.
     func shutdown() {
         quiesceEngineWork()
         mxq_core_shutdown(handle, nil)
@@ -461,11 +434,9 @@ final class Core {
         var digest: String
     }
 
-    /// Deals one game of Jieqi from entropy this app draws itself: the seed and
-    /// the nonce are thirty-two bytes each from the platform's cryptographic
-    /// source, and the core turns them into the position. A deal that cannot be
-    /// drawn is a game that is not created, never a deal made from something
-    /// weaker.
+    /// Deals one game of Jieqi from a 32-byte seed and nonce drawn from the
+    /// platform's cryptographic source. If they cannot be drawn, no game is
+    /// created; nothing weaker stands in.
     func deal(_ game: GameKind) throws -> Deal {
         var deal = MxqDeal()
         deal.struct_size = UInt32(MemoryLayout<MxqDeal>.size)
@@ -492,9 +463,8 @@ final class Core {
 
     // MARK: - The questions a position is asked
 
-    /// Whether a position is one this game may be **set up** in — the core's
-    /// setup-legality predicate. Nothing composed here, and nothing imported,
-    /// reaches an engine without passing it: a position offering a general
+    /// The core's setup-legality predicate. Nothing composed or imported may
+    /// reach an engine without passing it: a position offering a general
     /// capture trips an engine assertion.
     func setupVerdict(of fen: String, game: GameKind) -> SetupVerdict {
         var violation = MxqSetupViolation()

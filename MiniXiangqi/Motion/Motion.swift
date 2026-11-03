@@ -1,11 +1,6 @@
-// Every duration, curve, and proportion of the motion language, in one place.
-//
-// docs/interaction-design.md, "Motion and visual effects", accepts bands —
-// lift 120–160 ms, travel 180–240 ms, capture ≈250 ms, one-ply Undo within
-// 250 ms, flip 300–400 ms — and leaves the exact values to be settled against
-// running hardware. These are the settled values, and MotionTests pins each one
-// inside its band rather than trusting this comment. A change to an accepted
-// band is a contract change; a change to a value inside one is a tuning pass.
+// The bands: lift 120–160 ms, travel 180–240 ms, capture ≈250 ms,
+// one-ply Undo within 250 ms, flip 300–400 ms. A value inside its band is
+// tuning; moving a band is a product decision.
 
 import SwiftUI
 
@@ -13,45 +8,36 @@ enum Motion {
 
     // MARK: - Selection
 
-    /// The lift: scale and shadow rise, no positional movement. 140 ms, the
-    /// middle of the accepted 120–160 ms band; ease-out, so the piece answers
-    /// the tap at once and settles into the raised state. Deselection reverses
-    /// it with the same curve.
+    /// Scale and shadow rise, no positional movement. Ease-out, so the piece
+    /// answers the tap at once. Deselection reverses it with the same curve.
     static let lift: TimeInterval = 0.14
     static var liftAnimation: Animation { .easeOut(duration: lift) }
 
     // MARK: - Travel
 
-    /// Travel scales with distance inside the accepted 180–240 ms band: a
-    /// one-point step at the floor, the longest board crossing at the ceiling.
+    /// A one-point step at the floor, the longest board crossing at the ceiling.
     static let travelFloor: TimeInterval = 0.18
     static let travelCeiling: TimeInterval = 0.24
 
     /// The distance of a one-point step, in cell pitches.
     static let shortestStep: Double = 1
-    /// The longest crossing one game's board offers, corner to corner. Mini
-    /// Xiangqi is √(6² + 6²); Xiangqi is √(8² + 9²).
+    /// Corner to corner.
     static func longestCrossing(on board: BoardDefinition) -> Double {
         let files = Double(board.fileCount - 1)
         let ranks = Double(board.rankCount - 1)
         return (files * files + ranks * ranks).squareRoot()
     }
 
-    /// The accepted mapping is a chosen proportion, not a derived quantity.
-    /// The choice: linear in Euclidean distance between the two accepted
-    /// endpoints. Linear is the one mapping with nothing to explain — every
-    /// extra pitch of distance buys the same extra time — and the band is
-    /// narrow enough that no curve within it could read differently.
-    /// Monotone by construction; clamped so no move leaves the band.
+    /// Linear in Euclidean distance: every extra pitch buys the same time, and
+    /// the band is too narrow for any curve to read differently. Clamped so no
+    /// move leaves the band.
     static func travel(distance: Double, on board: BoardDefinition) -> TimeInterval {
         let span = (distance - shortestStep) / (longestCrossing(on: board) - shortestStep)
         return travelFloor + (travelCeiling - travelFloor) * min(max(span, 0), 1)
     }
 
-    /// The distance a move travels, in pitches. Euclidean, because that is the
-    /// length of the line the disc is drawn along.
-    /// A placement crosses nothing — the stone arrives from off the board — so
-    /// it has no distance and nothing here is asked to invent one.
+    /// In pitches. Euclidean, because that is the line the disc is drawn along.
+    /// A placement arrives from off the board, so it has no distance.
     static func distance(of move: Move) -> Double {
         guard let from = move.from else { return 0 }
         let df = Double(move.to.file - from.file)
@@ -70,9 +56,8 @@ enum Motion {
     static let settleStart: Double = 0.75
     static let riseEnd: Double = 0.20
 
-    /// How raised the disc in transit is, 0 to 1, at `progress` of the way.
-    /// A tapped move departs already raised — the player was holding it —
-    /// while a rising transit lifts off first; both settle at the end.
+    /// How raised the disc in transit is, 0 to 1. A tapped move departs already
+    /// raised, since the player was holding it; a rising transit lifts off first.
     static func transitLift(_ progress: Double, rising: Bool) -> Double {
         let rise = rising ? min(progress / riseEnd, 1) : 1
         let settle = progress < settleStart
@@ -82,13 +67,9 @@ enum Motion {
 
     // MARK: - Capture
 
-    /// The captured disc's scale-and-fade begins this long before the mover
-    /// arrives and runs this long, so the removal completes 50 ms after the
-    /// arrival that caused it. The whole event is travel + 50 ms: ≈250 ms at
-    /// the middle of the travel band, exactly as the contract targets.
-    /// The lead is what makes the removal read as caused by the arrival —
-    /// the disc gives way under the mover sliding in, and the tail finishes
-    /// under the mover, which lands on top.
+    /// The removal completes 50 ms after the arrival, so the whole event is
+    /// travel + 50 ms, ≈250 ms mid-band. The lead makes the removal read as
+    /// caused by the arrival: the disc gives way under the mover sliding in.
     static let captureFadeLead: TimeInterval = 0.06
     static let captureFade: TimeInterval = 0.11
     /// How far the captured disc shrinks as it fades.
@@ -100,103 +81,72 @@ enum Motion {
 
     // MARK: - The reveal
 
-    /// A Jieqi reveal: the identity comes up on the travelling disc over the
-    /// last stretch of the journey and is fully there as it lands.
-    ///
-    /// docs/interaction-design.md, "The Jieqi board": the piece travels its move
-    /// in the ordinary language and arrives face up — one event and not two, so
-    /// nothing is scheduled after the arrival and no second beat is drawn. It
-    /// takes the crossfade's own duration, because that is what it is: the
-    /// board's shortest state change, ending exactly where the travel ends.
+    /// The identity comes up on the travelling disc and is fully there as it
+    /// lands: one event, so nothing is scheduled after the arrival. It takes the
+    /// crossfade's duration, ending exactly where the travel ends.
     static func revealAnimation(travel: TimeInterval) -> Animation {
         .easeInOut(duration: crossfade).delay(max(travel - crossfade, 0))
     }
 
     // MARK: - Undo
 
-    /// Undo reverses the move visually with the same distance mapping, so one
-    /// ply completes within the accepted 250 ms (the ceiling is 240 ms), and a
-    /// decision cycle of two plies well within the accepted 600 ms — both discs
-    /// travel at once, over the longer of the two journeys, so a cycle costs one
-    /// travel rather than two. The restored pieces fade back in from the movers'
-    /// departure, the capture read backwards.
+    /// The same distance mapping, so one ply stays within 250 ms and a two-ply
+    /// cycle well within 600 ms: both discs travel at once, over the longer
+    /// journey. The restored pieces fade in from the movers' departure.
     static let restoreFade: TimeInterval = 0.11
     static var restoreFadeAnimation: Animation { .easeOut(duration: restoreFade) }
 
     // MARK: - The opponent's reply
 
-    /// The AI's move has a floor, not a delay: its piece departs at the later
-    /// of the search returning and this long after the player's own move
-    /// finished animating. A search of a second or more is unaffected — the
-    /// floor has long since passed — and only a near-instant reply waits, so
-    /// the AI never appears to twitch rather than move.
-    ///
-    /// 300 ms: long enough that the player's landing has been seen and heard as
-    /// its own event before the answer starts, short enough that nobody waiting
-    /// for a reply reads it as hesitation. Measured from the arrival rather than
-    /// from the tap that committed it, because the arrival is when the player's
-    /// move finished being shown.
+    /// A floor, not a delay: the reply departs at the later of the search
+    /// returning and this long after the player's move landed, so only a
+    /// near-instant reply waits. Long enough that the landing reads as its own
+    /// event, short enough not to read as hesitation.
     static let replyFloor: TimeInterval = 0.30
 
-    /// How long a search must run before its activity is worth showing. Below
-    /// this the indicator would appear and vanish inside a third of a second,
-    /// which reads as a flicker rather than as thinking.
+    /// Below this the indicator would flicker rather than read as thinking.
     static let thinkingIndicatorDelay: TimeInterval = 0.40
 
     // MARK: - Flip
 
-    /// 350 ms, the middle of the accepted 300–400 ms band: one coordinated
-    /// re-layout, characters upright throughout.
+    /// One coordinated re-layout, characters upright throughout.
     static let flip: TimeInterval = 0.35
     static var flipAnimation: Animation { .easeInOut(duration: flip) }
 
     // MARK: - Pulses
 
-    /// The check rings' one-time stroke-weight pulse as they appear: a swell
-    /// and a settle. The extra weight grows into the gap *between* the two
-    /// rings, which is the only room the marker band has: at rest the inner
-    /// ring's inner edge already sits on the 0.42 p floor no marker may cross
-    /// on an occupied point, and the outer ring's outer edge on the 0.50 p
-    /// cell boundary. Both of those edges are pinned through the swell.
+    /// The check rings' one-time stroke-weight swell as they appear. The extra
+    /// weight grows into the gap between the rings: the inner ring's inner edge
+    /// stays on the 0.42 p floor no marker may cross on an occupied point, and
+    /// the outer ring's outer edge on the 0.50 p cell boundary.
     static let checkPulseRise: TimeInterval = 0.12
     static let checkPulseFall: TimeInterval = 0.20
-    /// Peak stroke ×1.3, which is what the band leaves: two 0.025 p strokes in
-    /// the 0.08 p between the limits still stand 0.015 p apart at the peak —
-    /// the same near-meeting the swell has always read as, the swell reading
-    /// as one emphasis before the double ring separates again. BoardGeometry
-    /// shapes it, and MotionTests pins the peak against both limits.
+    /// Peak stroke ×1.3, what the band leaves: two 0.025 p strokes in the
+    /// 0.08 p between the limits still stand 0.015 p apart at the peak.
     static let checkPulseGain: Double = 0.3
 
     /// The illegal-tap answer: the legal-destination markers strengthen and
-    /// relax — the dots grow a quarter, the capture rings' stroke by not quite
-    /// half, both inward or within the cell. Under Reduce Motion the
-    /// strengthened state arrives once and stays until the selection changes.
+    /// relax, inward or within the cell. Under Reduce Motion the strengthened
+    /// state arrives once and stays until the selection changes.
     static let markerPulseRise: TimeInterval = 0.10
     static let markerPulseFall: TimeInterval = 0.20
     /// A destination dot marks an empty point, where only the cell bounds it.
     static let markerDotGain: Double = 0.25
-    /// ×1.45. The capture ring's outer edge stays at the cell boundary, where
-    /// the contract fixes it, so the strengthening grows inward — and inward
-    /// it has the marker band's 0.08 p to spend against a 0.055 p stroke. Half
-    /// again would put ink 0.0025 p past the floor, onto the disc the ring is
-    /// drawn around.
+    /// ×1.45. The ring's outer edge stays on the cell boundary, so it grows
+    /// inward, with the band's 0.08 p against a 0.055 p stroke; ×1.5 would put
+    /// ink past the floor onto the disc.
     static let markerRingGain: Double = 0.45
 
     // MARK: - The suggested capture's drift
 
-    /// While a suggestion stands on a capture, its dashed ring turns: one
-    /// revolution in ten seconds, the one continuous motion the board ever
-    /// draws. It is permitted because the player asked for the state it marks,
-    /// and ten seconds is slow enough that the ring reads as a standing mark
-    /// that is alive rather than as an animation asking to be watched. A
-    /// rotation is motion, so Reduce Motion stops it and the dashes hold still.
+    /// One revolution in ten seconds while a suggestion stands on a capture:
+    /// the board's one continuous motion, permitted because the player asked
+    /// for the state it marks, and slow enough to read as a living mark rather
+    /// than an animation. Reduce Motion stops it.
     static let dashDriftPeriod: TimeInterval = 10
 
-    /// How far the pattern has turned, in revolutions, `elapsed` after the
-    /// drift began. Whole turns are dropped, so the value stays inside one
-    /// revolution however long a suggestion stands. Time arrives as an argument
-    /// rather than from a clock, so the drift is a function a test can read
-    /// instead of a wall clock a test must wait out.
+    /// In revolutions. Whole turns are dropped, so the value stays inside one
+    /// revolution. Time is an argument so a test need not wait out a clock.
     static func dashDrift(elapsed: TimeInterval) -> Double {
         guard elapsed > 0 else { return 0 }
         return (elapsed / dashDriftPeriod).truncatingRemainder(dividingBy: 1)
@@ -204,30 +154,17 @@ enum Motion {
 
     // MARK: - A refused placement
 
-    /// The Custom Scene editor's answer to a point that will not take the piece
-    /// being held: the disc is offered, shakes off across the point, and goes.
-    ///
-    /// 360 ms for the whole answer — long enough for three crossings to be seen
-    /// as a refusal rather than a glitch, short enough that the next attempt is
-    /// not waited on. The amplitude is a fraction of the pitch, like every other
-    /// board dimension, so the shake stays inside the point's own cell at every
-    /// board size — which is the containment that applies to a body, and which
-    /// is what fixes the number: a disc's radius is 0.40 p and its cell reaches
-    /// 0.50 p, so 0.10 p is the whole of what a body has to move in.
-    /// `MotionTests` measures that against the drawn disc rather than trusting
-    /// this comment.
+    /// The Custom Scene editor's answer to a point that will not take the held
+    /// piece: the disc shakes off across the point and goes. 360 ms: long
+    /// enough for three crossings to read as a refusal, short enough not to be
+    /// waited on. 0.10 p is all a body has to move in: a disc's radius is
+    /// 0.40 p and its cell reaches 0.50 p.
     static let refusal: TimeInterval = 0.36
     static let refusalCrossings: Double = 3
     static let refusalAmplitude: Double = 0.10
 
-    /// How far the refused disc stands from the point it was offered to, in
-    /// pitches, `progress` of the way through the answer. A damped oscillation:
-    /// it starts and ends on the point, and each crossing is smaller than the
-    /// one before, so the disc settles as it fades rather than being cut off
-    /// mid-swing.
-    ///
-    /// It is a rotation-free translation and therefore motion, so Reduce Motion
-    /// removes it — the disc still appears and still goes, without moving.
+    /// In pitches. Damped, starting and ending on the point, so the disc
+    /// settles as it fades. Motion, so Reduce Motion removes it.
     static func refusalOffset(_ progress: Double) -> Double {
         let clamped = min(max(progress, 0), 1)
         return sin(clamped * 2 * .pi * refusalCrossings) * refusalAmplitude
@@ -236,21 +173,17 @@ enum Motion {
 
     // MARK: - The acknowledgment beat
 
-    /// The turn status's background rises to full emphasis and falls back,
-    /// opacity only, no movement. Opacity is not motion, so the beat is
-    /// identical under Reduce Motion.
+    /// Opacity only, so the beat is identical under Reduce Motion.
     static let beatRise: TimeInterval = 0.10
     static let beatFall: TimeInterval = 0.30
-    /// The opacity full emphasis reaches — what the beat's 0-to-1 progress is
-    /// multiplied by, not the progress itself. Neutral primary, never a tint:
-    /// saturated colour on the play screen means which side a piece belongs to.
+    /// Multiplied into the beat's 0-to-1 progress. Neutral primary, never a
+    /// tint: saturated colour on the play screen means a side.
     static let beatPeakOpacity: Double = 0.12
 
     // MARK: - Everything else
 
-    /// The brief crossfade that replaces animated position, scale, or rotation
-    /// under Reduce Motion, and the pace of ordinary state fades — the result
-    /// notice arriving over the board, a marker set appearing.
+    /// Stands in for position, scale or rotation under Reduce Motion.
+    /// `stateFade` paces ordinary state fades.
     static let crossfade: TimeInterval = 0.12
     static let stateFade: TimeInterval = 0.20
     static var stateFadeAnimation: Animation { .easeOut(duration: stateFade) }

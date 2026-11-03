@@ -1,22 +1,10 @@
-// The machine on the other side of the board.
+// A search result never commits a move by itself: the core keeps no game, so
+// every result is checked against the game's revision before its move is
+// played.
 //
-// Search runs away from the UI thread — on the core's own engine thread — and a
-// result is never what commits a move. The core keeps no game, so whether a
-// result still answers the game's line is this file's question: every result is
-// checked against the game's revision before its move is played.
-//
-// docs/interaction-design.md, "Motion and visual effects": the AI's move has a
-// floor, not a delay. Its piece departs at the later of the search returning and
-// a short fixed interval after the player's own move has finished animating —
-// the arrival, not the tap that committed it. A search of a second or more is
-// unaffected; only a near-instant reply waits, so the AI never appears to twitch
-// rather than move.
-//
-// Issue #71's decision 2 and decision 3 live here too: AI activity is a small
-// system activity indicator that appears only once a search has run long enough
-// to be worth showing, and a mid-game preparation failure keeps the situation's
-// name while adding the guarantee that the game is saved, with the stalled state
-// afterwards living in the turn status's own activity slot.
+// The AI's move has a floor, not a delay. It departs at the later of the search
+// returning and a short interval after the player's move finished animating
+// (its arrival, not the tap), so a near-instant reply never looks like a twitch.
 
 import Foundation
 import MiniXiangqiCore
@@ -26,11 +14,9 @@ import Observation
 @MainActor
 final class Opponent {
 
-    /// What the turn status's AI activity slot is carrying.
     enum Activity: Equatable {
-        /// Nothing at all: no search running, or one too young to show.
+        /// No search running, or one too young to show.
         case idle
-        /// A search has been running long enough to be worth an indicator.
         case thinking
         /// The engine could not be prepared and the player chose 稍后. The
         /// game is saved and resumable; the retry lives here.
@@ -39,9 +25,8 @@ final class Opponent {
 
     private(set) var activity: Activity = .idle
 
-    /// The mid-game preparation failure awaiting an answer. Non-nil exactly
-    /// while the accepted alert is up; 稍后 clears it into `.stalled` and 重试
-    /// clears it into another attempt.
+    /// Non-nil exactly while the alert is up; 稍后 clears it into `.stalled`
+    /// and 重试 into another attempt.
     private(set) var preparationFailure: CoreError?
 
     private let engine: AIEngine
@@ -49,32 +34,27 @@ final class Opponent {
     private let motion: PlayMotion
     private let timer: MotionTimer
 
-    /// The outstanding search, if one is running. One at a time: this app has
-    /// one window, one active game, and one side for the machine to play.
+    /// One at a time: one window, one active game, one side for the machine.
     private var ticket: UInt64?
 
-    /// Bumped by everything that invalidates work in flight — a cancellation, a
-    /// suspension, a new attempt — so that a preparation or a timer belonging to
-    /// a superseded attempt answers to nothing when it comes back.
+    /// Bumped by everything that invalidates work in flight, so a stale
+    /// preparation or timer answers to nothing.
     private var attempt = 0
 
-    /// True between asking for a preparation and hearing back. It is not the
-    /// same as "the engine is not ready": a second attempt started while the
-    /// first is in flight would be a second Hash allocation.
+    /// Not the same as "the engine is not ready": a second attempt started
+    /// while the first is in flight would allocate Hash twice.
     private var preparing = false
 
-    /// Set by the platform's suspension signal and cleared when the machine
-    /// comes back. While it stands, nothing is prepared and nothing is
-    /// searched: the engine was released on purpose.
+    /// While set, nothing is prepared or searched: the engine was released on
+    /// purpose.
     private var suspended = false
 
     /// The reply the search returned, held until it is due.
     private var pendingReply: Move?
-    /// The instant the reply may depart — the floor's deadline.
+    /// The floor's deadline.
     private var replyDue: TimeInterval?
-    /// When the player's own move finished animating. The floor is measured
-    /// from here; nil before the player has moved, which is the AI-first
-    /// opening, where there is no move of the player's to wait for.
+    /// When the player's move finished animating; nil before they have moved,
+    /// as in an AI-first opening.
     private var playerArrival: TimeInterval?
 
     init(engine: AIEngine, game: Game, motion: PlayMotion,
@@ -87,45 +67,35 @@ final class Opponent {
 
     // MARK: - What the screen tells it
 
-    /// The game is on screen and whatever it owes is owed now: a created game
-    /// whose resolved first mover is the AI, or a resumed one waiting on a
-    /// reply it never got.
+    /// The game is on screen: a created game whose first mover is the AI, or a
+    /// resumed one still owed a reply.
     func begin() {
         ensureSearch()
     }
 
-    /// A committing change has been made. The search starts here rather than at
-    /// the landing, because the floor governs when the reply *departs*, not when
-    /// the thinking begins: a player who has moved should have the machine
-    /// already thinking while their own piece is still sliding.
+    /// The search starts here rather than at the landing: the floor governs when
+    /// the reply departs, so the machine thinks while the player's piece slides.
     func gameChanged() {
         ensureSearch()
     }
 
-    /// A committing transition has finished being drawn. If the AI owes a move,
-    /// the landing was the player's and it starts the floor; either way a reply
-    /// already waiting can now be drawn, since only one committing transition
-    /// runs at a time.
+    /// If the AI owes a move, this landing was the player's and starts the
+    /// floor. A waiting reply can now be drawn, since only one committing
+    /// transition runs at a time.
     func landed() {
         if game.searchExpected {
             let arrival = timer.now()
             playerArrival = arrival
-            // A reply that came back *while* the player's move was still
-            // travelling has a floor to keep after all — it just had nothing to
-            // measure it from yet. A forced mate found in a few milliseconds is
-            // the case that reaches here, and without this it would depart at
-            // the landing plus nothing, which is the twitch the floor exists to
-            // prevent.
+            // A reply that came back while the player's move was travelling,
+            // such as a forced mate found in milliseconds, still keeps the floor.
             if pendingReply != nil { replyDue = arrival + Motion.replyFloor }
         }
         deliver()
     }
 
-    /// Stops the machine thinking, because what it is thinking about is about to
-    /// stop being true — an Undo, a claim, a resignation. Cancellation is a
-    /// correctness requirement and not only a promptness one: a cancellation
-    /// that follows no change leaves the revision matching, so the cancelled
-    /// rung is the only one that would reject the late result.
+    /// Before an Undo, a claim or a resignation. Needed for correctness: a
+    /// cancellation that follows no change leaves the revision matching, so the
+    /// cancelled ticket is the only thing that rejects the late result.
     func cancelSearch() {
         attempt += 1
         if let ticket { engine.cancelSearch(ticket) }
@@ -135,32 +105,24 @@ final class Opponent {
         activity = .idle
     }
 
-    /// The platform's own suspension signal — system sleep, termination, a
-    /// backgrounded scene — and never a loss of focus. Cancel first, then
-    /// release: `mxq_engine_teardown` refuses with SEARCH_IN_PROGRESS rather
-    /// than stalling, so the order is the contract's rather than a preference.
+    /// System sleep or a backgrounded scene; never a loss of focus.
+    /// Cancel before release: `mxq_engine_teardown` refuses with
+    /// SEARCH_IN_PROGRESS rather than stalling.
     func suspend() {
         suspended = true
         release()
     }
 
-    /// The machine is awake again. Nothing is prepared by *this*: preparation
-    /// happens when a search is next owed, and `ensureSearch` is where that is
-    /// decided — a Free Play game, a finished one, or one waiting on the player
-    /// prepares nothing at all.
+    /// Prepares nothing itself; `ensureSearch` decides whether a search is owed.
     func resume() {
         suspended = false
         ensureSearch()
     }
 
-    /// A memory-pressure notification. It takes the same cancel-and-release
-    /// path, whole rather than shrinking Hash in place — but it is **not** a
-    /// suspension, and this distinction is load-bearing: the app is still in
-    /// front of the player, and nothing will ever tell it the pressure has
-    /// passed. So there is no resume to wait for. What follows the release is
-    /// the ordinary question of whether a search is owed, asked again with a
-    /// fresh probe, which under real pressure produces the accepted notice
-    /// rather than a machine that has quietly stopped playing.
+    /// Cancels and releases whole, like a suspension, but is not one: the app is
+    /// still in front and nothing will say the pressure has passed. So it asks
+    /// again at once whether a search is owed, with a fresh probe, which under
+    /// real pressure shows the notice rather than a machine that quietly stopped.
     func memoryPressure() {
         release { [weak self] in self?.ensureSearch() }
     }
@@ -172,8 +134,8 @@ final class Opponent {
         engine.teardownEngine(then: next)
     }
 
-    /// 重试, from the alert or from the turn status's stalled slot. Every retry
-    /// obtains a fresh memory probe, which is the whole point of retrying.
+    /// 重试, from the alert or the stalled slot. Each retry takes a fresh memory
+    /// probe, which is the point of retrying.
     func retryPreparation() {
         preparationFailure = nil
         activity = .idle
@@ -181,15 +143,14 @@ final class Opponent {
         ensureSearch()
     }
 
-    /// 稍后. The alert goes away and the stalled state moves to where
-    /// things-about-the-game live, carrying its own retry. Undo remains
-    /// available and is itself a way out: taking the player's last move back
-    /// returns the game to their decision point, where no search is owed.
+    /// 稍后. The stalled state moves to the turn status with its own retry. Undo
+    /// is also a way out: it returns the game to the player's decision point,
+    /// where no search is owed.
     func deferPreparation() {
         preparationFailure = nil
         // A retry already under way is not a deferral. The alert's dismissal
-        // arrives *after* the button's own action, so 重试 would otherwise be
-        // followed by a stall that stops the very attempt it started.
+        // arrives after the button's action, so 重试 would otherwise be followed
+        // by a stall that stops the attempt it started.
         guard !preparing, ticket == nil else { return }
         activity = game.searchExpected ? .stalled : .idle
     }
@@ -199,9 +160,8 @@ final class Opponent {
     private func ensureSearch() {
         guard game.isHumanVersusAI else { return }
         guard game.searchExpected else {
-            // Nothing is owed, so nothing is shown. A stalled slot outlives its
-            // own reason otherwise — an Undo is exactly the way out the
-            // accepted mid-game presentation names.
+            // Clear the stalled slot, which would otherwise outlive its reason
+            // after an Undo.
             if activity != .idle { activity = .idle }
             preparationFailure = nil
             return
@@ -220,9 +180,8 @@ final class Opponent {
         preparing = true
         attempt += 1
         let token = attempt
-        // A fresh probe at every attempt: the retry that follows a refusal has
-        // to see the memory the user just freed, and a cached value would
-        // answer with the state that produced the refusal.
+        // A fresh probe each attempt, so a retry sees the memory the user just
+        // freed.
         engine.prepareEngine(for: game.kind, engine.memoryBudget()) { [weak self] result in
             guard let self, token == attempt else { return }
             preparing = false
@@ -247,11 +206,9 @@ final class Opponent {
                 self?.received(result, from: token, at: revision)
             }
         } catch {
-            // The readiness refusals have one answer: the engine was torn down
-            // or prepared for the other game between our query and the start,
-            // so it is prepared again because a search is owed. Anything else
-            // is a failure the player is told about in the accepted mid-game
-            // way.
+            // A readiness refusal means the engine was torn down or prepared for
+            // the other game between the query and the start, so it is prepared
+            // again.
             ticket = nil
             let failure = error.asCoreError
             if failure.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED)
@@ -262,25 +219,17 @@ final class Opponent {
             }
             return
         }
-        // The indicator appears only once the search has run long enough to be
-        // worth showing. Below that it would appear and vanish inside a third of
-        // a second, which reads as a flicker rather than as thinking.
+        // Shown only past the threshold; sooner it would read as a flicker.
         timer.after(Motion.thinkingIndicatorDelay) { [weak self] in
             guard let self, token == attempt, ticket != nil else { return }
             activity = .thinking
         }
     }
 
-    /// What the player is told about an engine failure mid-game.
-    ///
-    /// By **code**, as the contracts map these: only the memory failures are
-    /// the accepted **无法启动 AI 对手** situation, and only they get the alert
-    /// whose message asks for other apps to be closed. Everything else the
-    /// engine can refuse with — a network that is missing or does not match, a
-    /// variant that would not load, a faulted engine — is a damaged
-    /// installation rather than a busy machine, and it takes the same slot a
-    /// deferred failure takes: **AI 暂时无法启动**, with the retry beside it and
-    /// no cause named. Naming the wrong cause is worse than naming none.
+    /// Only memory failures get the 无法启动 AI 对手 alert asking to close other
+    /// apps. Anything else (a missing or mismatched network, a variant that
+    /// would not load, a faulted engine) is a damaged installation and takes the
+    /// stalled slot with no cause named: the wrong cause is worse than none.
     private func report(_ failure: CoreError) {
         if failure.isInsufficientMemory {
             preparationFailure = failure
@@ -289,8 +238,8 @@ final class Opponent {
         }
     }
 
-    /// A search has answered. On the main actor, having been copied out of core
-    /// storage on the engine thread as the callback contract requires.
+    /// On the main actor, the result having been copied out of core storage on
+    /// the engine thread.
     private func received(_ result: SearchResult, from token: Int, at revision: Int) {
         guard token == attempt, result.ticket == ticket else { return }
         ticket = nil
@@ -298,43 +247,32 @@ final class Opponent {
 
         switch result.outcome {
         case .move:
-            // A reply to a line the game has left is about a position nobody
-            // is at any more.
             guard revision == game.revision else { return }
             guard let move = Move(text: result.move, on: game.kind.board) else {
-                // A `.move` result is promised to carry this game's canonical
-                // notation. If the presentation binding cannot read it, the AI
-                // did not produce a usable reply; surface the same stalled state
-                // as any other unusable engine answer rather than dropping it.
+                // A `.move` result should carry canonical notation; one that
+                // cannot be read stalls like any unusable answer.
                 activity = .stalled
                 return
             }
             pendingReply = move
-            // The floor: the later of now and a short interval after the
-            // player's own move finished animating. With no arrival yet there is
-            // nothing to measure from — the AI-first opening has no move of the
-            // player's to wait for, and a move still travelling has not landed —
-            // so `landed()` sets the floor when the arrival happens.
+            // With no arrival yet (an AI-first opening, or a move still
+            // travelling), `landed()` sets the floor when the arrival happens.
             let now = timer.now()
             replyDue = playerArrival.map { max(now, $0 + Motion.replyFloor) } ?? now
             deliver()
         case .cancelled:
-            // Whoever cancelled decides what happens next. Nothing here.
+            // Whoever cancelled decides what happens next.
             break
         case .malformed, .illegal, .failed:
-            // The engine was torn down under the search — the suspension path,
-            // reaching the frontend as a typed failure rather than as a
-            // cancellation — so a search that is still owed is prepared again.
+            // The engine was torn down under the search: the suspension path,
+            // arriving as a typed failure rather than a cancellation.
             if result.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED) {
                 ensureSearch()
                 return
             }
-            // Anything else: the engine produced nothing this game can use.
-            // The game is untouched, saved and resumable, and the slot says the
-            // one thing that is true of every such failure — the AI cannot
-            // start right now — with the retry beside it. Deliberately *not*
-            // the insufficient-memory alert: that alert names a cause, and
-            // naming the wrong cause is worse than naming none.
+            // Anything else: the game is untouched and saved, and the slot says
+            // only that the AI cannot start now. Not the memory alert, which
+            // names a cause.
             activity = .stalled
         }
     }
@@ -342,8 +280,7 @@ final class Opponent {
     /// Plays the held reply if it is due and the board is free to draw it.
     private func deliver() {
         guard let move = pendingReply, let due = replyDue else { return }
-        // One committing transition at a time. The player's own move may still
-        // be landing; `landed()` calls back here when it has.
+        // The player's move may still be landing; `landed()` calls back here.
         guard !motion.isCommitting else { return }
 
         let now = timer.now()
@@ -361,11 +298,9 @@ final class Opponent {
         playerArrival = nil
         motion.playOpponent(move)
 
-        // A failed save of the AI's reply shows nothing at all: the retry is
-        // the app's, not the user's. The game is at the last committed
-        // position with the AI still to move, so a new search is requested from
-        // it rather than the same result being pushed again — the position is
-        // unchanged, but the result belonged to a request that is over.
+        // A failed save of the reply shows nothing; the retry is the app's. The
+        // position is unchanged but the result's request is over, so search
+        // again rather than push the same result.
         if game.opponentFailure != nil { ensureSearch() }
     }
 }
