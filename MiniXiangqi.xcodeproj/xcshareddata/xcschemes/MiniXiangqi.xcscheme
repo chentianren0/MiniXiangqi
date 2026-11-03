@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "2700"
-   version = "1.7">
+   LastUpgradeVersion = "2710"
+   version = "1.3">
    <!--
       The scheme is shared and checked in, so that everyone and CI build the
       same thing.
 
       The core is a prebuilt dependency. It is produced by
-      apple/build-core-xcframework.sh, run when the core changes, and the app
-      only consumes it — which is how a vendored native dependency normally
-      works, and the only arrangement that is correct here.
+      build-core-xcframework.sh, run when the core changes, and the app only
+      consumes it — which is how a vendored native dependency normally works,
+      and the only arrangement that is correct here.
 
       It cannot be produced during the build. Xcode plans its build graph up
       front, so ProcessXCFramework — the task that extracts the library the app

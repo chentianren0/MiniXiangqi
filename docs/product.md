@@ -16,9 +16,7 @@ This document owns the product definition, the target platforms, and the feature
 
 ## Target platforms
 
-- iOS 26.6 or later.
-- iPadOS 26.6 or later.
-- macOS 26.6 or later, on Apple silicon. `x86_64` is not supported on macOS.
+- iOS, iPadOS and macOS, on Apple silicon.
 - An architecture is a target because it has been run, not because it is expected to work. `ARM64` qualifies on hardware the owner tests on and on the CI runner that builds, exercises, and distributes it.
 - A native SwiftUI frontend runs over one shared core, as defined in [architecture.md](architecture.md). Product behavior and persisted meaning are identical across iOS, iPadOS and macOS; presentation follows each platform's conventions.
 - The application has one main window; multiple main windows are not supported.
