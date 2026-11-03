@@ -142,7 +142,6 @@ struct NearbyBoardScreen: View {
 
     // MARK: - The two shapes
 
-    /// The board on one side, the panel beside it.
     private func sideBySide(_ play: NearbyPlay, in size: CGSize) -> some View {
         HStack(spacing: 0) {
             boardBlock(play, BoardLayout.geometry(in: size, game: play.game))
@@ -307,7 +306,6 @@ struct NearbyBoardScreen: View {
         .animation(policy.fade(Motion.stateFadeAnimation), value: play.standingOffer)
     }
 
-    /// What the other player has asked for, in words.
     private static func asked(_ kind: PeerOffer.Kind) -> LocalizedStringKey {
         switch kind {
         case .draw: "nearby.theyOfferDraw"
@@ -575,7 +573,8 @@ struct NearbyBoardScreen: View {
 ///
 /// Its one action is 完成: the game is already in History on both devices, so
 /// none of the local notice's filing actions applies, and a fresh proposal is
-/// the rematch.
+/// the rematch. A result one player confirmed and the other did not would leave
+/// the two libraries disagreeing about one game.
 private struct NearbyNotice: View {
     /// The result, or the fact that the game ended.
     var title: String

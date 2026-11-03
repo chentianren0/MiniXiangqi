@@ -5,7 +5,7 @@ The product decisions behind Star River. Rules live in the rules docs and file f
 ## The app
 
 - The name is **Star River** in English and **闲敲棋子** in Chinese; neither is a translation of the other.
-- It runs on iPhone, iPad and Mac on Apple silicon, in one main window. iPhone is portrait only.
+- It runs on iPhone, iPad and Mac, in one main window. iPhone is portrait only.
 - It carries five games: **Xiangqi**, **Mini Xiangqi**, **Jieqi**, **Gomoku** and **Renju**.
 - The top-level destinations are **Play**, **History** and **Settings**.
 - It works offline. Only Online Play needs the Internet, and it uses Game Center; the app runs no server and no account system of its own.
@@ -19,7 +19,7 @@ The product decisions behind Star River. Rules live in the rules docs and file f
   - Setup starts from the Settings defaults; changing them for one game does not change Settings.
 - **Free Play**: one person moves both sides.
 - **Custom Scene** (自定排局), Xiangqi only: compose a position, pick who moves first, and play it as Free Play.
-- **Nearby Play**: two people on two devices close together — iPhone, iPad or Mac. The devices find each other over the local network or peer-to-peer Wi-Fi, with no Internet and no pairing. A device is listed by its kind and a short tag, never by its name.
+- **Nearby Play**: two people on two devices close together — iPhone, iPad or Mac. The devices find each other over the local network or peer-to-peer Wi-Fi, with no Internet and no pairing. A device is found only while its player has Nearby Play open, and is listed by its kind and a short tag, never by its name.
 - **Online Play**: two friends at any distance over Game Center, on iPhone, iPad and Mac. A Game Center invitation or a party code brings them together; there is no matchmaking with strangers. The row is absent where Game Center cannot carry a game: nobody signed in, or multiplayer restricted by Screen Time.
 - A **hint** shows the engine's suggested move on request, in Human versus AI and Free Play only, and not in Jieqi. It plays nothing and is not recorded.
 - **Resign** is available in Human versus AI, Nearby Play and Online Play, after a confirmation.
@@ -35,7 +35,7 @@ The product decisions behind Star River. Rules live in the rules docs and file f
 ## Playing somebody on another device
 
 - Nearby Play and Online Play are one game in everything but how the devices reach each other.
-- One player proposes from a game's row, choosing their side; the other accepts or declines in a prompt. A Jieqi game is dealt the same on both devices. Online, the device that sent the invitation or made the party code proposes as soon as the friend arrives.
+- One player proposes from a game's row, choosing their side; the other accepts or declines in a prompt. The first proposal wins: a player already proposing, being asked, or playing somebody else on another device answers busy. A Jieqi game is dealt the same on both devices. Online, the device that sent the invitation or made the party code proposes as soon as the friend arrives.
 - The player not to move may offer a draw or ask to take back their last move. One offer stands at a time; the other player accepts it, or declines it by moving.
 - Either player may resign at any time, connected or not.
 - A dropped connection pauses the game where it stood. Nearby devices find each other again by themselves; Online, the two invite each other again. An ending chosen while apart reaches the other device when they reconnect.

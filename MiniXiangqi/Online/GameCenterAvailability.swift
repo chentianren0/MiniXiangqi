@@ -15,7 +15,7 @@ import OSLog
 @Observable
 final class GameCenterAvailability {
 
-    /// Whether online play is on offer. False until the sign-in says otherwise.
+    /// Whether online play is on offer.
     private(set) var isAvailable = false
 
     /// Whether the handler has been set. Setting it twice would be two

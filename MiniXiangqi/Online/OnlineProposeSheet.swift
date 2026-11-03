@@ -9,7 +9,6 @@ struct OnlineProposeSheet: View {
     let game: GameKind
     let party: OnlineParty
 
-    /// The code a friend said, as it is being typed.
     @State private var typed = ""
 
     var body: some View {
