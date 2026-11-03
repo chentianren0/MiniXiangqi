@@ -1,5 +1,7 @@
 # Rules
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 This document is the one contract for legal play and user-visible results in **Mini Xiangqi**, on a 7-by-7 board, and **Xiangqi**, on a 9-by-10 board. It owns the adopted interpretation of their rules and the identifiers that connect prose to the executable conformance fixtures. It does not own engine search policy, Fairy-Stockfish implementation details, UI presentation, or the placement games, whose rules authority is their pinned engine per [placement-engine-integration.md](placement-engine-integration.md).
 
 > **Status: binding, with one gap a reader must know about.** Everything stated here is accepted. The exact prose definitions of protection, interruption, discovered and pinned attacks, and of what makes two violations the same class are not settled; the approved fixtures pin those cases by instance rather than by definition, and the fixtures are the authority until the prose exists.

@@ -1,5 +1,7 @@
 # Game Data
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 This document defines the local-data contract: the library store, the versioned game archive, saving, import, and export. It does not define the rules of any game, screen flows, the wire protocol two devices play over, or engine internals.
 
 One version is defined: **7**, for both the archive format and the store schema.

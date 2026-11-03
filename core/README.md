@@ -1,5 +1,7 @@
 # Shared core
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 The C++ core and its tests, behind the stable C interface defined in
 [`docs/core-interface.md`](../docs/core-interface.md).
 
