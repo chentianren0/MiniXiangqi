@@ -1,25 +1,11 @@
-// The play screen's motion: every transition the board runs, the gate the
-// committing ones hold, and the feedback that fires with them.
+// Interruption divides in two. A presentational transition (a lift, a marker)
+// re-targets freely toward whatever the player just did. A committing one (a
+// move, a capture, an Undo) runs to completion, and input arriving during it is
+// discarded rather than queued. A flip is deferred rather than discarded: it
+// changes nothing about the game, so it applies when the transition ends.
 //
-// docs/interaction-design.md, "Motion and visual effects": interruption
-// divides in two. A presentational transition — a lift, a marker — re-targets
-// freely toward whatever the player just did. A committing transition — a
-// move, a capture, an Undo — runs to completion, and input arriving during it
-// is discarded rather than queued, so a player never watches a stack of
-// actions replay. Board flipping is the one action deferred rather than
-// discarded: it changes nothing about the game, so it is applied when the
-// running transition ends.
-//
-// Every input funnels through here and commits through Game — the same
-// legal-move boundary a future drag input will use — so this type is where
-// "a committing transition is running" is a fact rather than a guess, and
-// where the tests can pin the gating without a wall clock: the animator is a
-// seam, and a test's animator completes when the test says so.
-//
-// The travelling disc itself is TransitMotion's, shared with replay: what a
-// move looks like on its way to a point is the same question wherever the move
-// came from. What stays here is everything that is only true of *play* — the
-// gate, the game the transitions mutate, and the meaning each landing carries.
+// Every input funnels through here and commits through Game, so this is where
+// "a committing transition is running" is a fact rather than a guess.
 
 import SwiftUI
 
@@ -36,12 +22,9 @@ final class PlayMotion {
     private(set) var landings = 0
     private(set) var refusals = 0
 
-    /// The travelling disc, and the arrival that ends it. Play holds its gate
-    /// over this; the transit itself knows nothing about the gate.
     private let transits: TransitMotion
 
-    /// The kind of the transition that took the gate. Only meaningful while
-    /// one holds it, which is what `committing` says.
+    /// Meaningful only while one holds the gate, which is what `committing` says.
     private var transitionKind: Transit.Kind?
 
     /// The committing transition that is running, if one is. This is the gate:
@@ -50,68 +33,51 @@ final class PlayMotion {
     var committing: Transit.Kind? { transits.isRunning ? transitionKind : nil }
     var isCommitting: Bool { transits.isRunning }
 
-    /// A flip requested while a committing transition ran, applied when it
-    /// ends. Toggled, because two deferred flips are no flip at all.
+    /// Toggled, because two deferred flips are no flip at all.
     private(set) var flipDeferred = false
 
-    /// Whether the board is turning round. A flip is presentational and holds
-    /// no committing gate, but it does hold board input: for its 350 ms the
-    /// canvas draws every point partway through the rotation while the tap
-    /// targets over it already stand at the orientation being turned *to*, so
-    /// a tap in that window would commit a move at a point the player is not
-    /// looking at. Those taps are discarded, and silently — the player asked
-    /// for the flip, and answering their own request with a refusal beat would
-    /// be noise.
+    /// A flip holds no committing gate but does hold board input: mid-rotation
+    /// the tap targets already stand at the orientation being turned to, so a
+    /// tap would land on a point the player is not looking at. Those taps are
+    /// discarded silently, since the player asked for the flip.
     private(set) var isFlipping = false
 
-    /// What the board is drawing for the running committing transition, and
-    /// the second disc of a paired one — the two plies of a decision cycle
+    /// The second disc is a paired one's: the two plies of a decision cycle
     /// rewinding together.
     var transit: Transit? { transits.transit }
     var transitCompanion: Transit? { transits.companion }
-    /// The fading disc's progress, 0 to 1 — scheduled against the mover's
-    /// arrival for a capture, from its departure for an Undo.
     var transitFade: Double { transits.fade }
-    /// How far a revealed identity has come up on the travelling disc.
     var transitReveal: Double { transits.reveal }
 
     /// The check rings' one-time swell as they appear. Never raised under
     /// Reduce Motion: the pulse is removed, not converted.
     private(set) var checkEmphasis: Double = 0
-    /// The legal-destination markers' strengthening — the illegal-tap answer.
-    /// A pulse in full motion; a single persistent state change under Reduce
-    /// Motion, cleared when the selection changes.
+    /// The illegal-tap answer: a pulse in full motion, a single persistent state
+    /// under Reduce Motion, cleared when the selection changes.
     private(set) var markerEmphasis: Double = 0
 
-    /// The suggested destination of a hint being shown, and how strongly its
-    /// marker is drawn. The board's own language and no new geometry: the
-    /// suggestion is the ordinary selection state on the piece plus the
-    /// ordinary strengthening on one of its destinations.
+    /// No new geometry: the suggestion is the ordinary selection on the piece
+    /// plus the ordinary strengthening on one of its destinations.
     private(set) var suggested: Square?
     private(set) var hintEmphasis: Double = 0
 
-    /// The turn status background's emphasis — the acknowledgment beat.
+    /// The acknowledgment beat.
     private(set) var beatEmphasis: Double = 0
 
     /// A flip's own completion is tied to the turn it belonged to, since a
     /// second press replaces that turn.
     private var flipGeneration = 0
 
-    /// Undo is unavailable while any committing transition runs, including the
-    /// Undo it would interrupt. The cluster and notice buttons reflect this.
+    /// Includes the Undo it would interrupt.
     var canUndo: Bool { game.canUndo && !isCommitting }
 
     /// A committing transition has landed and the gate is open again. The
-    /// opponent listens: its reply floor is measured from the player's arrival,
-    /// because the AI must not leave before the player's move has finished
-    /// being shown. Which landing this was is a question about the game, and
-    /// the listener asks the game rather than being told here.
+    /// opponent's reply floor is measured from here: the AI must not leave
+    /// before the player's move has finished being shown.
     var landed: (() -> Void)?
 
-    /// A committing change has been made to the game and committed by the core,
-    /// whatever is still being drawn over it. The opponent listens here rather
-    /// than at the landing: its search starts at the commit, so the machine is
-    /// already thinking while the player's own piece is still sliding.
+    /// Committed by the core, whatever is still being drawn. The opponent starts
+    /// its search here, so it is already thinking while the player's piece slides.
     var committed: (() -> Void)?
 
     init(game: Game,
@@ -123,31 +89,24 @@ final class PlayMotion {
         self.animator = animator
         self.feedback = feedback
         self.transits = TransitMotion(animator: animator)
-        // Unowned: the transit belongs to this object and cannot outlive it,
-        // and a stored closure holding it back would be a cycle for the life
-        // of every game.
+        // Unowned: the transit belongs to this object and cannot outlive it; a
+        // strong capture would be a cycle for the life of every game.
         transits.arrived = { [unowned self] in announceLanding() }
         transits.ended = { [unowned self] in land() }
     }
 
-    /// A position that arrives already in check — a resumed or replayed game —
-    /// pulses its rings as they first appear, exactly as a played check's do
-    /// at its landing.
+    /// A position that arrives already in check, a resumed game, pulses its
+    /// rings as they first appear, as a played check's do at its landing.
     func boardAppeared() {
         pulseCheckIfNeeded()
     }
 
     // MARK: - Input
 
-    /// A tap on a point. What it *means* is the game's to say — Game decides
-    /// the affordance for the position, including that a finished board has
-    /// nothing left to offer — and what is added here is the motion that
-    /// carries it out. Closing the result notice standing in front of the
-    /// board is the screen's own, since the notice is not a fact about the
-    /// position.
+    /// What a tap means is the game's to say; this adds the motion that carries
+    /// it out.
     func tap(_ square: Square) {
-        // Discarded, never queued: a committing transition runs to completion,
-        // and while the board is turning round a tap cannot mean what the
+        // Discarded, never queued; and mid-flip a tap cannot mean what the
         // player took it to mean.
         guard !isCommitting, !isFlipping else { return }
         switch game.effect(ofTapAt: square) {
@@ -159,8 +118,6 @@ final class PlayMotion {
         }
     }
 
-    /// Tapping outside the board cancels the selection; with nothing selected
-    /// such a tap is aimed at nothing and answered by nothing.
     func cancelSelection() {
         guard !isCommitting, game.selected != nil else { return }
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
@@ -170,21 +127,13 @@ final class PlayMotion {
         } completion: { }
     }
 
-    /// Shows the engine's suggestion, in the board's own language and with no
-    /// marker of its own: the suggested piece is taken up exactly as the
-    /// player's own tap takes one up — the ring, the lift, the legal
-    /// destinations, the capture rings — and the suggested destination's marker
-    /// is strengthened, arriving with the same one-time swell an illegal tap's
-    /// answer arrives with.
-    ///
-    /// Whether the piece may be taken up at all is asked of the game, which is
-    /// where the board's whole affordance lives: nothing here re-derives whose
-    /// turn it is or what may be held.
+    /// No marker of its own: the suggested piece is taken up exactly as the
+    /// player's tap takes one up, and the suggested destination's marker
+    /// strengthens. Whether the piece may be taken up is asked of the game.
     func showHint(_ move: Move) {
         guard !isCommitting, !isFlipping else { return }
-        // A move with no origin is a stone going down, and its suggestion is
-        // shown in that game's own grammar rather than in this one: there is no
-        // piece to take up, so the mark is the whole of it.
+        // A move with no origin is a stone going down: there is no piece to
+        // take up, so the mark is the whole of it.
         guard let origin = move.from else { return markSuggestedPoint(move) }
         guard game.selected == origin
                 || game.effect(ofTapAt: origin) == .select(origin) else { return }
@@ -195,19 +144,10 @@ final class PlayMotion {
         raiseHint(at: move.to)
     }
 
-    /// The same suggestion on a board that places rather than moves: **the
-    /// pending-stone mark, standing at the point the engine chose**.
-    ///
-    /// It is the placement grammar's own and introduces nothing — the mark is
-    /// the one the player's own first tap raises under 落子前确认, so tapping it
-    /// plays the move through the ordinary input path, and tapping another point
-    /// moves the mark exactly where that flow already moves it. Nothing has to
-    /// know the mark came from the engine for either to be true.
-    ///
-    /// Whether the point may be marked at all is asked of the game, exactly as
-    /// the branch above asks whether the piece may be taken up: an occupied
-    /// point, a point forbidden to the side to move, and a board waiting on the
-    /// opponent are all one answer here, and it is the game's.
+    /// The pending-stone mark at the engine's point: the same mark the player's
+    /// own first tap raises under 落子前确认, so tapping it plays the move and
+    /// tapping elsewhere moves it. Whether the point may be marked is the game's
+    /// answer.
     private func markSuggestedPoint(_ move: Move) {
         switch game.effect(ofTapAt: move.to) {
         case .play, .select: break
@@ -220,15 +160,9 @@ final class PlayMotion {
         raiseHint(at: move.to)
     }
 
-    /// The suggestion's own emphasis, raised: the destination's marker on a
-    /// board that moves, the halo beneath the mark on one that places.
-    ///
-    /// Under Reduce Motion the strengthened state arrives without the swell,
-    /// which is the standing rule: the state survives, the travel goes. It
-    /// **stays** strengthened for as long as the suggestion is on the board
-    /// rather than relaxing back, because what the strengthening says is which
-    /// point the engine chose, and a marker that decayed would leave the
-    /// suggestion with nothing saying it.
+    /// Under Reduce Motion the strengthened state arrives without the swell. It
+    /// stays strengthened while the suggestion stands: a marker that decayed
+    /// would leave nothing saying which point the engine chose.
     private func raiseHint(at square: Square) {
         suggested = square
         guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
@@ -240,30 +174,17 @@ final class PlayMotion {
         } completion: { }
     }
 
-    /// Takes a suggestion off the board. Everything that ends one calls it: a
-    /// commit, an Undo, a selection that moved elsewhere, and the hint's own
-    /// cancellation when the board is left or the machine suspends.
-    ///
-    /// It takes down what the suggestion put up and nothing else. On a board
-    /// that places, the mark itself is left standing: it is the player's own
-    /// pending mark by then, indistinguishable and theirs to commit or move,
-    /// and every act that ends a suggestion already clears it — the commit and
-    /// the Undo through the game, the off-board tap through
-    /// `cancelSelection()`.
+    /// Everything that ends a suggestion calls this. On a board that places,
+    /// the mark is left standing: by then it is the player's own pending mark,
+    /// and every act that ends a suggestion already clears it.
     func clearHint() {
         suggested = nil
         hintEmphasis = 0
     }
 
-    /// Takes back one decision, which in human-versus-AI play is a whole
-    /// exchange rather than half of one. How many plies that is, is the game's
-    /// answer — `Game.undoPlies`, 1 or 2 — and it is consumed rather than derived.
-    ///
-    /// A cycle rewinds in one gesture: both discs travel back together, and
-    /// whatever either of them took reappears as they go. One action, one
-    /// travel, one arrival — which is also what keeps a cycle inside the
-    /// accepted 600 ms with room to spare, since a single ply's travel is
-    /// bounded by 240.
+    /// In human-versus-AI play one decision is a whole exchange; how many plies
+    /// is `Game.undoPlies`. A cycle rewinds in one gesture, both discs together:
+    /// one travel and one arrival, which keeps it inside 600 ms.
     func undo() {
         guard canUndo else { return }
         guard !game.kind.isPlacement else { return undoPlacements() }
@@ -276,21 +197,18 @@ final class PlayMotion {
             }
             played.append(move)
         }
-        // Every ply of a movement game has an origin to carry its piece back
-        // to; the games whose plies do not are answered above, before this.
+        // Placement games returned above; every ply here has an origin.
         guard played.count == plies, let last = played.last,
               let lastOrigin = last.from, let mover = game.placement[last.to]
         else { return }
 
-        // The cycle's first ply, and the piece that made it. Both are read off
-        // the position *between* the two moves, which is the core's answer
-        // rather than a placement worked out here.
+        // Read off the position between the two moves, the core's answer
+        // rather than one worked out here.
         let between = plies == 2 ? game.placement(atPly: game.moves.count - 1) : nil
         let first = plies == 2 ? played.first : nil
         let firstMover = first.flatMap { between?[$0.to] }
 
-        // Two discs travelling at once share one duration, taken from the
-        // longer of the two journeys so neither is hurried.
+        // Two discs share one duration, from the longer journey.
         let distance = max(Motion.distance(of: last),
                            first.map(Motion.distance(of:)) ?? 0)
         let travel = Motion.travel(distance: distance, on: game.kind.board)
@@ -298,22 +216,17 @@ final class PlayMotion {
         begin(.undo)
         transits.run(policy.movement(Motion.travelAnimation(travel))) { [self] in
             game.undo()
-            // An Undo the core refused did not happen: nothing to draw,
-            // nothing to hold the gate for.
+            // A refused Undo did not happen: nothing to draw or hold the gate for.
             guard game.failure == nil else { return nil }
             committed?()
-            // What the reply took is read off the position it was played into.
             // Where the reply took the very piece that invited it, the two
-            // reversals share a square, and it belongs to the one carrying
-            // that piece home rather than to both.
+            // reversals share a square, and it belongs to the one carrying that
+            // piece home.
             let restored = plies == 2
                 ? (first?.to == last.to ? nil : between?[last.to])
                 : game.placement[last.to]
-            // A retraction returns the position's concealment, so a ply that
-            // revealed a piece puts it back face down where it came from. The
-            // face it arrives with is read off the position the Undo produced,
-            // exactly as a reveal's is, and it is nil wherever nothing was
-            // turned back over.
+            // A retraction returns the concealment: a ply that revealed a piece
+            // puts it back face down. Nil where nothing turned back over.
             let returned = game.placement[lastOrigin].flatMap {
                 $0.isFaceDown ? $0 : nil
             }
@@ -323,10 +236,8 @@ final class PlayMotion {
                            fading: restored.map { ($0, last.to) },
                            revealed: returned)
         }
-        // The cycle's first ply is the second disc, and it returns whatever it
-        // turned over just as the second does: a decision cycle whose *human*
-        // move revealed a piece and whose reply did not is the ordinary case,
-        // and the retraction puts that piece back face down.
+        // The first ply returns whatever it turned over too: a human move that
+        // revealed, answered by a reply that did not, is the ordinary case.
         if let first, let firstOrigin = first.from, let firstMover {
             transits.pair(with: Transit(kind: .undo,
                                         move: Move(from: first.to, to: firstOrigin),
@@ -335,27 +246,19 @@ final class PlayMotion {
                                         revealed: game.placement[firstOrigin]
                                             .flatMap { $0.isFaceDown ? $0 : nil }))
         }
-        // The identity goes as the disc returns home, on the same schedule a
-        // reveal arrives on. Raised after the pairing, because either disc's
-        // returning face is one this has to draw.
+        // Raised after the pairing, because either disc's returning face needs
+        // drawing.
         if !policy.reduceMotion {
             transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
-        // The restored pieces return as the movers depart — the capture read
-        // backwards — inside the travel, so one ply stays within its 250 ms.
+        // The restored pieces return as the movers depart, inside the travel.
         guard !policy.reduceMotion else { return }
         transits.raiseFade(Motion.restoreFadeAnimation)
     }
 
-    /// Takes back the stones of one decision, however many that is.
-    ///
-    /// **Nothing travels, because nothing travelled to arrive.** A stone came
-    /// from off the board and goes back there, so there is no disc to carry home
-    /// and no committing transition to hold a gate for: the position changes
-    /// over the ordinary state fade and the board is immediately the board
-    /// again. What is kept is everything the act means — the commit is announced
-    /// so a hint goes down and the opponent hears it, the landing is felt and
-    /// heard, and a refusal leaves the game exactly where it stood.
+    /// Nothing travels: a stone came from off the board, so there is no disc to
+    /// carry home and no gate to hold. The commit is still announced, the
+    /// landing felt and heard, and a refusal leaves the game where it stood.
     private func undoPlacements() {
         markerEmphasis = 0
         clearHint()
@@ -368,10 +271,8 @@ final class PlayMotion {
         landed?()
     }
 
-    /// The opponent's reply, drawn in the same move language a person's move
-    /// is drawn in and leaving the same last-move brackets behind. The floor
-    /// that decides *when* it departs is the opponent's, not this file's: by
-    /// the time this is called the move is due.
+    /// The floor that decides when it departs is the opponent's: by the time
+    /// this is called the move is due.
     func playOpponent(_ move: Move) {
         guard move.from != nil else {
             place(move) { [self] in game.playOpponent(move) }
@@ -380,11 +281,9 @@ final class PlayMotion {
         commit(move) { [self] in game.playOpponent(move) }
     }
 
-    /// The player takes the draw the core is offering. It is the one result
-    /// that arrives with nothing moving, so it is also the one place the
-    /// concluding sound cannot wait for a landing: it sounds at the commit,
-    /// which is the moment the game ends. Whether the claim exists at all is
-    /// the game's to say, and it says so by whether it took it.
+    /// The one result that arrives with nothing moving, so the conclusion
+    /// sounds at the commit. Whether the claim exists is the game's to say, by
+    /// whether it took it.
     func claimDraw() {
         guard !game.claimedDraw else { return }
         animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
@@ -394,10 +293,7 @@ final class PlayMotion {
         feedback.play(.conclusion)
     }
 
-    /// The player concedes. The other result that arrives with nothing moving,
-    /// and it sounds the same way for the same reason: the conclusion is heard
-    /// at the commit, which is the moment the game ends. Whether resignation is
-    /// on offer is the game's to say, and it says so by whether it took it.
+    /// Sounds at the commit for the same reason `claimDraw` does.
     func resign() {
         guard !game.resigned else { return }
         animator.run(policy.fade(Motion.stateFadeAnimation)) { [self] in
@@ -407,12 +303,9 @@ final class PlayMotion {
         feedback.play(.conclusion)
     }
 
-    /// Applied at once between committing transitions, deferred across one:
-    /// flipping changes nothing about the game, so nothing of it is discarded.
-    /// A second press while one is running re-targets it — the board turns
-    /// back the way it came, from wherever it had got to — because a flip is
-    /// presentational, and a presentational transition re-targets freely
-    /// toward whatever the player just did.
+    /// Deferred across a committing transition, never discarded. A second press
+    /// while one runs re-targets it, turning back from wherever it had got to,
+    /// because a flip is presentational.
     func flip() {
         guard !isCommitting else {
             flipDeferred.toggle()
@@ -424,27 +317,20 @@ final class PlayMotion {
         animator.run(policy.movement(Motion.flipAnimation)) { [self] in
             game.flipped.toggle()
         } completion: { [self] in
-            // A re-target owns the board now, and this completion belongs to
-            // the turn it replaced.
+            // This completion belongs to a turn a re-target replaced.
             guard flipGeneration == token else { return }
             flipArrived()
         }
     }
 
-    /// The board has finished turning, and its points are where they are
-    /// drawn again. Reported by the canvas's own flip phase reaching its
-    /// target and by the transaction completion behind it — the same two wires
-    /// the landing arrives on, for the same reason: input must not stay
-    /// discarded because a completion never came.
+    /// Reported by the canvas's flip phase and by the transaction completion
+    /// behind it, so input never stays discarded because a completion never came.
     func flipArrived() {
         isFlipping = false
     }
 
-    /// The acknowledgment beat: the turn status's background rises to full
-    /// emphasis and falls back, opacity only, no movement, and the lightest
-    /// feedback answers the touch. For input the game cannot accept — a tap
-    /// that selects nothing, a tap on a finished board whose notice is already
-    /// away — never for input it acted on.
+    /// Opacity only, with the lightest feedback. For input the game cannot
+    /// accept, never for input it acted on.
     func acknowledge() {
         refusals += 1
         animator.run(policy.fade(.easeOut(duration: Motion.beatRise))) { [self] in
@@ -462,8 +348,7 @@ final class PlayMotion {
         animator.run(policy.movement(Motion.liftAnimation)) { [self] in
             game.tap(square)
             markerEmphasis = 0
-            // A selection that moved somewhere else is a suggestion the player
-            // has answered by taking up a different piece.
+            // A selection elsewhere answers the suggestion.
             clearHint()
         } completion: { }
     }
@@ -476,16 +361,9 @@ final class PlayMotion {
         commit(move) { [self] in game.tap(move.to) }
     }
 
-    /// One stone going down, whoever puts it there.
-    ///
-    /// The counterpart of `commit(_:apply:)` for a game that places rather than
-    /// moves, and deliberately not the same machine: `TransitMotion` exists to
-    /// carry a body across the board and to hold a gate open until it lands, and
-    /// a stone does neither. It appears on the point it was committed to, with
-    /// the position — which is what a placed stone does — and the landing is the
-    /// commit, so the feedback fires there. There is no window to discard input
-    /// in because there is no window: the next tap acts on the position the
-    /// stone is already part of.
+    /// Deliberately not `TransitMotion`: a stone neither crosses the board nor
+    /// holds a gate. It appears with the position and the landing is the
+    /// commit, so the next tap acts on a position the stone is already part of.
     private func place(_ move: Move, apply: () -> Void) {
         markerEmphasis = 0
         clearHint()
@@ -497,77 +375,57 @@ final class PlayMotion {
         landed?()
     }
 
-    /// A stone landing: felt with the same pattern every landing is felt with,
-    /// and heard as the stone's own click — or as the conclusion, where the
-    /// stone that landed ended the game, which is the standing rule for every
-    /// landing on every board.
+    /// Heard as the stone's click, or as the conclusion where it ended the game.
     private func announcePlacement() {
         landings += 1
         feedback.play(.ofTheLanding(nil, stone: true,
                                     finished: game.isFinished, inCheck: false))
     }
 
-    /// One move travelling to its point, whoever is making it. What differs
-    /// between a person's move and the opponent's is only how it is committed;
-    /// everything drawn is the same, which is what the accepted motion language
-    /// asks for.
+    /// A person's move and the opponent's differ only in how they are committed.
     private func commit(_ move: Move, apply: () -> Void) {
         guard let origin = move.from, let piece = game.placement[origin] else { return }
         let captured = game.placement[move.to]
         let travel = Motion.travel(distance: Motion.distance(of: move), on: game.kind.board)
         begin(.move)
-        // The plan, resolved once and before anything can arrive: a removal is
-        // drawn for a capture in full motion, and the gate waits for exactly
-        // the wires this line schedules.
+        // Resolved once, before anything can arrive: the gate waits for exactly
+        // the wires this schedules.
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: captured != nil && !policy.reduceMotion) {
             apply()
             guard game.lastMove == move, game.failure == nil,
                   game.opponentFailure == nil else { return nil }
             committed?()
-            // What the move turned up, read off the position it produced: the
-            // piece standing at the destination is face up there whatever it
-            // set out as, so this asks the committed position rather than
-            // deriving a reveal from the one it left.
+            // Read off the committed position: the piece at the destination is
+            // face up there whatever it set out as.
             let arrived = piece.isFaceDown ? game.placement[move.to] : nil
             return Transit(kind: .move, move: move, piece: piece,
                            fading: captured.map { ($0, move.to) },
                            revealed: arrived)
         }
-        // The identity comes up over the last stretch of the journey and is
-        // there as the disc lands. Under Reduce Motion it rides the dissolve
-        // the travel becomes, which the canvas draws from the travel's own
-        // progress, so nothing is scheduled for it here.
+        // Under Reduce Motion the canvas draws it from the dissolve's own
+        // progress, so nothing is scheduled.
         if !policy.reduceMotion {
             transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         guard transits.drawsRemoval else { return }
-        // The captured disc gives way under the arriving mover: its removal is
-        // scheduled against the arrival, leading it by 60 ms and finishing
-        // 50 ms after it, so it cannot read as a second, unrelated animation.
-        // The gate holds for that tail.
+        // Scheduled against the arrival, so it cannot read as an unrelated
+        // animation; the gate holds for its tail.
         transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
     }
 
-    /// Takes the gate, before the core is asked. Whatever the transition turns
-    /// out to be able to draw, input is refused from this instant.
+    /// Takes the gate before the core is asked: input is refused from this instant.
     private func begin(_ kind: Transit.Kind) {
         transitionKind = kind
         markerEmphasis = 0
-        // Whatever was suggested was suggested about the position this
-        // transition is leaving.
+        // Whatever was suggested was about the position being left.
         clearHint()
     }
 
     // MARK: - Arrivals
 
-    /// The mover has reached its point — see TransitMotion for the two wires
-    /// that report it. The landing feedback fires here: the event completing,
-    /// never the tap that asked.
-    ///
-    /// Felt and heard together, and they are not the same choice: the haptic is
-    /// the alignment pattern at every landing there is, while the sound is the
-    /// one that says what this landing was.
+    /// The landing feedback fires here, at the event completing, never at the
+    /// tap. See TransitMotion for the two wires that report it.
     private func announceLanding() {
         landings += 1
         feedback.play(.ofTheLanding(transit,
@@ -575,10 +433,8 @@ final class PlayMotion {
                                     inCheck: game.checkedGeneral != nil))
     }
 
-    /// Every committing transition ends here: the gate opens, a deferred flip
-    /// applies, and a check that arrived with the new position pulses its
-    /// rings — which appear only now, because they belong to the position and
-    /// the position finishes arriving at the landing.
+    /// The check rings pulse only now: they belong to the position, which
+    /// finishes arriving at the landing.
     private func land() {
         pulseCheckIfNeeded()
         landed?()
@@ -588,8 +444,7 @@ final class PlayMotion {
         }
     }
 
-    /// The board's own arrival wires, forwarded. They are the canvas's to
-    /// call, and the gate is this object's to open.
+    /// The canvas calls these; the gate is this object's to open.
     func travelArrived() { transits.travelArrived() }
     func fadeArrived() { transits.fadeArrived() }
 
@@ -607,15 +462,12 @@ final class PlayMotion {
         }
     }
 
-    /// The illegal-tap answer. No board mark and no lost selection: the legal
-    /// destinations strengthen, because where the piece may go teaches more
-    /// than marking where it may not, and the lightest feedback answers the
-    /// touch itself, ahead of anything drawn.
+    /// No board mark and no lost selection: where the piece may go teaches more
+    /// than where it may not.
     private func answerIllegalTap() {
         refusals += 1
         guard let rise = policy.pulse(.easeOut(duration: Motion.markerPulseRise)) else {
-            // Reduce Motion: the markers strengthen once — a single state
-            // change, no pulse — and stay until the selection changes.
+            // One state change, kept until the selection changes.
             markerEmphasis = 1
             return
         }

@@ -1,56 +1,27 @@
-// The History destination: every game the player has filed, and nothing else.
-//
-// docs/interaction-design.md, "History library": pinned records appear before
-// unpinned ones, each group newest first. That order is the library's query
-// and this screen never re-sorts it — the two sections are the pinned prefix
-// and the rest, which is what makes pinned-ness legible as ordering rather than
-// as a badge, and what makes a pin that failed visible as a row that did not
-// move.
-//
-// Selecting a row opens its read-only replay. The row actions are Pin or Unpin,
-// 共享 and Delete, on a swipe and in the context menu. Deletion confirms unless
-// the player has said not to: 删除前确认 is the Settings switch that defaults on,
-// read at the moment a deletion is asked for, and with it off the record goes
-// immediately — which is a promise the switch's own footer makes and this screen
-// keeps. Every route to a deletion goes through one call, so the swipe, the
-// complete swipe, the context menu and the screen-reader action all honour it.
-//
-// This is also where a game comes in. Import is one file at a time, from the
-// toolbar, on the screen the list is already on — so the result of a successful
-// import is the row appearing, scrolled to and briefly lit, rather than an
-// alert about something the player can already see. Everything else an import
-// can answer *is* an alert, because every one of those is a thing that did not
-// happen.
+// Every route to a deletion goes through `confirmDeletion`, so the swipe, the
+// full swipe, the context menu and the screen-reader action all honour
+// 删除前确认.
 
 import SwiftUI
 
 struct HistoryScreen: View {
-    /// The library, held above the container and handed down.
-    ///
-    /// It is the app's rather than this destination's, for the same reason the
-    /// game is: the container tears one destination's content down and rebuilds
-    /// it on every visit, so a library created in here would be a *different*
-    /// library on every visit, each with its own copy of the list. That is
-    /// merely wasteful until something writes to the library while another copy
-    /// is on screen — an import is exactly that — at which point one copy holds
-    /// the new record and the one being looked at does not.
+    /// Held above the container, which rebuilds this destination on every
+    /// visit: a library created in here would be a fresh copy each time, and an
+    /// import could land in a copy that is not the one on screen.
     let library: HistoryLibrary
 
-    /// A record another destination asked to be shown — the just-recorded
-    /// game's 回放. It is resolved against the loaded list rather than pushed
-    /// blind, because the destination takes a record and not an identifier.
+    /// Resolved against the loaded list rather than pushed blind, because the
+    /// destination takes a record, not an identifier.
     @Binding var pendingReplay: UUID?
 
     @State private var path: [GameRecord] = []
 
-    /// The record a deletion is about — while its confirmation is up, and
-    /// afterwards while a refused deletion offers its retry.
+    /// Held while the confirmation is up, and afterwards while a refused
+    /// deletion offers its retry.
     @State private var deleting: GameRecord?
     @State private var confirmingDeletion = false
     @AppStorage("deleteConfirmation.enabled") private var confirmsDeletion = true
 
-    /// The file picker. What the import it starts has to say is the library's,
-    /// not this view's — see `HistoryLibrary.importAnswer`.
     @State private var importing = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -82,11 +53,8 @@ struct HistoryScreen: View {
             showPendingReplay()
         }
         .onChange(of: pendingReplay) { _, _ in showPendingReplay() }
-        // One file at a time is the accepted rule, and the picker is the
-        // cheapest place to keep it: a player never selects five games and then
-        // has four of them refused. The allowed type is the declared one, so
-        // the library's own check of the file is a second line of defence
-        // rather than the only one.
+        // One file at a time, enforced in the picker, so a player never selects
+        // five games and has four refused.
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: [.miniXiangqiGame],
                       allowsMultipleSelection: false) { result in
@@ -94,8 +62,6 @@ struct HistoryScreen: View {
             case .success(let urls):
                 if let url = urls.first { open(url) }
             case .failure:
-                // The picker could not hand the file over at all, which from
-                // here is indistinguishable from a file that cannot be read.
                 library.reportUnreadableFile()
             }
         }
@@ -111,9 +77,6 @@ struct HistoryScreen: View {
             } message: {
                 Text("alert.deleteGame.message")
             }
-            // A deletion the library refused: the record is still there, and the
-            // retry is the same deletion. Same shape as every other "could not
-            // do it, nothing changed, try again" in the app.
             .alert("alert.deleteFailed.title",
                    isPresented: Binding(get: { library.deletionFailure != nil },
                                         set: { if !$0 { library.dismissDeletionFailure() } })) {
@@ -128,9 +91,8 @@ struct HistoryScreen: View {
             } message: {
                 Text("alert.deleteFailed.message")
             }
-            // Every answer an import has other than the row appearing. One
-            // alert rather than five, because they differ in their words and
-            // their actions and in nothing else.
+        // One alert rather than five: the answers differ only in their words
+        // and actions.
             .alert(LocalizedStringKey(library.importAnswer?.title ?? ""),
                    isPresented: Binding(get: { library.importAnswer != nil },
                                         set: { if !$0 { library.dismissImportAnswer() } }),
@@ -144,17 +106,12 @@ struct HistoryScreen: View {
     @ViewBuilder
     private var list: some View {
         if let failure = library.failure, library.records.isEmpty {
-            // A library that cannot be read is worth saying so about: an empty
-            // list here would be a claim about the player's games that this
-            // screen has no evidence for. The description is diagnostic text —
-            // not copy, and not localized.
+            // An empty list here would claim something about the player's games
+            // with no evidence. The description is diagnostic, not localized.
             ContentUnavailableView("failure.historyDidNotLoad",
                                    systemImage: "exclamationmark.triangle",
                                    description: Text(verbatim: failure.description).monospaced())
         } else if library.isEmpty {
-            // And an empty one says so quietly and offers nothing else to do.
-            // Import is on the toolbar above it, where it is for a full library
-            // too.
             ContentUnavailableView("history.empty.title", systemImage: "tray",
                                    description: Text("history.empty.description"))
         } else {
@@ -168,25 +125,20 @@ struct HistoryScreen: View {
                             rows(library.unpinnedRecords)
                         }
                     } else {
-                        // With nothing pinned there is one unheaded section, and
-                        // the list looks like a plain list of games.
                         rows(library.unpinnedRecords)
                     }
                 }
                 .accessibilityIdentifier("history-list")
                 .onChange(of: library.importedRecord) { _, id in
                     guard let id else { return }
-                    // A scroll is travel, and travel is what Reduce Motion
-                    // removes: the row still arrives, immediately. The light on
-                    // it is colour, which the same rule leaves alone.
+                    // Reduce Motion removes the scroll's travel; the row still
+                    // arrives, and its light is colour, which stays.
                     if let animation = policy.scroll(Motion.stateFadeAnimation) {
                         withAnimation(animation) { scroll.scrollTo(id, anchor: .center) }
                     } else {
                         scroll.scrollTo(id, anchor: .center)
                     }
                 }
-                // The light decays on its own; nothing here dismisses anything
-                // the player has to read.
                 .task(id: library.importedRecord) {
                     guard library.importedRecord != nil else { return }
                     try? await Task.sleep(for: .milliseconds(600))
@@ -203,18 +155,13 @@ struct HistoryScreen: View {
             NavigationLink(value: record) {
                 row(record)
             }
-            // Addressed by position, because position is the thing the
-            // ordering rule is about: `history-row-0` is whatever the query
-            // put first.
+            // Addressed by position, because position is what the ordering
+            // rule is about.
             .accessibilityIdentifier("history-row-\(library.records.firstIndex(of: record) ?? 0)")
             .listRowBackground(library.importedRecord == record.id
                                ? Color.accentColor.opacity(0.18) : nil)
-            // Delete is listed first so that it is the outermost trailing
-            // action and the full-swipe default, which is what the accepted
-            // "Delete nearest the trailing edge" and "a complete right-to-left
-            // swipe invokes Delete" come to in this framework's own order.
-            // 共享 is second, which puts it to Delete's left — the accepted
-            // reading order of the pair.
+            // Listed first so Delete is the outermost trailing action and the
+            // full-swipe default, with 共享 to its left.
             .swipeActions(edge: .trailing) {
                 Button("control.delete", systemImage: "trash", role: .destructive) {
                     confirmDeletion(of: record)
@@ -224,8 +171,6 @@ struct HistoryScreen: View {
             .swipeActions(edge: .leading) {
                 pinButton(record).tint(.orange)
             }
-            // The pointer equivalent the contract asks for, without adding a
-            // permanent button to the row.
             .contextMenu {
                 pinButton(record)
                 shareButton(record)
@@ -233,7 +178,6 @@ struct HistoryScreen: View {
                     confirmDeletion(of: record)
                 }
             }
-            // And the screen-reader equivalent, in the same order.
             .accessibilityActions {
                 pinButton(record)
                 shareButton(record)
@@ -245,16 +189,14 @@ struct HistoryScreen: View {
     private func row(_ record: GameRecord) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(record.whenText)
-            // Every token in this line is contract-required row content, so it
-            // wraps rather than truncating: an ellipsis here would drop one.
+            // Wraps rather than truncating: an ellipsis would drop a required
+            // token.
             Text(record.metadataLine)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(nil)
         }
         .padding(.vertical, 4)
-        // One element per row, read as one sentence, so a screen-reader user
-        // does not have to swipe twice per game.
         .accessibilityElement(children: .combine)
     }
 
@@ -265,10 +207,6 @@ struct HistoryScreen: View {
         }
     }
 
-    /// 共享 exports the record as one game file. The export itself happens
-    /// inside the transfer representation, when a service asks for the file, so
-    /// presenting this costs nothing and no work is done for a share sheet the
-    /// player dismisses.
     private func shareButton(_ record: GameRecord) -> some View {
         ShareLink(item: GameFile(record: record, in: library.library),
                   preview: SharePreview(record.metadataLine)) {
@@ -276,12 +214,8 @@ struct HistoryScreen: View {
         }
     }
 
-    /// Deletes the record, asking first where the preference says to ask.
-    ///
-    /// The record is held either way, because the deletion that a library refuses
-    /// offers to be retried and the retry has to name the same record — that
-    /// alert is about a deletion that did not happen and is not the confirmation
-    /// this switch governs.
+    /// The record is held even without confirmation, so a refused deletion's
+    /// retry names the same record.
     private func confirmDeletion(of record: GameRecord) {
         deleting = record
         if confirmsDeletion {
@@ -293,18 +227,13 @@ struct HistoryScreen: View {
 
     // MARK: - Import
 
-    /// Reads the chosen file and hands it to the library, which decides
-    /// everything about it. The bytes are read inside the security scope the picker
-    /// granted, and nothing about the file is kept afterwards — no bookmark, no
-    /// reference, no second look. It is untrusted input that has been copied
-    /// once and let go.
+    /// Nothing about the file is kept afterwards, no bookmark and no second
+    /// look: it is untrusted input, copied once.
     private func open(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        // A game file is a few kilobytes, so a file over a mebibyte is not one,
-        // and is refused before it is read. A file whose size cannot be read at
-        // all is carried on and let the library answer, because not knowing a
-        // size is not the same as knowing a bad one.
+        // A game file is a few kilobytes. A size that cannot be read is let
+        // through for the library to judge.
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
         guard size.map({ $0 <= Self.importByteLimit }) ?? true,
               let bytes = try? Data(contentsOf: url) else {
@@ -314,30 +243,24 @@ struct HistoryScreen: View {
         library.importGame(bytes)
     }
 
-    /// The largest file an import reads, in bytes.
     private static let importByteLimit = 1024 * 1024
 
     @ViewBuilder
     private func actions(for answer: ImportAnswer) -> some View {
         switch answer {
         case .duplicate(let record):
-            // The accepted "offers a way to view the existing record".
             Button("control.view") { path = [record] }
             Button("control.ok", role: .cancel) { }
         case .saveFailed(let bytes):
             Button("control.cancel", role: .cancel) { }
             Button("control.tryAgain") { library.importGame(bytes) }
-        // These offer only acknowledgement: there is no action the app can put
-        // behind a button that would change the answer.
         case .unreadable, .newerVersion, .earlierVersion, .illegalGame:
             Button("control.ok", role: .cancel) { }
         }
     }
 
-    /// Pushes the record another destination asked for, once the list holding
-    /// it has loaded. An identifier that names no record — a game deleted since
-    /// — is dropped rather than reported: the request is a convenience, and the
-    /// list it lands on is the answer either way.
+    /// An identifier that names no record, a game deleted since, is dropped
+    /// silently: the list it lands on is the answer either way.
     private func showPendingReplay() {
         guard let id = pendingReplay else { return }
         guard let record = library.records.first(where: { $0.id == id }) else {

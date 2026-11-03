@@ -1,17 +1,10 @@
 // The Swift veneer over the core's search facade, and the platform memory
-// probe the Hash budget is computed from.
+// probe the Hash budget is computed from. The core does the budget arithmetic;
+// this file only decides what the available and physical figures are here.
 //
-// The frontend supplies a fresh available-memory value at each preparation, and
-// the arithmetic on top of it belongs to the core, so the only thing this file
-// decides is what the two numbers are on this platform. On macOS they are
-// `host_statistics64` with `HOST_VM_INFO64`, taking free, inactive and
-// purgeable pages, and `sysctlbyname("hw.memsize")`; on iOS and iPadOS,
-// `os_proc_available_memory()` against the same physical figure.
-//
-// `mxq_engine_prepare` and `mxq_engine_teardown` block — a prepare allocates the
-// transposition table and loads the network — so they run on a serial dispatch
-// queue of this file's own rather than on the cooperative pool. Everything else
-// in the facade is non-blocking and stays where its caller is.
+// `mxq_engine_prepare` and `mxq_engine_teardown` block (a prepare allocates the
+// transposition table and loads the network), so they run on a serial dispatch
+// queue of this file's own rather than on the cooperative pool.
 
 import Foundation
 import MiniXiangqiCore
@@ -22,10 +15,9 @@ import Darwin
 
 // MARK: - The probe
 
-/// The two numbers the accepted budget arithmetic is computed from, fresh at
-/// every calculation. A cached probe is exactly what the contract forbids: the
-/// retry that follows an insufficient-memory notice has to see the memory the
-/// user just freed.
+/// The figures the Hash budget is computed from. Probed fresh at every
+/// calculation: the retry after an insufficient-memory notice has to see the
+/// memory the user just freed.
 nonisolated struct EngineBudget: Sendable, Equatable {
     var activeProcessorCount: Int
     var availableBytes: UInt64
@@ -40,38 +32,33 @@ nonisolated struct EngineBudget: Sendable, Equatable {
         return budget
     }
 
-    /// A fresh reading of this machine. Never cached, and never remembered
-    /// between attempts.
+    /// A fresh reading of this machine. Never cached.
     static func probe() -> EngineBudget {
         EngineBudget(activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount,
                      availableBytes: availableMemory(),
                      physicalBytes: physicalMemory())
     }
 
-    /// The device's physical memory. `sysctlbyname("hw.memsize")` is the
-    /// accepted source on both Apple platforms.
+    /// The device's physical memory.
     private static func physicalMemory() -> UInt64 {
         var bytes: UInt64 = 0
         var size = MemoryLayout<UInt64>.size
         guard sysctlbyname("hw.memsize", &bytes, &size, nil, 0) == 0 else {
-            // Foundation's own answer for the same question, as the fallback
-            // that keeps a probe from reporting zero physical memory and
-            // failing every game for a reason the user cannot act on.
+            // Foundation's answer, so a probe never reports zero physical
+            // memory and fails every game for a reason the user cannot act on.
             return ProcessInfo.processInfo.physicalMemory
         }
         return bytes
     }
 
     #if os(macOS) || targetEnvironment(simulator)
-    /// macOS has no per-process memory limit to ask about, and nor does a
-    /// Simulator process, where `os_proc_available_memory` answers zero; the
-    /// accepted probe is the system's available physical memory: the free, inactive and
-    /// purgeable pages, which are what the kernel can hand to a process that
-    /// asks for gigabytes.
+    /// macOS has no per-process memory limit, and in a Simulator process
+    /// `os_proc_available_memory` answers zero, so the probe takes the
+    /// system's free, inactive and purgeable pages: what the kernel can hand
+    /// to a process that asks for gigabytes.
     private static func availableMemory() -> UInt64 {
         // `mach_host_self` hands out a send right per call, and the probe sits
-        // on a retry loop the user drives: every one of them is deallocated
-        // rather than left to accumulate a port per press.
+        // on a retry loop the user drives, so each one is deallocated.
         let host = mach_host_self()
         defer { mach_port_deallocate(mach_task_self_, host) }
 
@@ -83,31 +70,29 @@ nonisolated struct EngineBudget: Sendable, Equatable {
                 host_statistics64(host, HOST_VM_INFO64, $0, &count)
             }
         }
-        // A probe the kernel refused reports nothing available, which the
-        // accepted arithmetic turns into the insufficient-memory notice — the
-        // conservative direction, and the one the user can act on.
+        // A refused probe reports nothing available, which becomes the
+        // insufficient-memory notice: the conservative direction, and one the
+        // user can act on.
         guard result == KERN_SUCCESS else { return 0 }
         let pages = UInt64(statistics.free_count)
             + UInt64(statistics.inactive_count)
             + UInt64(statistics.purgeable_count)
-        // The page size is asked of the host rather than read from the global
-        // `vm_kernel_page_size`, which Swift 6 will not let a nonisolated
-        // function touch and which this call answers exactly.
+        // Asked of the host rather than read from `vm_kernel_page_size`, a
+        // global a nonisolated function may not touch.
         var pageSize = vm_size_t(0)
         guard host_page_size(host, &pageSize) == KERN_SUCCESS else { return 0 }
         return pages * UInt64(pageSize)
     }
     #else
-    /// iOS and iPadOS: the process's own remaining limit, which is the number
-    /// that actually bounds an allocation there.
+    /// The process's own remaining limit, which is what bounds an allocation
+    /// on iOS.
     private static func availableMemory() -> UInt64 {
         UInt64(os_proc_available_memory())
     }
     #endif
 }
 
-/// The plan a preparation applied, reported back so a log can name the applied
-/// values.
+/// The plan a preparation applied, for the log.
 nonisolated struct EnginePlan: Sendable, Equatable {
     var threads: Int
     var hashMiB: Int
@@ -137,17 +122,10 @@ nonisolated struct EnginePlan: Sendable, Equatable {
 }
 
 nonisolated extension CoreError {
-    /// Whether this is the engine failure the accepted **无法启动 AI 对手**
-    /// notice is *about*.
-    ///
-    /// The contracts map user-visible flows by **code**, not by domain, and the
-    /// difference matters here: the engine domain also carries a missing or
-    /// mismatched network, a variant that would not load, and a faulted engine,
-    /// none of which closing other apps will fix. Only these two are the
-    /// situation the notice describes — a budget under the minimum, and an
-    /// allocation that failed at a budget that was not, which
-    /// engine-integration.md folds into the same notice deliberately, because
-    /// it is the same situation and the same action resolves it.
+    /// Whether this is the failure the 无法启动 AI 对手 notice is about: a
+    /// budget under the minimum, or an allocation that failed at one that was
+    /// not. Closing other apps fixes both and none of the engine's other
+    /// failures (a missing network, a variant that would not load, a fault).
     var isInsufficientMemory: Bool {
         status == MxqStatus(MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY)
             || status == MxqStatus(MXQ_ERR_ENGINE_HASH_ALLOCATION_FAILED)
@@ -191,10 +169,9 @@ nonisolated struct SearchLine: Sendable, Equatable {
     var moves: [String]
 }
 
-/// One search's inert answer, copied out of core storage inside the callback
-/// and carried to the main actor. Applying the move is a separate explicit act;
-/// nothing here commits anything, and whether the line it answers is still the
-/// game's is the asker's question.
+/// One search's answer, copied out of core storage inside the callback and
+/// carried to the main actor. Nothing here commits anything; whether the line
+/// it answers is still the game's is the asker's question.
 nonisolated struct SearchResult: Sendable {
     var outcome: SearchOutcome
     var ticket: UInt64
@@ -219,13 +196,10 @@ nonisolated struct SearchResult: Sendable {
 
 // MARK: - The seam the opponent speaks through
 
-/// Everything the human-versus-AI reply loop asks of the engine.
-///
-/// It is a protocol because a working engine will not produce a refusal on
-/// request, and the states the app has to survive — a
-/// preparation that fails, a search that comes back cancelled or stale — are
-/// exactly the ones it refuses to produce. Nothing that implements this decides
-/// a rule; the only implementation the app ever runs is `Core`.
+/// Everything the human-versus-AI reply loop asks of the engine. A protocol
+/// because a working engine will not fail on request, and a test has to reach
+/// a preparation that fails and a search that comes back cancelled or stale.
+/// The app only ever runs `Core`.
 @MainActor
 protocol AIEngine: AnyObject {
     /// A fresh probe of this machine. Called at every attempt, never cached.
@@ -234,48 +208,39 @@ protocol AIEngine: AnyObject {
     /// Whether the engine is ready to search this game right now.
     func engineIsReady(for game: GameKind) -> Bool
 
-    /// Threads, Hash, and this game's pinned variant and network, applied. The
-    /// work is blocking and is performed away from this thread; the answer
-    /// comes back here.
+    /// Threads, Hash, and this game's pinned variant and network, applied away
+    /// from this thread; the answer comes back here.
     ///
-    /// A completion rather than an `async` call, like every other seam in this
-    /// app — the animator, the clock. It buys the same thing they buy: a test
-    /// stand-in answers on the spot, so the states this exists to reach are
-    /// reached without a suspension point, and the one process-wide core the
-    /// suite shares is never handed to another test mid-attempt.
+    /// A completion rather than `async`, like the animator and the clock: a
+    /// test stand-in answers on the spot, with no suspension point in which
+    /// the process-wide core could pass to another test mid-attempt.
     func prepareEngine(for game: GameKind, _ budget: EngineBudget,
                        completion: @escaping @MainActor (Result<EnginePlan, CoreError>) -> Void)
 
-    /// Releases the transposition table whole and returns the engine to the
-    /// uninitialized state. It must not block the thread that asked — the
-    /// platform's lifecycle-event thread is one of them — so it answers, when
-    /// it is asked to, rather than returning.
+    /// Releases the transposition table and returns the engine to the
+    /// uninitialized state. It must not block the asking thread (the
+    /// platform's lifecycle-event thread is one), so it answers through `next`.
     func teardownEngine(then next: (@MainActor () -> Void)?)
 
     /// Starts the AI's search of the position at the end of `line` and returns
-    /// its ticket. The completion is delivered on the main actor, having copied
-    /// the result out of core storage on the engine thread as the callback
-    /// contract requires.
+    /// its ticket. The completion runs on the main actor, the result having
+    /// been copied out of core storage on the engine thread.
     func startSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                      completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
 
     /// Starts a hint's search. To the core it is the same search; the seam
-    /// keeps the two apart so the reply loop and the hint can be driven each on
-    /// its own.
+    /// keeps them apart so a test can drive the reply loop and the hint each
+    /// on its own.
     func startHintSearch(_ line: SearchLine, movetimeMilliseconds: UInt32,
                          completion: @escaping @MainActor (SearchResult) -> Void) throws -> UInt64
 
     /// Cancels one search. Its completion still arrives, carrying `cancelled`.
     func cancelSearch(_ ticket: UInt64)
 
-    /// Cancels every outstanding search — the platform suspension path.
-    ///
-    /// It does not return when the cancellation is *done*: `mxq_core_cancel_all`
-    /// blocks until the engine quiesces, and the callers of this are the main
-    /// actor and, through it, the thread the platform delivered a lifecycle
-    /// event on — which the contract says must not be blocked. So it is queued
-    /// where the teardown that follows it is queued, and the serial queue is
-    /// what keeps cancel-before-release true.
+    /// Cancels every outstanding search, on the suspension path.
+    /// `mxq_core_cancel_all` blocks until the engine quiesces and the caller's
+    /// thread must not be blocked, so it is queued where the teardown that
+    /// follows it is queued: the serial queue keeps cancel-before-release.
     func cancelAllSearches()
 }
 
@@ -305,17 +270,10 @@ extension Core: AIEngine {
                        as: UTF8.self))
     }
 
-    /// The identifier the core states for one game's build profile: exactly
-    /// what `engineQuery()` reports once that game is prepared. Readiness is
-    /// both a state and an exact profile match — an engine prepared for another
-    /// game is not ready for this one — and both sides of that comparison are
-    /// the core's own words.
-    ///
-    /// **Nothing here composes an identifier, and nothing above the interface
-    /// can.** A profile names the revision of the engine its own game is played
-    /// on, this core has more than one, and only the core knows which game goes
-    /// to which: an identifier assembled here would be right for the games the
-    /// first engine plays and silently wrong for the rest.
+    /// The core's identifier for one game's build profile, exactly what
+    /// `engineQuery()` reports once that game is prepared. Never composed here:
+    /// the core has more than one engine and only it knows which plays which
+    /// game.
     func engineProfileID(for game: GameKind) throws -> String {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
         var length = 0
@@ -326,18 +284,9 @@ extension Core: AIEngine {
                       as: UTF8.self)
     }
 
-    /// Whether any engine in this build plays this game at all.
-    ///
-    /// **Asked of the core rather than written here.** A game an engine plays
-    /// has a profile identifier to name and the entry states it; a game none
-    /// plays has nothing to name, and its refusal is permanent rather than a
-    /// state some preparation would clear — docs/core-interface.md: Jieqi "is
-    /// prepared for nothing and searched never", and the whole search facade
-    /// answers for it the same way at every moment of its life.
-    ///
-    /// It is a build fact and needs no core instance, which is why it is static:
-    /// the surfaces that ask are deciding whether a capability exists at all,
-    /// and one of them asks before any game has been created.
+    /// Whether any engine in this build plays this game. A game none plays
+    /// (Jieqi) has no profile identifier, and its refusal is permanent. Static
+    /// because it is a build fact, asked before any game exists.
     nonisolated static func isPlayedByAnEngine(_ game: GameKind) -> Bool {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
         var length = 0
@@ -392,43 +341,35 @@ extension Core: AIEngine {
         EngineFacade(handle: handle).cancelAll()
     }
 
-    /// Drains the engine queue. Called before shutdown so that nothing this app
-    /// enqueued is still inside the core when the core stops being live.
-    ///
-    /// It blocks, and at the one call site that is the point: shutdown is
-    /// already the deterministic blocking teardown — it joins the engine thread
-    /// itself — and what this waits for is bounded by the one prepare or
-    /// teardown that can be in flight. The "must not block the lifecycle
-    /// thread" rule is about the suspension path, which does not come here.
+    /// Drains the engine queue before shutdown, so nothing this app enqueued is
+    /// still inside the core when it stops being live. It blocks, which is
+    /// fine here: shutdown already joins the engine thread, and the wait is
+    /// bounded by the one prepare or teardown in flight. The suspension path
+    /// never comes here.
     func quiesceEngineWork() {
         EngineFacade(handle: handle).quiesce()
     }
 }
 
-/// The trampoline itself: a file-scope, nonisolated, non-capturing function, so
-/// that converting it to a C function pointer carries no actor with it. A
-/// closure literal written at the call site inherits this file's main-actor
-/// default and asserts that isolation the moment the engine thread calls it,
-/// which is a trap on the one thread the callback is documented to arrive on.
+/// File-scope, nonisolated and non-capturing, so converting it to a C function
+/// pointer carries no actor. A closure literal at the call site would inherit
+/// the main-actor default and trap when the engine thread calls it.
 private nonisolated func mxqSearchTrampoline(_ result: UnsafePointer<MxqSearchResult>?,
                                              _ userData: UnsafeMutableRawPointer?) {
     guard let userData else { return }
     // Consumes the retain `mxq_search_start` was handed. Exactly one callback
-    // fires per started search — a cancelled one still answers — so this is the
-    // one place the box is released. The engine thread's whole job here is to
-    // copy the result and hand it on: blocking would deadlock the thread the
-    // search runs on.
+    // fires per started search (a cancelled one still answers), so this is the
+    // one place the box is released. Blocking here would deadlock the thread
+    // the search runs on.
     let box = Unmanaged<SearchDelivery>.fromOpaque(userData).takeRetainedValue()
     guard let result else { return }
     box.deliver(SearchResult(result.pointee))
 }
 
-/// The boxed completion a C callback carries as `user_data`.
-///
-/// `@unchecked Sendable` because the box crosses to the engine thread and back:
-/// it holds one immutable closure and is read exactly once, by the callback that
-/// consumes its retain. Hopping to the main actor is what the closure does, and
-/// it is what the architecture contract requires before any UI mutation.
+/// The boxed completion a C callback carries as `user_data`. `@unchecked
+/// Sendable` because it crosses to the engine thread and back: it holds one
+/// immutable closure and is read exactly once, by the callback that consumes
+/// its retain.
 private nonisolated final class SearchDelivery: @unchecked Sendable {
     private let completion: @MainActor (SearchResult) -> Void
 
@@ -436,8 +377,8 @@ private nonisolated final class SearchDelivery: @unchecked Sendable {
         self.completion = completion
     }
 
-    /// Called on the engine thread. It copies and returns: scheduling a task is
-    /// not blocking, and nothing here touches the core.
+    /// Called on the engine thread. Scheduling a task does not block, and
+    /// nothing here touches the core.
     func deliver(_ result: SearchResult) {
         let completion = completion
         Task { @MainActor in completion(result) }
@@ -445,20 +386,12 @@ private nonisolated final class SearchDelivery: @unchecked Sendable {
 }
 
 /// `mxq_engine_prepare` and `mxq_engine_teardown` over the core handle, off
-/// every actor.
+/// every actor. The queue is serial because these calls are, and a dispatch
+/// queue rather than the cooperative pool because they block for as long as
+/// allocating gigabytes takes.
 ///
-/// A `Sendable` value over the handle: it holds no Swift state to race on, and
-/// the core marshals the work onto its own engine thread. The queue is serial because these calls are, and it is a
-/// dispatch queue rather than the cooperative pool because they block for as
-/// long as allocating gigabytes takes.
-///
-/// **It is drained before the core shuts down.** A handle outliving its core is
-/// *not* safe here: the interface's invalid-handle answer covers the handles a
-/// core issued, and a core handle that is no longer the live instance is a
-/// programming error the core asserts on in a debug build. This queue is the
-/// first frontend thread this app has ever had inside the core, so the one
-/// place it can be inside one that is going away — quit — drains it first.
-/// `quiesce()` is that drain.
+/// It must be drained before the core shuts down: the core asserts on a
+/// handle that is no longer the live instance. `quiesce()` is that drain.
 private nonisolated struct EngineFacade: @unchecked Sendable {
     let handle: OpaquePointer
 
@@ -483,11 +416,9 @@ private nonisolated struct EngineFacade: @unchecked Sendable {
         }
     }
 
-    /// Teardown answers nothing and refuses nothing the caller can act on: an
-    /// engine that was never prepared is already down, and one that is busy is
-    /// the caller's own ordering bug, which the cancel-then-release order this
-    /// app always uses prevents. So it reports no error — what it must not do is
-    /// block the thread that asked, which is why it is queued rather than run.
+    /// Reports no error: an engine never prepared is already down, and a busy
+    /// one is an ordering bug the cancel-then-release order prevents. Queued
+    /// because it must not block the asking thread.
     func teardown(_ completion: @escaping @Sendable () -> Void) {
         Self.queue.async {
             mxq_engine_teardown(handle, nil)
@@ -495,19 +426,17 @@ private nonisolated struct EngineFacade: @unchecked Sendable {
         }
     }
 
-    /// Cancels every outstanding search, on the queue the teardown that follows
-    /// it also runs on — so the accepted cancel-then-release order is the
-    /// queue's serialisation rather than a hope about two threads.
+    /// Queued where the teardown that follows it runs, so cancel-then-release
+    /// is the queue's serialisation.
     func cancelAll() {
         Self.queue.async {
             mxq_core_cancel_all(handle, nil)
         }
     }
 
-    /// Waits for whatever is already on the queue to finish, and for nothing
-    /// else. A barrier rather than a cancellation: the work in flight is a
-    /// prepare or a teardown that is already inside the core, and shutting the
-    /// core down under it is the race this exists to close.
+    /// Waits for what is already on the queue, and nothing else: a barrier, not
+    /// a cancellation, so the core is not shut down under a prepare or a
+    /// teardown already inside it.
     func quiesce() {
         Self.queue.sync { }
     }

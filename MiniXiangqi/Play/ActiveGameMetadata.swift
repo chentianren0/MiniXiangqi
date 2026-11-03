@@ -1,34 +1,13 @@
-// What the active game says about itself.
-//
-// docs/interaction-design.md, "Saving the active game before choosing a new
-// mode": the Play destination shows the active game's metadata, identifying at
-// least the game, the mode, the human's side where there is one, and the move
-// count, plus the side to move for an ongoing game, the result and reason for a
-// terminal one, and claim availability where it applies. The accepted example
-// lines begin 象棋 · 人机对弈 or 迷你象棋 · 自由对弈 before those facts.
-//
-// It is the same composition the History row applies to a filed game — game,
-// mode, side, state, count, joined by the accepted middot — with the one
-// difference that a live game has a live state where a record has a committed
-// result. The three state classes below are the whole of what differs.
-//
-// **Every fact is read, not worked out.** The mode and the human side come from
-// the record; the state, the reason, the claim and whose turn it is come from
-// the core's replay of its moves. Nothing here decides what state a game is in.
-//
-// **It is read holding nothing.** `GameLibrary.activeGameSummary` serves this
-// surface and the save-and-continue confirmation — the live game belongs to the
-// board, and the home has no business holding one to describe it. Whose turn it
-// is comes from the position: a game begun from a composed position may have
-// Black making ply 0, so a side worked out from the ply count would name the
-// wrong one.
+// Every fact is read, never worked out: the mode and side from the record, the
+// state from the core's replay. The side to move comes from the position, not
+// the ply count, because a game begun from a composed position may have Black
+// make ply 0.
 
 import Foundation
 
 extension GameKind {
-    /// The one display name for a game, shared by section headings, setup and
-    /// every metadata line. The application is named Star River, so **Mini
-    /// Xiangqi** here names one of its four rulesets rather than the product.
+    /// Shared by every surface. "Mini Xiangqi" names one ruleset; the app is
+    /// Star River.
     var localizedName: String {
         switch self {
         case .miniXiangqi: String(localized: "game.miniXiangqi")
@@ -41,20 +20,11 @@ extension GameKind {
 
     // MARK: - What a game calls its two sides
     //
-    // `Side` is the core's own axis and means "the side that moves first" and
-    // "the other" in every game: MXQ_COLOR_RED is the first mover, and in the
-    // placement games the first mover is the *black* stone. So everything below
-    // is a naming and never a re-derivation — the same `Side` reads 红 on a
-    // xiangqi board and 黑 on a gomoku one, and nothing above the interface
+    // `Side` is the core's axis: red is the first mover, which in the placement
+    // games is the black stone. These only name a side; nothing above the core
     // decides which side moves first.
-    //
-    // One home, because six surfaces ask it: the turn status, the two metadata
-    // lines, the result notice, the setup page and the board's accessibility
-    // labels. A second copy would be a second place for a game to be told its
-    // sides are something they are not.
 
-    /// The bare word for a side — the accessibility labels' vocabulary, and the
-    /// one every register below is built on.
+    /// The bare word for a side, as the accessibility labels use it.
     func sideName(_ side: Side) -> String {
         switch (isPlacement, side) {
         case (false, .red): String(localized: "board.a11y.red")
@@ -64,7 +34,6 @@ extension GameKind {
         }
     }
 
-    /// Whose turn it is, in the turn status's own register.
     func sideToMoveText(_ side: Side) -> String {
         switch (isPlacement, side) {
         case (false, .red): String(localized: "status.redToMove")
@@ -74,7 +43,7 @@ extension GameKind {
         }
     }
 
-    /// Who won, in the turn status's shorter register — 红方胜.
+    /// Who won, in the turn status's shorter register: 红方胜.
     func winsText(_ side: Side) -> String {
         switch (isPlacement, side) {
         case (false, .red): String(localized: "status.redWins")
@@ -84,8 +53,8 @@ extension GameKind {
         }
     }
 
-    /// Who won, in the longer register the metadata lines and the result notice
-    /// use — 红方获胜.
+    /// Who won, in the longer register of the metadata lines and the result
+    /// notice: 红方获胜.
     func resultText(_ side: Side) -> String {
         switch (isPlacement, side) {
         case (false, .red): String(localized: "result.redWins")
@@ -95,7 +64,6 @@ extension GameKind {
         }
     }
 
-    /// Which side the player has, on a metadata line.
     func youAreText(_ side: Side) -> String {
         switch (isPlacement, side) {
         case (false, .red): String(localized: "metadata.youRed")
@@ -107,8 +75,6 @@ extension GameKind {
 }
 
 extension ActiveGameSummary {
-    /// The metadata line: game, mode, human side, what is true of the game now,
-    /// and the move count.
     var metadataLine: String {
         var parts = [game.localizedName, modeText]
         if mode == .humanVersusAI, let humanSide {
@@ -128,16 +94,8 @@ extension ActiveGameSummary {
         }
     }
 
-    /// What is true of the game right now, in the three classes the accepted
-    /// examples give.
-    ///
-    /// An ongoing game is 进行中 and whose turn it is. A claimable repetition is
-    /// still ongoing — that is the whole point of it being a claim — and what it
-    /// adds is the standing offer, in the same words the turn status uses for
-    /// it; the side to move gives way to it, as the accepted example line does.
-    /// A terminal game is its result and the reason for it, in the longer
-    /// register the metadata composition uses everywhere: 红方获胜, not the
-    /// status line's 红方胜.
+    /// A claimable repetition is still ongoing; the standing offer takes the
+    /// place of the side to move.
     private var stateParts: [String] {
         switch state {
         case .ongoing:
@@ -154,8 +112,6 @@ extension ActiveGameSummary {
         }
     }
 
-    /// The reason, where the core reports one. No reason is no words, so it
-    /// contributes no segment rather than an empty one.
     private var reasonParts: [String] {
         reason == .none ? [] : [reason.text]
     }

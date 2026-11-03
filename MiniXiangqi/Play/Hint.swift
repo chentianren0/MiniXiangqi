@@ -1,27 +1,6 @@
-// The move the player may ask the engine for, and everything that decides
-// whether they may ask for it.
-//
-// docs/product.md, "Play modes": an on-demand hint in human-versus-AI play and
-// in Free Play, in both games, and never in Nearby Play or Online Play — which
-// is why this type lives beside the local board's own machinery and the screen
-// a networked game is played on never builds one. Nothing here is recorded: a
-// suggestion is presentation, like
-// flipping the board, and the game, History and every export are untouched by
-// it.
-//
-// The hint is a search like any other and obeys the same rules. It is checked
-// against the game's revision before anything is shown, it commits nothing — applying the
-// move is the player's own tap through the ordinary input path — and it is
-// cancelled by a move, an Undo, leaving the board, and suspension. **The
-// cancellation at the player's own commit is not politeness**: the core runs one
-// search at a time and queues the rest, so a hint still running when the player
-// moves would put the AI's reply behind up to a whole thinking time of work
-// about a position the game has left.
-//
-// The thinking time is the game's where the game froze one, and the Settings
-// default AI level's where it did not. A Deep game gives deeper hints and the
-// hint is never a different opponent from the one playing; Free Play freezes no
-// level, so the hint takes the level the player has called theirs.
+// A suggestion is presentation, like flipping the board: nothing is recorded,
+// and the move is applied only by the player's own tap. Networked play never
+// builds a Hint.
 
 import Foundation
 import MiniXiangqiCore
@@ -31,21 +10,17 @@ import Observation
 @MainActor
 final class Hint {
 
-    /// What the hint control's own symbol's place is carrying.
     enum Activity: Equatable {
-        /// Nothing at all: no search running, or one too young to show.
+        /// No search running, or one too young to show.
         case idle
-        /// A search has been running long enough to be worth an indicator —
-        /// the same threshold the AI's own activity waits out, because an
-        /// indicator that arrives and leaves inside a third of a second reads
-        /// as a flicker rather than as thinking.
+        /// Waits out the AI indicator's threshold: an indicator that comes and
+        /// goes within a third of a second reads as a flicker.
         case thinking
     }
 
     private(set) var activity: Activity = .idle
 
-    /// The preparation failure awaiting an answer. Non-nil exactly while the
-    /// accepted **无法获取提示** notice is up.
+    /// Non-nil exactly while the 无法获取提示 notice is up.
     private(set) var preparationFailure: CoreError?
 
     private let engine: AIEngine
@@ -53,23 +28,18 @@ final class Hint {
     private let motion: PlayMotion
     private let timer: MotionTimer
 
-    /// The outstanding hint search, if one is running. One at a time, and never
-    /// beside the AI's own: a hint is only ever offered on the player's own
-    /// turn, and every commit cancels it before the reply is asked for.
+    /// One at a time, and never beside the AI's: a hint is offered only on the
+    /// player's turn, and every commit cancels it before the reply is asked for.
     private var ticket: UInt64?
 
-    /// Bumped by everything that invalidates work in flight, so a preparation,
-    /// a timer or a result belonging to a superseded request answers to nothing
-    /// when it comes back.
+    /// Bumped by everything that invalidates work in flight, so a stale
+    /// preparation, timer or result answers to nothing.
     private var attempt = 0
 
-    /// True between asking for a preparation and hearing back.
     private var preparing = false
 
-    /// The suggestion this position already has. A repeated request on an
-    /// unchanged position re-shows it rather than thinking about the same
-    /// position twice; the game's revision is what makes "unchanged" a fact
-    /// rather than a guess here.
+    /// Keyed by revision, so a repeated request on an unchanged position
+    /// re-shows it rather than searching again.
     private var cached: (revision: Int, move: Move)?
 
     init(engine: AIEngine, game: Game, motion: PlayMotion,
@@ -82,38 +52,25 @@ final class Hint {
 
     // MARK: - Whether there is a hint to ask for
 
-    /// Whether a hint is on offer right now.
-    ///
-    /// The control **greys** where this is false rather than leaving the
-    /// cluster: it is the scene's fixed set, and a control that will be
-    /// pressable again on the player's own turn stays where a thumb last found
-    /// it. A finished board is a different scene and has dropped the control
-    /// with the game, which is absence saying a capability is gone rather than
-    /// an act being momentarily impossible.
+    /// Where false the control greys rather than leaving the cluster, so it
+    /// stays where a thumb last found it. A finished board drops it with the
+    /// game.
     var isOffered: Bool {
         guard !game.isFinished else { return false }
         switch game.mode {
-        // The player's own turn, which the core answers by not expecting a
-        // search. It is read rather than re-derived from the mode and the side
-        // to move, exactly as the board's own input rule reads it.
+        // Read from the core, as the board's input rule reads it, not
+        // re-derived from the mode and the side to move.
         case .humanVersusAI: return !game.searchExpected
         // Free Play is one person on both sides, so either turn is theirs.
         case .freePlay: return true
-        // Never in networked play. A suggestion engine on one side of a game
-        // between two people is not this product's play against a person, and
-        // the board a networked game is played on never builds this object at
-        // all — this is the second lock on the same door rather than the only
-        // one.
+        // A second lock: the networked board never builds a Hint at all.
         case .nearby, .online: return false
         }
     }
 
-    /// The thinking time a hint takes here.
-    ///
-    /// The game's own frozen movetime where it froze one, so a Deep game gives
-    /// deeper hints and the hint is never a different opponent from the one
-    /// playing. Free Play freezes none, so it takes the Settings default AI
-    /// level's — the level the player has called theirs.
+    /// The game's frozen movetime, so the hint is never a different opponent
+    /// from the one playing. Free Play freezes none and takes the Settings
+    /// default level.
     var movetimeMilliseconds: UInt32 {
         game.isHumanVersusAI
             ? game.configuration.movetimeMilliseconds
@@ -122,9 +79,8 @@ final class Hint {
 
     // MARK: - Asking
 
-    /// **提示**. Shows the suggestion this position already has, or asks for
-    /// one — preparing the engine first where nothing is prepared, which is
-    /// what a Free Play game that has never asked always needs.
+    /// **提示**. Re-shows the cached suggestion, or searches, preparing the
+    /// engine first where nothing is prepared.
     func request() {
         guard isOffered, ticket == nil, !preparing, preparationFailure == nil else { return }
         if let cached, cached.revision == game.revision {
@@ -138,8 +94,8 @@ final class Hint {
         }
     }
 
-    /// 重试 on the notice. Every retry obtains a fresh memory probe, which is
-    /// the whole point of retrying.
+    /// 重试 on the notice. Each retry takes a fresh memory probe, which is the
+    /// point of retrying.
     func retryPreparation() {
         preparationFailure = nil
         request()
@@ -150,32 +106,19 @@ final class Hint {
         preparationFailure = nil
     }
 
-    /// Whether the failure the notice is up for is the one the accepted
-    /// insufficient-memory message is *about*.
-    ///
-    /// By **code**, as this app maps every engine failure: only a budget below
-    /// the minimum and an allocation that failed at a budget that was not are
-    /// the situation "close some other apps" answers. A missing or mismatched
-    /// network, a variant that would not load, a faulted engine — those reach
-    /// the same notice, because the player pressed a control and is owed an
-    /// answer, but they name no cause, since naming the wrong one is worse than
-    /// naming none.
+    /// Only a budget below the minimum or a failed allocation is answered by
+    /// "close some other apps". Other failures reach the same notice but name
+    /// no cause, since naming the wrong one is worse than naming none.
     var preparationFailureNamesMemory: Bool {
         preparationFailure?.isInsufficientMemory ?? false
     }
 
     // MARK: - Putting it down
 
-    /// Everything a hint holds, put down: the search cancelled, the suggestion
-    /// taken off the board, and the cache dropped with the position it was
-    /// about.
-    ///
-    /// What calls it is every event that invalidates a suggestion — the
-    /// player's own commit, an Undo, leaving the board, suspension, and the
-    /// game ending. At the commit it runs **before** the AI's reply is asked
-    /// for, because the engine thread runs one search at a time and the reply
-    /// would otherwise queue behind a hint about a position that is already
-    /// gone.
+    /// Called on every event that invalidates a suggestion. At the player's
+    /// commit it must run before the AI's reply is asked for: the engine runs
+    /// one search at a time, so the reply would queue behind a hint about a
+    /// position already gone.
     func cancel() {
         attempt += 1
         if let ticket { engine.cancelSearch(ticket) }
@@ -193,9 +136,8 @@ final class Hint {
         preparing = true
         attempt += 1
         let token = attempt
-        // A fresh probe at every attempt: the retry that follows a refusal has
-        // to see the memory the user just freed, and a cached value would
-        // answer with the state that produced the refusal.
+        // A fresh probe each attempt, so a retry sees the memory the user just
+        // freed.
         engine.prepareEngine(for: game.kind, engine.memoryBudget()) { [weak self] result in
             guard let self, token == attempt else { return }
             preparing = false
@@ -224,23 +166,17 @@ final class Hint {
             answer(error.asCoreError)
             return
         }
-        // The indicator appears only once the search has run long enough to be
-        // worth showing, which is the threshold the AI's own activity waits
-        // out. A hint at 快速 is a second's work and a great many are answered
-        // before this fires at all.
+        // Shown only once the search outlasts the AI indicator's threshold; most
+        // hints at 快速 answer before then.
         timer.after(Motion.thinkingIndicatorDelay) { [weak self] in
             guard let self, token == attempt, ticket != nil else { return }
             activity = .thinking
         }
     }
 
-    /// A start the core refused.
-    ///
-    /// The readiness refusals have one answer, as they do for the AI's own
-    /// search: the engine was torn down or prepared for the other game between
-    /// the query and the start, so it is prepared again. Anything else leaves
-    /// the control exactly where it was, with nothing shown and nothing
-    /// claimed: the player may press again.
+    /// A readiness refusal means the engine was torn down or prepared for the
+    /// other game between the query and the start, so it is prepared again.
+    /// Anything else leaves the control as it was.
     private func answer(_ failure: CoreError) {
         switch failure.status {
         case MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED), MxqStatus(MXQ_ERR_STATE_ENGINE_NOT_READY):
@@ -250,18 +186,15 @@ final class Hint {
         }
     }
 
-    /// A hint search has answered. On the main actor, having been copied out of
-    /// core storage on the engine thread as the callback contract requires.
+    /// On the main actor, the result having been copied out of core storage on
+    /// the engine thread.
     private func received(_ result: SearchResult, from token: Int, at revision: Int) {
         guard token == attempt, result.ticket == ticket else { return }
         ticket = nil
         activity = .idle
-        // A cancelled answer is about a position the player has left; a
-        // malformed, illegal or failed one produced nothing to suggest. None of
-        // them is worth a word: the control is still there to press.
+        // Cancelled, malformed or failed answers are not worth a word: the
+        // control is still there to press.
         guard result.outcome == .move else { return }
-        // And an answer to a line the game has left suggests nothing about the
-        // position on the board.
         guard revision == game.revision,
               let move = Move(text: result.move, on: game.kind.board) else { return }
         cached = (revision, move)

@@ -1,28 +1,6 @@
-// WXF move notation, for the move list and the board's numeral strips whenever
-// the 记谱法 preference selects it.
-//
-// Presentation only, exactly as the traditional reading beside it is: the
-// canonical `"<from><to>"` notation frozen in docs/xiangqi-rules.md remains what
-// archives, fixtures, and the core interface store and exchange. Nothing here
-// ever reaches them, and a game reads the same whichever notation is selected.
-//
-// The rules are docs/interaction-design.md, "WXF rendering" — clauses W1 to W8,
-// and the readings recorded beneath them. A move is `[piece][origin][direction]
-// [value]` with no spaces. The piece letters are K, A, E, R, H, C and P. Files
-// are numbered from each player's own right, in Arabic numerals for both sides
-// — which is where WXF parts company with traditional notation for Red. The
-// directions are `+` advance, `-` retreat and `=` traverse. The
-// value is the number of ranks moved when the move stays on its file, and the
-// destination file when it does not.
-//
-// Pieces are identified exactly as the traditional reading identifies them: in
-// the mover's own frame, with the front of a file the end nearer the opponent,
-// and with the identification applied whenever more than one of a type stands
-// on a file rather than only when a move would otherwise be ambiguous. So a
-// player who flips 记谱法 sees the same move identified the same way in
-// different clothes. What changes is the clothes — a marker or an index stands
-// where a Chinese word would, and it follows the piece letter rather than
-// opening the move.
+// Display only; the canonical `"<from><to>"` notation is what is stored.
+// Pieces on a shared file are identified exactly as the traditional reading
+// identifies them, so flipping 记谱法 changes only how a move is written.
 
 import Foundation
 
@@ -30,25 +8,15 @@ enum WXFNotation {
 
     /// The move as the player reads it, given the placement *before* it.
     static func text(for move: Move, in placement: Placement) -> String {
-        // A movement move, which is the only kind this rendering is of: the
-        // placement games have one convention of their own, and `MoveReading`
-        // answers it before either notation is asked.
+        // Only movement moves reach here; `MoveReading` answers placement games.
         guard let source = move.from, let piece = placement[source],
               let kind = piece.kind
         else { return move.text }
         let board = placement.board
 
-        // W1's first two slots. The piece slot carries the type's letter unless
-        // an index has replaced it; the origin slot carries the file unless a
-        // marker has replaced it. Only one of the two is ever substituted.
-        //
-        // **A face-down piece carries `~` after its letter**, which is the mark
-        // the position record itself uses for one — docs/jieqi-rules.md writes a
-        // face-down piece as its identity letter followed by `~`. The letter is
-        // then the role the square gives it rather than an identity anybody
-        // knows, which is exactly what the mark says. See JieqiNotation for the
-        // reading this belongs to; it never appears in a game that conceals
-        // nothing.
+        // Only one of the letter and the file is ever substituted. A face-down
+        // piece carries `~`, the position record's own mark, after a letter that
+        // is the role its square gives it.
         let mark = piece.isFaceDown ? "~" : ""
         let opening: String
         switch origin(of: piece, at: source, in: placement) {
@@ -56,19 +24,13 @@ enum WXFNotation {
             opening = letter(kind) + mark + number(file: source.file, for: piece.side,
                                                    on: board)
         case .marker(let marker):
-            // W3: the marker stands in the file's own slot, after the letter —
-            // R+=3, not +R=3 — and the file itself goes.
+            // The marker replaces the file, after the letter: R+=3, not +R=3.
             opening = letter(kind) + mark + marker
         case .index(let index):
-            // W4 and W5: the index stands in the letter's slot instead, and the
-            // file stays where it was.
             opening = String(index) + mark + number(file: source.file, for: piece.side,
                                                     on: board)
         }
 
-        // `+` is toward the opponent, which is up the board for Red and down for
-        // Black; `=` is across, and a move across is the one that cannot be a
-        // move along a file.
         let direction: String
         if move.to.rank == source.rank {
             direction = "="
@@ -78,46 +40,28 @@ enum WXFNotation {
             direction = forward ? "+" : "-"
         }
 
-        // W2 is geometry rather than a list of piece types: a move that stays on
-        // its file counts the ranks it crossed, and a move that leaves its file
-        // names the file it arrived on. That covers Mini Xiangqi's horse and
-        // Xiangqi's horse, advisor, and elephant without a piece-type branch.
+        // Geometry rather than piece type, so every piece that leaves its file
+        // is covered without a branch.
         let value = move.to.file == source.file
             ? String(abs(move.to.rank - source.rank))
             : number(file: move.to.file, for: piece.side, on: board)
         return opening + direction + value
     }
 
-    /// What stands in the origin slot, and whether it displaced the piece
-    /// letter on the way.
     private enum Origin {
-        /// The plain form: the letter, then the origin file.
         case file
-        /// W3's marker form: the letter, then `+` or `-` where the file was.
+        /// `+` or `-` where the file was.
         case marker(String)
-        /// W4 and W5's indexed form: the index where the letter was, then the
-        /// origin file.
+        /// The index where the letter was.
         case index(Int)
     }
 
-    /// The implementation condition the clause table states: the indexed form
-    /// whenever three or more of the mover's pieces of the type stand on the
-    /// file, or two of the mover's files each carry two or more — where a bare
-    /// marker would no longer say which file moved; the marker form when exactly
-    /// two stand on the file and it is the type's only doubled file; the plain
-    /// form otherwise.
+    /// Front is nearer the opponent, so index 1 is the frontmost whichever way
+    /// the board faces.
     ///
-    /// Ordered from the opponent's end towards the mover's own, so front means
-    /// nearer the opponent and index 1 is the frontmost, and the sense is
-    /// unaffected by which way the board is facing.
-    ///
-    /// **A face-down piece is only ever compared with face-down pieces**, `Piece`
-    /// equality carrying that state, and it never reaches either substituted
-    /// form: a face-down piece stands on its own start square and no two start
-    /// squares on one file carry the same role, so the mover's file never holds
-    /// a second face-down piece of the same role. A revealed piece is likewise
-    /// compared only with revealed ones, which is the behaviour every game
-    /// without a face-down piece already had.
+    /// `Piece` equality includes the face-down state, so face-down pieces are
+    /// compared only with each other, and one never reaches a substituted form:
+    /// no file has two start squares of the same role.
     private static func origin(of piece: Piece, at square: Square,
                                in placement: Placement) -> Origin {
         let onFile = (0..<placement.board.rankCount)
@@ -137,11 +81,8 @@ enum WXFNotation {
         return .marker(fromFront == 0 ? "+" : "-")
     }
 
-    /// How many of the mover's files carry two or more of this piece. One is an
-    /// ordinary marker; two or more promotes every pair on a doubled file to the
-    /// indexed form — reachable only for soldiers, as 2-2 or 3-2, since two
-    /// doubled files is this board's maximum. A soldier alone on its file is
-    /// never counted and keeps the plain form.
+    /// Two or more promote every pair on a doubled file to the indexed form;
+    /// only soldiers reach it.
     private static func doubledFiles(of piece: Piece, in placement: Placement) -> Int {
         (0..<placement.board.fileCount).count { file in
             (0..<placement.board.rankCount).count { rank in
@@ -150,16 +91,8 @@ enum WXFNotation {
         }
     }
 
-    /// The standard's letters, one per type and the same for both sides: which
-    /// side moved is carried by the direction the files are numbered in and by
-    /// the list's own two columns, never by the letter.
-    ///
-    /// K and P are the standard's own mnemonics — King and Pawn — where this
-    /// app's prose says General and Soldier. The tension is recorded in the
-    /// contract and deliberately not reconciled: G and S are attested by no WXF
-    /// document, and G means Guard in the computer ecosystem's own letter set,
-    /// so either substitution would break with every WXF-conformant reader and
-    /// tool.
+    /// One letter per type for both sides. K and P are WXF's own (King, Pawn);
+    /// G and S would break with every WXF-conformant reader and tool.
     static func letter(_ kind: PieceKind) -> String {
         switch kind {
         case .general: "K"
@@ -172,8 +105,7 @@ enum WXFNotation {
         }
     }
 
-    /// Files are numbered from each player's own right, in Arabic for both
-    /// sides. The board supplies whether the first number is seven or nine.
+    /// Numbered from each player's own right, in Arabic for both sides.
     private static func number(file: Int, for side: Side,
                                on board: BoardDefinition) -> String {
         String(side == .red ? board.fileCount - file : file + 1)

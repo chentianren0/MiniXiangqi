@@ -1,25 +1,11 @@
-// A History record, walked.
-//
-// docs/interaction-design.md, "History replay": replay begins at the game's
-// initial position, the board is read-only, and the controls provide jump to
-// beginning, one move back, play or pause, one move forward, and jump to end.
-//
-// The walk is the core's. Every position is the core's replay of the record's
-// moves, asked once when the replay opens, so there is no second copy of the
-// game to drift from the recorded one, and no rule above the interface deciding
-// what a replayed board may do: the board is read-only.
-//
-// A step is *shown* the way play shows a move — the same distance-scaled
-// travel, the same disc giving way to a capture, the same landing sounding
-// what the arrived position means — through the same TransitMotion and the
-// same Feedback play uses. A replayed game should move like a game. What
-// replay does not take from play is the committing gate: there is nothing here
-// to commit, so a step arriving during a step re-targets rather than waits.
+// Every position is the core's replay of the record's moves, asked once when
+// the replay opens, so there is no second copy of the game to drift. Steps are
+// shown through the same TransitMotion and Feedback play uses, but with no
+// committing gate: a step arriving during a step re-targets rather than waits.
 
 import Foundation
 import Observation
 
-/// The position at one ply of a replayed game.
 nonisolated struct ReplayPosition: Sendable {
     var fen: String
     var sideToMove: Side
@@ -31,61 +17,41 @@ final class Replay {
     let record: GameRecord
     let game: GameKind
 
-    /// The recorded line in canonical notation, and the same line as the player
-    /// reads it — recomputed exactly as a resumed active game's is, through the
-    /// one reading in `MoveReading`, in both notations, so that the 记谱法
-    /// preference selects a replayed game's words exactly as it selects a live
-    /// game's.
+    /// Read through the same `MoveReading` a resumed game uses, in both
+    /// notations, so 记谱法 selects a replayed game's words as it does a live one's.
     let moves: [String]
     let notation: [MoveReading]
 
-    /// What the recorded game took off the board, read back from the record's
-    /// own positions exactly as a resumed game's is.
-    ///
-    /// **A record is a game already over, so its surface is the disclosed one
-    /// throughout** — docs/interaction-design.md, "Captured pieces". What the
-    /// walk shows at a ply is what had been taken by then; what it shows of each
-    /// piece is everything, because the ending disclosed every hidden identity
-    /// to both players.
+    /// A record is a game already over, so every captured piece is shown
+    /// disclosed; what the walk shows at a ply is what had been taken by then.
     let captured: CapturedPieces
 
     /// How many plies are shown: 0 is the initial position, `moves.count` the
     /// final one.
     private(set) var ply = 0
 
-    /// Whose ply 0 was — the side the record's own start position had to move. A record whose game began from a composed
-    /// position may open with Black, and the move list pairs and numbers from
-    /// this rather than from a parity.
+    /// A record from a composed position may open with Black, so the move list
+    /// pairs and numbers from this rather than from parity.
     let firstMover: Side
 
     private(set) var position: ReplayPosition
     private(set) var placement: Placement
 
-    /// Presentation only, exactly as it is during play. Human-versus-AI replay
-    /// opens on the original human player's side; Free Play opens Red at the
-    /// bottom.
     var flipped: Bool {
         didSet { if flipped != oldValue { pause() } }
     }
 
-    /// Whether this record's game has an orientation to change.
-    ///
-    /// docs/interaction-design.md, "Board orientation": a placement board has
-    /// none — a stone carries nothing a player could read the wrong way up — so
-    /// it carries no flip control in play, in nearby play, or here. The
-    /// question is the play cluster's own, asked of the record's game rather
-    /// than of anything this screen holds.
+    /// A placement board has none: a stone carries nothing a player could read
+    /// the wrong way up.
     var carriesFlip: Bool { !game.isPlacement }
 
     private(set) var autoplaying = false
     private var playback: Task<Void, Never>?
 
-    /// Reduce Motion, held rather than derived, because the screen owns the
-    /// environment and this owns the animations. The screen keeps it current.
+    /// Held rather than derived: the screen reads the environment, this runs the
+    /// animations. The screen keeps it current.
     var policy: MotionPolicy
 
-    /// The travelling disc — the same one the play screen shows, drawn by the
-    /// same canvas from the same state.
     private let transits: TransitMotion
     private let feedback: Feedback
 
@@ -95,22 +61,11 @@ final class Replay {
     /// Every position of the record, the start first.
     private let positions: [ReplayPosition]
 
-    /// One speed, which is what a first replay screen needs. The accepted
-    /// 0.5×/1×/2× set waits for someone to want it: a speed control is three
-    /// more controls on the transport and a preference to carry, and nobody has
-    /// yet watched a game back and wished it faster.
-    ///
-    /// The interval is a *settle*: how long an arrived position stands still
-    /// before the next ply departs. Measured from the landing rather than from
-    /// the departure, so the walk can never ask for a ply while the last one is
-    /// still travelling — the contract's "waits for each move animation to
-    /// finish before advancing", held by construction rather than by two
-    /// numbers happening not to collide. Travel and settle together are
-    /// 780–840 ms, which is the calm cadence this screen already walked at.
+    /// How long an arrived position stands still before the next ply departs.
+    /// Measured from the landing, not the departure, so the walk never asks for
+    /// a ply while the last one is still travelling.
     private static let settle = Duration.milliseconds(600)
 
-    /// When the next ply departs, measured from this one's departure: this
-    /// one's own travel, and then the settle.
     static func interval(afterTravelling travel: TimeInterval) -> Duration {
         .seconds(travel) + settle
     }
@@ -143,12 +98,7 @@ final class Replay {
         }
         self.position = positions[0]
         self.placement = Placement(fen: positions[0].fen, game: game)
-        // The start position's own side to move, which is whose ply 0 was.
         self.firstMover = positions[0].sideToMove
-        // The accepted history orientation: the human's own side at the bottom
-        // where there was a human side, Red at the bottom otherwise — and a
-        // board with no orientation opens as it is drawn, which is what the
-        // play screen's own game does with the same question.
         self.flipped = !game.isPlacement && record.humanSide == .black
         // Unowned: the transit belongs to this object and cannot outlive it.
         transits.arrived = { [unowned self] in announceLanding() }
@@ -156,53 +106,32 @@ final class Replay {
 
     // MARK: - What the board shows
 
-    /// The brackets always mark the move that produced the position on screen,
-    /// so they follow the walk and the initial position carries none.
+    /// The move that produced the position on screen.
     var lastMove: Move? {
         ply > 0 ? Move(text: moves[ply - 1], on: game.board) : nil
     }
 
-    /// The checked general, so the board can ring it. In replay no piece is
-    /// ever held, so the rings alone carry check — there is no side-to-move
-    /// line here to put a 将军 token on.
+    /// In replay no piece is ever held and there is no status line, so the
+    /// rings alone carry check.
     var checkedGeneral: Square? {
         guard position.inCheck else { return nil }
         return placement.general(of: position.sideToMove)
     }
 
-    /// The step the board is drawing, if one is travelling, and the progress of
-    /// the disc fading beside it.
     var transit: Transit? { transits.transit }
     var transitFade: Double { transits.fade }
-    /// How far a revealed identity has come up on the travelling disc — the
-    /// same reveal play draws, drawn here for the same reason a replayed move
-    /// travels at all.
     var transitReveal: Double { transits.reveal }
 
     var isAtStart: Bool { ply == 0 }
     var isAtEnd: Bool { ply == moves.count }
 
-    /// Whether the position on screen is where the game ended. The record's
-    /// last ply is where it stopped; whether it *concluded* there is the
-    /// record's own result, read back rather than re-derived here. A game that
-    /// was ended early stopped without a result, so its last ply is a landing
-    /// like any other.
+    /// Whether the game concluded here is the record's own result. A game ended
+    /// early has none, so its last ply is a landing like any other.
     var isFinalPosition: Bool { isAtEnd && (record.result ?? .none) != .none }
 
-    /// Whether the deal this record conceals is disclosed at the position on
-    /// screen.
-    ///
-    /// **The ending is what discloses, so the ending is where it shows.** A
-    /// record's last position is the one the game ended in, and there every
-    /// identity is disclosed to both players; every earlier position is the game
-    /// as it was played, and a walk back through it is a walk back into what the
-    /// players knew then — which is the same concealment the record itself holds
-    /// at that ply. A game that stopped without a result never ended, so its
-    /// last ply discloses nothing either.
-    ///
-    /// The captured surface beside the board is not asked this: a record is a
-    /// game already over whichever ply it is showing, so what it took is shown
-    /// disclosed throughout.
+    /// The ending discloses, so only a concluded record's last position shows
+    /// the deal; every earlier ply keeps the concealment the players had then.
+    /// The captured surface does not ask this: it is disclosed throughout.
     var disclosesTheDeal: Bool { game.conceals && isFinalPosition }
 
     // MARK: - The transport
@@ -227,16 +156,11 @@ final class Replay {
         show(ply: moves.count)
     }
 
-    /// Jumping to a move from the move list, which the contract asks the list
-    /// to allow. Manual navigation pauses playback, as every other manual
-    /// navigation does.
     func show(move ply: Int) {
         pause()
         show(ply: ply)
     }
 
-    /// Playback starts only after a user action, and stops at the final
-    /// position rather than wrapping.
     func toggleAutoplay() {
         if autoplaying {
             pause()
@@ -245,9 +169,8 @@ final class Replay {
         }
     }
 
-    /// Pauses, whatever asked: the transport, a manual step, a flip, or the app
-    /// leaving the foreground. A step already travelling still lands: pausing
-    /// is declining to ask for the next ply, not snatching back the last one.
+    /// A step already travelling still lands: pausing declines the next ply, it
+    /// does not snatch back the last.
     func pause() {
         playback?.cancel()
         playback = nil
@@ -270,28 +193,14 @@ final class Replay {
         }
     }
 
-    /// The walk itself, and how it is shown. Out-of-range is clamped rather
-    /// than refused: every caller here is a control whose bounds the screen
-    /// already disables, and a clamp is the honest answer to the one that
-    /// slips through.
+    /// Out-of-range is clamped, since the screen already disables the controls
+    /// at the bounds. Returns how long the step takes to arrive, which autoplay
+    /// waits out.
     ///
-    /// Answers how long the step it started takes to arrive, which is what
-    /// autoplay waits out: the travel, the crossfade that stands in for it
-    /// under Reduce Motion, or nothing at all where the position cuts.
-    ///
-    /// **One ply travels; anything further cuts.** A jump — a row in the move
-    /// list, either end of the transport — is a presentational cut rather than
-    /// a cascade: nobody asking for the twentieth position wants to watch
-    /// nineteen moves go past on the way, and animating only the last ply of a
-    /// jump would draw one move to explain a change of twenty. It is the same
-    /// judgement play makes when it discards rather than queues.
-    ///
-    /// **A step arriving while one travels re-targets rather than queues**, and
-    /// re-targeting a travel means cutting it: the position asked for arrives
-    /// at once, and the abandoned disc is not drawn landing anywhere, so it
-    /// neither sounds nor leaves a mark. Replay commits nothing and has no gate
-    /// to hold — and pressing forward faster than a step can be drawn is asking
-    /// for the position rather than for the film of it.
+    /// One ply travels; a jump cuts, because nobody asking for the twentieth
+    /// position wants to watch nineteen moves go past. A step arriving while one
+    /// travels cuts it rather than queuing: the abandoned disc neither lands,
+    /// sounds nor leaves a mark.
     @discardableResult
     private func show(ply target: Int) -> TimeInterval {
         let target = min(max(target, 0), moves.count)
@@ -299,9 +208,8 @@ final class Replay {
         let forward = target > ply
         guard abs(target - ply) == 1, !transits.isRunning,
               let played = Move(text: moves[min(ply, target)], on: game.board),
-              // A placement has no origin and nothing travels: the stone is on
-              // the point or it is not, so a step through one walks rather than
-              // draws, which is the same answer a jump gets.
+              // A placement has no origin and nothing travels, so it walks
+              // like a jump.
               let origin = played.from,
               // The mover, read from the position it is leaving: forward it
               // stands at the move's origin, backward at its destination.
@@ -312,22 +220,14 @@ final class Replay {
             return 0
         }
 
-        // The piece this step takes, where it takes one. Named for what it is
-        // rather than for the act, because the surface beside the board is
-        // called `captured` and a step's own victim is not that list.
         let victim = forward ? placement[played.to] : nil
         let travel = Motion.travel(distance: Motion.distance(of: played),
                                    on: game.board)
         transits.run(policy.movement(Motion.travelAnimation(travel)),
                      drawingRemoval: victim != nil && !policy.reduceMotion) { [self] in
-            // A ply out of range leaves the board exactly where it was, with
-            // nothing travelling.
             guard walk(to: target) else { return nil }
-            // The face the disc arrives with, where the step turns a piece up
-            // or turns one back over — read off the position the step walked
-            // to, exactly as play reads it off the position a ply produced.
-            // Stepping back through a reveal puts the piece back face down,
-            // which is the concealment the record itself holds at that ply.
+            // Read off the position walked to. Stepping back through a reveal
+            // puts the piece face down again.
             let landing = placement[forward ? played.to : origin]
             let arrived = landing.flatMap {
                 $0.isFaceDown == mover.isFaceDown ? nil : $0
@@ -336,34 +236,27 @@ final class Replay {
                 ? Transit(kind: .move, move: played, piece: mover,
                           fading: victim.map { ($0, played.to) },
                           revealed: arrived)
-                // A step back is the move read in reverse, which is what an
-                // Undo draws during play: the mover returns the way it came,
-                // and whatever it took reappears where it stood.
+                // A step back is drawn as play draws an Undo.
                 : Transit(kind: .undo,
                           move: Move(from: played.to, to: origin),
                           piece: mover,
                           fading: placement[played.to].map { ($0, played.to) },
                           revealed: arrived)
         }
-        // The identity arrives, or goes, with the disc — on the same schedule
-        // play draws it on, and by opacity under Reduce Motion, where the
-        // canvas takes it from the dissolve's own progress.
+        // Under Reduce Motion the canvas takes the reveal from the dissolve's
+        // own progress.
         if !policy.reduceMotion {
             transits.raiseReveal(Motion.revealAnimation(travel: travel))
         }
         if transits.drawsRemoval {
-            // The captured disc gives way under the arriving mover, leading
-            // the arrival by 60 ms and finishing 50 ms after it.
             transits.raiseFade(Motion.captureFadeAnimation(travel: travel))
         } else if !forward, !policy.reduceMotion {
-            // The restored piece returns as the mover departs — the capture
-            // read backwards — inside the travel.
             transits.raiseFade(Motion.restoreFadeAnimation)
         }
         return policy.reduceMotion ? Motion.crossfade : travel
     }
 
-    /// The position at one ply. Answers whether there is one.
+    /// False, with nothing changed, where there is no such ply.
     @discardableResult
     private func walk(to target: Int) -> Bool {
         guard positions.indices.contains(target) else { return false }
@@ -375,13 +268,8 @@ final class Replay {
 
     // MARK: - Landings
 
-    /// The disc has met the board. One sound per landing, chosen by what the
-    /// arrived position means — the same rule, through the same seam and the
-    /// same **sound.enabled** gate, that play's landings answer to. A replayed
-    /// landing is a landing; there is no second rule for it.
-    ///
-    /// The haptic comes with it for the same reason: every landing there is
-    /// takes the alignment pattern, and this is one.
+    /// One sound and haptic per landing, chosen by what the arrived position
+    /// means, by the same rule and **sound.enabled** gate as play's landings.
     private func announceLanding() {
         landings += 1
         feedback.play(.ofTheLanding(transit,
@@ -389,14 +277,13 @@ final class Replay {
                                     inCheck: position.inCheck))
     }
 
-    /// The board's own arrival wires — see ArrivalReporter for why the
-    /// transaction completion alone cannot be trusted with either of them.
+    /// See ArrivalReporter for why the transaction completion alone cannot be
+    /// trusted with either.
     func travelArrived() { transits.travelArrived() }
     func fadeArrived() { transits.fadeArrived() }
 
     // MARK: - Lifetime
 
-    /// Stops the walk. The screen calls this as it closes.
     func close() {
         pause()
         transits.cut()

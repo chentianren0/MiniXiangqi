@@ -1,19 +1,7 @@
-// The platform signals that release the engine, and the ones that do not.
-//
-// docs/engine-integration.md, "Backgrounding and teardown":
-// the trigger is **the platform's own suspension or memory-pressure signal, not
-// loss of focus**. On macOS an unfocused window is still a running app, so the
-// signals are system sleep, app termination, and a memory-pressure notification;
-// switching windows changes nothing. Releasing gigabytes of Hash every time the
-// user clicks another window would be worse than the problem the rule exists to
-// solve, and it is the one mistake this file exists to not make.
-//
-// iOS and iPadOS take scene backgrounding and the foreground memory-pressure
-// warning instead — the last signal before the system reclaims the process, on
-// the platform where the per-process limit applies. Both are live: the app
-// builds and runs there, and the two platforms share one memory-pressure path
-// by the same document's amendment, which the owner's deferral of anything
-// iOS-specific leaves running rather than switches off.
+// The engine is released on the platform's suspension or memory-pressure
+// signal, never on loss of focus. On macOS an unfocused window is still a
+// running app; releasing gigabytes of Hash every time the user clicks another
+// window would be worse than the problem this solves.
 
 import Foundation
 
@@ -26,15 +14,13 @@ import UIKit
 @MainActor
 final class Suspension {
     enum Event {
-        /// Cancel the search and release the transposition table whole. The app
-        /// is going away, and something will say when it is back.
+        /// Cancel the search and release the transposition table whole.
         case suspend
-        /// The machine is back. Nothing is prepared by this alone: preparation
-        /// happens when a search is next owed.
+        /// Nothing is prepared by this alone: preparation happens when a search
+        /// is next owed.
         case resume
-        /// The same cancel-and-release, but the app is still in front of the
-        /// player and nothing will ever say the pressure has passed. It is
-        /// therefore not a suspension, and is kept apart from one.
+        /// The same cancel-and-release, but the app is still in front and
+        /// nothing will say the pressure has passed, so it is not a suspension.
         case memoryPressure
     }
 
@@ -45,37 +31,28 @@ final class Suspension {
         let centre = NotificationCenter.default
 
         #if os(macOS)
-        // Sleep and termination come from the workspace's own centre rather
-        // than the default one, which never carries them.
+        // Sleep and wake come from the workspace's own centre; the default one
+        // never carries them.
         let workspace = NSWorkspace.shared.notificationCenter
         observe(workspace, NSWorkspace.willSleepNotification, .suspend, handle)
         observe(workspace, NSWorkspace.didWakeNotification, .resume, handle)
-        // Termination is deliberately *not* here. The accepted teardown order
-        // at quit is `mxq_core_shutdown`, which the app delegate already
-        // performs: it cancels every search and joins the engine thread, in one
-        // deterministic call. A second, asynchronous teardown
-        // racing it buys nothing and delays the exit, which on this platform is
-        // long enough for the next launch to find the old process still there.
+        // Termination is deliberately not observed: the app delegate's
+        // `mxq_core_shutdown` already cancels every search and joins the engine
+        // thread. A second, asynchronous teardown racing it delays the exit long
+        // enough for the next launch to find the old process still there.
         #else
         observe(centre, UIApplication.didEnterBackgroundNotification, .suspend, handle)
         observe(centre, UIApplication.willEnterForegroundNotification, .resume, handle)
-        // The same event macOS raises, and it takes the same path: cancel,
-        // release the table whole, then ask again from a fresh probe whether a
-        // search is owed. engine-integration.md is explicit that this is a
-        // decision and not a claim that iOS is safe — `os_proc_available_memory`
-        // measures *this process's* remaining headroom, which rises as soon as
-        // the table is released, so the re-ask here can hand back a Hash the
-        // size of the one just given up. What covers that is the accepted worst
-        // case: the system reclaims the app, and autosave has already committed.
-        // Anything better — a wait, a smaller retry trigger — is the owner's
-        // deferral, and reopening it takes evidence from a device.
+        // `os_proc_available_memory` measures this process's own headroom, which
+        // rises as soon as the table is released, so the next search can ask
+        // for a Hash the size of the one just given up. The fallback is that
+        // the system reclaims the app after autosave has committed.
         observe(centre, UIApplication.didReceiveMemoryWarningNotification,
                 .memoryPressure, handle)
         #endif
 
-        // Memory pressure, on every platform that has the source. Delivered on
-        // the main queue so the handler is already where the state lives, and
-        // the teardown it starts does not block the thread that delivered it.
+        // Delivered on the main queue so the handler is already where the state
+        // lives.
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical],
                                                             queue: .main)
         source.setEventHandler {

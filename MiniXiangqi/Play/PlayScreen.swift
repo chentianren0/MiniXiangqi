@@ -1,79 +1,31 @@
-// The play screen.
-//
-// docs/interaction-design.md, "Layout shapes": two arrangements, chosen by the
-// available space rather than by device identity. **Side by side** — the board
-// on one side, with a panel beside it carrying the turn status, the move list,
-// and controls that do not need to sit under the thumb — is what ordinary Mac
-// windows and a landscape iPad take. **Stacked** — the turn status in the bar's
-// centre, the play controls below the board, and the board fitted to the full
-// width in the height between them — is what an iPhone and a portrait iPad
-// take, and what a Mac window narrow enough for the panel to cost the board
-// more than it returns takes too. `BoardLayout.shape(in:game:)` is the rule;
-// this screen only draws both answers.
-//
-// In the stacked shape the move list is reached on demand rather than shown by
-// default, so neither the board nor the controls give up space to something
-// consulted occasionally. What reaches it is a toolbar item over a sheet: a
-// sheet is the surface the contract already allows to cover the board, because
-// the player asked for it and the player dismisses it.
-//
-// The selected game's square or tall board is sized to the largest instance of
-// its own aspect ratio fitting both the available width and the height left
-// after the chrome. Mini Xiangqi uses its 44-point pitch floor and Xiangqi its
-// 34-point floor; both stop at the same approximate maximum-width footprint.
-// Surplus space goes to the layout rather than to the board. When space is short
-// the chrome tightens first, and the window stops resizing where either would go
-// below its floor.
-//
-// Motion runs through PlayMotion: every board input passes its gate, so input
-// during a committing transition is discarded here rather than queued, and the
-// controls that a running transition makes unavailable say so.
-//
-// The game on screen is the stored active game: launch resumes it exactly
-// where it stood, and the concluding action files a finished one in History
-// before the destination returns to its pre-start state.
-//
-// This is the board and only the board. The Play destination's other two pages
-// are the home, where what to play is chosen, and each mode's pre-start state;
-// PlayDestination is what holds the three. Going back from here reaches the
-// home and ends nothing — the game stays active and its card there is the way
-// back in.
+// `BoardLayout.shape(in:game:)` chooses between the side-by-side and stacked
+// shapes; this screen only draws both. Every board input passes PlayMotion's
+// gate, so input during a committing transition is discarded, not queued.
 
 import SwiftUI
 
 struct PlayScreen: View {
-    /// The game, and the presentation state that belongs to it. Held above the
-    /// navigation container, because the container rebuilds this screen every
-    /// time the player comes back to it and the game is not the screen's to
-    /// create twice.
+    /// Held above the navigation container, which rebuilds this screen every
+    /// time the player comes back to it.
     let play: PlayState
 
-    /// Opens one History record's replay. The screen it opens on is not this
-    /// one, so the container above both is what performs it; 回放 on a recorded
-    /// result is the only thing that asks.
+    /// Performed by the container above, because the replay opens on another
+    /// screen.
     var replay: (UUID) -> Void
 
     @State private var claimPresented = false
     @State private var resignPresented = false
 
-    /// Whether the save-failure capsule is up. Raised when a ply's commit is
-    /// refused, and transient: it answers the touch and withdraws by itself.
-    /// View state, and rightly so — it has a four-second life and nothing to
-    /// say to a screen that is not on show.
+    /// Transient: it answers the touch and withdraws by itself.
     @State private var saveFailureShown = false
 
-    /// The terminal commit the store refused — the draw claim, 认输, the
-    /// notice's 保存, or the filing that the concluding action owes — held
-    /// while the accepted 无法保存对局 retry is on screen, so Try Again repeats
-    /// exactly the act that failed rather than the nearest one to it. The game
-    /// stays active and unchanged underneath any of them.
+    /// The refused terminal commit, held while the retry is up so Try Again
+    /// repeats exactly the act that failed. The game stays unchanged underneath.
     private enum FailedFiling { case claim, resign, save, file, finish }
     @State private var failedFiling: FailedFiling?
 
-    /// Whether the stacked shape's on-demand move list is up.
     @State private var moveListShown = false
 
-    /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
     /// The captured sheet's own width, measured rather than read through a
     /// GeometryReader at the sheet's root: a reader there has no ideal size,
@@ -81,28 +33,22 @@ struct PlayScreen: View {
     /// the first measurement, which the pitch fallback answers with the floor.
     @State private var capturedWidth: CGFloat = 0
 
-    /// What the stacked shape's chrome actually came to, measured rather than
-    /// assumed: the status above the board at an accessibility text size, where
-    /// the bar cannot hold it and it is taller than the allowance the shape rule
-    /// spends. It starts at the allowance's own share so the first frame is
-    /// already the right size.
+    /// Measured: at an accessibility text size the status stands above the
+    /// board and is taller than the shape rule's allowance. It starts at the
+    /// allowance's share so the first frame is already the right size.
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
 
-    /// One row of the control cluster, measured — the quantity the cluster's
-    /// reserved slot is two of. What is measured is a row rather than the
-    /// cluster, because the cluster's own height is the thing the board is not
-    /// allowed to follow.
+    /// One cluster row; the reserved slot is two. A row rather than the
+    /// cluster, because the board must not follow the cluster's own height.
     @State private var controlRow = BoardLayout.clusterRowHeight
 
     @Environment(\.motionPolicy) private var policy
 
-    /// Whether the reader is at one of the accessibility text sizes, which is
-    /// what decides where the turn status stands in the stacked shape.
+    /// Decides where the turn status stands in the stacked shape.
     @Environment(\.dynamicTypeSize) private var typeSize
 
     #if os(iOS)
-    /// Whether the navigation container is presenting as a bar across the
-    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
+    /// See `hidesDestinationBar`.
     @Environment(\.horizontalSizeClass) private var widthClass
     #endif
 
@@ -111,40 +57,32 @@ struct PlayScreen: View {
             if let game = play.game, let motion = play.motion {
                 layout(game, motion)
             } else {
-                // The frame before the board has its game. 回到对局 opens the
-                // session inside the same turn that sets the page, so that
-                // path never draws this; a destination rebuilt with the board
-                // as its page opens the session from `.task`, which is a frame
-                // later, and this is that frame.
+                // The frame before the board has its game: a destination
+                // rebuilt with the board as its page opens the session from
+                // `.task`, a frame later.
                 ProgressView()
             }
         }
-        // docs/interaction-design.md, "Navigation": a board screen hides the
-        // destination bar where that bar is a bar across the bottom. It is on
-        // the Group rather than on the layout so that the frame before the game
-        // arrives is already without it, and a board opening from a launch
-        // resume never shows the bar appearing and then leaving.
+        // A board screen hides a bottom tab bar. On the Group so the frame
+        // before the game arrives is already without it, and a launch resume
+        // never shows the bar appear and then leave.
         #if os(iOS)
         .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
         #endif
     }
 
-    /// The concluding action on a finished board: the filing, then the
-    /// finished game's own mode's pre-start page. The filing is the state's;
-    /// what is decided here is only what a refusal looks like on screen.
+    /// The filing is the state's; this decides only what a refusal looks like
+    /// on screen.
     private func startNewGame() {
         if !play.startNewGame() { failedFiling = .file }
     }
 
-    /// 完成 on the recorded notice: back to the Play home, filing nothing a
-    /// second time.
+    /// 完成 on the recorded notice.
     private func finish() {
         if !play.finish() { failedFiling = .finish }
     }
 
-    /// 保存 on a finished board: the same terminal commit, without the reset.
-    /// The board keeps the result it is standing at, and the notice becomes the
-    /// recorded one because the game it reads is now a History record.
+    /// 保存 on a finished board: the same filing, without the reset.
     private func save() {
         if !play.save() { failedFiling = .save }
     }
@@ -156,37 +94,21 @@ struct PlayScreen: View {
             case .stacked: stacked(game, motion, in: proxy.size)
             }
         }
-        // The two confirmations belong to the screen rather than to one of its
-        // shapes: the controls that raise them are in the panel in one shape
-        // and under the board in the other, and an alert declared inside either
-        // would be an alert the other shape does not have.
+        // The alerts belong to the screen rather than to one shape: the
+        // controls that raise them sit in the panel in one shape and under the
+        // board in the other.
         //
-        // The blocking notice the contract gives the claim, presented when
-        // the player invokes it rather than the moment it becomes available.
-        // Issue #71's decision 1 settles that this holds in human-versus-AI
-        // play too: a confirmation that presents itself inverts the accepted
-        // announcement/confirmation grammar, so the standing offer stays the
-        // enabled 判和 control and the status line's 可判和 — one vocabulary
-        // across both modes.
-        //
-        // The accepted sentence is one sentence and stays one, but it is said
-        // in the two roles an alert has: what has happened is the title, and
-        // what can be done about it is the message. The halves are separate
-        // keys and are never recombined into a single title.
-        //
-        // Confirming goes through PlayMotion, as everything that changes the
-        // game does: the claim is the one result that arrives with no piece
-        // moving, and the sound a result makes belongs beside the ones the
-        // landings make rather than in a button here.
+        // The claim confirmation presents only when the player invokes it, in
+        // every mode. Its title and message are separate keys, never
+        // recombined. Confirming goes through PlayMotion, so the claim's sound
+        // sits beside the landings' sounds.
         .alert("alert.claimDraw.title", isPresented: $claimPresented) {
             Button("control.keepPlaying", role: .cancel) { }
             Button("control.endAsDraw") { claimDraw(game, motion) }
         } message: {
             Text("alert.claimDraw.message")
         }
-        // 认输 ends the game against the player and cannot be undone, so it is
-        // confirmed — a system alert, blocking until it is answered, because
-        // the act itself does not happen until they answer.
+        // 认输 cannot be undone, so it is confirmed.
         .alert("alert.resign.title", isPresented: $resignPresented) {
             Button("control.cancel", role: .cancel) { }
             Button("control.resign", role: .destructive) { resign(game, motion) }
@@ -197,20 +119,14 @@ struct PlayScreen: View {
         .onChange(of: game.isFinished) { _, finished in
             if !finished { play.resultDismissed = false }
         }
-        // The capsule follows the recorded failure: raised when a ply's save
-        // is refused, cleared the moment a new attempt starts. Its withdrawal
-        // by timer is its own, below. Only the player's own ply raises it: a
-        // refused AI reply shows nothing at all, because the retry is the
-        // app's rather than the user's, which is why the game keeps the two
-        // refusals apart.
+        // Only the player's own ply raises the capsule: a refused AI reply
+        // shows nothing, because its retry is the app's.
         .onChange(of: game.failure) { _, failure in
             withAnimation(policy.fade(Motion.stateFadeAnimation)) {
                 saveFailureShown = failure != nil
             }
         }
-        // The blocking retry the contract gives a refused terminal commit —
-        // one presentation for all of them, because it is one promise: the
-        // current game is unchanged.
+        // One retry for every refused terminal commit; the game is unchanged.
         .alert("alert.saveFailed.title",
                isPresented: Binding(get: { failedFiling != nil },
                                     set: { if !$0 { failedFiling = nil } })) {
@@ -219,11 +135,8 @@ struct PlayScreen: View {
         } message: {
             Text("alert.saveFailed.message")
         }
-        // Issue #71's decision 2: the mid-game preparation failure keeps the
-        // situation's name — memory is not available right now — and adds the
-        // one guarantee the pre-start case has no need of. 稍后 leaves the
-        // stalled state in the turn status's own activity slot, with the retry
-        // beside it; every retry re-probes fresh.
+        // 稍后 leaves the stalled state in the turn status's activity slot,
+        // with the retry beside it; every retry re-probes fresh.
         .alert("alert.aiUnavailable.title",
                isPresented: Binding(get: { play.opponent?.preparationFailure != nil },
                                     set: { if !$0 { play.opponent?.deferPreparation() } })) {
@@ -232,16 +145,9 @@ struct PlayScreen: View {
         } message: {
             Text("alert.aiUnavailable.resumeMessage")
         }
-        // A hint the engine could not be prepared for. The situation's own
-        // name, because the reader asked for a hint rather than for an
-        // opponent — Free Play has none to fail to start — over the same
-        // message the pre-start notice carries and the same 取消 / 重试, every
-        // retry re-probing fresh. Only the memory failures take that message:
-        // a damaged installation is a different situation, and naming the wrong
-        // cause is worse than naming none. What it takes instead is the hint's
-        // own body, which names neither the cause nor an opponent: the AI's
-        // stalled line belongs to the AI's own slot, and a Free Play game that
-        // asked for a hint has no opponent for a notice to speak about.
+        // Only the memory failures take the AI-unavailable message: naming the
+        // wrong cause for a damaged installation is worse than naming none. The
+        // hint's own message names no opponent, since Free Play has none.
         .alert("alert.hintUnavailable.title",
                isPresented: Binding(get: { play.hint?.preparationFailure != nil },
                                     set: { if !$0 { play.hint?.dismissPreparationFailure() } })) {
@@ -252,16 +158,11 @@ struct PlayScreen: View {
                  ? LocalizedStringKey("alert.aiUnavailable.message")
                  : LocalizedStringKey("alert.hintUnavailable.message"))
         }
-        // The suggestion, announced as it appears — composed from the board's
-        // own point vocabulary, so a reader who cannot see the strengthened
-        // marker hears the same fact in the same words the points are described
-        // in. It is an announcement rather than a focus move: the board stays
-        // exactly where the reader had it, and the suggested point carries its
-        // own **建议** token for whoever navigates to it.
+        // Announced rather than moving focus, so the board stays where the
+        // reader had it; worded in the board's own point vocabulary.
         .onChange(of: motion.suggested) { _, destination in
             guard let destination else { return }
-            // A board that places says the point and nothing else: the mark
-            // standing on it is the suggestion, and there is no piece to name.
+            // A board that places says the point and nothing else.
             guard !game.kind.isPlacement else {
                 AccessibilityNotification
                     .Announcement(BoardView.hintAnnouncement(point: destination))
@@ -277,27 +178,17 @@ struct PlayScreen: View {
                                                          to: destination))
                 .post()
         }
-        // The move list's sheet belongs to the screen for the same reason the
-        // alerts do, and for one more: `moveListShown` is the screen's state,
-        // so a sheet declared inside the stacked branch alone is a sheet that
-        // is re-presented every time the layout comes back to that branch. An
-        // iPad opened to the list, rotated to landscape and rotated back would
-        // find it up again, in a shape whose toolbar has nothing to raise it
-        // and nothing to say it should be there.
+        // On the screen rather than in the stacked branch: `moveListShown` is
+        // the screen's state, so a sheet inside the branch would present again
+        // whenever the layout came back to it, as on an iPad rotated and back.
         .sheet(isPresented: $moveListShown) { moveListSheet(game) }
-        // And the captured-pieces surface beside it, on the same surface for
-        // the same reason: in the stacked shape it is reached rather than
-        // resident, because the board's own pitch floor comes before it.
+        // In the stacked shape the captured pieces are reached rather than
+        // resident, because the board's pitch floor comes first.
         .sheet(isPresented: $capturedShown) { capturedSheet(game) }
     }
 
-    /// The captured-pieces surface, as this game draws it.
-    ///
-    /// **Whose eyes it is drawn for is the game's own configuration**: nil where
-    /// one person holds both hands, which is Free Play and the one place both
-    /// panels are one person's, and the local player's side where two people are
-    /// playing. Everything discloses when the game ends, which is the same
-    /// question the board already asks.
+    /// Drawn for the game's own viewer: nil in Free Play, where one person
+    /// holds both hands, else the local side. Everything discloses at the end.
     private func captured(_ game: Game,
                           pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: game.captured,
@@ -308,9 +199,8 @@ struct PlayScreen: View {
                            pitch: pitch)
     }
 
-    /// The same surface on the phone's own transient, alongside the move list's.
-    /// Its discs are board-sized: the pitch a board of the sheet's own width
-    /// would carry, which on the phone is the board behind it.
+    /// Discs at the pitch a board of the sheet's width would carry, which on
+    /// the phone is the board behind it.
     private func capturedSheet(_ game: Game) -> some View {
         NavigationStack {
             ScrollView {
@@ -339,11 +229,8 @@ struct PlayScreen: View {
 
     // MARK: - The two shapes
 
-    /// The board on one side, the panel beside it.
-    ///
-    /// This shape's board page is a page like any other and carries the inline
-    /// title beside the control that walks back out. Only the stacked shape
-    /// spends the bar's centre on the turn status instead.
+    /// Keeps the inline title; only the stacked shape spends the bar's centre
+    /// on the turn status.
     private func sideBySide(_ game: Game, _ motion: PlayMotion, in size: CGSize) -> some View {
         HStack(spacing: 0) {
             boardBlock(game, motion, BoardLayout.geometry(in: size, game: game.kind))
@@ -358,27 +245,17 @@ struct PlayScreen: View {
         .navigationTitle("nav.play")
     }
 
-    /// The turn status in the bar's centre, the play controls below the board,
-    /// and the board fitted to the full width in the height between them.
+    /// The cluster's slot is reserved at its tallest arrangement and the board
+    /// is sized around the reservation, so a cluster that wraps never moves the
+    /// board under the thumb. The drawn arrangement is anchored at the slot's
+    /// bottom, where a thumb last found it.
     ///
-    /// **The cluster's slot is reserved at its tallest arrangement**, and the
-    /// board is sized around the reservation rather than around the arrangement
-    /// on screen. A cluster that wrapped to two rows when a scene changed — or
-    /// while a hint search ran, or at a wider text size — would otherwise move
-    /// the board under the player's thumb every time it did. The drawn
-    /// arrangement is anchored at the bottom of the slot, so the controls stay
-    /// where a thumb last found them and the slot's spare height is air between
-    /// them and the board.
+    /// The height is what the chrome is granted, not what it asks for; where
+    /// the grant is short the cluster gives way. Nothing in the chrome depends
+    /// on the board's size, so the two never read each other in a loop.
     ///
-    /// The height is what the chrome is *granted* rather than what it asks for,
-    /// which is what keeps the board inside the space it is drawn in: where the
-    /// grant is short the cluster is what gives way, per the contract's own
-    /// order. Nothing in the chrome depends on the board's size, so there is no
-    /// loop in the two reading each other.
-    ///
-    /// At an accessibility text size the element returns to its place above the
-    /// board — the bar cannot hold it there — and the bar centre stays empty,
-    /// because a page over a board still needs no name.
+    /// At an accessibility text size the status returns above the board and the
+    /// bar centre stays empty.
     private func stacked(_ game: Game, _ motion: PlayMotion, in size: CGSize) -> some View {
         let status = statusStandsInBar ? 0 : statusHeight
         let chrome = BoardLayout.stackedChrome(
@@ -389,12 +266,7 @@ struct PlayScreen: View {
                 turnStatus(game, motion, placement: .block)
                     .padding(.horizontal, BoardLayout.panelInset - 12)
                     .padding(.vertical, 8)
-                    // The capsule the contract anchors to the turn status, hung
-                    // just beneath the element it answers for — the same place
-                    // it hangs in the panel, where the move list is what it
-                    // passes in front of. Here there is no list to pass in
-                    // front of, so it passes in front of the air above the
-                    // board.
+                    // Hung just beneath the turn status, as in the panel.
                     .overlay(alignment: .bottom) {
                         if saveFailureShown {
                             saveFailureCapsule
@@ -423,9 +295,7 @@ struct PlayScreen: View {
                     turnStatus(game, motion, placement: .bar)
                 }
             }
-            // The list is consulted occasionally, so it is reached rather than
-            // resident — from the same toolbar the page's own back control is
-            // in.
+            // Consulted occasionally, so reached rather than resident.
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     moveListShown = true
@@ -434,8 +304,6 @@ struct PlayScreen: View {
                 }
                 .accessibilityIdentifier("play-move-list")
             }
-            // The captured-pieces surface, in the game that has one, reached
-            // the same way and for the same reason.
             if game.kind.conceals {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -449,18 +317,12 @@ struct PlayScreen: View {
         }
     }
 
-    /// Whether the turn status is in the bar rather than above the board. At an
-    /// accessibility text size it is not: the element is then taller than a bar
-    /// centre, and the contract puts it back where it can be that tall.
+    /// At an accessibility text size the element is taller than a bar centre
+    /// can hold, so it stands above the board.
     private var statusStandsInBar: Bool { !typeSize.isAccessibilitySize }
 
-    /// The board in the stacked shape, with the lines the bar cannot hold in
-    /// front of the air above it.
-    ///
-    /// They hang exactly where they hang beneath the status block: the
-    /// save-failure capsule, and the stalled slot with the retry that answers
-    /// it. The overlay is applied outside the board's own tap area so that the
-    /// retry is pressed rather than the board behind it.
+    /// The overlay sits outside the board's own tap area, so the retry is
+    /// pressed rather than the board behind it.
     private func board(_ game: Game, _ motion: PlayMotion, in size: CGSize,
                        chrome: CGFloat) -> some View {
         let geometry = BoardLayout.stackedGeometry(in: size, game: game.kind, chrome: chrome)
@@ -492,10 +354,8 @@ struct PlayScreen: View {
         .padding(.top, 6)
     }
 
-    /// The on-demand move list, on the surface the contract already allows to
-    /// cover the board: a sheet the player asked for and the player dismisses.
-    /// Half height by default, because half of it is the board they are
-    /// consulting the list about.
+    /// Half height by default, because the other half is the board the list is
+    /// consulted about.
     private func moveListSheet(_ game: Game) -> some View {
         NavigationStack {
             MoveList(notation: game.notation, firstMover: game.firstMover)
@@ -514,18 +374,12 @@ struct PlayScreen: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// The board, and the notice that stands in front of it. One block, drawn
-    /// the same way in both shapes: what differs between them is the size it is
-    /// given and what surrounds it.
     private func boardBlock(_ game: Game, _ motion: PlayMotion,
                             _ geometry: BoardGeometry,
                             bleed: CGFloat = 0) -> some View {
-        // **The ending discloses the deal, and the board shows it at the moment
-        // the finished scene arrives** — after the landing, which is the same
-        // beat the result notice and the control cluster wait for: the ply that
-        // ended the game has to finish being shown before anything answers it.
-        // It arrives by opacity, one settle for the whole board, so Reduce
-        // Motion draws it exactly as full motion does.
+        // The ending discloses the deal after the landing, as the notice and the
+        // cluster wait for it: the ply that ended the game finishes being shown
+        // first. By opacity, so Reduce Motion draws it the same.
         let disclosure: Double = game.disclosesTheDeal
             && showsFinishedScene(game, motion) ? 1 : 0
         return ZStack {
@@ -555,19 +409,14 @@ struct PlayScreen: View {
                       onFlipArrival: { motion.flipArrived() })
                 .boardHaptics(landings: motion.landings, refusals: motion.refusals)
 
-            // The notice waits for the landing: a result arrives with a move,
-            // and the move has to finish being shown before an announcement
-            // stands in front of it.
+            // Waits for the landing: the move that brought the result has to
+            // finish being shown first.
             if game.isFinished, !play.resultDismissed, !motion.isCommitting {
                 ResultNotice(game: game.kind,
                              state: game.presentedState,
                              reason: game.presentedReason,
-                             // A filed game is a History record, and the notice
-                             // reads as one: the claimed draw, whose claim was
-                             // the commit, and now the natural result the
-                             // notice's own 保存 has just filed without
-                             // resetting anything. Which is why this is asked of
-                             // the game rather than tracked here.
+                             // Asked of the game rather than tracked here: a
+                             // claimed draw and a saved result are both filed.
                              recorded: game.filedRecordID != nil,
                              save: { save() },
                              startNewGame: { startNewGame() },
@@ -577,9 +426,8 @@ struct PlayScreen: View {
                     .transition(.opacity)
             }
         }
-        // One settle for the disclosure, and for nothing else: the board's own
-        // phases are driven by the transitions that schedule them, and this
-        // animates the one value those transitions do not.
+        // The board's own phases are driven by their transitions; this animates
+        // the one value they do not.
         .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
@@ -594,26 +442,19 @@ struct PlayScreen: View {
         }
     }
 
-    /// The player confirmed the claim; committing it is the core's. A commit
-    /// the store refused changed nothing, and says so through the retry.
-    ///
-    /// The claim is legal exactly when the core says it is, whatever the
-    /// machine happens to be doing: if the state allows it, the search is
-    /// cancelled before the terminal commit, because a search outstanding over
-    /// a game that has just ended answers to nothing.
+    /// A refused commit changed nothing and says so through the retry. The
+    /// search is cancelled first: over a game that has just ended it answers to
+    /// nothing.
     private func claimDraw(_ game: Game, _ motion: PlayMotion) {
         play.opponent?.cancelSearch()
-        // A hint outstanding over a game that has just ended answers to nothing
-        // either, and the two results that arrive with no piece moving are the
-        // ones no commit cancels for them.
+        // Results that arrive with no piece moving are the ones no commit
+        // cancels the hint for.
         play.hint?.cancel()
         motion.claimDraw()
         if game.filingFailure != nil { failedFiling = .claim }
     }
 
-    /// 认输, confirmed. The terminal commit that records the loss against the
-    /// player's own side, with the search stopped first for the same reason the
-    /// claim stops it.
+    /// 认输, confirmed. The search stops first, as for the claim.
     private func resign(_ game: Game, _ motion: PlayMotion) {
         play.opponent?.cancelSearch()
         play.hint?.cancel()
@@ -621,28 +462,20 @@ struct PlayScreen: View {
         if game.filingFailure != nil { failedFiling = .resign }
     }
 
-    /// 悔棋. In human-versus-AI play an Undo while the machine is thinking
-    /// cancels the search and removes the human move that triggered it, and
-    /// after a reply it removes the whole exchange — how many plies that is, is
-    /// the core's answer, consumed rather than counted here.
+    /// While the machine is thinking, Undo cancels the search and removes the
+    /// human move; after a reply it removes the whole exchange. How many plies
+    /// that is, is the core's answer.
     private func undo(_ motion: PlayMotion) {
         play.opponent?.cancelSearch()
-        // Before the transition rather than at its commit: an Undo is asked for
-        // while a hint may be on the board about the position it is taking
-        // away, and the suggestion goes with it whether or not the core accepts
-        // the Undo.
+        // Before the transition rather than at its commit: the suggestion goes
+        // whether or not the core accepts the Undo.
         play.hint?.cancel()
         motion.undo()
     }
 
-    /// Every board tap answers through the gate first: input during a
-    /// committing transition is discarded, never queued. What is decided here
-    /// is only the one thing that is not about the position: a finished board
-    /// is not inert, so a tap closes the result notice standing in front of
-    /// the position it produced, and that tap is an accepted input rather than
-    /// a rejected one, so it gets no beat. Everything else — including that a
-    /// board with nothing left to play answers a tap with the acknowledgment
-    /// beat — goes through PlayMotion, which asks the game.
+    /// Input during a committing transition is discarded, never queued. On a
+    /// finished board a tap closes the result notice; that is an accepted
+    /// input, so it gets no beat.
     private func tap(_ square: Square, in game: Game, _ motion: PlayMotion) {
         guard !motion.isCommitting else { return }
         if game.isFinished, !play.resultDismissed {
@@ -652,22 +485,17 @@ struct PlayScreen: View {
         motion.tap(square)
     }
 
-    /// The panel's three sections read down one edge, so they begin on one
-    /// edge: `BoardLayout.panelInset` from the panel's own. Each of them brings
-    /// its own interior — the status line's background is inset within it, the
-    /// move list's number column is right-aligned within it — and the outer
-    /// padding here is what makes the three agree. The status line therefore
-    /// takes 4, because its own background already accounts for the other 12.
+    /// The panel's sections begin on one edge, `BoardLayout.panelInset` from the
+    /// panel's own. The status line's own background accounts for 12 of that, so
+    /// its outer padding takes the rest.
     private func panel(_ game: Game, _ motion: PlayMotion) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             turnStatus(game, motion, placement: .block)
                 .padding(.horizontal, BoardLayout.panelInset - 12)
                 .padding(.vertical, 8)
 
-            // The resident captured-pieces surface, in the game that has one.
-            // It stands beside the board rather than over it, which is the
-            // resident rule: it never intersects the board block, and the board
-            // keeps its pitch floor before this surface is given room.
+            // Beside the board, never over it: the board keeps its pitch floor
+            // before this surface is given room.
             if game.kind.conceals {
                 Divider()
 
@@ -681,10 +509,8 @@ struct PlayScreen: View {
             MoveList(notation: game.notation, firstMover: game.firstMover)
                 .padding(.horizontal, BoardLayout.panelInset)
                 .frame(maxHeight: .infinity)
-                // The transient capsule the contract anchors to the turn
-                // status: hung just beneath the element it answers for, over
-                // the list rather than in it, because it is feedback passing
-                // in front of the surface and not a row of the record.
+                // Over the list rather than in it: feedback passing in front,
+                // not a row of the record.
                 .overlay(alignment: .top) {
                     if saveFailureShown {
                         saveFailureCapsule
@@ -695,19 +521,16 @@ struct PlayScreen: View {
 
             Divider()
 
-            // Where the row fits at full width it keeps it; where the words
-            // leave no room — every cluster state in English at the minimum
-            // window — 翻转棋盘 drops beneath the others first, and the row
-            // gives up all of its words together only where the wrap was not
-            // enough. Every arrangement carries the same accessibility labels.
+            // Where the words leave no room, 翻转棋盘 drops beneath the others
+            // first, and the row gives up all its words only where the wrap is
+            // not enough.
             controlCluster(game, motion)
                 .padding(BoardLayout.panelInset)
         }
         .frame(maxHeight: .infinity)
-        // The material runs to the window's top edge, behind the title bar, so
-        // the panel reads as one surface from the top of the window down. Only
-        // the material goes up there: the sections keep their own inset and
-        // stay clear of the title bar's controls.
+        // The material runs behind the title bar so the panel reads as one
+        // surface; the sections keep their inset, clear of the title bar's
+        // controls.
         .background {
             Rectangle()
                 .fill(.regularMaterial)
@@ -719,12 +542,8 @@ struct PlayScreen: View {
         .onTapGesture { motion.cancelSelection() }
     }
 
-    /// The turn status, wherever this shape stands it. One call for the two
-    /// places, because the element is the same element: what the placement
-    /// decides is the room it has, not what it says.
-    ///
     /// The retry is passed only where the element draws the stalled slot
-    /// itself. In the bar the slot hangs beneath, with `hungLines`.
+    /// itself; in the bar the slot hangs beneath, in `hungLines`.
     private func turnStatus(_ game: Game, _ motion: PlayMotion,
                             placement: TurnStatus.Placement) -> some View {
         TurnStatus(placement: placement,
@@ -739,93 +558,49 @@ struct PlayScreen: View {
                    beatEmphasis: motion.beatEmphasis)
     }
 
-    /// Who owns the turn. Free Play has no answer and shows none: the same
-    /// person controls both sides.
+    /// Free Play shows none: the same person controls both sides.
     private func controller(of game: Game) -> TurnStatus.Controller? {
         guard let humanSide = game.humanSide else { return nil }
         return game.evaluation.sideToMove == humanSide ? .you : .ai
     }
 
-    /// Whether 提示 can be pressed right now.
-    ///
-    /// The control is present throughout the live scene and greys where a hint
-    /// is not possible: on the machine's turn, and while a transition is
-    /// committing — a suggestion about a position the board is still leaving is
-    /// a suggestion about nothing. What "possible" means is the game's own
-    /// answer rather than a second derivation of the mode and the side to move.
+    /// Present throughout the live scene, and greyed on the machine's turn and
+    /// while a transition is committing.
     private func canHint(_ motion: PlayMotion) -> Bool {
         guard let hint = play.hint else { return false }
         return hint.isOffered && !motion.isCommitting
     }
 
-    /// The transient save-failure capsule, which the nearby board raises too:
-    /// the shape is shared, and what is this screen's is when it goes up.
+    /// The nearby board raises the same capsule; when it goes up is this
+    /// screen's.
     private var saveFailureCapsule: some View {
         SaveFailureCapsule { saveFailureShown = false }
     }
 
-    /// The play control cluster: the one custom glass surface on screen during
-    /// ordinary play. It carries no tint during play, because saturated colour
-    /// on the play screen means which side a piece belongs to.
+    /// The one custom glass surface during ordinary play, untinted because
+    /// saturated colour on the play screen means a side. 提示 leads: it is the
+    /// one control about the next move rather than the game around it.
     ///
-    /// The accepted compositions, by mode. Human versus AI is 提示, 悔棋, 判和,
-    /// 认输 and 翻转棋盘; Free Play is 提示, 悔棋, 判和, 翻转棋盘 — it cannot
-    /// resign, having no opponent to resign to. 提示 leads because it is the one
-    /// control about the next move rather than about the game around it.
+    /// Absence says a capability is not there; disabling says it is momentarily
+    /// impossible. The placement games have no 判和 (no repetition) and no
+    /// 翻转棋盘 (a stone has no orientation). Inside a scene nothing comes or
+    /// goes, so the row stays the same row under the thumb. A finished board
+    /// puts the concluding action, the one tinted act, in the hint's slot.
     ///
-    /// **The placement games carry smaller sets of the same grammar**: 提示 and
-    /// 悔棋 in local play, and 认输 against the machine. Absence is what says a
-    /// capability is not there at all, and two of these are not: there is no
-    /// repetition to 判和 on, so a full board with no five draws itself through
-    /// the ordinary result notice, and a stone has no orientation a player could
-    /// read, so 翻转棋盘 would turn a board nobody is reading the wrong way up.
-    /// 提示 is here in every game, in each one's own presentation — the piece
-    /// taken up and its destination strengthened where a game moves, the pending
-    /// stone standing at the suggested point where it places.
-    ///
-    /// **The cluster is a scene's fixed set, and inside a scene nothing comes or
-    /// goes.** A control whose act is momentarily impossible is disabled where
-    /// it stands: 提示 greys through the machine's turn, 判和 until a claim
-    /// stands, 悔棋 while a transition runs. A greyed control is a promise the
-    /// scene keeps — it will be pressable again without anything moving — where
-    /// a control that leaves and returns makes the row a different row each time
-    /// a thumb reaches for it.
-    ///
-    /// A finished board is a scene of its own: no draw left to judge and no hint
-    /// left to ask, so that slot carries the concluding action instead — the one
-    /// obvious next action, and therefore the one thing on screen the tint rule
-    /// allows — and 认输 goes with the game it could have ended. The finished
-    /// cluster is 悔棋, the concluding action and 翻转棋盘 in both modes.
-    ///
-    /// Each control carries one symbol and an identifier beside its label. A
-    /// label is copy and changes with the interface language; an identifier does
-    /// not, so it is what a test addresses a control by. The concluding action
-    /// is the one control that is its word alone, in every arrangement: it is
-    /// the moment's single tinted act, and a word is what a moment like that
-    /// gets.
-    ///
-    /// `worded` is the row's answer to the width it was given, and it is the
-    /// whole row's: where the words fit every control carries one, and where
-    /// they do not every control gives up its word at once and stands as its
-    /// symbol, with the word as its accessibility label either way. No row mixes
-    /// the two forms.
+    /// `worded` is the whole row's answer: no row mixes words and bare symbols.
     private func controls(_ game: Game, _ motion: PlayMotion,
                           worded: Bool, carriesFlip: Bool) -> some View {
         let finished = showsFinishedScene(game, motion)
         return HStack(spacing: 8) {
-            // **A game no engine plays carries no 提示 at all** — the contract's
-            // absence, which says a capability is not there, rather than a
-            // greyed promise that it will be. There being no `Hint` object is
-            // the whole of the answer: the state builds one exactly where a
-            // suggestion can exist.
+            // A game no engine plays has no `Hint`, so no 提示 at all: absence,
+            // not a greyed promise.
             if !finished, play.hint != nil {
                 hintControl(motion, worded: worded)
                     .transition(.opacity)
             }
 
-            // Unavailable until a running transition completes — its own
-            // Undo's included, which is what makes a second Undo wait its
-            // turn rather than queue.
+            // Disabled until a running transition completes, its own Undo's
+            // included, so a second Undo waits rather than queues.
             Button {
                 undo(motion)
             } label: {
@@ -837,10 +612,8 @@ struct PlayScreen: View {
             .accessibilityIdentifier("cluster-undo")
 
             if finished {
-                // Prominent once it is the only one: while the notice stands in
-                // front of the board it carries the moment's tinted action, and
-                // the tint rule allows a single obvious next step rather than
-                // two competing for the eye.
+                // Prominent only once the notice is dismissed: while the notice
+                // stands, it carries the tinted action.
                 concludingAction(prominent: play.resultDismissed)
                     .transition(.opacity)
             } else if !game.kind.isPlacement {
@@ -857,9 +630,6 @@ struct PlayScreen: View {
             }
 
             if game.isHumanVersusAI, !finished {
-                // 认输 ends the game and cannot be undone, so the symbol is the
-                // one every board game uses for it, and the alert still stands
-                // between the control and the act.
                 Button {
                     resignPresented = true
                 } label: {
@@ -878,15 +648,8 @@ struct PlayScreen: View {
         }
     }
 
-    /// 提示, and the activity a hint search shows once it has run long enough to
-    /// be worth showing — the AI activity slot's own threshold, for the AI
-    /// activity slot's own reason.
-    ///
-    /// The indicator stands in the symbol's own place rather than beside the
-    /// control, so the row does not change width while a search runs. To a
-    /// screen reader the button is one element and keeps its word; that a search
-    /// is running is its value, which is where a state that is not the control's
-    /// name belongs.
+    /// The indicator stands in the symbol's place so the row keeps its width.
+    /// To a screen reader the running search is the button's value.
     @ViewBuilder
     private func hintControl(_ motion: PlayMotion, worded: Bool) -> some View {
         let thinking = play.hint?.activity == .thinking
@@ -899,8 +662,7 @@ struct PlayScreen: View {
         .disabled(!canHint(motion))
         .accessibilityLabel(Text("control.hint"))
         .accessibilityIdentifier("hint-request")
-        // A value only while there is one to say. An idle control has no state
-        // beyond its name, and an empty value is a value all the same.
+        // An empty value is a value all the same, so none while idle.
         if thinking {
             control.accessibilityValue(Text("status.hintThinking"))
         } else {
@@ -908,15 +670,9 @@ struct PlayScreen: View {
         }
     }
 
-    /// The lamp, or the indicator standing in its place, and the word beside
-    /// either where the row carries words.
-    ///
-    /// **The indicator draws inside the lamp's own layout box.** The lamp is
-    /// what is laid out in both states — hidden while the search runs, with the
-    /// indicator over it — so the control measures the same idle or thinking,
-    /// in either label style. A control that changed size when a search started
-    /// would change its row's width, and near the width a row is chosen at, the
-    /// arrangement under it.
+    /// The lamp is laid out in both states, hidden under the indicator while
+    /// thinking, so the control measures the same and the row's arrangement does
+    /// not change when a search starts.
     @ViewBuilder
     private func hintLabel(thinking: Bool, worded: Bool) -> some View {
         let label = Label {
@@ -939,9 +695,6 @@ struct PlayScreen: View {
         }
     }
 
-    /// 翻转棋盘. One control, one key, one identifier, in both modes and in
-    /// either arrangement below — which is what makes the mode it is in
-    /// invisible to a test, to a screen reader, and to the person pressing it.
     private func flipControl(_ motion: PlayMotion, worded: Bool) -> some View {
         Button {
             motion.flip()
@@ -953,61 +706,36 @@ struct PlayScreen: View {
         .accessibilityIdentifier("cluster-flip")
     }
 
-    /// The cluster at whichever of its arrangements fits, in one place because
-    /// both shapes carry the same cluster: the panel puts it under the move
-    /// list, the stacked shape puts it under the board, and neither of them
-    /// decides what is in it.
+    /// In one place because both shapes carry the same cluster.
     ///
     /// The candidates in order: one row with every word, the same row wrapped
     /// with 翻转棋盘 beneath, one row of symbols, and that row wrapped. Words
-    /// outrank one-rowness — a wrap costs a line of height the stacked shape has
-    /// and the panel is glad to spend, where a symbol costs the reader the name
-    /// of the act — and the second row keeps its word either way, because the
-    /// row it arrives on has the whole width. Uniformity is a row's rule rather
-    /// than an arrangement's, which is what replay's cluster already reads as:
-    /// its five symbols over one worded 翻转棋盘.
+    /// outrank one-rowness: a wrap costs height, a symbol costs the reader the
+    /// name of the act. The candidates must differ in every composition, or
+    /// `ViewThatFits` measures nothing and the cluster just overflows.
     ///
-    /// The candidates differ in every composition the cluster has — both modes,
-    /// and a finished board as well as a running one — which is what makes the
-    /// fallback worth measuring. Two candidates that rendered the same would
-    /// leave `ViewThatFits` measuring nothing and the cluster simply
-    /// overflowing wherever it did not fit.
-    ///
-    /// **A scene change is one drawn transition.** The controls the two scenes
-    /// share hold their identity and their places, departing controls fade as
-    /// their width closes, and arriving ones fade in — which is what the
-    /// structure above buys, each scene's own members being what comes and goes
-    /// around them. It rides whatever changed the scene: the landing of a move
-    /// that finished the game, or the moment a claim or a resignation is
-    /// confirmed, which lands nothing and is drawn all the same. Under Reduce
-    /// Motion the two sets crossfade as wholes instead, nothing sliding and
-    /// nothing collapsing.
+    /// Shared controls keep their identity across a scene change, so departing
+    /// ones fade out and arriving ones fade in. Under Reduce Motion the two sets
+    /// crossfade as wholes.
     @ViewBuilder
     private func controlCluster(_ game: Game, _ motion: PlayMotion) -> some View {
         let finished = showsFinishedScene(game, motion)
-        // Every arrangement but the last is drawn at the width its own words
-        // need. An `HStack` proposes its children shares of the width it was
-        // given rather than what each asks for, and it does not iterate: what a
-        // child hands back is not offered again, so the last control can be
-        // starved by a few points while the row still has room to spare.
-        // Measured on a 402-point iPhone, English, the finished row: 350 points
-        // of words in 370 points of space, and 翻转棋盘 drawn as "Flip Boa…".
-        // A row at its own width proposes each control what it asked for.
+        // All but the last arrangement are drawn at their own width. An
+        // `HStack` proposes shares of its width rather than what each child
+        // asks for, and does not iterate, so the last control can be truncated
+        // while the row still has room.
         //
-        // **The last arrangement is left compressible on purpose.** It is what
-        // is drawn when nothing fits — an accessibility text size, mainly — and
-        // a row that cannot yield there would run past the edge of the screen,
-        // which is the one thing the contract asks of this cluster. A word
-        // shortened is still a control on screen.
+        // The last arrangement is left compressible on purpose: drawn when
+        // nothing fits (an accessibility text size, mainly), it must not run
+        // past the edge of the screen.
         let arrangements = ViewThatFits(in: .horizontal) {
             atItsOwnWidth(controls(game, motion, worded: true, carriesFlip: true))
             atItsOwnWidth(wrappedControls(game, motion, worded: true))
             atItsOwnWidth(controls(game, motion, worded: false, carriesFlip: true))
             wrappedControls(game, motion, worded: false)
         }
-        // The row reads from the leading edge, and it is placed there from
-        // outside rather than pushed there by a trailing spacer — a spacer is
-        // one more child to divide the width among.
+        // Placed at the leading edge from outside rather than by a spacer,
+        // which would be one more child to divide the width among.
         .frame(maxWidth: .infinity, alignment: .leading)
         if policy.reduceMotion {
             arrangements
@@ -1019,46 +747,33 @@ struct PlayScreen: View {
         }
     }
 
-    /// An arrangement drawn at the width its own contents ask for, rather than
-    /// at a share of the width the page has. It is the row that is fixed, not
-    /// the labels: a label of its own fixed width cannot give way anywhere,
-    /// including in the arrangement that is drawn when nothing fits.
+    /// The row is fixed, not the labels: a fixed label could not give way in
+    /// the arrangement drawn when nothing fits.
     private func atItsOwnWidth(_ row: some View) -> some View {
         row.fixedSize(horizontal: true, vertical: false)
     }
 
-    /// Whether the cluster is standing in the finished scene.
-    ///
-    /// **It waits for the landing**, which is the guard the result notice in
-    /// front of the board already keeps: the ply that ends the game is still
-    /// travelling when the game says it is over, and a cluster that swapped
-    /// there would swap ahead of the move that changed it. The two results that
-    /// arrive with no piece moving — a claim, a resignation — have no travel to
-    /// wait out, and their swap is drawn the moment they are confirmed.
+    /// Waits for the landing, as the result notice does, so the cluster does not
+    /// swap ahead of the move that ended the game. A claim or a resignation has
+    /// no travel, and swaps the moment it is confirmed.
     private func showsFinishedScene(_ game: Game, _ motion: PlayMotion) -> Bool {
         game.isFinished && !motion.isCommitting
     }
 
-    /// The cluster over two rows: the play controls above, 翻转棋盘 beneath with
-    /// its word intact — the row it left is what was short of width, and the
-    /// row it arrives on has the whole of it.
+    /// The play controls above, 翻转棋盘 beneath with its word: the row it
+    /// arrives on has the whole width.
     private func wrappedControls(_ game: Game, _ motion: PlayMotion,
                                  worded: Bool) -> some View {
         VStack(alignment: .leading, spacing: BoardLayout.clusterAir) {
             controls(game, motion, worded: worded, carriesFlip: false)
-            // A cluster with no 翻转棋盘 has nothing to wrap: this arrangement is
-            // the one above, and the row beneath it is the control that left.
+            // A cluster with no 翻转棋盘 has nothing to wrap.
             if !game.kind.isPlacement { flipControl(motion, worded: true) }
         }
     }
 
-    /// A cluster control's label: its symbol and its word, or its symbol alone
-    /// where the row has given the words up. The word is the accessibility label
-    /// either way, which each control states for itself.
-    ///
-    /// A word stays on one line: these are one-act labels, and a control whose
-    /// word wrapped would make its row taller than the arrangement it was
-    /// chosen as.
+    /// The word is the accessibility label either way, set by each control. One
+    /// line, so a control never makes its row taller than the arrangement it
+    /// was chosen as.
     @ViewBuilder
     private func clusterLabel(_ key: LocalizedStringKey, _ symbol: String,
                               worded: Bool) -> some View {
@@ -1069,9 +784,7 @@ struct PlayScreen: View {
         }
     }
 
-    /// The concluding action, which is the one control that is its word alone —
-    /// in every arrangement, symbol-only rows included. It is the moment's
-    /// single tinted act, and a word is what a moment like that gets.
+    /// Its word alone in every arrangement: the moment's single tinted act.
     @ViewBuilder
     private func concludingAction(prominent: Bool) -> some View {
         let action = Button("control.newGame") { startNewGame() }

@@ -10,9 +10,9 @@ struct ReplayTests {
     static let blackFirst = "3k5/9/9/9/9/9/9/9/9/4K4 b - - 0 1"
     static let blackFirstLine = (0..<2).flatMap { _ in ["d10d9", "e1e2", "d9d10", "e2e1"] }
 
-    /// Plays `line`, files it, and opens the record's replay. Also answers the
-    /// sitting's own notation and positions, for the replay to be held to, and
-    /// the library, which the record lives only as long as.
+    /// Plays `line`, files it, and opens the record's replay. Also returns the
+    /// game's own notation and positions to check the replay against, and the
+    /// library, which must outlive the record.
     private func replay(of line: [String],
                         configuration: (Core) throws -> GameConfiguration
                             = { _ in .freePlay(game: .miniXiangqi) }) throws

@@ -1,53 +1,23 @@
-// The Play destination, and the pages inside it.
-//
-// docs/interaction-design.md, "Starting and configuring a game" and "Saving the
-// active game before choosing a new mode": the home is the root, each mode's
-// pre-start state and the board are pages over it, and the board can be left for
-// the home without ending anything — which is how a player reaches the mode
-// entries mid-game.
-//
-// **The page on screen is `PlayState.page`, drawn directly, with a back control
-// in the toolbar over the two pages that have one.** A navigation stack driving
-// its own path was tried first and is not usable here, for a reason measured on
-// the running app rather than guessed at: a `navigationDestination` registration
-// does not survive the destination being torn down and rebuilt, which is exactly
-// what switching to another tab and back does. After that round trip a stack
-// asked for a page arrives at SwiftUI's own no-matching-destination placeholder
-// — a warning triangle on an empty page — and, worse, it then *clears its own
-// path*, which reaches the app looking exactly like the player having gone back:
-// a game walked away from and returned to came back at the home rather than at
-// its board. Rebuilding the stack per visit fixed the first symptom and not the
-// second. Drawing the page is what this destination actually needs: one window,
-// one game, a handful of pages, and no history to keep.
-//
-// What that costs is the system's own back button and the gestures around it,
-// and what it buys is a destination that is where the state says it is. The
-// control below is the same chevron in the same place, and it says where it goes
-// the way the platform's own does — by naming the page it returns to.
-//
-// The play content's floor is the destination's rather than the board's, and it
-// is the same number on every page, so that walking between them cannot resize
-// the window.
+// The page on screen is `PlayState.page`, drawn directly, not a navigation
+// stack's path: a `navigationDestination` registration does not survive the
+// destination being torn down and rebuilt, as a tab switch does, and the stack
+// then clears its own path, which looks exactly like the player going back. So
+// the back control below is this file's own chevron, labelled with the page it
+// returns to.
 
 import SwiftUI
 
 struct PlayDestination: View {
-    /// The game, and the presentation state that belongs to it. Held above the
-    /// navigation container, because the container rebuilds this destination
-    /// every time the player comes back to it and the game is not a tab's to
-    /// create twice.
+    /// Held above the navigation container, which rebuilds this destination on
+    /// every return; the game is not a tab's to create twice.
     let play: PlayState
 
-    /// Opens one History record's replay. The screen it opens on is not in this
-    /// destination, so the container above both is what performs it; 回放 on a
-    /// recorded result is the only thing that asks.
+    /// The replay screen lives outside this destination, so the container above
+    /// both performs it.
     var replay: (UUID) -> Void
 
-    /// The ways this device can play somebody on another device, where it has
-    /// them. Their board is a page over this destination like the other two,
-    /// and it is drawn from here for the same reason they are — but the session
-    /// behind it belongs to the peer and outlives every page, so nothing about
-    /// leaving this destination touches it.
+    /// The peer session behind a nearby or online board outlives every page, so
+    /// leaving this destination never touches it.
     var nearby: NearbyFlow?
     var online: NearbyFlow?
 
@@ -66,9 +36,8 @@ struct PlayDestination: View {
             } else if play.started {
                 pages
             } else {
-                // The frames before the launch resume has answered. Nothing is
-                // drawn rather than a home without the card the resume is about
-                // to put on it.
+                // Before the launch resume has answered: nothing rather than a
+                // home missing the card the resume is about to put on it.
                 Color.clear
             }
         }
@@ -76,26 +45,16 @@ struct PlayDestination: View {
         .playContentFloor()
         .task {
             play.startIfNeeded(policy: policy)
-            // The board surface owns the session, the engine and any owed
-            // search, and this destination is rebuilt on every visit — so a
-            // return to a board that was left standing opens its game again.
-            // A board that already holds one asks the library for nothing, which
-            // is what makes this safe to run on every appearance.
+            // This destination is rebuilt on every visit, so a return to a board
+            // left standing opens its game again. A board that already holds one
+            // asks the library for nothing, so this is safe on every appearance.
             play.enterBoard(policy: policy)
         }
-        // Leaving the destination altogether discards a pre-start draft and
-        // invalidates an attempt in flight. The container tears this down on
-        // every switch away, which is exactly the event the contract means by
-        // leaving the page; going *deeper* is not, and does not come through
-        // here.
+        // Discards a pre-start draft and invalidates an attempt in flight.
         //
-        // **Putting the game itself down does not belong here.** This fires
-        // when SwiftUI disposes the view, and SwiftUI disposes it at moments
-        // that are not the player leaving: the container builds and drops tab
-        // content while the window is coming up, and a game torn down there is
-        // torn down under a board that is still on screen. What the session's
-        // life hangs on is state the app owns — the selected destination, above
-        // this view, and the page below it — never a view's lifecycle.
+        // The game itself is not put down here: SwiftUI also disposes this view
+        // while the window is coming up, under a board still on screen. The
+        // session's life hangs on state the app owns, never a view's lifecycle.
         .onDisappear {
             play.leavePage()
         }
@@ -108,29 +67,18 @@ struct PlayDestination: View {
         NavigationStack {
             page
                 .playContentFloor()
-                // The root carries the platform's large title and the two pages
-                // over it carry the inline one, which is what iOS does with a
-                // stack: a large title announces a destination you have arrived
-                // at, and a page you walked into is titled beside the control
-                // that walks back out. It is also what the board can afford —
-                // a large title is most of a phone's spare height, and the
-                // stacked shape spends that height on the board.
-                //
-                // **The title itself belongs to the page**, because a board page
-                // in the stacked shape has none: its bar centre carries the turn
-                // status in the title's place, per docs/interaction-design.md
-                // § Turn status. A title set here would stand over that one and
-                // name a page nobody needs named.
+                // A large title for the root, inline for the pages over it: a
+                // large title is most of a phone's spare height, which the
+                // stacked board needs. Each page sets its own title, because a
+                // stacked board page puts the turn status in the title's place.
                 #if !os(macOS)
                 .navigationBarTitleDisplayMode(showsBackControl ? .inline : .large)
                 #endif
                 .toolbar {
                     if showsBackControl {
                         ToolbarItem(placement: .navigation) {
-                            // Named for where it goes, which is how the
-                            // platform's own back control names itself: it
-                            // carries the previous page's title. Here that is
-                            // always the Play home.
+                            // Labelled with where it goes, as the platform's
+                            // back control is: always the Play home.
                             Button {
                                 leaveTopPage()
                             } label: {
@@ -144,32 +92,21 @@ struct PlayDestination: View {
         }
     }
 
-    /// The flow whose board is up, where one is.
+    /// At most one flow ever has a board: a networked game is the library's one
+    /// active game, and a flow must get the active-game slot before opening a
+    /// board. So the order here settles nothing.
     ///
-    /// **At most one of them ever has a board, and that is the library's
-    /// contract rather than a rule kept here**: a game two devices are playing
-    /// is the library's one active game, and no flow opens a board without
-    /// first asking for the one active-game slot and getting it. So this asks
-    /// in a fixed order and takes the first answer — the order settles nothing,
-    /// because there is never a second answer to prefer over it.
-    ///
-    /// **Which flow it is asks the flows rather than the platform.** A device
-    /// with no nearby play has no flow to ask, and a player Game Center cannot
-    /// carry a game for has an online flow that never opens a board, so the
-    /// same expression draws the local page in both cases without a gate.
+    /// It asks the flows rather than the platform: with no flow, or one that
+    /// never opens a board, the local page is drawn without a gate.
     private var board: NearbyFlow? {
         [nearby, online].compactMap { $0 }.first { $0.boardSessionID != nil }
     }
 
-    /// The page on screen: that board where one is up, and the local pages
-    /// otherwise.
     @ViewBuilder
     private var page: some View {
         if let board {
-            // A game with somebody is over every page of this destination,
-            // because it is the game this device is playing: the local pages
-            // are still there underneath it, exactly where the player left
-            // them.
+            // A game with somebody covers every page; the local pages stay
+            // underneath, exactly where the player left them.
             NearbyBoardScreen(flow: board)
         } else {
             playPage
@@ -185,15 +122,8 @@ struct PlayDestination: View {
         case .setup(let selection):
             SetupScreen(play: play, selection: selection)
                 .navigationTitle("nav.play")
-        // The Custom Scene editor: a pre-start page like the one above it, over
-        // an interactive board rather than a preview.
-        //
-        // **It is titled with its own name rather than with Play's.** A
-        // pre-start page for a mode is a page about that mode, and this one is
-        // the only page in the destination that is a *place* rather than a
-        // step: it is where a position is composed, it stands alone with the
-        // destination bar hidden, and a title reading 对局 over it named the
-        // destination the reader had already left.
+        // Titled with its own name: it is a place where a position is composed,
+        // standing alone with the destination bar hidden, not a step under Play.
         case .customScene:
             if let scene = play.scene {
                 CustomSceneScreen(play: play, scene: scene)
@@ -206,7 +136,6 @@ struct PlayDestination: View {
         }
     }
 
-    /// Whether the page on screen is one over the home, whichever kind it is.
     private var showsBackControl: Bool {
         board != nil || play.page != .home
     }
@@ -221,21 +150,11 @@ struct PlayDestination: View {
 }
 
 private extension View {
-    /// The play content's accepted floor, 626 by 416 —
-    /// docs/interaction-design.md, "Layout shapes", where the height is
-    /// Xiangqi's and the width the placement board's.
+    /// Xiangqi's height and the placement board's width, the same on every page
+    /// so that walking between pages never clips the board.
     ///
-    /// It belongs to the destination rather than to the board alone: a window
-    /// that could be shrunk on one page and then walked to another is a window
-    /// that clips the board, so every page carries the same number and the
-    /// minimum never changes underneath the player.
-    ///
-    /// **It is a window's floor, so it is macOS's.** What a minimum does is stop
-    /// a resize; iOS and iPadOS have no resize to stop — the screen is the size
-    /// it is, and a multitasking iPad is sized by the system rather than by the
-    /// app. A 626-point minimum on a 440-point phone would not widen anything.
-    /// It would only tell SwiftUI the content is wider than the screen, and the
-    /// stacked shape exists precisely so that it is not.
+    /// macOS only: iOS has no window resize to stop, and a minimum wider than a
+    /// phone would only tell SwiftUI the content is wider than the screen.
     func playContentFloor() -> some View {
         #if os(macOS)
         return frame(minWidth: BoardLayout.minimumWidth,
