@@ -4,7 +4,7 @@ Version 7 archives (the 3.x format in `docs/game-data.md`), each paired with an 
 
 Each `<stem>.mxq` is an archive. Its `<stem>.expected.json` carries `title` or `class`, and `why`, plus:
 
-- in `valid/`: `info`, the `MxqArchiveInfo` both entry points must return, in the archive's own vocabulary (`game`, `mode`, `human_side`, `outcome`, `end_reason`, `move_count`, `started_at_ms`, `ended_at_ms`, `game_id`, `archive_version`). `null` stands for the matching `NONE` constant.
-- in `rejected/`: `probe` and `validate`, the `MxqStatus` names each entry point must return; optionally `detail_contains`, a substring the diagnostic must carry, `detail_index`, the move index the error points at, and `game`, for a game a build may not carry.
+- in `valid/`: `info`, the `MxqArchiveInfo` both entry points must return, in the archive's own vocabulary (`game`, `mode`, `human_side`, `outcome`, `end_reason`, `move_count`, `started_at_ms`, `ended_at_ms`, `game_id`, `archive_version`). `null` stands for the matching `NONE` constant. The two Jieqi sidecars also carry a top-level `game`.
+- in `rejected/`: `probe` and `validate`, the `MxqStatus` names each entry point must return, and `detail_contains`, a substring the diagnostic must carry; optionally `detail_index`, the move index the error points at, and `game`, for a game a build may not carry.
 
 Identifiers and timestamps come from the core's deterministic identity and clock (`MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY`).
