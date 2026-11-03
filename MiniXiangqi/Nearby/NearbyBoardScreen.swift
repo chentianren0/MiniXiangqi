@@ -43,6 +43,10 @@ struct NearbyBoardScreen: View {
         Group {
             if let play {
                 layout(play)
+            } else {
+                // The modifiers below need a view to hang on: on an empty
+                // group `.task(id:)` never runs, so the model is never built.
+                Color.clear
             }
         }
         // A board screen hides the destination bar where it stands across the
