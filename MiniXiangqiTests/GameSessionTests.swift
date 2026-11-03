@@ -55,7 +55,7 @@ struct GameSessionTests {
     func gameKindSurvivesConfiguration(_ kind: GameKind) throws {
         let library = try TestLibraries.fresh()
         let start = try Core.frozenStartFEN(for: kind) == nil
-            ? library.core.deal(kind).startFEN : nil
+            ? Core.deal(kind).startFEN : nil
         let configuration = GameConfiguration.freePlay(game: kind, startFEN: start)
 
         try library.create(configuration)

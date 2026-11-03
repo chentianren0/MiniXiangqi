@@ -313,7 +313,7 @@ final class PlayState {
     /// previews an empty board; the game is dealt again when it is created.
     private func previewStart(of game: GameKind) -> String {
         if let frozen = Core.frozenStartFEN(for: game) { return frozen }
-        return (try? core.deal(game).startFEN) ?? ""
+        return (try? Core.deal(game).startFEN) ?? ""
     }
 
     private func openCustomScene() {
@@ -472,7 +472,7 @@ final class PlayState {
             return
         }
         do {
-            let deal = try core.deal(game)
+            let deal = try Core.deal(game)
             create(.freePlay(game: game, startFEN: deal.startFEN),
                    policy: policy, token: token)
         } catch {

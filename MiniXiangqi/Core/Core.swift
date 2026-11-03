@@ -433,16 +433,15 @@ final class Core {
 
     /// Deals one game of Jieqi from a seed: one drawn here for a game on this
     /// device, or the one a networked proposal carried, so both devices deal the
-    /// same game. The core's derivation takes two values; one seed fills both.
-    func deal(_ game: GameKind, seed: String? = nil) throws -> Deal {
-        let seed = try seed ?? Self.dealSeed()
-        var deal = MxqDeal()
-        deal.struct_size = UInt32(MemoryLayout<MxqDeal>.size)
+    /// same game.
+    nonisolated static func deal(_ game: GameKind, seed: String? = nil) throws -> Deal {
+        let seed = try seed ?? dealSeed()
+        var buffer = [CChar](repeating: 0, count: Int(MXQ_FEN_CAP))
+        var length = 0
         var err = freshError()
-        try check(seed.withCString { seed in
-            mxq_rules_deal(handle, game.raw, seed, seed, &deal, &err)
-        }, err)
-        return Deal(startFEN: string(of: deal.start_fen, capacity: MXQ_FEN_CAP))
+        try check(mxq_rules_deal(game.raw, seed, &buffer, buffer.count, &length, &err), err)
+        return Deal(startFEN: String(decoding: buffer.prefix(length).map(UInt8.init(bitPattern:)),
+                                     as: UTF8.self))
     }
 
     /// Thirty-two bytes from the platform's cryptographic source, as the sixty-four

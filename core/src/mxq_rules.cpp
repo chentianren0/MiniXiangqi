@@ -348,14 +348,9 @@ MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
     return MXQ_OK;
 }
 
-MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
-                                  const char *seed, const char *nonce,
-                                  MxqDeal *out, MxqError *err) {
-    MxqStatus rc = mxq::require_core(core, err);
-    if (rc != MXQ_OK) {
-        return rc;
-    }
-    rc = mxq::require_game(game, err);
+MxqStatus mxq_rules_deal(MxqGameKind game, const char *seed, char *out,
+                         size_t cap, size_t *out_len, MxqError *err) {
+    const MxqStatus rc = mxq::require_game(game, err);
     if (rc != MXQ_OK) {
         return rc;
     }
@@ -363,7 +358,7 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
         assert(false && "this game has no deal");
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE,
                         "this game is not dealt; it begins from a position no "
-                        "seed and nonce derive");
+                        "seed derives");
         return MXQ_ERR_ARG_RANGE;
     }
     if (seed == nullptr) {
@@ -371,41 +366,15 @@ MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
         mxq::fill_error(err, MXQ_ERR_ARG_NULL, "seed was null");
         return MXQ_ERR_ARG_NULL;
     }
-    if (nonce == nullptr) {
-        assert(false && "required nonce pointer was null");
-        mxq::fill_error(err, MXQ_ERR_ARG_NULL, "nonce was null");
-        return MXQ_ERR_ARG_NULL;
-    }
 
-    rc = mxq::begin_out(out, out != nullptr ? out->struct_size : 0u,
-                        static_cast<uint32_t>(sizeof(MxqDeal)),
-                        static_cast<uint32_t>(sizeof(MxqDeal)), err);
-    if (rc != MXQ_OK) {
-        return rc;
-    }
-
-    /* The derivation checks the shape of both values. */
     mxq::deal::Deal derived;
     std::string detail;
-    if (!mxq::deal::derive(seed, nonce, derived, detail)) {
-        assert(false && "a handshake value is sixty-four lowercase hexadecimal "
-                        "digits");
+    if (!mxq::deal::derive(seed, derived, detail)) {
         mxq::fill_error(err, MXQ_ERR_ARG_RANGE, detail.c_str());
         return MXQ_ERR_ARG_RANGE;
     }
-
-    /* Cannot refuse a seed the derivation just accepted. */
-    std::string commit;
-    const bool bound = mxq::deal::commitment_of(seed, commit);
-    assert(bound && "the seed the derivation read is the seed this binds");
-    (void)bound;
-
-    mxq::copy_bounded(out->start_fen, sizeof(out->start_fen),
-                      mxq::deal::start_of(derived).c_str());
-    mxq::copy_bounded(out->commit, sizeof(out->commit), commit.c_str());
-    mxq::copy_bounded(out->digest, sizeof(out->digest), derived.digest.c_str());
-    return MXQ_OK;
+    return mxq::write_string(mxq::deal::start_of(derived).c_str(), out, cap,
+                             out_len, err);
 }
-
 
 } /* extern "C" */

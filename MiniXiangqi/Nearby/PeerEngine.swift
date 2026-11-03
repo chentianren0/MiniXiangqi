@@ -460,7 +460,7 @@ final class PeerEngine {
     private func begin(_ proposal: PeerProposal, as localSide: Side) -> Bool {
         do {
             let start = try proposal.seed.map {
-                try library.core.deal(proposal.kind, seed: $0).startFEN
+                try Core.deal(proposal.kind, seed: $0).startFEN
             }
             let configuration: GameConfiguration = mode == .online
                 ? .online(game: proposal.kind, localSide: localSide, startFEN: start)
