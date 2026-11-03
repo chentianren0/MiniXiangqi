@@ -4,7 +4,7 @@ The C++ core behind the app: rules, engine search, the game-file codec and the g
 
 - `src/` — the implementation.
 - `tests/` — the test runner, checked against the fixtures in [`fixtures/`](../fixtures/).
-- `assets/` — the variant configuration and the NNUE networks, pinned in `pinned-inputs.json`.
+- `assets/` — the variant configuration and the NNUE networks, pinned in [`pinned-inputs.json`](../pinned-inputs.json).
 - `third_party/` — the vendored engine forks and SQLite.
 
 Build and test it with CMake and Ninja:
