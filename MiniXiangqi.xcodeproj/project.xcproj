@@ -71,6 +71,12 @@
           "output-paths": [
             "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets",
             "$(DERIVED_FILE_DIR)/seal-engine-assets",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/minixiangqi-variants.ini",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/minixiangqiaxf-ad52b8658c9e.nnue",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/xiangqi-c07e94a5c7cb.nnue",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/mix9svqfreestyle_bsmix-6bc0d1b0ff8e.bin.lz4",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/mix9svqrenju_bs15_black-7ab8c974c30d.bin.lz4",
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets/mix9svqrenju_bs15_white-a31f318518d3.bin.lz4",
           ],
           "shell": "/bin/sh",
           "script": [
