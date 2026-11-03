@@ -119,11 +119,11 @@ struct LicenseScreen: View {
 ///
 /// docs/interaction-design.md, "Navigation": the About page names the
 /// open-source components the application is built on — each one, what it does
-/// here, its licence, and a link to its home. The components and their
-/// licences are the ones `pinned-inputs.json` records; the addresses are
-/// spelled here for the reason `About.repository` is, so a URL that failed to
-/// parse would be a typo in its own line rather than a state the running
-/// application can reach.
+/// here, its licence, and a link to its home. The components are the engines
+/// under core/engines, whose READMEs name their sources, and the networks under
+/// core/assets; the addresses are spelled here for the reason
+/// `About.repository` is, so a URL that failed to parse would be a typo in its
+/// own line rather than a state the running application can reach.
 ///
 /// Three groups by what the components are — the engines, the networks they
 /// play with, and the library beneath History — each footer carrying its
