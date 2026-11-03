@@ -7,8 +7,8 @@ import Foundation
 import UniformTypeIdentifiers
 
 nonisolated extension UTType {
-    /// docs/game-data.md and the Info.plist declaration must agree with this
-    /// identifier and conformance exactly.
+    /// The Info.plist declaration must agree with this identifier and
+    /// conformance exactly.
     static let miniXiangqiGame = UTType(exportedAs: "com.chentianren.minixiangqi.game",
                                         conformingTo: .json)
 }
