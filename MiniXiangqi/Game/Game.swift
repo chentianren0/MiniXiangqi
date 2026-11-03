@@ -8,92 +8,13 @@
 // the selection, the notation, the orientation — refreshed from the core after
 // every change rather than maintained as a second truth.
 
+import Foundation
 import MiniXiangqiCore
 import Observation
 
-/// The rules, as this type asks them. `Core` is the only implementation the app
-/// ever runs, and this is not an abstraction over rule engines: it exists
-/// because a core call that fails is a state this type must handle — the ply
-/// refused, the position unchanged, the failure recorded, the transition above
-/// abandoned — and a working core will not produce one on request. A stand-in
-/// may refuse a call; it may never answer a rules question itself.
-///
-/// The seam now speaks to a session. Mutations — beginning a game, a move, an
-/// Undo, the two terminal commits — are what a stand-in refuses, because each
-/// one is a store commit that can genuinely fail; the queries beneath them are
-/// projections of the same session and pass through untouched.
-protocol Rules: AnyObject {
-    /// Whether a session is attached. Creation or resume attaches one;
-    /// everything the board asks speaks to that real game.
-    var hasSession: Bool { get }
-
-    /// Attach the stored active game, if the library holds one. Absence is
-    /// `false` and not an error: an untouched board has nothing to resume.
-    func resumeActive() throws -> Bool
-
-    /// Create and persist the active game from its frozen configuration. It is
-    /// its own act: 开始对局 creates the game, and the first move follows on a
-    /// board that already exists.
-    func create(_ configuration: GameConfiguration) throws
-
-    /// The created game's frozen configuration — mode, resolved human side,
-    /// level, and exact thinking time.
-    func configuration() throws -> GameConfiguration
-
-    /// The session's stable identity, one half of the staleness comparison a
-    /// search result is judged by.
-    func gameID() throws -> String
-
-    /// Commit the human's loss. The third terminal commit, legal exactly when
-    /// `resign_available` reads 1.
-    func resign() throws -> UInt64
-
-    /// Apply one move and commit it before returning.
-    func apply(_ move: String) throws
-
-    /// Take back one decision and commit, returning the plies removed.
-    func undo() throws -> Int
-
-    /// Commit the claimable repetition as the game's draw. The terminal
-    /// commit: the record is in History when this returns.
-    func claimDraw() throws -> UInt64
-
-    /// Commit an unconfirmed natural result as what it is. The other terminal
-    /// commit, made when the player files the game rather than takes it back.
-    func confirmResult() throws -> UInt64
-
-    /// Archive the active game by its own current state and clear it, in one
-    /// transaction. The fourth archiving path, and the only one that may record
-    /// a game as ended early — what the state is worth is the core's to decide
-    /// and never this app's to supply.
-    ///
-    /// It answers rather than returns because it runs off the UI thread, unlike
-    /// every other mutation here: the threading contract keeps this one outside
-    /// the active game's main-actor exception.
-    func archiveActiveAndClear(
-        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void)
-
-    /// The attached session's position and state.
-    func evaluation() throws -> Evaluation
-
-    /// The attached session's complete retained line.
-    func moveHistory() throws -> [String]
-
-    /// The legal moves of the current position.
-    func legalMoves() throws -> [String]
-
-    /// The position after the first `ply` plies, for reading the line back.
-    func fen(atPly ply: Int) throws -> String
-
-    /// Whose move the game's first ply is — the side its start position has to
-    /// move, asked of the core. A game begun from a composed position may open
-    /// with Black, so no ply's mover is ever taken from its parity.
-    func firstMover() throws -> Side
-}
-
 @Observable
 final class Game {
-    private let rules: Rules
+    private let core: Core
 
     /// The retained line, as the core holds it: read back after every
     /// mutation, never maintained as a second copy.
@@ -179,24 +100,24 @@ final class Game {
     /// flow explicitly resumes before calling it. Keeping those two acts above
     /// this type leaves no default game, starting position, configuration or
     /// identity for an absent session to invent.
-    init(rules: Rules) throws {
-        guard rules.hasSession else {
+    init(core: Core) throws {
+        guard core.hasSession else {
             throw CoreError(status: MxqStatus(MXQ_ERR_STATE_ACTIVE_GAME_MISSING),
                             detail: "Game requires an attached session")
         }
-        let configuration = try rules.configuration()
-        let identity = try rules.gameID()
-        let moves = try rules.moveHistory()
+        let configuration = try core.configuration()
+        let identity = try core.gameID()
+        let moves = try core.moveHistory()
         let notation = try Self.notation(reading: moves, game: configuration.game,
-                                         from: rules)
+                                         from: core)
         let lastMove = try moves.last.map {
             try Self.move(reading: $0, on: configuration.game.board)
         }
         let captured = try Self.captured(reading: moves, game: configuration.game,
-                                         from: rules)
-        let evaluation = try rules.evaluation()
-        let firstMover = try rules.firstMover()
-        self.rules = rules
+                                         from: core)
+        let evaluation = try core.evaluation()
+        let firstMover = try core.firstMover()
+        self.core = core
         self.moves = moves
         self.notation = notation
         self.captured = captured
@@ -221,10 +142,10 @@ final class Game {
     /// record's replay gets, so a relaunch and a replay say the same words
     /// about the same game.
     private static func notation(reading moves: [String], game: GameKind,
-                                 from rules: Rules) throws -> [MoveReading] {
+                                 from core: Core) throws -> [MoveReading] {
         do {
             return try MoveReading.line(for: moves, on: game) {
-                Placement(fen: try rules.fen(atPly: $0), game: game)
+                Placement(fen: try core.fen(atPly: $0), game: game)
             }
         } catch {
             throw CoreError(wrapping: error)
@@ -236,10 +157,10 @@ final class Game {
     /// replayed record's are one answer. Nothing at all for a game that
     /// displays no captured pieces, which is every game but Jieqi.
     private static func captured(reading moves: [String], game: GameKind,
-                                 from rules: Rules) throws -> CapturedPieces {
+                                 from core: Core) throws -> CapturedPieces {
         do {
             return try CapturedPieces.line(for: moves, on: game) {
-                Placement(fen: try rules.fen(atPly: $0), game: game)
+                Placement(fen: try core.fen(atPly: $0), game: game)
             }
         } catch {
             throw CoreError(wrapping: error)
@@ -404,7 +325,7 @@ final class Game {
         Self.effect(ofTapAt: square, in: placement, legalMoves: legalMoves,
                     sideToMove: evaluation.sideToMove, selected: selected,
                     acceptsInput: !isFinished && !searchExpected,
-                    confirmsPlacement: Preferences.placementConfirmation.value())
+                    confirmsPlacement: UserDefaults.standard.bool(forKey: "placementConfirmation.enabled"))
     }
 
     /// The same question asked of a position rather than of this game: what a
@@ -492,8 +413,8 @@ final class Game {
         opponentFailure = nil
         guard canUndo else { return }
         do {
-            _ = try rules.undo()
-            moves = try rules.moveHistory()
+            _ = try core.undo()
+            moves = try core.moveHistory()
             // Cut to the line rather than shortened by the count, so a reading
             // that has fallen behind is repaired instead of compounded: the
             // core's line is what a game's readings are of, and after a refused
@@ -523,7 +444,7 @@ final class Game {
         filingFailure = nil
         guard evaluation.claimAvailable, !claimedDraw else { return }
         do {
-            filedRecordID = try rules.claimDraw()
+            filedRecordID = try core.claimDraw()
             claimedDraw = true
             selected = nil
             // The archived session still answers every query; what changes is
@@ -543,7 +464,7 @@ final class Game {
         filingFailure = nil
         guard canResign, filedRecordID == nil else { return }
         do {
-            filedRecordID = try rules.resign()
+            filedRecordID = try core.resign()
             resigned = true
             selected = nil
             // The archived session still answers every query; what changes is
@@ -561,7 +482,7 @@ final class Game {
     /// reply took from it — is read off the position *between* the two moves,
     /// which is this.
     func placement(atPly ply: Int) -> Placement? {
-        guard let fen = try? rules.fen(atPly: ply) else { return nil }
+        guard let fen = try? core.fen(atPly: ply) else { return nil }
         return Placement(fen: fen, game: kind)
     }
 
@@ -578,7 +499,7 @@ final class Game {
         filingFailure = nil
         guard filedRecordID == nil else { return }
         do {
-            filedRecordID = try rules.confirmResult()
+            filedRecordID = try core.confirmResult()
         } catch {
             let failure = CoreError(wrapping: error)
             filingFailure = failure
@@ -606,7 +527,7 @@ final class Game {
         play(move, byOpponent: true)
     }
 
-    private func play(_ move: Move, byOpponent: Bool = false) {
+    func play(_ move: Move, byOpponent: Bool = false) {
         if byOpponent { opponentFailure = nil } else { failure = nil }
         // The position the ply is leaving, kept because the reading is of it —
         // and read only once the ply has been committed and the position it
@@ -615,8 +536,8 @@ final class Game {
         let before = placement
         let ply = moves.count
         do {
-            try rules.apply(move.text)
-            moves = try rules.moveHistory()
+            try core.apply(move.text)
+            moves = try core.moveHistory()
             try refresh()
             notation.append(MoveReading(of: move, in: before, after: placement))
             // What the ply took, read off the position it was played into —
@@ -642,13 +563,13 @@ final class Game {
     /// The projection: the position and state are the core's answers for the
     /// committed game, asked again after every change.
     private func refresh() throws {
-        evaluation = try rules.evaluation()
+        evaluation = try core.evaluation()
         placement = Placement(fen: evaluation.fen, game: kind)
     }
 
     private func refreshLegalMoves() {
         do {
-            legalMoves = try rules.legalMoves().map {
+            legalMoves = try core.legalMoves().map {
                 try Self.move(reading: $0, on: kind.board)
             }
         } catch {
@@ -662,117 +583,3 @@ private struct UnreadableCoreMove: Error, CustomStringConvertible {
     var text: String
     var description: String { "the core returned an unreadable move: \(text)" }
 }
-
-#if DEBUG
-/// A move a replay line asked for and the core will not play.
-private struct RefusedReplayMove: Error, CustomStringConvertible {
-    var text: String
-    var description: String { "the replay line's move \(text) is not legal here" }
-}
-
-extension Game {
-    /// Plays a recorded line before the game is first shown, so a UI test can
-    /// start from a position that would otherwise take a dozen clicks to reach.
-    /// It goes through the same path a person's move does — the session already
-    /// exists and every ply commits — so nothing here knows a rule the core has
-    /// not been asked. A refused move is a bug in the line rather than a rules
-    /// outcome, so it is raised rather than skipped.
-    ///
-    /// Debug only: it is a test affordance, not a product one.
-    func replay(_ line: [String]) throws {
-        for text in line {
-            guard let move = Move(text: text, on: kind.board), legalMoves.contains(move) else {
-                throw CoreError(wrapping: RefusedReplayMove(text: text))
-            }
-            play(move)
-            if let failure { throw failure }
-        }
-    }
-}
-
-/// The refusal the seam exists for.
-struct RefusedByTheCore: Error { }
-
-/// The real core, with a switch that makes it refuse. Every answer here is the
-/// core's own — nothing decides a rule — and refusing is the only way to reach
-/// the state a failed commit leaves behind, which everything above has to
-/// survive: the ply refused, the position unchanged, a transition holding
-/// nothing to draw, the capsule saying so. It refuses the mutations, because
-/// those are the commits that can genuinely fail; the queries beneath them
-/// keep answering, as a live core's would while its disk does not.
-///
-/// In the app it stands behind `-mxq-refuse-saves`, so a screenshot of the
-/// save-failure state can come from the real screen; in the unit suite it is
-/// the stand-in the failure tests hold.
-final class RefusingRules: Rules {
-    private let real: Rules
-    var refuses: Bool
-
-    init(_ real: Rules, refuses: Bool = false) {
-        self.real = real
-        self.refuses = refuses
-    }
-
-    private func refuseIfAsked() throws {
-        if refuses { throw CoreError(wrapping: RefusedByTheCore()) }
-    }
-
-    var hasSession: Bool { real.hasSession }
-    func resumeActive() throws -> Bool { try real.resumeActive() }
-    func configuration() throws -> GameConfiguration { try real.configuration() }
-    func gameID() throws -> String { try real.gameID() }
-
-    /// Creation is deliberately *not* refused. `-mxq-refuse-saves` exists to
-    /// photograph the refused-ply state, and a stand-in that would not let a
-    /// game be created could never reach a ply to refuse.
-    func create(_ configuration: GameConfiguration) throws {
-        try real.create(configuration)
-    }
-
-    func resign() throws -> UInt64 {
-        try refuseIfAsked()
-        return try real.resign()
-    }
-
-    func apply(_ move: String) throws {
-        try refuseIfAsked()
-        try real.apply(move)
-    }
-
-    func undo() throws -> Int {
-        try refuseIfAsked()
-        return try real.undo()
-    }
-
-    func claimDraw() throws -> UInt64 {
-        try refuseIfAsked()
-        return try real.claimDraw()
-    }
-
-    func confirmResult() throws -> UInt64 {
-        try refuseIfAsked()
-        return try real.confirmResult()
-    }
-
-    /// The refusal answers on the next turn rather than inside the call, which
-    /// is the one thing this stand-in has to copy about the real one: the real
-    /// archive runs on a queue and can never answer before the press that asked
-    /// for it has finished being handled. An answer that arrived inside the
-    /// press would reach an alert that is still dismissing itself.
-    func archiveActiveAndClear(
-        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void
-    ) {
-        guard refuses else {
-            real.archiveActiveAndClear(completion: completion)
-            return
-        }
-        Task { @MainActor in completion(.failure(CoreError(wrapping: RefusedByTheCore()))) }
-    }
-
-    func evaluation() throws -> Evaluation { try real.evaluation() }
-    func moveHistory() throws -> [String] { try real.moveHistory() }
-    func legalMoves() throws -> [String] { try real.legalMoves() }
-    func fen(atPly ply: Int) throws -> String { try real.fen(atPly: ply) }
-    func firstMover() throws -> Side { try real.firstMover() }
-}
-#endif

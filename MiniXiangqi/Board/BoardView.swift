@@ -26,11 +26,6 @@ struct BoardView: View {
     var placement: Placement
     var flipped: Bool = false
 
-    /// Whether the two file-numeral strips are drawn. Always, in the product;
-    /// a debug launch argument takes them off so the board can be looked at
-    /// both ways at the same window size.
-    var showsNumerals: Bool = true
-
     /// The point the player is holding: the piece taken up in a movement game,
     /// and the marked point awaiting confirmation in a placement one.
     var selected: Square?
@@ -114,12 +109,7 @@ struct BoardView: View {
     /// The 棋子符号 preference, read here because this is the one place every
     /// board comes from — play, replay, and any snapshot alike — so the switch
     /// reaches all of them without either screen having to know about it.
-    ///
-    /// Held as the stored string rather than as `PieceSymbols` so that an
-    /// unrecognised value is the default rather than a crash, and observed
-    /// rather than merely read so that flipping the preference in Settings
-    /// repaints the board that is already on screen.
-    @AppStorage(PieceSymbols.key, store: Preferences.defaults) private var storedSymbols: String?
+    @AppStorage(PieceSymbols.key) private var symbols: PieceSymbols = .hanzi
 
     /// The 记谱法 preference, which the strips follow: the strips exist so a
     /// player can map the move list to the board, so a WXF list beside a 一二三
@@ -127,7 +117,7 @@ struct BoardView: View {
     /// changing the preference re-renders them live — and unchosen, it is the
     /// interface language's own reading, so the strips and the list agree from
     /// the first launch in either language.
-    @AppStorage(NotationStyle.key, store: Preferences.defaults)
+    @AppStorage(NotationStyle.key)
     private var notationStyle: NotationStyle = .resolvedForInterfaceLanguage
 
     /// The arrival wires, each fired on the frame its animation reaches its
@@ -143,10 +133,7 @@ struct BoardView: View {
 
     var body: some View {
         block
-        // The pitch is unchanged either way, so the two renderings differ by
-        // exactly the room the strips take and by nothing else.
-        .frame(width: showsNumerals ? geometry.blockSize.width : geometry.coreSize.width,
-               height: showsNumerals ? geometry.blockSize.height : geometry.coreSize.height)
+        .frame(width: geometry.blockSize.width, height: geometry.blockSize.height)
         // The surface behind the whole block, which is what runs past it where
         // the layout asks. The core and the strips carry their own fill too, so
         // this changes nothing at all where the bleed is none.
@@ -163,19 +150,19 @@ struct BoardView: View {
         switch geometry.coordinates {
         case .fileNumerals:
             VStack(spacing: 0) {
-                if showsNumerals { numeralStrip(atTop: true) }
+                numeralStrip(atTop: true)
                 core
-                if showsNumerals { numeralStrip(atTop: false) }
+                numeralStrip(atTop: false)
             }
         case .goStyle:
             // Top-aligned, so the numbers up the side stand beside the core's
             // own rows rather than being centred against the block the letter
             // strip beneath makes taller.
             HStack(alignment: .top, spacing: 0) {
-                if showsNumerals { rankNumberStrip }
+                rankNumberStrip
                 VStack(spacing: 0) {
                     core
-                    if showsNumerals { fileLetterStrip }
+                    fileLetterStrip
                 }
             }
         }
@@ -224,7 +211,7 @@ struct BoardView: View {
     private var refusal: some View {
         if let refused {
             PieceDisc(piece: refused.piece, pitch: p, board: geometry.board,
-                      style: style, symbols: PieceSymbols.named(storedSymbols))
+                      style: style, symbols: symbols)
                 .offset(x: policy.reduceMotion
                         ? 0 : Motion.refusalOffset(refused.shake) * p)
                 .opacity(1 - refused.shake)
@@ -239,7 +226,7 @@ struct BoardView: View {
         BoardCanvas(geometry: geometry,
                     placement: placement,
                     style: style,
-                    symbols: PieceSymbols.named(storedSymbols),
+                    symbols: symbols,
                     policy: policy,
                     destinations: destinations,
                     captures: captures,

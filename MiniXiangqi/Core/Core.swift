@@ -668,17 +668,11 @@ final class Core {
     }
 
     /// Where the app's own store lives. Debug builds take
-    /// `-mxq-store-name <name>` so that every UI-test launch gets a store of
-    /// its own and no test can touch a game the player is keeping. A name and
-    /// deliberately not a path: the test runner and the app live in different
-    /// sandbox containers, so an absolute path minted in the runner's world is
-    /// exactly what the app cannot write. The name resolves inside the app's
-    /// own temporary directory — relaunching with the same name is the same
-    /// store, which is what the resume tests are about — and the system owns
-    /// reclaiming it.
+    /// `-mxq-store-name <name>`, a scratch store in the app's temporary
+    /// directory, so a UI test never plays into the player's own library.
     private static func storeDirectory() -> String {
         #if DEBUG
-        if let name = DebugLaunch.argument(after: "-mxq-store-name") {
+        if let name = UserDefaults.standard.string(forKey: "mxq-store-name") {
             return FileManager.default.temporaryDirectory
                 .appendingPathComponent(name, isDirectory: true).path
         }
@@ -918,9 +912,9 @@ final class Core {
 
 }
 
-// MARK: - The rules seam
+// MARK: - The attached session
 
-extension Core: Rules {
+extension Core {
 
     var hasSession: Bool { session != nil }
 
@@ -1130,8 +1124,7 @@ extension Core {
                 active = attached
                 opened = true
             } catch {
-                // On a later turn, like every other answer this call makes. The
-                // rule is the seam's own and its stand-in documents it: an
+                // On a later turn, like every other answer this call makes: an
                 // answer arriving inside the press that asked for it would
                 // reach an alert still dismissing itself. A refusal that
                 // answered synchronously while the transaction answered from a
@@ -1371,10 +1364,17 @@ nonisolated enum NearbyEnding: Equatable, Sendable {
     case agreedDraw
 }
 
-/// The library, as the nearby layer needs it: the rules seam every board
-/// speaks through, plus the four calls that exist only for a game two devices
-/// play.
-protocol NearbyLibrary: Rules {
+/// The library, as the nearby layer needs it: the attached session, plus the
+/// calls that exist only for a game two devices play.
+protocol NearbyLibrary: AnyObject {
+    var hasSession: Bool { get }
+    func resumeActive() throws -> Bool
+    func moveHistory() throws -> [String]
+    func apply(_ move: String) throws
+    func claimDraw() throws -> UInt64
+    func confirmResult() throws -> UInt64
+    func archiveActiveAndClear(
+        completion: @escaping @MainActor (Result<UInt64, CoreError>) -> Void)
     /// Let go of the attached session without ending its game. The library
     /// keeps its active game, and the next resume reads it back.
     func endSession()

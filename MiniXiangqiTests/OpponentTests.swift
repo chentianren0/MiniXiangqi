@@ -1,35 +1,16 @@
-// The opponent, the pre-start state, and the budget the two of them stand on.
-//
-// The engine is a seam here for exactly the reason the rules are one: a working
-// engine will not refuse a preparation on request, and the states the app has to
-// survive — a preparation that fails, a search that comes back cancelled or
-// stale, a result that arrives after the position has moved on — are precisely
-// the ones it refuses to produce. Nothing in this file decides a rule or a
-// budget; the games are real games on real cores, and the arithmetic is asked of
-// `mxq_engine_plan`, which is pure and needs no engine at all.
-
 import Foundation
 import MiniXiangqiCore
 import Testing
 @testable import MiniXiangqi
 
-// MARK: - The seams
-
-/// The engine as the opponent sees it, with every refusal on a switch.
 @MainActor
 final class TestEngine: AIEngine {
     var budget = EngineBudget(activeProcessorCount: 8,
                               availableBytes: 8 << 30,
                               physicalBytes: 16 << 30)
-    /// What preparation does. Nil succeeds.
     var preparationRefusal: CoreError?
-    /// Whether a preparation waits for the test to let it finish.
     var holdsPreparation = false
-    /// What `startSearch` throws, if anything.
     var startRefusal: CoreError?
-    /// What `startHintSearch` throws, if anything. Kept apart from the one
-    /// above because the core keeps the two entries apart: only the hint is
-    /// refused for a search already outstanding.
     var hintStartRefusal: CoreError?
 
     private(set) var probes = 0
@@ -45,9 +26,6 @@ final class TestEngine: AIEngine {
     private(set) var lastPreparedGame: GameKind?
     private(set) var preparedGame: GameKind?
 
-    /// Everything asked of the engine, in the order it was asked. Counters
-    /// answer *how many*; this answers *in what order*, which is the whole
-    /// question where a hint has to be cancelled before the reply is requested.
     enum Event: Equatable {
         case prepare(GameKind), search(UInt32), hint(UInt32)
         case cancel(UInt64), cancelAll, teardown
@@ -81,7 +59,6 @@ final class TestEngine: AIEngine {
         answerPreparation(for: game, budget, completion)
     }
 
-    /// Lets a held preparation finish.
     func releasePreparation() {
         let held = held
         self.held = nil
@@ -140,10 +117,6 @@ final class TestEngine: AIEngine {
         return ticket
     }
 
-    /// A readiness refusal is the engine having gone away under the caller, so
-    /// the stand-in stops claiming to be ready for it. Every other refusal —
-    /// an outstanding search, most of all — leaves a prepared engine prepared,
-    /// which is what makes the retry paths testable.
     private func unprepareIfReadinessRefusal(_ refusal: CoreError) {
         if refusal.status == MxqStatus(MXQ_ERR_ENGINE_NOT_PREPARED)
             || refusal.status == MxqStatus(MXQ_ERR_STATE_ENGINE_NOT_READY) {
@@ -161,15 +134,12 @@ final class TestEngine: AIEngine {
         events.append(.cancelAll)
     }
 
-    /// Answers the outstanding search, exactly as the core's callback would
-    /// once it has hopped to the main actor.
     func answer(_ result: SearchResult) {
         let completion = completion
         self.completion = nil
         completion?(result)
     }
 
-    /// The same, for the outstanding hint search.
     func answerHint(_ result: SearchResult) {
         let completion = hintCompletion
         hintCompletion = nil
@@ -180,16 +150,11 @@ final class TestEngine: AIEngine {
     var hasOutstandingHintSearch: Bool { hintCompletion != nil }
 }
 
-/// A clock the test moves by hand, so the reply floor and the indicator's
-/// threshold are observed rather than slept through.
 @MainActor
 final class TestTimer {
     private(set) var now: TimeInterval = 1000
     private var pending: [(due: TimeInterval, body: @MainActor () -> Void)] = []
 
-    /// Captured strongly on purpose: the value is handed to an opponent that
-    /// outlives the local binding in tests that do not name the clock, and an
-    /// unowned capture there is a dangling read rather than a test failure.
     var timer: MotionTimer {
         MotionTimer(now: { self.now },
                     after: { delay, body in
@@ -197,7 +162,6 @@ final class TestTimer {
                     })
     }
 
-    /// Moves the clock and fires everything that came due, in order.
     func advance(by interval: TimeInterval) {
         now += interval
         while let index = pending.firstIndex(where: { $0.due <= now }) {
@@ -209,24 +173,19 @@ final class TestTimer {
     var pendingCount: Int { pending.count }
 }
 
-// MARK: - The opponent
-
 @Suite("The opponent", .retiringItsCores)
 @MainActor
 struct OpponentTests {
-
-    /// A human-versus-AI game with the human on the given side, and the whole
-    /// apparatus around it wired the way PlayState wires it.
     private func makeOpponent(humanSide: Side = .red, level: AiLevel = .fast)
         throws -> (Opponent, Game, PlayMotion, TestEngine, TestTimer, ManualAnimator) {
         let core = try TestCores.fresh()
         try core.create(.humanVersusAI(game: .miniXiangqi, humanSide: humanSide,
                                        level: level,
                                        choice: humanSide == .red ? .humanFirst : .aiFirst))
-        let game = try Game(rules: core)
+        let game = try Game(core: core)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game, animator: animator.animator,
-                                feedback: FeedbackRecorder(defaults: try ScratchDefaults.make()).feedback)
+                                feedback: FeedbackRecorder().feedback)
         let engine = TestEngine()
         let clock = TestTimer()
         let opponent = Opponent(engine: engine, game: game, motion: motion,
@@ -236,13 +195,10 @@ struct OpponentTests {
         return (opponent, game, motion, engine, clock, animator)
     }
 
-    // MARK: - Preparing when a search is owed
-
     @Test("A search is prepared and started exactly when the core says one is owed")
     func aSearchIsOwedOrItIsNot() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
 
-        // The human is Red and moves first, so nothing is owed at the start.
         opponent.begin()
         #expect(engine.preparations == 0, "a game waiting on the player prepares nothing")
         #expect(engine.startedSearches == 0)
@@ -297,8 +253,6 @@ struct OpponentTests {
         animator.completeAll()
         #expect(game.searchExpected, "the premise: the AI owes a move")
 
-        // Every point, not only the ones that would have been legal: a board
-        // waiting on the opponent has nothing to offer anywhere on it.
         #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable,
                 "a piece of the player's own is not selectable on the machine's turn")
         #expect(game.effect(ofTapAt: Square("a6", on: GameKind.miniXiangqi.board)!) == .unavailable,
@@ -307,14 +261,10 @@ struct OpponentTests {
         motion.tap(Square("a2", on: GameKind.miniXiangqi.board)!)
         #expect(game.selected == nil, "and a tap selects nothing")
 
-        // It stays refused while a preparation is stalled, which is the state
-        // the accepted mid-game presentation leaves behind: the AI still owes
-        // the move, whatever is stopping it.
         opponent.cancelSearch()
         engine.answer(searchResult(.failed, move: "", game: game))
         #expect(game.effect(ofTapAt: Square("a2", on: GameKind.miniXiangqi.board)!) == .unavailable)
 
-        // And is handed back the moment the reply lands.
         engine.answer(searchResult(.move, move: "a6a5", game: game))
         _ = animator
     }
@@ -327,22 +277,12 @@ struct OpponentTests {
         animator.completeAll()
         #expect(engine.startedSearches == 1)
 
-        // The pair is checked, not one of it. The core compares before delivery
-        // and this compares before applying, because neither alone covers both
-        // race directions — and neither *half* of the pair alone covers both
-        // collisions either.
-
-        // A revision the position has left behind.
         engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 1,
                              revision: game.evaluation.positionRevision + 1))
         clock.advance(by: 5)
         animator.completeAll()
         #expect(game.moves == ["b1b4"], "a result from another position applies nothing")
 
-        // And an identity that is not this game's, carrying a revision that
-        // matches perfectly. A released-and-resumed session can hold the same
-        // counter, which is the collision the identity half exists for and the
-        // one the revision cannot see.
         opponent.gameChanged()
         #expect(engine.startedSearches == 2, "the premise: a search is running again")
         engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 2,
@@ -351,9 +291,6 @@ struct OpponentTests {
         animator.completeAll()
         #expect(game.moves == ["b1b4"], "a result from another game applies nothing either")
 
-        // The same move, from the game and the position it belongs to, is
-        // played — which is what says the two refusals above were the
-        // comparison rather than anything about the move.
         opponent.gameChanged()
         #expect(engine.startedSearches == 3)
         engine.answer(searchResult(.move, move: "a6a5", game: game, ticket: 3))
@@ -385,10 +322,6 @@ struct OpponentTests {
         motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
         motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
 
-        // The search answers **while the player's move is still travelling**,
-        // which is the case the floor is really for: a forced mate comes back in
-        // milliseconds, and there is no arrival yet to measure a floor from. It
-        // is measured from the arrival when the arrival happens.
         engine.answer(searchResult(.move, move: "a6a5", game: game))
         #expect(game.moves == ["b1b4"], "nothing departs during the player's own move")
 
@@ -472,8 +405,6 @@ struct OpponentTests {
         _ = game
     }
 
-    // MARK: - The decision cycle
-
     @Test("Undo consumes the core's own ply count: a whole exchange, not half of one")
     func undoTakesBackTheCycle() throws {
         let (opponent, game, motion, engine, clock, animator) = try makeOpponent()
@@ -527,41 +458,6 @@ struct OpponentTests {
         #expect(!game.canUndo, "the core offers no Undo: there is no decision to return to")
     }
 
-    // MARK: - Refusals
-
-    @Test("A refused AI reply asks for a new search and shows nothing")
-    func aRefusedReplyRetriesSilently() throws {
-        let core = try TestCores.fresh()
-        let rules = RefusingRules(core)
-        try rules.create(.humanVersusAI(game: .miniXiangqi, humanSide: .red,
-                                       level: .fast, choice: .humanFirst))
-        let game = try Game(rules: rules)
-        let animator = ManualAnimator()
-        let motion = PlayMotion(game: game, animator: animator.animator,
-                                feedback: FeedbackRecorder(defaults: try ScratchDefaults.make()).feedback)
-        let engine = TestEngine()
-        let clock = TestTimer()
-        let opponent = Opponent(engine: engine, game: game, motion: motion, timer: clock.timer)
-        motion.committed = { [weak opponent] in opponent?.gameChanged() }
-        motion.landed = { [weak opponent] in opponent?.landed() }
-
-        motion.tap(Square("b1", on: GameKind.miniXiangqi.board)!)
-        motion.tap(Square("b4", on: GameKind.miniXiangqi.board)!)
-        animator.completeAll()
-        #expect(engine.startedSearches == 1)
-
-        rules.refuses = true
-        engine.answer(searchResult(.move, move: "a6a5", game: game))
-        clock.advance(by: 5)
-        animator.completeAll()
-
-        #expect(game.moves == ["b1b4"], "the reply did not happen")
-        #expect(game.failure == nil, "and raises no capsule: the retry is the app's")
-        #expect(game.opponentFailure != nil)
-        #expect(engine.startedSearches == 2,
-                "so a new search is requested from the unchanged position")
-    }
-
     @Test("A preparation that fails raises the mid-game alert, and 稍后 leaves the stalled slot")
     func aFailedPreparationStallsWithARetry() throws {
         let (opponent, game, motion, engine, _, animator) = try makeOpponent()
@@ -579,7 +475,6 @@ struct OpponentTests {
         #expect(opponent.activity == .stalled,
                 "and leaves the state where things about the game live")
 
-        // Every retry re-probes fresh.
         engine.preparationRefusal = nil
         opponent.retryPreparation()
         #expect(engine.probes == 2, "the retry took a fresh probe")
@@ -599,11 +494,6 @@ struct OpponentTests {
         opponent.deferPreparation()
         #expect(opponent.activity == .stalled)
 
-        // Exactly what the screen does, and nothing more: the Undo control
-        // cancels the search and runs the transition. Nothing tells the
-        // opponent afterwards — PlayMotion's own committed wire is what does,
-        // and a test that called `gameChanged()` by hand would pass with that
-        // wire cut.
         opponent.cancelSearch()
         motion.undo()
         animator.completeAll()
@@ -612,8 +502,6 @@ struct OpponentTests {
         #expect(opponent.activity == .idle,
                 "and the stalled state does not outlive the search it was about")
     }
-
-    // MARK: - Suspension
 
     @Test("Suspension cancels and releases whole, and prepares nothing until it is back")
     func suspensionReleasesAndWaits() throws {

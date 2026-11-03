@@ -13,10 +13,7 @@
 
 import Foundation
 
-/// The 记谱法 preference. UserDefaults, standard domain, read at the moment of
-/// use; absent — or anything unrecognized — means the default `resolved` below
-/// names. The key is the interface between this and the Settings screen that
-/// offers it.
+/// The 记谱法 preference. Absent, it is the default `resolved` below names.
 enum NotationStyle: String, CaseIterable {
     case traditional
     case wxf

@@ -1338,7 +1338,7 @@ struct NearbyFlowTests {
         NearbyPlay(session: session, driver: driver, positions: positions,
                    interruption: interruption, flipped: flipped,
                    animator: ManualAnimator().animator,
-                   feedback: Feedback(perform: { _ in }, play: { _ in }))
+                   feedback: Feedback(play: { _ in }))
     }
 
     private func session(id: String = "S", proposer: Party,

@@ -491,6 +491,7 @@ struct NearbyBoardScreen: View {
                       onTravelArrival: { play.travelArrived() },
                       onFadeArrival: { play.fadeArrived() },
                       onFlipArrival: { play.flipArrived() })
+                .boardHaptics(landings: play.landings, refusals: play.refusals)
 
             // The notice waits for the landing: a result arrives with a move,
             // and the move has to finish being shown before an announcement

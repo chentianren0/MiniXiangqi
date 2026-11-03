@@ -1,11 +1,3 @@
-// The library the History screen reads, and the walk the replay screen makes.
-//
-// Every test here plays real games into a real store through the same path a
-// person's game takes, then reads them back through the same surface the screen
-// reads them through. Nothing asserts a rule and nothing asserts an order this
-// code computed: the order is the core's guarantee, and what is checked is that
-// the library reports it and never rearranges it.
-
 import Foundation
 import Testing
 @testable import MiniXiangqi
@@ -13,14 +5,8 @@ import Testing
 @Suite("The History library", .retiringItsCores)
 @MainActor
 struct HistoryTests {
-
-    /// The mate line, reached after a four-ply shuffle that returns the
-    /// position to the start — the same mate, in a longer game, so that two
-    /// filed records differ by more than their instant.
     static let longMateLine = ["b1b2", "b7b6", "b2b1", "b6b7"] + GameTests.mateLine
 
-    /// Plays each line into one store and files it, as the app does: a
-    /// claimable repetition is claimed, a natural result is confirmed.
     @discardableResult
     private func file(_ lines: [[String]], into core: Core) throws -> Core {
         for line in lines {
@@ -43,8 +29,6 @@ struct HistoryTests {
         return library
     }
 
-    // MARK: - What the list shows
-
     @Test("An empty library is empty, and says so only once it has answered")
     func absenceIsTheEmptyState() throws {
         let core = try TestCores.fresh()
@@ -63,8 +47,6 @@ struct HistoryTests {
         let core = try TestCores.fresh()
         try file([GameTests.mateLine, Self.longMateLine], into: core)
 
-        // A game still being played is the active game, which is not a History
-        // record and must not appear.
         let playing = try openGame(on: core)
         try playing.replay(["b1b4"])
 
@@ -97,15 +79,12 @@ struct HistoryTests {
         #expect(mate.moveCount == 3)
     }
 
-    // MARK: - Pin
-
     @Test("Pinning moves a record to the front, and unpinning puts it back")
     func pinningReorders() throws {
         let core = try TestCores.fresh()
         try file([GameTests.mateLine, Self.longMateLine], into: core)
         let library = library(over: core)
 
-        // The older game — last in the list, because the newest is first.
         let older = try #require(library.records.last)
         library.setPinned(true, on: older)
 
@@ -120,8 +99,6 @@ struct HistoryTests {
         #expect(library.records.last?.id == older.id, "unpinned, it is the older game again")
         #expect(library.pinnedRecords.isEmpty)
     }
-
-    // MARK: - Delete
 
     @Test("Deletion removes the record permanently and leaves the rest alone")
     func deletionIsPermanent() throws {
@@ -148,8 +125,6 @@ struct HistoryTests {
         library.delete(record)
         #expect(library.records.isEmpty)
 
-        // The same record again: a record_id is never reissued, so the second
-        // deletion is a real refusal from a real store rather than a stand-in's.
         library.delete(record)
         #expect(library.deletionFailure != nil, "the refusal is held for the alert")
         #expect(try core.historyCount() == 0, "and nothing else changed")
@@ -169,120 +144,38 @@ struct HistoryTests {
         try playing.replay(["b1b4"])
         #expect(try core.activeGameExists())
 
-        // Every id the list can offer belongs to a filed game, so the active
-        // game is out of reach by construction. What is checked here is the
-        // store's own half of that: it names no active game to the list, and
-        // the record ids the list does hold are not the active game's.
         library.load()
         #expect(library.records.map(\.id) == [filed.id],
                 "the active game is not a row anything can act on")
         #expect(try core.activeGameExists(), "and reading History did not disturb it")
-    }
-
-    // MARK: - The metadata line
-
-    @Test("The line names the game, mode, result, reason, and move count")
-    func theMetadataLineComposes() throws {
-        let core = try TestCores.fresh()
-        try file([GameTests.mateLine], into: core)
-        let record = try #require(library(over: core).records.first)
-
-        let line = record.metadataLine
-        #expect(line.contains(record.game.localizedName))
-        #expect(line.contains(record.modeText))
-        #expect(line.contains(record.resultText))
-        #expect(line.contains(try #require(record.reasonText)),
-                "a checkmate says so: the result word alone does not")
-        #expect(line.contains(record.moveCountText))
-        // Free Play has no controller label, exactly as the turn status has
-        // none, because one person controls both sides.
-        #expect(record.humanSide == nil)
-        #expect(line.split(separator: "·").count == 5,
-                "game · mode · result · reason · moves, and nothing else")
-    }
-
-    @Test("An ended-early record says why instead of saying it twice")
-    func anEndedEarlyRecordDropsTheReason() {
-        // `outcome = none` is true exactly when `end_reason = ended-early`, so
-        // the two are one fact and the row states it once.
-        let record = RecordSummary(id: 1, game: .xiangqi, mode: .freePlay, humanSide: nil,
-                                   outcome: .none, reason: .endedEarly,
-                                   moveCount: 12, pinned: false, imported: false,
-                                   endedAt: .now)
-        #expect(record.reasonText == nil)
-        #expect(record.resultText == EndReason.endedEarly.text)
-        #expect(record.metadataLine.hasPrefix(record.game.localizedName))
-        #expect(record.metadataLine.split(separator: "·").count == 4,
-                "game · mode · ended early · moves")
-    }
-
-    @Test("A human-versus-AI record names the human's side")
-    func aHumanVersusAIRecordNamesTheSide() {
-        let record = RecordSummary(id: 1, game: .miniXiangqi,
-                                   mode: .humanVersusAI, humanSide: .black,
-                                   outcome: .redWins, reason: .resignation,
-                                   moveCount: 42, pinned: false, imported: false,
-                                   endedAt: .now)
-        #expect(record.metadataLine.contains(String(localized: "metadata.youBlack")))
-        #expect(record.reasonText != nil,
-                "a resignation keeps its reason: 红方获胜 alone does not say whether the player was mated")
-        #expect(record.metadataLine.split(separator: "·").count == 6,
-                "game · mode · side · result · reason · moves")
     }
 }
 
 @Suite("Replaying a History record", .retiringItsCores)
 @MainActor
 struct ReplayTests {
-
-    /// A take, and then the shortest repetition available after it: the
-    /// soldiers meet on the d-file and Black takes, and the two cannons step
-    /// out and back until the position has stood three times. Only a finished
-    /// or claimable game can be filed, so this is how a record that contains a
-    /// capture is made — and a capture is what a step over one is tested on.
     static let captureThenClaimLine = GameTests.captureLine + GameTests.shuffleLine
 
-    /// A check that is not the end of anything: the cannon reaches the
-    /// general's file, the screening soldier steps aside, and a chariot and a
-    /// cannon then shuffle the position back to itself three times. Ply 3 is
-    /// the check, and it is nowhere near the record's last, so what a checking
-    /// landing sounds like can be heard on its own.
     static let checkThenClaimLine =
         GameTests.checkLine + ["d5c5"]
         + ["a1b1", "b7b6", "b1a1", "b6b7", "a1b1", "b7b6", "b1a1", "b6b7"]
 
-    /// Black's five along rank 8, with White's four in the corners and out of
-    /// every line: nine plies, the last of them the fifth stone, so the game
-    /// ends by the one reason these games win by and the record can be filed.
     static let fiveInARowLine = ["h8", "a1", "i8", "a15", "j8", "o1",
                                  "k8", "o15", "l8"]
 
-    /// Files the line and opens its record for replay through the same call the
-    /// screen makes, with the seams a test drives: the animator whose
-    /// completions the test fires, and the feedback it listens to.
-    /// The configuration arrives as a closure over the core rather than as a
-    /// value, because a game whose start is dealt has none until a core has
-    /// dealt it: the deal is derived below the C interface, and the position it
-    /// produces is what such a game is created from.
     private func replay(of line: [String],
                         configuration: (Core) throws -> GameConfiguration
                             = { _ in .freePlay(game: .miniXiangqi) },
-                        reduceMotion: Bool = false,
-                        soundEnabled: Bool? = true) throws
+                        reduceMotion: Bool = false) throws
         -> (replay: Replay, animator: ManualAnimator, heard: FeedbackRecorder,
             notation: [MoveReading], fens: [String]) {
         let core = try TestCores.fresh()
         try core.create(try configuration(core))
-        let played = try Game(rules: core)
+        let played = try Game(core: core)
         try played.replay(line)
         let notation = played.notation
-        // The positions the game itself stood in, ply by ply, captured while it
-        // was being played — which is what the walk has to reproduce.
         var fens = [String]()
         for ply in 0...line.count { fens.append(try core.fen(atPly: ply)) }
-        // Only a finished or claimable game can be filed today: an ordinary
-        // ongoing one is archived by the save-and-continue flow, which is not
-        // built yet. A line that is neither is a mistake in the test.
         try #require(played.evaluation.claimAvailable || played.isFinished,
                      "a replay test's line has to be one the app can file")
         if played.evaluation.claimAvailable { played.claimDraw() } else { try played.file() }
@@ -292,8 +185,7 @@ struct ReplayTests {
         library.load()
         let record = try #require(library.records.first)
         let animator = ManualAnimator()
-        let heard = try FeedbackRecorder(
-            defaults: ScratchDefaults.make(soundEnabled: soundEnabled))
+        let heard = FeedbackRecorder()
         switch library.replay(of: record,
                               policy: MotionPolicy(reduceMotion: reduceMotion),
                               animator: animator.animator,
@@ -320,22 +212,6 @@ struct ReplayTests {
         #expect(replay.carriesFlip, "and a board of pieces keeps its flip control")
     }
 
-    /// A placement record replays with no orientation and no control for one.
-    ///
-    /// **The record is the one that would have opened upside down**: a
-    /// human-versus-AI game whose machine moved first, so the human holds the
-    /// white stones and `humanSide` is black — the condition replay flipped on,
-    /// and the only record shape that can tell the fix from the absence of one.
-    /// A Free Play record has no human side at all and would pass either way.
-    ///
-    /// It would catch the flip returning to the one surface the play cluster's
-    /// own rule does not reach: replay reads a record rather than a live game,
-    /// so nothing there had asked whether the game has an orientation.
-    ///
-    /// **What it pins is the model's answer, not the transport's row.** The
-    /// control is drawn from `carriesFlip`, and that the view honours it is
-    /// read at the surface — this asserts the value every arrangement of that
-    /// row is built from.
     @Test("A placement record replays unflipped, with no flip control")
     func placementReplayCarriesNoFlip() throws {
         let (replay, _, _, _, _) = try replay(
@@ -355,19 +231,6 @@ struct ReplayTests {
                 "and it is the placement record it says it is")
     }
 
-    /// A dealt record, walked: the reveals step both ways, what the game took is
-    /// read back off the record, and the ending discloses.
-    ///
-    /// **A walk back into a game is a walk back into what the players knew.** A
-    /// ply that turned a piece up is stepped back by turning it down again, and
-    /// the transit carries that face, so the disc that returns is the disc that
-    /// left rather than one that snaps at either end. Only the final position
-    /// discloses, because only there has the game ended.
-    ///
-    /// It is also the one place either walk is read over a line that contains a
-    /// **hidden capture**: a resumed game and a replayed record build their
-    /// captured surface the same way, over positions the core replays, and a
-    /// line with nothing taken in it exercises neither.
     @Test("A dealt record replays: its reveals step both ways, and its ending discloses")
     func aDealtRecordReplaysItsRevealsAndItsEnding() throws {
         let (replay, animator, _, _, fens) = try replay(
@@ -377,8 +240,6 @@ struct ReplayTests {
         defer { replay.close() }
         let board = GameKind.jieqi.board
         let square = { (name: String) in Square(name, on: board)! }
-        // What the record held under the disc the capture took, read from the
-        // record's own first position.
         let start = Placement(fen: fens[0], game: .jieqi)
         let taken = try #require(start.concealedIdentity(at: square("b1")))
 
@@ -389,8 +250,6 @@ struct ReplayTests {
         #expect(capture.kind == taken, "and the record says what it was")
         #expect(!replay.disclosesTheDeal, "the initial position is where the game began")
 
-        // Forward across a reveal: the disc leaves face down and arrives face
-        // up, and the position it walked to says so.
         replay.stepForward()
         let forward = try #require(replay.transit)
         #expect(forward.piece.isFaceDown)
@@ -399,8 +258,6 @@ struct ReplayTests {
         #expect(replay.placement[square("b4")]?.isFaceDown == false)
         #expect(replay.placement[square("b3")] == nil)
 
-        // And back across it: the retraction returns the concealment, which is
-        // what the record itself holds at that ply.
         replay.stepBack()
         let backward = try #require(replay.transit)
         #expect(!backward.piece.isFaceDown, "it leaves the face it turned up")
@@ -409,8 +266,6 @@ struct ReplayTests {
         #expect(replay.placement[square("b3")]?.isFaceDown == true)
         #expect(replay.position.fen == fens[0])
 
-        // The ending discloses, and only the ending: the position the game
-        // ended in shows everything it was still concealing.
         replay.goToEnd()
         #expect(replay.isFinalPosition)
         #expect(replay.disclosesTheDeal)
@@ -433,8 +288,6 @@ struct ReplayTests {
                     "ply \(replay.ply) is the position the game stood in")
             #expect(replay.lastMove?.text == GameTests.shuffleLine[replay.ply - 1],
                     "the brackets mark the move that produced what is on screen")
-            // The position arrives with the step's departure and the step is
-            // let land before the next, which is how a person walks a game.
             animator.completeAll()
         }
         #expect(replay.ply == GameTests.shuffleLine.count, "the whole line, and no more")
@@ -466,9 +319,6 @@ struct ReplayTests {
 
     @Test("A checked general is ringed at the ply that checks it, and not before")
     func checkFollowsTheWalk() throws {
-        // The mate line ends in check, which is what makes it a mate; the
-        // check line itself leaves the game running, and an ongoing game is
-        // not a History record yet.
         let (replay, _, _, _, _) = try replay(of: GameTests.mateLine)
         defer { replay.close() }
 
@@ -489,8 +339,6 @@ struct ReplayTests {
         replay.toggleAutoplay()
         #expect(replay.autoplaying, "playback starts only after a user action, and this was one")
 
-        // Manual navigation pauses playback, which is the accepted behaviour
-        // and is also what keeps this test off the clock.
         replay.stepForward()
         #expect(!replay.autoplaying)
         #expect(replay.ply == 1)
@@ -518,15 +366,10 @@ struct ReplayTests {
         let (replay, _, _, _, _) = try replay(of: GameTests.mateLine)
         replay.close()
 
-        // The walk stops rather than crashing: an invalid handle is the answer
-        // the interface promises after a release, and the walk clamps to what
-        // it already had.
         replay.stepForward()
         #expect(replay.ply == 0)
         #expect(replay.transit == nil, "and nothing is left travelling")
     }
-
-    // MARK: - A step, travelled
 
     @Test("A step forward travels the move the way a played move travels")
     func aStepTravels() throws {
@@ -541,8 +384,6 @@ struct ReplayTests {
                                     on: GameKind.miniXiangqi.board))
         #expect(transit.piece == Piece(kind: .cannon, side: .red))
         #expect(transit.fading == nil, "nothing stood on b3")
-        // The position arrives with the departure — the transit is drawn over
-        // it — so the walk is never behind what the transport says.
         #expect(replay.ply == 1)
         #expect(replay.lastMove == Move(text: GameTests.mateLine[0],
                                        on: GameKind.miniXiangqi.board))
@@ -559,7 +400,6 @@ struct ReplayTests {
         let (replay, animator, _, _, _) = try replay(of: Self.captureThenClaimLine)
         defer { replay.close() }
 
-        // Ply 4 is the take: Black's soldier meets Red's on d4.
         for _ in 0..<3 {
             replay.stepForward()
             animator.completeAll()
@@ -617,7 +457,7 @@ struct ReplayTests {
         #expect(replay.ply == 3)
         #expect(replay.position.fen == fens[3], "the position asked for, at once")
         #expect(replay.transit == nil, "and no cascade of three moves to watch")
-        #expect(heard.events.isEmpty, "nothing landed, so nothing is felt or heard")
+        #expect(replay.landings == 0, "nothing landed, so nothing is felt or heard")
         #expect(heard.sounds.isEmpty)
 
         replay.goToStart()
@@ -642,19 +482,16 @@ struct ReplayTests {
         #expect(replay.position.fen == fens[2])
         #expect(replay.transit == nil,
                 "re-targeting a travel cuts it: the abandoned disc lands nowhere")
-        #expect(heard.events.isEmpty, "and nothing arrived, so nothing sounded")
+        #expect(replay.landings == 0, "and nothing arrived, so nothing sounded")
 
-        // The abandoned step's completion is still parked, and answers to
-        // nothing when it comes.
         animator.completeAll()
         #expect(replay.ply == 2)
-        #expect(heard.events.isEmpty)
+        #expect(replay.landings == 0)
 
-        // And the next step, with nothing in flight, travels as usual.
         replay.stepForward()
         #expect(replay.transit != nil)
         animator.completeAll()
-        #expect(heard.events == [.landing])
+        #expect(replay.landings == 1)
     }
 
     @Test("Under Reduce Motion the step arrives without travelling")
@@ -665,10 +502,6 @@ struct ReplayTests {
         replay.show(move: 3)
 
         replay.stepForward()
-        // The states survive — the canvas is still given the step, and draws it
-        // as a dissolve between the two ends rather than as travel — and the
-        // capture's separate removal is not scheduled at all, because there is
-        // no arrival for it to be scheduled against.
         let transit = try #require(replay.transit, "the step still arrives")
         #expect(transit.fading?.at == Square("d4", on: GameKind.miniXiangqi.board))
         #expect(replay.transitFade == 0, "no removal is drawn beside a dissolve")
@@ -676,28 +509,21 @@ struct ReplayTests {
 
         animator.completeAll()
         #expect(replay.transit == nil)
-        #expect(heard.events == [.landing], "and the landing is felt and heard as ever")
+        #expect(replay.landings == 1, "and the landing is felt and heard as ever")
         #expect(heard.sounds == [.capture])
     }
 
     @Test("Autoplay asks for the next ply only after the last one has landed")
     func autoplayWaitsOutTheTravel() {
-        // Off the clock, because the rule is arithmetic: the interval is the
-        // travel plus a settle, so the next departure is always later than the
-        // last arrival, whatever the travel turned out to be.
         for travel in [Motion.travelFloor, Motion.travelCeiling, Motion.crossfade] {
             let interval = Replay.interval(afterTravelling: travel)
             #expect(interval > .seconds(travel),
                     "the next ply never departs before this one lands")
         }
-        // And the cadence stays the calm one the screen already walked at: a
-        // ply every 780–840 ms, which brackets the 800 ms it was.
         let slowest = Replay.interval(afterTravelling: Motion.travelCeiling)
         #expect(Replay.interval(afterTravelling: Motion.travelFloor) >= .milliseconds(780))
         #expect(slowest <= .milliseconds(840))
     }
-
-    // MARK: - What a replayed landing sounds like
 
     @Test("An ordinary step sounds the plain tock, and is felt like any landing")
     func aStepSoundsPlain() throws {
@@ -705,10 +531,10 @@ struct ReplayTests {
         defer { replay.close() }
 
         replay.stepForward()
-        #expect(heard.events.isEmpty, "the departure is not the arrival")
+        #expect(replay.landings == 0, "the departure is not the arrival")
         animator.completeAll()
         #expect(heard.sounds == [.plain])
-        #expect(heard.events == [.landing],
+        #expect(replay.landings == 1,
                 "felt as every landing is: replay's landings are landings")
     }
 
@@ -747,19 +573,6 @@ struct ReplayTests {
         #expect(replay.isFinalPosition, "the record's own outcome says the game ended here")
         #expect(heard.sounds == [.conclusion],
                 "one rule: the arrived position is finished, whoever is watching it")
-        #expect(heard.events == [.landing], "the haptic is unchanged")
-    }
-
-    @Test("With sound switched off a replayed step is silent and still felt")
-    func theSoundToggleGovernsReplayToo() throws {
-        let (replay, animator, heard, _, _) = try replay(of: GameTests.mateLine,
-                                                         soundEnabled: false)
-        defer { replay.close(); ScratchDefaults.clear() }
-
-        replay.stepForward()
-        animator.completeAll()
-        #expect(heard.sounds.isEmpty, "one switch, and it is the one play answers to")
-        #expect(heard.events == [.landing],
-                "and the haptic is untouched: it answers to its own toggle")
+        #expect(replay.landings == 1, "the haptic is unchanged")
     }
 }

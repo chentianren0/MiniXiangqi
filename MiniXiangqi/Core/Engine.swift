@@ -49,7 +49,7 @@ nonisolated struct EngineBudget: Sendable, Equatable {
     /// between attempts.
     static func probe() -> EngineBudget {
         EngineBudget(activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount,
-                     availableBytes: forcedAvailableBytes ?? availableMemory(),
+                     availableBytes: availableMemory(),
                      physicalBytes: physicalMemory())
     }
 
@@ -67,9 +67,10 @@ nonisolated struct EngineBudget: Sendable, Equatable {
         return bytes
     }
 
-    #if os(macOS)
-    /// macOS has no per-process memory limit to ask about, so the accepted
-    /// probe is the system's available physical memory: the free, inactive and
+    #if os(macOS) || targetEnvironment(simulator)
+    /// macOS has no per-process memory limit to ask about, and nor does a
+    /// Simulator process, where `os_proc_available_memory` answers zero; the
+    /// accepted probe is the system's available physical memory: the free, inactive and
     /// purgeable pages, which are what the kernel can hand to a process that
     /// asks for gigabytes.
     private static func availableMemory() -> UInt64 {
@@ -108,20 +109,6 @@ nonisolated struct EngineBudget: Sendable, Equatable {
         UInt64(os_proc_available_memory())
     }
     #endif
-
-    /// `-mxq-available-memory <bytes>` forces the probe's available figure, so
-    /// the insufficient-memory flow can be reached on a machine that has plenty
-    /// of memory. Debug only: the flow is one a person will meet, and a test
-    /// that cannot reach it is a flow nobody has ever seen.
-    private static var forcedAvailableBytes: UInt64? {
-        #if DEBUG
-        MainActor.assumeIsolated {
-            DebugLaunch.argument(after: "-mxq-available-memory").flatMap(UInt64.init)
-        }
-        #else
-        nil
-        #endif
-    }
 }
 
 /// What the accepted arithmetic yields, reported back so a test can read every
@@ -229,8 +216,8 @@ nonisolated struct SearchResult: Sendable {
 
 /// Everything the human-versus-AI reply loop asks of the engine.
 ///
-/// It is a protocol for the reason `Rules` is one: a working engine will not
-/// produce a refusal on request, and the states the app has to survive — a
+/// It is a protocol because a working engine will not produce a refusal on
+/// request, and the states the app has to survive — a
 /// preparation that fails, a search that comes back cancelled or stale — are
 /// exactly the ones it refuses to produce. Nothing that implements this decides
 /// a rule; the only implementation the app ever runs is `Core`.

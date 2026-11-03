@@ -38,29 +38,12 @@
 
 import SwiftUI
 
-/// Which symbol set the discs carry.
-///
-/// The accepted Settings preference, `pieces.symbols`. Read at the moment of
-/// use rather than cached at launch — the `Feedback.soundIsEnabled` pattern —
-/// so a change in Settings reaches the next frame the board draws. Absent, the
-/// state of every first launch, means 汉字, which is the accepted default.
+/// Which symbol set the discs carry: the 棋子符号 preference.
 enum PieceSymbols: String {
     case hanzi
     case icons
 
     static let key = "pieces.symbols"
-
-    /// What a stored value means. Absent means the default, and so does a value
-    /// this build does not recognise: the preference is a string in a plist
-    /// anyone can write to, and a board that refuses to draw because it found
-    /// nonsense there is a worse outcome than a board that draws the default.
-    static func named(_ stored: String?) -> PieceSymbols {
-        stored.flatMap(PieceSymbols.init(rawValue:)) ?? .hanzi
-    }
-
-    static func current(in defaults: UserDefaults = .standard) -> PieceSymbols {
-        named(defaults.string(forKey: key))
-    }
 }
 
 /// One glyph, as a `Shape` — for a preview, a test, or anywhere a view is

@@ -82,20 +82,7 @@ struct ContentView: View {
     private var screen: some View {
         switch Core.shared {
         case .success(let core):
-            #if DEBUG && os(iOS)
-            // `-mxq-open-nearby` opens the nearby developer harness *instead of*
-            // the app. It is a debug instrument for driving the BoardGame
-            // Protocol on two real devices, and this launch argument is its only
-            // entry: the nearby feature's own surfaces are designed separately
-            // and are not here yet.
-            if NearbyLaunch.current.opensHarness {
-                NearbyHarnessScreen(core: core)
-            } else {
-                Destinations(core: core, gameCenter: gameCenter)
-            }
-            #else
             Destinations(core: core, gameCenter: gameCenter)
-            #endif
         case .failure(let error):
             // A core that will not start is a packaging failure, and saying so
             // plainly beats an empty board that silently does nothing. The
@@ -104,19 +91,6 @@ struct ContentView: View {
             ContentUnavailableView("failure.coreDidNotStart", systemImage: "exclamationmark.triangle",
                                    description: Text(verbatim: error.description).monospaced())
         }
-    }
-
-    /// The game files `-mxq-import <base64>;<base64>` names. Debug only: a
-    /// release build has no launch argument to read and no files to import, so
-    /// the list is empty and History's launch-import path never runs.
-    static var launchImports: [Data] {
-        #if DEBUG
-        (DebugLaunch.argument(after: "-mxq-import") ?? "")
-            .split(separator: ";")
-            .compactMap { Data(base64Encoded: String($0)) }
-        #else
-        []
-        #endif
     }
 
     #if DEBUG
@@ -146,11 +120,6 @@ private struct Destinations: View {
     /// and a request made in one has to survive the switch to the other.
     @State private var destination: Destination = .play
     @State private var pendingReplay: UInt64?
-
-    /// The game files a debug launch asked to be imported, held here for the
-    /// same reason and consumed by History the first time it appears. Always
-    /// empty in a release build, where the launch argument does not exist.
-    @State private var pendingImports: [Data] = ContentView.launchImports
 
     /// The library, created once with the window for the same reason the game
     /// is: a destination rebuilt on every visit would otherwise rebuild it too,
@@ -222,16 +191,6 @@ private struct Destinations: View {
     /// be, and everything the assembly is handed to is written once for every
     /// platform.
     private static func nearbyFlow(over core: Core) -> NearbyFlow {
-        #if DEBUG
-        // `-mxq-nearby-board <stage>` stands the board up on a session nobody
-        // is on the other end of. A Simulator has no Wi-Fi Aware, so it is the
-        // only way a test sees this screen at all — and what it sees is the
-        // real flow, board and positions, over a driver that speaks to nobody.
-        if let stage = NearbyStage.named {
-            return .staged(stage, positions: core.nearbyPositions,
-                           rules: core.boardGameRules)
-        }
-        #endif
         let log = NearbyLog()
         // The library is the store's memory of the game: created with the
         // driver, because a ply can land while the board is down and the
@@ -276,14 +235,6 @@ private struct Destinations: View {
     /// draw so that a sign-out or a restriction takes them away under the
     /// reader.
     private static func onlineStands(_ gameCenter: GameCenterAvailability) -> Bool {
-        #if DEBUG
-        // `-mxq-online-available` stands the rows up where no account can be
-        // signed in to earn them, which is every Simulator this suite runs on.
-        // It grants the rows and the surface behind them and nothing else:
-        // whether Game Center actually carries a game is two signed-in devices'
-        // to show.
-        if DebugLaunch.contains("-mxq-online-available") { return true }
-        #endif
         return gameCenter.isAvailable
     }
 
@@ -298,8 +249,7 @@ private struct Destinations: View {
             }
 
             Tab("nav.history", systemImage: "clock", value: Destination.history) {
-                HistoryScreen(library: library, pendingReplay: $pendingReplay,
-                              pendingImports: $pendingImports)
+                HistoryScreen(library: library, pendingReplay: $pendingReplay)
             }
 
             // Nothing is handed down: the preferences this writes are read from
@@ -371,29 +321,6 @@ private struct Destinations: View {
             // surface they belonged to; the engine stays, because a window is
             // not sleep.
             .background(WindowCloseWatcher { play.windowClosed() })
-            #endif
-            // The two launch arguments that are about the *window* rather than
-            // about a destination sit here, above the container: applied to a
-            // destination they would be re-applied every time the player came
-            // back to it, and the window would jump.
-            #if DEBUG
-            .preferredColorScheme(Self.launchColorScheme)
-            #if os(macOS)
-            .background(LaunchWindowSizer(contentSize: Self.launchWindowSize))
-            #endif
-            // `-mxq-open-replay` walks the launch to the newest record's
-            // replay, which is the page a formatting screenshot is about and
-            // three clicks from a launch otherwise. It waits for Play to have
-            // appeared, because that appearance is what files the same launch's
-            // `-mxq-history` games: switching sooner would open History onto a
-            // library nothing had written to yet. History pushes the record
-            // whenever the list arrives, so nothing here depends on this wait
-            // being long enough.
-            .task {
-                guard DebugLaunch.contains("-mxq-open-replay") else { return }
-                try? await Task.sleep(for: .seconds(2))
-                destination = .history
-            }
             #endif
     }
 
@@ -517,74 +444,7 @@ private struct Destinations: View {
         flows.contains { $0.boardSessionID != nil }
     }
 
-    #if DEBUG
-    /// The appearance `-mxq-appearance dark` or `-mxq-appearance light` names.
-    /// AppKit no longer takes `-AppleInterfaceStyle` from a launch argument, and
-    /// glass has to be looked at in both appearances rather than reasoned about
-    /// in one.
-    ///
-    /// `light` is named as explicitly as `dark` because the alternative is the
-    /// machine's own appearance, and a Mac set to switch automatically changes it
-    /// at sunset: a series photographed without saying which appearance it wanted
-    /// is a series whose light half is light only until the evening.
-    private static var launchColorScheme: ColorScheme? {
-        switch DebugLaunch.argument(after: "-mxq-appearance") {
-        case "dark": .dark
-        case "light": .light
-        default: nil
-        }
-    }
-
-    /// The size `-mxq-window 900x700` names, handed to AppKit as the window's
-    /// content size — which on this window is the whole frame, title bar
-    /// included, since the content view runs the full height of it. A
-    /// screenshot series about layout has to state the size each frame was
-    /// taken at, and a window a test resized by dragging its corner cannot.
-    private static var launchWindowSize: CGSize? {
-        guard let text = DebugLaunch.argument(after: "-mxq-window") else { return nil }
-        let sides = text.split(separator: "x").compactMap { Double($0) }
-        guard sides.count == 2, sides.allSatisfy({ $0 > 0 }) else { return nil }
-        return CGSize(width: sides[0], height: sides[1])
-    }
-    #endif
 }
-
-#if DEBUG && os(macOS)
-/// Applies `-mxq-window`'s size to the window, once there is a window to apply
-/// it to. Debug only, and it asks AppKit for the size rather than asserting it:
-/// the window's own minimum still clamps the request, which is how a test
-/// measures what that minimum actually comes to.
-private struct LaunchWindowSizer: NSViewRepresentable {
-    var contentSize: CGSize?
-
-    func makeNSView(context: Context) -> NSView { Sizer(contentSize: contentSize) }
-    func updateNSView(_ view: NSView, context: Context) { }
-
-    private final class Sizer: NSView {
-        private let contentSize: CGSize?
-
-        init(contentSize: CGSize?) {
-            self.contentSize = contentSize
-            super.init(frame: .zero)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError("not from a nib") }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window, let contentSize else { return }
-            // On the next pass, after AppKit has restored the saved frame and
-            // SwiftUI has handed the window the content's minimum: either one
-            // arriving afterwards would undo this.
-            DispatchQueue.main.async { [weak window] in
-                window?.setContentSize(contentSize)
-                window?.center()
-            }
-        }
-    }
-}
-#endif
 
 #if os(macOS)
 /// The window this view is in, closing.

@@ -54,11 +54,6 @@ final class Hint {
     private let motion: PlayMotion
     private let timer: MotionTimer
 
-    /// Where the Settings default AI level is read from, which is where the
-    /// thinking time of a Free Play hint comes from. Read at the moment of use,
-    /// like every preference.
-    private let defaults: UserDefaults
-
     /// The outstanding hint search, if one is running. One at a time, and never
     /// beside the AI's own: the core refuses a hint while any search is
     /// outstanding, and a hint is only ever offered on the player's own turn.
@@ -93,13 +88,11 @@ final class Hint {
     private static let askAgainInterval: TimeInterval = 0.05
 
     init(engine: AIEngine, game: Game, motion: PlayMotion,
-         timer: MotionTimer = .live,
-         defaults: UserDefaults = Preferences.defaults) {
+         timer: MotionTimer = .live) {
         self.engine = engine
         self.game = game
         self.motion = motion
         self.timer = timer
-        self.defaults = defaults
     }
 
     // MARK: - Whether there is a hint to ask for
@@ -141,7 +134,7 @@ final class Hint {
     var movetimeMilliseconds: UInt32 {
         game.isHumanVersusAI
             ? game.configuration.movetimeMilliseconds
-            : Preferences.defaultAiLevel(in: defaults).movetimeMilliseconds
+            : AiLevel.stored.movetimeMilliseconds
     }
 
     // MARK: - Asking

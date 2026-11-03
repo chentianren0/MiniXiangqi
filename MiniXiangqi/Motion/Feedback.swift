@@ -1,42 +1,16 @@
-// Feedback that is felt or heard, at the two moments the contract names.
+// What the board gives back: a sound per landing, and a haptic per landing and
+// per touch the game cannot act on.
 //
-// docs/interaction-design.md, "Motion and visual effects" and "Sound and
-// haptics": feedback that reports an event fires when the event completes — a
-// move sounds when the piece lands, not when it lifts — and feedback that
-// answers a touch leads its animation. An illegal tap is a normal part of
-// learning, so it takes the platform's lightest selection-weight feedback and
-// never the warning pattern; on macOS the warning haptic does not exist at
-// all, which satisfies that by construction. Haptics fire only where the
-// hardware provides them — a Force Touch trackpad — and the system performer
-// already honours the user's own trackpad setting.
-//
-// The two halves are separate because they answer to different rules and to
-// different toggles. What is *felt* follows the touch and the arrival: two
-// patterns, and every landing gets the same one. What is *heard* follows the
-// meaning of what arrived: one sound per landing, chosen by the event, silent
-// wherever the contract keeps it silent.
-//
-// Both toggles now exist: 声音 and 触感 are the second group of the Settings
-// destination, and each half is gated by its own key at the moment it would
-// fire. Neither gate knows about the other — sound off leaves a landing felt,
-// haptics off leaves it heard.
-//
-// The two events below are the whole of the felt vocabulary; which pattern each
-// one takes on each platform, and whether the hardware is there to take it, are
-// `Motion/Haptics.swift`'s.
+// docs/interaction-design.md, "Sound and haptics": feedback that reports an
+// event fires when the event completes — a move sounds when the piece lands —
+// and an illegal tap takes the platform's lightest feedback, never a warning.
+// The 声音 and 触感 switches each gate their own half; neither knows the other.
 
-import Foundation
+import SwiftUI
 
+/// What is heard. The felt half is `boardHaptics`, triggered by the counts the
+/// board's motion object keeps.
 struct Feedback {
-    /// What is felt.
-    enum Event: Equatable, CaseIterable {
-        /// A disc arriving on its point — a move's or an Undo's.
-        case landing
-        /// The answer to a touch the game cannot act on: an illegal tap, or
-        /// the acknowledgment beat.
-        case acknowledgement
-    }
-
     /// What is heard. One per landing and never more, chosen by what the
     /// landing means rather than by how often it happens: conclusion, then
     /// capture, then check, then the plain arrival. A capturing check is a
@@ -107,62 +81,45 @@ struct Feedback {
         }
     }
 
-    /// The half that is felt.
-    var perform: (Event) -> Void
-    /// The half that is heard.
     var play: (Sound) -> Void
 
-    // MARK: - The two preferences
-
-    /// Puts each accepted Settings switch in front of the half it governs, and
-    /// reads it at the moment that half would fire rather than when this was
-    /// composed: a switch takes effect on the next landing, not on the next run.
-    /// What an absent key means belongs to `Preferences`, which every consumer of
-    /// these preferences reads through — here it is enough that the answer is
-    /// asked for again each time.
-    ///
-    /// The composition lives here, in front of any particular performer or
-    /// player, so that a test can hold the app's own gates over a recorder and
-    /// see exactly what the app would have silenced or stilled.
-    static func gating(by defaults: UserDefaults = Preferences.defaults,
-                       perform: @escaping (Event) -> Void,
-                       play: @escaping (Sound) -> Void) -> Feedback {
-        Feedback { event in
-            guard Preferences.haptics.value(in: defaults) else { return }
-            perform(event)
-        } play: { sound in
-            guard Preferences.sound.value(in: defaults) else { return }
-            play(sound)
-        }
-    }
-
-    // MARK: - The live feedback
-
-    /// Both halves against real hardware, built once and held for the life of
-    /// the app.
-    ///
-    /// Everything here is loaded and primed as this is built — at the play
-    /// screen's construction, long before the first landing — so that the first
-    /// tock is no later than the second and the first tap no later than the
-    /// second. That is the whole reason the two performers are objects rather
-    /// than calls: an `AVAudioPlayer` opened at the landing has its file to read
-    /// first, and a feedback generator made at the landing has never been
-    /// prepared.
-    ///
-    /// **The felt half is now real on both platforms.** It was macOS only until
-    /// Stage 6, because UIKit's generators are a different shape from AppKit's
-    /// performer — prepared ahead of the event rather than performed at a named
-    /// time — and choosing their patterns was a design decision about a device
-    /// that vibrates in the hand rather than a translation of this one. That
-    /// decision is made in `Motion/Haptics.swift`, along with the question of
-    /// whether the hardware is there at all.
+    /// The board's samples, loaded once so the first landing is no later than
+    /// the second, behind the 声音 switch.
     static let live: Feedback = {
         let sounds = BoardSounds()
-        let haptics = HapticPerformer()
-        return gating { event in
-            haptics.perform(event)
-        } play: { sound in
+        return Feedback { sound in
+            guard UserDefaults.standard.object(forKey: "sound.enabled") as? Bool ?? true
+            else { return }
             sounds.play(sound)
         }
     }()
+}
+
+extension View {
+    /// The felt half: one pattern for every landing, the lightest one for a
+    /// touch the game cannot act on, behind the 触感 switch. A capture, a check
+    /// and a result change what is heard and not what is felt.
+    func boardHaptics(landings: Int, refusals: Int = 0) -> some View {
+        modifier(BoardHaptics(landings: landings, refusals: refusals))
+    }
+}
+
+private struct BoardHaptics: ViewModifier {
+    var landings: Int
+    var refusals: Int
+    @AppStorage("haptics.enabled") private var enabled = true
+
+    func body(content: Content) -> some View {
+        content
+            .sensoryFeedback(Self.landing, trigger: landings) { _, _ in enabled }
+            .sensoryFeedback(Self.refusal, trigger: refusals) { _, _ in enabled }
+    }
+
+    #if os(macOS)
+    private static let landing = SensoryFeedback.alignment
+    private static let refusal = SensoryFeedback.levelChange
+    #else
+    private static let landing = SensoryFeedback.impact(flexibility: .rigid)
+    private static let refusal = SensoryFeedback.selection
+    #endif
 }
