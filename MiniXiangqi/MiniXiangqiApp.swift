@@ -2,17 +2,17 @@
 //
 // docs/interaction-design.md's navigation exclusions have always excluded
 // multiple main windows, and with games persisted the exclusion stopped being
-// a taste question: two windows would be two sessions over the one active
-// game, writing over each other with no diagnosis at all. On macOS the scene
+// a taste question: two windows would be two boards over the one game in
+// play, writing over each other with no diagnosis at all. On macOS the scene
 // is therefore a `Window` — no File → New Window, by construction. iOS keeps
 // `WindowGroup`, whose single-scene default already conforms.
 
 import SwiftUI
 
-/// Termination, answered with the core's deterministic teardown: close the
-/// store and join the engine thread rather than relying on process exit. Best
-/// effort — the store's journal is crash-safe by design, so a quit that never
-/// reaches this loses nothing.
+/// Termination, answered with the core's deterministic teardown: join the
+/// engine thread rather than relying on process exit. Best effort — every move
+/// was saved as it was played, so a quit that never reaches this loses
+/// nothing.
 private final class AppDelegate: NSObject {
     fileprivate func shutdownCore() {
         Core.shutdownSharedIfLive()

@@ -73,9 +73,9 @@ final class Game {
     /// the move list pairs and numbers from this rather than from a parity.
     let firstMover: Side
 
-    /// The last claim or filing the store refused. Separate from `failure`
+    /// The last claim or filing the library refused. Separate from `failure`
     /// because the contract routes the two differently: a refused ply is the
-    /// transient capsule, a refused terminal commit is the blocking retry.
+    /// transient capsule, a refused filing is the blocking retry.
     private(set) var filingFailure: CoreError?
 
     /// Whether the player's draw claim has been filed. A resumed game is never

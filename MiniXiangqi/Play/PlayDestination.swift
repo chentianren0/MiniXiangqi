@@ -79,7 +79,7 @@ struct PlayDestination: View {
             // The board surface owns the session, the engine and any owed
             // search, and this destination is rebuilt on every visit — so a
             // return to a board that was left standing opens its game again.
-            // A board that already holds one asks the store for nothing, which
+            // A board that already holds one asks the library for nothing, which
             // is what makes this safe to run on every appearance.
             play.enterBoard(policy: policy)
         }

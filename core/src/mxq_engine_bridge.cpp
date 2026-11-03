@@ -108,7 +108,7 @@ std::string g_init_detail;
 InitError g_init_error = InitError::None;
 
 /* The engine's global state is process-wide and not re-entrant, and the core is
- * singleton-enforced for exactly that reason (core-interface.md). Rules queries
+ * singleton-enforced for exactly that reason. Rules queries
  * are serialised here rather than assumed to be called one at a time. */
 std::mutex g_mutex;
 

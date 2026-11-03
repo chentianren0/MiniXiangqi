@@ -123,7 +123,7 @@ Where the source is silent, the chase rules follow AXF practice; AXF does not re
 
 ## Rules interpretation version
 
-The rules interpretation carries an integer version, `rules_version`. It is `1` for both games, as it is for every game the app carries. It increments only when an interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration. Game archives record `rules_id` and this version, per [game-data.md](game-data.md).
+The rules interpretation carries an integer version, `rules_version`. It is `1` for both games, as it is for every game the app carries. It increments only when an interpretation change alters a legal move or a user-visible result — never for prose clarification, fixture additions that pin existing behavior, engine or fork revisions, or search configuration.
 
 **[jieqi-rules.md](jieqi-rules.md) adopts the repetition, perpetual-check and perpetual-chase clauses above by reference.** An amendment to those clauses amends Jieqi's rules as well, the two games adjudicate identically, and their `rules_version` move together.
 

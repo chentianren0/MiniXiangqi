@@ -115,7 +115,7 @@ std::atomic<Rules> g_active_rules{kInitialRules};
 std::atomic<bool>  g_configured{false};
 
 /* The engine's global state is process-wide and not re-entrant, and the core is
- * singleton-enforced for exactly that reason (core-interface.md). */
+ * singleton-enforced for exactly that reason. */
 std::mutex g_mutex;
 
 /* Whether the engine's classical tables have been loaded from its own embedded

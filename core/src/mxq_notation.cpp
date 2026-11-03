@@ -298,22 +298,6 @@ bool well_formed_move(MxqGameKind game, const std::string &text) {
     return to != 0 && from + to == text.size();
 }
 
-bool move_begins_at(MxqGameKind game, const std::string &move,
-                    const char *from_square) {
-    if (from_square == nullptr) {
-        return false;
-    }
-    const size_t from = square_length(game, move.data(), move.size());
-    if (from == 0) {
-        return false;
-    }
-    /* Length first, then bytes: "a1" is a prefix of "a10" and a comparison of
-     * the shorter one's characters alone would call a move from the tenth rank
-     * a move from the first. */
-    return std::strlen(from_square) == from &&
-           move.compare(0, from, from_square) == 0;
-}
-
 /* ------------------------------------------------------------------------- */
 /* The placement games' position encoding                                     */
 /* ------------------------------------------------------------------------- */

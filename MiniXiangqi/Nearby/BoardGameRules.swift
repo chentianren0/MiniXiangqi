@@ -106,10 +106,10 @@ nonisolated extension GameKind {
     init?(rulesID: String) { self.init(rawValue: rulesID) }
 }
 
-/// The core's answers, over the session-free rules facade.
+/// The core's answers, over its rules facade.
 ///
-/// `@unchecked Sendable` for the reason `HistoryStore` is: what makes the
-/// handle safe to send is the C contract above it — `mxq_rules_*` is callable
+/// `@unchecked Sendable` because what makes the handle safe to send is the C
+/// contract above it — `mxq_rules_*` is callable
 /// from any thread except inside a search callback — which Swift cannot read.
 nonisolated struct CoreBoardGameRules: BoardGameRules, @unchecked Sendable {
     private let core: OpaquePointer

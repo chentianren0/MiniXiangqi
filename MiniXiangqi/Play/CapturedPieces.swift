@@ -132,8 +132,8 @@ struct CapturedPieces: Equatable {
     /// every other game displays nothing, and the walk is what that costs.
     ///
     /// A stored move this app cannot read fails the walk, exactly as it fails
-    /// the reading beside it: a line the core validated before any session over
-    /// it existed cannot legitimately hold one, and a surface that skipped it
+    /// the reading beside it: a line checked against the rules before it was
+    /// saved cannot legitimately hold one, and a surface that skipped it
     /// would quietly show a game missing whatever that ply took.
     static func line(for moves: [String], on game: GameKind,
                      placementAt: (Int) throws -> Placement) throws -> CapturedPieces {

@@ -314,10 +314,8 @@ extension Core: AIEngine {
     /// **Nothing here composes an identifier, and nothing above the interface
     /// can.** A profile names the revision of the engine its own game is played
     /// on, this core has more than one, and only the core knows which game goes
-    /// to which: an identifier assembled here from `mxq_core_version` and
-    /// `mxq_core_game_profile` would be right for the games the first engine
-    /// plays and silently wrong for the rest — which is exactly what it was,
-    /// and why the placement games had no opponent to play against.
+    /// to which: an identifier assembled here would be right for the games the
+    /// first engine plays and silently wrong for the rest.
     func engineProfileID(for game: GameKind) throws -> String {
         var buffer = [CChar](repeating: 0, count: Int(MXQ_PROFILE_ID_CAP))
         var length = 0

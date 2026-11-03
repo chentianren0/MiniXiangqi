@@ -142,7 +142,7 @@ ReplayError replay(Variant variant, const char *start_fen,
                    size_t &first_illegal,
                    std::string &detail);
 
-/* Structural FEN validation only, per mxq_rules_validate_fen: the frozen
+/* Structural FEN validation only, as rules::validate_fen asks it: the frozen
  * encoding of `variant`'s own board, and never a judgment of setup legality. A
  * position of the other board fails it, because a board is part of what the
  * encoding fixes. */

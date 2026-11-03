@@ -59,7 +59,7 @@ struct LetterRow {
  * The frozen letters of docs/xiangqi-rules.md, and two more.
  *
  * The engine's own xiangqi variant registers 'h' for the horse and 'e' for the
- * elephant as synonyms, so a FEN spelling either is one mxq_rules_validate_fen
+ * elephant as synonyms, so a FEN spelling either is one rules::validate_fen
  * accepts and the engine will play. A predicate that could not read the board
  * would refuse a position that entry had just accepted, and for a reason no
  * caller could act on. Two rows are cheaper than that.
@@ -701,7 +701,7 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
 
     /* Xiangqi reads its own structure. Its predicate is the one that has more
      * than a single answer, so it is the one asked about boards a game is not
-     * yet playable on, and mxq_rules_validate_fen refuses two of those for the
+     * yet playable on, and rules::validate_fen refuses two of those for the
      * engine's reasons rather than for the rules' — a board short of a general
      * is the one a composer meets on the first tap. What that entry checks
      * about the spelling, evaluate_xiangqi checks, and more strictly. */
@@ -712,7 +712,7 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
     /*
      * Jieqi reads its own record, and that one reading is both halves of what
      * every other game needs two for: it is the precondition
-     * mxq_rules_validate_fen applies — the same function that entry calls for
+     * rules::validate_fen applies — the same function that entry calls for
      * this game — and it is the form the membership arithmetic below reads the
      * position in. Its membership question is the dealt start, that being the
      * only shape a game of it begins in.
@@ -726,7 +726,7 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
     }
 
     /* For every other game the precondition stands, and it is the same one
-     * mxq_rules_validate_fen applies: a FEN that is not a position of this
+     * rules::validate_fen applies: a FEN that is not a position of this
      * game's board is not a position this predicate has an opinion about. */
     if (!rules::validate_fen(game, fen, detail)) {
         return Error::FenInvalid;
@@ -749,63 +749,6 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
     out_violation.rule = MXQ_SETUP_RULE_NOT_FROZEN_START;
     detail = "this game may be set up only in its frozen starting position";
     return Error::None;
-}
-
-StartError judge_start(MxqGameKind game, const char *fen,
-                       Violation &out_violation, std::string &detail) {
-    out_violation = Violation{};
-    detail.clear();
-
-    if (fen == nullptr) {
-        detail = "fen was null";
-        return StartError::Structural;
-    }
-
-    /* The frozen start is a start of every game that has one and is asked
-     * nothing: it is already spelled with the counters below and already
-     * accepted by the predicate, and short-circuiting it keeps a build without
-     * the engine a game is played on from being asked about that game's own
-     * opening. A game with no frozen start has no such position to recognise,
-     * and every start it is given goes down the rungs. */
-    if (notation::has_frozen_start(game) &&
-        std::string(fen) == notation::start_fen(game)) {
-        return StartError::None;
-    }
-
-    /* Rung 1, the spelling of a start. Only the two counters are read here: the
-     * rest of the structure is the predicate's own to read, and reading it
-     * twice would be two answers to one question. A record of six fields is
-     * what having a fifth and a sixth to read means, so that much is asked
-     * first. */
-    const std::vector<std::string> fields = fields_of(fen);
-    if (fields.size() != kFenFields) {
-        detail = "a position record is six fields, and this is not the frozen "
-                 "encoding of this game's board";
-        return StartError::Structural;
-    }
-
-    /* Rung 1 still: the counters. They are not the composer's to choose, and a
-     * position carrying any others is not a start whatever its pieces say, so
-     * this is asked before the predicate rather than among its clauses. */
-    if (fields[4] != "0" || fields[5] != "1") {
-        detail = "a start position carries halfmove 0 and fullmove 1; this one "
-                 "carries counters a game with plies behind it would";
-        return StartError::Structural;
-    }
-
-    /* Rung 2, the game's own predicate, which is where the rest of the
-     * structure is read: a FEN it cannot read at all is Structural here, the
-     * same class the counters answer in. */
-    switch (evaluate(game, fen, out_violation, detail)) {
-    case Error::None:
-        break;
-    case Error::FenInvalid:
-        return StartError::Structural;
-    case Error::NotInitialised:
-        return StartError::NotInitialised;
-    }
-    return out_violation.rule == MXQ_SETUP_RULE_NONE ? StartError::None
-                                                     : StartError::Illegal;
 }
 
 } /* namespace setup */

@@ -1,6 +1,6 @@
 # Core
 
-The C++ core behind the app: rules, engine search, the game-file codec and the game library, behind the C interface in `include/mxq.h`. It is a local Swift package, `Package.swift`, which Xcode builds with the app; the app imports it as `MiniXiangqiCore` with Swift's C++ interoperability.
+The C++ core behind the app: rules, notation, the Jieqi deal, engine preparation and search, behind the C interface in `include/mxq.h`. It is stateless: the app keeps the games, in SwiftData. It is a local Swift package, `Package.swift`, which Xcode builds with the app; the app imports it as `MiniXiangqiCore` with Swift's C++ interoperability.
 
 - `src/` and `include/` — the facade, the `MiniXiangqiCore` target.
 - `engines/` — the three engine snapshots, one target each: Fairy-Stockfish for Mini Xiangqi and Xiangqi, the Pikafish rules slice for Jieqi, and Rapfi with its lz4 for Gomoku and Renju. Each README names the fork, the pinned revision and the patches. Nothing under an `upstream/` directory is edited here; a change to an engine lands in its fork and arrives as a new snapshot.

@@ -38,7 +38,7 @@ The product decisions behind Star River. Rules live in the rules docs and file f
 - Pinned records come first, then the most recent. Imported records are visibly marked.
 - Records can be pinned, replayed by hand or with autoplay, shared as a game file, and deleted.
 - Deleting asks first unless **Confirm Before Deleting** is off. Deletion is permanent.
-- Import takes one game file at a time and never touches the active game. An exact duplicate opens the existing record; a file with the same identity but different content is rejected.
+- Import takes one game file at a time and never touches the active game. A game already in History opens the existing record.
 
 ## Settings
 
