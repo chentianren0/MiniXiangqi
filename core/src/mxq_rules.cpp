@@ -1,21 +1,14 @@
 /* The session-free rules facade.
  *
- * mxq_rules_start_fen is a constant of the ruleset and needs no engine. The
- * rest are compiled only when MXQ_ENABLE_RULES_FACADE is ON — four replay a
- * history through a pinned fork, and mxq_rules_deal derives a dealt start;
- * without the facade they are absent from the library rather than stubbed,
- * because the error taxonomy has no not-implemented code and inventing one
- * would be inventing contract vocabulary. */
+ * mxq_rules_start_fen is a constant of the ruleset and needs no engine. Of the
+ * rest, four replay a history through a pinned fork and mxq_rules_deal derives
+ * a dealt start. */
 
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
 
-/* Outside the guard, because mxq_rules_start_fen is: a game with no frozen
- * start is a programming error to ask, and that assertion is compiled in every
- * configuration this file has. */
 #include <cassert>
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_core_state.hpp"
 #include "mxq_deal.hpp"
 #include "mxq_engine_bridge.hpp"
@@ -23,9 +16,7 @@
 #include "mxq_rules.hpp"
 #include "mxq_setup.hpp"
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 #include "mxq_rapfi_bridge.hpp"
-#endif
 
 #include <string>
 #include <vector>
@@ -39,7 +30,6 @@ namespace rules {
 
 namespace {
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 /* The second bridge's replay refusals, in the shared vocabulary. */
 ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     switch (rc) {
@@ -54,7 +44,6 @@ ReplayError from_placement(mxq::rapfi::ReplayError rc) {
     }
     return ReplayError::Faulted;
 }
-#endif
 
 /* The third bridge's, in the same vocabulary. It has no NotInitialised: the
  * jieqi slice's whole bootstrap is two calls that cannot fail and that the
@@ -98,7 +87,6 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
         out_adj.at_occurrence = hidden.at_occurrence;
         return rc;
     }
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
         /* No check exists in these games, so the caller is told so rather than
          * left with whatever it initialised the flag to. */
@@ -113,7 +101,6 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
         out_adj.at_occurrence = 0;
         return rc;
     }
-#endif
     switch (engine::replay(engine::variant_of(game), start_fen, moves,
                            move_count, out_fen, out_in_check, out_ply, out_adj,
                            out_legal_moves, first_illegal, detail)) {
@@ -141,21 +128,18 @@ bool validate_fen(MxqGameKind game, const char *fen, std::string &detail) {
         mxq::jieqi::Record record{};
         return mxq::jieqi::read_record(fen, record, detail);
     }
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
         /* No engine is asked. The placement games' encoding is the core's own —
          * their engine holds a board and has no notation for one — so the
          * structural question is answered where the structure is defined. */
         return notation::well_formed_placement(game, fen, detail);
     }
-#endif
     return engine::validate_fen(engine::variant_of(game), fen, detail);
 }
 
 } /* namespace rules */
 } /* namespace mxq */
 
-#endif
 
 extern "C" {
 
@@ -181,7 +165,6 @@ MxqStatus MXQ_CALL mxq_rules_start_fen(MxqGameKind game, char *out, size_t cap,
                              err);
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 MxqStatus MXQ_CALL mxq_rules_validate_fen(MxqCore *core, MxqGameKind game,
                                           const char *fen, MxqError *err) {
@@ -489,6 +472,5 @@ MxqStatus MXQ_CALL mxq_rules_deal(MxqCore *core, MxqGameKind game,
     return MXQ_OK;
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* extern "C" */

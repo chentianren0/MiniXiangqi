@@ -11,6 +11,12 @@
       "zh-Hans",
     ],
   },
+  "packages": [
+    {
+      "kind": "local",
+      "path": "core",
+    },
+  ],
   "files": [
     { "path": "AppIcon.icon", "target-membership": [ "MiniXiangqi/resources" ] },
     {
@@ -32,13 +38,6 @@
     { "kind": "folder", "path": "MiniXiangqiUITests", "target-membership": [ "MiniXiangqiUITests" ] },
     {
       "kind": "group",
-      "name": "Generated",
-      "children": [
-        { "path": "Generated/MiniXiangqiCore.xcframework", "signature": "AppleDeveloperProgram:7P9PPXP2SF:Tianren Chen", "target-membership": [ "MiniXiangqi/frameworks" ] },
-        { "path": "<SDK>/usr/lib/libc++.tbd", "target-membership": [ "MiniXiangqi/frameworks" ] },
-      ],
-    }, {
-      "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/MiniXiangqi.app", "id": "CE259A87301668710051B648", "type": "wrapper.application", "index": false },
@@ -54,17 +53,28 @@
       "product": "Products/MiniXiangqi.app",
       "product-type": "application",
       "build-phases": [
-        {
-          "kind": "script",
-          "name": "Check the shared core is current",
-          "log-environment-variables": true,
-          "run-on-every-build": true,
-          "shell": "/bin/sh",
-          "script": "\"$PROJECT_DIR/check-core-is-current.sh\"\n",
-        },
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "script",
+          "name": "Seal the engine assets",
+          "input-paths": [
+            "$(SRCROOT)/core/assets",
+            "$(SRCROOT)/MiniXiangqi/Core/EngineAssets.swift",
+          ],
+          "output-paths": [
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets",
+          ],
+          "shell": "/bin/sh",
+          "script": "set -e\ntool=\"$DERIVED_FILE_DIR/seal-engine-assets\"\nxcrun --sdk macosx swiftc -parse-as-library -D SEAL_ENGINE_ASSETS -o \"$tool\" \"$SRCROOT/MiniXiangqi/Core/EngineAssets.swift\"\n\"$tool\" \"$SRCROOT/core/assets\" \"$SCRIPT_OUTPUT_FILE_0\" \"$PRODUCT_BUNDLE_IDENTIFIER\"\n",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "MiniXiangqiCore",
+          "build-phase": { "build-phase": "frameworks" },
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
@@ -116,6 +126,7 @@
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
         "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_OBJC_INTEROP_MODE": "objcxx",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
@@ -159,6 +170,7 @@
         "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator macosx",
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_EMIT_LOC_STRINGS": "NO",
+        "SWIFT_OBJC_INTEROP_MODE": "objcxx",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",

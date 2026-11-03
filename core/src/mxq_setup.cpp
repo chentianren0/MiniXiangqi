@@ -3,7 +3,6 @@
 
 #include "mxq_setup.hpp"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 #include "mxq_engine_bridge.hpp"
 #include "mxq_jieqi_bridge.hpp"
@@ -812,4 +811,3 @@ StartError judge_start(MxqGameKind game, const char *fen,
 } /* namespace setup */
 } /* namespace mxq */
 
-#endif /* MXQ_ENABLE_RULES_FACADE */

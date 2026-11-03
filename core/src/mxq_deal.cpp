@@ -4,10 +4,8 @@
 
 #include "mxq_sha256.hpp"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_jieqi_bridge.hpp"
 #include "mxq_notation.hpp"
-#endif
 
 #include <cassert>
 #include <cstring>
@@ -273,7 +271,6 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
     return true;
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 std::string start_of(const Deal &deal) {
     /* A record with nothing on it: the letter of an empty point is kEmpty,
@@ -382,7 +379,6 @@ bool verify(const std::string &commit, const std::string &nonce,
     return true;
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* namespace deal */
 } /* namespace mxq */

@@ -3,8 +3,7 @@
  * One embedded SQLite database, opened at mxq_core_init and closed at
  * mxq_core_shutdown, holding the schema docs/game-data.md accepts as version 6.
  * This header is internal: nothing SQLite-shaped is visible through mxq.h, per
- * docs/architecture.md, and core/CMakeLists.txt links the vendored library
- * PRIVATE for the same reason.
+ * docs/architecture.md. The library is the SDK's.
  *
  * The store is one process, one connection, one serialized writer. The
  * connection lives here together with the one mutex that will serialize every

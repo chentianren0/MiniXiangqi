@@ -78,7 +78,6 @@ struct Stored {
 MxqStatus read_stored(const uint8_t *bytes, size_t len, Stored &out,
                       MxqError *err);
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 /*
  * Decode and fully validate untrusted file bytes: docs/game-data.md's accepted
@@ -101,7 +100,6 @@ MxqStatus read_stored(const uint8_t *bytes, size_t len, Stored &out,
 MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
                         MxqError *err);
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* namespace archive */
 } /* namespace mxq */

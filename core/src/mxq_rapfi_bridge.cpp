@@ -4,7 +4,6 @@
 
 #include "mxq_build_config.h"
 #include "mxq_notation.hpp"
-#include "mxq_sha256.hpp"
 
 #include "config.h"
 #include "core/iohelper.h"
@@ -36,11 +35,7 @@ namespace mxq {
 namespace rapfi {
 namespace {
 
-/* Everything pinned to one game, in one row per game. The weight fields are that
- * game's own pins, and reading a file against the wrong row is exactly the
- * mistake the byte preflight below would otherwise stop catching. All of it
- * comes from pinned-inputs.json through the generated build configuration
- * rather than being spelled here.
+/* Everything pinned to one game, in one row per game.
  *
  * `white_*` is null exactly when one file serves both sides. That is not a
  * special case bolted on: mix9svq declares separate black and white weights, and
@@ -48,8 +43,6 @@ namespace {
  * the freestyle network is published and how it is configured upstream. */
 struct WeightPin {
     const char *filename;
-    uint64_t    byte_length;
-    const char *sha256;
 };
 
 struct RulesPin {
@@ -57,26 +50,25 @@ struct RulesPin {
     const char      *variant_id; /* the engine's own name for the rule, at the
                                   * one board size these games are played on */
     ::Rule           engine_rule;
+    const char      *network_id; /* the one Black plays with names the pair */
     WeightPin        black;
     const WeightPin *white; /* null when `black` serves both sides */
 };
 
-constexpr WeightPin kRenjuWhite = {MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME,
-                                   MXQ_BUILD_RENJU_WHITE_NNUE_BYTE_LENGTH,
-                                   MXQ_BUILD_RENJU_WHITE_NNUE_SHA256};
+constexpr WeightPin kRenjuWhite = {MXQ_BUILD_RENJU_WHITE_NNUE_FILENAME};
 
 constexpr RulesPin kRulesPins[] = {
     {"gomoku-15",
      "freestyle15",
      ::Rule::FREESTYLE,
-     {MXQ_BUILD_GOMOKU_NNUE_FILENAME, MXQ_BUILD_GOMOKU_NNUE_BYTE_LENGTH,
-      MXQ_BUILD_GOMOKU_NNUE_SHA256},
+     MXQ_BUILD_GOMOKU_NNUE_ID,
+     {MXQ_BUILD_GOMOKU_NNUE_FILENAME},
      nullptr},
     {"renju",
      "renju15",
      ::Rule::RENJU,
-     {MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME, MXQ_BUILD_RENJU_BLACK_NNUE_BYTE_LENGTH,
-      MXQ_BUILD_RENJU_BLACK_NNUE_SHA256},
+     MXQ_BUILD_RENJU_BLACK_NNUE_ID,
+     {MXQ_BUILD_RENJU_BLACK_NNUE_FILENAME},
      &kRenjuWhite},
 };
 
@@ -146,7 +138,7 @@ bool g_config_loaded = false;
  * core/platform.cpp's Windows large-page free path uses std::printf, which is C
  * stdio and not std::cout. It is unreachable here — that path is inside
  * #ifdef _WIN32 and this engine is not built for Windows — and it is recorded
- * as pending fork work in pinned-inputs.json for the same reason.
+ * as pending fork work in engines/rapfi/README.md for the same reason.
  */
 class CoutSilencer {
 public:
@@ -169,14 +161,14 @@ private:
     std::streambuf *saved_;
 };
 
-/* One selected weight file: where it is, and the pins it must satisfy. */
+/* One selected weight file. */
 struct WeightChoice {
     std::string      path;
     const WeightPin *pin;
 };
 
 /*
- * Gate 1, selection. Which files this rule needs, by the names the manifest
+ * Gate 1, selection. Which files this rule needs, by the names this build
  * pins, in the asset directory the frontend supplied.
  *
  * There is no search for an unrecognised file the way the first engine's
@@ -184,8 +176,7 @@ struct WeightChoice {
  * Fairy-Stockfish binds a network to a variant by its basename, so a candidate
  * file whose name does not match is a real and silent hazard worth looking for.
  * Rapfi reads the rule and the board size out of the file's own header and takes
- * the name as nothing at all, so a file under an unexpected name is a file this
- * build cannot verify against any pin — and an unverifiable file is refused,
+ * the name as nothing at all, so a file under an unexpected name is refused,
  * not guessed at.
  */
 bool select_weights(const std::string &assets_dir, Rules rules,
@@ -207,57 +198,6 @@ bool select_weights(const std::string &assets_dir, Rules rules,
             return false;
         }
         out.push_back({path.string(), pin});
-    }
-    return true;
-}
-
-/* Gate 2, bytes. Every selected file's length and SHA-256 against its own pins,
- * before the engine is given a path. */
-bool verify_weights(const std::vector<WeightChoice> &weights, bool &out_missing,
-                    std::string &detail) {
-    out_missing = false;
-    for (const WeightChoice &weight : weights) {
-        std::ifstream in(weight.path, std::ios::binary);
-        if (!in) {
-            detail = "cannot open the weight file at " + weight.path;
-            out_missing = true;
-            return false;
-        }
-        /* Ten megabytes into a std::string, which can throw. Treated as a file
-         * this build cannot read rather than as an engine failure: whether the
-         * bytes did not arrive or could not be held, the file is not usable and
-         * the caller's answer is the same. */
-        std::string bytes;
-        try {
-            bytes.assign(std::istreambuf_iterator<char>(in),
-                         std::istreambuf_iterator<char>());
-        } catch (const std::exception &e) {
-            detail = std::string("cannot read the weight file at ") +
-                     weight.path + ": " + e.what();
-            out_missing = true;
-            return false;
-        }
-        if (in.bad()) {
-            detail = "cannot read the weight file at " + weight.path;
-            out_missing = true;
-            return false;
-        }
-        /* The diagnosis leads and the path follows: MxqError.detail is bounded,
-         * and when a long path forces truncation it is the path that must lose,
-         * never the fact the caller can act on. */
-        if (bytes.size() != static_cast<size_t>(weight.pin->byte_length)) {
-            detail = "the weight file is " + std::to_string(bytes.size()) +
-                     " bytes where the one pinned as " +
-                     std::string(weight.pin->filename) + " is " +
-                     std::to_string(weight.pin->byte_length) + ", at " +
-                     weight.path;
-            return false;
-        }
-        if (sha256_hex(bytes) != weight.pin->sha256) {
-            detail = "the weight file does not match the SHA-256 pinned for " +
-                     std::string(weight.pin->filename) + ", at " + weight.path;
-            return false;
-        }
     }
     return true;
 }
@@ -337,8 +277,8 @@ const char *rules_variant_id(Rules rules) {
     return pin_of(rules).variant_id;
 }
 
-const char *rules_nnue_sha256(Rules rules) {
-    return pin_of(rules).black.sha256;
+const char *rules_network_id(Rules rules) {
+    return pin_of(rules).network_id;
 }
 
 const char *fork_revision() {
@@ -585,15 +525,6 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         return ConfigureError::AssetMissing;
     }
 
-    /* Gate 2: their bytes, before the engine sees a path. A length or hash
-     * mismatch is a damaged installation and refuses here; the engine's own
-     * header check never has to be the thing that catches it. */
-    bool missing = false;
-    if (!verify_weights(weights, missing, detail)) {
-        return missing ? ConfigureError::AssetMissing
-                       : ConfigureError::AssetMismatch;
-    }
-
     {
         CoutSilencer silence;
 
@@ -631,9 +562,8 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
 
         /* The evaluator, by absolute path and through an identity resolver.
          * The engine's production resolver walks the working directory and the
-         * argv[0]-derived binary directory; the paths here are already absolute
-         * and already verified, so resolving them again could only find
-         * something else. */
+         * argv[0]-derived binary directory; the paths here are already absolute,
+         * so resolving them again could only find something else. */
         Evaluation::EvaluatorWeightsConfig cfg;
         cfg.type = "mix9svq";
         Evaluation::EvaluatorWeightsConfig::WeightFiles files;
@@ -685,7 +615,7 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
          * threads of its own rather than driving these. setMemoryLimit reaches
          * HashTable::resize, which returns early when the size has not changed —
          * before its waitForIdle — so a re-preparation at the same table size
-         * passes straight through. Gate 3 then calls setBoardAndEvaluator
+         * passes straight through. Gate 2 then calls setBoardAndEvaluator
          * directly, which startThinking would have reached only after waiting.
          * So on the rules-switch path the workers could still be holding an
          * unpicked init task when a refusal below unwinds to setNumThreads(0),
@@ -732,7 +662,7 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         return ConfigureError::HashAllocationFailed;
     }
 
-    /* Gate 3: the effective evaluator, after the whole configuration.
+    /* Gate 2: the effective evaluator, after the whole configuration.
      *
      * This is the gate the engine's own silence makes necessary. A weight set
      * that does not cover the rule or the board size raises UnsupportedRuleError

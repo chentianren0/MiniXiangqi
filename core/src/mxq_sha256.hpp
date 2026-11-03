@@ -10,9 +10,7 @@
  *
  * The implementation in mxq_sha256.cpp is written from the FIPS 180-4
  * specification rather than vendored, so there is no third-party provenance to
- * record; core/tests/mxq_session_tests.cpp holds it to the published NIST test
- * vectors, including the multi-block one, before anything else in this core
- * trusts it.
+ * record; the deal derivation case in core/tests holds it to a known answer.
  */
 
 #ifndef MXQ_SHA256_HPP

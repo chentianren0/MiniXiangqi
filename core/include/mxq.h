@@ -880,20 +880,21 @@ typedef struct MxqVersion {
 
 /*
  * What one game binds to: the engine variant its rules are played under and the
- * network that variant is searched with. Both are pinned per game, and reading
- * a network against the other game's pins would verify it against nothing —
- * which is why this is one struct rather than two parallel lookups.
+ * network that variant is searched with. Both are pinned per game, which is why
+ * this is one struct rather than two parallel lookups.
  *
- * variant_id is the identifier the game's own engine knows it by. nnue_sha256 is
- * the network pinned for it; where a game pins a network per side — Renju does,
- * its two sides being trained apart — this is the one Black plays with, and the
- * pins move together, so it names the pinned set rather than only itself.
+ * variant_id is the identifier the game's own engine knows it by. nnue_sha256
+ * names the network pinned for it by the first twelve hexadecimal digits of its
+ * SHA-256, as the network's file name does; where a game pins a network per
+ * side — Renju does, its two sides being trained apart — this is the one Black
+ * plays with, and the pins move together, so it names the pinned set rather
+ * than only itself.
  */
 typedef struct MxqGameProfile {
     uint32_t    struct_size;
     MxqGameKind game;
     char        variant_id[MXQ_VARIANT_ID_CAP]; /* the pinned engine variant */
-    char        nnue_sha256[MXQ_SHA256_HEX_CAP]; /* lowercase hexadecimal */
+    char        nnue_sha256[MXQ_SHA256_HEX_CAP]; /* twelve lowercase hex digits */
 } MxqGameProfile;
 
 /*

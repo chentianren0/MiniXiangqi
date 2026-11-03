@@ -40,11 +40,7 @@ constexpr const char *kPlacementStart =
  * because the rows must stay where the enumerators put them — Jieqi is the game
  * after them, and a table that dropped two rows would answer for Jieqi out of
  * Gomoku's. */
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 constexpr bool kPlacementCarried = true;
-#else
-constexpr bool kPlacementCarried = false;
-#endif
 
 constexpr GameRow kGames[] = {
     /* MXQ_GAME_KIND_MINI_XIANGQI */

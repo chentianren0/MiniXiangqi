@@ -30,8 +30,6 @@
  * compiled without exceptions at all and whose allocation failure would
  * terminate too. A guard inside the fork's thread loop is a possible focused
  * change if evidence ever asks for one.
- *
- * Compiled only when MXQ_ENABLE_GOMOKU_FACADE is ON.
  */
 
 #ifndef MXQ_RAPFI_BRIDGE_HPP
@@ -61,9 +59,8 @@ constexpr int kBoardSize = 15;
  *
  * They are a closed set rather than a string a caller supplies, for the reason
  * the first engine's Variant enumeration gives: everything that follows from one
- * here is pinned to it one for one — the engine's own rule, and the weight files
- * with their byte lengths and SHA-256s. A string parameter would make most of
- * that unpinnable.
+ * here is pinned to it one for one — the engine's own rule, and the weight
+ * files. A string parameter would make that unpinnable.
  *
  * The identifiers the product uses for them are `gomoku-15` and `renju`. */
 enum class Rules {
@@ -71,8 +68,7 @@ enum class Rules {
     Renju,    /* five exactly for Black, with the forbidden-move restrictions */
 };
 
-/* The product's identifier for one of them, which is also the manifest key its
- * weights are pinned under. */
+/* The product's identifier for one of them. */
 const char *rules_id(Rules rules);
 
 /* The rules one game is played under. The two vocabularies are deliberately
@@ -87,10 +83,10 @@ Rules rules_of(MxqGameKind game);
  * move came from by. */
 const char *rules_variant_id(Rules rules);
 
-/* The SHA-256 pinned for that rule's network, lowercase hexadecimal. Where a
- * rule pins a network per side it is the one Black plays with: the pins move
- * together in the manifest, so one of them names the pair. */
-const char *rules_nnue_sha256(Rules rules);
+/* That rule's network, as its file name carries it: the first twelve
+ * hexadecimal digits of its SHA-256. Where a rule pins a network per side it is
+ * the one Black plays with, which names the pair. */
+const char *rules_network_id(Rules rules);
 
 /* The revision this engine is vendored at. The core reports one fork revision
  * through MxqVersion and it is the first engine's; this is the second's, and it
@@ -186,8 +182,7 @@ enum class ConfigureError {
     InsufficientMemory,   /* the planned budget is below the accepted minimum;
                            * nothing was configured. Only prepare() returns it */
     AssetMissing,         /* a weight file this rule needs is not there */
-    AssetMismatch,        /* byte length, SHA-256, or the effective evaluator
-                           * after configuration */
+    AssetMismatch,        /* the effective evaluator after configuration */
     RulesLoadFailed,      /* the engine could not be brought up for this rule */
     HashAllocationFailed, /* the transposition table could not be allocated */
 };
@@ -240,17 +235,13 @@ ConfigureError prepare(Rules rules, const MxqEngineBudget &budget,
  *     length of a search would stall every other bridge call behind a whole
  *     thinking time.
  *
- * Three preflights run in order, and the third is the one that exists because
+ * Two preflights run in order, and the second is the one that exists because
  * this engine fails quietly:
  *
  *   1. Selection — which files this rule needs. Freestyle has one, which serves
  *      both sides; renju has one per side, because its forbidden-move rules
  *      apply to Black alone and the two sides are trained apart.
- *   2. Bytes — every selected file's length and SHA-256 against its own pins,
- *      before the engine is given a path. A weight file carries a structural
- *      header the engine checks and no content hash at all, so the manifest pins
- *      are the whole of the integrity check.
- *   3. The effective evaluator, after the whole configuration and never instead
+ *   2. The effective evaluator, after the whole configuration and never instead
  *      of it. A weight set that does not cover the rule or the board size throws
  *      UnsupportedRuleError or UnsupportedBoardSizeError, which the engine's own
  *      evaluator maker swallows — leaving the engine playing on classical

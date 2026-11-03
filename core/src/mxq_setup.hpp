@@ -19,9 +19,6 @@
  *     one of the things being judged. Counts and zones are board arithmetic and
  *     ask no engine; the one question that needs the engine — is a side in
  *     check — is asked by setting a position and reading it, never by playing.
- *
- * Compiled only when MXQ_ENABLE_RULES_FACADE is ON, like the rest of the
- * facade: the check question is the engine's to answer.
  */
 
 #ifndef MXQ_SETUP_HPP
@@ -29,7 +26,6 @@
 
 #include "mxq.h"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 #include <string>
 
@@ -116,6 +112,5 @@ StartError judge_start(MxqGameKind game, const char *fen,
 } /* namespace setup */
 } /* namespace mxq */
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 #endif /* MXQ_SETUP_HPP */

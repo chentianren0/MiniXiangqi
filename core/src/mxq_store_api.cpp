@@ -20,10 +20,8 @@
 #include "mxq_internal.hpp"
 #include "mxq_store.hpp"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_archive_read.hpp"
 #include "mxq_session.hpp"
-#endif
 
 #include <cassert>
 #include <cstring>
@@ -390,7 +388,6 @@ MxqStatus MXQ_CALL mxq_store_history_delete(MxqCore *core, uint64_t record_id,
     return mxq::store::history_delete(*core->store, record_id, err);
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 MxqStatus MXQ_CALL mxq_store_active_summary(MxqCore *core,
                                             MxqRecordSummary *out,
@@ -492,6 +489,5 @@ MxqStatus MXQ_CALL mxq_store_history_open(MxqCore *core, uint64_t record_id,
     return mxq::session::history_open(core, record_id, out_replay, err);
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* extern "C" */

@@ -4,9 +4,7 @@
  * in Stockfish types. Keeping the boundary in one file is what makes the
  * dependency direction in docs/architecture.md checkable rather than aspirational:
  * the engine is an internal, replaceable component and must not be visible
- * through the C interface.
- *
- * Compiled only when MXQ_ENABLE_RULES_FACADE is ON. */
+ * through the C interface. */
 
 #ifndef MXQ_ENGINE_BRIDGE_HPP
 #define MXQ_ENGINE_BRIDGE_HPP
@@ -31,10 +29,10 @@ namespace engine {
  *
  * They are a closed set rather than a string a caller supplies, because
  * everything that follows a variant here is pinned to it one for one: an
- * identifier the engine knows, a network whose basename must begin with that
- * identifier, and that network's byte length and SHA-256. A string parameter
- * would make three of those four unpinnable, and the engine answers a variant
- * it does not know with a silent no-op rather than an error.
+ * identifier the engine knows and a network whose basename must begin with
+ * that identifier. A string parameter would leave the network unpinnable, and
+ * the engine answers a variant it does not know with a silent no-op rather than
+ * an error.
  *
  * MiniXiangqi is the app's pinned custom variant, defined in the bundled
  * configuration; Xiangqi is the engine's own built-in 9x10 game, registered
@@ -61,10 +59,9 @@ Variant active_variant();
  * prefix its network's basename must begin with. */
 const char *variant_id(Variant variant);
 
-/* The SHA-256 pinned for that variant's network, lowercase hexadecimal. Half of
- * what identifies the configuration a move was produced by, and the half that
- * is per-variant. */
-const char *variant_nnue_sha256(Variant variant);
+/* That variant's network, as its file name carries it: the first twelve
+ * hexadecimal digits of its SHA-256. */
+const char *variant_network_id(Variant variant);
 
 /* Adjudication as the rules contract describes it, independent of how the
  * engine happens to report it. The engine returns one side-to-move-relative
@@ -249,9 +246,8 @@ ProbeError side_to_move_in_check(Variant variant, const char *fen,
 /* Why configure() refused. Each maps onto one engine-domain status. */
 enum class ConfigureError {
     None,
-    AssetMissing,          /* no network file to preflight */
-    AssetMismatch,         /* byte length, SHA-256, or the effective NNUE
-                            * state after configuration */
+    AssetMissing,          /* no network file for the variant */
+    AssetMismatch,         /* the effective NNUE state after configuration */
     VariantLoadFailed,     /* the requested variant is not loadable */
     HashAllocationFailed,  /* the transposition table could not be allocated */
 };
@@ -269,12 +265,10 @@ enum class ConfigureError {
  * what lets one prepared engine be re-prepared for the other variant without
  * the asset directory changing shape.
  *
- * Every network handed over is preflighted, and the requested variant's twice:
- * every one's bytes against ITS OWN pinned byte length and SHA-256 before the
- * engine sees a path, and then the engine's effective NNUE state after
- * configuration, because a basename that does not begin with the active
- * variant's identifier clears the engine's internal flag silently while the
- * option still reads true. That second check compares against the token the
+ * The requested variant's network is checked after configuration against the
+ * engine's effective NNUE state, because a basename that does not begin with
+ * the active variant's identifier clears the engine's internal flag silently
+ * while the option still reads true. The check compares against the token the
  * engine would have SELECTED, never against the whole option value: the engine
  * leaves eval_file_loaded untouched when a load fails, and its own verification
  * asks only whether that stale name appears anywhere in the list — which, once
