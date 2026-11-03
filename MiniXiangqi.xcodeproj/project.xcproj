@@ -73,7 +73,12 @@
             "$(DERIVED_FILE_DIR)/seal-engine-assets",
           ],
           "shell": "/bin/sh",
-          "script": "set -e\nxcrun --sdk macosx swiftc -parse-as-library -D SEAL_ENGINE_ASSETS -o \"$SCRIPT_OUTPUT_FILE_1\" \"$SCRIPT_INPUT_FILE_0\"\n\"$SCRIPT_OUTPUT_FILE_1\"\n",
+          "script": [
+            "set -e",
+            "xcrun --sdk macosx swiftc -parse-as-library -D SEAL_ENGINE_ASSETS -o \"$SCRIPT_OUTPUT_FILE_1\" \"$SCRIPT_INPUT_FILE_0\"",
+            "\"$SCRIPT_OUTPUT_FILE_1\"",
+            "",
+          ],
         },
       ],
       "package-product-members": [
