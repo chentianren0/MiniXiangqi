@@ -174,8 +174,8 @@ bool read_board(const std::string &field, Record &out, std::string &detail) {
             continue;
         }
         if (is_digit(c)) {
-            /* Nine files cannot spell a two-digit run and a zero run means nothing;
-             * either would be a second spelling of one position. */
+            /* Nine files cannot spell a two-digit run and a zero run means
+             * nothing; either would be a second spelling of one position. */
             if (c == '0' || file + (c - '0') > kFiles) {
                 detail = "an empty run runs past the rank it is in";
                 return false;
@@ -364,8 +364,9 @@ Adjudication adjudicate(pf::Position &pos,
     }
 
     if (rule == pf::RULE_JUDGE_RULE40) {
-        /* Only a capture resets the count, not a reveal. Automatic, so a committed
-         * draw rather than a claimable one, and no position had to recur. */
+        /* Only a capture resets the count, not a reveal. Automatic, so a
+         * committed draw rather than a claimable one, and no position had to
+         * recur. */
         a.state = MXQ_GAME_DRAW;
         a.reason = MXQ_END_REASON_FORTY_MOVE_RULE;
         return a;
@@ -391,8 +392,8 @@ Adjudication adjudicate(pf::Position &pos,
             a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
             break;
         default:
-            /* Unreachable. An unknown rule is not evidence of a claimable repetition,
-             * so answer ONGOING with no occurrence. */
+            /* Unreachable. An unknown rule is not evidence of a claimable
+             * repetition, so answer ONGOING with no occurrence. */
             a.at_occurrence = 0;
             break;
         }
@@ -411,9 +412,9 @@ Adjudication adjudicate(pf::Position &pos,
         a.reason = MXQ_END_REASON_PERPETUAL_CHASE;
         break;
     default:
-        /* A plain repetition is always drawn (a decisive value comes only with a
-         * chase), so name no rule rather than guess: a wrong reason is stored with
-         * the game forever, a missing one is caught by a fixture. */
+        /* A plain repetition is always drawn (a decisive value comes only with
+         * a chase), so name no rule rather than guess: a wrong reason is stored
+         * with the game forever, a missing one is caught by a fixture. */
         break;
     }
     return a;
@@ -559,9 +560,9 @@ ReplayError replay(const char *start_fen, const char *const *moves,
 
     try {
         /* A Position points into its state list and adjudication walks it back,
-         * so a deque: reallocation would invalidate the pointers. The Position is
-         * on the heap because it carries a 16 KiB repetition filter and rule_judge
-         * puts a second one on the stack during chase detection. */
+         * so a deque: reallocation would invalidate the pointers. The Position
+         * is on the heap because it carries a 16 KiB repetition filter and
+         * rule_judge puts a second one on the stack during chase detection. */
         auto states = std::make_unique<std::deque<pf::StateInfo>>(1);
         auto pos = std::make_unique<pf::Position>();
         pos->set(dialect_of(record), &states->back());
@@ -588,8 +589,9 @@ ReplayError replay(const char *start_fen, const char *const *moves,
                 return ReplayError::IllegalMove;
             }
 
-            /* An illegal move stops the replay rather than being skipped: a shortened
-             * line answers about the wrong position and looks like an answer. */
+            /* An illegal move stops the replay rather than being skipped: a
+             * shortened line answers about the wrong position and looks like an
+             * answer. */
             const pf::Square from = engine_square(from_file, from_rank);
             const pf::Square to = engine_square(to_file, to_rank);
             pf::Move         move = pf::Move::none();
@@ -612,11 +614,12 @@ ReplayError replay(const char *start_fen, const char *const *moves,
             const bool taken_down = record.down[to_rank][to_file];
 
             /*
-             * do_move never touches the pool: a moving face-down piece flips through
-             * do_flip, which decrements the pool and rebuilds the check state do_move
-             * leaves empty for it; a captured face-down piece never flips, so its
-             * identity leaves the pool through the accessor. This is the engine's own
-             * sequence, without a transposition table.
+             * do_move never touches the pool: a moving face-down piece flips
+             * through do_flip, which decrements the pool and rebuilds the check
+             * state do_move leaves empty for it; a captured face-down piece
+             * never flips, so its identity leaves the pool through the
+             * accessor. This is the engine's own sequence, without a
+             * transposition table.
              */
             states->emplace_back();
             pos->do_move(move, states->back());
@@ -638,8 +641,9 @@ ReplayError replay(const char *start_fen, const char *const *moves,
             record.side_to_move = record.side_to_move == MXQ_COLOR_RED
                                       ? MXQ_COLOR_BLACK
                                       : MXQ_COLOR_RED;
-            /* Read back from the engine, the counter rule_judge uses for the forty-move
-             * rule, so the record and the outcome cannot disagree. */
+            /* Read back from the engine, the counter rule_judge uses for the
+             * forty-move rule, so the record and the outcome cannot
+             * disagree. */
             record.halfmove = static_cast<uint32_t>(pos->rule40_count());
 
             identities.push_back(identity_of(record));

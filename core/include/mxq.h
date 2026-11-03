@@ -406,14 +406,16 @@ MXQ_API MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
 /* Prepare the engine game is played on with the plan the budget yields: its
  * threads, Hash, variant and network. One game is prepared at a time, and
  * preparing one releases the other engine. Below the minimum Hash it is
- * MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY and nothing is prepared. Blocks; call it
- * off the main thread. */
+ * MXQ_ERR_ENGINE_INSUFFICIENT_MEMORY and nothing is prepared; with a search
+ * outstanding it is MXQ_ERR_STATE_SEARCH_IN_PROGRESS. Jieqi, which no engine
+ * plays, is MXQ_ERR_ARG_RANGE. Blocks; call it off the main thread. */
 MXQ_API MxqStatus mxq_engine_prepare(MxqCore *core, MxqGameKind game,
                                      const MxqEngineBudget *budget,
                                      MxqEnginePlan *out_applied,
                                      MxqError *err);
 
-/* Release the engines and their Hash. Blocks. */
+/* Release the engines and their Hash. With a search outstanding it is
+ * MXQ_ERR_STATE_SEARCH_IN_PROGRESS; cancel first. Blocks. */
 MXQ_API MxqStatus mxq_engine_teardown(MxqCore *core, MxqError *err);
 
 /* The engine's state and the profile it would search under now. */
@@ -434,8 +436,9 @@ MXQ_API MxqStatus mxq_engine_profile_id(MxqGameKind game, char *out,
 /* Search the position at the end of the line for movetime_ms and return a
  * ticket. The line must be legal — a start the game replays from (a placement
  * game's frozen start) and moves the rules accept — and the core does not
- * check it. The line is copied before this returns. The engine must be
- * prepared for game. Searches run one at a time, in order, on the engine
+ * check it. The line is copied before this returns. An engine not prepared
+ * for game is MXQ_ERR_STATE_ENGINE_NOT_READY, and a zero movetime_ms is
+ * MXQ_ERR_ARG_RANGE. Searches run one at a time, in order, on the engine
  * thread, and deliver to callback; a NULL callback leaves the result
  * unheard. */
 MXQ_API MxqStatus mxq_search_start(MxqCore *core, MxqGameKind game,

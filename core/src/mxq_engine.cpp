@@ -1,4 +1,5 @@
-/* The Hash plan, a pure function of the probe: mxq_engine_prepare applies it. */
+/* The Hash plan, a pure function of the probe: mxq_engine_prepare applies
+ * it. */
 
 #include "mxq_internal.hpp"
 
