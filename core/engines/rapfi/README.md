@@ -1,7 +1,7 @@
 # Rapfi
 
-- Upstream: https://github.com/dhbloo/rapfi, base `3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7`
-- Fork: https://github.com/chentianren0/rapfi, pinned at `265b7d66c7b57bbd8689c8dfd1efb4133e02b5ed`, committed 2026-08-12
+- Upstream: https://github.com/dhbloo/rapfi, base `1387d11312190ec66665d361ff07a7c70221b78a`
+- Fork: https://github.com/chentianren0/rapfi, pinned at `921aadc390b33a9346dad9be681d4ddde0d7406a`, committed 2026-11-03
 - Included: `Rapfi/` with the lz4, cpptoml and simde externals, plus `AUTHORS`, `Copying.txt` and the README. Excluded: `main.cpp`, the Gomocup protocol, every command module but `command`, `argutils`, `benchmark` and `dbcommand`, `tuning/`, the ONNX evaluator, the fork's CMake files, the Emscripten shell, the other externals, the trainer, web front end, network weights and CI.
 - `CommandLine::binaryDirectory` comes from `argv[0]` and `getcwd()`, so the core passes the engine absolute asset paths.
 - simde carries no license file in the fork, so third-party notices must take its MIT text from simde's own repository.

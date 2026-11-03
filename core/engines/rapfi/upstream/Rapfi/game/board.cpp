@@ -558,7 +558,9 @@ Score Board::score(Rule rule, Pos pos, Color side) const
     const auto [pcodeBlack, pcodeWhite] = pcodePair(pos);
     MoveScorePair scoreBlack            = Evaluation::getMoveScorePair(rule, BLACK, pcodeBlack);
     MoveScorePair scoreWhite            = Evaluation::getMoveScorePair(rule, WHITE, pcodeWhite);
-    return side == BLACK ? scoreBlack.self + scoreWhite.oppo : scoreWhite.self + scoreBlack.oppo;
+    int           score                 = side == BLACK ? scoreBlack.byOwner + scoreWhite.byOpponent
+                                                        : scoreWhite.byOwner + scoreBlack.byOpponent;
+    return Evaluation::clampMoveScore(score);
 }
 
 Pos Board::getLastActualMoveOfSide(Color side) const
@@ -590,9 +592,12 @@ void Board::expandCandArea(Pos pos, int fillDist, int lineDist)
             setCandidateBits(p >> 6, uint64_t(1) << (p & 63));
     };
 
+    // The four canonical line directions each have a positive and negative ray.
     for (int i = std::max(3, fillDist + 1); i <= lineDist; i++) {
-        for (int dir = 0; dir < 4; dir++)
+        for (int dir = 0; dir < 4; dir++) {
             markCandidate(pos + DIRECTION[dir] * i);
+            markCandidate(pos - DIRECTION[dir] * i);
+        }
     }
     for (int xi = -fillDist; xi <= fillDist; xi++) {
         for (int yi = -fillDist; yi <= fillDist; yi++)
