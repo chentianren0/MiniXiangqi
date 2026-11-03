@@ -23,15 +23,14 @@ let rapfiDefines: [CXXSetting] = [
     .define("USE_NEON"),
 ]
 
-// The core has always shipped built this way, whatever the app's
-// configuration: optimised, and with assertions off, because the facade's
-// assertions mark caller errors it also answers with a status.
+// Optimised and with assertions off whatever the app's configuration, because
+// the facade's assertions mark caller errors it also answers with a status.
 let release: [CXXSetting] = [.define("NDEBUG"), .unsafeFlags(["-O3"])]
 
 // The warnings the core holds its own code to.
 let ownWarnings: [CXXSetting] = [.unsafeFlags(["-Wall", "-Wextra"])]
 
-// The snapshots are upstream's, and so are their warnings.
+// The engine sources are upstream's, and so are their warnings.
 let engineFlags = ["-w"]
 
 // The engines are C++17 and the facade is C++20; the engines' headers do

@@ -1,5 +1,3 @@
-/* The deal derivation. See mxq_deal.hpp for what it owes and to whom. */
-
 #include "mxq_deal.hpp"
 
 #include "mxq_jieqi_bridge.hpp"
@@ -14,7 +12,7 @@ namespace mxq {
 namespace deal {
 namespace {
 
-/* Thirty-two bytes, which is the width of all four handshake values. */
+/* The width of all four handshake values. */
 constexpr size_t kValueBytes = 32;
 
 int hex_digit(char c) {
@@ -27,8 +25,7 @@ int hex_digit(char c) {
     return -1;
 }
 
-/* Whether `text` is one of the four handshake values as they are written
- * everywhere: exactly sixty-four lowercase hexadecimal digits. */
+/* Exactly sixty-four lowercase hexadecimal digits. */
 bool is_hex32(const std::string &text) {
     if (text.size() != kValueBytes * 2) {
         return false;
@@ -68,17 +65,11 @@ std::string hex_of(const uint8_t *bytes, size_t len) {
 }
 
 /*
- * The counter stream, § Deriving the deal:
- *
- *   "The stream is the concatenation, for counter 0, 1, 2, … in turn, of
- *    SHA-256(key ‖ counter), each counter written as eight bytes most
- *    significant first. It is read from the front, byte by byte as values are
- *    drawn, and never rewound."
- *
- * Reading it byte by byte and never rewinding is what makes the derivation a
- * function of the two contributions alone: a reader that refilled per draw, or
- * that aligned draws to block boundaries, would produce a different deal from
- * the same seed and nonce, and the two devices would not be playing one game.
+ * The counter stream: the concatenation, for counter 0, 1, 2, … in turn, of
+ * SHA-256(key ‖ counter), each counter written as eight bytes most significant
+ * first. It is read from the front, byte by byte as values are drawn, and
+ * never rewound; refilling per draw or aligning draws to block boundaries
+ * would deal another game from the same seed and nonce.
  */
 class Stream {
 public:
@@ -93,8 +84,7 @@ public:
         return block_[at_++];
     }
 
-    /* The next four bytes as an unsigned 32-bit integer, most significant
-     * first. */
+    /* Most significant first. */
     uint32_t next_u32() {
         uint32_t value = 0;
         for (int i = 0; i < 4; ++i) {
@@ -125,19 +115,11 @@ private:
 };
 
 /*
- * A value below n, § Deriving the deal:
- *
- *   "take the next four bytes of the stream, most significant first, as an
- *    unsigned 32-bit integer v; with limit the largest multiple of n that is at
- *    most 2^32, discard v and take another four bytes whenever v is limit or
- *    above; otherwise the value is v mod n."
- *
- * The discarding is part of the derivation rather than an implementation's
- * choice: v mod n alone favours the low values whenever n does not divide 2^32,
- * and two implementations that made different choices about it would deal
- * different games. limit is computed in 64-bit arithmetic because for n a power
- * of two it is 2^32 itself, which no uint32_t holds — and then no v is ever at
- * or above it, which is the case where the rejection costs nothing.
+ * A value below n: take the next four bytes as v; with limit the largest
+ * multiple of n that is at most 2^32, discard v and take another four whenever
+ * v is limit or above; otherwise the value is v mod n. The discarding is part
+ * of the derivation, since v mod n alone favours the low values. limit is
+ * 64-bit because for n a power of two it is 2^32 itself.
  */
 uint32_t value_below(Stream &stream, uint32_t n) {
     assert(n >= 2 && "a value is drawn below at least two");
@@ -152,15 +134,10 @@ uint32_t value_below(Stream &stream, uint32_t n) {
 }
 
 /*
- * A permutation of m items, § Deriving the deal:
- *
- *   "for i from m − 1 down to 1, draw a value j below i + 1 and exchange the
- *    items at i and j."
- *
- * Downward, and with the draw below i + 1 so that an item may be exchanged with
- * itself. The upward variant and the draw below i are both Fisher–Yates and
- * both wrong here: they consume the stream in another order and produce another
- * permutation from the same bytes.
+ * A permutation of m items: for i from m − 1 down to 1, draw a value j below
+ * i + 1 and exchange the items at i and j. The upward variant and the draw
+ * below i are both Fisher–Yates and both deal another permutation from the
+ * same bytes.
  */
 void permutation(Stream &stream, uint8_t *items, int32_t m) {
     for (int32_t i = 0; i < m; ++i) {
@@ -175,20 +152,16 @@ void permutation(Stream &stream, uint8_t *items, int32_t m) {
 }
 
 /*
- * The fifteen non-general pieces a side holds, in the order the protocol fixes:
- * "chariot, chariot, horse, horse, elephant, elephant, advisor, advisor,
- * cannon, cannon, soldier, soldier, soldier, soldier, soldier". Item number k
- * of a permutation is this list's k-th piece, so the order is what the item
- * numbers mean and the digest is taken over the numbers rather than over the
- * letters.
+ * The fifteen non-general pieces a side holds, in the protocol's order. Item
+ * number k of a permutation is this list's k-th piece.
  */
 constexpr char kPieces[kDealtPieces] = {'R', 'R', 'N', 'N', 'B', 'B',
                                         'A', 'A', 'C', 'C', 'P', 'P',
                                         'P', 'P', 'P'};
 
 /* Each side's fifteen non-general start squares, in the protocol's order. The
- * permuted list is laid onto them item by item, first item onto first square,
- * so this order is normative and not a convenience. */
+ * permuted list is laid onto them item by item, first item onto first
+ * square. */
 constexpr const char *kRedSquares[kDealtPieces] = {
     "a1", "b1", "c1", "d1", "f1", "g1", "h1", "i1",
     "b3", "h3", "a4", "c4", "e4", "g4", "i4"};
@@ -198,9 +171,8 @@ constexpr const char *kBlackSquares[kDealtPieces] = {
 
 char lowercase(char c) { return static_cast<char>(c - 'A' + 'a'); }
 
-/* The i-th square of one side's list, as its text — `a1` for Red's first and
- * `a7` for Black's. i outside 0..14 is a programming error and answers the
- * empty string. */
+/* The i-th square of one side's list, as its text. i outside 0..14 asserts and
+ * answers the empty string. */
 const char *square_of(MxqColor side, int32_t index) {
     if (index < 0 || index >= kDealtPieces) {
         assert(false && "a dealt square index outside the fifteen");
@@ -235,19 +207,14 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
         return false;
     }
 
-    /* The key, § Deriving the deal: "SHA-256(seed ‖ nonce) over the two
-     * thirty-two-byte values, seed first". Seed first is the whole of the
-     * ordering, and reversing it derives another deal from the same
-     * handshake. */
+    /* The key: SHA-256(seed ‖ nonce), seed first. */
     uint8_t joined[kValueBytes * 2];
     std::memcpy(joined, seed, kValueBytes);
     std::memcpy(joined + kValueBytes, nonce, kValueBytes);
     uint8_t key[kValueBytes];
     sha256(joined, sizeof(joined), key);
 
-    /* "jieqi's deal is two permutations of fifteen items, Red's drawn first and
-     * Black's second" — drawn one after another from the one stream, which is
-     * why they are drawn here in that order and from this one object. */
+    /* Two permutations of fifteen items from the one stream, Red's first. */
     Stream stream(key);
     uint8_t red_items[kDealtPieces];
     uint8_t black_items[kDealtPieces];
@@ -260,16 +227,9 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
     }
 
     /*
-     * The deal digest, § Deriving the deal: "SHA-256 over the deal itself: for
-     * each permutation the game drew, in the order it drew them, the item
-     * number standing at index 0, then the one at index 1, and so on, one byte
-     * each. For jieqi that is thirty bytes, Red's fifteen then Black's
-     * fifteen."
-     *
-     * The item numbers rather than the piece letters, which is what makes the
-     * digest bind the derivation itself: two different permutations can lay the
-     * same letters onto the same squares — the five soldiers are one item apiece
-     * — and a digest over letters would call those one deal.
+     * The deal digest: SHA-256 over the item number at each index, one byte
+     * each, Red's fifteen then Black's. Item numbers rather than letters,
+     * because two permutations can lay the same letters onto the same squares.
      */
     uint8_t material[kDealtPieces * 2];
     std::memcpy(material, red_items, kDealtPieces);
@@ -284,15 +244,11 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
 
 
 std::string start_of(const Deal &deal) {
-    /* A record with nothing on it: the letter of an empty point is kEmpty,
-     * which is the zero this initialisation writes, and no point is face down
-     * until one is dealt onto it. */
+    /* An empty board: zero is an empty, face-up point. */
     jieqi::Record record{};
 
-    /* The two generals, face up on their own points, read off the same home
-     * table the dealt-start predicate reads: the start this spells and the
-     * predicate that accepts it then agree by construction rather than by two
-     * transcriptions of one array. */
+    /* The generals, from the same home table the dealt-start predicate
+     * reads. */
     for (int32_t rank = 0; rank < jieqi::kRanks; ++rank) {
         for (int32_t file = 0; file < jieqi::kFiles; ++file) {
             const char home = jieqi::home_letter(file, rank);
@@ -302,8 +258,6 @@ std::string start_of(const Deal &deal) {
         }
     }
 
-    /* And the thirty that were dealt, face down, each on the square of its own
-     * index — the protocol's order, which square_of holds. */
     for (int32_t i = 0; i < kDealtPieces; ++i) {
         for (int32_t which = 0; which < 2; ++which) {
             const MxqColor side = which == 0 ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
@@ -311,8 +265,6 @@ std::string start_of(const Deal &deal) {
             int32_t rank = 0;
             if (!notation::point_of_square(MXQ_GAME_KIND_JIEQI,
                                            square_of(side, i), file, rank)) {
-                /* These are this module's own constants and squares of this
-                 * board. */
                 assert(false && "a dealt square is a square of this board");
                 continue;
             }
@@ -321,7 +273,6 @@ std::string start_of(const Deal &deal) {
         }
     }
 
-    /* Red moves first, and a start has no plies behind it to count. */
     record.side_to_move = MXQ_COLOR_RED;
     record.halfmove = 0;
     record.fullmove = 1;

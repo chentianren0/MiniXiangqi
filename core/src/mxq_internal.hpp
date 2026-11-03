@@ -56,10 +56,8 @@ MxqStatus engine_plan(const MxqEngineBudget *budget, MxqEnginePlan *out,
                       MxqError *err);
 
 /*
- * The search-callback reentrancy guard: a thread-local flag set while a
- * callback runs on the engine thread, checked by require_core and by the
- * lifecycle entries that take no live core, so a callback that calls back in
- * is refused before it can deadlock the thread it runs on.
+ * The search-callback reentrancy guard: a callback that calls back in is
+ * refused before it can deadlock the engine thread it runs on.
  */
 bool in_search_callback();
 

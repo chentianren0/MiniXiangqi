@@ -1,8 +1,7 @@
 /*
- * The facts about this build that the core reports: the engine revisions its
- * snapshots were cut from, the variants it searches and the networks it loads
- * for them. The revisions are the ones each engine's README under engines/
- * names; a new snapshot changes them here too.
+ * The facts about this build that the core reports: the engine revisions under
+ * engines/, the variants it searches and the networks it loads for them. An
+ * engine update changes its revision here and in its README.
  */
 
 #ifndef MXQ_BUILD_CONFIG_H

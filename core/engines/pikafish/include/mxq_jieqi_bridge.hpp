@@ -1,30 +1,16 @@
 /*
- * The one place the core touches the vendored Pikafish jieqi slice.
+ * The one place the core touches the vendored Pikafish jieqi slice. Nothing of
+ * the engine appears in this header, so the facade can call the bridge without
+ * seeing the renamed namespace the slice is compiled under; the bridge itself
+ * is compiled in the slice's target for that reason.
  *
- * Everything above this header speaks in mxq_ types and in the position record
- * docs/jieqi-rules.md freezes; everything below it speaks the engine's own
- * dialect and the engine's own types. Nothing of the engine appears here, which
- * is what lets the facade call this bridge without ever seeing the renamed
- * namespace the slice is compiled under.
- *
- * The bridge is compiled in the slice's own target for that reason, so the
- * rename definition reaches it and no facade source. A facade source that
- * spoke Stockfish:: to the OTHER engine must never be compiled under it.
- *
- * Two obligations of docs/jieqi-engine-integration.md live here and are the
- * reason several things below look like duplication of the engine's own work:
- *
- *   - **The engine validates nothing.** Setting a position has no error path, a
- *     malformed record is silently mangled, and a face-down piece spelled
- *     anywhere but its own start square is an out-of-bounds write rather than a
- *     refusal. So read_record below is the structural reading of the record
- *     form, it runs before anything reaches the engine, and every position the
- *     engine is handed is composed by this bridge from a record that passed it.
- *   - **Reveal letters are always the core's own.** What a move revealed is
- *     derived from the deal the record already holds and from the move, never
- *     from a file, a caller, or another device — the engine's dialect would
- *     accept a letter naming an enemy piece or an identity the pool has
- *     exhausted, and plant it.
+ *   - The engine validates nothing: a malformed record is silently mangled, and
+ *     a face-down piece anywhere but its own start square is an out-of-bounds
+ *     write. Every position the engine is handed is composed here from a
+ *     record that passed read_record.
+ *   - Reveal letters always come from the deal the record holds and the move,
+ *     never from a caller: the engine would accept and plant a letter naming an
+ *     enemy piece or an exhausted identity.
  */
 
 #ifndef MXQ_JIEQI_BRIDGE_HPP
@@ -40,26 +26,19 @@
 namespace mxq {
 namespace jieqi {
 
-/* Xiangqi's board exactly, which is Jieqi's: nine files, ten ranks. */
 constexpr int32_t kFiles = 9;
 constexpr int32_t kRanks = 10;
 
-/* An empty point. No piece letter is 0, so the grid needs no second array to
- * say which of its points are occupied. */
+/* No piece letter is 0, so the grid needs no occupancy array. */
 constexpr char kEmpty = '\0';
 
 /*
- * A position in the record form docs/jieqi-rules.md freezes, read.
- *
- * The record is the objective position and holds every hidden identity: a
- * face-down piece is written as its identity letter followed by `~`, so the
- * letter says what the piece is and the mark says the players do not know it.
- * That is the whole of the difference from a Xiangqi position record, and it is
- * why this struct carries the two arrays rather than one.
+ * A position record, read. A face-down piece is written as its identity letter
+ * followed by `~`: the letter says what it is, the mark that the players do not
+ * know it.
  *
  * Indexed [rank from Red's back rank][file from a], both zero-based, so
- * letter[0][4] is e1 and letter[9][4] is e10. The FEN's own order is the other
- * way round — highest rank first — and read_record is where that is turned.
+ * letter[0][4] is e1. The FEN lists the highest rank first; read_record turns it.
  */
 struct Record {
     char     letter[kRanks][kFiles]; /* the identity; its case is its side */
@@ -70,81 +49,56 @@ struct Record {
 };
 
 /*
- * Read one position record, and refuse everything the engine would not survive.
+ * Read one position record, refusing everything the engine would not survive:
+ * the six fields in their exact spelling; a face-down piece only on a dark home
+ * square of its own side; one general a side (without one the engine leaves its
+ * king square unset); and at most the face-down complement the game gives a
+ * side (the engine's dialect cannot spell a larger pool).
  *
- * This is mxq_rules_validate_fen's answer for this game, and it takes less than
- * the record's alphabet allows, exactly as docs/core-interface.md states: the
- * six fields and the frozen spelling of each; a face-down piece only on one of
- * the thirty dark home squares and only in the colour of the side whose square
- * that is; one general a side; and a face-down complement inside what the game
- * gives a side. The last two are what a board this entry accepts owes the
- * engine — a board without a general leaves its king square unset, and a
- * face-down count above nine is a pool this dialect cannot spell.
- *
- * `detail` receives the reason on a refusal, as the short English diagnostic
- * MxqError carries.
+ * `detail` receives the reason on a refusal.
  */
 bool read_record(const char *fen, Record &out, std::string &detail);
 
-/* The record written back out, in the same frozen form. */
+
 std::string write_record(const Record &record);
 
 /*
- * The piece that starts on one point of the standard array, in Red's own
- * letters for Red's half and Black's for Black's, and kEmpty for a point no
- * piece starts on.
- *
- * It is the whole of what makes a hidden piece move: a hidden piece has never
- * moved, so the square it stands on is its own start square, and the role it
- * plays is the role that square gives it. The dealt-start predicate reads the
- * same table for the same reason, which is why it is here and not private.
+ * The piece that starts on a point of the standard array, kEmpty if none. A
+ * hidden piece has never moved, so it plays the role of the square it stands on.
  */
 char home_letter(int32_t file, int32_t rank);
 
-/* Whether a face-down piece may stand on this point: one of the thirty start
- * squares that is not a general's. The two generals are the only pieces that
- * ever start face up, and a piece flips the moment it moves, so no other point
- * of the board ever holds one. */
+/* One of the thirty start squares that is not a general's: the only points a
+ * face-down piece can ever stand on. */
 bool is_dark_home(int32_t file, int32_t rank);
 
-/* Adjudication as docs/jieqi-rules.md describes it, independent of how the
- * engine happens to report it. Its shape is the other bridges': a state, a
- * reason, and the occurrence a repetition-based outcome attached at. */
+/* Adjudicated by the bridge, independent of how the engine reports it. */
 struct Adjudication {
     MxqGameState state;
     MxqEndReason reason;
     uint32_t     at_occurrence; /* 0 unless the outcome is repetition-based */
 };
 
-/* Why a replay did not complete. Returned rather than inferred from the detail
- * string, exactly as the other two bridges return theirs. */
 enum class ReplayError {
     None,
     StartFenInvalid, /* not a position record of this game */
     IllegalMove,     /* first_illegal is the offending index */
-    Faulted,         /* the bridge could not run: an allocation it could not
-                      * meet. docs/architecture.md forbids an exception crossing
-                      * the core's boundary, so it is contained here */
+    Faulted,         /* an allocation failed; no exception crosses the core */
 };
 
 /*
- * Replay `moves` from `start_fen` under Jieqi's rules, and report where the line
- * arrived: the position in the record form, whether the side to move is in
- * check, the ply count, the adjudication, and — when asked for — every legal
- * move there, in the contract's own `a1`-`i10` coordinates.
+ * Replay `moves` from `start_fen` under Jieqi's rules and report the position
+ * reached, check, ply count, adjudication and, if asked, the legal moves in
+ * `a1`-`i10` coordinates.
  *
- * The whole line is replayed from its own start every time, and no adjudication
- * ever resumes from a mid-game record: a position reached by playing a line and
- * the same position set from its own record do not carry the same key, because
- * the engine's flip bookkeeping maintains the key across a reveal while the pool
- * decrement for a captured face-down piece maintains nothing and setting a
- * position folds the whole remaining pool in. Within one replay that divergence
- * cannot mislead — every key the engine compares lies inside one capture-free
- * window and carries the same offset — which is the argument
- * docs/jieqi-engine-integration.md makes in full.
+ * Always replay from the line's own start; never adjudicate from a mid-game
+ * record. The engine keeps its key across a reveal, but a captured face-down
+ * piece's pool decrement updates nothing and setting a position folds the whole
+ * remaining pool in, so a position reached by play and the same position set
+ * from its record have different keys. Within one replay every compared key
+ * lies in one capture-free window and carries the same offset.
  *
- * On anything but ReplayError::None the outputs are unspecified, exactly as
- * mxq_rules_evaluate documents.
+ * On anything but ReplayError::None the outputs are unspecified.
  */
 ReplayError replay(const char *start_fen, const char *const *moves,
                    size_t move_count, std::string &out_fen, bool &out_in_check,

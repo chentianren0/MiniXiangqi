@@ -1,9 +1,8 @@
 import MiniXiangqiCore
 import Testing
 
-/// The placement games: the notation the core owns for them, and the legality
-/// and adjudication Rapfi answers for them. Rapfi is the rules authority here,
-/// so each case is a wiring claim a rebase of the fork would rerun.
+/// The placement games: the core's notation for them, and the legality and
+/// adjudication Rapfi answers for them.
 extension Core {
     @Suite struct Gomoku {
         static let empty = "15/15/15/15/15/15/15/15/15/15/15/15/15/15/15 w - - 0 1"

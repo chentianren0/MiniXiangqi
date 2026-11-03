@@ -1,24 +1,12 @@
 /*
- * The rules facade's one dispatch: which engine answers for which game.
+ * The rules facade's one dispatch: which engine answers for which game. The
+ * entry points in mxq_rules.cpp and the search facade judging the engine's move
+ * both ask here, so they cannot disagree.
  *
- * Two surfaces ask the same rules question — the entry points in mxq_rules.cpp
- * and the search facade judging the engine's own move — and each used to name
- * an engine to ask. Several engines make that a choice, and a choice made in
- * several places is made differently in each the day another game arrives.
- * This is where it is made.
- *
- * The choice follows from the game and from nothing else, and it is one axis
- * rather than a property of the position, the board size or the move text — the
- * header's own rule about MxqGameKind, applied to the one decision that would
- * otherwise be tempted to guess.
- *
- * Three engines answer here, and the axis is no longer the move class alone.
- * Jieqi is a movement game whose rules authority is neither of the other two:
- * it is played on Xiangqi's board with the pieces face down, which
- * Fairy-Stockfish's xiangqi variant knows nothing about, so the vendored
- * Pikafish slice answers for it and for nothing else. The dispatch is therefore
- * a game-to-authority answer with the move class behind it: Jieqi's own, then
- * the placement games' by move class, then the movement engine for the rest.
+ * The choice follows from the game alone, never from the position, the board
+ * size or the move text. Jieqi goes to the Pikafish slice, since
+ * Fairy-Stockfish knows nothing of face-down pieces; the placement games go to
+ * Rapfi; the movement engine answers for the rest.
  */
 
 #ifndef MXQ_RULES_HPP
@@ -37,10 +25,8 @@ namespace mxq {
 namespace rules {
 
 /*
- * Adjudication as the rules contracts describe it. It is the first engine's
- * shape because that shape is the wider one: at_occurrence is meaningful only
- * for a repetition-based outcome, which no placement game has — every ply there
- * adds a stone and none is ever removed, so no position of one occurs twice.
+ * at_occurrence is meaningful only for a repetition, which no placement game
+ * has: no stone is ever removed, so no position occurs twice.
  */
 using Adjudication = engine::Adjudication;
 
@@ -64,10 +50,8 @@ enum class ReplayError {
  * and violation state derive from history in the xiangqi games, and in the
  * placement games a line that already ended cannot be played past.
  *
- * out_in_check is false in every placement game, which has no check to be in.
- *
- * On anything but ReplayError::None the outputs are unspecified, exactly as
- * mxq_rules_evaluate documents.
+ * out_in_check is false in every placement game. On anything but
+ * ReplayError::None the outputs are unspecified.
  */
 ReplayError replay(MxqGameKind game, const char *start_fen,
                    const char *const *moves, size_t move_count,
@@ -76,9 +60,8 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
                    std::vector<std::string> *out_legal_moves,
                    size_t &first_illegal, std::string &detail);
 
-/* Structural validation of one position against the frozen encoding of `game`'s
- * own board, and never a judgment of setup legality: a position of another
- * board fails it, which is what makes the game a question rather than a hint. */
+/* Structural validation of one position against `game`'s own board, never a
+ * judgment of setup legality: a position of another board fails it. */
 bool validate_fen(MxqGameKind game, const char *fen, std::string &detail);
 
 } /* namespace rules */

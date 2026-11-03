@@ -1,4 +1,4 @@
-/* The Rapfi bridge. See mxq_rapfi_bridge.hpp for why it is one file. */
+/* The Rapfi bridge; see mxq_rapfi_bridge.hpp. */
 
 #include "mxq_rapfi_bridge.hpp"
 
@@ -39,12 +39,9 @@ namespace mxq {
 namespace rapfi {
 namespace {
 
-/* Everything pinned to one game, in one row per game.
- *
- * `white_*` is null exactly when one file serves both sides. That is not a
- * special case bolted on: mix9svq declares separate black and white weights, and
- * a configuration naming a single file resolves it as both paths, which is how
- * the freestyle network is published and how it is configured upstream. */
+/* Everything pinned to one game, one row per game. mix9svq resolves a single
+ * weight file as both sides' path, which is how the freestyle network is
+ * published. */
 struct WeightPin {
     const char *filename;
 };
@@ -76,10 +73,8 @@ constexpr RulesPin kRulesPins[] = {
      &kRenjuWhite},
 };
 
-/* A switch rather than a comparison, and a count rather than a comment: adding
- * a game to the enum without a row here is a warning at the switch, and adding
- * a case without a row is caught by the assertion. Both would otherwise be an
- * out-of-bounds read of a table that looks obviously right. */
+/* A new enumerator without a case warns at the switch; a case without a row
+ * trips the assertion. Either would otherwise read past the table. */
 static_assert(sizeof(kRulesPins) / sizeof(kRulesPins[0]) == 2,
               "one pinned row per Rules enumerator");
 
@@ -97,52 +92,28 @@ const RulesPin &pin_of(Rules rules) {
     return kRulesPins[pin_index(rules)];
 }
 
-/* The rules a configuration that has never happened would report. Nothing
- * searches in it — is_configured() is false until configure() succeeds — so it
- * is a starting value rather than a posture the way the first engine's default
- * variant is one. That difference is the difference between the engines: the
- * first bridge answers rules queries with no engine prepared and so must always
- * have a variant loaded, and this one answers nothing until it is prepared. */
+/* Only a starting value: nothing searches until configure() succeeds. */
 constexpr Rules kInitialRules = Rules::Gomoku15;
 
-/* The rules the process-global tables and the loaded weights are currently for,
- * and whether anything is loaded at all. Written only by configure() and
- * deconfigure(), both under g_mutex; read by search_run(), which holds no lock
- * and reads them exactly as it reads those tables. Atomic because a plain read
- * racing a write is a data race whatever the values are, and these cost
- * nothing. */
+/* Written only by configure() and deconfigure(), under g_mutex; read by
+ * search_run() without the lock, hence atomic. */
 std::atomic<Rules> g_active_rules{kInitialRules};
 std::atomic<bool>  g_configured{false};
 
-/* The engine's global state is process-wide and not re-entrant, and the core is
- * singleton-enforced for exactly that reason. */
+/* The engine's global state is process-wide and not re-entrant. */
 std::mutex g_mutex;
 
-/* Whether the engine's classical tables have been loaded from its own embedded
- * configuration. Once per process: they are rule-independent and nothing later
- * invalidates them. */
+/* The classical tables are rule-independent, so they load once per process. */
 bool g_config_loaded = false;
 
 /*
- * The engine writes every message and every error to std::cout, and
- * Config::GeneralCfg.messageMode silences the ones that ask it first — but not
- * the config loader's own, which run while the mode is still being parsed. A
- * library must not write to a host application's standard output at all, so the
- * stream is redirected for the length of any call that can produce one, and the
- * message mode is set to NONE besides. Belt and braces, and the braces are the
- * ones that hold: messageMode is data the engine reads, and a path that forgets
- * to read it is a path this catches anyway.
+ * The engine writes every message and error to std::cout. messageMode silences
+ * most, but not the config loader's, which run while the mode is being parsed,
+ * and a library must not write to the host's standard output. So std::cout is
+ * redirected around any call that can write, and messageMode is NONE as well.
  *
- * std::cout only. The engine writes nothing to std::cerr — every message and
- * every error goes through iohelper.h's sync_cout(), including ERRORL — so
- * swapping cerr would redirect a stream this engine never uses and take the
- * host's own diagnostics with it. That is the first bridge's posture too.
- *
- * One write is out of reach of this and is stated rather than implied:
- * core/platform.cpp's Windows large-page free path uses std::printf, which is C
- * stdio and not std::cout. It is unreachable here — that path is inside
- * #ifdef _WIN32 and this engine is not built for Windows — and it is recorded
- * as pending fork work in engines/rapfi/README.md for the same reason.
+ * std::cout only: everything goes through iohelper.h's sync_cout(), including
+ * ERRORL, so swapping std::cerr would only swallow the host's own diagnostics.
  */
 class CoutSilencer {
 public:
@@ -152,9 +123,8 @@ public:
     CoutSilencer &operator=(const CoutSilencer &) = delete;
 
 private:
-    /* Discarding rather than accumulating. A buffer would be a memory leak
-     * shaped like a guard: this one spans a whole search, and a search at the
-     * engine's ordinary message level writes a line per iteration. */
+    /* Discards rather than buffers: it spans a whole search, which writes a
+     * line per iteration. */
     struct Sink : std::streambuf {
         int overflow(int c) override { return c; }
         std::streamsize xsputn(const char *, std::streamsize n) override {
@@ -172,16 +142,9 @@ struct WeightChoice {
 };
 
 /*
- * Gate 1, selection. Which files this rule needs, by the names this build
- * pins, in the asset directory the frontend supplied.
- *
- * There is no search for an unrecognised file the way the first engine's
- * selection has one, and the difference is what a name means to each engine.
- * Fairy-Stockfish binds a network to a variant by its basename, so a candidate
- * file whose name does not match is a real and silent hazard worth looking for.
- * Rapfi reads the rule and the board size out of the file's own header and takes
- * the name as nothing at all, so a file under an unexpected name is refused,
- * not guessed at.
+ * Gate 1, selection: the files this rule needs, by their pinned names. Unlike
+ * Fairy-Stockfish, Rapfi reads the rule and board size from the file's header
+ * and ignores its name, so there is no scan for misnamed candidates.
  */
 bool select_weights(const std::string &assets_dir, Rules rules,
                     std::vector<WeightChoice> &out, std::string &detail) {
@@ -206,16 +169,12 @@ bool select_weights(const std::string &assets_dir, Rules rules,
     return true;
 }
 
-/* The deconfigured posture, shared by deconfigure() and configure()'s unwind.
- * Caller holds g_mutex.
+/* Shared by deconfigure() and configure()'s unwind. Caller holds g_mutex.
  *
- * The order is the one the engine's own ownership demands. The threads go first,
- * because a thread holds a board and an evaluator and the evaluator holds a
- * reference to the registry-owned weights; dropping the threads is what releases
- * them. The evaluator maker goes next so that a later preparation installs its
- * own rather than inheriting one for the wrong rule. The table goes last and
- * goes whole — resize(0) rather than a smaller size — because a partially
- * reduced transposition table is not a state anything here defines. */
+ * Threads first: each holds a board and an evaluator, which references the
+ * weights, so dropping them releases the weights. The evaluator maker next, so
+ * a later preparation cannot inherit one for the wrong rule. The table last,
+ * released whole. */
 void deconfigure_locked() {
     CoutSilencer silence;
     Search::Engine.stopThinking();
@@ -225,19 +184,13 @@ void deconfigure_locked() {
     g_configured.store(false, std::memory_order_release);
 }
 
-/* The engine's own embedded configuration, loaded once. It carries the classical
- * evaluation and score tables — which search reads for move ordering whatever
- * the evaluator is — and no [model.evaluator] section at all, which is what
- * makes it safe to load: it installs no weights of its own for the gate below to
- * be fooled by.
+/* The engine's embedded configuration: the classical evaluation and score
+ * tables, which search uses for move ordering, and no [model.evaluator]
+ * section, so it installs no weights that could fool gate 2.
  *
- * Command::loadConfig() is deliberately not what does this. Its resolution order
- * is the working directory and then a directory derived from argv[0], and inside
- * an app bundle the first is whatever the host process happens to be sitting in
- * and the second is meaningless. A config.toml left in either would silently
- * replace the engine's configuration, weights included. Config::loadConfig takes
- * a stream, so the embedded text can be handed to it directly and no filesystem
- * lookup happens at all. */
+ * Not Command::loadConfig(): it looks in the working directory and next to
+ * argv[0], where a stray config.toml would silently replace the configuration,
+ * weights included. Config::loadConfig takes a stream and touches no files. */
 bool load_internal_config(std::string &detail) {
     if (g_config_loaded) {
         return true;
@@ -270,9 +223,7 @@ Rules rules_of(MxqGameKind game) {
     default:
         break;
     }
-    /* Every caller passes a game this engine plays; the gate above them is
-     * notation::move_class_of, which is the one place that knows which engine a
-     * game belongs to. Reaching here is that gate having been skipped. */
+    /* notation::move_class_of routes only this engine's games here. */
     assert(false && "a game this engine does not play reached the bridge");
     return Rules::Gomoku15;
 }
@@ -304,14 +255,8 @@ bool is_configured() {
 namespace {
 
 /*
- * The engine's two sides and the core's, written out rather than left to the
- * enumerators happening to agree.
- *
- * The engine's BLACK moves first in these games; the core's MXQ_COLOR_RED is
- * the side that moves first in every game it plays. So they are the same side,
- * and the placement games are the ones where the core's "red" is drawn as a
- * black stone — a naming the frontend resolves, exactly as it resolves
- * MXQ_GAME_KIND_MINI_XIANGQI into a word a player reads.
+ * The engine's BLACK moves first; the core's MXQ_COLOR_RED is always the side
+ * that moves first. So the core's "red" is drawn as a black stone here.
  */
 MxqColor color_of(::Color side) {
     return side == BLACK ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
@@ -323,26 +268,19 @@ MxqGameState win_for(::Color side) {
 }
 
 /*
- * The body of replay(), with g_mutex held and with exceptions still able to
- * escape it. replay() below is the guard around both.
+ * The body of replay(), with g_mutex held; replay() catches what it throws.
  *
- * Every rules answer in here is the engine's own. A point is forbidden exactly
- * when Board::checkForbiddenPoint says so — the search-independent query that
- * resolves the recursive double-three cases rather than the table's first-pass
- * classification. A placement completes a five exactly when the point's own
- * Pattern4 for the side about to play it is A_FIVE, read before the stone lands.
- * That one read carries all three of the rule differences this campaign named,
- * because the tables it comes from are built per rule and per side:
+ * A point is forbidden exactly when Board::checkForbiddenPoint says so, which
+ * resolves the recursive double-three cases the table's first pass does not. A
+ * placement completes a five exactly when the point's Pattern4 for the mover is
+ * A_FIVE, read before the stone lands. The tables are built per rule and side,
+ * so that one read carries the rule differences:
  *
- *   - Freestyle checks no overline, so six in a row contains a five and wins for
- *     either side.
- *   - Renju checks the overline for Black alone, so Black's six is FORBID rather
- *     than a five, and White's six still wins.
- *   - A five that is also a double-four or a double-three is a five: the
- *     classification answers A_FIVE before it considers forbidding anything, so
- *     the move that wins is never the move that is refused.
- *
- * Nothing above restates any of that. The tables are the statement.
+ *   - Freestyle checks no overline, so six in a row wins for either side.
+ *   - Renju checks the overline for Black alone, so Black's six is FORBID and
+ *     White's six still wins.
+ *   - A five that is also a double-four or double-three is a five: A_FIVE is
+ *     classified before anything is forbidden.
  */
 ReplayError replay_locked(MxqGameKind game, const char *const *moves,
                           size_t move_count, std::string &out_fen,
@@ -368,9 +306,8 @@ ReplayError replay_locked(MxqGameKind game, const char *const *moves,
             detail = "ply " + std::to_string(i) + " is not a point of this board";
             return ReplayError::IllegalMove;
         }
-        /* A move after the game ended is not a move of this game. The line is
-         * refused at the first ply that could not have been played, which is
-         * what MXQ_ERR_RULES_INVALID_HISTORY's index means. */
+        /* A move after the game ended is refused at its own ply, which is the
+         * index MXQ_ERR_RULES_INVALID_HISTORY reports. */
         if (out_adj.state != MXQ_GAME_ONGOING) {
             first_illegal = i;
             detail = "ply " + std::to_string(i) + " follows the end of the game";
@@ -426,8 +363,7 @@ ReplayError replay_locked(MxqGameKind game, const char *const *moves,
 
     if (out_legal_moves != nullptr) {
         out_legal_moves->clear();
-        /* A finished game offers no moves, exactly as a checkmated position
-         * offers none: the affordance and the outcome are one answer. */
+        /* A finished game offers no moves. */
         if (out_adj.state == MXQ_GAME_ONGOING) {
             const ::Color mover = board.sideToMove();
             const bool    forbidden_applies = renju && mover == BLACK;
@@ -481,10 +417,8 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
         return replay_locked(game, moves, move_count, out_fen, out_ply, out_adj,
                              out_legal_moves, first_illegal, detail);
     } catch (const std::exception &e) {
-        /* A board is 58 KiB of heap at this size and the vectors above are the
-         * only other allocation here, so what reaches this is an allocation the
-         * system could not meet. Reported as the engine faulting rather than as
-         * a rules answer: nothing about the position was decided. */
+        /* Only allocations can throw here, so this is a fault, not a rules
+         * answer. */
         detail = std::string("the engine faulted replaying the line: ") + e.what();
         return ReplayError::Faulted;
     }
@@ -492,14 +426,13 @@ ReplayError replay(MxqGameKind game, const char *start_fen,
 
 namespace {
 
-/* The body of configure(), with g_mutex already held and with exceptions still
- * able to escape it. configure() below is the guard around both. */
+/* The body of configure(), with g_mutex held; configure() catches what it
+ * throws. */
 ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib,
                                 const std::string &assets_dir,
                                 std::string &detail) {
     const RulesPin &wanted = pin_of(rules);
 
-    /* Gate 1: which files. */
     std::vector<WeightChoice> weights;
     if (!select_weights(assets_dir, rules, weights, detail)) {
         return ConfigureError::AssetMissing;
@@ -508,27 +441,18 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
     {
         CoutSilencer silence;
 
-        /* Every configuration starts from the released posture and creates its
-         * thread set exactly once inside it. That is not tidiness — it is half
-         * of the answer to a deadlock in the engine's own thread teardown.
+        /* Release the threads first, so the thread set is created exactly once
+         * below. This avoids a deadlock in the engine's thread teardown:
          *
-         * SearchThread::init() starts the worker and then queues the thread's
-         * first task, which leaves `running` true until the worker picks it up.
-         * SearchThread's destructor sets `exit` and then waits for `running` to
-         * fall. If the destructor runs before that first task has been picked
-         * up, the worker's next look at its loop sees `exit` and returns without
-         * ever clearing `running` — and the destructor waits for a flag nothing
-         * will ever clear again. Destroying a thread set soon after creating it
-         * is what makes that window reachable, and setupSearcher() re-creates
-         * the whole set on its own (it calls setNumThreads with the current
-         * count), so calling it while threads exist and then resizing is exactly
-         * the sequence that provokes it.
+         * SearchThread::init() queues a first task, leaving `running` true until
+         * the worker picks it up. The destructor sets `exit` and waits for
+         * `running` to fall. If it runs before the pickup, the worker sees
+         * `exit` and returns without clearing `running`, and the destructor
+         * waits forever. setupSearcher() re-creates the whole set itself, so
+         * calling it with threads live and then resizing provokes this.
          *
-         * Releasing first means setupSearcher and setupEvaluator both run
-         * against an empty thread set, where they only record what they are
-         * given. The other half is below: after the threads are created, this
-         * function waits for them to pick their init task up, which closes the
-         * window rather than merely making it narrow. */
+         * With no threads, setupSearcher and setupEvaluator only record what
+         * they are given. The waitForIdle() below closes the rest. */
         Search::Engine.stopThinking();
         Search::Engine.setNumThreads(0);
 
@@ -536,14 +460,11 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
             deconfigure_locked();
             return ConfigureError::RulesLoadFailed;
         }
-        /* After the load, because the load commits the parsed [general] table
-         * over whatever was set before it. */
+        /* After the load, which overwrites the [general] table. */
         Config::GeneralCfg.messageMode = MsgMode::NONE;
 
-        /* The evaluator, by absolute path and through an identity resolver.
-         * The engine's production resolver walks the working directory and the
-         * argv[0]-derived binary directory; the paths here are already absolute,
-         * so resolving them again could only find something else. */
+        /* An identity resolver: the engine's own searches the working
+         * directory and next to argv[0], and these paths are already absolute. */
         Evaluation::EvaluatorWeightsConfig cfg;
         cfg.type = "mix9svq";
         Evaluation::EvaluatorWeightsConfig::WeightFiles files;
@@ -565,56 +486,35 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
             return ConfigureError::RulesLoadFailed;
         }
 
-        /* The accepted shared search profile: one strongest configuration, with
-         * the levels differing only in thinking time. strengthLevel stays at its
-         * maximum, multiPV at one, and no node or depth limit is imposed — all
-         * of which are SearchOptions defaults and are set per search rather than
-         * here, in search_run.
+        /* Levels differ only in thinking time; the rest of the profile is set
+         * per search in search_run.
          *
-         * Alpha-beta rather than MCTS: it is the engine's default searcher, it
-         * is what its own benchmark positions and its CI are run against, and
-         * it is the one whose memory limit is the transposition table alone —
-         * which is what the core's memory plan is a size for.
-         *
-         * With no threads live this only records the searcher; the thread set
-         * below is created against it. */
+         * Alpha-beta rather than MCTS: it is the engine's default and its
+         * memory is the transposition table alone, which the memory plan
+         * sizes. */
         Search::Engine.setupSearcher(Search::createSearcher("alphabeta"));
 
-        /* The threads, then the table. setNumThreads must not be called from a
-         * worker thread; the facade's engine thread is not one. clear(true)
-         * begins a new game — a fresh board state and a flushed transposition
-         * table — which is what a rules switch needs and what a first
-         * preparation needs equally. */
+        /* setNumThreads must not be called from a worker thread; the facade's
+         * engine thread is not one. clear(true) begins a new game and flushes
+         * the transposition table. */
         Search::Engine.setNumThreads(threads);
 
-        /* The other half of the deadlock answer, and it has to be here rather
-         * than left to the calls after it.
+        /* The other half of the deadlock fix: nothing below synchronises on
+         * every path. HashTable::clear spawns its own threads,
+         * HashTable::resize returns before its waitForIdle when the size is
+         * unchanged, and gate 2 calls setBoardAndEvaluator directly. So a
+         * refusal below could unwind to setNumThreads(0) before the workers
+         * picked up their init task.
          *
-         * Nothing further down this function is a synchronisation point on
-         * every path. clear(true) reaches HashTable::clear, which spawns
-         * threads of its own rather than driving these. setMemoryLimit reaches
-         * HashTable::resize, which returns early when the size has not changed —
-         * before its waitForIdle — so a re-preparation at the same table size
-         * passes straight through. Gate 2 then calls setBoardAndEvaluator
-         * directly, which startThinking would have reached only after waiting.
-         * So on the rules-switch path the workers could still be holding an
-         * unpicked init task when a refusal below unwinds to setNumThreads(0),
-         * which is exactly the destroy-before-pickup ordering the race needs.
-         *
-         * Waiting here also closes a data race that has nothing to do with the
-         * deadlock: the init task writes each thread's numaId, and
-         * setBoardAndEvaluator reads it. The write only happens for a thread
-         * count above Numa::BindGroupThreshold, so it is a race the accepted
-         * memory plan reaches on any machine that reports more than eight
-         * processors. */
+         * It also closes a data race: above Numa::BindGroupThreshold threads
+         * the init task writes each thread's numaId, which
+         * setBoardAndEvaluator reads. */
         Search::Engine.waitForIdle();
 
         Search::Engine.clear(true);
     }
 
-    /* The transposition table, sized in KiB. The engine reports total failure
-     * through the fork's recoverable-allocation change rather than by leaving
-     * the process. */
+    /* Sized in KiB. The fork reports a failed allocation instead of exiting. */
     const size_t hash_kib = static_cast<size_t>(hash_mib) * 1024u;
     bool allocated = false;
     {
@@ -627,12 +527,9 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         deconfigure_locked();
         return ConfigureError::HashAllocationFailed;
     }
-    /* And the size it actually took. The engine's own degradation halves the
-     * request until an allocation succeeds and reports that as success, which is
-     * reasonable for a program that owns its machine and wrong for this one: the
-     * accepted memory policy computes a budget from a fresh probe and refuses
-     * below its minimum rather than quietly playing with less. A short table is
-     * therefore the same answer as no table. */
+    /* The engine halves the request until an allocation succeeds and reports
+     * success. The memory plan refuses rather than playing with less, so a
+     * short table counts as no table. */
     if (Search::Engine.searcher()->getMemoryLimit() < hash_kib) {
         detail = "the transposition table degraded to " +
                  std::to_string(Search::Engine.searcher()->getMemoryLimit() /
@@ -642,21 +539,13 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         return ConfigureError::HashAllocationFailed;
     }
 
-    /* Gate 2: the effective evaluator, after the whole configuration.
+    /* Gate 2: the effective evaluator. The maker swallows UnsupportedRuleError
+     * and UnsupportedBoardSizeError and returns nullptr, and the engine then
+     * plays on classical evaluation silently.
      *
-     * This is the gate the engine's own silence makes necessary. A weight set
-     * that does not cover the rule or the board size raises UnsupportedRuleError
-     * or UnsupportedBoardSizeError inside the maker, and the maker catches both
-     * and moves to the next weight entry — with none left, it returns nullptr,
-     * logs at a message level that is off, and the engine plays the whole game
-     * on classical evaluation with nothing anywhere reporting it.
-     *
-     * So the question is put to the engine in the only form that cannot be
-     * answered by a configuration value: build the thread state a search would
-     * build, for this rule at this size, and ask whether an evaluator came out
-     * of it. setBoardAndEvaluator is what start_thinking itself calls, and the
-     * evaluator it leaves is the one a search would use — the same object, since
-     * it is kept whenever the rule and the size still match. */
+     * So build the thread state a search would, via setBoardAndEvaluator (what
+     * start_thinking calls), and check that an evaluator came out. A search
+     * keeps the same evaluator while the rule and size match. */
     {
         CoutSilencer silence;
         Search::Engine.ctx.options.rule = {wanted.engine_rule,
@@ -666,14 +555,8 @@ ConfigureError configure_locked(Rules rules, uint32_t threads, uint32_t hash_mib
         Search::Engine.main()->setBoardAndEvaluator(probe);
     }
     if (Search::Engine.main()->evaluator == nullptr) {
-        /* What a null evaluator means is deliberately not narrowed to one
-         * cause. The maker returns nothing when the weights do not cover the
-         * rule or the size, and equally when a load failed — a short read, a
-         * decompression error, an allocation that could not be met. It writes a
-         * message about which, and that message goes to a stream this bridge is
-         * silencing, so naming one cause here would be a guess printed as a
-         * fact. What the caller can act on is the same either way: the engine
-         * has no network for this game and must not play. */
+        /* Not narrowed to one cause: a failed load also yields null, and the
+         * engine's message saying which is silenced. */
         detail = "the engine has no NNUE evaluator for " + std::string(wanted.id) +
                  " at " + std::to_string(kBoardSize) + "x" +
                  std::to_string(kBoardSize) +
@@ -696,19 +579,13 @@ ConfigureError configure(Rules rules, uint32_t threads, uint32_t hash_mib,
     try {
         return configure_locked(rules, threads, hash_mib, assets_dir, detail);
     } catch (const std::exception &e) {
-        /* docs/architecture.md: no exception, and nothing that terminates the
-         * process, may cross the core's boundary. This engine throws to report
-         * — a bad allocation building a board, a thread the system would not
-         * create, a weight stream that ended early — and every one of those
-         * arrives here as one answer: the engine did not come up. Unwound whole
-         * afterwards, because a half-configured engine is not a state anything
-         * defines. */
+        /* No exception may leave the core. Any throw here means the engine did
+         * not come up; it is unwound whole. */
         detail = std::string("the engine failed to prepare: ") + e.what();
         try {
             deconfigure_locked();
         } catch (...) {
-            /* Teardown has nothing left to report with and nowhere better to
-             * go: the caller is already being told the preparation failed. */
+            /* The caller is already told the preparation failed. */
         }
         return ConfigureError::RulesLoadFailed;
     }
@@ -719,9 +596,8 @@ void deconfigure() {
     try {
         deconfigure_locked();
     } catch (...) {
-        /* Release returns void by design — a caller tearing an engine down has
-         * no decision left to make — so a throw here has nothing to be reported
-         * as. Swallowed rather than allowed to cross the boundary. */
+        /* Nothing to report a failed teardown to; it must not leave the
+         * core. */
     }
 }
 
@@ -732,16 +608,13 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
                                  uint32_t movetime_ms,
                                  const std::atomic<bool> &cancelled,
                                  SearchOutput &out, std::string &detail) {
-    /* No g_mutex here, deliberately: see the serialisation design in
-     * mxq_rapfi_bridge.hpp. */
+    /* No g_mutex, so a search does not block other bridge calls. */
     if (!g_configured.load(std::memory_order_acquire)) {
         detail = "no engine is prepared";
         return SearchError::NotConfigured;
     }
     const RulesPin &active = pin_of(g_active_rules.load(std::memory_order_acquire));
 
-    /* The board, replayed from empty. These games have no other starting
-     * position, so the whole line is the move list. */
     Board board(kBoardSize);
     board.newGame(active.engine_rule);
     for (size_t i = 0; i < moves.size(); ++i) {
@@ -762,30 +635,23 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
 
     Search::SearchOptions options;
     options.rule = {active.engine_rule, GameRule::FREEOPEN};
-    /* Turn time only, which is the shape the product's levels have: a maximum
-     * thinking time per move and no match clock at all. The engine keeps a small
-     * reserve inside it and returns before it elapses. */
+    /* Turn time only: levels are a thinking time per move with no match
+     * clock. The engine returns a little before it elapses. */
     options.setTimeControl(static_cast<int64_t>(movetime_ms), 0);
     options.timeLimit = true;
     options.multiPV = 1;
     options.strengthLevel = 100;
     options.pondering = false;
     options.infoMode = Search::SearchOptions::INFO_NONE;
-    /* The trivial-opening probe stays ON, which is a decision rather than a
-     * default left alone. On an empty freestyle board the engine answers the
-     * centre point without searching. That is the move a search would return
-     * anyway and the one every opening theory opens with, so disabling the probe
-     * would buy a few seconds of thinking to reach the same point — and it would
-     * cost the player those seconds every single game, at the one moment there
-     * is nothing on the board to look at. */
+    /* The opening probe stays on: on an empty board the engine answers the
+     * centre point at once, which a search would return anyway after a wait. */
     options.disableOpeningQuery = false;
 
     {
         CoutSilencer silence;
         Search::Engine.startThinking(board, options, false);
-        /* startThinking re-arms the engine's terminate flag, so a cancellation
-         * that raced it would otherwise be lost and the search would run its
-         * whole movetime. The cancel path sets the flag before it stops the
+        /* startThinking re-arms the terminate flag, losing a cancellation that
+         * raced it. The cancel path sets `cancelled` before stopping the
          * engine, so this re-check closes the window. */
         if (cancelled.load(std::memory_order_acquire)) {
             Search::Engine.stopThinking();
@@ -803,9 +669,8 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
 
     const Search::SearchThread *main = Search::Engine.main();
     if (!main->rootMoves.empty()) {
-        /* Diagnostic only; nothing adjudicates from it. The engine's value scale
-         * is already centipawn-shaped, and the mate range is clamped to a
-         * sentinel rather than reported as a number nothing reads as one. */
+        /* Diagnostic only. The value scale is centipawn-shaped; mate scores
+         * clamp to a sentinel. */
         const Value value = main->rootMoves[0].value;
         if (value >= VALUE_MATE_IN_MAX_PLY) {
             out.score_cp = 32000;
@@ -815,10 +680,9 @@ SearchError search_run_unguarded(const std::vector<Point> &moves,
             out.score_cp = static_cast<int32_t>(value);
         }
     }
-    /* The completed iteration depth lives on the searcher's per-thread data
-     * rather than on the root move. The cast is to the type this bridge itself
-     * installed a page above — the engine has no run-time type information, and
-     * nothing else here ever changes the searcher. */
+    /* The completed depth lives on the searcher's per-thread data. The cast is
+     * to the alpha-beta searcher installed in configure(); the engine has no
+     * RTTI. */
     if (const auto *data =
             main->searchDataAs<Search::AB::ABSearchData>()) {
         out.depth = static_cast<uint32_t>(

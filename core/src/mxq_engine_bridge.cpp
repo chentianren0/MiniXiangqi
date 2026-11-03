@@ -1,12 +1,12 @@
-/* The Fairy-Stockfish bridge. See mxq_engine_bridge.hpp for why it is one file. */
+/* The Fairy-Stockfish bridge. */
 
 #include "mxq_engine_bridge.hpp"
 
 #include "mxq_build_config.h"
 #include "mxq_notation.hpp"
 
-/* The engine's headers are upstream's; Xcode's default 64-to-32 warning would
- * otherwise report their conversions against this file. */
+/* The engine's headers are upstream's; their 64-to-32 conversions would
+ * otherwise warn against this file. */
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshorten-64-to-32"
 #include "apiutil.h"
@@ -37,18 +37,13 @@
 
 using namespace Stockfish;
 
-/* Two things are called Variant in this file and nowhere else in the core:
- * mxq::engine::Variant, the closed two-value choice this bridge's callers
- * speak, and Stockfish::Variant, the engine's configuration record for one of
- * them. The unqualified name is the first — the engine's is always written
- * Stockfish::Variant below, which is also how it reads as what it is. */
+/* Unqualified Variant is mxq::engine::Variant; the engine's configuration
+ * record is always written Stockfish::Variant. */
 
 namespace mxq {
 namespace engine {
 namespace {
 
-/* The configuration filename is fixed by docs/engine-integration.md, "Variant
- * packaging". */
 constexpr const char *kVariantFile = "minixiangqi-variants.ini";
 
 /* One row per variant: the identifier UCI_Variant takes, which the network's
@@ -64,14 +59,12 @@ constexpr VariantPin kVariantPins[] = {
     {MXQ_BUILD_XIANGQI_VARIANT_ID, MXQ_BUILD_XIANGQI_NNUE_FILENAME,
      MXQ_BUILD_XIANGQI_NNUE_ID},
 };
-/* The rules posture's variant: the app's own, which is what a core that has
- * never prepared an engine replays in. */
+/* The variant a core that has never prepared an engine replays in. */
 constexpr Variant kDefaultVariant = Variant::MiniXiangqi;
 
-/* A switch rather than a comparison, and a count rather than a comment: adding
- * a variant to the enum without a row here is a warning at the switch, and
- * adding a case without a row is caught by the assertion. Both would otherwise
- * be an out-of-bounds read of a table that looks obviously right. */
+/* A variant added to the enum without a row here warns at the switch below;
+ * a case added without a row fails this assertion. Either would otherwise be an
+ * out-of-bounds read. */
 static_assert(sizeof(kVariantPins) / sizeof(kVariantPins[0]) == 2,
               "one pinned row per Variant enumerator");
 
@@ -89,27 +82,22 @@ const VariantPin &pin_of(Variant variant) {
     return kVariantPins[pin_index(variant)];
 }
 
-/* The variant the process-global tables are currently built for. Written only
- * by configure() and deconfigure(), both under g_mutex; read by search_run(),
- * which holds no lock and reads it exactly as it reads those tables. Atomic
- * because a plain read racing a write is a data race whatever the values are,
- * and this one costs nothing. */
+/* The variant the process-global tables are built for. Written only by
+ * configure() and deconfigure(), under g_mutex; read lock-free by
+ * search_run(), hence atomic. */
 std::atomic<Variant> g_active_variant{kDefaultVariant};
 
-/* The engine's process-global bootstrap, done once and never repeated — the
- * piece registry, the variant map and the option map, none of which is
- * per-variant. Loading the variant configuration is separate and may be
- * retried, because a missing or wrong asset directory is a caller's mistake to
- * correct rather than a permanent property of the process. */
+/* The piece registry, variant map and option map are bootstrapped once.
+ * Loading the variant configuration may be retried, because a wrong asset
+ * directory is a caller's mistake to correct, not a property of the process. */
 std::once_flag g_bootstrap;
 std::mutex g_init_mutex;
 std::atomic<bool> g_ready{false};
 std::string g_init_detail;
 InitError g_init_error = InitError::None;
 
-/* The engine's global state is process-wide and not re-entrant, and the core is
- * singleton-enforced for exactly that reason. Rules queries
- * are serialised here rather than assumed to be called one at a time. */
+/* The engine's global state is process-wide and not re-entrant; rules queries
+ * are serialised here. */
 std::mutex g_mutex;
 
 void bootstrap() {
@@ -135,11 +123,9 @@ void initialise_once(const std::string &assets_dir) {
     variants.parse_istream<false>(ss);
     Options["UCI_Variant"].set_combo(variants.get_keys());
 
-    /* Every variant this build claims to run, not only the one it starts in:
-     * the built-in one is registered by the engine behind its LARGEBOARDS
-     * guard, so its absence is a build that lost a define rather than a
-     * configuration that lost a section, and the two failures are worth
-     * separating in the detail rather than in the code. */
+    /* The built-in variant is registered behind the engine's LARGEBOARDS
+     * guard, so its absence means a build that lost a define rather than a
+     * configuration that lost a section; the detail says which. */
     for (size_t i = 0; i < sizeof(kVariantPins) / sizeof(kVariantPins[0]);
          ++i) {
         const VariantPin &pin = kVariantPins[i];
@@ -163,16 +149,12 @@ void initialise_once(const std::string &assets_dir) {
     Bitbases::init();
     Endgames::init();
     Search::init();
-    /* One thread: this bridge answers rules queries and never searches. The
-     * search facade sizes its own pool through configure(), and deconfigure()
-     * restores this posture. */
+    /* One thread for rules queries; configure() sizes the search pool and
+     * deconfigure() restores this. */
     Threads.set(1);
     Search::clear();
-    /* The piece and bitboard tables for the variant the rules posture uses,
-     * built here once and rebuilt only under configure()'s exclusion. replay()
-     * used to re-run this per call, which rewrote process-global tables under
-     * any concurrent reader once a search could be that reader; see the
-     * serialisation design in mxq_engine_bridge.hpp. */
+    /* Built once here and rebuilt only under configure()'s exclusion, never
+     * per replay: a concurrent search reads these tables. */
     UCI::init_variant(variants.find(std::string(initial.id))->second);
     g_active_variant.store(kDefaultVariant, std::memory_order_release);
     g_ready = true;
@@ -182,14 +164,12 @@ const Stockfish::Variant *variant_object(Variant variant) {
     return variants.find(std::string(pin_of(variant).id))->second;
 }
 
-/* The variant every rules query and every search reads: the one whose tables
- * are built. */
 const Stockfish::Variant *target_variant() {
     return variant_object(g_active_variant.load(std::memory_order_acquire));
 }
 
-/* placement + side to move, which is what docs/xiangqi-rules.md makes position
- * identity: "the two counters are ignored". */
+/* Position identity is placement and side to move; the counters are
+ * ignored. */
 std::string identity(const std::string &fen) {
     size_t sp = fen.find(' ');
     if (sp == std::string::npos) {
@@ -211,39 +191,30 @@ size_t occurrences_of(const std::vector<std::string> &identities,
     return n;
 }
 
-/* The engine reports one side-to-move-relative Value, a flag, and — since the
- * fork's accessor (chentianren0/Fairy-Stockfish#2) — which rule produced the end. The
- * contract wants a state and a reason:
+/* The engine reports one side-to-move-relative Value, a flag, and which rule
+ * produced the end (the fork's accessor). From those:
  *
  *  - checkmate and stalemate from there being no legal move, and from whether
  *    the side to move is in check;
  *  - the repetition class from the reported rule, never inferred: the value
- *    alone cannot tell a neutral threefold from a mutual perpetual chase, and
- *    the ply history it used to be inferred from is an inference where a direct
- *    report is available;
- *  - who lost a decisive repetition from the value, by the accepted rule that
- *    the violating side loses — never by which side happens to be to move at
- *    detection.
+ *    alone cannot tell a neutral threefold from a mutual perpetual chase;
+ *  - who lost a decisive repetition from the value: the violating side loses,
+ *    whoever is to move at detection.
  *
  * The rule and the value together are exhaustive, because the engine derives
- * both from the same two predicates in one expression: a perpetual violation
- * that only one side commits is a mate value for the other, and one both
- * commit is a draw. So `PERPETUAL_CHECK` with a draw value IS mutual perpetual
- * check, `PERPETUAL_CHASE` with a draw value IS mutual perpetual chase, and
- * `N_FOLD` is the neutral claimable repetition. Nothing here re-derives what
- * that expression already decided. `N_MOVE_RULE` is none of them and is taken
- * first: it is the capture-free move count running out, which Xiangqi has and
- * the app's variant does not.
+ * both from the same two predicates in one expression: a violation only one
+ * side commits is a mate value for the other, and one both commit is a draw.
+ * So PERPETUAL_CHECK with a draw value IS mutual perpetual check, likewise
+ * PERPETUAL_CHASE, and N_FOLD is the neutral claimable repetition. N_MOVE_RULE
+ * is none of them: the capture-free move count running out, which Xiangqi has
+ * and Mini Xiangqi does not.
  *
- * That exhaustiveness is a property of the pinned configuration and not of the
- * engine, and exactly one thing keeps it: position.cpp applies materialCounting
- * AFTER *rule has been set, overwriting a drawn result with a counted one. In a
- * variant with material counting the engine would therefore report
- * PERPETUAL_CHECK with a decisive value for a MUTUAL violation, and reading the
- * value as "one side did it" would name the wrong loser. Neither pinned variant
- * has material counting, so that path is closed here — but neither switch below
- * guesses past what it was told, for the same reason: a wrong reason is
- * filed with the game forever, while an absent one is caught by a fixture. */
+ * That exhaustiveness holds only without material counting: position.cpp
+ * applies materialCounting AFTER *rule is set, so the engine would report
+ * PERPETUAL_CHECK with a decisive value for a MUTUAL violation. Neither pinned
+ * variant counts material, and neither switch below guesses past what it was
+ * told: a wrong reason is stored with the game, an absent one is caught by a
+ * fixture. */
 Adjudication adjudicate(Position &pos,
                         const std::vector<std::string> &identities) {
     Adjudication a{};
@@ -255,9 +226,8 @@ Adjudication adjudicate(Position &pos,
     const bool no_legal_move = (MoveList<LEGAL>(pos).size() == 0);
 
     if (no_legal_move) {
-        /* Both are a loss for the player who cannot move, per
-         * docs/xiangqi-rules.md: "A position with no legal move is a loss for
-         * the player who cannot move." Stalemate is not a draw in Xiangqi. */
+        /* No legal move loses, in check or not: stalemate is not a draw in
+         * Xiangqi. */
         a.state = side_to_move_is_red ? MXQ_GAME_BLACK_WINS : MXQ_GAME_RED_WINS;
         a.reason = pos.checkers() ? MXQ_END_REASON_CHECKMATE : MXQ_END_REASON_STALEMATE;
         return a;
@@ -266,13 +236,8 @@ Adjudication adjudicate(Position &pos,
     Value value = VALUE_DRAW;
     OptionalGameEndRule rule = OPTIONAL_END_NONE;
     if (pos.is_optional_game_end(value, 0, 0, &rule)) {
-        /* The move-count rule first, because it is not a repetition and the
-         * engine checks it before them: it reports the game that has run its
-         * capture-free allowance, and its at_occurrence stays 0 because no
-         * position had to stand twice for it. Xiangqi's alone — the app's
-         * variant sets nMoveRule = 0, so this arm is unreachable there — and
-         * automatic rather than claimable, which is why it is a committed draw
-         * and not MXQ_GAME_CLAIMABLE_DRAW. */
+        /* Not a repetition, so at_occurrence stays 0. Xiangqi only (Mini
+         * Xiangqi sets nMoveRule = 0), and automatic rather than claimable. */
         if (rule == OPTIONAL_END_N_MOVE_RULE) {
             a.state = MXQ_GAME_DRAW;
             a.reason = MXQ_END_REASON_FIFTY_MOVE_RULE;
@@ -286,11 +251,9 @@ Adjudication adjudicate(Position &pos,
             occurrences_of(identities, identity(pos.fen())));
 
         if (value == VALUE_DRAW) {
-            /* A neutral threefold and a mutual same-class violation both come
-             * back as a draw value. They are different outcomes — the first is
-             * claimable and the second is automatic, so the game does not end
-             * on its own if this is read wrongly — and the reported rule is
-             * exactly what separates them. */
+            /* A neutral threefold (claimable) and a mutual same-class violation
+             * (automatic) both come back as a draw value; the reported rule
+             * separates them. */
             switch (rule) {
             case OPTIONAL_END_PERPETUAL_CHECK:
                 a.state = MXQ_GAME_DRAW;
@@ -305,25 +268,18 @@ Adjudication adjudicate(Position &pos,
                 a.reason = MXQ_END_REASON_THREEFOLD_REPETITION;
                 break;
             default:
-                /* Unreachable under either pinned configuration, and left
-                 * unnamed rather than folded into the neutral repetition: the
-                 * remaining drawn branches are the Janggi position-repetition
-                 * rule, the counting rules and the Sittuyin stalemate, none of
-                 * which either variant enables. A rule this build does not know
-                 * is not evidence that a repetition is claimable, and answering
-                 * ONGOING is the honest end of that: the game continues, and a
-                 * fixture catches the silence. The occurrence count goes with
-                 * it — MxqGameStatus.at_occurrence is 0 unless the outcome is
-                 * repetition-based, and this one is not an outcome at all. */
+                /* Unreachable under either pinned configuration: the other
+                 * drawn branches are Janggi repetition, the counting rules and
+                 * Sittuyin stalemate. An unknown rule is not evidence that a
+                 * repetition is claimable, so the game stays ONGOING and
+                 * at_occurrence goes back to 0. */
                 a.at_occurrence = 0;
                 break;
             }
             return a;
         }
 
-        /* A decisive repetition is automatic, not claim-gated. The loser is the
-         * violator, by the accepted rule that a violation is named by outcome
-         * and never by who is to move at detection. */
+        /* A decisive repetition is automatic, not claim-gated. */
         const bool side_to_move_wins = (value > VALUE_DRAW);
         const bool red_wins = (side_to_move_is_red == side_to_move_wins);
         a.state = red_wins ? MXQ_GAME_RED_WINS : MXQ_GAME_BLACK_WINS;
@@ -336,15 +292,9 @@ Adjudication adjudicate(Position &pos,
             a.reason = MXQ_END_REASON_PERPETUAL_CHASE;
             break;
         default:
-            /* Unreachable under either pinned configuration: the other decisive
-             * branches need material counting or the Janggi repetition rule,
-             * and neither variant enables either. Material counting is the one
-             * worth naming, because position.cpp applies it AFTER *rule is set
-             * and would hand a decisive value to the move-count rule and to a
-             * mutual violation alike; with it off, the arm above and this one
-             * mean what they say. If one ever fires, the reason is left unset
-             * rather than guessed — a wrong reason is filed with the game
-             * forever, and a fixture catches an absent one. */
+            /* Unreachable under either pinned configuration: the other
+             * decisive branches need material counting or Janggi repetition.
+             * The reason is left unset rather than guessed. */
             break;
         }
         return a;
@@ -356,11 +306,8 @@ Adjudication adjudicate(Position &pos,
 } /* namespace */
 
 Variant variant_of(MxqGameKind game) {
-    /* This engine plays the movement games and only those. It is asked here
-     * rather than trusted, because the default arm below answers with a real
-     * variant: a placement game that reached it would be searched and
-     * adjudicated as Mini Xiangqi rather than refused, which is the one way a
-     * dispatch that missed a site could fail silently instead of loudly. */
+    /* Asserted because the default arm answers with a real variant: a
+     * placement game reaching it would silently be played as Mini Xiangqi. */
     assert(notation::move_class_of(game) == notation::MoveClass::Movement &&
            "a game this engine does not play reached the bridge");
     switch (game) {
@@ -368,11 +315,8 @@ Variant variant_of(MxqGameKind game) {
         return Variant::Xiangqi;
     case MXQ_GAME_KIND_MINI_XIANGQI:
     default:
-        /* The caller has already rejected a game outside the vocabulary — the C
-         * surface answers MXQ_ERR_ARG_RANGE for one — so the default arm is
-         * unreachable rather than a policy. It names the app's own game because
-         * that is the rules posture, and because a switch over an int32_t
-         * vocabulary needs a total answer. */
+        /* Unreachable: the C surface rejects an out-of-range game with
+         * MXQ_ERR_ARG_RANGE first. */
         return Variant::MiniXiangqi;
     }
 }
@@ -392,9 +336,7 @@ InitError ensure_initialised(const char *assets_dir, std::string &detail) {
     if (g_ready) {
         return InitError::None;
     }
-    /* Retried rather than latched: a failed init leaves the process able to
-     * succeed on a later attempt with a correct asset directory, and reports
-     * the attempt that actually failed rather than quoting a stale path. */
+    /* Retried rather than latched, reporting the attempt that failed. */
     g_init_detail.clear();
     g_init_error = InitError::None;
     initialise_once(assets_dir ? assets_dir : "");
@@ -442,13 +384,9 @@ ProbeError side_to_move_in_check(Variant variant, const char *fen,
         return ProbeError::FenInvalid;
     }
 
-    /* One state record and no move list: nothing here is ever advanced, so the
-     * deque a replay needs to keep do_move's back-pointers alive has no
-     * counterpart. set() computes the checkers as part of the position's state,
-     * which is the whole of what this reads. It is on the heap rather than the
-     * stack for the reason every StateInfo in this file is: the record carries
-     * an NNUE accumulator and a per-square array, and the allocator is what
-     * honours its alignment without this file having to know the number. */
+    /* No move is made, so one state record suffices; set() computes the
+     * checkers. On the heap like every StateInfo here: it carries an NNUE
+     * accumulator whose alignment the allocator honours. */
     auto state = std::make_unique<StateInfo>();
     Position pos;
     pos.set(v, std::string(fen), false, state.get(), Threads.main());
@@ -481,18 +419,15 @@ ReplayError replay(Variant variant, const char *start_fen,
         return ReplayError::StartFenInvalid;
     }
 
-    /* The state list must outlive every do_move: Position holds a pointer into
-     * it. A deque rather than a vector because reallocation would invalidate
-     * those pointers. The piece and bitboard tables are NOT re-initialised
-     * here, whichever variant is being replayed: they are the same tables for
-     * both (see replay() in mxq_engine_bridge.hpp), and rewriting them per
-     * replay would race a concurrent search's reads. */
+    /* The state list must outlive every do_move: Position holds pointers into
+     * it, which a vector's reallocation would invalidate. The piece and
+     * bitboard tables are deliberately not re-initialised for `variant`; see
+     * replay() in the header. */
     auto states = std::make_unique<std::deque<StateInfo>>(1);
     Position pos;
     pos.set(v, std::string(start_fen), false, &states->back(), Threads.main());
 
-    /* Every position the game has stood in, the start included, so an
-     * occurrence count can be derived rather than assumed. */
+    /* Every position the game has stood in, the start included. */
     std::vector<std::string> identities;
     identities.reserve(move_count + 1);
     identities.push_back(identity(pos.fen()));
@@ -518,12 +453,8 @@ ReplayError replay(Variant variant, const char *start_fen,
     }
 
     out_fen = pos.fen();
-    /* Asked as a boolean rather than compared against 0: Bitboard is
-     * `unsigned __int128` where the compiler has it and a class with
-     * conversion operators to bool, unsigned and unsigned long long where it
-     * does not — MSVC — and against a literal 0 the class form makes the
-     * comparison ambiguous. Its `operator bool` is an exact match, so this
-     * reads the same on both, and it is the same question line 181 asks. */
+    /* Not compared against 0: where Bitboard is a class rather than
+     * `unsigned __int128`, that comparison is ambiguous. */
     out_in_check = static_cast<bool>(pos.checkers());
     out_ply = static_cast<uint32_t>(move_count);
     out_adj = adjudicate(pos, identities);
@@ -544,18 +475,11 @@ ReplayError replay(Variant variant, const char *start_fen,
 namespace {
 
 /*
- * The engine prints: iterative-deepening info lines, the NNUE verification
- * notice, the variant notice on_variant_change emits, and the final bestmove,
- * all through sync_cout, which is std::cout under a mutex. An embedded engine
- * has no business writing to the host process's stdout, and there is no
- * upstream switch to turn it off, so the printing windows are contained by
- * swapping std::cout's buffer for a sink for exactly their duration. The
- * windows are on the facade's engine thread (configure and the search run),
- * and every engine print happens strictly inside them. A host thread writing
- * to std::cout during such a window would be swallowed with it; the product
- * frontends never write to std::cout, and the trade is documented rather than
- * silent. std::cerr is deliberately left alone: the engine reports a failed
- * TT allocation there, and a real fault is worth a stderr line.
+ * The engine prints info lines, NNUE and variant notices and bestmove through
+ * sync_cout, with no switch to turn it off. std::cout's buffer is swapped for a
+ * sink for the duration of configure and the search run, where every engine
+ * print happens; any other thread's std::cout output in that window is lost
+ * too. std::cerr is left alone: a failed TT allocation is reported there.
  */
 class CoutSilencer {
 public:
@@ -575,31 +499,22 @@ private:
     std::streambuf *saved_;
 };
 
-/* One network the engine is to be handed, and the variant it is for. */
 struct NetworkChoice {
     std::string       path;
     const VariantPin *pin;
 };
 
 /*
- * Find every network to hand the engine for a configuration of `variant`, with
- * that variant's own first.
+ * Every network to hand the engine for `variant`, that variant's own first.
  *
- * The first is the one that must be there. Its pinned basename is what
- * packaging stages and is preferred; failing that, a directory holding exactly
- * one .nnue file that is no OTHER variant's pinned network names its candidate
- * unambiguously. That fallback is what makes the wrong-basename packaging
- * failure — the network staged under its source name instead of the bundled one
- * — reach the effective-state preflight as a typed refusal instead of hiding
- * behind "no such file": the engine clears its internal NNUE flag over the
- * basename, which is exactly what the preflight exists to catch. A file that IS
- * another variant's pinned network is never that candidate: it is a network
- * this build knows the name of.
+ * The first must be there, preferably under its pinned basename; failing that,
+ * a lone .nnue file that is no other variant's pinned network is taken. That
+ * fallback makes a network staged under the wrong basename reach the
+ * effective-state preflight in configure() as AssetMismatch rather than hide
+ * behind "no such file".
  *
- * Every other pinned network present is appended, so that EvalFile carries the
- * whole set the asset directory holds. Absent ones are simply not in the list:
- * a directory that carries one variant's network prepares that variant and
- * refuses the other, which is what a distribution bundling one network is.
+ * Every other pinned network present is appended; a directory carrying one
+ * variant's network prepares that variant and refuses the other.
  */
 bool find_networks(const std::string &assets_dir, Variant variant,
                    std::vector<NetworkChoice> &out, std::string &detail) {
@@ -661,19 +576,13 @@ bool find_networks(const std::string &assets_dir, Variant variant,
 }
 
 /* The deconfigured posture, shared by deconfigure() and configure()'s unwind.
- * Caller holds g_mutex. The option floor goes first so the pool resize that
+ * Caller holds g_mutex. The Hash floor goes first so the pool resize that
  * follows re-allocates a megabyte rather than the gigabytes being released;
- * the final direct resize(0) is the release itself, which the Hash option
- * cannot express because its minimum is 1.
+ * resize(0) is the release itself, which the Hash option (minimum 1) cannot
+ * express.
  *
- * The variant goes back to the rules posture's, and only when it is not there
- * already: assigning UCI_Variant rebuilds the piece, bitboard and PSQT tables
- * and re-runs the NNUE load whatever value it is given, so an unconditional
- * assignment would make every teardown of the app's own variant do work it did
- * not do before this axis existed. Restoring it after the other variant is not
- * optional — the tables a rules query reads are whatever the last configuration
- * left, and a teardown must leave the bridge answering exactly as it did before
- * any preparation. */
+ * The variant is restored only when it differs: assigning UCI_Variant rebuilds
+ * the tables and re-runs the NNUE load whatever value it is given. */
 void deconfigure_locked() {
     CoutSilencer silence;
     if (g_active_variant.load(std::memory_order_relaxed) != kDefaultVariant) {
@@ -691,9 +600,8 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
                          const std::string &assets_dir, std::string &detail) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_ready) {
-        /* Unreachable through the facade: mxq_core_init fails whole when the
-         * variant configuration does not load. Kept typed rather than assumed
-         * away. */
+        /* Unreachable through the facade: mxq_core_init fails when the
+         * variant configuration does not load. */
         detail = "the engine is not initialised";
         return ConfigureError::VariantLoadFailed;
     }
@@ -708,11 +616,9 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
         return ConfigureError::AssetMissing;
     }
 
-    /* EvalFile is a list, and the engine takes the first token whose basename
-     * begins with the current variant's identifier. The requested variant's
-     * network is first in `networks`, so it is also the token the engine
-     * selects — which is what makes `selected` below a fact rather than a
-     * second guess at the engine's rule. */
+    /* The engine takes the first EvalFile token whose basename begins with the
+     * variant's identifier; the requested network is first, so it is the one
+     * selected. */
     const std::string &selected = networks.front().path;
     std::string eval_file;
     for (const NetworkChoice &network : networks) {
@@ -725,16 +631,9 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
     {
         CoutSilencer silence;
 
-        /* The requested variant and the accepted shared search profile: Skill
-         * Level 20, UCI_LimitStrength false, MultiPV 1, Ponder false, NNUE
-         * evaluation. The profile values are the engine's own defaults, set
-         * explicitly so the configuration is what this function says rather
-         * than what a default happened to be.
-         *
-         * Assigning UCI_Variant is what rebuilds the piece, bitboard and PSQT
-         * tables for it: the engine's own on-change handler does that work, so
-         * a switch needs nothing here beyond being inside this function's
-         * exclusion. */
+        /* The profile values are the engine's defaults, set explicitly.
+         * Assigning UCI_Variant rebuilds the piece, bitboard and PSQT tables
+         * through the engine's on-change handler. */
         Options["UCI_Variant"] = std::string(wanted.id);
         g_active_variant.store(variant, std::memory_order_release);
         Options["Skill Level"] = std::string("20");
@@ -744,29 +643,25 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
         Options["Use NNUE"] = std::string("true");
         Options["EvalFile"] = eval_file;
 
-        /* The pool and the table. The Hash floor goes first so the pool
-         * resize between them re-allocates a megabyte, not whatever the
-         * previous preparation had applied; the target Hash then allocates
-         * once, at the plan's value. */
+        /* The Hash floor first, so the pool resize re-allocates a megabyte
+         * rather than the previous table; the target Hash then allocates once. */
         Options["Hash"] = std::string("1");
         Options["Threads"] = std::to_string(threads);
         Options["Hash"] = std::to_string(hash_mib);
     }
 
     if (!TT.allocated()) {
-        /* The fork's recoverable Hash change: a failed resize leaves the
-         * table empty and observable rather than terminating the process. */
+        /* In the fork a failed resize leaves the table empty rather than
+         * terminating the process. */
         detail = "the transposition table of " + std::to_string(hash_mib) +
                  " MiB could not be allocated";
         deconfigure_locked();
         return ConfigureError::HashAllocationFailed;
     }
 
-    /* The effective-state preflight, after the whole configuration and never
-     * instead of it. A basename that does not begin with the variant
-     * identifier clears the engine's internal NNUE flag silently while the
-     * Use NNUE option still reads true, so the option is exactly what must
-     * not be trusted here. */
+    /* A basename that does not begin with the variant identifier clears the
+     * engine's internal NNUE flag silently while the Use NNUE option still
+     * reads true. */
     if (!Eval::useNNUE) {
         detail = "the engine's effective NNUE state is off after "
                  "configuration: the network basename must begin with " +
@@ -774,11 +669,9 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
         deconfigure_locked();
         return ConfigureError::AssetMismatch;
     }
-    /* Against the SELECTED token, never against the option value. A failed
-     * load leaves the engine's network zeroed and eval_file_loaded naming
-     * whatever loaded last, and the engine's own verification asks only
-     * whether that stale name appears anywhere in EvalFile — which, with more
-     * than one network in the list, it does. */
+    /* Against the SELECTED token, never the option value: a failed load leaves
+     * eval_file_loaded naming whatever loaded last, which may still appear
+     * elsewhere in the list. */
     if (Eval::eval_file_loaded != selected) {
         detail = "the engine did not load the NNUE network at " + selected;
         deconfigure_locked();
@@ -800,10 +693,7 @@ SearchError search_run(const std::string &start_fen,
                        uint32_t movetime_ms,
                        const std::atomic<bool> &cancelled,
                        SearchOutput &out, std::string &detail) {
-    /* No g_mutex here, deliberately: see the serialisation design in
-     * mxq_engine_bridge.hpp. This reads the same stable tables a rules replay
-     * reads, and holding the lock for the length of a search would stall
-     * every board query behind it. */
+    /* No g_mutex, deliberately; see the serialisation notes in the header. */
     const Stockfish::Variant *v = target_variant();
 
     auto states = StateListPtr(new std::deque<StateInfo>(1));
@@ -829,9 +719,8 @@ SearchError search_run(const std::string &start_fen,
         CoutSilencer silence;
         Threads.start_thinking(pos, states, limits, false);
         /* start_thinking re-arms the engine's stop flag, so a cancellation
-         * that raced it would otherwise be lost and the search would run its
-         * whole movetime. The cancel path sets the flag before it stops the
-         * engine, so this re-check closes the window. */
+         * that raced it would be lost. The cancel path sets `cancelled` before
+         * stopping the engine, so this re-check closes the window. */
         if (cancelled.load(std::memory_order_acquire)) {
             Threads.stop = true;
         }
@@ -846,8 +735,8 @@ SearchError search_run(const std::string &start_fen,
         return SearchError::NoMove;
     }
     out.move = UCI::move(best->rootPos, m);
-    /* The same centipawn conversion UCI::value applies, clamped to a sentinel
-     * for mate-range values. Diagnostic only; nothing adjudicates from it. */
+    /* UCI::value's centipawn conversion, with a sentinel for mate values.
+     * Diagnostic only. */
     const Value value = root.score;
     if (value >= VALUE_MATE_IN_MAX_PLY) {
         out.score_cp = 32000;

@@ -1,4 +1,3 @@
-/* Core lifecycle. */
 
 #include "mxq_core_state.hpp"
 #include "mxq_internal.hpp"
@@ -75,12 +74,9 @@ MxqStatus mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core,
     auto core = std::make_unique<MxqCore>();
     core->asset_directory = config->asset_directory ? config->asset_directory : "";
 
-    /* The engine is prepared here rather than lazily, so that a packaging
-     * failure — a missing or malformed variant configuration — surfaces at
-     * initialisation instead of at the first rules query, where the caller has
-     * no sensible recovery. A configuration that is not there and one that is
-     * there but does not yield the pinned variant are different packaging
-     * failures and carry their own codes. */
+    /* Loaded here rather than lazily, so that a missing or malformed variant
+     * configuration surfaces at initialisation instead of at the first rules
+     * query, where the caller has no sensible recovery. */
     std::string detail;
     switch (mxq::engine::ensure_initialised(core->asset_directory.c_str(),
                                             detail)) {

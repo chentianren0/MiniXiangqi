@@ -1,6 +1,3 @@
-/* The setup-legality predicate. See mxq_setup.hpp for what it is and why it
- * never plays a move to find out. */
-
 #include "mxq_setup.hpp"
 
 
@@ -24,22 +21,17 @@ namespace {
 constexpr int32_t kFiles = 9;
 constexpr int32_t kRanks = 10;
 
-/* A position record is a 6-field FEN, and every game's is. */
 constexpr size_t kFenFields = 6;
 
-/* An empty point. No piece letter is 0, so the grid needs no second array to
- * say which of its cells are occupied. */
+/* An empty point. No piece letter is 0. */
 constexpr char kEmpty = '\0';
 
 /* Indexed [rank from Red's back rank][file from a], both zero-based, so that
- * cell[0][3] is d1 and cell[9][3] is d10. The FEN's own order is the other way
- * round and the parser is where that is turned. */
+ * cell[0][3] is d1 and cell[9][3] is d10: the reverse of the FEN's order. */
 struct Grid {
     char cell[kRanks][kFiles];
 };
 
-/* The pieces of the game, as the predicate reasons about them rather than as
- * the engine types them. */
 enum class Kind {
     General,
     Advisor,
@@ -56,13 +48,9 @@ struct LetterRow {
 };
 
 /*
- * The frozen letters of docs/xiangqi-rules.md, and two more.
- *
- * The engine's own xiangqi variant registers 'h' for the horse and 'e' for the
- * elephant as synonyms, so a FEN spelling either is one rules::validate_fen
- * accepts and the engine will play. A predicate that could not read the board
- * would refuse a position that entry had just accepted, and for a reason no
- * caller could act on. Two rows are cheaper than that.
+ * The piece letters, and two more: the engine accepts 'h' for the horse and
+ * 'e' for the elephant as synonyms, so rules::validate_fen accepts them and
+ * this predicate must read them too.
  */
 constexpr LetterRow kLetters[] = {
     {'k', Kind::General},  {'a', Kind::Advisor}, {'b', Kind::Elephant},
@@ -71,8 +59,7 @@ constexpr LetterRow kLetters[] = {
 };
 
 /* How many of each a side may have. The general is the one row with a floor as
- * well as a ceiling, and it is a row rather than a special case so that the
- * count rule is one table read in one loop. */
+ * well as a ceiling. */
 struct CountRow {
     Kind        kind;
     int32_t     least;
@@ -91,64 +78,43 @@ constexpr size_t kKindCount = sizeof(kCounts) / sizeof(kCounts[0]);
 
 /*
  * Where a piece may stand is where it can ever be, and for three of the seven
- * that is a list of points rather than a region. Each list is written once in
- * Red's own frame; Black's are these mirrored, which is what own_rank below
- * does for every zone rule at once.
+ * that is a list of points rather than a region. Each list is in Red's frame;
+ * own_rank mirrors it for Black.
  */
 struct Point {
     int32_t file;
     int32_t rank;
 };
 
-/*
- * The seven points an elephant may stand on: c1 and g1, a3 and e3 and i3, c5
- * and g5. They are the whole of where an elephant can ever be — it steps
- * exactly two diagonally from one of two starting points and never crosses the
- * river — so "on its own side" and "on one of seven points" are the same rule,
- * and this is the stricter and truer spelling of it.
- */
+/* The seven points an elephant can ever reach: c1 and g1, a3 and e3 and i3, c5
+ * and g5. */
 constexpr Point kElephantPoints[] = {
     {2, 0}, {6, 0},         /* c1, g1 */
     {0, 2}, {4, 2}, {8, 2}, /* a3, e3, i3 */
     {2, 4}, {6, 4},         /* c5, g5 */
 };
 
-/*
- * The five points an advisor may stand on: d1 and f1, e2, d3 and f3 — the
- * palace's four corners and its centre. An advisor steps one diagonally from
- * d1 or f1 and never leaves the palace, and those five are the whole of where
- * that leaves it: the palace's four edge midpoints are inside the palace and
- * an advisor reaches none of them, so "inside its own palace" is the laxer
- * rule and this is the one the game has.
- */
+/* The five points an advisor can ever reach: the palace's four corners and its
+ * centre, never its edge midpoints. */
 constexpr Point kAdvisorPoints[] = {
     {3, 0}, {5, 0}, /* d1, f1 */
     {4, 1},         /* e2 */
     {3, 2}, {5, 2}, /* d3, f3 */
 };
 
-/* The palace, in the same frame: files d to f, the first three ranks. It is
- * the general's zone, and its own: the general walks the nine points
- * orthogonally, so every one of them is a point it can stand on. */
+/* The palace, files d to f and the first three ranks: the general's zone. */
 constexpr int32_t kPalaceFirstFile = 3;
 constexpr int32_t kPalaceLastFile = 5;
 constexpr int32_t kPalaceLastRank = 2;
 
-/* Where a soldier starts, in the same frame: rank 4, zero-based 3. A soldier
- * never moves backward, so no soldier is ever behind it. */
+/* Where a soldier starts: rank 4. A soldier never moves backward. */
 constexpr int32_t kSoldierStartRank = 3;
 
-/* The first rank across the river, zero-based 5. What a soldier gains there is
- * the sideways step, and with it every file. */
+/* The first rank across the river, where a soldier gains the sideways step. */
 constexpr int32_t kSoldierCrossedRank = 5;
 
-/*
- * A rank counted from a side's own back rank rather than from Red's.
- *
- * Every zone rule below is written once, in Red's frame, and read through this.
- * The alternative is each rule stated twice with the mirror worked out by hand
- * in the second copy, which is where the two copies stop agreeing.
- */
+/* A rank counted from a side's own back rank, so every zone rule is written
+ * once, in Red's frame. */
 int32_t own_rank(MxqColor side, int32_t rank) {
     return side == MXQ_COLOR_RED ? rank : (kRanks - 1 - rank);
 }
@@ -193,11 +159,8 @@ std::vector<std::string> fields_of(const std::string &fen) {
     return out;
 }
 
-/* A counter field, as the frozen encoding spells one: decimal digits, and no
- * leading zero on anything but zero itself. Its value is not this predicate's
- * question — neither counter is a rule about where pieces may stand — but its
- * spelling is, because a position of no board is what a record that cannot be
- * read back is. */
+/* A counter field: decimal digits, and no leading zero on anything but zero.
+ * Only its spelling is checked. */
 bool is_counter(const std::string &field) {
     for (const char c : field) {
         if (c < '0' || c > '9') {
@@ -207,9 +170,8 @@ bool is_counter(const std::string &field) {
     return !field.empty() && (field.size() == 1 || field[0] != '0');
 }
 
-/* The board field, into the grid: the frozen encoding of
- * docs/xiangqi-rules.md read exactly — ten ranks highest first, nine files
- * each, an empty run written as its count. */
+/* The board field, into the grid: ten ranks highest first, nine files each,
+ * an empty run written as its count. */
 bool parse_board(const std::string &field, Grid &out) {
     for (int32_t r = 0; r < kRanks; ++r) {
         for (int32_t f = 0; f < kFiles; ++f) {
@@ -229,8 +191,8 @@ bool parse_board(const std::string &field, Grid &out) {
             continue;
         }
         if (c >= '1' && c <= '9') {
-            /* One digit is the whole of a run: nine files cannot spell a
-             * two-digit one, and a run of zero has no meaning. */
+            /* Nine files cannot spell a two-digit run, and a run of zero has
+             * no meaning. */
             const int32_t run = c - '0';
             if (file + run > kFiles) {
                 return false;
@@ -279,27 +241,14 @@ bool on_elephant_point(int32_t file, int32_t own) {
 }
 
 bool on_soldier_point(int32_t file, int32_t own) {
-    /* Two clauses, and the second ends at the river. Before it crosses, a
-     * soldier moves only forward, so it still stands on the file it started
-     * on, and the five starting files are a, c, e, g and i — the even indices.
-     * Across the river it steps sideways as well, and from there every file is
-     * reachable. */
+    /* Before the river a soldier still stands on its starting file: a, c, e,
+     * g or i, the even indices. Across it every file is reachable. */
     return own >= kSoldierStartRank &&
            (own >= kSoldierCrossedRank || file % 2 == 0);
 }
 
-/*
- * One row per kind: where it may stand, which rule that is, and how to say so.
- *
- * The three used to be three switches over the same enum — where, which rule,
- * which words — and a kind with no zone answered each of them separately. Three
- * answers to one question disagree the day one of them is edited, and the one
- * that disagrees silently is the middle one: a kind whose zone test says "legal
- * everywhere" while its rule says PALACE is a piece refused for standing where
- * it may. A row cannot come apart that way, and `inside == nullptr` is the whole
- * of what "this kind has no zone" means — a chariot, a horse and a cannon reach
- * every point of the board.
- */
+/* One row per kind: where it may stand, which rule that is, and how to say so.
+ * `inside == nullptr` means the kind reaches every point of the board. */
 struct ZoneRow {
     Kind         kind;
     bool       (*inside)(int32_t file, int32_t own_rank);
@@ -307,9 +256,7 @@ struct ZoneRow {
     const char  *detail;
 };
 
-/* The general and the advisor share MXQ_SETUP_RULE_PALACE and not a zone: the
- * class is one per palace piece's own reach, and the two reaches differ — the
- * general walks all nine points, the advisor the five it can step to. */
+/* The general and the advisor share MXQ_SETUP_RULE_PALACE but not a zone. */
 constexpr ZoneRow kZones[] = {
     {Kind::General, in_palace, MXQ_SETUP_RULE_PALACE,
      "stands outside its own palace"},
@@ -325,11 +272,8 @@ constexpr ZoneRow kZones[] = {
      "starting files"},
 };
 
-/* Both per-kind tables are indexed by the enumerator, so a lookup is total by
- * construction and no arm can be missing to fall through. A row out of order —
- * or a kind added without one — is a compile error rather than a read past the
- * end or a silently wrong row, which is the same guarantee mxq_notation.cpp
- * gives its per-game table. */
+/* Both per-kind tables are indexed by the enumerator; a row out of order or a
+ * kind added without one is a compile error. */
 template <typename Row, size_t N>
 constexpr bool indexed_by_kind(const Row (&rows)[N]) {
     for (size_t i = 0; i < N; ++i) {
@@ -355,8 +299,7 @@ const CountRow &count_of(Kind kind) {
 
 const char *kind_name(Kind kind) { return count_of(kind).name; }
 
-/* Where a side's general stands, or false where it has none — which the count
- * rule has already refused by the time anything below asks. */
+/* Where a side's general stands, or false where it has none. */
 bool general_square(const Grid &grid, MxqColor side, int32_t &out_file,
                     int32_t &out_rank) {
     for (int32_t rank = 0; rank < kRanks; ++rank) {
@@ -378,9 +321,8 @@ bool general_square(const Grid &grid, MxqColor side, int32_t &out_file,
 }
 
 /* The flying-general relation: one file, and nothing standing between. The
- * engine keeps this in its legality test rather than in the checkers it
- * computes for a position, so it is asked here — where it is arithmetic over
- * one file and needs no engine at all. */
+ * engine keeps this in its legality test rather than in a position's checkers,
+ * so it is asked here. */
 bool generals_face(const Grid &grid) {
     int32_t red_file = 0;
     int32_t red_rank = 0;
@@ -403,8 +345,8 @@ bool generals_face(const Grid &grid) {
     return true;
 }
 
-/* The same position with the side to move flipped, which is how the question
- * "is the side NOT to move in check" is asked without ever making a move. */
+/* The same position with the side to move flipped, so that "is the side not to
+ * move in check" is asked without making a move. */
 std::string with_side_flipped(const std::vector<std::string> &fields,
                               MxqColor side_to_move) {
     std::string out;
@@ -424,23 +366,12 @@ std::string with_side_flipped(const std::vector<std::string> &fields,
 Error evaluate_xiangqi(const std::string &fen, Violation &out,
                        std::string &detail) {
     /*
-     * The structure first, and read here rather than taken from the engine's
-     * validator, which is laxer in three places: it checks a rank's width only
-     * where a '/' follows, so never the last one; it accepts an empty run
-     * written with a leading zero; and it accepts a FEN whose later fields are
-     * simply absent, needing only one. The stricter reading is this entry's,
-     * because what it is judging is a position that will be stored and
-     * replayed, and none of those spellings is one the frozen encoding has. All
-     * three answer MXQ_ERR_RULES_INVALID_FEN, which is what a position of no
-     * board is, and xq-set-009 pins that they do — a parse loosened toward the
-     * validator would otherwise start judging a board the engine is not
-     * playing.
-     *
-     * Nothing stands in front of this. The engine's validator also wants one
-     * general a side, and that is a question about the pieces rather than about
-     * the spelling: this predicate answers it as the count clause below, at a
-     * point, for a side, to a composer who has not placed a general yet. A
-     * board still missing one is a board this entry reads.
+     * The structure is read here rather than by the engine's validator, which
+     * is laxer in three places: it checks a rank's width only where a '/'
+     * follows, so never the last one; it accepts an empty run written with a
+     * leading zero; and it accepts a FEN whose later fields are absent. The
+     * validator also wants one general a side, which this predicate answers as
+     * the count clause instead, for a composer who has not placed one yet.
      */
     const std::vector<std::string> fields = fields_of(fen);
     Grid grid{};
@@ -455,13 +386,9 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
         fields[1] == "w" ? MXQ_COLOR_RED : MXQ_COLOR_BLACK;
 
     /* 1. Where each piece stands, walked once from a1 upward, so a position
-     *    with two misplaced pieces always names the same one.
-     *
-     *    It is the first question because the report is read by someone
-     *    composing a position and tells them what to fix next, and a point is
-     *    what they can point at. It is also what makes the report useful before
-     *    the position is finished: a piece off the points its kind can reach is
-     *    wrong whatever else is still missing from the board. */
+     *    with two misplaced pieces always names the same one. It comes first
+     *    because it names a point the composer can fix, even on an unfinished
+     *    board. */
     for (int32_t rank = 0; rank < kRanks; ++rank) {
         for (int32_t file = 0; file < kFiles; ++file) {
             const char c = grid.cell[rank][file];
@@ -484,12 +411,8 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
         }
     }
 
-    /* 2. The complement, per side. A count is a property of a side rather than
-     *    of any one point, so it names no square — and it is asked of pieces
-     *    that all stand where they may, which is what the walk above has just
-     *    settled. The general's floor is one of these rows: a side with no
-     *    general has a complement the game does not give, and saying so is this
-     *    clause's answer rather than a refusal to answer. */
+    /* 2. The complement, per side. It names no square. A side with no general
+     *    is refused here. */
     for (const MxqColor side : {MXQ_COLOR_RED, MXQ_COLOR_BLACK}) {
         int32_t counted[kKindCount] = {0};
         for (int32_t rank = 0; rank < kRanks; ++rank) {
@@ -521,9 +444,8 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
         }
     }
 
-    /* 3. The two generals. Its own class rather than a case of the check below,
-     *    because the relation is symmetric: whoever is to move, the position
-     *    offers a general the capture of a general. */
+    /* 3. The two generals facing. Its own class rather than a case of the check
+     *    below, because the relation is symmetric. */
     if (generals_face(grid)) {
         out.rule = MXQ_SETUP_RULE_FACING_GENERALS;
         out.side = MXQ_COLOR_NONE;
@@ -532,19 +454,15 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
         return Error::None;
     }
 
-    /* 4. The side that is not to move, which no position a game could be played
-     *    from leaves in check. The side that IS to move may be: it answers as
-     *    its first move, and the whole point of a scene is often exactly that.
+    /* 4. The side that is not to move may not be in check; the side to move
+     *    may be.
      *
-     *    The question is put to the engine by setting the position with the side
-     *    to move flipped and reading its checkers. Nothing is played: this is a
-     *    position that may offer the capture of a general, and the engine's
-     *    do_move asserts that no capture is one.
+     *    Asked by setting the position with the side to move flipped and
+     *    reading its checkers. Nothing is played: the engine's do_move asserts
+     *    that no capture is of a general.
      *
-     *    It is the last clause, so it is reached only with one general a side
-     *    standing where a general may — a board the engine's own validator
-     *    accepts. Every board it would refuse has been answered above, in this
-     *    predicate's own vocabulary, without the engine being asked. */
+     *    It is the last clause, so the engine only sees boards its own
+     *    validator accepts. */
     const MxqColor waiting = side_to_move == MXQ_COLOR_RED ? MXQ_COLOR_BLACK
                                                            : MXQ_COLOR_RED;
     const std::string flipped = with_side_flipped(fields, side_to_move);
@@ -584,24 +502,14 @@ Error evaluate_xiangqi(const std::string &fen, Violation &out,
 /* ------------------------------------------------------------------------- */
 
 /*
- * Jieqi defines no setup-legality predicate, because there is no composed
- * position for one to judge: the only shape a game of it begins in is the one
- * the deal produces. What it has instead is a membership question, and this is
- * it — the same shape as the frozen-start comparison every other game but
- * Xiangqi answers, asked of a family of positions rather than of one, because
- * there is a start for every deal.
+ * Jieqi begins only from a deal, so its question is membership in the dealt
+ * starts: the thirty-two start squares occupied and no other point, the two
+ * generals face up on their own, the other thirty face down, each side's
+ * fifteen hidden identities a permutation of its fifteen non-general pieces,
+ * and Red to move. Board arithmetic; no engine is asked.
  *
- * It is board arithmetic and asks no engine. The record has already been read
- * structurally by the caller, so what is left is the deal's own shape: the
- * thirty-two start squares occupied and no other point, the two generals face
- * up on their own, the other thirty face down, and each side's fifteen hidden
- * identities a permutation of that side's fifteen non-general pieces. Red
- * moves first.
- *
- * The whole answer is one rule, MXQ_SETUP_RULE_NOT_DEALT_START, and it names
- * neither a side nor a point. That is not a shortcut: a deal is dealt whole, so
- * a position that is not one is not one at a square — there is no composer here
- * to be told what to fix next, the way Xiangqi's clauses tell one.
+ * The answer is one rule, MXQ_SETUP_RULE_NOT_DEALT_START, naming neither a side
+ * nor a point: a deal is dealt whole.
  */
 Error evaluate_jieqi(const jieqi::Record &record, Violation &out,
                      std::string &detail) {
@@ -645,8 +553,6 @@ Error evaluate_jieqi(const jieqi::Record &record, Violation &out,
             const bool general = (here == 'K' || here == 'k');
             const bool general_square = (home == 'K' || home == 'k');
             if (general_square) {
-                /* The two generals are the only pieces that ever start face up,
-                 * and each stands on its own point. */
                 if (!general || here != home || record.down[rank][file]) {
                     return refuse("a general's point does not hold that "
                                   "general, face up");
@@ -657,8 +563,7 @@ Error evaluate_jieqi(const jieqi::Record &record, Violation &out,
                 return refuse("a piece a deal deals face down stands face up");
             }
             /* read_record has already refused a face-down piece of the other
-             * side's colour and a face-down general, so what is left to count is
-             * which piece each side was dealt. */
+             * side's colour and a face-down general. */
             for (size_t i = 0; i < kDealtKinds; ++i) {
                 const bool red = (here >= 'A' && here <= 'Z');
                 const char lower = red ? static_cast<char>(here - 'A' + 'a')
@@ -699,24 +604,14 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
         return Error::FenInvalid;
     }
 
-    /* Xiangqi reads its own structure. Its predicate is the one that has more
-     * than a single answer, so it is the one asked about boards a game is not
-     * yet playable on, and rules::validate_fen refuses two of those for the
-     * engine's reasons rather than for the rules' — a board short of a general
-     * is the one a composer meets on the first tap. What that entry checks
-     * about the spelling, evaluate_xiangqi checks, and more strictly. */
+    /* Xiangqi reads its own structure, more strictly than rules::validate_fen
+     * and without its demand for a general a side. */
     if (game == MXQ_GAME_KIND_XIANGQI) {
         return evaluate_xiangqi(std::string(fen), out_violation, detail);
     }
 
-    /*
-     * Jieqi reads its own record, and that one reading is both halves of what
-     * every other game needs two for: it is the precondition
-     * rules::validate_fen applies — the same function that entry calls for
-     * this game — and it is the form the membership arithmetic below reads the
-     * position in. Its membership question is the dealt start, that being the
-     * only shape a game of it begins in.
-     */
+    /* Jieqi's record reading is both the precondition rules::validate_fen
+     * applies and the form the membership arithmetic reads. */
     if (game == MXQ_GAME_KIND_JIEQI) {
         jieqi::Record record{};
         if (!jieqi::read_record(fen, record, detail)) {
@@ -725,23 +620,12 @@ Error evaluate(MxqGameKind game, const char *fen, Violation &out_violation,
         return evaluate_jieqi(record, out_violation, detail);
     }
 
-    /* For every other game the precondition stands, and it is the same one
-     * rules::validate_fen applies: a FEN that is not a position of this
-     * game's board is not a position this predicate has an opinion about. */
     if (!rules::validate_fen(game, fen, detail)) {
         return Error::FenInvalid;
     }
 
-    /*
-     * Every other game begins from its frozen starting position and no other.
-     *
-     * It is the same entry rather than a refusal at some other layer because
-     * the question is the same question — may this game be set up here — and a
-     * caller that had to know which games have a predicate would be re-deriving
-     * the per-game policy this entry exists to state. The comparison is against
-     * the whole frozen FEN, so it is against its side to move as well: a game
-     * whose first mover is frozen has no second setup that differs only there.
-     */
+    /* Every other game begins from its frozen starting position and no other,
+     * side to move included. */
     if (notation::has_frozen_start(game) &&
         std::string(fen) == notation::start_fen(game)) {
         return Error::None;
