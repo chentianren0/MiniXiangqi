@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      # The runner has none of the team's certificates, and the Mac app's
+      # restricted entitlements would stop an ad-hoc signed build at launch.
+      - name: App tests
+        run: >
+          xcodebuild test
+          -project MiniXiangqi.xcodeproj
+          -scheme MiniXiangqi
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
+      - name: Core tests
+        working-directory: core
+        run: swift test
