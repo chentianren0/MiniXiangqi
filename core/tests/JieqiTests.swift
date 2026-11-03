@@ -72,24 +72,3 @@ extension Core {
     }
 }
 
-/// A Free Play session of `game`, the store's one active game.
-func freePlay(_ core: OpaquePointer, _ game: Int, start: String = "") throws -> OpaquePointer {
-    var config = MxqGameConfig()
-    config.struct_size = UInt32(MemoryLayout<MxqGameConfig>.size)
-    config.game = MxqGameKind(game)
-    config.mode = MxqPlayMode(MXQ_PLAY_MODE_FREE_PLAY)
-    config.human_side = MxqColor(MXQ_COLOR_NONE)
-    config.ai_level = MxqAiLevel(MXQ_AI_LEVEL_NONE)
-    config.first_mover_choice = MxqFirstMoverChoice(MXQ_FIRST_MOVER_NONE)
-    config.local_side = MxqColor(MXQ_COLOR_NONE)
-    withUnsafeMutableBytes(of: &config.start_fen) { buffer in
-        let bytes = Array(start.utf8)
-        buffer.copyBytes(from: bytes)
-        buffer[bytes.count] = 0
-    }
-    var handle: OpaquePointer?
-    var err = freshError()
-    let status = mxq_game_create(core, &config, &handle, &err)
-    try #require(status == MXQ_OK, "mxq_game_create: \(describe(status, err))")
-    return try #require(handle)
-}

@@ -200,21 +200,3 @@ extension Core {
         }
     }
 }
-
-private func hint(_ core: OpaquePointer, _ session: OpaquePointer, movetime: UInt32) throws -> MxqSearchResult {
-    var ticket: UInt64 = 0
-    var err = freshError()
-    let status = mxq_search_start_hint(core, session, movetime, nil, nil, &ticket, &err)
-    try #require(status == MXQ_OK, "mxq_search_start_hint: \(describe(status, err))")
-    return try wait(core, ticket)
-}
-
-private func wait(_ core: OpaquePointer, _ ticket: UInt64) throws -> MxqSearchResult {
-    var result = MxqSearchResult()
-    result.struct_size = UInt32(MemoryLayout<MxqSearchResult>.size)
-    var ready: UInt8 = 0
-    var err = freshError()
-    let status = mxq_search_wait(core, ticket, 30_000, &result, &ready, &err)
-    try #require(status == MXQ_OK && ready == 1, "mxq_search_wait: \(describe(status, err))")
-    return result
-}

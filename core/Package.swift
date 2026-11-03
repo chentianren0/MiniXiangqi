@@ -26,11 +26,13 @@ let rapfiDefines: [CXXSetting] = [
 // The core has always shipped built this way, whatever the app's
 // configuration: optimised, and with assertions off, because the facade's
 // assertions mark caller errors it also answers with a status.
-let release: [CXXSetting] = [.define("NDEBUG")]
+let release: [CXXSetting] = [.define("NDEBUG"), .unsafeFlags(["-O3"])]
 
-// Optimised in every configuration, and silent: the snapshots are upstream's,
-// and their warnings are upstream's to fix.
-let engineFlags = ["-O3", "-w"]
+// The warnings the core holds its own code to.
+let ownWarnings: [CXXSetting] = [.unsafeFlags(["-Wall", "-Wextra"])]
+
+// The snapshots are upstream's, and so are their warnings.
+let engineFlags = ["-w"]
 
 // The engines are C++17 and the facade is C++20; the engines' headers do
 // arithmetic on mixed enums, which C++20 deprecates.
@@ -67,14 +69,14 @@ let package = Package(
             exclude: ["README.md", "upstream/AUTHORS", "upstream/Copying.txt", "upstream/README.md",
                       "upstream/Top CPU Contributors.txt"],
             sources: ["upstream/src", "mxq_pikafish_link_closure.cpp", "mxq_jieqi_bridge.cpp"],
-            cxxSettings: release + [
+            cxxSettings: release + ownWarnings + [
                 .define("Stockfish", to: "PikafishJieqi"),
                 .define("NO_PREFETCH"),
                 .define("IS_64BIT"),
                 .define("USE_POPCNT"),
                 .headerSearchPath("upstream/src"),
                 .headerSearchPath("../../include"),
-                .unsafeFlags(["-std=c++17", "-O3"]),
+                .unsafeFlags(["-std=c++17"]),
             ]
         ),
         // Rapfi with the lz4 it decompresses its weights with. Floating-point
@@ -87,7 +89,7 @@ let package = Package(
                       "upstream/Rapfi/external/cpptoml/LICENSE", "upstream/Rapfi/external/lz4/LICENSE"],
             sources: ["upstream/Rapfi"],
             publicHeadersPath: "upstream/Rapfi",
-            cSettings: [.define("NDEBUG"), .unsafeFlags(engineFlags)],
+            cSettings: [.define("NDEBUG"), .unsafeFlags(["-O3"] + engineFlags)],
             cxxSettings: rapfiDefines + release + [
                 .headerSearchPath("upstream/Rapfi/external/cpptoml/include"),
                 .headerSearchPath("upstream/Rapfi/external/simde/include"),
@@ -103,7 +105,7 @@ let package = Package(
             exclude: ["README.md", "assets", "engines", "tests"],
             sources: ["src", "include"],
             publicHeadersPath: "include",
-            cxxSettings: fairyStockfishDefines + rapfiDefines + release + [
+            cxxSettings: fairyStockfishDefines + rapfiDefines + release + ownWarnings + [
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/cpptoml/include"),
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/simde/include"),
                 .headerSearchPath("engines/rapfi/upstream/Rapfi/external/lz4/include"),

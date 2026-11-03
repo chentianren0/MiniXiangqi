@@ -5,6 +5,9 @@
 #include "mxq_build_config.h"
 #include "mxq_notation.hpp"
 
+/* The engine's headers are upstream's, and leave parameters unused. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #include "config.h"
 #include "core/iohelper.h"
 #include "core/pos.h"
@@ -18,6 +21,7 @@
 #include "search/searchengine.h"
 #include "search/searcher.h"
 #include "search/searchthread.h"
+#pragma clang diagnostic pop
 
 #include <cassert>
 #include <cstdint>

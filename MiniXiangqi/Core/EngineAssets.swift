@@ -43,9 +43,9 @@ nonisolated enum EngineAssets {
     }
 
     /// The opened assets in the app's caches, opened from the bundle first when
-    /// the caches do not hold this bundle's set. The set is named by the sealed
-    /// files' authentication tags, so a bundle with different assets opens
-    /// afresh, and the system may purge the caches at any time.
+    /// the caches do not hold this bundle's whole set. The set is named by the
+    /// sealed files' authentication tags, so a bundle with different assets
+    /// opens afresh, and the system may purge the caches at any time.
     static func directory(in bundle: Bundle = .main) throws -> URL {
         guard let identifier = bundle.bundleIdentifier,
               let resources = bundle.resourceURL else {
@@ -65,7 +65,8 @@ nonisolated enum EngineAssets {
             .map { String(format: "%02x", $0) }.joined()
         let caches = files.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let opened = caches.appending(path: name, directoryHint: .isDirectory)
-        if files.fileExists(atPath: opened.path) {
+        if let present = try? files.contentsOfDirectory(atPath: opened.path),
+           Set(present) == Set(sealed.map(\.lastPathComponent)) {
             return opened
         }
 
@@ -85,20 +86,22 @@ nonisolated enum EngineAssets {
 }
 
 #if SEAL_ENGINE_ASSETS
-/// seal-engine-assets <source directory> <output directory> <bundle identifier>
+/// Run by the build phase, whose declared inputs after this file are the
+/// assets and whose first declared output is the folder they are sealed into.
 @main
 enum SealEngineAssets {
     static func main() throws {
-        let arguments = CommandLine.arguments
-        let source = URL(filePath: arguments[1], directoryHint: .isDirectory)
-        let output = URL(filePath: arguments[2], directoryHint: .isDirectory)
-        let key = EngineAssets.key(bundleIdentifier: arguments[3])
+        let environment = ProcessInfo.processInfo.environment
+        let count = Int(environment["SCRIPT_INPUT_FILE_COUNT"] ?? "") ?? 0
+        let inputs = (1..<max(count, 1)).compactMap { environment["SCRIPT_INPUT_FILE_\($0)"] }
+        let output = URL(filePath: environment["SCRIPT_OUTPUT_FILE_0"] ?? "", directoryHint: .isDirectory)
+        let key = EngineAssets.key(bundleIdentifier: environment["PRODUCT_BUNDLE_IDENTIFIER"] ?? "")
         let files = FileManager.default
         try? files.removeItem(at: output)
         try files.createDirectory(at: output, withIntermediateDirectories: true)
-        for name in try files.contentsOfDirectory(atPath: source.path) where !name.hasPrefix(".") {
-            let sealed = try EngineAssets.seal(Data(contentsOf: source.appending(path: name)), key: key)
-            try sealed.write(to: output.appending(path: name))
+        for input in inputs.map({ URL(filePath: $0) }) {
+            let sealed = try EngineAssets.seal(Data(contentsOf: input), key: key)
+            try sealed.write(to: output.appending(path: input.lastPathComponent))
         }
     }
 }
