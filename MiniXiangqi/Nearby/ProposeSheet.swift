@@ -1,18 +1,10 @@
-// Offering a game to somebody on another device: the part that is the same
-// however the two devices reach each other.
+// Offering a game to somebody on another device: the part both modes share.
+// The surface is raised by a game's own row, so what is chosen here is the side
+// this device takes; each mode adds how the other player is reached.
 //
-// docs/interaction-design.md, "Nearby play" and "Online play". The surface is
-// raised by a game's own row, so the game is not chosen again here: what is
-// chosen is the side this device takes, and then the way the other player is
-// reached. The first of those is one control with two words in it and is the
-// same control in both modes — "an online game is the nearby game in everything
-// but how the two devices reach each other" — so it is written once, and what
-// each mode adds is the section beneath it.
-//
-// The consent prompt and the refusal are on neither sheet. Both belong above
-// every destination: an invitation arrives when it arrives, and a refusal
-// answers an invitation the player may have sent minutes ago from a surface
-// they have already put away.
+// The consent prompt and the refusal belong above every destination instead:
+// an invitation arrives when it arrives, and a refusal may answer one sent from
+// a surface the player has already put away.
 
 import SwiftUI
 
@@ -27,11 +19,7 @@ struct ProposeSheet<Connection: View>: View {
     var body: some View {
         NavigationStack {
             Form {
-                // The side is chosen for a game that is about to exist, and
-                // not for one that already does: a surface raised to meet
-                // again over a standing game is about reaching the other
-                // player, and the sides in that game were settled when the two
-                // devices agreed to play it.
+                // No side to choose when meeting again over a game in play.
                 if !flow.isMeetingAgain { side }
                 connection()
             }
@@ -42,8 +30,6 @@ struct ProposeSheet<Connection: View>: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    // The platform's own close, so the one name this adds is
-                    // the platform's rather than a string to translate.
                     Button(role: .close) { flow.dismissSheet() }
                         .accessibilityIdentifier("propose-close")
                 }
@@ -51,9 +37,8 @@ struct ProposeSheet<Connection: View>: View {
         }
     }
 
-    /// Which side this device takes: the first mover, or the other. The
-    /// second option names the other player rather than a colour, because what
-    /// the first mover is called is the game's.
+    /// Which side this device takes: the first mover, or the other. Not
+    /// colours, because each game names its first mover.
     private var side: some View {
         Section {
             Picker("setup.firstMover", selection: proposerSide) {

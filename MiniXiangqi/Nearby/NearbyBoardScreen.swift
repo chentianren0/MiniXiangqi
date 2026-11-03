@@ -19,22 +19,19 @@ struct NearbyBoardScreen: View {
 
     /// Whether the stacked shape's on-demand captured-pieces surface is up.
     @State private var capturedShown = false
-    /// The captured sheet's own width, measured as the play screen measures
-    /// its own — one shape for the three sheets, and on macOS the measurement
-    /// is what keeps a sheet sized.
+    /// The captured sheet's own width; on macOS the measurement is what keeps
+    /// a sheet sized.
     @State private var capturedWidth: CGFloat = 0
 
-    /// What the stacked shape's chrome came to, exactly as the play screen
-    /// takes it: the status above the board measured, and the cluster below it
-    /// reserved at its tallest arrangement out of one measured row.
+    /// The stacked shape's chrome: the status above the board measured, and
+    /// the cluster below it reserved at its tallest arrangement.
     @State private var statusHeight = BoardLayout.stackedChromeHeight / 2
     @State private var controlRow = BoardLayout.clusterRowHeight
 
     @Environment(\.motionPolicy) private var policy
 
     #if os(iOS)
-    /// Whether the navigation container is presenting as a bar across the
-    /// bottom, which is what the rule below is about. See `hidesDestinationBar`.
+    /// Whether the navigation container presents as a bar across the bottom.
     @Environment(\.horizontalSizeClass) private var widthClass
     #endif
 
@@ -48,10 +45,8 @@ struct NearbyBoardScreen: View {
                 layout(play)
             }
         }
-        // docs/interaction-design.md, "Navigation": a board screen hides the
-        // destination bar where that bar stands across the bottom. The rule
-        // never reaches macOS, where the container presents as a sidebar and
-        // nothing about the window changes.
+        // A board screen hides the destination bar where it stands across the
+        // bottom; on macOS the container is a sidebar.
         #if os(iOS)
         .toolbar(hidesDestinationBar(widthClass) ? .hidden : .automatic, for: .tabBar)
         #endif
@@ -62,9 +57,8 @@ struct NearbyBoardScreen: View {
             play.sync(with: game)
         }
         .onChange(of: policy) { play?.policy = policy }
-        // A board turned round stays turned round: the model is rebuilt on
-        // every entry, so which way the player last had it is remembered where
-        // the game is rather than where the page is.
+        // The model is rebuilt on every entry, so the flow remembers which way
+        // the player last turned the board.
         .onChange(of: play?.flipped) { _, flipped in
             guard let flipped, let game = flow.boardGameID else { return }
             flow.setOrientation(flipped, of: game)
@@ -88,39 +82,27 @@ struct NearbyBoardScreen: View {
             case .stacked: stacked(play, in: proxy.size)
             }
         }
-        // 认输 ends the game against the player and cannot be undone, so it is
-        // confirmed — the same alert, in the same words, the local game uses.
         .alert("alert.resign.title", isPresented: $resignPresented) {
             Button("control.cancel", role: .cancel) { }
             Button("control.resign", role: .destructive) { play.resign() }
         } message: {
             Text("alert.resign.message")
         }
-        // And 判和 is the local game's claim, presented the way the local game
-        // presents it: the same confirmation, the same two answers, the same
-        // words.
         .alert("alert.claimDraw.title", isPresented: $claimPresented) {
             Button("control.keepPlaying", role: .cancel) { }
             Button("control.endAsDraw") { play.claimDraw() }
         } message: {
             Text("alert.claimDraw.message")
         }
-        // The captured-pieces surface, on the same surface the alerts are on and
-        // for the play screen's own reason: `capturedShown` is this screen's
-        // state, so a sheet declared inside the stacked branch alone is one that
-        // is re-presented every time the layout comes back to that branch.
+        // Declared here rather than in the stacked branch, which would present
+        // it again every time the layout came back to that branch.
         .sheet(isPresented: $capturedShown) { capturedSheet(play) }
     }
 
     // MARK: - What the captures took
 
-    /// The captured-pieces surface, as this game draws it.
-    ///
-    /// **Whose eyes it is drawn for is this device's player.** A nearby game has
-    /// two people at it and each device shows its own player's surface: their
-    /// own face-down losses as a count, their own captures whole, and every
-    /// revealed loss as the discs both players saw go. Everything discloses when
-    /// the game ends, which is the question the board itself already asks.
+    /// The captured pieces as this device's player may see them, until the
+    /// game ends and discloses everything.
     private func captured(_ play: NearbyPlay,
                           pitch: CGFloat = BoardLayout.capturedDiscPitch) -> some View {
         CapturedPiecesView(captured: play.captured,
@@ -131,8 +113,7 @@ struct NearbyBoardScreen: View {
                            pitch: pitch)
     }
 
-    /// The same surface on the phone's own transient, exactly as the play screen
-    /// raises it — board-sized discs at the sheet's own width-fitted pitch.
+    /// The same surface in a sheet, at a pitch fitted to the sheet's width.
     private func capturedSheet(_ play: NearbyPlay) -> some View {
         NavigationStack {
             ScrollView {
@@ -161,9 +142,6 @@ struct NearbyBoardScreen: View {
 
     // MARK: - The two shapes
 
-    /// The board on one side, the panel beside it. This shape's board page is a
-    /// page like any other and carries the inline title beside the control that
-    /// walks back out.
     private func sideBySide(_ play: NearbyPlay, in size: CGSize) -> some View {
         HStack(spacing: 0) {
             boardBlock(play, BoardLayout.geometry(in: size, game: play.game))
@@ -178,11 +156,6 @@ struct NearbyBoardScreen: View {
 
                 Divider()
 
-                // The resident captured-pieces surface, in the game that has
-                // one. It stands beside the board rather than over it, which is
-                // the resident rule: it never intersects the board block, and
-                // the board keeps its pitch floor before this surface is given
-                // room.
                 if play.game.conceals {
                     captured(play)
                         .padding(.horizontal, BoardLayout.panelInset)
@@ -203,8 +176,7 @@ struct NearbyBoardScreen: View {
                     .fill(.regularMaterial)
                     .ignoresSafeArea(.container, edges: .top)
             }
-            // The panel is outside the board too: a tap on its quiet parts
-            // cancels the selection.
+            // A tap on the panel's quiet parts cancels the selection too.
             .contentShape(Rectangle())
             .onTapGesture { play.cancelSelection() }
             .frame(width: BoardLayout.panelWidth)
@@ -212,19 +184,13 @@ struct NearbyBoardScreen: View {
         .navigationTitle("nav.play")
     }
 
-    /// The turn status in the bar's centre, the play controls below the board,
-    /// and the board fitted to the full width in the height between them.
+    /// The turn status in the bar's centre, or above the board at an
+    /// accessibility text size; the controls below the board; the board fitted
+    /// between them.
     ///
-    /// **The cluster's slot is reserved at its tallest arrangement**, as it is
-    /// on the local board and for a reason this board feels every ply: the turn
-    /// passing swaps the negotiations for the claim, and the two sets are not
-    /// the same width — one of them wraps to a second row on a phone where the
-    /// other does not. The board is sized around the reservation, so it stands
-    /// still while they trade places.
-    ///
-    /// At an accessibility text size the element returns to its place above the
-    /// board, exactly as it does on the local board, and the bar centre stays
-    /// empty: a page over a board needs no name either way.
+    /// The cluster's slot is reserved at its tallest arrangement: the turn
+    /// passing swaps the offers for the claim, which may wrap differently, and
+    /// the board stands still while they trade places.
     private func stacked(_ play: NearbyPlay, in size: CGSize) -> some View {
         let status = statusStandsInBar ? 0 : statusHeight
         let chrome = BoardLayout.stackedChrome(
@@ -244,15 +210,12 @@ struct NearbyBoardScreen: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .onTapGesture { play.cancelSelection() }
-                // The lines the bar cannot hold, hung just beneath it in front
-                // of the air above the board — where they hang beneath the
-                // status block in the other arrangement.
+                // The lines the bar cannot hold, hung just beneath it.
                 .overlay(alignment: .top) {
                     if statusStandsInBar {
                         quietLines(play)
-                            // The page's one leading edge, 16 points in: each
-                            // line brings 12 of its own, exactly as it does
-                            // inside the status block, and this is the rest.
+                            // Each line brings 12 points of inset; this makes
+                            // the page's 16.
                             .padding(.horizontal, BoardLayout.panelInset - 12)
                             .padding(.top, 6)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -264,8 +227,7 @@ struct NearbyBoardScreen: View {
                 .padding(.vertical, BoardLayout.clusterAir)
                 .frame(height: max(0, chrome - status), alignment: .bottom)
         }
-        // The row the reservation is two of, measured behind the whole layout,
-        // where it costs nothing and cannot be reached.
+        // One cluster row, measured out of sight for the reservation.
         .background { BoardLayout.ClusterRow { controlRow = $0 } }
         .toolbar {
             if statusStandsInBar {
@@ -273,10 +235,8 @@ struct NearbyBoardScreen: View {
                     turnStatus(play, placement: .bar)
                 }
             }
-            // Where the board keeps its floor there is no room to be resident
-            // in, so the captured surface is reached instead — from the same
-            // toolbar the page's own back control is in, which is the move
-            // list's answer to the same question on the same surface.
+            // No room beside the board here, so the captured pieces are a
+            // toolbar button away.
             if play.game.conceals {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -318,13 +278,8 @@ struct NearbyBoardScreen: View {
                    beatEmphasis: play.beatEmphasis)
     }
 
-    /// What the other player is asking for, the one line that is ever said
-    /// about the link, and the save-failure capsule.
-    ///
-    /// The offer and the request are named here rather than on a control,
-    /// because a control says what pressing it does and this says what somebody
-    /// else has done — which is the same division the claim already keeps
-    /// between 判和 and 可判和, in the same quiet register, in the same place.
+    /// What the other player is asking for, and the one line that is ever said
+    /// about the link.
     private func quietLines(_ play: NearbyPlay) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let asking = play.standingOffer {
@@ -351,8 +306,6 @@ struct NearbyBoardScreen: View {
         .animation(policy.fade(Motion.stateFadeAnimation), value: play.standingOffer)
     }
 
-    /// What the other player has asked for, in words. The item's own two kinds,
-    /// so a third would not compile rather than reaching the screen unnamed.
     private static func asked(_ kind: PeerOffer.Kind) -> LocalizedStringKey {
         switch kind {
         case .draw: "nearby.theyOfferDraw"
@@ -364,12 +317,8 @@ struct NearbyBoardScreen: View {
 
     private func boardBlock(_ play: NearbyPlay, _ geometry: BoardGeometry,
                             bleed: CGFloat = 0) -> some View {
-        // **The ending discloses the deal, and the board shows it at the moment
-        // the finished game arrives** — after the landing, which is the same
-        // beat the result notice waits for: the ply that ended the game has to
-        // finish being shown before anything answers it. It arrives by opacity,
-        // one settle for the whole board, so Reduce Motion draws it exactly as
-        // full motion does.
+        // The ending discloses the deal once the last ply has landed, by
+        // opacity, so Reduce Motion draws it as full motion does.
         let disclosure: Double = play.disclosesTheDeal && !play.isCommitting ? 1 : 0
         return ZStack {
             BoardView(geometry: geometry,
@@ -395,9 +344,7 @@ struct NearbyBoardScreen: View {
                       onFlipArrival: { play.flipArrived() })
                 .boardHaptics(landings: play.landings, refusals: play.refusals)
 
-            // The notice waits for the landing: a result arrives with a move,
-            // and the move has to finish being shown before an announcement
-            // stands in front of it.
+            // The notice waits for the move that brought the result to land.
             if let state = play.endState, showsResult, !play.isCommitting {
                 NearbyNotice(title: Self.title(of: state, in: play.game),
                              detail: play.reasonText ?? "",
@@ -405,10 +352,6 @@ struct NearbyBoardScreen: View {
                              close: { dismissResult() })
                     .transition(.opacity)
             } else if let void = play.voided, showsResult, !play.isCommitting {
-                // The same notice, because it is the same moment: the game is
-                // over and the board behind it is the one worth looking at. It
-                // says why it ended, in one sentence, and nothing about what the
-                // app did next.
                 NearbyNotice(title: String(localized: "nearby.ended.title"),
                              detail: void.message,
                              done: { flow.leaveBoard() },
@@ -416,14 +359,10 @@ struct NearbyBoardScreen: View {
                     .transition(.opacity)
             }
         }
-        // One settle for the disclosure, and for nothing else: the board's own
-        // phases are driven by the transitions that schedule them, and this
-        // animates the one value those transitions do not.
+        // The board's other phases are driven by their transitions.
         .animation(play.policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }
 
-    /// The fuller wording the notice has room for, which is the same vocabulary
-    /// the local game's notice uses for the same three results.
     private static func title(of state: GameState, in game: GameKind) -> String {
         switch state {
         case .redWins: game.resultText(.red)
@@ -443,9 +382,7 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// A finished board is not inert: a tap puts the notice away, and that tap
-    /// is an accepted input rather than a rejected one, so it gets no beat.
-    /// Everything else goes through the model, which asks the position.
+    /// On a finished board a tap puts the notice away, with no refusal beat.
     private func tap(_ square: Square, _ play: NearbyPlay) {
         guard !play.isCommitting else { return }
         if play.isOver, showsResult {
@@ -457,34 +394,11 @@ struct NearbyBoardScreen: View {
 
     // MARK: - The controls
 
-    /// The nearby cluster.
-    ///
-    /// **The offers belong to whose turn it is**, because the engine's do: an
-    /// offer and a takeback request are the off-turn player's to make, a claim
-    /// is a turn action of the side to move, and an acceptance answers something
-    /// that arrived on this device's turn. So off turn the cluster carries 提和
-    /// and 悔棋, and on turn it carries 判和 — with 接受 in the claim's own place
-    /// while the other player has something standing, which is the one moment a
-    /// claim is not what the turn is about. Each is disabled exactly when the
-    /// engine would refuse it, which is the same grammar the local cluster keeps
-    /// for 判和 and 悔棋: a control that will be available on the next ply stays
-    /// on screen rather than coming and going with it.
-    ///
-    /// **认输 and 翻转棋盘 stand at the trailing end and therefore never move**,
-    /// with the negotiations leading and the space between them: the turn
-    /// passing changes the leading side of the row and leaves the two controls
-    /// that are true of the whole game exactly where a thumb last found them.
-    /// The way out replaces 认输 once the game is over, in 认输's own place —
-    /// the same controls, keys and identifiers the other boards carry.
-    ///
-    /// **The placement games carry a smaller set of the same grammar**, and for
-    /// the reasons their local cluster carries one: there is no repetition to
-    /// 判和 on, so the on-turn side of the turn is 认输 alone, and a stone has no
-    /// orientation a player could read, so 翻转棋盘 would turn a board nobody is
-    /// reading the wrong way up. What stays is everything two people need
-    /// between them — 提和, which is meaningful precisely because the other side
-    /// is a person, 悔棋, 接受, and 认输 — because none of those is a right the
-    /// game grants: they are between the two players, in every game.
+    /// The networked cluster. Off turn it carries 提和 and 悔棋; on turn 判和,
+    /// or 接受 while the other player has something standing. Each is disabled
+    /// where the engine would refuse it. 认输 and 翻转棋盘 stand at the trailing
+    /// end so the turn passing never moves them, and 完成 takes 认输's place
+    /// once the game is over. The placement games have no 判和 and no 翻转棋盘.
     private func controls(_ play: NearbyPlay, worded: Bool, carriesFlip: Bool) -> some View {
         let over = Self.scene(of: play) == .over
         return HStack(spacing: 8) {
@@ -495,9 +409,7 @@ struct NearbyBoardScreen: View {
             Spacer(minLength: 0)
 
             if over {
-                // The one obvious next action once the game is over, and
-                // therefore the one thing on screen the tint rule allows —
-                // prominent only once the notice carrying it has been closed.
+                // Prominent only once the notice carrying it has been closed.
                 concluding(prominent: !showsResult)
                     .transition(.opacity)
             } else {
@@ -519,20 +431,12 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// The two, the one, or the none this side of the turn has.
-    ///
-    /// The last of those is a placement game's own turn: 判和 is the only act
-    /// this side of the turn ever had, and these games have no repetition to
-    /// claim, so what the leading side of the row holds is nothing at all and
-    /// 认输 stands alone. Absence is what says a capability is not there —
-    /// exactly what the local placement cluster says by leaving 判和 out.
+    /// The offers this side of the turn has; none on a placement game's own
+    /// turn.
     @ViewBuilder
     private func negotiations(_ play: NearbyPlay, worded: Bool) -> some View {
         if let asking = play.standingOffer {
-            // Answering what the other player asked for. It follows something
-            // the status line is already naming and is the player's own
-            // deliberate answer to it, so nothing stands between the press and
-            // the act — there is no second confirmation of a confirmation.
+            // No confirmation: accepting is already the answer to a request.
             Button {
                 play.accept()
             } label: {
@@ -545,7 +449,6 @@ struct NearbyBoardScreen: View {
             .transition(.opacity)
         } else if play.controller == .you {
             if !play.game.isPlacement {
-                // The claim, presented the way the local game presents it.
                 Button {
                     claimPresented = true
                 } label: {
@@ -558,9 +461,6 @@ struct NearbyBoardScreen: View {
                 .transition(.opacity)
             }
         } else {
-            // 提和 asks for the equal rather than taking it, and the two
-            // figures are as near a handshake as the platform's symbols come:
-            // the act belongs to the pair rather than to this device.
             Button {
                 play.offerDraw()
             } label: {
@@ -586,8 +486,6 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// 翻转棋盘, in the one arrangement or the other — the same control, key and
-    /// identifier the play screen's cluster carries.
     private func flipControl(_ play: NearbyPlay, worded: Bool) -> some View {
         Button {
             play.flip()
@@ -599,11 +497,8 @@ struct NearbyBoardScreen: View {
         .accessibilityIdentifier("cluster-flip")
     }
 
-    /// A cluster control's label: its symbol and its word, or its symbol alone
-    /// where the row has given the words up. The word is the accessibility label
-    /// either way, which each control states for itself, and it stays on one
-    /// line: these are one-act labels, and a control whose word wrapped would
-    /// make its row taller than the arrangement it was chosen as.
+    /// A control's symbol and word, or its symbol alone. The word stays on one
+    /// line, or the row would grow taller than the arrangement chosen for it.
     @ViewBuilder
     private func clusterLabel(_ key: LocalizedStringKey, _ symbol: String,
                               worded: Bool) -> some View {
@@ -614,17 +509,9 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// The cluster at whichever of its arrangements fits: one row with every
-    /// word, the same row wrapped with 翻转棋盘 beneath, one row of symbols, and
-    /// that row wrapped. Words outrank one-rowness, and no row mixes the two
-    /// forms — the play screen's own grammar, in the same words.
-    ///
-    /// **The turn passing is one drawn transition.** 认输 and 翻转棋盘 hold their
-    /// identity and their trailing places across it while the leading acts swap:
-    /// the departing ones fade as their width closes and the arriving ones fade
-    /// in, riding the landing of the ply that passed the turn — or, where
-    /// nothing lands, the moment the game ended. Under Reduce Motion the two
-    /// sets crossfade as wholes, nothing sliding and nothing collapsing.
+    /// The cluster at the first arrangement that fits: one row of words, that
+    /// row wrapped with 翻转棋盘 beneath, one row of symbols, and that row
+    /// wrapped. Under Reduce Motion the turn passing crossfades the sets whole.
     @ViewBuilder
     private func controls(_ play: NearbyPlay) -> some View {
         let scene = Self.scene(of: play)
@@ -644,15 +531,11 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// The cluster over two rows, with 翻转棋盘 beneath the two controls that
-    /// never move: the row above is anchored at its trailing end, so the row
-    /// below is anchored there too.
+    /// The cluster over two rows, with 翻转棋盘 beneath, trailing.
     @ViewBuilder
     private func wrappedControls(_ play: NearbyPlay, worded: Bool) -> some View {
         VStack(alignment: .trailing, spacing: BoardLayout.clusterAir) {
             controls(play, worded: worded, carriesFlip: false)
-            // A cluster with no 翻转棋盘 has nothing to wrap: this arrangement is
-            // the one above, and the row beneath it is the control that left.
             if !play.game.isPlacement {
                 HStack(spacing: 8) {
                     Spacer(minLength: 0)
@@ -662,16 +545,8 @@ struct NearbyBoardScreen: View {
         }
     }
 
-    /// The scenes this cluster has: a stretch of play whose acts are stable.
-    /// Two of them are the two sides of the turn, one is answering what the
-    /// other player asked for, and the last is a game that is over.
-    ///
-    /// **The finished scene waits for the landing**, which is the guard the
-    /// result notice in front of the board already keeps: the ply that ends the
-    /// game is still travelling when the engine says it is over, and a cluster
-    /// that swapped there would swap ahead of the move that changed it. The
-    /// other three follow the game as it stands, having no landing of their
-    /// own to wait for.
+    /// The stretches of play whose controls are stable. The finished scene
+    /// waits for the ending ply to land, as the result notice does.
     private enum Scene: Equatable { case onTurn, offTurn, answering, over }
 
     private static func scene(of play: NearbyPlay) -> Scene {
@@ -680,8 +555,7 @@ struct NearbyBoardScreen: View {
         return play.controller == .you ? .onTurn : .offTurn
     }
 
-    /// The way out, which is the one control that is its word alone in every
-    /// arrangement — the same rule the local board's concluding action keeps.
+    /// The way out, a word alone in every arrangement.
     @ViewBuilder
     private func concluding(prominent: Bool) -> some View {
         let action = Button("control.done") { flow.leaveBoard() }
@@ -695,30 +569,16 @@ struct NearbyBoardScreen: View {
     }
 }
 
-/// What a nearby game says when it is over — whichever way it ended.
+/// What a networked game says when it is over, with a result or without.
 ///
-/// docs/interaction-design.md, "Natural result presentation": the same notice in
-/// front of the same undimmed board, dismissible for the same reason — the
-/// squares worth studying are the ones underneath it.
-///
-/// One notice for a result and for a game that went away, because they are the
-/// same moment for the person looking at it: the game is over, this is what
-/// became of it, and here is the way out. A second shape for the second case
-/// would be a second thing on screen saying the same size of thing.
-///
-/// Its actions are the ones a nearby game has. Every action the local notice
-/// carries is a filing act — 保存, 保存并开始新对局, 回放 — and a nearby game is
-/// filed by nobody: it goes into History on both devices the moment it ends,
-/// because a result one player confirms and the other does not would be two
-/// libraries disagreeing about one game. What is left is
-/// the way out, which is 完成. A fresh proposal is the rematch, so nothing here
-/// offers one.
+/// Its one action is 完成: the game is already in History on both devices, so
+/// none of the local notice's filing actions applies, and a fresh proposal is
+/// the rematch. A result one player confirmed and the other did not would leave
+/// the two libraries disagreeing about one game.
 private struct NearbyNotice: View {
-    /// The result, or the fact that the game ended. Resolved by the caller,
-    /// because a screen reader is told this sentence as well as shown it.
+    /// The result, or the fact that the game ended.
     var title: String
-    /// The line beneath: a result's reason, or the one sentence about why a game
-    /// went away. Empty where there is nothing to add.
+    /// A result's reason, or why a game went away; empty for nothing.
     var detail: String
     var done: () -> Void
     var close: () -> Void
