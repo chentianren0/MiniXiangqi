@@ -6,13 +6,9 @@ The app is on the App Store under the [GNU General Public License version 3](LIC
 
 ## Building
 
-1. Install CMake and Ninja, which build the C++ core under `core/`.
-2. Run `./build-core-xcframework.sh`, and run it again whenever anything under `core/` changes.
-3. Open `MiniXiangqi.xcodeproj` and build the `MiniXiangqi` scheme.
+Open `MiniXiangqi.xcodeproj` and build the `MiniXiangqi` scheme. Xcode alone is enough: the C++ core is the local Swift package in [`core/`](core/README.md), which Xcode builds with the app.
 
-[#280](https://github.com/chentianren0/MiniXiangqi/issues/280) turns the core into a Swift package and replaces these steps.
-
-Tests: run the `MiniXiangqi` scheme's Test action in Xcode; the core's own tests run with `ctest`, as [core/README.md](core/README.md) describes.
+Tests: the `MiniXiangqi` scheme's Test action runs the app's tests; the core's run with `swift test` in `core/`, or from Xcode with `core/Package.swift` open.
 
 The Mini Xiangqi network is the project's own, trained by the public pipeline at [`chentianren0/minixiangqi-nnue`](https://github.com/chentianren0/minixiangqi-nnue).
 

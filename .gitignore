@@ -1,13 +1,9 @@
 .DS_Store
 .build/
+.swiftpm/
 DerivedData/
 *.xcuserstate
 xcuserdata/
-
-# Written by build-core-xcframework.sh
-core/.build-*/
-/Generated/
-/MiniXiangqi/Resources/
 
 # UI-test screenshot exports
 .screenshots/

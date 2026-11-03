@@ -5,15 +5,11 @@
 #include "mxq_internal.hpp"
 #include "mxq_notation.hpp"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
 #include "mxq_search.hpp"
 #include "mxq_session.hpp"
-#endif
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 #include "mxq_rapfi_bridge.hpp"
-#endif
 
 #include <cassert>
 #include <memory>
@@ -101,7 +97,6 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
     core->flags = config->flags;
     core->identity.reset((core->flags & MXQ_CORE_FLAG_DETERMINISTIC_IDENTITY) != 0);
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
     /* The engine is prepared here rather than lazily, so that a packaging
      * failure — a missing or malformed variant configuration — surfaces at
      * initialisation instead of at the first rules query, where the caller has
@@ -121,7 +116,6 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
                         detail.c_str());
         return MXQ_ERR_ENGINE_VARIANT_LOAD_FAILED;
     }
-#endif
 
     /* The store opens with the core and a store that cannot open or create
      * fails initialisation whole: a core without persistence would break every
@@ -132,11 +126,9 @@ MxqStatus MXQ_CALL mxq_core_init(const MxqCoreConfig *config, MxqCore **out_core
         return store_rc;
     }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
     /* The engine thread, last: everything above can fail, and a failed
      * initialisation must not leak a thread. */
     mxq::search::startup();
-#endif
 
     mxq::g_core = std::move(core);
     *out_core = mxq::g_core.get();
@@ -155,7 +147,6 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
         return MXQ_ERR_STATE_NOT_INITIALIZED;
     }
     core->shutting_down = true;
-#if defined(MXQ_ENABLE_RULES_FACADE)
     /* The contract's order: cancel all work, join the engine thread, then the
      * store. Outstanding searches deliver their callbacks with the cancelled
      * outcome before the join; the retained result does not survive. */
@@ -167,7 +158,6 @@ MxqStatus MXQ_CALL mxq_core_shutdown(MxqCore *core, MxqError *err) {
      * one answers MXQ_ERR_ARG_INVALID_HANDLE instead of touching freed
      * memory. */
     mxq::session::invalidate_all(core);
-#endif
     /* Close the store before the instance goes away, explicitly rather than
      * by member destruction order, because "shutdown closes the store" is a
      * contract clause and not an implementation accident. */
@@ -181,17 +171,11 @@ MxqStatus MXQ_CALL mxq_core_cancel_all(MxqCore *core, MxqError *err) {
     if (rc != MXQ_OK) {
         return rc;
     }
-#if defined(MXQ_ENABLE_RULES_FACADE)
     /* The backgrounding and memory-pressure path: cancel cooperatively and
      * block until the engine quiesces. Callbacks still fire, with the
      * cancelled outcome, before this returns. The committed game is never
      * affected — search output never commits. */
     return mxq::search::cancel_all_and_quiesce(err);
-#else
-    /* Without the engine no search can be outstanding, so the state this call
-     * asks for already holds. */
-    return MXQ_OK;
-#endif
 }
 
 MxqStatus MXQ_CALL mxq_core_version(MxqVersion *out, MxqError *err) {
@@ -251,47 +235,28 @@ MxqStatus MXQ_CALL mxq_core_game_profile(MxqGameKind game, MxqGameProfile *out,
 
     out->game = game;
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     /* The placement games' pins live in the second bridge, and they are asked of
      * it for the reason the first bridge is asked below: the bridge is what
-     * pairs a game with the weights it verifies, and a report assembled beside
-     * it could name a pairing the bridge would refuse. Renju pins a network per
-     * side and this field carries one, so it carries the pair's — see
-     * MxqGameProfile. */
+     * pairs a game with the weights it loads. Renju pins a network per side and
+     * this field carries one, so it carries the pair's — see MxqGameProfile. */
     if (mxq::notation::move_class_of(game) ==
         mxq::notation::MoveClass::Placement) {
         const mxq::rapfi::Rules rules = mxq::rapfi::rules_of(game);
         mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
                           mxq::rapfi::rules_variant_id(rules));
         mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
-                          mxq::rapfi::rules_nnue_sha256(rules));
+                          mxq::rapfi::rules_network_id(rules));
         return MXQ_OK;
     }
-#endif
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
     /* Read from the bridge's own pinned rows rather than from the build
      * configuration a second time: the bridge is what pairs a variant with the
-     * network it verifies, and a report assembled beside it could name a
-     * pairing the bridge would refuse. */
+     * network it loads. */
     const mxq::engine::Variant variant = mxq::engine::variant_of(game);
     mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
                       mxq::engine::variant_id(variant));
     mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
-                      mxq::engine::variant_nnue_sha256(variant));
-#else
-    /* Without the engine there is no bridge to ask, and the pins are still
-     * build facts this report owes: the manifest reaches them through the same
-     * generated configuration the bridge reads. */
-    mxq::copy_bounded(out->variant_id, sizeof(out->variant_id),
-                      game == MXQ_GAME_KIND_XIANGQI
-                          ? MXQ_BUILD_XIANGQI_VARIANT_ID
-                          : MXQ_BUILD_VARIANT_ID);
-    mxq::copy_bounded(out->nnue_sha256, sizeof(out->nnue_sha256),
-                      game == MXQ_GAME_KIND_XIANGQI
-                          ? MXQ_BUILD_XIANGQI_NNUE_SHA256
-                          : MXQ_BUILD_NNUE_SHA256);
-#endif
+                      mxq::engine::variant_network_id(variant));
     return MXQ_OK;
 }
 

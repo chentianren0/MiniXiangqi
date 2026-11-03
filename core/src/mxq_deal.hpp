@@ -14,11 +14,10 @@
  * This core is the first implementation of it, and it is not the last: the
  * Apple frontend will derive the same deal from the same two values when it
  * plays a nearby game, and a later reader of a finished record derives it again
- * to check the record against its own evidence. So the unit test beside it —
- * core/tests/mxq_session_tests.cpp, the derivation case — states a known seed
- * and nonce, the intermediate values a hand-execution of this algorithm
- * produces, and the deal that comes out, and it is the anchor those later
- * implementations are verified against rather than a test of this one.
+ * to check the record against its own evidence. So the package test beside it —
+ * the deal derivation case in core/tests — states a known seed and nonce and
+ * the deal that comes out, and it is the anchor those later implementations
+ * are verified against rather than a test of this one.
  *
  * Nothing here is a rule of the game. What a deal means for play is
  * docs/jieqi-rules.md's, and the position record the deal spells is the game's
@@ -95,7 +94,6 @@ bool is_hex32(const std::string &text);
  * the commitment exists to catch. False for a value is_hex32 refuses. */
 bool commitment_of(const std::string &hex32, std::string &out);
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 /*
  * The position record this deal spells: the thirty dealt pieces face down on
@@ -130,7 +128,6 @@ bool verify(const std::string &commit, const std::string &nonce,
             const std::string &seed, const char *start_fen,
             const std::string *expected_digest, std::string &detail);
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* namespace deal */
 } /* namespace mxq */

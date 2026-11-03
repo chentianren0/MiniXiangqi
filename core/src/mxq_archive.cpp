@@ -5,9 +5,8 @@
  * callable before mxq_core_init. mxq_archive_probe decodes and structurally
  * validates an archive; mxq_archive_validate does everything probe does and
  * then replays the move line through the rules tier. mxq_archive_encode is the
- * write side: it takes a session, so it is gated on the rules facade like the
- * sessions themselves, and every question about the canonical spelling belongs
- * to mxq_archive_write.cpp rather than here.
+ * write side: it takes a session, and every question about the canonical
+ * spelling belongs to mxq_archive_write.cpp rather than here.
  *
  * The ladder below is docs/game-data.md's accepted validation order, in that
  * order and no other, because the order is itself the contract: a file that
@@ -26,11 +25,7 @@
  *      sequence, and the recorded terminal pair agreeing with the replayed
  *      adjudication                                    (validate only)
  *
- * Stages 1 to 4 are mxq_archive_probe. Stage 5 needs the rules facade, so
- * mxq_archive_validate is compiled only when MXQ_ENABLE_RULES_FACADE is ON —
- * absent from the library rather than stubbed, exactly as the session-free
- * rules facade is, because the error taxonomy has no not-implemented code and
- * inventing one would be inventing contract vocabulary.
+ * Stages 1 to 4 are mxq_archive_probe; mxq_archive_validate adds stage 5.
  */
 
 #include "mxq_internal.hpp"
@@ -42,12 +37,10 @@
 #include "mxq_deal.hpp"
 #include "mxq_notation.hpp"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 #include "mxq_engine_bridge.hpp"
 #include "mxq_rules.hpp"
 #include "mxq_session.hpp"
 #include "mxq_setup.hpp"
-#endif
 
 #include <cassert>
 #include <cstring>
@@ -1212,7 +1205,6 @@ void fill_stored(const Decoded &decoded, Stored &out) {
     out.ended_at_ms = decoded.completed ? decoded.ended_at_ms : 0;
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 const char *state_text(MxqGameState state) {
     switch (state) {
@@ -1427,7 +1419,6 @@ MxqStatus validate_rules_tier(const Decoded &decoded, MxqError *err) {
     return check_terminal_pair(decoded, adj, err);
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 MxqStatus begin(MxqCore *core, const uint8_t *bytes, MxqArchiveInfo *out,
                 MxqError *err) {
@@ -1467,7 +1458,6 @@ MxqStatus read_stored(const uint8_t *bytes, size_t len, Stored &out,
     return MXQ_OK;
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 /* The importer's path in. Same ladder, every bound applied, the rules tier
  * run, and the one refusal that belongs to import rather than to the format;
@@ -1520,7 +1510,6 @@ MxqStatus read_imported(const uint8_t *bytes, size_t len, Stored &out,
     return MXQ_OK;
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* namespace archive */
 } /* namespace mxq */
@@ -1563,7 +1552,6 @@ MxqStatus MXQ_CALL mxq_archive_probe(MxqCore *core, const uint8_t *bytes,
     return MXQ_OK;
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 MxqStatus MXQ_CALL mxq_archive_validate(MxqCore *core, const uint8_t *bytes,
                                         size_t len, MxqArchiveInfo *out,
@@ -1636,6 +1624,5 @@ MxqStatus MXQ_CALL mxq_archive_encode(MxqCore *core, const MxqGame *game,
     return MXQ_OK;
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* extern "C" */

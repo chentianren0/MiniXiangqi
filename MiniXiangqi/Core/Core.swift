@@ -605,11 +605,10 @@ final class Core {
     init(storeDirectory: String) throws {
         // The directory the core reads its assets from — the variant
         // configuration the engine loads at initialisation and every pinned
-        // network — staged from the pack the bundle carries. A pack that is
-        // missing or does not decode is a packaging failure and surfaces here
-        // rather than at the first move; what the core then verifies, file by
-        // file against its pins, is unchanged.
-        let assets = try Self.stageAssets()
+        // network — opened from the sealed copies the bundle carries. Assets
+        // that are missing or do not open are a packaging failure and surface
+        // here rather than at the first move.
+        let assets = try Self.openAssets()
         try FileManager.default.createDirectory(atPath: storeDirectory,
                                                 withIntermediateDirectories: true)
 
@@ -682,25 +681,15 @@ final class Core {
             .appendingPathComponent("MiniXiangqi", isDirectory: true).path
     }
 
-    /// The asset directory, staged from the bundle's pack into the app's own
-    /// caches: the files are re-creatable from the bundle, so the system may
-    /// reclaim them, and a launch after that stages them again. When they are
-    /// already there and right, staging is a hash check per file; when they
-    /// are not, a decode. AssetPack.swift says why the bundle carries a pack.
-    private static func stageAssets() throws -> String {
-        guard let pack = Bundle.main.url(forResource: AssetPack.fileName, withExtension: nil) else {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
-                            detail: "the bundle has no \(AssetPack.fileName)")
-        }
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("EngineAssets", isDirectory: true)
+    /// The asset directory, opened into the app's own caches.
+    /// EngineAssets.swift says why the bundle carries them sealed.
+    private static func openAssets() throws -> String {
         do {
-            try AssetPack.stage(pack, into: directory)
+            return try EngineAssets.directory().path
         } catch {
-            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISMATCH),
-                            detail: "cannot stage the engine assets: \(error)")
+            throw CoreError(status: MxqStatus(MXQ_ERR_ENGINE_ASSET_MISSING),
+                            detail: "cannot open the engine assets: \(error)")
         }
-        return directory.path
     }
 
     // MARK: - The ruleset's constants

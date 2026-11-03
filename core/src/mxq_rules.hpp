@@ -20,14 +20,6 @@
  * Pikafish slice answers for it and for nothing else. The dispatch is therefore
  * a game-to-authority answer with the move class behind it: Jieqi's own, then
  * the placement games' by move class, then the movement engine for the rest.
- *
- * Compiled only when MXQ_ENABLE_RULES_FACADE is ON, with the placement arm
- * compiled only when MXQ_ENABLE_GOMOKU_FACADE is too. A build without the second
- * engine does not carry the placement games at all — notation::known_game is
- * where that is said, and every entry point taking a game passes through it —
- * so the arm's absence is unreachable rather than merely unlikely. The jieqi
- * slice shares the first engine's switch, so its arm is present whenever this
- * file is.
  */
 
 #ifndef MXQ_RULES_HPP
@@ -35,7 +27,6 @@
 
 #include "mxq.h"
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 #include "mxq_engine_bridge.hpp"
 
@@ -94,6 +85,5 @@ bool validate_fen(MxqGameKind game, const char *fen, std::string &detail);
 } /* namespace rules */
 } /* namespace mxq */
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 #endif /* MXQ_RULES_HPP */

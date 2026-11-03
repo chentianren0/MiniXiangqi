@@ -3,10 +3,9 @@
  *
  * The archive is one canonical-JSON document (docs/game-data.md), so the codec
  * needs a reader; it must be the core's own, because the core depends on no
- * third party for a correctness-critical path and cannot depend on the test
- * runner's reader either — core/tests/mxq_json.* is fixture-side code, and a
- * core validated by fixtures its own parser had read would be validating
- * itself.
+ * third party for a correctness-critical path and cannot share a reader with
+ * the fixture tests either: a core validated by fixtures its own parser had
+ * read would be validating itself.
  *
  * It is deliberately not a general JSON library. It reads exactly what an
  * archive may contain, under exactly the import limits game-data.md fixes, and

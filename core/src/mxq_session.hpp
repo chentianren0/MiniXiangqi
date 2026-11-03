@@ -41,11 +41,6 @@
  * serialised, because with one main window and one active game a concurrent
  * session call is a frontend bug and picking an order would hide it. Owner is
  * that rule, and every entry point takes it first.
- *
- * Compiled only when MXQ_ENABLE_RULES_FACADE is ON: a session that cannot
- * replay cannot answer a single one of its queries, so without the engine the
- * mxq_game_ functions are absent from the library rather than stubbed, exactly
- * as the session-free rules facade is.
  */
 
 #ifndef MXQ_SESSION_HPP
@@ -182,10 +177,6 @@ namespace session {
  * a session already claimed is refused rather than waited for, which is what
  * makes MXQ_ERR_ARG_CONCURRENT_USE a detected race rather than a serialised
  * one.
- *
- * The guard is also what core/tests drives the concurrency case through: a
- * test holding it is exactly a thread inside the session, with no test-only
- * seam in the core to arrange it.
  */
 class Owner {
 public:

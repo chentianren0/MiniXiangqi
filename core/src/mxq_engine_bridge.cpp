@@ -4,8 +4,11 @@
 
 #include "mxq_build_config.h"
 #include "mxq_notation.hpp"
-#include "mxq_sha256.hpp"
 
+/* The engine's headers are upstream's; Xcode's default 64-to-32 warning would
+ * otherwise report their conversions against this file. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
 #include "apiutil.h"
 #include "piece.h"
 #include "bitboard.h"
@@ -19,6 +22,7 @@
 #include "tt.h"
 #include "uci.h"
 #include "variant.h"
+#pragma clang diagnostic pop
 
 #include <cassert>
 #include <cstring>
@@ -47,24 +51,18 @@ namespace {
  * packaging". */
 constexpr const char *kVariantFile = "minixiangqi-variants.ini";
 
-/* Everything pinned to one variant, in one row per variant. The identifier is
- * what UCI_Variant takes and what the network's basename must begin with; the
- * three network fields are that variant's own pins, and reading a network
- * against the wrong row is exactly the mistake the byte preflight below would
- * otherwise stop catching. All of it comes from pinned-inputs.json through the
- * generated build configuration rather than being spelled here. */
+/* One row per variant: the identifier UCI_Variant takes, which the network's
+ * basename must begin with, and that variant's network. */
 struct VariantPin {
     const char *id;
     const char *nnue_filename;
-    uint64_t    nnue_byte_length;
-    const char *nnue_sha256;
+    const char *nnue_id;
 };
 
 constexpr VariantPin kVariantPins[] = {
-    {MXQ_BUILD_VARIANT_ID, MXQ_BUILD_NNUE_FILENAME, MXQ_BUILD_NNUE_BYTE_LENGTH,
-     MXQ_BUILD_NNUE_SHA256},
+    {MXQ_BUILD_VARIANT_ID, MXQ_BUILD_NNUE_FILENAME, MXQ_BUILD_NNUE_ID},
     {MXQ_BUILD_XIANGQI_VARIANT_ID, MXQ_BUILD_XIANGQI_NNUE_FILENAME,
-     MXQ_BUILD_XIANGQI_NNUE_BYTE_LENGTH, MXQ_BUILD_XIANGQI_NNUE_SHA256},
+     MXQ_BUILD_XIANGQI_NNUE_ID},
 };
 /* The rules posture's variant: the app's own, which is what a core that has
  * never prepared an engine replays in. */
@@ -386,8 +384,8 @@ Variant active_variant() {
 
 const char *variant_id(Variant variant) { return pin_of(variant).id; }
 
-const char *variant_nnue_sha256(Variant variant) {
-    return pin_of(variant).nnue_sha256;
+const char *variant_network_id(Variant variant) {
+    return pin_of(variant).nnue_id;
 }
 
 InitError ensure_initialised(const char *assets_dir, std::string &detail) {
@@ -578,10 +576,7 @@ private:
     std::streambuf *saved_;
 };
 
-/* One network the engine is to be handed, and the row its bytes must satisfy.
- * The pin travels with the path because the two must never be paired by
- * position or by hope: a network verified against the other variant's byte
- * length and hash is verified against nothing. */
+/* One network the engine is to be handed, and the variant it is for. */
 struct NetworkChoice {
     std::string       path;
     const VariantPin *pin;
@@ -597,12 +592,10 @@ struct NetworkChoice {
  * unambiguously. That fallback is what makes the wrong-basename packaging
  * failure — the network staged under its source name instead of the bundled one
  * — reach the effective-state preflight as a typed refusal instead of hiding
- * behind "no such file": the bytes are right, the byte and hash preflights
- * pass, and the engine then clears its internal NNUE flag over the basename,
- * which is exactly what the preflight exists to catch. A file that IS another
- * variant's pinned network is never that candidate: it is a network this build
- * knows the name of, and treating it as a mystery file would verify it against
- * the wrong pins.
+ * behind "no such file": the engine clears its internal NNUE flag over the
+ * basename, which is exactly what the preflight exists to catch. A file that IS
+ * another variant's pinned network is never that candidate: it is a network
+ * this build knows the name of.
  *
  * Every other pinned network present is appended, so that EvalFile carries the
  * whole set the asset directory holds. Absent ones are simply not in the list:
@@ -711,45 +704,9 @@ ConfigureError configure(Variant variant, uint32_t threads, uint32_t hash_mib,
         return ConfigureError::VariantLoadFailed;
     }
 
-    /* The byte preflight, over every network this configuration will hand the
-     * engine: presence, pinned byte length, pinned SHA-256, each against the
-     * pins of the variant that network is for. The engine never sees a path
-     * whose bytes were not verified first — a hash mismatch is a damaged
-     * installation and refuses here, so the engine's own fatal verification
-     * path stays unreachable. */
     std::vector<NetworkChoice> networks;
     if (!find_networks(assets_dir, variant, networks, detail)) {
         return ConfigureError::AssetMissing;
-    }
-    for (const NetworkChoice &network : networks) {
-        std::ifstream in(network.path, std::ios::binary);
-        if (!in) {
-            detail = "cannot open the NNUE network at " + network.path;
-            return ConfigureError::AssetMissing;
-        }
-        std::string bytes((std::istreambuf_iterator<char>(in)),
-                          std::istreambuf_iterator<char>());
-        if (in.bad()) {
-            detail = "cannot read the NNUE network at " + network.path;
-            return ConfigureError::AssetMissing;
-        }
-        /* The diagnosis leads and the path follows: MxqError.detail is
-         * bounded, and when a long path forces truncation it is the path that
-         * must lose, never the fact the caller can act on. */
-        if (bytes.size() !=
-            static_cast<size_t>(network.pin->nnue_byte_length)) {
-            detail = "the NNUE network is " + std::to_string(bytes.size()) +
-                     " bytes where the network pinned for " +
-                     std::string(network.pin->id) + " is " +
-                     std::to_string(network.pin->nnue_byte_length) + ", at " +
-                     network.path;
-            return ConfigureError::AssetMismatch;
-        }
-        if (sha256_hex(bytes) != network.pin->nnue_sha256) {
-            detail = "the NNUE network does not match the SHA-256 pinned for " +
-                     std::string(network.pin->id) + ", at " + network.path;
-            return ConfigureError::AssetMismatch;
-        }
     }
 
     /* EvalFile is a list, and the engine takes the first token whose basename

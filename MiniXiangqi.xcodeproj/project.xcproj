@@ -11,6 +11,12 @@
       "zh-Hans",
     ],
   },
+  "packages": [
+    {
+      "kind": "local",
+      "path": "core",
+    },
+  ],
   "files": [
     { "path": "AppIcon.icon", "target-membership": [ "MiniXiangqi/resources" ] },
     {
@@ -32,13 +38,6 @@
     { "kind": "folder", "path": "MiniXiangqiUITests", "target-membership": [ "MiniXiangqiUITests" ] },
     {
       "kind": "group",
-      "name": "Generated",
-      "children": [
-        { "path": "Generated/MiniXiangqiCore.xcframework", "signature": "AppleDeveloperProgram:7P9PPXP2SF:Tianren Chen", "target-membership": [ "MiniXiangqi/frameworks" ] },
-        { "path": "<SDK>/usr/lib/libc++.tbd", "target-membership": [ "MiniXiangqi/frameworks" ] },
-      ],
-    }, {
-      "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/MiniXiangqi.app", "id": "CE259A87301668710051B648", "type": "wrapper.application", "index": false },
@@ -54,17 +53,34 @@
       "product": "Products/MiniXiangqi.app",
       "product-type": "application",
       "build-phases": [
-        {
-          "kind": "script",
-          "name": "Check the shared core is current",
-          "log-environment-variables": true,
-          "run-on-every-build": true,
-          "shell": "/bin/sh",
-          "script": "\"$PROJECT_DIR/check-core-is-current.sh\"\n",
-        },
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "script",
+          "name": "Seal the engine assets",
+          "input-paths": [
+            "$(SRCROOT)/MiniXiangqi/Core/EngineAssets.swift",
+            "$(SRCROOT)/core/assets/minixiangqi-variants.ini",
+            "$(SRCROOT)/core/assets/minixiangqiaxf-ad52b8658c9e.nnue",
+            "$(SRCROOT)/core/assets/xiangqi-c07e94a5c7cb.nnue",
+            "$(SRCROOT)/core/assets/mix9svqfreestyle_bsmix-6bc0d1b0ff8e.bin.lz4",
+            "$(SRCROOT)/core/assets/mix9svqrenju_bs15_black-7ab8c974c30d.bin.lz4",
+            "$(SRCROOT)/core/assets/mix9svqrenju_bs15_white-a31f318518d3.bin.lz4",
+          ],
+          "output-paths": [
+            "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EngineAssets",
+            "$(DERIVED_FILE_DIR)/seal-engine-assets",
+          ],
+          "shell": "/bin/sh",
+          "script": "set -e\nxcrun --sdk macosx swiftc -parse-as-library -D SEAL_ENGINE_ASSETS -o \"$SCRIPT_OUTPUT_FILE_1\" \"$SCRIPT_INPUT_FILE_0\"\n\"$SCRIPT_OUTPUT_FILE_1\"\n",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "MiniXiangqiCore",
+          "build-phase": { "build-phase": "frameworks" },
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
@@ -82,7 +98,6 @@
         "ENABLE_HARDENED_RUNTIME": "YES",
         "ENABLE_HARDWARE_CHECKED_POINTER_ARITHMETIC_SLICE": "YES",
         "ENABLE_PREVIEWS": "YES",
-        "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
         "ENABLE_USER_SELECTED_FILES": "readonly",
         "EXCLUDED_ARCHS": "x86_64",
         "GCC_C_LANGUAGE_STANDARD": "gnu23",
@@ -116,6 +131,7 @@
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
         "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_OBJC_INTEROP_MODE": "objcxx",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
@@ -148,6 +164,7 @@
         "CURRENT_PROJECT_VERSION": "1",
         "DEAD_CODE_STRIPPING": "YES",
         "DEVELOPMENT_TEAM": "7P9PPXP2SF",
+        "EXCLUDED_ARCHS": "x86_64",
         "GENERATE_INFOPLIST_FILE": "YES",
         "IPHONEOS_DEPLOYMENT_TARGET": "27.2",
         "MACOSX_DEPLOYMENT_TARGET": "27.2",
@@ -159,6 +176,7 @@
         "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator macosx",
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_EMIT_LOC_STRINGS": "NO",
+        "SWIFT_OBJC_INTEROP_MODE": "objcxx",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
@@ -191,6 +209,7 @@
         "CURRENT_PROJECT_VERSION": "1",
         "DEAD_CODE_STRIPPING": "YES",
         "DEVELOPMENT_TEAM": "7P9PPXP2SF",
+        "EXCLUDED_ARCHS": "x86_64",
         "GENERATE_INFOPLIST_FILE": "YES",
         "IPHONEOS_DEPLOYMENT_TARGET": "27.2",
         "MACOSX_DEPLOYMENT_TARGET": "27.2",

@@ -168,7 +168,6 @@ MxqStatus MXQ_CALL mxq_store_export(MxqCore *core, uint64_t record_id,
     return MXQ_OK;
 }
 
-#if defined(MXQ_ENABLE_RULES_FACADE)
 
 MxqStatus MXQ_CALL mxq_store_import(MxqCore *core, const uint8_t *bytes,
                                     size_t len, MxqImportOutcome *out_outcome,
@@ -314,6 +313,5 @@ MxqStatus MXQ_CALL mxq_store_import(MxqCore *core, const uint8_t *bytes,
     return MXQ_OK;
 }
 
-#endif /* MXQ_ENABLE_RULES_FACADE */
 
 } /* extern "C" */

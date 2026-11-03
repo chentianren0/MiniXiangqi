@@ -1,5 +1,6 @@
-# LF everywhere; hash-pinned trees are left byte-for-byte as committed.
+# LF everywhere; the assets, the engine snapshots and the fixtures are left
+# byte-for-byte as committed.
 * text=auto eol=lf
 core/assets/** -text -eol
-core/third_party/** -text -eol
+core/engines/** -text -eol
 fixtures/** -text -eol

@@ -7,11 +7,6 @@
  * The facade's state is process-global, exactly as the engine bridge's is and
  * for the same reason: the embedded engine's process-global state admits one
  * instance, which is why MxqCore is singleton-enforced (core-interface.md).
- *
- * Compiled only when MXQ_ENABLE_RULES_FACADE is ON, like the bridge and the
- * sessions: a search facade without an engine cannot exist, so without one
- * the mxq_engine_ and mxq_search_ functions are absent from the library
- * rather than stubbed.
  */
 
 #ifndef MXQ_SEARCH_HPP

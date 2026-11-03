@@ -74,9 +74,7 @@
 #include "mxq_rules.hpp"
 #include "mxq_session.hpp"
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 #include "mxq_rapfi_bridge.hpp"
-#endif
 
 #include <atomic>
 #include <cassert>
@@ -170,9 +168,9 @@ MxqSearchResult g_retained{};
 /* The profile identifier: the core revision, the revision of the engine fork
  * this game is played on, and the two per-game facts MxqGameProfile reports,
  * composed once into the bounded string mxq_engine_query and every result report
- * carry. Twelve characters of each revision and of the network hash name a build
- * as unambiguously as the axes themselves do at this scale, and keep the whole
- * under MXQ_PROFILE_ID_CAP.
+ * carry. Twelve characters of each revision and of the network's SHA-256 name a
+ * build as unambiguously as the axes themselves do at this scale, and keep the
+ * whole under MXQ_PROFILE_ID_CAP.
  *
  * The fork revision is the one the game's own engine is vendored at. Naming the
  * first engine's for a game the second one plays would attribute a move to a
@@ -182,20 +180,18 @@ std::string compose_profile_id(MxqGameKind game) {
         const std::string s(value);
         return s.size() > 12 ? s.substr(0, 12) : s;
     };
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (notation::move_class_of(game) == notation::MoveClass::Placement) {
         const rapfi::Rules rules = rapfi::rules_of(game);
         return first12(MXQ_BUILD_CORE_REVISION) + "-" +
                first12(rapfi::fork_revision()) + "-" +
                rapfi::rules_variant_id(rules) + "-" +
-               first12(rapfi::rules_nnue_sha256(rules));
+               rapfi::rules_network_id(rules);
     }
-#endif
     const engine::Variant variant = engine::variant_of(game);
     return first12(MXQ_BUILD_CORE_REVISION) + "-" +
            first12(MXQ_BUILD_FORK_REVISION) + "-" +
            engine::variant_id(variant) + "-" +
-           first12(engine::variant_nnue_sha256(variant));
+           engine::variant_network_id(variant);
 }
 
 /* The profile of one game, composed once each. Three of the four parts are that
@@ -205,10 +201,8 @@ const std::string &profile_id_of(MxqGameKind game) {
     static const std::string composed[] = {
         compose_profile_id(MXQ_GAME_KIND_MINI_XIANGQI),
         compose_profile_id(MXQ_GAME_KIND_XIANGQI),
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
         compose_profile_id(MXQ_GAME_KIND_GOMOKU_15),
         compose_profile_id(MXQ_GAME_KIND_RENJU),
-#endif
     };
     const size_t count = sizeof(composed) / sizeof(composed[0]);
     /* One entry per searched game, so a game nothing searches has none: the
@@ -258,7 +252,6 @@ bool search_outstanding_locked() {
 /* The engine thread                                                       */
 /* ---------------------------------------------------------------------- */
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
 /* Whether this game is played on the second engine. One question, asked from the
  * notation table, so that the dispatch below and the rules dispatch in
  * mxq_rules.cpp cannot ever answer it differently. It exists only where that
@@ -266,16 +259,13 @@ bool search_outstanding_locked() {
 bool played_on_gomoku_engine(MxqGameKind game) {
     return notation::move_class_of(game) == notation::MoveClass::Placement;
 }
-#endif
 
 /* Release every engine. Both bridges are idempotent about it and neither is
  * expensive when nothing is configured, and calling both is what makes "one
  * engine is prepared at a time" true rather than merely intended. */
 void deconfigure_all() {
     engine::deconfigure();
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     rapfi::deconfigure();
-#endif
 }
 
 /* Ask whichever engine is running to stop. Both are asked, for the same reason
@@ -284,9 +274,7 @@ void deconfigure_all() {
  * is not thinking. */
 void abort_all() {
     engine::search_abort();
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     rapfi::search_abort();
-#endif
 }
 
 void run_prepare(Task &task) {
@@ -302,7 +290,6 @@ void run_prepare(Task &task) {
      * preparation leaves nothing prepared, which is what the observable state
      * below already promises.
      */
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (played_on_gomoku_engine(task.game)) {
         engine::deconfigure();
         switch (rapfi::configure(rapfi::rules_of(task.game), task.threads,
@@ -329,11 +316,8 @@ void run_prepare(Task &task) {
             break;
         }
     } else
-#endif
     {
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
         rapfi::deconfigure();
-#endif
         switch (engine::configure(engine::variant_of(task.game), task.threads,
                                   task.hash_mib, task.assets_dir, detail)) {
         case engine::ConfigureError::None:
@@ -400,7 +384,6 @@ struct EngineRun {
 EngineRun run_engine(const Task &task, std::string &detail) {
     EngineRun out;
 
-#if defined(MXQ_ENABLE_GOMOKU_FACADE)
     if (played_on_gomoku_engine(task.game)) {
         /* The second engine speaks points, and the snapshot is text. Every one
          * of these was a legal move when the session accepted it, so a ply that
@@ -449,7 +432,6 @@ EngineRun run_engine(const Task &task, std::string &detail) {
         }
         return out;
     }
-#endif
 
     engine::SearchOutput produced;
     switch (engine::search_run(task.start_fen, task.moves, task.movetime_ms,
