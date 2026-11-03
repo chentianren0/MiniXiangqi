@@ -22,7 +22,7 @@ Mini Xiangqi has no river, no elephants and no advisors. Xiangqi has them all.
 For **Mini Xiangqi** the public rules source is [PyChess Mini Xiangqi rules](https://www.pychess.org/variants/minixiangqi):
 
 - Retrieved: `2026-07-26T11:58:51-0700`
-- SHA-256: `a79b663618033c2a8e4db897b51499d6409ade0543520ee950c9c768eae92077`
+- SHA-256 of the retrieved page: `a79b663618033c2a8e4db897b51499d6409ade0543520ee950c9c768eae92077`
 
 The page's starting-position diagram is an external image and its text does not name the first mover. Both facts come instead from the source's own implementation, `pychess-variants` at commit `961fd6dd60ce76d3baced1a77df49ca58edcb315` — `client/variants.ts:1434` for the starting FEN and `client/variants.ts:1439` for Red moving first — which matches the built-in Fairy-Stockfish `minixiangqi` variant byte for byte.
 
@@ -82,7 +82,7 @@ A Xiangqi position is one to set up in when all of the following hold. The claus
 - **Piece counts.** Exactly one general per side, and per side at most two advisors, two elephants, two horses, two chariots, two cannons, and five soldiers.
 - **The side not to move is not in check.** The two generals facing each other on an otherwise empty file is such a check, so a position that stands them so is refused by this clause. The side **to** move may stand in check, and answering it is that side's first move.
 
-The predicate reads piece placement and the side to move, which is the whole of what a position record denotes. It answers for a position that is still missing a general: that absence is the count clause's answer about that side and not a refusal to answer about the position. Whether a position is worth playing is not its question and neither is whether it is already decided: a position offering the side to move no legal move is a legal setup, though no game is begun from it.
+The predicate reads piece placement and the side to move, which is the whole of what a position record denotes. It answers for a position that is still missing a general: that absence is the count clause's answer about that side and not a refusal to answer about the position. Whether a position is worth playing is not its question and neither is whether it is already decided: a position offering the side to move no legal move is a legal setup, and no game may begin from it.
 
 Setup legality is pinned by conformance fixtures of an area of its own, `xq-set-NNN`, each stating a position and either the clause that refuses it or its acceptance.
 
@@ -115,9 +115,11 @@ Stated once; both games adjudicate identically except for the one chase-target d
 
 The source does not settle these questions. Each is an interpretation rather than a reading of the source, and they all apply to both games.
 
-- **A side alternating check and chase (一将一捉) commits neither violation.** Each violation class is a single behaviour sustained across the three occurrences; a side that checks in one part of the cycle and chases in another sustains neither on its own across the counted occurrences, so no single class persists, so the position resolves as a neutral claimable repetition.
+- **A side alternating check and chase (一将一捉) commits neither violation.** Each violation class is a single behaviour sustained across the three occurrences; a side that checks in one part of the cycle and chases in another sustains neither on its own across the counted occurrences, so no single class persists, so the position resolves as a neutral claimable repetition. This is the interpretation most likely to be wrong: competition practice commonly forbids the alternation, and the source does not address it.
 - **A chase renews when the chasing piece attacks the target from the square it now occupies and did not attack it from that square before the move.** A chasing piece that steps **away** from its target and still attacks it from the new square therefore renews the chase, while one that merely advances **toward** the target along a line on which its attack already stood does not.
 - **A chase whose target's only defender is a general is adjudicated on the flying-generals condition alone.** Where a general could not in fact recapture for some other reason, the target is nonetheless treated as defended, so the sequence degrades to a neutral claimable repetition rather than a loss.
+
+Where the source is silent, the chase rules follow AXF practice; AXF does not replace the source as the rules authority.
 
 ## Rules interpretation version
 

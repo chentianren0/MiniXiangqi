@@ -18,25 +18,25 @@ The **Chinese Wikipedia article 揭棋**, in its wikitext form, is the source fo
 
 - URL: `https://zh.wikipedia.org/wiki/揭棋?action=raw`
 - Retrieved: `2026-08-16T17:48:48Z`
-- SHA-256: `ef6d6139e15d2e1636cd0ad7a1a86c0c8b991118f594f08df20ed0fa6a3bf524`
+- SHA-256 of the retrieved page: `ef6d6139e15d2e1636cd0ad7a1a86c0c8b991118f594f08df20ed0fa6a3bf524`
 
 **Tencent's 天天象棋 揭棋玩法说明** is the source Wikipedia itself cites for those rules, and the source for the no-capture draw:
 
 - URL: `https://image.qqchess.qq.com/test_160324/activity/html/jieqiguize.html`
 - Retrieved: `2026-08-16T17:56:01Z`
-- SHA-256: `70559e7975ccbe9f169dc3efae94f350bde92a7bccc6a00027281a5d33981b60`
+- SHA-256 of the retrieved page: `70559e7975ccbe9f169dc3efae94f350bde92a7bccc6a00027281a5d33981b60`
 
 **Club Xiangqi's Mystery Chinese Chess Rules** states the same game in English and is the source for revealed movement piece by piece, the soldier included:
 
 - URL: `https://www.clubxiangqi.com/uprules.php`
 - Retrieved: `2026-08-16T17:49:46Z`
-- SHA-256: `88dc95094477f8a7eb646f478c6c45463206297955a793ca776ba2efee8c03df`
+- SHA-256 of the retrieved page: `88dc95094477f8a7eb646f478c6c45463206297955a793ca776ba2efee8c03df`
 
 The **Pikafish `jieqi` branch** is the game's de-facto engine and the source for the no-capture rule's count, which it keeps in plies and resets on captures alone. The file is `src/position.cpp` at commit `9b963f727983a1d9308e0dca48b39c802b8e75a2`:
 
 - Origin: `https://github.com/official-pikafish/Pikafish.git`, branch `jieqi`
 - Retrieved: `2026-08-16T17:50:20Z`
-- SHA-256: `461978fc73548847efaaa7a763935e407e5f335733c476ffe1804e09b765282f`
+- SHA-256 of the retrieved file: `461978fc73548847efaaa7a763935e407e5f335733c476ffe1804e09b765282f`
 
 The geometry, the piece set, the palace, the river and the start squares are the standard game's and are stated here directly. The engine is cited for one thing only — how the no-capture rule is counted and what resets it, which the public statements leave unsaid — and for nothing else: neither a search score nor an engine-specific optional result changes a user-visible rule.
 
