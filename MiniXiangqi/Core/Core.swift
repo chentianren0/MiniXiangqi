@@ -87,7 +87,6 @@ nonisolated enum Outcome: String, Codable, Sendable {
     case blackWins = "black-wins"
     case draw
 
-    /// The win for `side`.
     static func win(for side: Side) -> Outcome { side == .red ? .redWins : .blackWins }
 }
 

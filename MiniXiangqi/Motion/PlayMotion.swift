@@ -61,7 +61,6 @@ final class PlayMotion {
     private(set) var suggested: Square?
     private(set) var hintEmphasis: Double = 0
 
-    /// The acknowledgment beat.
     private(set) var beatEmphasis: Double = 0
 
     /// A flip's own completion is tied to the turn it belonged to, since a
