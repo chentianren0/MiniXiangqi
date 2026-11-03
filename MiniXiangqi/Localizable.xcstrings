@@ -2495,7 +2495,7 @@
       }
     },
     "online.code.footer": {
-      "comment": "The second sentence is the contract's own rule: a code carries its own game, so entering one for another game is an arrival rather than a mistake.",
+      "comment": "Footer under the game-code field. A code belongs to the game it was made for, so entering one opens that game even when this sheet was opened from another.",
       "extractionState": "manual",
       "localizations": {
         "en": {

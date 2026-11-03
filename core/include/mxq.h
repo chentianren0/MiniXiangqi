@@ -55,9 +55,6 @@ extern "C" {
  * search runs under. */
 #define MXQ_PROFILE_ID_CAP 64
 
-/* A deal value: sixty-four lowercase hexadecimal digits and the NUL. */
-#define MXQ_DEAL_HEX_CAP 65
-
 /* ------------------------------------------------------------------------- */
 /* Status codes                                                              */
 /* ------------------------------------------------------------------------- */
@@ -273,17 +270,6 @@ typedef struct MxqSetupViolation {
     char         square[MXQ_SQUARE_TEXT_CAP];
 } MxqSetupViolation;
 
-/* A Jieqi deal: the dealt start, the commitment the seed binds to (the SHA-256
- * of the seed's bytes), and the digest of the deal, which binds the seed, the
- * nonce and the derivation. */
-typedef struct MxqDeal {
-    uint32_t struct_size;
-    char     start_fen[MXQ_FEN_CAP];
-    char     commit[MXQ_DEAL_HEX_CAP];
-    char     digest[MXQ_DEAL_HEX_CAP];
-    uint8_t  reserved0[2];
-} MxqDeal;
-
 /* The probe the Hash budget is computed from, fresh at every preparation. */
 typedef struct MxqEngineBudget {
     uint32_t struct_size;
@@ -391,13 +377,13 @@ MXQ_API MxqStatus mxq_rules_legal_moves(MxqCore *core, MxqGameKind game,
                                         size_t cap, size_t *out_count,
                                         MxqError *err);
 
-/* Derive the Jieqi deal a seed and a nonce produce, each sixty-four lowercase
- * hexadecimal digits. The same two values deal the same game on every device;
- * the caller draws them from a cryptographic source. Any other game is
- * MXQ_ERR_ARG_RANGE. */
+/* The Jieqi start a seed deals, and its length. The seed is sixty-four
+ * lowercase hexadecimal digits; the same seed deals the same game on every
+ * device, and the caller draws it from a cryptographic source. Any other game
+ * is MXQ_ERR_ARG_RANGE. */
 MXQ_API MxqStatus mxq_rules_deal(MxqCore *core, MxqGameKind game,
-                                 const char *seed, const char *nonce,
-                                 MxqDeal *out, MxqError *err);
+                                 const char *seed, char *out, size_t cap,
+                                 size_t *out_len, MxqError *err);
 
 /* ------------------------------------------------------------------------- */
 /* Engines                                                                   */

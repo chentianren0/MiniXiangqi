@@ -12,8 +12,8 @@ namespace mxq {
 namespace deal {
 namespace {
 
-/* The width of all four handshake values. */
-constexpr size_t kValueBytes = 32;
+/* The seed's width. */
+constexpr size_t kSeedBytes = 32;
 
 int hex_digit(char c) {
     if (c >= '0' && c <= '9') {
@@ -27,7 +27,7 @@ int hex_digit(char c) {
 
 /* Exactly sixty-four lowercase hexadecimal digits. */
 bool is_hex32(const std::string &text) {
-    if (text.size() != kValueBytes * 2) {
+    if (text.size() != kSeedBytes * 2) {
         return false;
     }
     for (const char c : text) {
@@ -38,43 +38,28 @@ bool is_hex32(const std::string &text) {
     return true;
 }
 
-bool read_hex32(const std::string &text, uint8_t out[kValueBytes]) {
+bool read_hex32(const std::string &text, uint8_t out[kSeedBytes]) {
     if (!is_hex32(text)) {
         return false;
     }
-    for (size_t i = 0; i < kValueBytes; ++i) {
+    for (size_t i = 0; i < kSeedBytes; ++i) {
         out[i] = static_cast<uint8_t>(hex_digit(text[i * 2]) * 16 +
                                       hex_digit(text[i * 2 + 1]));
     }
     return true;
 }
 
-void sha256(const uint8_t *bytes, size_t len, uint8_t out[CC_SHA256_DIGEST_LENGTH]) {
-    CC_SHA256(bytes, static_cast<CC_LONG>(len), out);
-}
-
-std::string hex_of(const uint8_t *bytes, size_t len) {
-    static const char kHex[] = "0123456789abcdef";
-    std::string out;
-    out.reserve(len * 2);
-    for (size_t i = 0; i < len; ++i) {
-        out.push_back(kHex[bytes[i] >> 4]);
-        out.push_back(kHex[bytes[i] & 0x0fu]);
-    }
-    return out;
-}
-
 /*
  * The counter stream: the concatenation, for counter 0, 1, 2, … in turn, of
- * SHA-256(key ‖ counter), each counter written as eight bytes most significant
- * first. It is read from the front, byte by byte as values are drawn, and
- * never rewound; refilling per draw or aligning draws to block boundaries
- * would deal another game from the same seed and nonce.
+ * SHA-256(seed ‖ counter), each counter written as eight bytes most
+ * significant first. It is read from the front, byte by byte as values are
+ * drawn, and never rewound; refilling per draw or aligning draws to block
+ * boundaries would deal another game from the same seed.
  */
 class Stream {
 public:
-    explicit Stream(const uint8_t key[kValueBytes]) {
-        std::memcpy(key_, key, kValueBytes);
+    explicit Stream(const uint8_t seed[kSeedBytes]) {
+        std::memcpy(seed_, seed, kSeedBytes);
     }
 
     uint8_t next_byte() {
@@ -95,19 +80,19 @@ public:
 
 private:
     void refill() {
-        uint8_t input[kValueBytes + 8];
-        std::memcpy(input, key_, kValueBytes);
+        uint8_t input[kSeedBytes + 8];
+        std::memcpy(input, seed_, kSeedBytes);
         for (int i = 0; i < 8; ++i) {
-            input[kValueBytes + i] =
+            input[kSeedBytes + i] =
                 static_cast<uint8_t>((counter_ >> (8 * (7 - i))) & 0xffu);
         }
-        sha256(input, sizeof(input), block_);
+        CC_SHA256(input, static_cast<CC_LONG>(sizeof(input)), block_);
         ++counter_;
         at_ = 0;
     }
 
-    uint8_t  key_[kValueBytes];
-    uint8_t  block_[32] = {0};
+    uint8_t  seed_[kSeedBytes];
+    uint8_t  block_[CC_SHA256_DIGEST_LENGTH] = {0};
     /* sizeof(block_) forces the first read to refill, so counter 0 is the first
      * block and no zeroed bytes are ever handed out. */
     size_t   at_ = sizeof(block_);
@@ -183,39 +168,15 @@ const char *square_of(MxqColor side, int32_t index) {
 
 } /* namespace */
 
-bool commitment_of(const std::string &hex32, std::string &out) {
-    uint8_t bytes[kValueBytes];
-    if (!read_hex32(hex32, bytes)) {
-        return false;
-    }
-    uint8_t digest[kValueBytes];
-    sha256(bytes, sizeof(bytes), digest);
-    out = hex_of(digest, sizeof(digest));
-    return true;
-}
-
-bool derive(const std::string &seed_hex, const std::string &nonce_hex,
-            Deal &out, std::string &detail) {
-    uint8_t seed[kValueBytes];
-    uint8_t nonce[kValueBytes];
+bool derive(const std::string &seed_hex, Deal &out, std::string &detail) {
+    uint8_t seed[kSeedBytes];
     if (!read_hex32(seed_hex, seed)) {
         detail = "the seed is not thirty-two bytes in lowercase hexadecimal";
         return false;
     }
-    if (!read_hex32(nonce_hex, nonce)) {
-        detail = "the nonce is not thirty-two bytes in lowercase hexadecimal";
-        return false;
-    }
-
-    /* The key: SHA-256(seed ‖ nonce), seed first. */
-    uint8_t joined[kValueBytes * 2];
-    std::memcpy(joined, seed, kValueBytes);
-    std::memcpy(joined + kValueBytes, nonce, kValueBytes);
-    uint8_t key[kValueBytes];
-    sha256(joined, sizeof(joined), key);
 
     /* Two permutations of fifteen items from the one stream, Red's first. */
-    Stream stream(key);
+    Stream stream(seed);
     uint8_t red_items[kDealtPieces];
     uint8_t black_items[kDealtPieces];
     permutation(stream, red_items, kDealtPieces);
@@ -226,22 +187,9 @@ bool derive(const std::string &seed_hex, const std::string &nonce_hex,
         out.black[i] = lowercase(kPieces[black_items[i]]);
     }
 
-    /*
-     * The deal digest: SHA-256 over the item number at each index, one byte
-     * each, Red's fifteen then Black's. Item numbers rather than letters,
-     * because two permutations can lay the same letters onto the same squares.
-     */
-    uint8_t material[kDealtPieces * 2];
-    std::memcpy(material, red_items, kDealtPieces);
-    std::memcpy(material + kDealtPieces, black_items, kDealtPieces);
-    uint8_t digest[kValueBytes];
-    sha256(material, sizeof(material), digest);
-    out.digest = hex_of(digest, sizeof(digest));
-
     detail.clear();
     return true;
 }
-
 
 std::string start_of(const Deal &deal) {
     /* An empty board: zero is an empty, face-up point. */
