@@ -109,7 +109,7 @@ final class TwoDevices {
         connect()
         a.propose(kind, side: .red, to: "B")
         deliverAll()
-        b.accept()
+        if let proposal = b.incoming { b.accept(proposal.game) }
         deliverAll()
         game = a.game?.id
         counting = true
@@ -127,6 +127,15 @@ final class TwoDevices {
         Issue.record("a step never became possible")
     }
 
+    /// Save and Continue on that device: the engine gives the game up and the
+    /// library files it as ended early.
+    func giveUp(_ device: Device) {
+        let engine = engine(device)
+        guard let record = try? engine.library.activeRecord() else { return }
+        engine.giveUp()
+        try? engine.library.change(record) { $0.end(.none, .endedEarly) }
+    }
+
     func record(_ device: Device) throws -> GameRecord {
         let game = try #require(self.game)
         return try #require(try engine(device).library.record(game))
@@ -141,6 +150,8 @@ struct Script: Sendable, CustomTestStringConvertible {
         case resign(TwoDevices.Device)
         /// Resigns too, where that device's game is still going.
         case alsoResign(TwoDevices.Device)
+        /// Save and Continue, where that device's game is still going.
+        case giveUp(TwoDevices.Device)
         /// The device to move claims the draw.
         case claim
         case agreeDraw(offeredBy: TwoDevices.Device)
@@ -186,6 +197,15 @@ struct Script: Sendable, CustomTestStringConvertible {
         Script(name: "a draw accepted as its offerer resigns",
                steps: [.move("b1b3"), .move("b7b6"), .agreeDraw(offeredBy: .b), .alsoResign(.b)],
                expected: [.agreedDraw]),
+        Script(name: "a resignation crossing a give-up",
+               steps: [.move("b1b3"), .move("b7b6"), .resign(.a), .giveUp(.b)],
+               expected: [.resignation]),
+        Script(name: "a checkmate crossing a give-up",
+               steps: ["b1b3", "b7b6", "b3d3"].map(Step.move) + [.giveUp(.b)],
+               expected: [.checkmate]),
+        Script(name: "a move crossing a give-up",
+               steps: [.move("b1b3"), .move("b7b6"), .giveUp(.a)],
+               expected: [.endedEarly]),
         Script(name: "resignations that cross",
                steps: [.move("b1b3"), .move("b7b6"), .bothResign],
                expected: [.mutualResignation, .resignation]),
@@ -211,6 +231,8 @@ struct Script: Sendable, CustomTestStringConvertible {
                 devices.until { devices.engine(device).resign() }
             case .alsoResign(let device):
                 devices.engine(device).resign()
+            case .giveUp(let device):
+                devices.giveUp(device)
             case .claim:
                 let mover = devices.engine(ply.isMultiple(of: 2) ? .a : .b)
                 devices.until { mover.claimDraw() }
@@ -251,6 +273,8 @@ struct PeerEngineTests {
         #expect(a.endedAt != nil && b.endedAt != nil, "\(context): the game ended on both")
         #expect(a.moves == b.moves, "\(context): the same moves")
         #expect(a.takebacks == b.takebacks, "\(context): the same takebacks")
+        #expect(!a.endingUndelivered && !b.endingUndelivered,
+                "\(context): neither device still owes an ending")
         #expect(a.result == b.result && a.reason == b.reason,
                 "\(context): the same ending, \(String(describing: a.reason)) and \(String(describing: b.reason))")
         if let expected = script.expected, let reason = a.reason {
@@ -354,6 +378,36 @@ struct PeerEngineTests {
         let b = try devices.record(.b)
         #expect(b.reason == .endedEarly)
         #expect(devices.b.game?.voided == .lostByPeer)
+        #expect(try !devices.record(.a).endingUndelivered, "and its answer settled the give-up")
+    }
+
+    @Test("A resignation made apart reaches a device that gave the game up meanwhile")
+    func aGiveUpTakesTheResult() throws {
+        let devices = TwoDevices(core: try TestCores.fresh())
+        devices.start(.miniXiangqi)
+        devices.a.play("b1b3")
+        devices.deliverAll()
+        devices.drop()
+        devices.a.resign()
+        devices.giveUp(.b)
+
+        devices.connect()
+        devices.deliverAll()
+        for device in [TwoDevices.Device.a, .b] {
+            let record = try devices.record(device)
+            #expect(record.result == .blackWins && record.reason == .resignation)
+            #expect(!record.endingUndelivered)
+        }
+    }
+
+    @Test("An ending acknowledged on a live link owes nothing afterwards")
+    func aLiveEndingIsAcknowledged() throws {
+        let devices = TwoDevices(core: try TestCores.fresh())
+        devices.start(.miniXiangqi)
+        devices.a.resign()
+        #expect(devices.a.owesEndings)
+        devices.deliverAll()
+        #expect(!devices.a.owesEndings, "the other device's resume answered the ending")
     }
 
     @Test("A relaunched device resumes the game it holds")
@@ -384,7 +438,9 @@ struct PeerEngineTests {
                            from: link)
         #expect(try devices.record(.b).reason == .endedEarly)
         #expect(devices.b.game?.voided == .disagreement)
-        #expect(link.inFlight.last == .gone(game: try #require(devices.game)))
+        #expect(link.inFlight.last == .resume(game: try #require(devices.game), moves: [],
+                                              takebacks: [], ending: .endedEarly(after: 0)),
+                "and tells the other device it ended early")
     }
 
     @Test("A Jieqi proposal carries the seed, and both devices deal the same game")

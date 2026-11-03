@@ -223,9 +223,6 @@ private struct Destinations: View {
 
     private func surfaces(_ content: some View) -> some View {
         content
-        // A friend the player already chose has arrived: propose, with nothing
-        // left for them to press, or go back into the game they were playing.
-        .onChange(of: online.engine.connected) { online.roomChanged() }
         // The party lives exactly as long as the surface offering it: opening
         // it mints the code a friend joins by.
         .onChange(of: online.proposing) { _, game in
@@ -245,6 +242,7 @@ private struct Destinations: View {
             for flow in flows {
                 flow.room = play
                 flow.engine.libraryChanged = { [weak play] in play?.activeGameChanged() }
+                flow.launched()
             }
             // An invitation is accepted in Game Center's own surfaces at a
             // moment no screen chose, so the listener lives with the window.

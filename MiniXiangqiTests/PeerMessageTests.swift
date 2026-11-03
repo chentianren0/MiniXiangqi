@@ -81,4 +81,14 @@ struct PeerMessageTests {
         #expect(PeerEnding.settled(both, red) == both)
         #expect(PeerEnding.settled(red, red) == red)
     }
+
+    @Test("Ended early yields to any result, whatever its ply")
+    func endedEarlyYields() {
+        let early = PeerEnding.endedEarly(after: 2)
+        let late = Self.resign(.red, at: 9)
+        #expect(PeerEnding.settled(early, late) == late)
+        #expect(PeerEnding.settled(late, early) == late)
+        #expect(PeerEnding.settled(early, Self.mate) == Self.mate)
+        #expect(PeerEnding.settled(early, .endedEarly(after: 4)) == .endedEarly(after: 4))
+    }
 }

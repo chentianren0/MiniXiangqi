@@ -46,8 +46,8 @@ final class GameRecord {
     /// more than this device holds until the last of them arrives. Nil for a
     /// result the rules decided.
     var chosenAt: Int?
-    /// An ending this device's player chose, written before it was sent, that
-    /// the other device has not yet shown it holds.
+    /// An ending this device's player chose, or a give-up, written before it
+    /// was sent, that the other device has not yet answered for.
     var endingUndelivered = false
 
     init(_ configuration: GameConfiguration, id: UUID = UUID(), startedAt: Date = .now) {

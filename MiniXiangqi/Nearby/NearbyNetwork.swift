@@ -39,6 +39,7 @@ final class NearbyNetwork: PeerCarrier {
     @ObservationIgnored private var endpoints: [String: Bonjour.Endpoint] = [:]
     @ObservationIgnored private var dialing: Set<String> = []
 
+    var pairsOnArrival: Bool { false }
     var interruption: LinkInterruption { .passing }
 
     init(engine: PeerEngine, defaults: UserDefaults = .standard) {
@@ -79,7 +80,12 @@ final class NearbyNetwork: PeerCarrier {
         .parameters {
             Coder(receiving: PeerMessage.self, sending: PeerMessage.self,
                   using: NetworkJSONCoder()) {
+                // A device that walks away or is suspended sends no FIN. The
+                // keepalive and the retransmission limit end such a link within
+                // seconds, so the device with the smaller id dials again.
                 TCP()
+                    .keepalive(idleTimeInSeconds: 5, count: 3, intervalInSeconds: 2)
+                    .retransmitConnectionDropTime(15)
             }
         }
         .peerToPeerIncluded(true)
@@ -186,6 +192,16 @@ private final class NearbyConnection: PeerLink {
     }
 
     private func live(_ channel: Channel, engine: PeerEngine, hello: PeerMessage) async {
+        // A failed connection does not always end the receive loop on its own,
+        // so its state ends it.
+        channel.onStateUpdate { [weak self] _, state in
+            switch state {
+            case .failed, .cancelled, .waiting:
+                Task { @MainActor in self?.close() }
+            default:
+                break
+            }
+        }
         let sending = Task { [queued] in
             for await message in queued { try? await channel.send(message) }
         }

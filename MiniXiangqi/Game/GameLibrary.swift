@@ -269,12 +269,12 @@ final class GameLibrary {
         return try insert(record)
     }
 
-    /// The finished networked games whose chosen ending has not yet reached
-    /// that device.
-    func undelivered(in mode: PlayMode, with peer: String) throws -> [GameRecord] {
+    /// The finished networked games whose ending has not yet reached the
+    /// other device: all of this mode's, or those with one peer.
+    func undelivered(in mode: PlayMode, with peer: String? = nil) throws -> [GameRecord] {
         try context.fetch(FetchDescriptor<GameRecord>(predicate: #Predicate {
-            $0.peer == peer && $0.endingUndelivered
-        })).filter { $0.mode == mode }
+            $0.endingUndelivered
+        })).filter { $0.mode == mode && (peer == nil || $0.peer == peer) }
     }
 
     /// Changes a record and saves, or puts it back as it was.

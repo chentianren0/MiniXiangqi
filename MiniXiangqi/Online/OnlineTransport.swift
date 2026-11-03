@@ -16,6 +16,7 @@ final class OnlineTransport: PeerCarrier {
 
     private(set) var isRunning = false
     var discovered: [NearbyPeer] { [] }
+    var pairsOnArrival: Bool { true }
     var interruption: LinkInterruption { .lasting }
 
     init(engine: PeerEngine) {
@@ -40,6 +41,9 @@ private final class OnlineMatch: NSObject, PeerLink, GKMatchDelegate {
     private var match: GKMatch?
     private let engine: PeerEngine
     private var isOpen = false
+    /// What the other device sent before this side of the match counted as
+    /// open, delivered in order once it does.
+    private var early: [PeerMessage] = []
     var ended: (() -> Void)?
 
     init(_ match: GKMatch, engine: PeerEngine) {
@@ -62,6 +66,12 @@ private final class OnlineMatch: NSObject, PeerLink, GKMatchDelegate {
               let player = match.players.first else { return }
         isOpen = true
         engine.opened(self, peer: player.gamePlayerID, name: player.displayName)
+        for message in early { engine.received(message, from: self) }
+        early = []
+    }
+
+    private func arrived(_ message: PeerMessage) {
+        if isOpen { engine.received(message, from: self) } else { early.append(message) }
     }
 
     private func finish() {
@@ -77,7 +87,7 @@ private final class OnlineMatch: NSObject, PeerLink, GKMatchDelegate {
                            fromRemotePlayer player: GKPlayer) {
         guard let message = try? JSONDecoder().decode(PeerMessage.self, from: data) else { return }
         DispatchQueue.main.async {
-            MainActor.assumeIsolated { self.engine.received(message, from: self) }
+            MainActor.assumeIsolated { self.arrived(message) }
         }
     }
 

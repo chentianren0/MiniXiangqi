@@ -22,14 +22,16 @@ nonisolated enum PeerMessage: Codable, Equatable, Sendable {
     case askTakeback(game: UUID, ply: Int)
     /// Takes back the move at index `ply - 1`.
     case acceptTakeback(game: UUID, ply: Int)
-    /// An ending a player chose: resign, accept a draw, claim a draw.
+    /// An ending a player chose: resign, accept a draw, claim a draw, or give
+    /// the game up. The other device answers with its resume.
     case end(game: UUID, ending: PeerEnding)
-    /// What this device holds of a game, sent on every new connection for the
-    /// game in play and for every chosen ending the other device has not shown
-    /// it holds, and once in answer to the other device's.
+    /// What this device holds of a game: its moves, its takebacks, and an
+    /// ending a player chose or the game being ended early. Sent on every new
+    /// connection for the game in play and for every ending the other device
+    /// has not shown it holds, and in answer to the other device's messages.
     case resume(game: UUID, moves: [String], takebacks: [Int], ending: PeerEnding?)
-    /// This device has no such game, or no longer: the answer to a resume or an
-    /// acceptance, and the withdrawal of a proposal.
+    /// This device has no such game: the answer to a resume or an acceptance,
+    /// and the withdrawal of a proposal.
     case gone(game: UUID)
 }
 
@@ -45,6 +47,14 @@ nonisolated struct PeerEnding: Codable, Equatable, Sendable {
     /// moves. Every other ending a player chose.
     var byRules = false
 
+    /// A game given up on, or ended by a message that made no sense: no result,
+    /// and it keeps every move either device holds.
+    static func endedEarly(after length: Int) -> PeerEnding {
+        PeerEnding(outcome: .none, reason: .endedEarly, length: length)
+    }
+
+    var isEndedEarly: Bool { reason == .endedEarly }
+
     /// The ply the ending happened at: a chosen ending's moves on the board,
     /// and a rules ending's deciding move.
     private var ply: Int { byRules ? length - 1 : length }
@@ -59,12 +69,19 @@ nonisolated struct PeerEnding: Codable, Equatable, Sendable {
         }
     }
 
-    /// The one ending both devices keep of two: the earlier ply wins; on an
-    /// equal ply the rules result beats a chosen one, a claimed draw an agreed
-    /// one, a draw a resignation, and two resignations are a draw.
+    /// The one ending both devices keep of two: any result beats ended early;
+    /// the earlier ply wins; on an equal ply the rules result beats a chosen
+    /// one, a claimed draw an agreed one, a draw a resignation, and two
+    /// resignations are a draw.
     static func settled(_ a: PeerEnding?, _ b: PeerEnding?) -> PeerEnding? {
         guard let a else { return b }
         guard let b else { return a }
+        switch (a.isEndedEarly, b.isEndedEarly) {
+        case (true, true): return a.length >= b.length ? a : b
+        case (true, false): return b
+        case (false, true): return a
+        case (false, false): break
+        }
         if (a.ply, a.rank) < (b.ply, b.rank) { return a }
         if (b.ply, b.rank) < (a.ply, a.rank) { return b }
         if a.rank == 3, a != b {

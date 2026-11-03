@@ -330,8 +330,7 @@ final class OnlineParty: NSObject {
 // MARK: - Game Center's own screens
 //
 // **Every callback below is stated as arriving on the main thread rather than
-// hopped onto it**, which is the opposite of what `OnlineConnection` does with
-// a match's delegate and for a reason that is the mirror image: what these
+// hopped onto it**, unlike a match's delegate in `OnlineTransport`: what these
 // carry — a view controller being presented, an invitation that opens one — may
 // only be touched there, so there is nowhere else GameKit could be calling
 // them from. A hop would also cost the one thing this side cannot give up: a

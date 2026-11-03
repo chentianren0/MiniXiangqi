@@ -21,6 +21,10 @@ protocol PeerCarrier: AnyObject {
     var isRunning: Bool { get }
     /// Devices this carrier can see without a connection: Nearby's browse.
     var discovered: [NearbyPeer] { get }
+    /// Whether whoever connects is the friend the player already chose, so the
+    /// game goes to them without a press: Online. Nearby lists a room to pick
+    /// from instead.
+    var pairsOnArrival: Bool { get }
     var interruption: LinkInterruption { get }
     func start()
     func stop()
@@ -66,8 +70,8 @@ final class NearbyFlow {
     /// The library's one active game, to make room in and come back to.
     weak var room: (any NearbyRoom)?
 
-    /// Whether this device proposes the moment the other player arrives:
-    /// Online's device that brought the friend. Nearby proposes from the sheet.
+    /// Whether this device proposes the moment the friend arrives, where the
+    /// carrier pairs on arrival: the device that brought them.
     @ObservationIgnored var proposesOnArrival: @MainActor () -> Bool = { false }
 
     private(set) var proposing: GameKind?
@@ -91,6 +95,11 @@ final class NearbyFlow {
         self.availability = availability
         engine.started = { [weak self] id in self?.openBoard(id) }
         engine.declined = { [weak self] busy in self?.refusal = busy ? .busy : .declined }
+        engine.arrived = { [weak self] peer in
+            self?.offeredTo.remove(peer)
+            self?.roomChanged(arrival: true)
+        }
+        engine.delivered = { [weak self] in self?.restIfIdle() }
     }
 
     // MARK: - What the surfaces read
@@ -148,8 +157,16 @@ final class NearbyFlow {
         if room?.standingGame(in: mode) == game {
             reenter(game)
         } else {
-            makingRoom(for: game) { [weak self] in self?.proposing = game }
+            makingRoom(for: game) { [weak self] in self?.raiseSheet(for: game) }
         }
+    }
+
+    /// The sheet comes up afresh: a friend still connected from before gets
+    /// the proposal at once.
+    private func raiseSheet(for game: GameKind) {
+        proposing = game
+        offeredTo = []
+        roomChanged(arrival: false)
     }
 
     /// Back into the game in play. Its board opens where the other device comes
@@ -160,7 +177,7 @@ final class NearbyFlow {
         if carrier.interruption == .passing || engine.game?.linked == true {
             openBoard(id)
         } else {
-            proposing = game
+            raiseSheet(for: game)
         }
     }
 
@@ -189,18 +206,19 @@ final class NearbyFlow {
         if !engine.propose(game, side: proposerSide, to: device.id) { refusal = .notNow }
     }
 
-    /// Who is connected changed. Where this device brought the friend, the
-    /// proposal goes out the moment they arrive, or the game they were already
-    /// playing opens.
-    func roomChanged() {
-        offeredTo.formIntersection(engine.connected.keys)
+    /// The sheet is up and somebody arrived, or the sheet just came up. The game
+    /// the two were already playing opens; otherwise, where the carrier pairs
+    /// on arrival, the proposal goes out: on arrival from the device that
+    /// brought the friend, and from whichever device raised the sheet.
+    private func roomChanged(arrival: Bool) {
         guard let game = proposing else { return }
         if room?.standingGame(in: mode) == game {
             if engine.game?.linked == true, let id = engine.game?.id { openBoard(id) }
             return
         }
-        guard proposesOnArrival(), invited == nil, let device = chosenDevice, device.connected,
-              !offeredTo.contains(device.id) else { return }
+        guard carrier.pairsOnArrival, !arrival || proposesOnArrival(), invited == nil,
+              let device = chosenDevice, device.connected, !offeredTo.contains(device.id)
+        else { return }
         offeredTo.insert(device.id)
         invite(device, to: game)
     }
@@ -213,7 +231,7 @@ final class NearbyFlow {
         makingRoom(for: proposal.kind) { [weak self] in
             guard let self else { return }
             answering = nil
-            if engine.accept() { openBoard(proposal.game) } else { refusal = .notNow }
+            if engine.accept(proposal.game) { openBoard(proposal.game) } else { refusal = .notNow }
         } otherwise: { [weak self] in
             self?.answering = nil
             self?.engine.decline()
@@ -248,24 +266,33 @@ final class NearbyFlow {
 
     // MARK: - The carrier
 
-    /// The carrier runs while a surface is up or a game is going in this mode.
+    /// The carrier runs while a surface is up, a game is going in this mode, or
+    /// an ending is still owed to the other device.
+    private var needsCarrier: Bool {
+        proposing != nil || boardGameID != nil || room?.standingGame(in: mode) != nil
+            || engine.owesEndings
+    }
+
     private func wake() {
         guard isAvailable, !carrier.isRunning else { return }
         carrier.start()
     }
 
     private func restIfIdle() {
-        guard proposing == nil, boardGameID == nil, room?.standingGame(in: mode) == nil,
-              carrier.isRunning else { return }
+        guard carrier.isRunning, !needsCarrier else { return }
         carrier.stop()
+    }
+
+    /// At launch the carrier comes up only to deliver an ending still owed:
+    /// continuing a game waits for the player to come back to it.
+    func launched() {
+        if engine.owesEndings { wake() }
     }
 
     /// Back in front: the carrier comes up again where something needs it. A
     /// listener or browser the background ended restarts by itself.
     func returnedToForeground() {
-        guard proposing != nil || boardGameID != nil || room?.standingGame(in: mode) != nil
-        else { return }
-        wake()
+        if needsCarrier { wake() }
     }
 
     /// The library is about to file the game in play as ended early.

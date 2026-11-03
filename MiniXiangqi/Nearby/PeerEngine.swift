@@ -11,9 +11,12 @@
 // ending a player chooses is written to the record, marked undelivered, before
 // it is sent. On every new connection each device sends a resume for the game
 // in play and for every undelivered ending: its moves, its takebacks and its
-// chosen ending. Each merges the other's by one rule (`PeerEnding.settled`), so
-// two endings that crossed, or one that a drop delayed, come out the same on
-// both. A message that makes no sense ends the game early on both devices.
+// ending. Each merges the other's by one rule (`PeerEnding.settled`), so two
+// endings that crossed, or one that a drop delayed, come out the same on both.
+// Ended early, by a give-up or a message that makes no sense, yields to any
+// result the other device holds. A device answers with its own resume once per
+// connection and again whenever a message changed its record, and an ending
+// stops being owed when a resume shows the other device holds the same game.
 
 import Foundation
 import Observation
@@ -116,11 +119,15 @@ final class PeerEngine {
     @ObservationIgnored var declined: ((Bool) -> Void)?
     /// This device's proposal became a game.
     @ObservationIgnored var started: ((UUID) -> Void)?
+    /// A connection to that peer opened, new or replacing an older one.
+    @ObservationIgnored var arrived: ((String) -> Void)?
+    /// An ending this device owed the other has arrived there.
+    @ObservationIgnored var delivered: (() -> Void)?
     @ObservationIgnored var libraryChanged: (() -> Void)?
 
     @ObservationIgnored private var links: [String: any PeerLink] = [:]
-    /// The games whose resume has gone out on each peer's current link.
-    @ObservationIgnored private var resumed: [String: Set<UUID>] = [:]
+    /// The games each peer's current link has had this device's resume for.
+    @ObservationIgnored private var answered: [String: Set<UUID>] = [:]
     @ObservationIgnored private var shown: UUID?
     @ObservationIgnored private var inPlay = false
     @ObservationIgnored private var offer: PeerOffer?
@@ -142,12 +149,13 @@ final class PeerEngine {
         connected[peer] = name
         if let record = active(), record.peer == peer {
             show(record.id)
-            resume(record, to: peer)
+            answer(record, to: peer)
         }
         for record in (try? library.undelivered(in: mode, with: peer)) ?? [] {
-            resume(record, to: peer)
+            answer(record, to: peer)
         }
         refresh()
+        arrived?(peer)
     }
 
     func closed(_ link: any PeerLink) {
@@ -159,7 +167,7 @@ final class PeerEngine {
     }
 
     private func lost(_ peer: String) {
-        resumed[peer] = nil
+        answered[peer] = nil
         if outgoing?.peer == peer { outgoing = nil }
         if incoming?.peer == peer { incoming = nil }
         if active()?.peer == peer {
@@ -203,9 +211,10 @@ final class PeerEngine {
             // A move that crossed this device's ending still counts toward
             // which ending stands.
             guard record.endedAt == nil else {
-                if ply == record.moves.count {
-                    merge(record, moves: record.moves + [move], takebacks: record.takebacks,
-                          ending: nil)
+                if ply == record.moves.count,
+                   merge(record, moves: record.moves + [move], takebacks: record.takebacks,
+                         ending: nil) {
+                    answer(record, to: peer)
                 }
                 break
             }
@@ -221,20 +230,29 @@ final class PeerEngine {
             guard record.endedAt != nil || ply == record.moves.count else {
                 return disagree(record)
             }
-            merge(record, moves: Array(record.moves.prefix(ply - 1)),
-                  takebacks: record.takebacks + [ply - 1], ending: nil)
+            let finished = record.endedAt != nil
+            if merge(record, moves: Array(record.moves.prefix(ply - 1)),
+                     takebacks: record.takebacks + [ply - 1], ending: nil), finished {
+                answer(record, to: peer)
+            }
         case .end(let game, let ending):
+            // The resume this always answers with is what tells the other
+            // device its ending arrived.
             guard let record = held(game, with: peer) else { break }
             merge(record, moves: record.moves, takebacks: record.takebacks, ending: ending)
+            answer(record, to: peer)
         case .resume(let game, let moves, let takebacks, let ending):
             guard let record = held(game, with: peer) else {
                 send(.gone(game: game), to: peer)
                 break
             }
-            if resumed[peer]?.contains(game) != true { resume(record, to: peer) }
-            merge(record, moves: moves, takebacks: takebacks, ending: ending)
-            guard record.reason != .endedEarly else { break }
-            try? library.change(record) { $0.endingUndelivered = false }
+            reply(record, to: peer,
+                  changed: merge(record, moves: moves, takebacks: takebacks, ending: ending))
+            if record.endingUndelivered,
+               holdsTheSame(record, moves: moves, takebacks: takebacks, ending: ending) {
+                try? library.change(record) { $0.endingUndelivered = false }
+                delivered?()
+            }
             if record.endedAt == nil {
                 show(record.id)
                 inPlay = true
@@ -242,12 +260,8 @@ final class PeerEngine {
             }
         case .gone(let game):
             if incoming?.game == game { incoming = nil }
-            guard let record = held(game, with: peer) else { break }
-            if record.endedAt == nil {
-                file(record, .lostByPeer)
-            } else {
-                try? library.change(record) { $0.endingUndelivered = false }
-            }
+            guard let record = held(game, with: peer), record.endedAt == nil else { break }
+            file(record, .lostByPeer)
         }
     }
 
@@ -265,6 +279,7 @@ final class PeerEngine {
     private func proposed(_ proposal: PeerProposal) {
         if let record = active(), record.peer == proposal.peer {
             file(record, .retired)
+            answer(record, to: proposal.peer)
         }
         let busy = outgoing != nil || incoming != nil
             || (try? library.activeRecord())?.mode.isNetworked == true
@@ -301,11 +316,11 @@ final class PeerEngine {
         send(.gone(game: proposal.game), to: proposal.peer)
     }
 
-    /// Accepts the standing proposal, creating the game. False where the
-    /// library would not.
+    /// Accepts that proposal while it still stands, creating the game. False
+    /// where it does not, or the library would not.
     @discardableResult
-    func accept() -> Bool {
-        guard let proposal = incoming else { return false }
+    func accept(_ game: UUID) -> Bool {
+        guard let proposal = incoming, proposal.game == game else { return false }
         incoming = nil
         guard begin(proposal, as: proposal.proposerSide.opponent) else {
             send(.decline(game: proposal.game, busy: true), to: proposal.peer)
@@ -406,11 +421,15 @@ final class PeerEngine {
         refresh()
     }
 
-    /// The library is about to file the game in play as ended early. The other
-    /// device hears now if it is connected, and on its next resume otherwise.
+    /// The library is about to file the game in play as ended early. It is owed
+    /// to the other device like a chosen ending: sent now if it is connected,
+    /// and on the next connection until the other device answers.
     func giveUp() {
         guard let record = active() else { return }
-        if let peer = record.peer { send(.gone(game: record.id), to: peer) }
+        try? library.change(record) { $0.endingUndelivered = true }
+        if let peer = record.peer {
+            send(.end(game: record.id, ending: .endedEarly(after: record.moves.count)), to: peer)
+        }
         shown = nil
         inPlay = false
         offer = nil
@@ -425,10 +444,9 @@ final class PeerEngine {
         return record
     }
 
-    /// A record of this mode with that peer, ended early or not.
+    /// A record of this mode with that peer, finished or not.
     private func held(_ game: UUID, with peer: String) -> GameRecord? {
-        guard let record = try? library.record(game), record.mode == mode, record.peer == peer,
-              record.reason != .endedEarly
+        guard let record = try? library.record(game), record.mode == mode, record.peer == peer
         else { return nil }
         return record
     }
@@ -452,7 +470,6 @@ final class PeerEngine {
             show(record.id)
             inPlay = true
             offer = nil
-            resumed[proposal.peer, default: []].insert(record.id)
             libraryChanged?()
             return true
         } catch {
@@ -484,47 +501,62 @@ final class PeerEngine {
         libraryChanged?()
     }
 
-    /// The record's ending where a player chose it; a rules result is read off
-    /// the moves instead.
-    private func chosenEnding(of record: GameRecord) -> PeerEnding? {
+    /// The ending the record states to the other device: one a player chose,
+    /// or ended early. A rules result is read off the moves instead.
+    private func statedEnding(of record: GameRecord) -> PeerEnding? {
+        if record.reason == .endedEarly { return .endedEarly(after: record.moves.count) }
         guard let length = record.chosenAt, let outcome = record.result,
               let reason = record.reason else { return nil }
         return PeerEnding(outcome: outcome, reason: reason, length: length)
     }
 
+    /// The ending a stated line and ending come to, and the moves it keeps.
+    private func settle(_ moves: [String], _ stated: PeerEnding?,
+                        in record: GameRecord) -> (moves: [String], ending: PeerEnding?)? {
+        guard let evaluation = try? library.core.evaluate(record.kind, from: record.start,
+                                                          moves: moves)
+        else { return nil }
+        let rules = evaluation.state.outcome.map {
+            PeerEnding(outcome: $0, reason: evaluation.reason, length: moves.count, byRules: true)
+        }
+        let ending = PeerEnding.settled(rules, stated)
+        guard let ending, !ending.isEndedEarly else { return (moves, ending) }
+        return (Array(moves.prefix(ending.length)), ending)
+    }
+
     /// Brings the record to what both devices hold: the takebacks either has
-    /// accepted, the longer line, and the ending that settles first.
+    /// accepted, the longer line, and the ending that settles first. Answers
+    /// whether the record changed.
+    @discardableResult
     private func merge(_ record: GameRecord, moves theirMoves: [String],
-                       takebacks theirTakebacks: [Int], ending theirEnding: PeerEnding?) {
+                       takebacks theirTakebacks: [Int], ending theirEnding: PeerEnding?) -> Bool {
         var mine = record.moves
         var theirs = theirMoves
         let ours = record.takebacks
         guard ours.starts(with: theirTakebacks) || theirTakebacks.starts(with: ours) else {
-            return disagree(record)
+            disagree(record)
+            return false
         }
         for keep in theirTakebacks.dropFirst(ours.count) { mine = Array(mine.prefix(keep)) }
         for keep in ours.dropFirst(theirTakebacks.count) { theirs = Array(theirs.prefix(keep)) }
-        guard mine.starts(with: theirs) || theirs.starts(with: mine) else {
-            return disagree(record)
+        guard mine.starts(with: theirs) || theirs.starts(with: mine),
+              let merged = settle(mine.count >= theirs.count ? mine : theirs,
+                                  PeerEnding.settled(statedEnding(of: record), theirEnding),
+                                  in: record)
+        else {
+            disagree(record)
+            return false
         }
-        var line = mine.count >= theirs.count ? mine : theirs
-        guard let evaluation = try? library.core.evaluate(record.kind, from: record.start,
-                                                          moves: line)
-        else { return disagree(record) }
-        let rules = evaluation.state.outcome.map {
-            PeerEnding(outcome: $0, reason: evaluation.reason, length: line.count, byRules: true)
-        }
-        let ending = [chosenEnding(of: record), theirEnding].reduce(rules, PeerEnding.settled)
-        if let ending { line = Array(line.prefix(ending.length)) }
+        let (line, ending) = merged
         let takebacks = ours.count >= theirTakebacks.count ? ours : theirTakebacks
-
+        let before = (record.moves, record.takebacks, record.result, record.reason)
         let wasActive = record.endedAt == nil
         if line != record.moves { offer = nil }
         try? library.change(record) {
             if $0.moves != line { $0.moves = line }
             if $0.takebacks != takebacks { $0.takebacks = takebacks }
             guard let ending else { return }
-            $0.chosenAt = ending.byRules ? nil : ending.length
+            $0.chosenAt = ending.byRules || ending.isEndedEarly ? nil : ending.length
             if $0.endedAt == nil {
                 $0.end(ending.outcome, ending.reason)
             } else if $0.result != ending.outcome || $0.reason != ending.reason {
@@ -532,13 +564,31 @@ final class PeerEngine {
                 $0.reason = ending.reason
             }
         }
-        if wasActive, record.endedAt != nil { libraryChanged?() }
+        if wasActive, record.endedAt != nil {
+            if record.reason == .endedEarly, shown == nil || shown == record.id {
+                shown = record.id
+                voided = .lostByPeer
+            }
+            libraryChanged?()
+        }
+        return before != (record.moves, record.takebacks, record.result, record.reason)
+    }
+
+    /// Whether the other device's stated game comes to exactly what this
+    /// device holds, which is what settles an ending it was owed.
+    private func holdsTheSame(_ record: GameRecord, moves: [String], takebacks: [Int],
+                              ending: PeerEnding?) -> Bool {
+        guard takebacks == record.takebacks, let theirs = settle(moves, ending, in: record),
+              let mine = settle(record.moves, statedEnding(of: record), in: record)
+        else { return false }
+        return theirs.moves == mine.moves && theirs.ending == mine.ending
     }
 
     /// A message that makes no sense ends the game early on both devices.
     private func disagree(_ record: GameRecord) {
-        if record.endedAt == nil { file(record, .disagreement) }
-        if let peer = record.peer { send(.gone(game: record.id), to: peer) }
+        guard record.endedAt == nil else { return }
+        file(record, .disagreement)
+        if let peer = record.peer { answer(record, to: peer) }
     }
 
     /// Files the game as it stood, which is ended early: a result the rules
@@ -575,10 +625,23 @@ final class PeerEngine {
 
     // MARK: - Sending
 
-    private func resume(_ record: GameRecord, to peer: String) {
-        resumed[peer, default: []].insert(record.id)
+    /// What this device holds of a game.
+    private func answer(_ record: GameRecord, to peer: String) {
+        answered[peer, default: []].insert(record.id)
         send(.resume(game: record.id, moves: record.moves, takebacks: record.takebacks,
-                     ending: chosenEnding(of: record)), to: peer)
+                     ending: statedEnding(of: record)), to: peer)
+    }
+
+    /// Answers once per link, and again whenever the other device's message
+    /// changed the record; both stop when neither learns anything new.
+    private func reply(_ record: GameRecord, to peer: String, changed: Bool) {
+        if changed || answered[peer]?.contains(record.id) != true { answer(record, to: peer) }
+    }
+
+    /// Whether any finished game of this mode still owes the other device its
+    /// ending, which is what keeps a carrier up after the board has gone.
+    var owesEndings: Bool {
+        !((try? library.undelivered(in: mode)) ?? []).isEmpty
     }
 
     private func send(_ message: PeerMessage, to peer: String) {
