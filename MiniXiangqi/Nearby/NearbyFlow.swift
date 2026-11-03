@@ -99,7 +99,7 @@ final class NearbyFlow {
             self?.offeredTo.remove(peer)
             self?.roomChanged(arrival: true)
         }
-        engine.delivered = { [weak self] in self?.restIfIdle() }
+        engine.released = { [weak self] in self?.restIfIdle() }
     }
 
     // MARK: - What the surfaces read
@@ -139,6 +139,19 @@ final class NearbyFlow {
     /// The name a peer gave, for the consent prompt.
     func name(of peer: String) -> String {
         peers.first { $0.id == peer }?.name ?? String(localized: "nearby.unnamedDevice")
+    }
+
+    /// The consent prompt's words: who is asking, which game, and which side
+    /// this device would take, in the metadata line's own composition, then
+    /// what accepting does.
+    var invitationMessage: String? {
+        guard let invitation else { return nil }
+        let parts = [name(of: invitation.peer),
+                     invitation.kind.localizedName,
+                     invitation.kind.youAreText(invitation.proposerSide.opponent)]
+        return [parts.joined(by: String(localized: "metadata.join")),
+                "",
+                String(localized: "alert.nearbyInvite.message")].joined(separator: "\n")
     }
 
     /// The sheet is up to reach the other player of a game already going, so
@@ -266,11 +279,13 @@ final class NearbyFlow {
 
     // MARK: - The carrier
 
-    /// The carrier runs while a surface is up, a game is going in this mode, or
-    /// an ending is still owed to the other device.
+    /// The carrier runs while a surface is up (the propose sheet, the consent
+    /// prompt, the board), a game is going in this mode, or an ending is still
+    /// owed to the other device. The prompt counts on its own: whatever takes the
+    /// sheet down under it, the proposal it asks about lives on the connection.
     private var needsCarrier: Bool {
-        proposing != nil || boardGameID != nil || room?.standingGame(in: mode) != nil
-            || engine.owesEndings
+        proposing != nil || engine.incoming != nil || boardGameID != nil
+            || room?.standingGame(in: mode) != nil || engine.owesEndings
     }
 
     private func wake() {

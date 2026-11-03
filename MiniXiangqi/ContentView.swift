@@ -212,13 +212,16 @@ private struct Destinations: View {
         // invitation arrives when it arrives, and a refusal may answer a surface
         // the player already put away.
         .sheet(isPresented: proposing) {
-            if let game = online.proposing {
-                OnlineProposeSheet(flow: online, game: game, party: party)
-            } else if let game = nearby.proposing {
-                NearbyProposeSheet(flow: nearby, game: game)
+            Group {
+                if let game = online.proposing {
+                    OnlineProposeSheet(flow: online, game: game, party: party)
+                } else if let game = nearby.proposing {
+                    NearbyProposeSheet(flow: nearby, game: game)
+                }
             }
+            .nearbyAnswers(flows, inSheet: true) { destination = .play }
         }
-        .nearbyAnswers(flows) { destination = .play }
+        .nearbyAnswers(flows, inSheet: false) { destination = .play }
     }
 
     private func surfaces(_ content: some View) -> some View {
