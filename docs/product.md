@@ -1,5 +1,7 @@
 # Product
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 This document owns the product definition, the target platforms, and the feature boundaries. It does not own Xiangqi rules, data schemas, engine design, or detailed UI and interaction behavior.
 
 > **Status: binding.** Every statement here is accepted product behavior.

@@ -1,5 +1,7 @@
 # The BoardGame Protocol, version 2
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 This document defines a wire contract by which two devices play one board game, and it is the whole of protocol version **2** — the version a peer announces as `hello`'s `protocol` 2. It defines no game's rules. Everything an implementing application builds around it — the transports that carry it, screens, discovery surfaces, permission handling, and whatever devices keep of finished games — is outside it. It is self-contained: nothing here is read against another document. Version 1 is a different protocol, described by its own document, and this one neither extends nor refers to it.
 
 > **Status: binding.**

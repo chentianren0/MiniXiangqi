@@ -23,12 +23,12 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 ## Platforms and architecture
 
 - iOS, iPadOS and macOS on Apple silicon.
-- One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
+- One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend.
 - Windows support ended at v3.0.0. The last version that carried the Windows frontend is archived, read-only, at [chentianren0/MiniXiangqi-Windows](https://github.com/chentianren0/MiniXiangqi-Windows).
 
 ## Building
 
-Requires Xcode, plus CMake and Ninja for the shared core. Open `MiniXiangqi.xcodeproj` in Xcode; see [Testing](docs/testing.md) for the validation contract.
+Requires Xcode, plus CMake and Ninja for the shared core. Open `MiniXiangqi.xcodeproj` in Xcode.
 
 The core is a prebuilt dependency, not something the app build produces. Build it first, and again whenever anything under `core/` changes:
 
@@ -105,8 +105,7 @@ platform is declared **per file**: the five window suites are `#if os(macOS)`, t
 `PhonePlayUITests` and `PhoneSettingsUITests`, about the stacked shape and touch — are
 `#if os(iOS)`, and each destination runs its own and nothing else. Widening the one bundle rather
 than adding a second target is what keeps `LaunchPreferences` a single file: it carries the
-hermetic-launch table both sets of suites read, and two copies of that table would drift. See
-[`docs/testing.md`](docs/testing.md) for what each set covers and the command each is run with.
+hermetic-launch table both sets of suites read, and two copies of that table would drift.
 
 The `arm64e` question above does not arise for this bundle. A UI-test bundle is not injected into the
 app: Xcode builds it a runner app of its own and drives the app under test from a separate process,
@@ -118,13 +117,7 @@ so there is no host whose architecture it has to match.
 - [Mini Xiangqi rules](docs/xiangqi-rules.md) — normative rules source, adopted rules, runtime rules authority, and fixture requirements; the approved executable fixtures live in [fixtures/rules](fixtures/rules/).
 - [Jieqi rules](docs/jieqi-rules.md) — the hidden-identity xiangqi: the dealt start, hidden movement and the mandatory flip, who is entitled to know what, the endings, and its own fixture area.
 - [BoardGame protocol, version 2](docs/boardgame-protocol-v2.md) — the wire contract two devices play one game over, including the deal handshake a hidden-information game's session opens with.
-- [Architecture](docs/architecture.md) — the shared core, native frontends, dependency direction, concurrency, and lifecycle.
-- [Core C interface](docs/core-interface.md) — the core's C surface: modules, functions, error taxonomy, threading contract, and versioning.
 - [Game data](docs/game-data.md) — the library store, versioned game archive, saving, history, migrations, import, and export.
-- [Engine integration](docs/engine-integration.md) — the movement games' engine: the search facade, AI profiles, packaging, NNUE policy, and failure boundary.
-- [Placement engine integration](docs/placement-engine-integration.md) — the placement games' engine: its pins, its preflight, the memory policy it shares with the first, and its failure boundary.
-- [Jieqi engine integration](docs/jieqi-engine-integration.md) — Jieqi's rules authority: its pin, the rules slice the core compiles, everything the bridge owns because the engine validates nothing, and the dialect it translates into and out of.
-- [Testing](docs/testing.md) — durable validation requirements and release gates.
 
 ## Distribution and license
 
@@ -132,4 +125,4 @@ Distribution: the app ships through TestFlight internal testing and the public A
 
 The NNUE network the AI evaluates with is **this project's own**, trained from zero by the public pipeline at [`chentianren0/minixiangqi-nnue`](https://github.com/chentianren0/minixiangqi-nnue) with no other network as a teacher or a seed. It lives in this repository at `core/assets/`, pinned by byte length and SHA-256 in [`pinned-inputs.json`](pinned-inputs.json) along with its provenance, and every build verifies it before staging it. Every build carries it: there is one artifact and it is the complete application.
 
-It replaced a community-trained network of unestablished origin, and it is weaker — about 300 Elo below it at the app's settings, and far above having no network at all. The trade bought a provenance that can be stated, and [Engine integration](docs/engine-integration.md) records the measurements the swap was accepted on.
+It replaced a community-trained network of unestablished origin, and it is weaker — about 300 Elo below it at the app's settings, and far above having no network at all. The trade bought a provenance that can be stated.

@@ -1,5 +1,7 @@
 # Jieqi rules
 
+> **4.0 note.** The refactor in [#285](https://github.com/chentianren0/MiniXiangqi/issues/285) supersedes this document wherever they disagree; it is not a contract for that work.
+
 This document is the one contract for legal play, for what each player is entitled to know, and for user-visible results in **Jieqi** (揭棋; in Vietnamese *cờ úp*), the hidden-identity xiangqi. It owns the adopted interpretation of the game's rules and the identifiers that connect this prose to the executable conformance fixtures. It does not own engine search policy, engine implementation details, UI presentation, the archive that stores a finished game, or how two devices come to hold one deal; nor does it own the product's other games, each of which has its own rules contract.
 
 > **Status: binding, with one deliberate absence.** Everything stated here is accepted. The notation a human reader is shown is a presentation decision and is not stated here — no rule below depends on it, and settling it changes nothing in this document.
