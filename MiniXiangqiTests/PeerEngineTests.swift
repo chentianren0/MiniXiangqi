@@ -152,6 +152,8 @@ struct Script: Sendable, CustomTestStringConvertible {
         case alsoResign(TwoDevices.Device)
         /// Save and Continue, where that device's game is still going.
         case giveUp(TwoDevices.Device)
+        /// The devices part, and stay apart until a step needs them together.
+        case apart
         /// The device to move claims the draw.
         case claim
         case agreeDraw(offeredBy: TwoDevices.Device)
@@ -197,6 +199,9 @@ struct Script: Sendable, CustomTestStringConvertible {
         Script(name: "a draw accepted as its offerer resigns",
                steps: [.move("b1b3"), .move("b7b6"), .agreeDraw(offeredBy: .b), .alsoResign(.b)],
                expected: [.agreedDraw]),
+        Script(name: "an offline resignation, then a give-up",
+               steps: [.move("b1b3"), .move("b7b6"), .apart, .resign(.a), .giveUp(.b)],
+               expected: [.resignation]),
         Script(name: "a resignation crossing a give-up",
                steps: [.move("b1b3"), .move("b7b6"), .resign(.a), .giveUp(.b)],
                expected: [.resignation]),
@@ -233,6 +238,8 @@ struct Script: Sendable, CustomTestStringConvertible {
                 devices.engine(device).resign()
             case .giveUp(let device):
                 devices.giveUp(device)
+            case .apart:
+                devices.drop()
             case .claim:
                 let mover = devices.engine(ply.isMultiple(of: 2) ? .a : .b)
                 devices.until { mover.claimDraw() }
