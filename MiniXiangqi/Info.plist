@@ -34,6 +34,10 @@
 			</dict>
 		</dict>
 	</array>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
 	<key>WiFiAwareServices</key>
 	<dict>
 		<key>_boardgame._tcp</key>

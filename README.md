@@ -22,8 +22,7 @@ The MVP has no game clock, network features, accounts, online play, lessons or d
 
 ## Platforms and architecture
 
-- iOS and iPadOS 26.5 or later.
-- macOS 26.5 or later on Apple silicon; `x86_64` is not supported on macOS.
+- iOS, iPadOS and macOS on Apple silicon.
 - One shared C++ core owns the rules, engine search, game files, and game library; each platform has a native frontend. See [Architecture](docs/architecture.md).
 - Windows support ended at v3.0.0. The last version that carried the Windows frontend is archived, read-only, at [chentianren0/MiniXiangqi-Windows](https://github.com/chentianren0/MiniXiangqi-Windows).
 
@@ -49,13 +48,14 @@ It cannot be folded into the app's build. Xcode plans its build graph before any
 
 ## Architectures
 
-Physical platforms carry both `arm64` and `arm64e`; the Simulator carries `arm64` alone. That holds
-for the app and for every slice of the prebuilt core. The unit bundle is the exception, and the table
-records what the project actually resolves rather than what the policy asks for.
+Physical platforms carry both `arm64` and `arm64e`, and the app alone carries `arm64e.x1` beside
+them; the Simulator carries `arm64` alone. The prebuilt core stops at `arm64e`, the unit bundle is the
+exception explained below, and the table records what the project actually resolves rather than what
+the policy asks for.
 
 | Target | macOS | iOS device | iOS Simulator |
 | --- | --- | --- | --- |
-| `MiniXiangqi` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
+| `MiniXiangqi` | `arm64` `arm64e` `arm64e.x1` | `arm64` `arm64e` `arm64e.x1` | `arm64` |
 | `MiniXiangqiTests` | `arm64` `arm64e` | `arm64` | `arm64` |
 | `MiniXiangqiUITests` | `arm64` `arm64e` | `arm64` | `arm64` |
 | `MiniXiangqiCore.xcframework` | `arm64` `arm64e` | `arm64` `arm64e` | `arm64` |
@@ -69,9 +69,20 @@ cannot express the policy; both set `ARCHS[sdk=macosx*]` explicitly. The unit bu
 `arm64e` slice to run at all, because the host app launches `arm64e` on Apple silicon and can only
 inject a bundle whose architecture matches.
 
+**`arm64e.x1` is the hardware-checked pointer-arithmetic slice**, asked for the same way:
+`ENABLE_HARDWARE_CHECKED_POINTER_ARITHMETIC_SLICE` adds it to `ARCHS_STANDARD` as a cohort of
+`arm64e`, and the `enforce-checked-pointer-arithmetic-overflow` entitlement in both entitlements
+files turns the checking on. The core has no such slice — the generator builds `arm64 arm64e` — and
+Xcode links the `arm64e` library into the `arm64e.x1` app slice, noting that the framework is
+"missing architecture(s) required by this target (arm64e.x1), but may still be link-compatible". It
+is, so the core's own pointer arithmetic is simply unchecked in that slice. Only an A20 Pro iPhone or
+an M6 Mac runs it and no Simulator does, so nothing here has exercised it yet; whether the unit
+bundle still injects into an `arm64e.x1` host is the same question the next paragraph asks about iOS,
+and belongs to whoever first builds on such a machine.
+
 **That `arm64e` slice is macOS's alone, because the override that produces it is keyed to
 `sdk=macosx*`.** On `iphoneos` the unit bundle resolves to `ARCHS = arm64` while the app it hosts in
-resolves to `arm64 arm64e`, so the same host/bundle mismatch the macOS override exists to prevent is
+resolves to `arm64 arm64e arm64e.x1`, so the same host/bundle mismatch the macOS override exists to prevent is
 live on a physical iPhone or iPad: the bundle cannot inject into an `arm64e` host there. It does not
 bite today, because the iOS runs are on the Simulator, where the app is `arm64` too. The fix belongs
 to whichever PR first runs this suite on a device — the on-device measurement the probe still owes —
