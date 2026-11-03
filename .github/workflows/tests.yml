@@ -13,15 +13,20 @@ jobs:
       - uses: actions/checkout@v7
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_27.2.app
-      # The runner has none of the team's certificates, and the Mac app's
-      # restricted entitlements would stop an ad-hoc signed build at launch.
+      # The runner has none of the team's certificates, so everything is
+      # signed ad hoc. The app's restricted entitlements would stop such a
+      # build at launch, and an unsigned build leaves the UI test runner
+      # unsigned, which macOS kills.
       - name: App tests
         run: >
           xcodebuild test
           -project MiniXiangqi.xcodeproj
           -scheme MiniXiangqi
           -destination 'platform=macOS'
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual
+          DEVELOPMENT_TEAM=
+          CODE_SIGN_ENTITLEMENTS=
       - name: Core tests
         if: ${{ !cancelled() }}
         working-directory: core
