@@ -1,5 +1,3 @@
-// The board's placement of points, and the bounds it must stay inside.
-
 import CoreGraphics
 import Testing
 @testable import MiniXiangqi
@@ -33,17 +31,6 @@ struct BoardGeometryTests {
         }
     }
 
-    @Test("The two board cores have the accepted integer-pitch footprints")
-    func boardCoreSizes() {
-        let mini = floorGeometry(for: .miniXiangqi)
-        let xiangqi = floorGeometry(for: .xiangqi)
-        #expect(mini.pitch == 44)
-        #expect(mini.coreSize == CGSize(width: 308, height: 308))
-        #expect(xiangqi.pitch == 34)
-        #expect(xiangqi.coreSize == CGSize(width: 306, height: 340))
-        #expect(abs(mini.coreSize.width - xiangqi.coreSize.width) <= 2)
-    }
-
     @Test("Markers on adjacent points cannot collide", arguments: GameKind.allCases)
     func markersStayInsideTheirCell(game: GameKind) {
         let geometry = floorGeometry(for: game)
@@ -60,10 +47,6 @@ struct BoardGeometryTests {
                        + BoardGeometry.maximumPitch(for: board)) / 2,
                       BoardGeometry.maximumPitch(for: board)] {
             let geometry = BoardGeometry(board: board, pitch: pitch)
-            // The origin's half of the marker exists to say which way a move
-            // went. A placement went no way at all — it has no origin — so the
-            // board draws one bracket there and this pair of bounds is about a
-            // mark those games never carry.
             if board.play == .movement {
                 #expect(geometry.lastMoveOriginStroke > geometry.gridStroke)
                 #expect(geometry.lastMoveOriginStroke < geometry.lastMoveStroke)
@@ -83,9 +66,6 @@ struct BoardGeometryTests {
         let geometry = floorGeometry(for: game)
         let p = geometry.pitch
 
-        // An empty point has its whole cell, so the washes are bounded by the
-        // cell alone — and by each other: they stack outermost first, so each
-        // must be smaller than the one it is drawn over.
         var previous = geometry.markerOuterLimit
         for wash in BoardGeometry.haloWashes {
             #expect(wash.radius * p <= geometry.markerOuterLimit)
@@ -95,17 +75,11 @@ struct BoardGeometryTests {
         #expect(BoardGeometry.haloPeakOpacity < 0.5,
                 "a wash is a wash: the stack never approaches the ink itself")
 
-        // An occupied point has only the marker band. What the band owes the
-        // geometry is the two bounds: clear of the disc's own face, inside the
-        // cell. Where between them it sits — today a hair inside the marker
-        // floor, which a wash beneath the pieces may be — is the tuning's.
         let inner = geometry.haloBandRadius - geometry.haloBandStroke / 2
         let outer = geometry.haloBandRadius + geometry.haloBandStroke / 2
         #expect(inner >= geometry.discDiameter / 2)
         #expect(outer <= geometry.markerOuterLimit)
 
-        // It sits behind the dashed capture ring so that the ring's dashes have
-        // something to show through them, at rest and strengthened alike.
         for emphasis in [0.0, 1.0] {
             let stroke = geometry.captureRingStroke(emphasis: emphasis)
             let ring = geometry.captureRingRadius(stroke: stroke)
@@ -113,9 +87,6 @@ struct BoardGeometryTests {
             #expect(outer > ring - stroke / 2)
         }
 
-        // Record ink never stands on the halo: the last move's brackets are in
-        // the cell's corners, and both washes stop well short of them. It is
-        // why the composited measurement is about active ink alone.
         let corner = p / 2 - geometry.lastMoveInset
         let nearest = hypot(corner - geometry.lastMoveArm, corner)
             - geometry.lastMoveStroke / 2

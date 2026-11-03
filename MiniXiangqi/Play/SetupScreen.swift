@@ -69,7 +69,6 @@ struct SetupScreen: View {
         BoardView(geometry: geometry,
                   placement: Placement(fen: play.preview, game: selection.game),
                   flipped: previewsFlipped,
-                  showsNumerals: true,
                   selected: nil,
                   destinations: [],
                   captures: [],

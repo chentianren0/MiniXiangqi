@@ -1,28 +1,3 @@
-// Which of the two arrangements a space takes, and what the board comes to
-// inside it.
-//
-// docs/interaction-design.md, "Layout shapes": two arrangements chosen by the
-// available space rather than by device identity, so a resized Mac window and a
-// windowed iPad behave the same way as each other. `BoardLayout.shape(in:game:)` is
-// that rule, and this is where it is held to the shapes the contract names —
-// on a phone, on an iPad in both orientations, and at the accepted macOS floor,
-// where the answer is load-bearing in the other direction: that floor was
-// photographed and accepted as side by side, and a rule that stacked it would
-// be a regression rather than an adaptation.
-//
-// The sizes below are the *layout* areas, not screen sizes: what a screen's own
-// GeometryReader is handed once the status bar, the navigation bar, and
-// whatever the navigation container is showing are off. The iOS ones were read
-// off the running app on the two devices this phase's evidence was taken on —
-// an iPhone 17 Pro Max and an iPad Pro 11-inch — and are rounded, deliberately:
-// a rule that only held at one exact pixel count would not be a rule.
-//
-// On a phone that last term is now **two** numbers rather than one, because
-// docs/interaction-design.md § Navigation has the two board screens hide the
-// destination bar: a home is handed the shorter area and a board screen the
-// taller one, the difference being the bar's own height. The 402-point phone
-// below is pinned at both.
-
 import CoreGraphics
 import Testing
 @testable import MiniXiangqi
@@ -40,38 +15,14 @@ struct BoardLayoutTests {
         BoardGeometry.maximumPitch(for: mini.board)
     }
 
-    // MARK: - The shapes the contract names
-
     @Test("A phone stacks: the panel leaves nothing that is still a board")
     func phonePortraitStacks() {
         let phone = CGSize(width: 440, height: 770)
         #expect(BoardLayout.shape(in: phone, game: mini) == .stacked)
-        // And what it stacks is a real board, above the accepted floor.
         #expect(BoardLayout.stackedGeometry(in: phone, game: mini).pitch
                 >= miniMinimumPitch)
     }
 
-    /// The narrower phone the device policy actually names, and the one every
-    /// screenshot in this campaign is taken on.
-    ///
-    /// 402 is the screen's width. The two heights are what is left of 874 once
-    /// the status bar and the navigation bar are off — **672** with the
-    /// destination bar under them as well, which is what the homes have and
-    /// what every board screen had before § Navigation's board-screen rule, and
-    /// **720** without it, which is what the board and replay have now. Both are
-    /// rounded stand-ins rather than the device's exact figures — measured on
-    /// the running app the areas come to 675 and 724 — and rounded deliberately,
-    /// for the reason at the top of this file: a rule that only held at one
-    /// exact pixel count would not be a rule. What is asserted below therefore
-    /// holds either side of those few points, and it is asserted at *both*
-    /// heights because the rule has to hold at both.
-    ///
-    /// The pitch each shape actually draws stays a rendered number and lives
-    /// with the pictures, not here — with the one exception at the end, which is
-    /// a relation between the two screens rather than a size.
-    ///
-    /// It is the tighter of the two phones in both directions, so it is where
-    /// the stacked shape's floors are reached first.
     @Test("The 402-point iPhone stacks, and replay's chrome fits inside it",
           arguments: [CGFloat(672), CGFloat(720)])
     func phone402PortraitStacks(height: CGFloat) {
@@ -80,22 +31,10 @@ struct BoardLayoutTests {
         #expect(BoardLayout.stackedGeometry(in: phone, game: mini).pitch
                 >= miniMinimumPitch)
 
-        // Play's chrome leaves the board well clear of its floor: this phone is
-        // not a phone that draws floor-sized boards.
         #expect(BoardLayout.stackedGeometry(in: phone, game: mini,
                                             chrome: BoardLayout.stackedChromeHeight).pitch
                 > miniMinimumPitch)
 
-        // Replay's chrome is the header above the board plus the panel beneath
-        // it. Asking for the whole of the panel's side-by-side height put that
-        // sum past what this phone has once a floor-sized board is reserved, and
-        // pinned the board on its floor; the owner's buy-back (2026-07-31)
-        // brought the ask under that line, so the phone grants it whole and the
-        // board it leaves stands clear of the floor rather than on it.
-        //
-        // The header's measured height is written into the sum for honesty
-        // rather than for arithmetic: what is asserted is the relation between
-        // the ask, the grant and the floor, not either number.
         let asked: CGFloat = 69 + 200
         let chrome = BoardLayout.stackedChrome(in: phone, game: mini, asking: asked)
         #expect(chrome == asked, "the ask fits, so it is granted whole")
@@ -104,10 +43,6 @@ struct BoardLayoutTests {
         #expect(board.pitch > miniMinimumPitch, "the board is off its floor")
         #expect(board.blockSize.height <= phone.height - chrome)
 
-        // The grant still tightens where the space really is short — a header
-        // grown by an accessibility text size is the case it exists for. There
-        // the chrome yields, the board stands exactly on its floor, and the
-        // block still fits the slot it is left.
         let outsized: CGFloat = 200 + 200
         let tightened = BoardLayout.stackedChrome(in: phone, game: mini,
                                                   asking: outsized)
@@ -134,14 +69,6 @@ struct BoardLayoutTests {
                 - BoardLayout.stackedChromeHeight)
     }
 
-    /// A stacked board screen spends no horizontal allowance, and a pre-start
-    /// preview keeps its own.
-    ///
-    /// docs/interaction-design.md, "Layout shapes": the block takes the screen's
-    /// width, and what the whole-point pitch leaves over is a few points at
-    /// most. The two pitches are the contract's own numbers for this phone, and
-    /// they are here rather than with the pictures because they are what the
-    /// rule *is* — the arithmetic decides them, and the screen only draws them.
     @Test("A stacked board screen takes the screen's width; a preview keeps its air")
     func aStackedBoardScreenTakesTheWholeWidth() {
         let phone = CGSize(width: 402, height: 720)
@@ -154,9 +81,6 @@ struct BoardLayoutTests {
         #expect(xiangqi.pitch == 44)
         #expect(phone.width - xiangqi.blockSize.width < xiangqi.pitch)
 
-        // The preview sits among setup controls on a page rather than alone on
-        // a screen, so it keeps the air the board screen spends: at the same
-        // chrome it is the smaller board of the two.
         let preview = BoardLayout.stackedPreviewGeometry(
             in: phone, game: mini, chrome: BoardLayout.stackedChromeHeight)
         #expect(preview.pitch < miniBoard.pitch)
@@ -164,16 +88,6 @@ struct BoardLayoutTests {
                 <= phone.width - 2 * BoardLayout.boardPadding)
     }
 
-    /// The shape rule spends an allowance beside the board that a board screen
-    /// does not, and the answer is the same either way.
-    ///
-    /// What is asserted is the property that makes the probe safe rather than
-    /// its arithmetic: the shape chosen is still the shape whose **drawn** board
-    /// is at least as large as the other's. Where the stacked candidate is bound
-    /// by the width it is the larger board by construction and is already
-    /// chosen; side by side wins only where the stacked board is bound by its
-    /// height or standing at its ceiling, and neither of those moves when the
-    /// air does.
     @Test("The shape the rule picks is the shape whose drawn board is the larger")
     func theShapeRuleIsUnmovedByTheAirTheBoardScreenDoesNotSpend() {
         var wrong: [String] = []
@@ -184,9 +98,6 @@ struct BoardLayoutTests {
                     let size = CGSize(width: width, height: height)
                     let beside = BoardLayout.geometry(in: size, game: game).pitch
                     let stacked = BoardLayout.stackedGeometry(in: size, game: game).pitch
-                    // Where both fall back to the floor there is no board to be
-                    // the larger: the rule is answering which way the space is
-                    // short, which is its own clause and not this one.
                     if beside == floor, stacked == floor { continue }
                     let larger: BoardLayout.Shape = beside >= stacked ? .sideBySide : .stacked
                     if BoardLayout.shape(in: size, game: game) != larger {
@@ -200,8 +111,6 @@ struct BoardLayoutTests {
         #expect(wrong.isEmpty, "the rule and the drawn boards disagree at: \(wrong.prefix(5))")
     }
 
-    /// The surface behind the block runs to the screen edges where the width is
-    /// what sized the board, and nowhere else.
     @Test("The board surface covers the pitch remainder, and never a real margin")
     func theSurfaceRunsToTheEdgesOnlyWhereTheWidthBinds() {
         let phone = CGSize(width: 402, height: 720)
@@ -213,31 +122,16 @@ struct BoardLayoutTests {
                     "and the surface meets both edges exactly")
         }
 
-        // An iPad in portrait stops at the maximum footprint 120 points short of
-        // the screen. That is the surrounding layout's air rather than the
-        // board's, so nothing is painted into it.
         let padPortrait = CGSize(width: 834, height: 1130)
         let capped = BoardLayout.stackedGeometry(in: padPortrait, game: mini)
         #expect(capped.pitch == miniMaximumPitch)
         #expect(BoardLayout.surfaceBleed(in: padPortrait.width, board: capped) == 0)
 
-        // And a board the height sized — replay's own chrome on this phone is
-        // what does it — keeps its margin for the same reason.
         let heightBound = BoardLayout.stackedGeometry(in: phone, game: mini, chrome: 269)
         #expect(heightBound.pitch < 57)
         #expect(BoardLayout.surfaceBleed(in: phone.width, board: heightBound) == 0)
     }
 
-    /// What hiding the destination bar buys replay, and what the full-width
-    /// fitting does not take from its move list.
-    ///
-    /// Replay's chrome is more than twice play's, so replay's board is the
-    /// smaller of the two on this phone: its height is what binds it, where
-    /// play's board runs out of *width* first. The bar's own height is real
-    /// pitch to replay all the same. What it is not is the list's: the panel is
-    /// granted the whole of what it asks for at both heights, so the rows the
-    /// list keeps are the rows it kept — the board's gain comes out of the air
-    /// around it rather than out of the chrome.
     @Test("Hiding the bar buys replay's board pitch, and costs its move list nothing")
     func replayGainsFromTheHiddenBarWithoutCostingTheList() {
         let replayHeader: CGFloat = 69
@@ -275,8 +169,6 @@ struct BoardLayoutTests {
     func padPortraitStacks() {
         let padPortrait = CGSize(width: 834, height: 1130)
         #expect(BoardLayout.shape(in: padPortrait, game: mini) == .stacked)
-        // The stacked board there is the largest the contract allows; the panel
-        // beside it would have been less than two thirds of that.
         #expect(BoardLayout.stackedGeometry(in: padPortrait, game: mini).pitch
                 == miniMaximumPitch)
         #expect(BoardLayout.geometry(in: padPortrait, game: mini).pitch
@@ -301,22 +193,11 @@ struct BoardLayoutTests {
 
     @Test("The unified macOS floor holds every game side by side")
     func macOSFloorStaysSideBySide() {
-        // The width is the widest *block* any game's floor board needs beside
-        // the panel, and the placement games are now what sets it: fifteen files
-        // at pitch 20 is 300 points of core and one strip of numbers up its
-        // side. Xiangqi's taller floor still sets the shared height. Any game
-        // can therefore be switched in without changing the window's minimum,
-        // which is the whole point of a unified floor.
         let floor = CGSize(width: BoardLayout.minimumWidth, height: BoardLayout.minimumHeight)
         #expect(floor == CGSize(width: 626, height: 416))
         #expect(BoardLayout.minimumBoardHeight(for: .miniXiangqi) == 388)
         #expect(BoardLayout.minimumBoardHeight(for: .xiangqi) == 416)
         #expect(BoardLayout.minimumBoardHeight(for: .gomoku15) == 361)
-        // At the floor every game is side by side and at or above its own
-        // interactive floor — at it for the game that set the width, and a
-        // point above it for the games whose boards are narrower than the one
-        // that did. What the floor promises is that no game is drawn below its
-        // floor there, not that every game is drawn exactly at it.
         for game in GameKind.allCases {
             #expect(BoardLayout.shape(in: floor, game: game) == .sideBySide)
             #expect(BoardLayout.geometry(in: floor, game: game).pitch
@@ -328,8 +209,6 @@ struct BoardLayoutTests {
 
     @Test("An ordinary Mac window stays side by side")
     func macOSWindowStaysSideBySide() {
-        // The window sizes the macOS screenshot series is taken at, less the
-        // navigation container's own sidebar and toolbar.
         for size in [CGSize(width: 656, height: 508), CGSize(width: 1566, height: 998)] {
             #expect(BoardLayout.shape(in: size, game: mini) == .sideBySide,
                     "\(size) is a Mac window the accepted look was photographed at")
@@ -338,15 +217,6 @@ struct BoardLayoutTests {
 
     @Test("The boundary between the two shapes, one point of height apart")
     func theShapeBoundary() {
-        // What the two tests above cannot say: where the answer changes. Both
-        // of them name a size and assert the shape it takes, so between them
-        // lies a region neither describes; this is the one place in that
-        // region where a change to the rule shows up as a changed answer.
-        //
-        // 656 points of content width holds the side-by-side board to 49 —
-        // it is bound by the width there, so no extra height helps it — while
-        // one more point of height is exactly what buys the stacked board a
-        // 50th, and 50 beats 49.
         #expect(BoardLayout.shape(in: CGSize(width: 656, height: 573), game: mini)
                 == .sideBySide)
         #expect(BoardLayout.shape(in: CGSize(width: 656, height: 574), game: mini)
@@ -355,7 +225,6 @@ struct BoardLayoutTests {
 
     @Test("A tie goes to side by side, which costs the board nothing and shows the list")
     func aTieGoesToSideBySide() {
-        // Wide enough and tall enough for both shapes to reach the ceiling.
         let ample = CGSize(width: 1200, height: 1200)
         #expect(BoardLayout.geometry(in: ample, game: mini).pitch == miniMaximumPitch)
         #expect(BoardLayout.stackedGeometry(in: ample, game: mini).pitch
@@ -365,22 +234,15 @@ struct BoardLayoutTests {
 
     @Test("A space too small for either shape is stacked, not squeezed side by side")
     func aSpaceTooSmallForEitherStacks() {
-        // Neither arrangement fits a board at its floor here. The stacked one is
-        // what is drawn: the space is too narrow rather than too short, and the
-        // shape whose board is bounded by the width is the one that says so.
         #expect(BoardLayout.shape(in: CGSize(width: 300, height: 300), game: mini)
                 == .stacked)
     }
-
-    // MARK: - What the stacked shape gives the board
 
     @Test("The stacked board honours the same floor and ceiling as the side-by-side one")
     func stackedRespectsFloorAndCeiling() {
         let vast = CGSize(width: 4000, height: 4000)
         #expect(BoardLayout.stackedGeometry(in: vast, game: mini).pitch
                 == miniMaximumPitch)
-        // Below the floor the geometry falls back to the floor rather than to
-        // something smaller: the board may not be driven below it.
         let cramped = CGSize(width: 100, height: 100)
         #expect(BoardLayout.stackedGeometry(in: cramped, game: mini).pitch
                 == miniMinimumPitch)
@@ -388,8 +250,6 @@ struct BoardLayoutTests {
 
     @Test("Chrome grown by an accessibility text size takes its room from the board")
     func chromeTakesItsRoomFromTheBoard() {
-        // A height-bound space, so the chrome is what the board is competing
-        // with. Doubling the chrome cannot leave the board the same size.
         let space = CGSize(width: 1000, height: 700)
         let ordinary = BoardLayout.stackedGeometry(in: space, game: mini,
                                                    chrome: BoardLayout.stackedChromeHeight)
@@ -398,19 +258,8 @@ struct BoardLayoutTests {
         #expect(grown.pitch < ordinary.pitch)
     }
 
-    // MARK: - The board fits the slot it is given
-
     @Test("The drawn board fits the slot the chrome leaves it, at every size")
     func theStackedBoardFitsItsSlot() {
-        // The one invariant a stacked screen depends on, swept rather than
-        // sampled at the sizes that happen to have been photographed. The
-        // board's floor means `stackedGeometry` can return a block larger than
-        // the space it was asked about; what makes that safe is that the
-        // chrome is *granted* its height rather than taking it, so the slot
-        // the board is left is never smaller than the block it draws.
-        //
-        // Every width a screen or window reaches, against every height from a
-        // floor-sized board up.
         let widths: [CGFloat] = [320, 402, 440, 616, 656, 676, 744, 834, 1024, 1210, 1566]
         let asking: [CGFloat] = [0, 116, 140, 260, 400]
         var overflowing: [String] = []
@@ -439,11 +288,6 @@ struct BoardLayoutTests {
 
     @Test("The chrome yields where the board's floor needs the height, and the board fits")
     func theStackedChromeYieldsToTheBoardsFloor() {
-        // 616 by 535 — under the product's own window floor, which the shape
-        // function does not know — takes the stacked shape, and replay's
-        // panel is a fixed 260-point block of chrome. Taken whole it would leave the board 275 points to draw a
-        // block that cannot go below 340 — 65 points of board over the panel
-        // and off the bottom of the window.
         let window = CGSize(width: 616, height: 535)
         #expect(BoardLayout.shape(in: window, game: mini) == .stacked)
         let chrome = BoardLayout.stackedChrome(in: window, game: mini, asking: 260)
@@ -451,28 +295,12 @@ struct BoardLayoutTests {
         #expect(BoardLayout.stackedGeometry(in: window, game: mini,
                                             chrome: chrome).blockSize.height
                 <= window.height - chrome)
-        // And where there is room for both, the chrome asks and receives.
         let ample = CGSize(width: 834, height: 1130)
         #expect(BoardLayout.stackedChrome(in: ample, game: mini, asking: 260) == 260)
     }
 
-    // MARK: - The cluster's reserved slot
-
-    /// docs/interaction-design.md, "Layout shapes": in the stacked shape the
-    /// board's frame does not follow the controls. The slot is the cluster's
-    /// tallest arrangement, so the board is sized around one number whichever
-    /// arrangement is drawn in it — and the number is derived from a row rather
-    /// than from the cluster on screen, which is what makes it the same number
-    /// under both.
-    ///
-    /// What this would catch is the coupling coming back: a reservation that
-    /// was one row again, or the drawn arrangement's own height feeding the
-    /// geometry, moves the board every time a row comes or goes.
     @Test("The cluster's slot is its tallest arrangement, whichever one is drawn")
     func theClusterSlotIsTheTallestArrangement() {
-        // A row of controls, and the two arrangements a cluster of them is
-        // drawn as: one row, or two with the air between them. Both inside the
-        // air the cluster keeps above and below itself.
         let row: CGFloat = 34
         let air = BoardLayout.clusterAir
         let oneRow = row + 2 * air
@@ -482,9 +310,6 @@ struct BoardLayoutTests {
         #expect(reserved == twoRows, "the slot is the taller of the two")
         #expect(reserved > oneRow, "and the shorter one is drawn inside it")
 
-        // The board is then sized around the slot. This phone grants it whole,
-        // so the board is the same board under either arrangement — which is
-        // the whole of the rule.
         let phone = CGSize(width: 402, height: 720)
         let chrome = BoardLayout.stackedChrome(in: phone, game: mini, asking: reserved)
         #expect(chrome == reserved, "the slot fits, so it is granted whole")
@@ -492,9 +317,6 @@ struct BoardLayoutTests {
         #expect(board.pitch > miniMinimumPitch, "with the board well off its floor")
         #expect(board.blockSize.height <= phone.height - chrome)
 
-        // And the reservation goes through the same grant as any other chrome:
-        // a row grown by an accessibility text size asks for more than a short
-        // space has, and there the cluster is what yields, not the board.
         let short = CGSize(width: 402, height: 480)
         let outsized = BoardLayout.stackedCluster(row: 120)
         let tightened = BoardLayout.stackedChrome(in: short, game: mini, asking: outsized)
@@ -506,9 +328,6 @@ struct BoardLayoutTests {
 
     @Test("A preview yields to the controls under it, below the interactive floor")
     func theStackedPreviewYields() {
-        // The pre-start board is noninteractive and carries no size floor, so a
-        // page whose controls need the room gets a smaller preview rather than
-        // a clipped one.
         let space = CGSize(width: 440, height: 500)
         let preview = BoardLayout.stackedPreviewGeometry(in: space, game: mini,
                                                          chrome: 300)

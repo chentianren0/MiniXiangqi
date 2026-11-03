@@ -591,15 +591,6 @@ final class NearbyTransport {
     }
 
     private func startRadio() {
-        #if DEBUG
-        // A driven run proving what happens when one path goes away holds the
-        // other down from the start. Debug builds only, and no release build
-        // compiles it.
-        guard NearbyLaunch.current.runsRadio else {
-            log.note("The radio is held down by this run's arguments.")
-            return
-        }
-        #endif
         // Hardware with no radio starts nothing here and everything on the
         // other path: the feature is not the radio's, and a publisher looping
         // against a radio that does not exist would burn a retry every two

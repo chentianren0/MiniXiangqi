@@ -481,48 +481,6 @@ struct NearbyDriverTests {
         #expect(fresh.sent == [.hello(.init())])
     }
 
-    // MARK: - The launch arguments
-
-    #if DEBUG
-    @Test("The harness reads its launch arguments, and opens for nothing else")
-    func theLaunchArgumentsAreRead() {
-        #expect(NearbyLaunch(arguments: []) == NearbyLaunch(arguments: ["MiniXiangqi"]))
-        #expect(!NearbyLaunch(arguments: ["MiniXiangqi"]).opensHarness)
-
-        let launch = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-open-nearby",
-                                              "-mxq-nearby-autostart",
-                                              "-mxq-nearby-script", "b1b2, b7b6,"])
-        #expect(launch.opensHarness)
-        #expect(launch.autostarts)
-        #expect(launch.script == ["b1b2", "b7b6"])
-        #expect(launch.move(at: 0) == "b1b2")
-        #expect(launch.move(at: 1) == "b7b6")
-        #expect(launch.move(at: 2) == nil)
-
-        // **Both paths run unless a run says otherwise**, and each flag holds
-        // down the one it names. This is a switch on the transport itself in
-        // every debug build, including the one the UI suites launch, so a sign
-        // the wrong way round would silently take a path away from a run that
-        // asked for both — and a run whose path is missing looks exactly like a
-        // network with nobody on it.
-        #expect(launch.runsRadio && launch.runsNetwork, "unasked, a run brings up both")
-        let network = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "network"])
-        #expect(!network.runsRadio && network.runsNetwork)
-        let radio = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "radio"])
-        #expect(radio.runsRadio && !radio.runsNetwork)
-        let nonsense = NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-paths", "both ways"])
-        #expect(nonsense.runsRadio && nonsense.runsNetwork,
-                "and a word this does not know takes nothing away")
-    }
-
-    @Test("A script flag with nothing after it is no script")
-    func anEmptyScriptIsNoScript() {
-        #expect(NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-script"]).script.isEmpty)
-        #expect(NearbyLaunch(arguments: ["MiniXiangqi", "-mxq-nearby-script", ",, "]).script
-                .isEmpty)
-    }
-    #endif
-
     // MARK: - Coming back to the game the library holds
 
     @Test("继续对局 on a game the engine is still holding opens it, and keeps the record")

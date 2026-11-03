@@ -252,6 +252,7 @@ struct ReplayScreen: View {
                   surfaceBleed: bleed,
                   onTravelArrival: { replay.travelArrived() },
                   onFadeArrival: { replay.fadeArrived() })
+            .boardHaptics(landings: replay.landings)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(policy.fade(Motion.stateFadeAnimation), value: disclosure)
     }

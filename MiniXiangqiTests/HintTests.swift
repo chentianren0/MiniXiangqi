@@ -1,15 +1,3 @@
-// The hint: when it is on offer, what it thinks with, what it shows, and every
-// event that takes it away again.
-//
-// The engine is the same seam the opponent's tests hold, for the same reason: a
-// working engine will not refuse a preparation on request, and the states the
-// app has to survive — a preparation that fails, a suggestion that arrives
-// after the position has moved on, a start refused because a cancelled search
-// has not retired yet — are exactly the ones it refuses to produce. The games
-// are real games on real cores, and nothing here decides a rule: whether a
-// piece may be taken up is asked of the game, and whether a hint is owed is
-// asked of the core's own search-expected flag.
-
 import Foundation
 import MiniXiangqiCore
 import Testing
@@ -18,23 +6,13 @@ import Testing
 @Suite("The hint", .retiringItsCores)
 @MainActor
 struct HintTests {
-
     private static let board = GameKind.miniXiangqi.board
 
-    /// The start position a third time, which is what makes the draw
-    /// claimable: both cannons step out and back twice, taking nothing and
-    /// checking nothing, so the repetition is the neutral one.
     private static let shuffleLine = ["b1b2", "b7b6", "b2b1", "b6b7",
                                       "b1b2", "b7b6", "b2b1", "b6b7"]
 
     private func point(_ name: String) -> Square { Square(name, on: Self.board)! }
 
-    /// A board, its opponent and its hint, wired exactly as PlayState wires
-    /// them — the commit order included, since that order is what keeps a hint
-    /// search out of the AI's turn. That the order holds is asserted against
-    /// PlayState's own wiring rather than against this copy of it: a fixture
-    /// cannot answer for the closure it imitates, and one that tried would
-    /// stay green with the production cancel deleted.
     private struct Apparatus {
         let hint: Hint
         let opponent: Opponent
@@ -43,48 +21,36 @@ struct HintTests {
         let engine: TestEngine
         let clock: TestTimer
         let animator: ManualAnimator
-        let defaults: UserDefaults
     }
 
     private func makeApparatus(_ configuration: GameConfiguration,
                                engine: TestEngine = TestEngine(),
-                               settingsLevel: AiLevel? = nil,
                                reduceMotion: Bool = false) throws -> Apparatus {
         let core = try TestCores.fresh()
         try core.create(configuration)
-        return try makeApparatus(over: core, engine: engine,
-                                 settingsLevel: settingsLevel, reduceMotion: reduceMotion)
+        return try makeApparatus(over: core, engine: engine, reduceMotion: reduceMotion)
     }
 
-    private func makeApparatus(over rules: Rules, engine: TestEngine = TestEngine(),
-                               settingsLevel: AiLevel? = nil,
+    private func makeApparatus(over core: Core, engine: TestEngine = TestEngine(),
                                reduceMotion: Bool = false) throws -> Apparatus {
-        // One scratch domain for both readers, made once: `make()` clears the
-        // suite, so a second call here would wipe the level just written into
-        // it.
-        let defaults = try ScratchDefaults.make()
-        if let settingsLevel {
-            Preferences.defaultAiLevel.set(settingsLevel.name, in: defaults)
-        }
-        let game = try Game(rules: rules)
+        let game = try Game(core: core)
         let animator = ManualAnimator()
         let motion = PlayMotion(game: game,
                                 policy: MotionPolicy(reduceMotion: reduceMotion),
                                 animator: animator.animator,
-                                feedback: FeedbackRecorder(defaults: defaults).feedback)
+                                feedback: FeedbackRecorder().feedback)
         let clock = TestTimer()
         let opponent = Opponent(engine: engine, game: game, motion: motion,
                                 timer: clock.timer)
         let hint = Hint(engine: engine, game: game, motion: motion,
-                        timer: clock.timer, defaults: defaults)
+                        timer: clock.timer)
         motion.committed = { [weak opponent, weak hint] in
             hint?.cancel()
             opponent?.gameChanged()
         }
         motion.landed = { [weak opponent] in opponent?.landed() }
         return Apparatus(hint: hint, opponent: opponent, game: game, motion: motion,
-                         engine: engine, clock: clock, animator: animator,
-                         defaults: defaults)
+                         engine: engine, clock: clock, animator: animator)
     }
 
     private func humanVersusAI(level: AiLevel = .fast, humanSide: Side = .red)
@@ -93,14 +59,11 @@ struct HintTests {
                        choice: humanSide == .red ? .humanFirst : .aiFirst)
     }
 
-    /// Plays one move through the board, the way a person does.
     private func play(_ from: String, _ to: String, _ apparatus: Apparatus) {
         apparatus.motion.tap(point(from))
         apparatus.motion.tap(point(to))
         apparatus.animator.completeAll()
     }
-
-    // MARK: - Whether there is a hint to ask for
 
     @Test("A hint is offered on the player's own live turn and at no other moment")
     func offeredOnlyOnThePlayersOwnLiveTurn() throws {
@@ -117,7 +80,6 @@ struct HintTests {
         apparatus.animator.completeAll()
         #expect(apparatus.hint.isOffered, "the turn came back, and so did the offer")
 
-        // A finished game has nothing left to suggest.
         apparatus.game.resign()
         #expect(apparatus.game.isFinished)
         #expect(!apparatus.hint.isOffered)
@@ -173,15 +135,10 @@ struct HintTests {
         #expect(apparatus.motion.suggested == point("b2"), "and the suggestion arrives")
     }
 
-    // MARK: - What it thinks with
-
     @Test("A human-versus-AI hint thinks the time the game itself froze",
           arguments: [(AiLevel.fast, UInt32(1000)), (.standard, 3000), (.deep, 5000)])
     func theHintTakesTheGamesOwnFrozenTime(_ level: AiLevel, _ movetime: UInt32) throws {
-        // A Settings default deliberately unlike the game's, so a hint that read
-        // the preference instead of the game would be visible here.
-        let apparatus = try makeApparatus(humanVersusAI(level: level),
-                                          settingsLevel: level == .fast ? .deep : .fast)
+        let apparatus = try makeApparatus(humanVersusAI(level: level))
         apparatus.engine.markReady(for: .miniXiangqi)
 
         apparatus.hint.request()
@@ -193,32 +150,6 @@ struct HintTests {
                 opponent from the one playing
                 """)
     }
-
-    @Test("A Free Play hint thinks the Settings default level's time",
-          arguments: [(AiLevel.fast, UInt32(1000)), (.standard, 3000), (.deep, 5000)])
-    func freePlayHintsTakeTheSettingsDefaultLevel(_ level: AiLevel,
-                                                  _ movetime: UInt32) throws {
-        let apparatus = try makeApparatus(.freePlay(game: .miniXiangqi),
-                                          settingsLevel: level)
-        apparatus.engine.markReady(for: .miniXiangqi)
-
-        apparatus.hint.request()
-
-        #expect(apparatus.engine.lastHintMovetime == movetime,
-                "the level the player has called theirs, with no new preference row")
-    }
-
-    @Test("An unset Settings level is the accepted default, as everywhere else")
-    func anAbsentPreferenceIsStandard() throws {
-        let apparatus = try makeApparatus(.freePlay(game: .miniXiangqi))
-        apparatus.engine.markReady(for: .miniXiangqi)
-
-        apparatus.hint.request()
-
-        #expect(apparatus.engine.lastHintMovetime == 3000, "标准, on a new installation")
-    }
-
-    // MARK: - Preparing for one
 
     @Test("Free Play prepares the engine at the first request, from a fresh probe")
     func freePlayPreparesLazily() throws {
@@ -233,7 +164,6 @@ struct HintTests {
         #expect(apparatus.engine.lastPreparedGame == .miniXiangqi)
         #expect(apparatus.engine.startedHintSearches == 1, "and then searches")
 
-        // A second press while the first is still thinking asks for nothing.
         apparatus.hint.request()
         #expect(apparatus.engine.preparations == 1)
         #expect(apparatus.engine.startedHintSearches == 1)
@@ -253,11 +183,9 @@ struct HintTests {
                 "and this one is the situation the accepted message is about")
         #expect(engine.startedHintSearches == 0, "nothing searched")
 
-        // 取消 puts it away and creates nothing.
         apparatus.hint.dismissPreparationFailure()
         #expect(apparatus.hint.preparationFailure == nil)
 
-        // Every retry obtains a fresh probe, which is the whole point of retrying.
         engine.preparationRefusal = nil
         apparatus.hint.retryPreparation()
         #expect(engine.probes == 2, "the retry took a fresh probe")
@@ -281,8 +209,6 @@ struct HintTests {
                 naming the wrong cause is worse than naming none
                 """)
     }
-
-    // MARK: - What it shows
 
     @Test("A suggestion is the board's own selection plus one strengthened destination")
     func theSuggestionIsDrawnInTheBoardsOwnLanguage() throws {
@@ -308,8 +234,6 @@ struct HintTests {
                 pulse, which has the markers themselves to fall back to
                 """)
 
-        // Tapping it commits through the ordinary input path, and the
-        // suggestion goes with the position it was about.
         apparatus.motion.tap(point("b4"))
         apparatus.animator.completeAll()
         #expect(apparatus.game.moves == ["b1b4"])
@@ -317,15 +241,6 @@ struct HintTests {
         #expect(apparatus.motion.hintEmphasis == 0)
     }
 
-    /// The pending stone standing at the suggested point, which is the whole of
-    /// the presentation on a board that places: there is no piece to take up,
-    /// and the mark is the game's own — so tapping it plays the move through the
-    /// ordinary input path, with nothing knowing the mark came from the engine.
-    ///
-    /// What this would catch is the presentation going back to the movement
-    /// grammar. A hint mechanic that assumes a mover shows nothing at all here,
-    /// and it shows nothing *silently*: the control is pressable, the search
-    /// runs, the answer arrives, and the board never changes.
     @Test("On a board that places, the suggestion is the pending stone itself")
     func aPlacementSuggestionIsThePendingStone() throws {
         let apparatus = try makeApparatus(.freePlay(game: .gomoku15))
@@ -343,8 +258,6 @@ struct HintTests {
                 "and nothing is committed by showing it")
         apparatus.animator.completeAll()
 
-        // Tapping the mark plays it, through the ordinary apply — the same tap
-        // that commits a mark the player raised themselves.
         apparatus.motion.tap(suggested)
         apparatus.animator.completeAll()
         #expect(apparatus.game.moves == ["h8"])
@@ -379,13 +292,11 @@ struct HintTests {
         apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
         #expect(apparatus.motion.suggested == point("b4"))
 
-        // Taking up another piece of the player's own.
         apparatus.motion.tap(point("a1"))
         #expect(apparatus.game.selected == point("a1"))
         #expect(apparatus.motion.suggested == nil)
         #expect(apparatus.motion.hintEmphasis == 0)
 
-        // And a tap outside the board, over a suggestion shown again.
         apparatus.hint.request()
         #expect(apparatus.engine.startedHintSearches == 1, "which the cache answers")
         #expect(apparatus.motion.suggested == point("b4"))
@@ -408,8 +319,6 @@ struct HintTests {
                 "an unchanged position is not thought about twice")
         #expect(apparatus.motion.suggested == point("b4"), "and the answer is back")
 
-        // The cache dies with the position — and the move that kills it is the
-        // suggestion itself, played by tapping the point it is shown on.
         apparatus.motion.tap(point("b4"))
         apparatus.animator.completeAll()
         #expect(apparatus.game.moves == ["b1b4"])
@@ -436,7 +345,6 @@ struct HintTests {
                          identity: "00000000-0000-7000-8000-000000000000"))
         #expect(apparatus.motion.suggested == nil, "and an identity that is not this game's")
 
-        // Neither was cached, so the next request is a real search.
         apparatus.hint.request()
         #expect(apparatus.engine.startedHintSearches == 3)
     }
@@ -457,16 +365,8 @@ struct HintTests {
         #expect(apparatus.hint.activity == .idle, "the indicator is gone with the answer")
     }
 
-    // MARK: - Everything that takes it away
-
     @Test("The player's own commit cancels the hint before the reply is asked for")
     func theCommitCancelsTheHintBeforeTheReply() throws {
-        // Driven through PlayState rather than through the apparatus, because
-        // the ordering is a property of the wiring the application ships:
-        // asserted against the fixture's own copy of that wiring, this stays
-        // green with the production cancel deleted, which is the one thing it
-        // exists to catch. So the game is created the way 开始对局 creates one,
-        // and the move is played on the board that creation put up.
         let core = try TestCores.fresh()
         let engine = TestEngine()
         let state = PlayState(core: core, engine: engine)
@@ -504,8 +404,6 @@ struct HintTests {
         apparatus.engine.answerHint(searchResult(.move, move: "a6a5", game: apparatus.game))
         #expect(apparatus.motion.suggested == point("a5"))
 
-        // Exactly what the screen does: the control cancels the hint and runs
-        // the transition.
         apparatus.hint.cancel()
         apparatus.motion.undo()
         apparatus.animator.completeAll()
@@ -515,7 +413,6 @@ struct HintTests {
         #expect(apparatus.engine.cancelledTickets.isEmpty,
                 "the search had already answered; there was nothing left to cancel")
 
-        // The suggestion is not reused on the position the Undo arrived at.
         apparatus.hint.request()
         #expect(apparatus.engine.startedHintSearches == 2)
     }
@@ -528,8 +425,6 @@ struct HintTests {
         apparatus.clock.advance(by: Motion.thinkingIndicatorDelay + 0.1)
         #expect(apparatus.hint.activity == .thinking)
 
-        // What the suspension handler calls, in the order it calls it: the hint
-        // first, then the opponent's own cancel-and-release.
         apparatus.hint.cancel()
         apparatus.opponent.suspend()
 
@@ -539,7 +434,6 @@ struct HintTests {
         #expect(apparatus.hint.activity == .idle)
         #expect(apparatus.motion.suggested == nil)
 
-        // A late answer to the cancelled search shows nothing.
         apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
         #expect(apparatus.motion.suggested == nil)
     }
@@ -552,11 +446,6 @@ struct HintTests {
         apparatus.clock.advance(by: Motion.thinkingIndicatorDelay + 0.1)
         #expect(apparatus.hint.activity == .thinking)
 
-        // What the memory-pressure handler calls, in the order it calls it —
-        // the same order the suspension takes, and for the same reason: the
-        // release cancels every search and then tears the table down, and a
-        // hint whose own state outlived that would be a suggestion about a
-        // board the engine has been taken out from under.
         apparatus.hint.cancel()
         apparatus.opponent.memoryPressure()
 
@@ -566,12 +455,9 @@ struct HintTests {
         #expect(apparatus.hint.activity == .idle)
         #expect(apparatus.motion.suggested == nil)
 
-        // A late answer to the cancelled search shows nothing.
         apparatus.engine.answerHint(searchResult(.move, move: "b1b4", game: apparatus.game))
         #expect(apparatus.motion.suggested == nil)
 
-        // And nothing of the hint's outlived the release: the next request
-        // finds no engine standing and prepares one, from a fresh probe.
         apparatus.hint.request()
         #expect(apparatus.engine.preparations == 1)
         #expect(apparatus.engine.startedHintSearches == 2)
@@ -601,15 +487,10 @@ struct HintTests {
                 "and the table a hint prepared is released like any other")
     }
 
-    // MARK: - The refusals a cancellation leaves behind
-
     @Test("A hint refused for a search still retiring is asked again")
     func anOutstandingSearchRefusalIsAskedAgain() throws {
         let apparatus = try makeApparatus(humanVersusAI())
         apparatus.engine.markReady(for: .miniXiangqi)
-        // Cancellation is asynchronous: the core can refuse a hint for a search
-        // that has already been told to stop, and its own instruction for that
-        // is to ask again rather than to expect the next call to be admitted.
         apparatus.engine.hintStartRefusal =
             CoreError(status: MxqStatus(MXQ_ERR_STATE_SEARCH_IN_PROGRESS),
                       detail: "a search is outstanding")

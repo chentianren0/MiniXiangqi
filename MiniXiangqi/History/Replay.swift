@@ -83,6 +83,9 @@ final class Replay {
     private let transits: TransitMotion
     private let feedback: Feedback
 
+    /// The count the replay screen triggers its landing haptic on.
+    private(set) var landings = 0
+
     private let session: ReplaySession
 
     /// One speed, which is what a first replay screen needs. The accepted
@@ -366,7 +369,7 @@ final class Replay {
     /// The haptic comes with it for the same reason: every landing there is
     /// takes the alignment pattern, and this is one.
     private func announceLanding() {
-        feedback.perform(.landing)
+        landings += 1
         feedback.play(.ofTheLanding(transit,
                                     finished: isFinalPosition,
                                     inCheck: position.inCheck))

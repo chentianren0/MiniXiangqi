@@ -51,7 +51,7 @@ struct MoveList: View {
     /// The 记谱法 preference, read where the words are chosen so that changing it
     /// re-renders the list live. Unchosen, it is the interface language's own
     /// reading — `NotationStyle.resolvedForInterfaceLanguage`.
-    @AppStorage(NotationStyle.key, store: Preferences.defaults)
+    @AppStorage(NotationStyle.key)
     private var style: NotationStyle = .resolvedForInterfaceLanguage
 
     private var pairing: MovePairing {

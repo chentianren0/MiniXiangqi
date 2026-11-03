@@ -149,17 +149,6 @@ struct PlayScreen: View {
         if !play.save() { failedFiling = .save }
     }
 
-    /// Whether the board carries its file-numeral strips. Always, except when
-    /// `-mxq-hide-numerals` takes them off: what the strips cost the layout is
-    /// a question a pair of screenshots answers and prose does not.
-    private static var showsNumerals: Bool {
-        #if DEBUG
-        !DebugLaunch.contains("-mxq-hide-numerals")
-        #else
-        true
-        #endif
-    }
-
     private func layout(_ game: Game, _ motion: PlayMotion) -> some View {
         GeometryReader { proxy in
             switch BoardLayout.shape(in: proxy.size, game: game.kind) {
@@ -543,7 +532,6 @@ struct PlayScreen: View {
             BoardView(geometry: geometry,
                       placement: game.placement,
                       flipped: game.flipped,
-                      showsNumerals: Self.showsNumerals,
                       selected: game.selected,
                       destinations: game.destinations,
                       captures: game.captures,
@@ -565,6 +553,7 @@ struct PlayScreen: View {
                       onTravelArrival: { motion.travelArrived() },
                       onFadeArrival: { motion.fadeArrived() },
                       onFlipArrival: { motion.flipArrived() })
+                .boardHaptics(landings: motion.landings, refusals: motion.refusals)
 
             // The notice waits for the landing: a result arrives with a move,
             // and the move has to finish being shown before an announcement

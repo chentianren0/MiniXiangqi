@@ -572,7 +572,7 @@ struct NearbyRecordTests {
 
         switch library.replay(of: filed, policy: MotionPolicy(reduceMotion: true),
                               animator: ManualAnimator().animator,
-                              feedback: Feedback(perform: { _ in }, play: { _ in })) {
+                              feedback: Feedback(play: { _ in })) {
         case .success(let replay):
             defer { replay.close() }
             #expect(replay.moves == Self.fiveInARow)

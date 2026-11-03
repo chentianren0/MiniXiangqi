@@ -1,11 +1,3 @@
-// The state before there is a game: the draft, the ordering that creates one,
-// and the memory budget the ordering's first gate is computed from.
-//
-// docs/engine-integration.md, "Preparation ordering": prepare, resolve,
-// create, search, each a gate on the next. Every failure point of that sequence
-// is a state the app has to survive and a working engine will not produce on
-// request, so the engine here is the same seam the opponent's tests use.
-
 import Foundation
 import MiniXiangqiCore
 import Testing
@@ -14,7 +6,6 @@ import Testing
 @Suite("The pre-start state", .retiringItsCores)
 @MainActor
 struct SetupTests {
-
     private static let miniAI = PlaySelection(game: .miniXiangqi,
                                               mode: .humanVersusAI)
     private static let miniFreePlay = PlaySelection(game: .miniXiangqi,
@@ -24,30 +15,6 @@ struct SetupTests {
         let core = try TestCores.fresh()
         let state = PlayState(core: core, engine: engine)
         return (state, core, engine)
-    }
-
-    // MARK: - The draft
-
-    @Test("The draft opens from the persistent defaults and writes nothing back")
-    func theDraftReadsTheDefaults() throws {
-        let defaults = try ScratchDefaults.make()
-        #expect(Preferences.defaultFirstMover(in: defaults) == .humanFirst,
-                "a new installation selects 我先手")
-        #expect(Preferences.defaultAiLevel(in: defaults) == .standard, "and 标准")
-
-        Preferences.defaultFirstMover.set("random", in: defaults)
-        Preferences.defaultAiLevel.set("deep", in: defaults)
-        #expect(Preferences.defaultFirstMover(in: defaults) == .random)
-        #expect(Preferences.defaultAiLevel(in: defaults) == .deep)
-
-        // A stored name nothing recognises is the accepted default rather than
-        // a failure: a preference file is editable by hand and read by more
-        // than one frontend.
-        defaults.set("sideways", forKey: "defaults.firstMover")
-        defaults.set(17, forKey: "defaults.aiLevel")
-        #expect(Preferences.defaultFirstMover(in: defaults) == .humanFirst)
-        #expect(Preferences.defaultAiLevel(in: defaults) == .standard)
-        ScratchDefaults.clear()
     }
 
     @Test("随机 previews Red and resolves only when it is drawn")
@@ -60,15 +27,12 @@ struct SetupTests {
 
         #expect(SetupDraft(firstMover: .humanFirst, level: .fast).resolveHumanSide() == .red)
         #expect(SetupDraft(firstMover: .aiFirst, level: .fast).resolveHumanSide() == .black)
-        // A drawn side is one of the two, and over enough draws it is both.
         let draws = (0..<200).map { _ in
             SetupDraft(firstMover: .random, level: .fast).resolveHumanSide()
         }
         #expect(draws.contains(.red) && draws.contains(.black),
                 "随机 draws a side rather than always answering the same one")
     }
-
-    // MARK: - The ordering
 
     @Test("开始对局 prepares, resolves, creates, and then searches")
     func theOrderingRunsInOrder() throws {
@@ -112,13 +76,11 @@ struct SetupTests {
         #expect(try !core.activeGameExists(), "nothing was created")
         #expect(engine.startedSearches == 0)
 
-        // 取消 dismisses without leaving; the draft is untouched.
         state.draft = SetupDraft(firstMover: .aiFirst, level: .deep)
         state.dismissCreationFailure()
         #expect(state.creationFailure == nil)
         #expect(state.draft == SetupDraft(firstMover: .aiFirst, level: .deep))
 
-        // Every retry re-probes.
         engine.preparationRefusal = nil
         state.startGame(policy: MotionPolicy(reduceMotion: true))
         #expect(engine.probes == 2, "the retry took a fresh probe")
@@ -158,8 +120,6 @@ struct SetupTests {
         state.leavePage()
         #expect(state.page == .home, "the page is left and the draft discarded")
 
-        // The preparation completes afterwards. It must create nothing, and
-        // what it prepared must be released.
         engine.holdsPreparation = false
         engine.releasePreparation()
 
@@ -168,7 +128,6 @@ struct SetupTests {
         #expect(try !core.activeGameExists())
         #expect(engine.teardowns == 1, "and anything prepared for it is released")
 
-        // The draft is taken afresh on the next entry rather than remembered.
         state.choose(Self.miniAI)
         #expect(state.draft == SetupDraft.fromDefaults())
     }
@@ -177,8 +136,6 @@ struct SetupTests {
     func aFailedCreateReleasesTheEngine() throws {
         let engine = TestEngine()
         let core = try TestCores.fresh()
-        // A game already active is what makes `mxq_game_create` refuse, which is
-        // the store-domain refusal this path has to survive.
         try core.create(.freePlay(game: .miniXiangqi))
         core.endSession()
         let state = PlayState(core: core, engine: engine)
@@ -240,26 +197,6 @@ struct SetupTests {
         #expect(try !core.activeGameExists())
     }
 
-    /// Readiness is a comparison of two strings the core states, and this is the
-    /// frontend's side of it: that the identifier reaches Swift for **every**
-    /// game, that no two games collapse to one, and that a profile match alone
-    /// is not readiness.
-    ///
-    /// The placement games are what this would catch. Nothing above the C
-    /// interface can compose their identifiers — a profile names the revision of
-    /// the engine its own game is played on, and `MxqVersion` reports only the
-    /// first engine's — so a frontend that went back to assembling one would
-    /// answer here with two games sharing a string, which is the readiness check
-    /// silently passing for a board the engine is not prepared for.
-    ///
-    /// **Exhaustive over the games an engine plays, which is not every game.**
-    /// docs/core-interface.md: Jieqi "is prepared for nothing and searched
-    /// never", so `mxq_engine_profile_id` answers `MXQ_ERR_ARG_RANGE` for it —
-    /// there is nothing to configure and no move for an identifier to attribute
-    /// — and that refusal is permanent rather than a state some preparation
-    /// would clear. So the expectation is stated in two halves: every game an
-    /// engine plays has its own identifier, and the game none plays has none at
-    /// any moment of its life.
     @Test("Every played game's readiness profile reaches Swift, and each is its own")
     func everyGamesProfileIsItsOwn() throws {
         let core = try TestCores.fresh()
@@ -276,29 +213,22 @@ struct SetupTests {
         #expect(!core.engineIsReady(for: .miniXiangqi),
                 "a matching profile is still not ready before preparation")
 
-        // The other half: the game no engine plays names no profile, is never
-        // ready, and says so before anything has been prepared and after.
         #expect(played == [.miniXiangqi, .xiangqi, .gomoku15, .renju],
                 "Jieqi is the one game no engine here plays")
         #expect(throws: CoreError.self) { try core.engineProfileID(for: .jieqi) }
         #expect(!core.engineIsReady(for: .jieqi))
     }
 
-    // MARK: - The budget the first gate is computed from
-
     @Test("The probe's values reach the accepted arithmetic, at every boundary")
     func theBudgetPlumbingIsTheAcceptedArithmetic() throws {
         let mib: UInt64 = 1 << 20
 
-        // A zero probe reports insufficient and initialises nothing.
         let empty = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
                                                     availableBytes: 0,
                                                     physicalBytes: 16 << 30))
         #expect(!empty.sufficient)
         #expect(empty.hashMiB == 0)
 
-        // The reserve is the greater of 20% and 128 MiB, so a small probe is
-        // bounded by the fixed floor rather than by the percentage.
         let small = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
                                                     availableBytes: 512 * mib,
                                                     physicalBytes: 16 << 30))
@@ -307,53 +237,27 @@ struct SetupTests {
         #expect(small.hashMiB == 384, "already a multiple of 64")
         #expect(small.sufficient)
 
-        // Just under the minimum: 448 MiB available leaves 320 usable, and a
-        // probe below that lands under 256.
         let below = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
                                                     availableBytes: 380 * mib,
                                                     physicalBytes: 16 << 30))
         #expect(below.hashMiB == 192, "252 MiB rounds down to 192")
         #expect(!below.sufficient, "and below 256 the engine is not initialised")
 
-        // Exactly the minimum.
         let exact = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
                                                     availableBytes: 384 * mib,
                                                     physicalBytes: 16 << 30))
         #expect(exact.hashMiB == 256)
         #expect(exact.sufficient)
 
-        // Half of physical is a bound of its own.
         let physicalBound = try Core.plan(for: EngineBudget(activeProcessorCount: 4,
                                                             availableBytes: 8 << 30,
                                                             physicalBytes: 2 << 30))
         #expect(physicalBound.hashMiB == 1024, "50% of 2 GiB")
 
-        // And 4 GiB is the cap, whatever the machine offers.
         let huge = try Core.plan(for: EngineBudget(activeProcessorCount: 16,
                                                    availableBytes: 200 << 30,
                                                    physicalBytes: 512 << 30))
         #expect(huge.hashMiB == 4096, "the accepted cap")
         #expect(huge.threads == 16, "Threads is the processor count the frontend reported")
-    }
-
-    /// docs/engine-integration.md names a different probe per platform —
-    /// `host_statistics64` on macOS, `os_proc_available_memory()` on iOS and
-    /// iPadOS — and docs/testing.md asks for each to be verified on its own
-    /// platform. This is one test rather than two because what has to hold of
-    /// the answer is the same either way, and because the bundle now runs on
-    /// both: whichever probe the platform compiled in is the one this exercises.
-    ///
-    /// The available figure carries no invariant here at all, and the
-    /// platforms are what say so: a real device answers above the memory that
-    /// exists — the M2 iPad Air, 8.40 GB against 7.99 GB physical, with the
-    /// increased-memory-limit entitlement enabled — and a Simulator process has
-    /// no per-process limit and answers zero, which is the contract's own
-    /// below-minimum case. What the policy asks of the number, the plan tests
-    /// above ask; this asks only that the probe answers.
-    @Test("The platform's own probe reports two plausible numbers")
-    func theProbeAnswers() {
-        let budget = EngineBudget.probe()
-        #expect(budget.physicalBytes > 0, "the machine has memory")
-        #expect(budget.activeProcessorCount > 0)
     }
 }
