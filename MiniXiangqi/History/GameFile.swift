@@ -1,9 +1,14 @@
 // A file representation rather than a data one: data is enough for a
 // pasteboard but not for AirDrop, Mail or Messages. The export runs only when
 // a service asks for the file.
+//
+// The Mac's share picker asks for the file while it holds the main thread, and
+// waits up to two seconds for it, twice. So the file is made without the main
+// actor: the record is read in a context of its own over the container.
 
 import CoreTransferable
 import Foundation
+import SwiftData
 import UniformTypeIdentifiers
 
 nonisolated extension UTType {
@@ -18,13 +23,13 @@ nonisolated extension UTType {
 nonisolated struct GameFile: Transferable, Sendable {
     var id: UUID
     var endedAt: Date
-    var library: GameLibrary
+    var container: ModelContainer
 
     @MainActor
     init(record: GameRecord, in library: GameLibrary) {
         id = record.id
         endedAt = record.endedAt ?? record.startedAt
-        self.library = library
+        container = library.container
     }
 
     static var transferRepresentation: some TransferRepresentation {
@@ -48,8 +53,14 @@ nonisolated struct GameFile: Transferable, Sendable {
         return formatter
     }()
 
-    private func write() async throws -> URL {
-        let contents = try await library.fileData(of: id)
+    @concurrent private func write() async throws -> URL {
+        let id = id
+        var descriptor = FetchDescriptor<GameRecord>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        guard let record = try ModelContext(container).fetch(descriptor).first else {
+            throw LibraryRefusal.unavailable
+        }
+        let contents = try record.fileData()
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(name, isDirectory: false)
         try contents.write(to: url, options: .atomic)

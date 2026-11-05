@@ -16,7 +16,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class GameRecord {
+nonisolated final class GameRecord {
     @Attribute(.unique) var id: UUID
     var kind: GameKind
     var mode: PlayMode
@@ -178,4 +178,4 @@ final class GameRecord {
     }
 }
 
-extension GameRecord: Codable {}
+nonisolated extension GameRecord: Codable {}
