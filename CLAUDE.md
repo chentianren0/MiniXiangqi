@@ -20,11 +20,12 @@ Docs hold what the code, the project file and Apple cannot say: product decision
 ## Sessions
 
 - Work that is a task of its own goes to a session started with `start_session`: one task, a complete brief, Opus, effort high by default, xhigh for intricate work, medium for mechanical work. Subagents are for quick reads the current turn needs.
+- A change of a few lines in one file the lead makes itself and lands through its own PR. If the brief would be longer than the diff, make the change.
 - One or two work sessions at a time, three at most; reviewers are extra. Each works in its own worktree and is archived, worktree included, when its work is done.
 - Work is tracked as GitHub issues, created before it starts.
 
 ## Pull requests
 
-- The author session opens the PR and may carry one PR or several. Everything lands through a PR.
+- Whoever makes the change opens the PR, the lead included, and may carry one PR or several. Everything lands through a PR.
 - One review round: one to three fresh Opus reviewer sessions post their findings on the PR, ranked by severity with evidence. The author judges each finding, fixes what matters and says on the PR what it left alone and why. Work that seems to need a second review is split into more PRs instead.
 - Merge or squash, delete the branch, tell the owner. Commit, push and merge without asking. Facts the owner should know later go on GitHub.
