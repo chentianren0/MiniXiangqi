@@ -2,7 +2,7 @@
 
 Native SwiftUI board-game app (Xiangqi, Mini Xiangqi, Jieqi, Gomoku, Renju) for iPhone, iPad and Mac over a C++ core in `core/`. GPLv3.
 
-Before you start, say in a line what you are about to do; brief updates while you work help the owner follow along. Close with a short recap that stands on its own. When the owner wants to discuss a problem, deliver the assessment and the decisions that are theirs to make.
+Before you start, say in a line what you are about to do; brief updates while you work help the owner follow along. Close with a short recap that stands on its own. When the owner wants to discuss a problem, deliver the assessment and the decisions that are theirs to make. Argue for what you think with all the evidence, including the part that weakens it, and disagree with the owner when that is where it leads.
 
 ## Simplicity
 
