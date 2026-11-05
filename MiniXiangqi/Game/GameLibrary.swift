@@ -306,12 +306,6 @@ final class GameLibrary {
         return try context.fetch(descriptor).first
     }
 
-    /// One record as a game file.
-    func fileData(of id: UUID) throws -> Data {
-        guard let record = try record(id) else { throw LibraryRefusal.unavailable }
-        return try record.fileData()
-    }
-
     func setPinned(_ pinned: Bool, on record: GameRecord) throws {
         record.pinned = pinned
         try save()

@@ -19,7 +19,7 @@ struct GameLibraryTests {
         let id = try fileAMate(in: library, .humanVersusAI(game: .miniXiangqi, humanSide: .red,
                                                            level: .deep))
         let original = try #require(try library.record(id))
-        let file = try library.fileData(of: id)
+        let file = try GameFile.data(of: id, in: library.container)
 
         let other = TestLibraries.another(over: library.core)
         let imported = try other.importGame(file)
@@ -61,7 +61,7 @@ struct GameLibraryTests {
         let library = try TestLibraries.fresh()
         let id = try fileAMate(in: library)
         var document = try #require(try JSONSerialization.jsonObject(
-            with: try library.fileData(of: id)) as? [String: Any])
+            with: try GameFile.data(of: id, in: library.container)) as? [String: Any])
         document["id"] = UUID().uuidString
         document["moves"] = ["b1b3", "a6a5", "b3b8"]
         let tampered = try JSONSerialization.data(withJSONObject: document)
@@ -81,7 +81,7 @@ struct GameLibraryTests {
         let id = try #require(game.filedRecordID)
 
         let other = TestLibraries.another(over: library.core)
-        let imported = try other.importGame(try library.fileData(of: id))
+        let imported = try other.importGame(try GameFile.data(of: id, in: library.container))
         #expect(imported.outcome == .created)
         #expect(imported.record.kind == .jieqi)
         #expect(imported.record.setup == deal.startFEN, "the deal is where the game began")
@@ -100,7 +100,7 @@ struct GameLibraryTests {
 
         let id = try fileAMate(in: library)
         var document = try #require(try JSONSerialization.jsonObject(
-            with: try library.fileData(of: id)) as? [String: Any])
+            with: try GameFile.data(of: id, in: library.container)) as? [String: Any])
         document["id"] = UUID().uuidString
         document["version"] = GameRecord.fileVersion + 1
         history.importGame(try JSONSerialization.data(withJSONObject: document))

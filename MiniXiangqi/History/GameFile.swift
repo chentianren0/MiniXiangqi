@@ -53,14 +53,18 @@ nonisolated struct GameFile: Transferable, Sendable {
         return formatter
     }()
 
-    @concurrent private func write() async throws -> URL {
-        let id = id
+    /// The game file of the record `id`, read in a context of its own.
+    static func data(of id: UUID, in container: ModelContainer) throws -> Data {
         var descriptor = FetchDescriptor<GameRecord>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         guard let record = try ModelContext(container).fetch(descriptor).first else {
             throw LibraryRefusal.unavailable
         }
-        let contents = try record.fileData()
+        return try record.fileData()
+    }
+
+    @concurrent private func write() async throws -> URL {
+        let contents = try Self.data(of: id, in: container)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(name, isDirectory: false)
         try contents.write(to: url, options: .atomic)
