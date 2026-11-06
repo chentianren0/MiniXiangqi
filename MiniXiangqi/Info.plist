@@ -4,6 +4,13 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!--
+	  The Mac's Finder shows the app's localized name (闲敲棋子 in Chinese)
+	  only with this key, and only while CFBundleDisplayName matches the
+	  bundle's file name, which PRODUCT_NAME sets.
+	-->
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
 	<key>LSSupportsGameMode</key>
 	<true/>
 	<key>NSBonjourServices</key>
