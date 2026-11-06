@@ -132,7 +132,7 @@
         "LD_RUNPATH_SEARCH_PATHS": "@executable_path/Frameworks",
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks",
         "MACOSX_DEPLOYMENT_TARGET": "27.2",
-        "MARKETING_VERSION": "4.0.3",
+        "MARKETING_VERSION": "4.0.5",
         "PRODUCT_BUNDLE_IDENTIFIER": "com.chentianren.MiniXiangqi",
         "PRODUCT_MODULE_NAME": "MiniXiangqi",
         "PRODUCT_NAME": "Star River",
