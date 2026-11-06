@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "CE259A86301668710051B648"
-               BuildableName = "MiniXiangqi.app"
+               BuildableName = "Star River.app"
                BlueprintName = "MiniXiangqi"
                ReferencedContainer = "container:MiniXiangqi.xcodeproj">
             </BuildableReference>
@@ -65,7 +65,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "CE259A86301668710051B648"
-            BuildableName = "MiniXiangqi.app"
+            BuildableName = "Star River.app"
             BlueprintName = "MiniXiangqi"
             ReferencedContainer = "container:MiniXiangqi.xcodeproj">
          </BuildableReference>
@@ -82,7 +82,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "CE259A86301668710051B648"
-            BuildableName = "MiniXiangqi.app"
+            BuildableName = "Star River.app"
             BlueprintName = "MiniXiangqi"
             ReferencedContainer = "container:MiniXiangqi.xcodeproj">
          </BuildableReference>

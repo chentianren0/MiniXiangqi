@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
 	<key>LSSupportsGameMode</key>
 	<true/>
 	<key>NSBonjourServices</key>

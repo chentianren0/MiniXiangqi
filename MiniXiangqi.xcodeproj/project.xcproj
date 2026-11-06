@@ -40,7 +40,7 @@
       "kind": "group",
       "name": "Products",
       "children": [
-        { "path": "<PRODUCTS>/MiniXiangqi.app", "id": "CE259A87301668710051B648", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/Star River.app", "id": "CE259A87301668710051B648", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/MiniXiangqiTests.xctest", "id": "CE259A96301668730051B648", "type": "wrapper.cfbundle", "index": false },
         { "path": "<PRODUCTS>/MiniXiangqiUITests.xctest", "id": "CE259AA0301668730051B648", "type": "wrapper.cfbundle", "index": false },
       ],
@@ -50,7 +50,7 @@
     {
       "name": "MiniXiangqi",
       "id": "CE259A86301668710051B648",
-      "product": "Products/MiniXiangqi.app",
+      "product": "Products/Star River.app",
       "product-type": "application",
       "build-phases": [
         "compile-sources",
@@ -134,7 +134,8 @@
         "MACOSX_DEPLOYMENT_TARGET": "27.2",
         "MARKETING_VERSION": "4.0.3",
         "PRODUCT_BUNDLE_IDENTIFIER": "com.chentianren.MiniXiangqi",
-        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "PRODUCT_MODULE_NAME": "MiniXiangqi",
+        "PRODUCT_NAME": "Star River",
         "REGISTER_APP_GROUPS": "YES",
         "SDKROOT": "auto",
         "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
@@ -191,7 +192,7 @@
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
-        "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/MiniXiangqi.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MiniXiangqi",
+        "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/Star River.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Star River",
       },
     }, {
       "name": "MiniXiangqiUITests",
